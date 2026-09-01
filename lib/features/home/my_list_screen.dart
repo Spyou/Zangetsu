@@ -26,7 +26,6 @@ import '../../l10n/l10n.dart';
 import '../../core/tracker/tracker.dart';
 import '../../core/tracker/tracker_hub.dart';
 import '../../core/ui/buttons.dart';
-import '../../core/ui/dock_visibility.dart';
 import '../../core/ui/list_status_sheet.dart';
 import '../../core/ui/poster_card.dart';
 import '../../core/ui/states.dart';
@@ -1005,13 +1004,13 @@ class _MyListViewState extends State<_MyListView> {
                   // Bottom: clear the floating dock, which overlays content
                   // (extendBody reserves it no space of its own).
                   padding: EdgeInsets.fromLTRB(16, 4, 16,
-                      kDockClearance + MediaQuery.paddingOf(context).bottom),
+                      MediaQuery.paddingOf(context).bottom),
                   physics: const AlwaysScrollableScrollPhysics(),
                   cacheExtent: 800,
                   gridDelegate:
-                      const SliverGridDelegateWithFixedCrossAxisCount(
+                      SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount: 3,
-                    childAspectRatio: 0.62,
+                    childAspectRatio: posterGridAspect(context),
                     crossAxisSpacing: 12,
                     mainAxisSpacing: 16,
                   ),

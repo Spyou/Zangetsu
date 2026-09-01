@@ -16,7 +16,6 @@ import '../../core/repository/catalogue_repository.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../l10n/l10n.dart';
-import '../../core/ui/dock_visibility.dart';
 import '../../core/ui/list_status_sheet.dart';
 import '../../core/ui/media_info_sheet.dart';
 import '../detail/detail_screen.dart';
@@ -437,7 +436,7 @@ class _HistoryScreenState extends State<HistoryScreen>
     return ListView.builder(
       padding: EdgeInsets.only(
         top: 4,
-        bottom: kDockClearance + MediaQuery.paddingOf(context).bottom,
+        bottom: MediaQuery.paddingOf(context).bottom,
       ),
       itemCount: groups.length,
       itemBuilder: (_, gi) {

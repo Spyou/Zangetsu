@@ -19,7 +19,6 @@ import '../../core/torrent/torrent_download_service.dart';
 import '../../core/playback/watch_history.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
-import '../../core/ui/dock_visibility.dart';
 import '../../core/ui/states.dart';
 import '../../l10n/l10n.dart';
 import '../settings/download_location_screen.dart';
@@ -465,7 +464,7 @@ class _DownloadsScreenState extends State<DownloadsScreen>
       // Clear the floating dock, which overlays content (this tab has no
       // reserved space of its own for it).
       padding: EdgeInsets.only(
-        bottom: kDockClearance + MediaQuery.paddingOf(context).bottom,
+        bottom: MediaQuery.paddingOf(context).bottom,
       ),
       children: [
         _summaryStrip(

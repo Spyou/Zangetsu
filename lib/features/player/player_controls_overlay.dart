@@ -54,7 +54,8 @@ class _ControlsOverlay extends StatelessWidget {
   final VoidCallback onQuality;
   final VoidCallback onSources;
   final VoidCallback onLock;
-  final VoidCallback onRotate; // flip between locked landscape and locked portrait
+  final VoidCallback
+  onRotate; // flip between locked landscape and locked portrait
   final bool portraitMode; // true while watching upright
   final VoidCallback onSettings;
 
@@ -77,7 +78,8 @@ class _ControlsOverlay extends StatelessWidget {
   final VoidCallback? onChat; // in-room chat toggle (null = no active room)
   final VoidCallback? onInfo; // toggle the info panel (null = no fields picked)
   final bool infoOpen; // whether the info panel is currently shown
-  final bool showQuality; // plain quality text on the top-bar right (with controls)
+  final bool
+  showQuality; // plain quality text on the top-bar right (with controls)
   final VoidCallback onScreenshot; // grab the current frame → gallery
   final VoidCallback onEnhance; // opens the video-enhancement (upscaler) picker
   final bool enhanceActive; // an upscaling preset is currently on
@@ -141,50 +143,50 @@ class _ControlsOverlay extends StatelessWidget {
                       ),
                       const Divider(color: AppColors.hairline, height: 1),
                       const SizedBox(height: 4),
-                    _MoreRow(
-                      icon: Icons.memory_rounded,
-                      label: ctx.l10n.decoderColon(decoderLabel),
-                      onTap: () {
-                        Navigator.pop(ctx);
-                        onDecoder();
-                      },
-                    ),
-                    _MoreRow(
-                      icon: enhanceActive
-                          ? Icons.auto_awesome_rounded
-                          : Icons.auto_awesome_outlined,
-                      label: ctx.l10n.anime4kEnhancement,
-                      onTap: () {
-                        Navigator.pop(ctx);
-                        onEnhance();
-                      },
-                    ),
-                    _MoreRow(
-                      icon: Icons.palette_outlined,
-                      label: ctx.l10n.colour,
-                      onTap: () {
-                        Navigator.pop(ctx);
-                        onColorProfile();
-                      },
-                    ),
-                    _MoreRow(
-                      icon: Icons.photo_camera_rounded,
-                      label: ctx.l10n.snapshot,
-                      onTap: () {
-                        Navigator.pop(ctx);
-                        onScreenshot();
-                      },
-                    ),
-                    _MoreRow(
-                      icon: sleepActive
-                          ? Icons.bedtime_rounded
-                          : Icons.bedtime_outlined,
-                      label: ctx.l10n.sleepTimer,
-                      onTap: () {
-                        Navigator.pop(ctx);
-                        onSleep();
-                      },
-                    ),
+                      _MoreRow(
+                        icon: Icons.memory_rounded,
+                        label: ctx.l10n.decoderColon(decoderLabel),
+                        onTap: () {
+                          Navigator.pop(ctx);
+                          onDecoder();
+                        },
+                      ),
+                      _MoreRow(
+                        icon: enhanceActive
+                            ? Icons.auto_awesome_rounded
+                            : Icons.auto_awesome_outlined,
+                        label: ctx.l10n.anime4kEnhancement,
+                        onTap: () {
+                          Navigator.pop(ctx);
+                          onEnhance();
+                        },
+                      ),
+                      _MoreRow(
+                        icon: Icons.palette_outlined,
+                        label: ctx.l10n.colour,
+                        onTap: () {
+                          Navigator.pop(ctx);
+                          onColorProfile();
+                        },
+                      ),
+                      _MoreRow(
+                        icon: Icons.photo_camera_rounded,
+                        label: ctx.l10n.snapshot,
+                        onTap: () {
+                          Navigator.pop(ctx);
+                          onScreenshot();
+                        },
+                      ),
+                      _MoreRow(
+                        icon: sleepActive
+                            ? Icons.bedtime_rounded
+                            : Icons.bedtime_outlined,
+                        label: ctx.l10n.sleepTimer,
+                        onTap: () {
+                          Navigator.pop(ctx);
+                          onSleep();
+                        },
+                      ),
                       if (onPip != null)
                         _MoreRow(
                           icon: Icons.picture_in_picture_alt_rounded,
@@ -214,8 +216,7 @@ class _ControlsOverlay extends StatelessWidget {
 
   /// Whether [id] sits on any bar. Used so a control that's already placed
   /// doesn't also get drawn by one of the player's own conditional buttons.
-  bool _placedAnywhere(String id) =>
-      barConfig.slotOf(id) != ControlSlot.hidden;
+  bool _placedAnywhere(String id) => barConfig.slotOf(id) != ControlSlot.hidden;
 
   /// Top-bar versions of the arrangeable controls. Plain [IconButton]s rather
   /// than the bottom bar's chips, so anything moved up here matches the row
@@ -228,43 +229,49 @@ class _ControlsOverlay extends StatelessWidget {
           // Android only, and only where the Cast framework is actually
           // supported — the setting decides placement, not availability.
           if (Platform.isAndroid) {
-            out.add(AnimatedBuilder(
-              animation: sl<CastController>(),
-              builder: (context, _) {
-                final castCtrl = sl<CastController>();
-                if (!castCtrl.castSupported) return const SizedBox.shrink();
-                return IconButton(
-                  icon: Icon(
-                    castCtrl.state == CastState.connected
-                        ? Icons.cast_connected
-                        : Icons.cast,
-                    color: Colors.white,
-                  ),
-                  tooltip: context.l10n.cast,
-                  onPressed: () => castCtrl.pickDevice(),
-                );
-              },
-            ));
+            out.add(
+              AnimatedBuilder(
+                animation: sl<CastController>(),
+                builder: (context, _) {
+                  final castCtrl = sl<CastController>();
+                  if (!castCtrl.castSupported) return const SizedBox.shrink();
+                  return IconButton(
+                    icon: Icon(
+                      castCtrl.state == CastState.connected
+                          ? Icons.cast_connected
+                          : Icons.cast,
+                      color: Colors.white,
+                    ),
+                    tooltip: context.l10n.cast,
+                    onPressed: () => castCtrl.pickDevice(),
+                  );
+                },
+              ),
+            );
           }
         case 'info':
           if (onInfo != null) {
-            out.add(IconButton(
-              icon: Icon(
-                Icons.info_outline_rounded,
-                color: infoOpen ? AppColors.accent : Colors.white,
+            out.add(
+              IconButton(
+                icon: Icon(
+                  Icons.info_outline_rounded,
+                  color: infoOpen ? AppColors.accent : Colors.white,
+                ),
+                tooltip: context.l10n.playbackStats,
+                onPressed: onInfo,
               ),
-              tooltip: context.l10n.playbackStats,
-              onPressed: onInfo,
-            ));
+            );
           }
         default:
           final spec = _specFor(context, id);
           if (spec != null) {
-            out.add(IconButton(
-              icon: Icon(spec.$1, color: Colors.white),
-              tooltip: spec.$2,
-              onPressed: spec.$3,
-            ));
+            out.add(
+              IconButton(
+                icon: Icon(spec.$1, color: Colors.white),
+                tooltip: spec.$2,
+                onPressed: spec.$3,
+              ),
+            );
           }
       }
     }
@@ -369,7 +376,7 @@ class _ControlsOverlay extends StatelessWidget {
     final secondaryTitle = showTitle == null
         ? null
         : 'E$epNum${hasEpName ? ' · $epName' : ''}';
-    // Quality appended to the E-line (reDantotsu-style) when enabled — prefers
+    // Quality appended to the E-line when enabled — prefers
     // the source's quality label, else the live video height (e.g. "1080p").
     String? qualityLabel;
     if (showQuality) {
@@ -459,7 +466,10 @@ class _ControlsOverlay extends StatelessWidget {
               child: Row(
                 children: [
                   IconButton(
-                    icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+                    icon: const Icon(
+                      Icons.arrow_back_rounded,
+                      color: Colors.white,
+                    ),
                     tooltip: context.l10n.back,
                     onPressed: onBack,
                   ),
@@ -531,8 +541,10 @@ class _ControlsOverlay extends StatelessWidget {
                   // armed timer would show two of the same button.
                   if (sleepActive && !_placedAnywhere('sleep'))
                     IconButton(
-                      icon: Icon(Icons.bedtime_rounded,
-                          color: AppColors.accent),
+                      icon: Icon(
+                        Icons.bedtime_rounded,
+                        color: AppColors.accent,
+                      ),
                       tooltip: context.l10n.sleepTimerOn,
                       onPressed: onSleep,
                     ),
@@ -655,103 +667,103 @@ class _ControlsOverlay extends StatelessWidget {
             duration: const Duration(milliseconds: 240),
             curve: Curves.easeOutCubic,
             child: SafeArea(
-            top: false,
-            // Vertical inset only — the bottom one keeps the bar clear of the
-            // gesture nav. See the top bar for why the horizontal cutout inset
-            // is skipped: it lands on one edge only and pushed this whole block
-            // sideways, leaving a fat gap on the camera side and a thin one
-            // opposite. The camera sits mid-edge, well clear of this bar.
-            left: false,
-            right: false,
-            child: Padding(
-              // One margin for the whole block — timestamp, progress bar and
-              // both button groups share it, so every edge lines up. Kept wide
-              // so the controls sit clear of the screen edges.
-              padding: const EdgeInsets.fromLTRB(44, 0, 44, 14),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Duration tracker (off-screen listener via StreamBuilder).
-                  StreamBuilder<Duration>(
-                    stream: c.player.stream.duration,
-                    builder: (context, snap) {
-                      final d = snap.data ?? duration;
-                      WidgetsBinding.instance.addPostFrameCallback((_) {
-                        if (d > Duration.zero) onDurationChanged(d);
-                      });
-                      return _SeekRow(
-                        controller: c,
-                        duration: d > Duration.zero ? d : duration,
-                        onInteract: onInteract,
-                        // MegaSkip — manual jump-forward, riding the timestamp's
-                        // line rather than a row of its own above it.
-                        trailing: megaSkipEnabled
-                            ? _MegaSkipPill(
-                                seconds: megaSkipSeconds,
-                                onTap: onMegaSkip,
-                              )
-                            : null,
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 2),
-                  // Control bar under the progress bar: the pickers ride in one
-                  // translucent group on the left, episode list + fit mode in
-                  // another on the right. Two groups rather than seven floating
-                  // chips — the split reads at a glance, and every button is the
-                  // same width so nothing shifts as the video changes.
-                  LayoutBuilder(
-                    builder: (context, constraints) {
-                      // Rendered from the user's saved arrangement rather than
-                      // a fixed row. Untouched prefs give the defaults, which
-                      // are the exact layout that shipped before the Settings
-                      // screen existed — so nobody's bar moves unless they
-                      // move it.
-                      final left = _barButtons(context, barConfig.left);
-                      final right = _barButtons(context, barConfig.right);
-                      // Buttons are a uniform 48 (12 padding + 24 icon + 12)
-                      // and each group adds 8 of its own, so the width the bar
-                      // wants is arithmetic rather than something to measure.
-                      const buttonWidth = 48.0;
-                      const groupPadding = 8.0;
-                      double groupWidth(int n) =>
-                          n == 0 ? 0 : n * buttonWidth + groupPadding;
-                      final wanted =
-                          groupWidth(left.length) + groupWidth(right.length);
-
-                      if (wanted <= constraints.maxWidth) {
-                        return Row(
-                          children: [
-                            if (left.isNotEmpty) _BarGroup(children: left),
-                            const Spacer(),
-                            if (right.isNotEmpty) _BarGroup(children: right),
-                          ],
+              top: false,
+              // Vertical inset only — the bottom one keeps the bar clear of the
+              // gesture nav. See the top bar for why the horizontal cutout inset
+              // is skipped: it lands on one edge only and pushed this whole block
+              // sideways, leaving a fat gap on the camera side and a thin one
+              // opposite. The camera sits mid-edge, well clear of this bar.
+              left: false,
+              right: false,
+              child: Padding(
+                // One margin for the whole block — timestamp, progress bar and
+                // both button groups share it, so every edge lines up. Kept wide
+                // so the controls sit clear of the screen edges.
+                padding: const EdgeInsets.fromLTRB(44, 0, 44, 14),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Duration tracker (off-screen listener via StreamBuilder).
+                    StreamBuilder<Duration>(
+                      stream: c.player.stream.duration,
+                      builder: (context, snap) {
+                        final d = snap.data ?? duration;
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          if (d > Duration.zero) onDurationChanged(d);
+                        });
+                        return _SeekRow(
+                          controller: c,
+                          duration: d > Duration.zero ? d : duration,
+                          onInteract: onInteract,
+                          // MegaSkip — manual jump-forward, riding the timestamp's
+                          // line rather than a row of its own above it.
+                          trailing: megaSkipEnabled
+                              ? _MegaSkipPill(
+                                  seconds: megaSkipSeconds,
+                                  onTap: onMegaSkip,
+                                )
+                              : null,
                         );
-                      }
-                      // Narrower than the bar wants — portrait, or a bar the
-                      // user has loaded up in Settings. The Spacer pins the
-                      // groups to opposite edges and can't give any width back,
-                      // so the right-hand group would run off-screen and take
-                      // its buttons out of reach. Scroll the pair instead:
-                      // everything stays tappable, and nothing about the
-                      // landscape layout above changes.
-                      return SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: Row(
-                          children: [
-                            if (left.isNotEmpty) _BarGroup(children: left),
-                            if (left.isNotEmpty && right.isNotEmpty)
-                              const SizedBox(width: 8),
-                            if (right.isNotEmpty) _BarGroup(children: right),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
-                ],
+                      },
+                    ),
+                    const SizedBox(height: 2),
+                    // Control bar under the progress bar: the pickers ride in one
+                    // translucent group on the left, episode list + fit mode in
+                    // another on the right. Two groups rather than seven floating
+                    // chips — the split reads at a glance, and every button is the
+                    // same width so nothing shifts as the video changes.
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        // Rendered from the user's saved arrangement rather than
+                        // a fixed row. Untouched prefs give the defaults, which
+                        // are the exact layout that shipped before the Settings
+                        // screen existed — so nobody's bar moves unless they
+                        // move it.
+                        final left = _barButtons(context, barConfig.left);
+                        final right = _barButtons(context, barConfig.right);
+                        // Buttons are a uniform 48 (12 padding + 24 icon + 12)
+                        // and each group adds 8 of its own, so the width the bar
+                        // wants is arithmetic rather than something to measure.
+                        const buttonWidth = 48.0;
+                        const groupPadding = 8.0;
+                        double groupWidth(int n) =>
+                            n == 0 ? 0 : n * buttonWidth + groupPadding;
+                        final wanted =
+                            groupWidth(left.length) + groupWidth(right.length);
+
+                        if (wanted <= constraints.maxWidth) {
+                          return Row(
+                            children: [
+                              if (left.isNotEmpty) _BarGroup(children: left),
+                              const Spacer(),
+                              if (right.isNotEmpty) _BarGroup(children: right),
+                            ],
+                          );
+                        }
+                        // Narrower than the bar wants — portrait, or a bar the
+                        // user has loaded up in Settings. The Spacer pins the
+                        // groups to opposite edges and can't give any width back,
+                        // so the right-hand group would run off-screen and take
+                        // its buttons out of reach. Scroll the pair instead:
+                        // everything stays tappable, and nothing about the
+                        // landscape layout above changes.
+                        return SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            children: [
+                              if (left.isNotEmpty) _BarGroup(children: left),
+                              if (left.isNotEmpty && right.isNotEmpty)
+                                const SizedBox(width: 8),
+                              if (right.isNotEmpty) _BarGroup(children: right),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
           ),
         ),
       ],
@@ -762,4 +774,3 @@ class _ControlsOverlay extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 // Seek row — current time + slider (stream-bound) + total time.
 // ─────────────────────────────────────────────────────────────────────────────
-

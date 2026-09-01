@@ -17,7 +17,6 @@ import '../../core/zmode/zmode_prefs.dart';
 import '../detail/detail_screen.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
-import '../../core/ui/dock_visibility.dart';
 import '../home/search_screen.dart';
 import 'schedule_cubit.dart';
 import 'schedule_screen_tv.dart';
@@ -37,7 +36,9 @@ class ScheduleScreen extends StatelessWidget {
         sl<ComingSoonService>(),
         sl<MyListStore>(),
       )..load(),
-      child: sl<AppMode>().isTv ? const ScheduleScreenTv() : const ScheduleBody(),
+      child: sl<AppMode>().isTv
+          ? const ScheduleScreenTv()
+          : const ScheduleBody(),
     );
   }
 }
@@ -117,7 +118,12 @@ String _monthYear(DateTime d, String locale) =>
 String _monthDay(DateTime d, String locale) =>
     DateFormat.yMMMd(locale).format(d);
 
-String _selectedHeader(AppLocalizations l10n, String locale, DateTime day, DateTime today) {
+String _selectedHeader(
+  AppLocalizations l10n,
+  String locale,
+  DateTime day,
+  DateTime today,
+) {
   if (day == today) return l10n.relativeToday;
   if (day == today.add(const Duration(days: 1))) return l10n.relativeTomorrow;
   return DateFormat('EEE, MMM d', locale).format(day);
@@ -172,14 +178,15 @@ class _ScheduleBodyState extends State<ScheduleBody>
     // Open on the tab for the kind you were browsing: Schedule is reached from
     // the Home card now, and arriving on Anime after tapping it from a
     // Movies/TV Home meant a tab switch every single time.
-    _tabs = TabController(
-      length: 2,
-      vsync: this,
-      initialIndex: ZModePrefs.streamKind == StreamKind.movie ? 1 : 0,
-    )
-      ..addListener(() {
-        if (mounted) setState(() {}); // header (My List / busy) follows the tab
-      });
+    _tabs =
+        TabController(
+          length: 2,
+          vsync: this,
+          initialIndex: ZModePrefs.streamKind == StreamKind.movie ? 1 : 0,
+        )..addListener(() {
+          if (mounted)
+            setState(() {}); // header (My List / busy) follows the tab
+        });
     // Re-render every 30s so countdowns/“LIVE” stay current. Cancelled in
     // dispose, so no timer leaks in tests.
     _tick = Timer.periodic(const Duration(seconds: 30), (_) {
@@ -214,10 +221,22 @@ class _ScheduleBodyState extends State<ScheduleBody>
                   child: TabBarView(
                     controller: _tabs,
                     children: [
-                      _page(context, state, cubit, today, selected,
-                          forMovies: false),
-                      _page(context, state, cubit, today, selected,
-                          forMovies: true),
+                      _page(
+                        context,
+                        state,
+                        cubit,
+                        today,
+                        selected,
+                        forMovies: false,
+                      ),
+                      _page(
+                        context,
+                        state,
+                        cubit,
+                        today,
+                        selected,
+                        forMovies: true,
+                      ),
                     ],
                   ),
                 ),
@@ -231,18 +250,26 @@ class _ScheduleBodyState extends State<ScheduleBody>
 
   // ── header: title + My List toggle ──
   // Refresh lives in the pull-to-refresh gesture; no header button needed.
-  Widget _header(BuildContext context, ScheduleState state, ScheduleCubit cubit) {
+  Widget _header(
+    BuildContext context,
+    ScheduleState state,
+    ScheduleCubit cubit,
+  ) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 10, 12, 6),
       child: Row(
         children: [
-          Expanded(child: Text(context.l10n.schedule, style: AppText.largeTitle)),
+          Expanded(
+            child: Text(context.l10n.schedule, style: AppText.largeTitle),
+          ),
           // My List filter only applies to the anime tab; slide it in/out.
           AnimatedSwitcher(
             duration: const Duration(milliseconds: 200),
             transitionBuilder: (c, a) => SizeTransition(
-                axis: Axis.horizontal, sizeFactor: a,
-                child: FadeTransition(opacity: a, child: c)),
+              axis: Axis.horizontal,
+              sizeFactor: a,
+              child: FadeTransition(opacity: a, child: c),
+            ),
             child: _tab == 0
                 ? _myListToggle(state, cubit)
                 : const SizedBox.shrink(),
@@ -260,22 +287,32 @@ class _ScheduleBodyState extends State<ScheduleBody>
       child: Container(
         padding: const EdgeInsets.fromLTRB(10, 6, 12, 6),
         decoration: BoxDecoration(
-          color: on ? AppColors.accent.withValues(alpha: 0.14) : AppColors.surface2,
+          color: on
+              ? AppColors.accent.withValues(alpha: 0.14)
+              : AppColors.surface2,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-              color: on ? AppColors.accent.withValues(alpha: 0.4) : Colors.transparent),
+            color: on
+                ? AppColors.accent.withValues(alpha: 0.4)
+                : Colors.transparent,
+          ),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(on ? Icons.bookmark : Icons.bookmark_border,
-                size: 16, color: on ? AppColors.accent : AppColors.textSecondary),
+            Icon(
+              on ? Icons.bookmark : Icons.bookmark_border,
+              size: 16,
+              color: on ? AppColors.accent : AppColors.textSecondary,
+            ),
             const SizedBox(width: 5),
-            Text(context.l10n.myList,
-                style: AppText.caption.copyWith(
-                  fontWeight: FontWeight.w600,
-                  color: on ? AppColors.accent : AppColors.textSecondary,
-                )),
+            Text(
+              context.l10n.myList,
+              style: AppText.caption.copyWith(
+                fontWeight: FontWeight.w600,
+                color: on ? AppColors.accent : AppColors.textSecondary,
+              ),
+            ),
           ],
         ),
       ),
@@ -283,7 +320,11 @@ class _ScheduleBodyState extends State<ScheduleBody>
   }
 
   // ── Anime/Movies TabBar (animated sliding underline) + Week/Month pill ──
-  Widget _tabRow(BuildContext context, ScheduleState state, ScheduleCubit cubit) {
+  Widget _tabRow(
+    BuildContext context,
+    ScheduleState state,
+    ScheduleCubit cubit,
+  ) {
     final l10n = context.l10n;
     Widget wm(String label, ScheduleView v) {
       final on = state.view == v;
@@ -296,11 +337,13 @@ class _ScheduleBodyState extends State<ScheduleBody>
             color: on ? AppColors.accent : Colors.transparent,
             borderRadius: BorderRadius.circular(7),
           ),
-          child: Text(label,
-              style: AppText.caption.copyWith(
-                fontWeight: FontWeight.w700,
-                color: on ? Colors.white : AppColors.textSecondary,
-              )),
+          child: Text(
+            label,
+            style: AppText.caption.copyWith(
+              fontWeight: FontWeight.w700,
+              color: on ? Colors.white : AppColors.textSecondary,
+            ),
+          ),
         ),
       );
     }
@@ -328,9 +371,14 @@ class _ScheduleBodyState extends State<ScheduleBody>
               labelColor: AppColors.textPrimary,
               unselectedLabelColor: AppColors.textTertiary,
               labelStyle: AppText.headline.copyWith(fontSize: 14),
-              unselectedLabelStyle:
-                  AppText.headline.copyWith(fontSize: 14, fontWeight: FontWeight.w600),
-              tabs: [Tab(text: context.l10n.anime), Tab(text: context.l10n.moviesTV)],
+              unselectedLabelStyle: AppText.headline.copyWith(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+              tabs: [
+                Tab(text: context.l10n.anime),
+                Tab(text: context.l10n.moviesTV),
+              ],
             ),
           ),
           const SizedBox(width: 8),
@@ -340,10 +388,12 @@ class _ScheduleBodyState extends State<ScheduleBody>
               color: AppColors.surface2,
               borderRadius: BorderRadius.circular(9),
             ),
-            child: Row(children: [
-              wm(l10n.weekView, ScheduleView.week),
-              wm(l10n.monthView, ScheduleView.month),
-            ]),
+            child: Row(
+              children: [
+                wm(l10n.weekView, ScheduleView.week),
+                wm(l10n.monthView, ScheduleView.month),
+              ],
+            ),
           ),
         ],
       ),
@@ -351,8 +401,14 @@ class _ScheduleBodyState extends State<ScheduleBody>
   }
 
   // ── one tab page: day selector + day content ──
-  Widget _page(BuildContext context, ScheduleState state, ScheduleCubit cubit,
-      DateTime today, DateTime selected, {required bool forMovies}) {
+  Widget _page(
+    BuildContext context,
+    ScheduleState state,
+    ScheduleCubit cubit,
+    DateTime today,
+    DateTime selected, {
+    required bool forMovies,
+  }) {
     final isMonth = state.view == ScheduleView.month;
     final counts = forMovies
         ? _soonDayCounts(state)
@@ -363,9 +419,7 @@ class _ScheduleBodyState extends State<ScheduleBody>
       onRefresh: cubit.refresh,
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: EdgeInsets.only(
-          bottom: kDockClearance + MediaQuery.paddingOf(context).bottom,
-        ),
+        padding: EdgeInsets.only(bottom: MediaQuery.paddingOf(context).bottom),
         children: [
           // Day selector: cross-fade between week tabs and month grid.
           AnimatedSize(
@@ -377,7 +431,14 @@ class _ScheduleBodyState extends State<ScheduleBody>
               child: KeyedSubtree(
                 key: ValueKey('sel-$isMonth-${state.monthAnchor}'),
                 child: isMonth
-                    ? _monthSelector(context, state, cubit, today, selected, counts)
+                    ? _monthSelector(
+                        context,
+                        state,
+                        cubit,
+                        today,
+                        selected,
+                        counts,
+                      )
                     : _weekTabs(context, cubit, today, selected, counts),
               ),
             ),
@@ -395,8 +456,9 @@ class _ScheduleBodyState extends State<ScheduleBody>
                 opacity: anim,
                 child: SlideTransition(
                   position: Tween<Offset>(
-                          begin: const Offset(0, 0.06), end: Offset.zero)
-                      .animate(anim),
+                    begin: const Offset(0, 0.06),
+                    end: Offset.zero,
+                  ).animate(anim),
                   child: child,
                 ),
               ),
@@ -405,9 +467,11 @@ class _ScheduleBodyState extends State<ScheduleBody>
                 children: [...previous, ?current],
               ),
               child: KeyedSubtree(
-                key: ValueKey('day-$forMovies-${state.view}-'
-                    '${selected.millisecondsSinceEpoch}-${state.myListOnly}-'
-                    '${_loadingFor(state, forMovies)}'),
+                key: ValueKey(
+                  'day-$forMovies-${state.view}-'
+                  '${selected.millisecondsSinceEpoch}-${state.myListOnly}-'
+                  '${_loadingFor(state, forMovies)}',
+                ),
                 child: _dayContent(context, state, today, selected, forMovies),
               ),
             ),
@@ -420,11 +484,16 @@ class _ScheduleBodyState extends State<ScheduleBody>
   bool _loadingFor(ScheduleState state, bool forMovies) => forMovies
       ? state.loadingSoon
       : (state.view == ScheduleView.month
-          ? state.loadingMonth
-          : state.loadingAiring);
+            ? state.loadingMonth
+            : state.loadingAiring);
 
-  Widget _dayContent(BuildContext context, ScheduleState state, DateTime today,
-      DateTime selected, bool forMovies) {
+  Widget _dayContent(
+    BuildContext context,
+    ScheduleState state,
+    DateTime today,
+    DateTime selected,
+    bool forMovies,
+  ) {
     final l10n = context.l10n;
     final locale = Localizations.localeOf(context).toString();
     if (_loadingFor(state, forMovies)) return const _SkeletonTimeline();
@@ -435,9 +504,7 @@ class _ScheduleBodyState extends State<ScheduleBody>
           : state.airingByDay;
       var list = byDay[selected] ?? const <AiringEntry>[];
       if (state.myListOnly) {
-        list = list
-            .where(state.followed.matches)
-            .toList();
+        list = list.where(state.followed.matches).toList();
       }
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -451,11 +518,13 @@ class _ScheduleBodyState extends State<ScheduleBody>
           if (list.isEmpty)
             // "Nothing airing today" is a claim about the schedule. Don't make
             // it when the schedule never loaded.
-            _empty(state.offline
-                ? '${l10n.offlineTitle}\n${l10n.offlineBody}'
-                : state.myListOnly
-                    ? l10n.noneOfFollowedAirOnThisDay
-                    : l10n.nothingAiringOnThisDay)
+            _empty(
+              state.offline
+                  ? '${l10n.offlineTitle}\n${l10n.offlineBody}'
+                  : state.myListOnly
+                  ? l10n.noneOfFollowedAirOnThisDay
+                  : l10n.nothingAiringOnThisDay,
+            )
           else
             _timeline(context, list),
         ],
@@ -473,9 +542,11 @@ class _ScheduleBodyState extends State<ScheduleBody>
           l10n.scheduleNounReleasing,
         ),
         if (list.isEmpty)
-          _empty(state.offline
-              ? '${l10n.offlineTitle}\n${l10n.offlineBody}'
-              : l10n.nothingReleasingOnThisDay)
+          _empty(
+            state.offline
+                ? '${l10n.offlineTitle}\n${l10n.offlineBody}'
+                : l10n.nothingReleasingOnThisDay,
+          )
         else
           for (final e in list)
             _ReleaseCard(
@@ -489,9 +560,11 @@ class _ScheduleBodyState extends State<ScheduleBody>
                 if (e.episodeLabel != null) e.episodeLabel!,
                 e.isTv
                     ? l10n.seriesWithDate(
-                        _monthDay(e.releaseDate ?? selected, locale))
+                        _monthDay(e.releaseDate ?? selected, locale),
+                      )
                     : l10n.movieWithDate(
-                        _monthDay(e.releaseDate ?? selected, locale)),
+                        _monthDay(e.releaseDate ?? selected, locale),
+                      ),
               ].join('  ·  '),
               onTap: () => openCanonical(
                 context,
@@ -505,9 +578,14 @@ class _ScheduleBodyState extends State<ScheduleBody>
     );
   }
 
-  // ── week day tabs (Dantotsu-style: "Mon, Jul 13 (12)", scrollable) ──
-  Widget _weekTabs(BuildContext context, ScheduleCubit cubit, DateTime today, DateTime selected,
-      Map<DateTime, ({int count, bool followed})> counts) {
+  // ── week day tabs ("Mon, Jul 13 (12)", scrollable) ──────────────────
+  Widget _weekTabs(
+    BuildContext context,
+    ScheduleCubit cubit,
+    DateTime today,
+    DateTime selected,
+    Map<DateTime, ({int count, bool followed})> counts,
+  ) {
     final l10n = context.l10n;
     final locale = Localizations.localeOf(context).toString();
     final days = [for (var i = 0; i < 7; i++) today.add(Duration(days: i))];
@@ -540,14 +618,16 @@ class _ScheduleBodyState extends State<ScheduleBody>
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      Text(label,
-                          style: AppText.headline.copyWith(
-                            fontSize: 14,
-                            fontWeight: on ? FontWeight.w800 : FontWeight.w600,
-                            color: on
-                                ? AppColors.textPrimary
-                                : AppColors.textTertiary,
-                          )),
+                      Text(
+                        label,
+                        style: AppText.headline.copyWith(
+                          fontSize: 14,
+                          fontWeight: on ? FontWeight.w800 : FontWeight.w600,
+                          color: on
+                              ? AppColors.textPrimary
+                              : AppColors.textTertiary,
+                        ),
+                      ),
                       const SizedBox(height: 6),
                       AnimatedOpacity(
                         duration: const Duration(milliseconds: 200),
@@ -568,13 +648,14 @@ class _ScheduleBodyState extends State<ScheduleBody>
                     const SizedBox(width: 5),
                     Padding(
                       padding: const EdgeInsets.only(top: 2),
-                      child: Text('($n)',
-                          style: AppText.caption.copyWith(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            color:
-                                on ? AppColors.accent : AppColors.textTertiary,
-                          )),
+                      child: Text(
+                        '($n)',
+                        style: AppText.caption.copyWith(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: on ? AppColors.accent : AppColors.textTertiary,
+                        ),
+                      ),
                     ),
                   ],
                 ],
@@ -587,8 +668,14 @@ class _ScheduleBodyState extends State<ScheduleBody>
   }
 
   // ── month nav + calendar grid ──
-  Widget _monthSelector(BuildContext context, ScheduleState state, ScheduleCubit cubit, DateTime today,
-      DateTime selected, Map<DateTime, ({int count, bool followed})> byDay) {
+  Widget _monthSelector(
+    BuildContext context,
+    ScheduleState state,
+    ScheduleCubit cubit,
+    DateTime today,
+    DateTime selected,
+    Map<DateTime, ({int count, bool followed})> byDay,
+  ) {
     final locale = Localizations.localeOf(context).toString();
     final anchor = state.monthAnchor ?? DateTime(today.year, today.month, 1);
     return Column(
@@ -597,15 +684,23 @@ class _ScheduleBodyState extends State<ScheduleBody>
           padding: const EdgeInsets.fromLTRB(18, 2, 18, 8),
           child: Row(
             children: [
-              _navArrow(Icons.chevron_left,
-                  () => cubit.goToMonth(DateTime(anchor.year, anchor.month - 1, 1))),
-              Expanded(
-                child: Text(_monthYear(anchor, locale),
-                    textAlign: TextAlign.center,
-                    style: AppText.headline.copyWith(fontWeight: FontWeight.w800)),
+              _navArrow(
+                Icons.chevron_left,
+                () =>
+                    cubit.goToMonth(DateTime(anchor.year, anchor.month - 1, 1)),
               ),
-              _navArrow(Icons.chevron_right,
-                  () => cubit.goToMonth(DateTime(anchor.year, anchor.month + 1, 1))),
+              Expanded(
+                child: Text(
+                  _monthYear(anchor, locale),
+                  textAlign: TextAlign.center,
+                  style: AppText.headline.copyWith(fontWeight: FontWeight.w800),
+                ),
+              ),
+              _navArrow(
+                Icons.chevron_right,
+                () =>
+                    cubit.goToMonth(DateTime(anchor.year, anchor.month + 1, 1)),
+              ),
             ],
           ),
         ),
@@ -622,28 +717,35 @@ class _ScheduleBodyState extends State<ScheduleBody>
   }
 
   Widget _navArrow(IconData icon, VoidCallback onTap) => GestureDetector(
-        onTap: onTap,
-        child: Container(
-          width: 32,
-          height: 32,
-          decoration: BoxDecoration(
-              color: AppColors.surface, shape: BoxShape.circle),
-          child: Icon(icon, size: 18, color: AppColors.textSecondary),
-        ),
-      );
+    onTap: onTap,
+    child: Container(
+      width: 32,
+      height: 32,
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        shape: BoxShape.circle,
+      ),
+      child: Icon(icon, size: 18, color: AppColors.textSecondary),
+    ),
+  );
 
-  Widget _dayHead(BuildContext context, String label, int count, String noun) => Padding(
+  Widget _dayHead(BuildContext context, String label, int count, String noun) =>
+      Padding(
         padding: const EdgeInsets.fromLTRB(18, 14, 18, 2),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.baseline,
           textBaseline: TextBaseline.alphabetic,
           children: [
-            Text(label,
-                style: AppText.headline.copyWith(fontWeight: FontWeight.w800)),
+            Text(
+              label,
+              style: AppText.headline.copyWith(fontWeight: FontWeight.w800),
+            ),
             const SizedBox(width: 8),
             if (count > 0)
-              Text(context.l10n.scheduleCountDot(count, noun),
-                  style: AppText.caption.copyWith(color: AppColors.textSecondary)),
+              Text(
+                context.l10n.scheduleCountDot(count, noun),
+                style: AppText.caption.copyWith(color: AppColors.textSecondary),
+              ),
           ],
         ),
       );
@@ -659,66 +761,75 @@ class _ScheduleBodyState extends State<ScheduleBody>
       final e = list[i];
       final slot = _slotLabel(l10n, e.airsAtLocal.hour);
       if (slot != lastSlot) {
-        rows.add(Padding(
-          padding: EdgeInsets.fromLTRB(18, i == 0 ? 8 : 14, 18, 6),
-          child: Text(slot,
+        rows.add(
+          Padding(
+            padding: EdgeInsets.fromLTRB(18, i == 0 ? 8 : 14, 18, 6),
+            child: Text(
+              slot,
               style: AppText.caption.copyWith(
                 fontSize: 10.5,
                 fontWeight: FontWeight.w800,
                 letterSpacing: 0.6,
                 color: AppColors.textTertiary,
-              )),
-        ));
+              ),
+            ),
+          ),
+        );
         lastSlot = slot;
       }
-      rows.add(_TimelineRow(
-        entry: e,
-        status: _airStatus(l10n, e.airsAtLocal, now),
-        timeParts: _timeParts(e.airsAtLocal, locale),
-        episodeLabel: l10n.episodeLabel(e.episode),
-        last: i == list.length - 1 ||
-            _slotLabel(l10n, list[i + 1].airsAtLocal.hour) != slot,
-        onTap: () => openCanonical(
-          context,
-          kind: ZKind.anime,
-          id: e.malId == null ? null : 'mal:${e.malId}',
-          title: e.title,
-          coverUrl: e.coverUrl,
+      rows.add(
+        _TimelineRow(
+          entry: e,
+          status: _airStatus(l10n, e.airsAtLocal, now),
+          timeParts: _timeParts(e.airsAtLocal, locale),
+          episodeLabel: l10n.episodeLabel(e.episode),
+          last:
+              i == list.length - 1 ||
+              _slotLabel(l10n, list[i + 1].airsAtLocal.hour) != slot,
+          onTap: () => openCanonical(
+            context,
+            kind: ZKind.anime,
+            id: e.malId == null ? null : 'mal:${e.malId}',
+            title: e.title,
+            coverUrl: e.coverUrl,
+          ),
         ),
-      ));
+      );
     }
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: rows);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: rows,
+    );
   }
 
   Widget _empty(String message) => Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 36),
-        child: Center(
-          child: Text(message,
-              textAlign: TextAlign.center, style: AppText.caption),
-        ),
-      );
+    padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 36),
+    child: Center(
+      child: Text(message, textAlign: TextAlign.center, style: AppText.caption),
+    ),
+  );
 
   // ── per-day count/followed for grid + week dots ──
-  Map<DateTime, ({int count, bool followed})> _animeByDay(ScheduleState state,
-      {required bool month}) {
+  Map<DateTime, ({int count, bool followed})> _animeByDay(
+    ScheduleState state, {
+    required bool month,
+  }) {
     final src = month ? state.monthAiringByDay : state.airingByDay;
     final out = <DateTime, ({int count, bool followed})>{};
     src.forEach((day, entries) {
       final filtered = state.myListOnly
-          ? entries
-              .where(state.followed.matches)
-              .toList()
+          ? entries.where(state.followed.matches).toList()
           : entries;
       if (filtered.isEmpty) return;
-      final followed = filtered
-          .any(state.followed.matches);
+      final followed = filtered.any(state.followed.matches);
       out[day] = (count: filtered.length, followed: followed);
     });
     return out;
   }
 
   Map<DateTime, ({int count, bool followed})> _soonDayCounts(
-      ScheduleState state) {
+    ScheduleState state,
+  ) {
     final out = <DateTime, ({int count, bool followed})>{};
     state.soonByDay.forEach((day, entries) {
       out[day] = (count: entries.length, followed: false);
@@ -768,13 +879,15 @@ class _CalendarGrid extends StatelessWidget {
                 Expanded(
                   child: Padding(
                     padding: const EdgeInsets.only(bottom: 6),
-                    child: Text(w,
-                        textAlign: TextAlign.center,
-                        style: AppText.caption.copyWith(
-                          fontSize: 9.5,
-                          fontWeight: FontWeight.w800,
-                          color: AppColors.textTertiary,
-                        )),
+                    child: Text(
+                      w,
+                      textAlign: TextAlign.center,
+                      style: AppText.caption.copyWith(
+                        fontSize: 9.5,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.textTertiary,
+                      ),
+                    ),
                   ),
                 ),
             ],
@@ -811,7 +924,9 @@ class _CalendarGrid extends StatelessWidget {
             borderRadius: BorderRadius.circular(11),
             border: (isToday && !isSel)
                 ? Border.all(
-                    color: AppColors.accent.withValues(alpha: 0.55), width: 1.5)
+                    color: AppColors.accent.withValues(alpha: 0.55),
+                    width: 1.5,
+                  )
                 : null,
           ),
           child: Stack(
@@ -820,28 +935,32 @@ class _CalendarGrid extends StatelessWidget {
                 Positioned(
                   top: 4,
                   right: 6,
-                  child: Text('$n',
-                      style: AppText.caption.copyWith(
-                        fontSize: 8,
-                        fontWeight: FontWeight.w800,
-                        color: isSel ? Colors.white : AppColors.textTertiary,
-                      )),
+                  child: Text(
+                    '$n',
+                    style: AppText.caption.copyWith(
+                      fontSize: 8,
+                      fontWeight: FontWeight.w800,
+                      color: isSel ? Colors.white : AppColors.textTertiary,
+                    ),
+                  ),
                 ),
               Center(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text('${date.day}',
-                        style: AppText.headline.copyWith(
-                          fontSize: 12.5,
-                          color: isSel
-                              ? Colors.white
-                              : !inMonth
-                                  ? AppColors.textTertiary.withValues(alpha: 0.4)
-                                  : isToday
-                                      ? AppColors.accent
-                                      : AppColors.textPrimary,
-                        )),
+                    Text(
+                      '${date.day}',
+                      style: AppText.headline.copyWith(
+                        fontSize: 12.5,
+                        color: isSel
+                            ? Colors.white
+                            : !inMonth
+                            ? AppColors.textTertiary.withValues(alpha: 0.4)
+                            : isToday
+                            ? AppColors.accent
+                            : AppColors.textPrimary,
+                      ),
+                    ),
                     const SizedBox(height: 3),
                     SizedBox(
                       height: 4,
@@ -869,7 +988,10 @@ class _CalendarGrid extends StatelessWidget {
   }
 
   Widget _dot(Color c) => Container(
-      width: 4, height: 4, decoration: BoxDecoration(color: c, shape: BoxShape.circle));
+    width: 4,
+    height: 4,
+    decoration: BoxDecoration(color: c, shape: BoxShape.circle),
+  );
 }
 
 // ── timeline row (anime) ──────────────────────────────────────────────────────
@@ -905,18 +1027,22 @@ class _TimelineRow extends StatelessWidget {
               width: 42,
               child: Column(
                 children: [
-                  Text(t.hm,
-                      style: AppText.caption.copyWith(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.textSecondary,
-                      )),
-                  Text(t.ap,
-                      style: AppText.caption.copyWith(
-                        fontSize: 8,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.textTertiary,
-                      )),
+                  Text(
+                    t.hm,
+                    style: AppText.caption.copyWith(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                  Text(
+                    t.ap,
+                    style: AppText.caption.copyWith(
+                      fontSize: 8,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textTertiary,
+                    ),
+                  ),
                   if (!last)
                     Expanded(
                       child: Container(
@@ -954,27 +1080,33 @@ class _TimelineRow extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Text(entry.title,
-                                style: AppText.headline.copyWith(fontSize: 13),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis),
+                            Text(
+                              entry.title,
+                              style: AppText.headline.copyWith(fontSize: 13),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                             const SizedBox(height: 2),
-                            Text(episodeLabel,
-                                style: AppText.caption.copyWith(
-                                  fontSize: 10.5,
-                                  fontWeight: FontWeight.w700,
-                                  color: AppColors.textTertiary,
-                                )),
+                            Text(
+                              episodeLabel,
+                              style: AppText.caption.copyWith(
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.textTertiary,
+                              ),
+                            ),
                           ],
                         ),
                       ),
                       const SizedBox(width: 8),
-                      Text(status.text,
-                          style: AppText.caption.copyWith(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w800,
-                            color: live ? _live : AppColors.accent,
-                          )),
+                      Text(
+                        status.text,
+                        style: AppText.caption.copyWith(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                          color: live ? _live : AppColors.accent,
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -1015,15 +1147,21 @@ class _ReleaseCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title,
-                      style: AppText.headline.copyWith(fontSize: 14),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis),
+                  Text(
+                    title,
+                    style: AppText.headline.copyWith(fontSize: 14),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                   const SizedBox(height: 2),
-                  Text(subtitle,
-                      style: AppText.caption.copyWith(color: AppColors.textSecondary),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis),
+                  Text(
+                    subtitle,
+                    style: AppText.caption.copyWith(
+                      color: AppColors.textSecondary,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ],
               ),
             ),
@@ -1036,21 +1174,24 @@ class _ReleaseCard extends StatelessWidget {
 
 // Shared poster thumbnail (dark placeholder, silent on error).
 Widget _thumb(String? url, double w, double h) => ClipRRect(
-      borderRadius: BorderRadius.circular(7),
-      child: SizedBox(
-        width: w,
-        height: h,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            ColoredBox(color: AppColors.surface2),
-            if (url != null)
-              Image.network(url, fit: BoxFit.cover,
-                  errorBuilder: (_, _, _) => const SizedBox.shrink()),
-          ],
-        ),
-      ),
-    );
+  borderRadius: BorderRadius.circular(7),
+  child: SizedBox(
+    width: w,
+    height: h,
+    child: Stack(
+      fit: StackFit.expand,
+      children: [
+        ColoredBox(color: AppColors.surface2),
+        if (url != null)
+          Image.network(
+            url,
+            fit: BoxFit.cover,
+            errorBuilder: (_, _, _) => const SizedBox.shrink(),
+          ),
+      ],
+    ),
+  ),
+);
 
 // ── skeleton loader ───────────────────────────────────────────────────────────
 
@@ -1091,9 +1232,7 @@ class _SkeletonTimelineState extends State<_SkeletonTimeline>
                 children: [
                   _bar(width: 34, height: 12),
                   const SizedBox(width: 11),
-                  Expanded(
-                    child: _box(height: 66),
-                  ),
+                  Expanded(child: _box(height: 66)),
                 ],
               ),
               const SizedBox(height: 12),
@@ -1105,14 +1244,18 @@ class _SkeletonTimelineState extends State<_SkeletonTimeline>
   }
 
   Widget _box({required double height}) => Container(
-        height: height,
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(12),
-        ),
-      );
+    height: height,
+    decoration: BoxDecoration(
+      color: AppColors.surface,
+      borderRadius: BorderRadius.circular(12),
+    ),
+  );
 
-  Widget _bar({required double width, required double height, Alignment? align}) {
+  Widget _bar({
+    required double width,
+    required double height,
+    Alignment? align,
+  }) {
     final b = Container(
       width: width,
       height: height,
