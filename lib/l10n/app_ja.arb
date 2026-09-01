@@ -772,6 +772,16 @@
 	"noCloudStreamSourcesInstalled": "CloudStream ソースはインストールされていません。",
 	"cloudstream": "クラウドストリーム",
 	"sourceSettings": "ソース設定",
+	"sourceDomain": "ソースのドメイン",
+	"sourceDomainHint": "空欄にすると、ソース本来のドメインを使用します。",
+	"resetSourceDataConfirm": "{name}の保存データをリセットしますか?保存された設定、ログイン情報、Cookieが削除されます。リスト、履歴、ダウンロードには影響しません。",
+	"@resetSourceDataConfirm": {
+		"placeholders": {
+			"name": {
+				"type": "String"
+			}
+		}
+	},
 	"removeRepository2": "リポジトリを削除しますか？",
 	"removeThisRepositoryAndItsSources": "このリポジトリとそのソースを削除しますか？",
 	"removed": "削除しました",

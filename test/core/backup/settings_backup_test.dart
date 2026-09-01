@@ -65,6 +65,7 @@ void _driftGuard() {
       // Reference source ids the restoring device may not have installed.
       'pinned_sources': 'source ids',
       'subscriptions': 'source ids',
+      'zmode_matches': 'source ids',
       // Installed sources — carried by the separate Sources bundle.
       'provider_settings': 'sources bundle',
       'provider_registry': 'sources bundle',

@@ -24,7 +24,10 @@ import 'package:watch_app/core/playback/playback_prefs.dart';
 import 'package:watch_app/core/playback/search_history.dart';
 import 'package:watch_app/core/playback/search_prefs.dart';
 import 'package:watch_app/core/playback/search_source_prefs.dart';
+import 'package:watch_app/core/provider/cloudstream_provider.dart';
+import 'package:watch_app/core/provider/provider_manager.dart';
 import 'package:watch_app/core/provider/provider_registry.dart';
+import 'package:watch_app/core/repository/catalogue_repository.dart';
 import 'package:watch_app/core/repository/source_repository.dart';
 import 'package:watch_app/core/schedule/airing_service.dart';
 import 'package:watch_app/core/schedule/coming_soon_service.dart';
@@ -36,9 +39,12 @@ import 'package:watch_app/core/theme/theme_controller.dart';
 import 'package:watch_app/core/tracker/mal_service.dart';
 import 'package:watch_app/core/tracker/simkl_service.dart';
 import 'package:watch_app/core/tracker/tracker_hub.dart';
+import 'package:watch_app/core/download/chapter_download_store.dart';
+import 'package:watch_app/core/zmode/zmode_prefs.dart';
 import 'package:watch_app/features/auth/auth_cubit.dart';
 import 'package:watch_app/features/auth/migration_bridge.dart';
 import 'package:watch_app/features/home/cubit/home_cubit.dart';
+import 'package:watch_app/features/home/home_screen.dart';
 import 'package:watch_app/features/shell/root_shell.dart';
 import 'package:watch_app/features/shell/root_shell_tv.dart';
 
@@ -53,6 +59,8 @@ MigrationBridge _fakeBridge() => MigrationBridge(
 class _FakeSourceRepository implements SourceRepository {
   @override
   noSuchMethod(Invocation i) => super.noSuchMethod(i);
+  @override
+  List<({String id, String name})> get pickableSources => loadedSources;
 
   @override
   Future<List<HomeSection>> home({
@@ -146,6 +154,12 @@ class _FakeProviderRegistry implements ProviderRegistry {
 
   @override
   ProviderRegistryEntry? entryFor(String sourceId) => null;
+
+  @override
+  Set<String> nsfwSourceIds() => const {};
+
+  @override
+  Map<String, String> typeMapOf() => const {};
 }
 
 class _FakeAniListService extends ChangeNotifier implements AniListService {
@@ -296,12 +310,24 @@ void main() {
     // and start tests in the wrong mode.
     await Hive.deleteBoxFromDisk('content_mode');
     contentMode = await ContentModeCubit.create(activeSource);
+    // Same leak-prevention as content_mode above, so the toggle starts off
+    // (its default) in every test regardless of run order.
+    await Hive.deleteBoxFromDisk(ZModePrefs.boxName);
+    await ZModePrefs.init();
+    // The dock builds every tab's screen into an IndexedStack, and Downloads
+    // is a default tab now — so DownloadsScreen is constructed by every test
+    // here and needs its store, whether or not the test looks at it.
+    await ChapterDownloadStore.init();
+    if (!sl.isRegistered<ChapterDownloadStore>()) {
+      sl.registerSingleton<ChapterDownloadStore>(ChapterDownloadStore());
+    }
 
     sl.registerSingleton<HomeCubit>(HomeCubit(fakeRepo));
     sl.registerSingleton<ContentModeCubit>(contentMode);
     sl.registerSingleton<PlaybackPrefs>(PlaybackPrefs());
     sl.registerSingleton<TrackerHub>(TrackerHub(const []));
     sl.registerSingleton<SourceRepository>(fakeRepo);
+    sl.registerSingleton<CatalogueRepository>(fakeRepo);
     sl.registerSingleton<MyListStore>(_FakeMyListStore());
     sl.registerSingleton<SearchHistory>(_FakeSearchHistory());
     sl.registerSingleton<SearchPrefs>(_FakeSearchPrefs());
@@ -309,6 +335,8 @@ void main() {
     sl.registerSingleton<ListStatusStore>(ListStatusStore());
     sl.registerSingleton<DownloadManager>(DownloadManager(fakeRepo));
     sl.registerSingleton<ProviderRegistry>(_FakeProviderRegistry());
+    sl.registerSingleton<CloudStreamManager>(CloudStreamManager());
+    sl.registerSingleton<AniyomiManager>(AniyomiManager());
     sl.registerSingleton<AniListService>(_FakeAniListService());
     sl.registerSingleton<MalService>(_FakeMalService());
     sl.registerSingleton<SimklService>(_FakeSimklService());
@@ -340,15 +368,39 @@ void main() {
     child: MaterialApp(home: child),
   );
 
-  testWidgets('phone shell shows a Schedule destination and no Downloads', (
+  // Home now has its own Schedule card (Anime mode only, same label as the
+  // dock tab — task 11), so a bare `find.text('Schedule')` can match either
+  // one while Home is the visible tab. The floating dock is the only widget
+  // in this tree wrapped in `AnimatedSlide`, so scoping through it isolates
+  // the dock tab specifically.
+  Finder dockLabel(String label) => find.descendant(
+    of: find.byType(AnimatedSlide),
+    matching: find.text(label),
+  );
+
+  // Schedule left the dock for the card row on Home, beside the Manga/Novel
+  // mode cards — two doors to one screen was the point of removing it — and
+  // Downloads took the slot it left.
+  testWidgets('the phone dock swapped Schedule for Downloads', (
     tester,
   ) async {
     sl.registerSingleton<AppMode>(const AppMode(isTv: false));
     await tester.pumpWidget(wrap(const RootShell()));
     await tester.pumpAndSettle();
 
-    expect(find.text('Schedule'), findsOneWidget);
-    expect(find.text('Downloads'), findsNothing);
+    expect(dockLabel('Schedule'), findsNothing);
+    expect(dockLabel('Downloads'), findsOneWidget);
+  });
+
+  // Task 17: Search moved from the dock to the Home header (HomeSearchAction
+  // — see home_search_action_test.dart). The dock itself should never offer
+  // it, on the default tab set the app actually ships.
+  testWidgets('the dock never offers a Search tab', (tester) async {
+    sl.registerSingleton<AppMode>(const AppMode(isTv: false));
+    await tester.pumpWidget(wrap(const RootShell()));
+    await tester.pumpAndSettle();
+
+    expect(dockLabel('Search'), findsNothing);
   });
 
   testWidgets('TV shell keeps Downloads and gains a Schedule rail item', (
@@ -358,43 +410,98 @@ void main() {
     await tester.pumpWidget(wrap(const RootShellTv()));
     await tester.pumpAndSettle();
 
+    // This fixture has zero loaded sources, so Home's initial focus lands on
+    // its own "no sources yet" Browse button rather than the rail — the rail
+    // only shows its text labels once expanded. LEFT from content opens it,
+    // same bridge root_shell_tv_test.dart exercises directly.
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+    await tester.pumpAndSettle();
+
     expect(find.text('Downloads'), findsOneWidget);
     expect(find.text('Schedule'), findsOneWidget);
   });
 
-  testWidgets('reading mode hides the Schedule dock item', (tester) async {
+  // Home's mode-cards row carries the Schedule card alongside the Manga/Novel
+  // switcher cards. Since Schedule left the dock this is the ONLY way in, so
+  // this test is now load-bearing rather than a second opinion. Anime mode
+  // only — Schedule has nothing to say in a reading mode.
+  // Schedule now lives behind the hub card rather than a card of its own, so
+  // the guarantee got stronger: it is reachable from every mode instead of
+  // vanishing in Manga and Novel the way the old Schedule card did.
+  testWidgets("Home's hub card shows in every mode", (tester) async {
     sl.registerSingleton<AppMode>(const AppMode(isTv: false));
     await tester.pumpWidget(wrap(const RootShell()));
     await tester.pumpAndSettle();
-    expect(find.text('Schedule'), findsOneWidget);
 
-    // setMode emits synchronously now, but its Hive writes are still real,
-    // fire-and-forget I/O — FakeAsync (which testWidgets runs in) never
-    // drains that on its own, and a dangling write hangs tearDown's
-    // Hive.close(). runAsync gives it a real event loop turn to finish.
-    await tester.runAsync(() => contentMode.setMode(ContentMode.manga));
-    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('home_lists_hub_card')), findsOneWidget);
 
-    expect(find.text('Schedule'), findsNothing);
+    for (final m in ContentMode.values) {
+      await tester.runAsync(() => contentMode.setMode(m));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('home_lists_hub_card')),
+        findsOneWidget,
+        reason: 'Schedule has no other entry point in $m',
+      );
+    }
   });
 
-  testWidgets('switching to a reading mode while on Schedule bounces to Home', (
+  // The row used to be hidden entirely under Z Mode (`if (!ZModePrefs.enabled)`),
+  // which was survivable while Schedule also had a dock tab. It doesn't, so the
+  // card has to be there in BOTH modes or Schedule has no entry point at all.
+  // The hub label is a phrase, not a word, which is why it gets twice the width
+  // of a switcher. On the narrowest phone we support that is still three cards
+  // sharing one row, so pin the case that would ellipsise or overflow it.
+  testWidgets('the card row survives a narrow phone', (tester) async {
+    tester.view.physicalSize = const Size(320 * 3, 640 * 3);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+
+    sl.registerSingleton<AppMode>(const AppMode(isTv: false));
+    await tester.pumpWidget(wrap(const RootShell()));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('home_lists_hub_card')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Home keeps the hub card with Z Mode on', (tester) async {
+    sl.registerSingleton<AppMode>(const AppMode(isTv: false));
+    await tester.pumpWidget(wrap(const RootShell()));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('home_lists_hub_card')), findsOneWidget);
+
+    await tester.runAsync(() => ZModePrefs.setEnabled(true));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('home_lists_hub_card')), findsOneWidget);
+
+    await tester.runAsync(() => ZModePrefs.setEnabled(false));
+    await tester.pumpAndSettle();
+  });
+
+  // Task 11 added a full-width "Search" bar to Home while Z Mode was on
+  // (Search having left the dock); task 17 replaced that with a header icon
+  // instead (HomeBrowseSourcesAction's sibling, HomeSearchAction — covered by
+  // home_search_action_test.dart), shown regardless of Z Mode. So this no
+  // longer asserts the search icon is absent — that icon is legitimate now —
+  // only that task 11's specific full-width caption bar never comes back.
+  // Pumped as bare HomeScreen, not the full RootShell: the shell's
+  // IndexedStack also mounts SearchScreen (offstage), whose SearchScope stays
+  // reactive to ZModePrefs.revision even offstage and would need a real
+  // MetadataRepository the moment Z Mode flips on — nothing this test cares
+  // about.
+  testWidgets("Home doesn't bring back the old full-width search bar", (
     tester,
   ) async {
     sl.registerSingleton<AppMode>(const AppMode(isTv: false));
-    await tester.pumpWidget(wrap(const RootShell()));
+    await tester.pumpWidget(wrap(const HomeScreen()));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Schedule'));
-    await tester.pumpAndSettle();
-    expect(tester.widget<IndexedStack>(find.byType(IndexedStack)).index, 1);
-
-    // See the runAsync note above — setMode's fire-and-forget Hive writes
-    // need a real event loop turn or tearDown's Hive.close() hangs.
-    await tester.runAsync(() => contentMode.setMode(ContentMode.manga));
+    await tester.runAsync(() => ZModePrefs.setEnabled(true));
     await tester.pumpAndSettle();
 
-    expect(tester.widget<IndexedStack>(find.byType(IndexedStack)).index, 0);
-    expect(find.text('Schedule'), findsNothing);
+    // The old bar's tell was a caption reading "Search" beside its icon; the
+    // header's icon-only action has a tooltip (not rendered as Text) instead.
+    expect(find.text('Search'), findsNothing);
   });
 }

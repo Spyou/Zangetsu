@@ -116,6 +116,9 @@ class _FakeSourceHealthStore extends SourceHealthStore {
 /// fan-out before it reached the network layer, since a source dropped by
 /// mode-filtering never gets this far at all.
 class _FakeRepo implements SourceRepository {
+  @override
+  List<({String id, String name})> get pickableSources => loadedSources;
+
   /// What `loadedSources` reports as installed — set per test to a mixed
   /// anime+manga list.
   List<({String id, String name})> loadedSourcesSeed = const [];
@@ -198,6 +201,7 @@ class _FakeRepo implements SourceRepository {
     String url, {
     String category = 'sub',
     String? sourceId,
+    void Function(MediaDetail partial)? onPartial,
   }) => throw UnimplementedError();
 
   @override
@@ -336,6 +340,64 @@ void main() {
           reason:
               'anime mode must search video sources only — a mihon: source '
               'here is the manga/novel leak this test now guards against',
+        );
+      },
+    );
+  });
+
+  group('SearchBloc.forceMode (search opened from a specific tab)', () {
+    // Pins the fix for BrowseSourcesScreen's search action: opening search
+    // from the Manga tab must search manga sources regardless of whatever
+    // the app's global ContentModeCubit is currently set to — before the
+    // fix, `_modeSources()` always read the global mode, so a manga-tab
+    // search while the app was in Streaming mode searched anime sources.
+    test(
+      'forceMode overrides the global content mode for the fan-out',
+      () async {
+        await modeCubit.setMode(ContentMode.anime);
+        final forced = SearchBloc(
+          repo: repo,
+          history: _FakeSearchHistory(),
+          prefs: _FakeSearchPrefs(),
+          suggestions: _FakeSuggestions(),
+          forceMode: ContentMode.manga,
+        );
+        addTearDown(forced.close);
+
+        forced.add(const SearchRunRequested('naruto'));
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+
+        expect(
+          repo.searchedSourceIds.toSet(),
+          {'mihon:1'},
+          reason:
+              'forceMode: manga must search manga sources even though the '
+              "app's global content mode is anime here",
+        );
+      },
+    );
+
+    test(
+      'forceMode null falls back to the global content mode, unchanged',
+      () async {
+        await modeCubit.setMode(ContentMode.manga);
+        final unforced = SearchBloc(
+          repo: repo,
+          history: _FakeSearchHistory(),
+          prefs: _FakeSearchPrefs(),
+          suggestions: _FakeSuggestions(),
+        );
+        addTearDown(unforced.close);
+
+        unforced.add(const SearchRunRequested('naruto'));
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+
+        expect(
+          repo.searchedSourceIds.toSet(),
+          {'mihon:1'},
+          reason:
+              'with no forceMode, the global content mode (manga here) still '
+              'decides the fan-out exactly as before this fix',
         );
       },
     );

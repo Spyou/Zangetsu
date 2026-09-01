@@ -51,6 +51,8 @@ class ComingSoonEntry extends Equatable {
     required this.releaseDate,
     this.backdropUrl,
     this.synopsis,
+    this.episodeLabel,
+    this.rank,
   });
 
   final int tmdbId;
@@ -65,7 +67,20 @@ class ComingSoonEntry extends Equatable {
   /// Plain-text synopsis (TMDB `overview`), or null.
   final String? synopsis;
 
+  /// `S2E7` for a dated TV airing, null for a movie release (or a TV entry
+  /// from a source that only knows premieres). A per-episode calendar lists
+  /// the same series on many days, so without this the rows read as the same
+  /// title repeated with nothing to tell them apart.
+  final String? episodeLabel;
+
+  /// Simkl's popularity rank — LOWER is more popular (Formula 1 sits at 14,
+  /// obscure regional shows in the tens of thousands). Null when the feed has
+  /// none, which is most movies. Used only for ordering a day's rows.
+  final int? rank;
+
   @override
-  List<Object?> get props =>
-      [tmdbId, isTv, title, posterUrl, releaseDate, backdropUrl, synopsis];
+  List<Object?> get props => [
+    tmdbId, isTv, title, posterUrl, releaseDate, backdropUrl, synopsis,
+    episodeLabel, rank,
+  ];
 }

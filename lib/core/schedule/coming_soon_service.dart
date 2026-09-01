@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 
 import '../metadata/tmdb.dart';
+import '../error/network_failure.dart';
 import 'schedule_models.dart';
 
 /// Maps a TMDB results array to entries; drops title-less or poster-and-date-less rows.
@@ -37,6 +38,63 @@ List<ComingSoonEntry> parseTmdbResults(List<dynamic> results,
       synopsis: (overview != null && overview.trim().isNotEmpty)
           ? overview.trim()
           : null,
+    ));
+  }
+  return out;
+}
+
+/// Simkl publishes its whole release calendar as two static JSON files on a
+/// CDN — no key, no paging, one request each. That matters because TMDB
+/// Discover cannot express "a TV calendar" at all: its only forward date
+/// filter for series is `first_air_date`, which is the PREMIERE, so an
+/// ongoing show's next episode can never appear. See [ComingSoonService].
+///
+/// Rows without a TMDB id are dropped. Detail is keyed by tmdbId
+/// (`zm://movie/tmdb:<n>`), so a row without one would render as a tappable
+/// calendar entry that opens nothing.
+List<ComingSoonEntry> parseSimklCalendar(List<dynamic> rows,
+    {required bool isTv}) {
+  final out = <ComingSoonEntry>[];
+  // The feed repeats a title across days, and occasionally repeats the same
+  // day+episode outright; key on all three so a real weekly airing survives
+  // while a duplicate does not.
+  final seen = <String>{};
+  for (final raw in rows) {
+    if (raw is! Map) continue;
+    final ids = raw['ids'];
+    final tmdbRaw = ids is Map ? ids['tmdb'] : null;
+    final tmdbId = tmdbRaw is int ? tmdbRaw : int.tryParse('${tmdbRaw ?? ''}');
+    if (tmdbId == null) continue;
+
+    final title = (raw['title'] as String? ?? '').trim();
+    if (title.isEmpty) continue;
+
+    // Dates carry an offset ("...T00:00:00-04:00"); local is what the day
+    // grouping and the week strip work in.
+    final date = DateTime.tryParse('${raw['date'] ?? ''}')?.toLocal();
+    if (date == null) continue;
+
+    String? epLabel;
+    final ep = raw['episode'];
+    if (isTv && ep is Map) {
+      final sn = ep['season'], en = ep['episode'];
+      if (sn != null && en != null) epLabel = 'S${sn}E$en';
+    }
+
+    final key = '$tmdbId|${date.toIso8601String()}|${epLabel ?? ''}';
+    if (!seen.add(key)) continue;
+
+    final poster = (raw['poster'] as String?)?.trim();
+    out.add(ComingSoonEntry(
+      tmdbId: tmdbId,
+      isTv: isTv,
+      title: title,
+      posterUrl: (poster == null || poster.isEmpty)
+          ? null
+          : 'https://simkl.in/posters/${poster}_m.jpg',
+      releaseDate: date,
+      episodeLabel: epLabel,
+      rank: raw['rank'] is int && raw['rank'] != 0 ? raw['rank'] as int : null,
     ));
   }
   return out;
@@ -80,7 +138,20 @@ Map<DateTime, List<ComingSoonEntry>> groupSoonByLocalDay(
     (map[day] ??= []).add(e);
   }
   for (final list in map.values) {
-    list.sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
+    // Most-popular first, unranked last, alphabetical within a tie. A day of
+    // this calendar is ~330 rows and alphabetical buried anything worth
+    // seeing under daily serials; rank is the feed's own popularity order.
+    // Movies mostly have no rank (the feed only ranks ~7% of them), so that
+    // side stays effectively alphabetical — no worse than before.
+    list.sort((a, b) {
+      final ra = a.rank, rb = b.rank;
+      if (ra != rb) {
+        if (ra == null) return 1;
+        if (rb == null) return -1;
+        return ra.compareTo(rb);
+      }
+      return a.title.toLowerCase().compareTo(b.title.toLowerCase());
+    });
   }
   return map;
 }
@@ -91,7 +162,65 @@ class ComingSoonService {
   ComingSoonService(this._dio);
   final Dio _dio;
 
+  /// Simkl's calendar, or TMDB Discover if that comes back with nothing.
+  ///
+  /// Cached in memory for [_cacheTtl]: the two files are ~2.8MB together, and
+  /// re-opening Schedule should not re-download them. Deliberately NOT on
+  /// disk — a stale calendar is worse than a slow one, and the day-level data
+  /// it holds turns over constantly.
+  /// Whether the LAST attempt failed because nothing could reach the network.
+  ///
+  /// This service returns `[]` for every failure so a bad response never
+  /// breaks the screen — which also means the caller cannot tell "offline"
+  /// from "genuinely nothing scheduled". Reset at the start of each attempt
+  /// and read straight after, so the two can be told apart without changing
+  /// the return type everything already depends on.
+  bool lastFailureOffline = false;
+
   Future<List<ComingSoonEntry>> upcoming() async {
+    lastFailureOffline = false;
+    final cached = _cache;
+    if (cached != null && DateTime.now().difference(_cachedAt!) < _cacheTtl) {
+      return cached;
+    }
+    final simkl = await _fromSimkl();
+    if (simkl.isNotEmpty) {
+      _cache = simkl;
+      _cachedAt = DateTime.now();
+      return simkl;
+    }
+    // Simkl unreachable — TMDB still gives premieres and movie releases, which
+    // is far less than a calendar but better than an empty screen.
+    return _fromTmdb();
+  }
+
+  static const Duration _cacheTtl = Duration(hours: 6);
+  List<ComingSoonEntry>? _cache;
+  DateTime? _cachedAt;
+
+  static const String _simklTv = 'https://data.simkl.in/calendar/tv.json';
+  static const String _simklMovies =
+      'https://data.simkl.in/calendar/movie_release.json';
+
+  Future<List<ComingSoonEntry>> _fromSimkl() async {
+    try {
+      final res = await Future.wait([
+        _dio.get<dynamic>(_simklTv),
+        _dio.get<dynamic>(_simklMovies),
+      ]);
+      final tv = res[0].data, movies = res[1].data;
+      final merged = mergeSortByDate(
+        parseSimklCalendar(tv is List ? tv : const [], isTv: true),
+        parseSimklCalendar(movies is List ? movies : const [], isTv: false),
+      );
+      return onlyUpcoming(merged, DateTime.now());
+    } catch (e) {
+      lastFailureOffline = await isOfflineErrorConfirmed(e);
+      return const [];
+    }
+  }
+
+  Future<List<ComingSoonEntry>> _fromTmdb() async {
     final today = DateTime.now();
     final from = _tmdbDate(today);
     // ~6 weeks out: covers the week strip and the month grid while staying a
@@ -125,7 +254,8 @@ class ComingSoonService {
         parseTmdbResults(_results(tvRes.data), isTv: true),
       );
       return onlyUpcoming(merged, today); // safety net; Discover is already future-only
-    } catch (_) {
+    } catch (e) {
+      lastFailureOffline = await isOfflineErrorConfirmed(e);
       return const [];
     }
   }

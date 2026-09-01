@@ -5,7 +5,7 @@ import '../../core/di/injector.dart';
 import '../../core/metadata/people_service.dart';
 import '../../core/models/media_item.dart';
 import '../../core/models/person.dart';
-import '../../core/repository/source_repository.dart';
+import '../../core/repository/catalogue_repository.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/ui/states.dart';
@@ -55,7 +55,7 @@ class _PersonPageState extends State<PersonPage> {
     _snack('Finding “${w.title}”…');
     try {
       final results =
-          await sl<SourceRepository>().search(w.title, sourceId: widget.sourceId);
+          await sl<CatalogueRepository>().search(w.title, sourceId: widget.sourceId);
       if (!mounted) return;
       final match = bestTitleMatch(
         results,

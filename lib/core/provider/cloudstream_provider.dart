@@ -15,6 +15,7 @@ import '../models/search_quality.dart';
 import '../models/provider_info.dart';
 import '../models/video_source.dart';
 import 'base_provider.dart';
+import 'cf_solve_needed.dart';
 import 'cs_repo_url.dart';
 
 /// Native MethodChannel bridging to the CloudStream plugin host. All methods
@@ -46,6 +47,44 @@ Future<void> csPluginOpenSettings(String apiName) async {
   try {
     await _csChannel.invokeMethod('openPluginSettings', {'name': apiName});
   } catch (_) {}
+}
+
+/// Clears the CloudStream source [apiName]'s OWN stored state — its
+/// DataStore-backed settings and any cookies for its site — without touching
+/// any other plugin. Android-only; returns false on any failure or other
+/// platform, so a caller can tell "nothing to clear" and "couldn't clear"
+/// apart from a genuine success.
+Future<bool> csPluginResetData(String apiName) async {
+  if (!Platform.isAndroid) return false;
+  try {
+    return await _csChannel.invokeMethod<bool>('resetPluginData', {
+          'name': apiName,
+        }) ??
+        false;
+  } catch (_) {
+    return false;
+  }
+}
+
+/// The CloudStream source [apiName]'s CURRENT `MainAPI.mainUrl`, read fresh
+/// off the loaded native plugin — NOT the value captured when the source was
+/// last listed. `mainUrl` is mutable; a plugin rewrites it in place once it
+/// resolves its live domain (e.g. by fetching a redirect list at runtime), so
+/// the listing-time snapshot a [CloudStreamProvider] carries can point at a
+/// domain the plugin has already moved off by the time the user acts on it.
+/// No native solver on this platform (iOS / not wired) or the plugin isn't
+/// loaded → the channel throws/answers null, same as [ProviderManager]'s own
+/// Cloudflare channel call — this degrades to null either way, and callers
+/// fall back to the cached listing value.
+Future<String?> csPluginLiveMainUrl(String apiName) async {
+  try {
+    final url = await _csChannel.invokeMethod<String>('liveMainUrl', {
+      'name': apiName,
+    });
+    return (url != null && url.isNotEmpty) ? url : null;
+  } catch (_) {
+    return null;
+  }
 }
 
 /// CloudStream source types that map to the [ProviderType.anime] bucket.
@@ -97,12 +136,21 @@ class CloudStreamProvider implements BaseProvider {
     this.sourcePlugin,
     this.disambiguate = false,
     this.repoLabel,
+    this.mainUrl = '',
   });
 
   /// The bare CloudStream source name (no `cs:` prefix).
   final String name;
   final String lang;
   final List<String> types;
+
+  /// The plugin's own site (`MainAPI.mainUrl`), e.g. `https://example.com`.
+  /// Empty when the plugin genuinely doesn't declare one — [SourceRepository.
+  /// baseUrlFor] treats that the same as any other sourceless id (Cloudflare
+  /// solve / open-in-browser stay hidden rather than offering a dead control).
+  /// Unlike Mihon/Aniyomi, CS item urls are already absolute, so this is
+  /// display/action-only — never prepended to an item url.
+  final String mainUrl;
 
   /// The `.cs3` file id (`internalName@version`) that registered this source.
   /// Used to group it under (and delete it with) its repo. Null for sources
@@ -189,8 +237,7 @@ class CloudStreamProvider implements BaseProvider {
   Future<ProviderInfo> getInfo() async => ProviderInfo(
     name: name,
     lang: lang,
-    // CloudStream plugins don't expose a single base URL; the host owns it.
-    baseUrl: '',
+    baseUrl: mainUrl,
     type: _providerType,
   );
 
@@ -1370,22 +1417,69 @@ class CloudStreamManager extends ChangeNotifier {
   /// RepositoryManager.addRepository during their load(); the native side
   /// forwards each URL here so it goes through the real [addRepo] (which
   /// dedupes, so re-adds on later boots are harmless).
+  ///
+  /// Also carries the Cloudflare-challenge push from PluginHost's shared-
+  /// client interceptor (see `cfChallengeInterceptor` in PluginHost.kt): a CS
+  /// source's HTTP runs through native OkHttp, invisible to the JS-provider
+  /// `_looksLikeCfChallenge` check, so a CF-gated CS source used to just
+  /// vanish from Z Mode matching with no icon and no way to solve. Feeding it
+  /// into the SAME `CfSolveNeeded` latch that path uses means every UI that
+  /// already reads that latch (Detail's blocked screen, the source picker's
+  /// row shield, Z Mode's `cfBlockedUrl`) picks CS sources up for free.
   void _wireRepoAddedBridge() {
     if (_bridgeWired) return;
     _bridgeWired = true;
     _csChannel.setMethodCallHandler((call) async {
-      if (call.method == 'onRepoAdded') {
-        final url = call.arguments as String?;
-        if (url != null && url.isNotEmpty) {
-          try {
-            await addRepo(url);
-          } catch (e) {
-            debugPrint('[cloudstream] mega-repo addRepo failed: $e');
+      switch (call.method) {
+        case 'onRepoAdded':
+          final url = call.arguments as String?;
+          if (url != null && url.isNotEmpty) {
+            try {
+              await addRepo(url);
+            } catch (e) {
+              debugPrint('[cloudstream] mega-repo addRepo failed: $e');
+            }
           }
-        }
+          break;
+        case 'onCfChallenge':
+          final args = call.arguments;
+          if (args is Map) handleCfChallenge(args);
+          break;
       }
       return null;
     });
+  }
+
+  /// Handles PluginHost's native → Dart Cloudflare-challenge push (the
+  /// `onCfChallenge` case above) — pulled out so a test can call it directly
+  /// instead of simulating a full platform-channel round trip. Flags [args]'s
+  /// host in the SAME `CfSolveNeeded` latch the JS-provider path uses, once
+  /// its best-effort `sourceId` (PluginHost's native resolution key) is
+  /// translated to the `cs:`-prefixed id Z Mode actually keys everything on.
+  @visibleForTesting
+  void handleCfChallenge(Map<dynamic, dynamic> args) {
+    final host = args['host'] as String?;
+    final url = args['url'] as String?;
+    final apiKey = args['sourceId'] as String?;
+    if (host == null || host.isEmpty || url == null || url.isEmpty) return;
+    CfSolveNeeded.needsSolve(
+      host,
+      url,
+      sourceId: apiKey == null ? null : _sourceIdForHostKey(apiKey),
+    );
+  }
+
+  /// Reverses [CloudStreamProvider.hostKey] back to the `cs:`-prefixed
+  /// [CloudStreamProvider.sourceId] Z Mode actually keys everything on.
+  /// PluginHost.kt's `search()` only knows the native resolution key (the
+  /// `hostKey` it was called with); it has no way to know the Dart-side id
+  /// built from it. Null when nothing installed matches (source since
+  /// uninstalled, or the challenge came from a call this bridge doesn't tag).
+  String? _sourceIdForHostKey(String hostKey) {
+    for (final p in _providers.values) {
+      if (p.hostKey == hostKey) return p.sourceId;
+    }
+    return null;
   }
 
   /// Loads any cached/installed plugins into the provider set AND reads the
@@ -1424,6 +1518,12 @@ class CloudStreamManager extends ChangeNotifier {
     _repos[0]['files'] = stamped;
     _persistRepos();
   }
+
+  /// Rebuilds the provider set from a raw native `listSources`-shaped payload
+  /// — pulled out so a test can call it directly instead of a full
+  /// platform-channel round trip (native isn't reachable from a test host).
+  @visibleForTesting
+  void rebuildFromForTest(List<dynamic>? raw) => _rebuildFrom(raw);
 
   void _rebuildFrom(List<dynamic>? raw) {
     _providers.clear();
@@ -1507,6 +1607,9 @@ class CloudStreamManager extends ChangeNotifier {
         sourcePlugin: sourcePlugin,
         disambiguate: dup,
         repoLabel: dup ? _repoLabelFor(sourcePlugin) : null,
+        // Absent on an older native build (pre this field) → '', same as a
+        // plugin that genuinely declares no mainUrl.
+        mainUrl: (m['mainUrl'] ?? '').toString(),
       );
       _providers[provider.sourceId] = provider;
     }

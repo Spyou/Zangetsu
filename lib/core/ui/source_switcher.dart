@@ -16,6 +16,9 @@ import '../provider/provider_manager.dart';
 import '../provider/provider_registry.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text.dart';
+import '../zmode/zmode_ids.dart';
+import '../zmode/zmode_module.dart';
+import '../zmode/zmode_prefs.dart';
 import 'states.dart';
 
 /// Installed-and-enabled sources bucketed by category, each as an `(id, label)`
@@ -202,6 +205,17 @@ SourceBuckets categorizedSources() {
 /// bucketing default, so an id with no cached manifest type still counts as
 /// anime (matching today's behavior when a mode filter isn't applied).
 ProviderType sourceTypeOf(String id) {
+  // Zangetsu Mode's pseudo source has no manifest to type — its "type" is
+  // whatever catalogue kind is currently browsed. `movie`/`anime`/`tv` all
+  // fall under `anime` here since ContentMode.anime.matchesProvider accepts
+  // either; the caller only needs to know which ContentMode bucket it's in.
+  if (id == ZmodeIds.sourceId) {
+    return switch (browseKindFor(sl<ContentModeCubit>().state, ZModePrefs.streamKind)) {
+      ZKind.manga => ProviderType.manga,
+      ZKind.novel => ProviderType.novel,
+      ZKind.anime || ZKind.movie || ZKind.tv => ProviderType.anime,
+    };
+  }
   if (id.startsWith('cs:')) {
     final p = sl<CloudStreamManager>().get(id);
     return p is CloudStreamProvider ? p.providerType : ProviderType.anime;
@@ -458,7 +472,11 @@ class SourceSwitcher extends StatelessWidget {
   /// Opens the shared source picker (tabbed anime/movies list with CS·/Ani·
   /// labels + repo tags). Public so other screens (e.g. Settings → Active
   /// source) can present the exact same picker as the Home header.
-  void showPicker(BuildContext context) {
+  void showPicker(
+    BuildContext context, {
+    Widget? Function(String id)? trailingBuilder,
+    void Function(String id)? onPick,
+  }) {
     final mode = sl<ContentModeCubit>().state;
     final b = filterBucketsForMode(_buckets(), mode);
 
@@ -491,13 +509,16 @@ class SourceSwitcher extends StatelessWidget {
       builder: (ctx) => _SourcePickerSheet(
         buckets: b,
         currentId: currentId,
+        trailingBuilder: trailingBuilder,
         height: sheetH.toDouble(),
         showSearch: showSearch,
         mode: mode,
         onInstallSources: onInstallSources,
         onChoose: (id) {
           Navigator.of(ctx).pop();
-          onChanged(id);
+          // onPick lets a caller (Z Mode's per-title selector) consume the
+          // choice WITHOUT switching the app's active source.
+          (onPick ?? onChanged)(id);
         },
       ),
     );
@@ -525,6 +546,7 @@ class _SourcePickerSheet extends StatefulWidget {
     required this.mode,
     required this.onChoose,
     this.onInstallSources,
+    this.trailingBuilder,
   });
 
   final SourceBuckets buckets;
@@ -534,6 +556,7 @@ class _SourcePickerSheet extends StatefulWidget {
   final ContentMode mode;
   final void Function(String id) onChoose;
   final VoidCallback? onInstallSources;
+  final Widget? Function(String id)? trailingBuilder;
 
   @override
   State<_SourcePickerSheet> createState() => _SourcePickerSheetState();
@@ -559,6 +582,7 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
         repo: src.repo,
         isActive: src.id == widget.currentId,
         isPinned: PinnedSources.isPinned(src.id),
+        trailing: widget.trailingBuilder?.call(src.id),
         onTap: () => widget.onChoose(src.id),
         onLongPress: () async {
           await PinnedSources.toggle(src.id);
@@ -837,6 +861,7 @@ class _SourceRow extends StatelessWidget {
     this.repo,
     this.isPinned = false,
     this.onLongPress,
+    this.trailing,
   });
 
   final String label;
@@ -848,6 +873,19 @@ class _SourceRow extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback? onLongPress;
 
+  /// Extra controls for this row (Z Mode adds per-source settings and a
+  /// Cloudflare solve). Null everywhere else, so the row is untouched.
+  final Widget? trailing;
+
+  /// First letter of the source's own name for the avatar — the ecosystem
+  /// prefix ("CS · ", "Ani · ") is stripped first, or every CloudStream row
+  /// would read "C".
+  String get _initial {
+    final i = label.indexOf('· ');
+    final name = (i == -1 ? label : label.substring(i + 2)).trim();
+    return name.isEmpty ? '?' : name.characters.first.toUpperCase();
+  }
+
   @override
   Widget build(BuildContext context) {
     final hasRepo = repo != null && repo!.isNotEmpty;
@@ -856,10 +894,38 @@ class _SourceRow extends StatelessWidget {
       onLongPress: onLongPress,
       splashColor: AppColors.accent.withValues(alpha: 0.08),
       highlightColor: AppColors.accent.withValues(alpha: 0.04),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+      child: DecoratedBox(
+        // Selected row: accent bar down the leading edge plus a wash, instead
+        // of a tick stranded on the far right of a wide row.
+        decoration: BoxDecoration(
+          color: isActive
+              ? AppColors.accent.withValues(alpha: 0.10)
+              : Colors.transparent,
+          border: Border(
+            left: BorderSide(
+              color: isActive ? AppColors.accent : Colors.transparent,
+              width: 3,
+            ),
+          ),
+        ),
+        child: Padding(
+        padding: const EdgeInsets.fromLTRB(17, 11, 20, 11),
         child: Row(
           children: [
+            Container(
+              width: 36,
+              height: 36,
+              margin: const EdgeInsets.only(right: 12),
+              decoration: BoxDecoration(
+                color: AppColors.surface2,
+                borderRadius: BorderRadius.circular(9),
+              ),
+              alignment: Alignment.center,
+              child: Text(
+                _initial,
+                style: AppText.headline.copyWith(color: AppColors.textSecondary),
+              ),
+            ),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -890,9 +956,9 @@ class _SourceRow extends StatelessWidget {
                   color: AppColors.textTertiary,
                 ),
               ),
-            if (isActive)
-              Icon(Icons.check, color: AppColors.accent, size: 20),
+            ?trailing,
           ],
+        ),
         ),
       ),
     );

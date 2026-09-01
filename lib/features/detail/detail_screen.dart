@@ -16,6 +16,7 @@ import '../../core/app_mode.dart';
 import '../../core/cache/app_image_cache.dart';
 import '../../core/di/injector.dart';
 import '../../core/discord/discord_rpc.dart';
+import '../../core/mihon/mihon_extension_service.dart';
 import '../../core/metadata/episode_metadata_service.dart';
 import '../../core/metadata/metadata_enrichment.dart';
 import '../../core/notify/cs_notify.dart';
@@ -58,10 +59,13 @@ import '../../core/playback/playback_prefs.dart';
 import '../../core/playback/resume_store.dart';
 import '../../core/playback/title_prefs.dart';
 import '../../core/playback/watch_history.dart';
+import '../../core/provider/cf_solve_needed.dart';
 import '../../core/provider/cloudstream_provider.dart';
+import '../../core/provider/provider_manager.dart';
 import '../../core/provider/provider_registry.dart';
 import '../../core/reading/read_history.dart';
 import '../../core/reading/read_store.dart';
+import '../../core/repository/catalogue_repository.dart';
 import '../../core/repository/source_repository.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
@@ -69,6 +73,8 @@ import '../../core/trailer/trailer_service.dart';
 import '../../core/tv/tv_back_button.dart';
 import '../../core/tv/tv_focusable.dart';
 import '../../core/tv/tv_list_focusable.dart';
+import '../../core/zmode/metadata_repository.dart';
+import '../../core/zmode/zmode_ids.dart';
 import '../../core/aniyomi/aniyomi_image_provider.dart';
 import '../../core/mihon/mihon_image_provider.dart';
 import '../../core/ui/badge.dart';
@@ -80,6 +86,7 @@ import '../reader/manga_reader_screen.dart';
 import '../reader/novel_reader_screen.dart';
 import '../trailer/trailer_screen.dart';
 import 'cubit/detail_cubit.dart';
+import 'wrong_title_sheet.dart';
 import '../../l10n/l10n.dart';
 
 part 'detail_hero.dart';
@@ -108,6 +115,11 @@ String _friendlySourceId(String sourceId) {
 /// "Source · Repo" label for the detail screen, so the user can see which repo
 /// a source came from. Falls back to just the name when no repo is resolvable.
 String _sourceLabel(String sourceId) {
+  // Zangetsu Mode's pseudo source: "AniList"/"TMDB" per the current browse
+  // kind, not the raw "zm" id.
+  if (sourceId == ZmodeIds.sourceId) {
+    return sl<MetadataRepository>().displayName(sourceId);
+  }
   // Aniyomi sources (ani:<id>) resolve to their extension's display name;
   // otherwise the detail screen would show the raw "ani:4383278740…" id.
   if (sourceId.startsWith('ani:')) {
@@ -151,6 +163,120 @@ String? _repoLabelFromUrl(String? repoUrl) {
   }
 }
 
+/// Shown instead of the detail body when the title's source needs a
+/// Cloudflare challenge solved — the Detail-path counterpart of Home's
+/// Cloudflare-blocked state (`_SourceUnavailable` in home_screen.dart), so a
+/// title opened from AniList/TMDB (Z Mode) offers the same solve instead of
+/// failing silently. Uses the SAME solver Home does and reloads on success.
+class _DetailCloudflareBlocked extends StatefulWidget {
+  const _DetailCloudflareBlocked({required this.url});
+
+  final String url;
+
+  @override
+  State<_DetailCloudflareBlocked> createState() =>
+      _DetailCloudflareBlockedState();
+}
+
+class _DetailCloudflareBlockedState extends State<_DetailCloudflareBlocked> {
+  static const Color _cloudflareOrange = Color(0xFFF48120);
+
+  bool _solving = false;
+
+  Future<void> _solve() async {
+    setState(() => _solving = true);
+    // A Z Mode candidate flagged by CfSolveNeeded is a JS provider: that
+    // runs on Dio, not the Mihon/Aniyomi native bridges, so it needs the
+    // matching solve (the cookie has to land in THIS host's own cache, not
+    // just the system-wide one MihonExtensionService's solve populates).
+    final host = Uri.tryParse(widget.url)?.host ?? '';
+    if (CfSolveNeeded.hostFlagged(host)) {
+      await sl<ProviderManager>().solveCloudflareForHost(host, widget.url);
+    } else {
+      await MihonExtensionService.solveCloudflare(widget.url);
+    }
+    if (!mounted) return;
+    setState(() => _solving = false);
+    context.read<DetailCubit>().load();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(36, 40, 36, 56),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 88,
+              height: 88,
+              decoration: BoxDecoration(
+                color: _cloudflareOrange.withValues(alpha: 0.14),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.shield_rounded,
+                size: 40,
+                color: _cloudflareOrange,
+              ),
+            ),
+            const SizedBox(height: 20),
+            const Text(
+              'This source is protected by Cloudflare',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: AppColors.textPrimary,
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 10),
+            const Text(
+              'Complete the Cloudflare check once and this title will load '
+              'normally from then on.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: 14,
+                height: 1.45,
+              ),
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton.icon(
+              onPressed: _solving ? null : _solve,
+              icon: _solving
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.shield_rounded, size: 20),
+              label: Text(context.l10n.solveCloudflare),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _cloudflareOrange,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 30,
+                  vertical: 13,
+                ),
+                textStyle: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class DetailScreen extends StatelessWidget {
   const DetailScreen({super.key, required this.item});
   final MediaItem item;
@@ -187,7 +313,7 @@ class DetailScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return BlocProvider(
       create: (_) => DetailCubit(
-        repo: sl<SourceRepository>(),
+        repo: sl<CatalogueRepository>(),
         url: item.url,
         sourceId: item.sourceId,
         prefs: sl<TitlePrefsStore>(),
@@ -309,6 +435,9 @@ class _DetailViewState extends State<_DetailView>
   /// reuses the work. Fire-and-forget; cancelled implicitly by leaving (the
   /// result just lands in the repo's prefetch cache, unused).
   void _maybePrefetch(String epUrl, String sourceId) {
+    // SourceRepository.prefetch isn't on CatalogueRepository and throws for
+    // the zm pseudo source — skip it, the metadata catalogue has no prefetch.
+    if (sourceId == ZmodeIds.sourceId) return;
     if (_prefetchedEpUrl == epUrl) return;
     _prefetchedEpUrl = epUrl;
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -495,7 +624,7 @@ class _DetailViewState extends State<_DetailView>
   Future<void> _openRelation(MediaRelation r) async {
     _snack(context.l10n.findingTitle(r.title));
     try {
-      final results = await sl<SourceRepository>().search(
+      final results = await sl<CatalogueRepository>().search(
         r.title,
         sourceId: widget.item.sourceId,
       );
@@ -563,9 +692,12 @@ class _DetailViewState extends State<_DetailView>
     final item = widget.item;
     final reading =
         detail.type == ProviderType.manga || detail.type == ProviderType.novel;
+    // Read before the first await: nothing below needs a fresh BuildContext,
+    // and grabbing it up front avoids holding context across the async gaps.
+    final l10n = context.l10n;
     if (_subscribed) {
       await store.remove(item.sourceId, item.url);
-      _snack(context.l10n.notificationsOffFor(item.title));
+      _snack(l10n.notificationsOffFor(item.title));
     } else {
       await store.add(
         Subscription(
@@ -585,8 +717,8 @@ class _DetailViewState extends State<_DetailView>
       await NotificationService.instance.init(); // ask for permission now
       _snack(
         reading
-            ? context.l10n.youllBeNotifiedOfNewChaptersFor(item.title)
-            : context.l10n.youllBeNotifiedOfNewEpisodesFor(item.title),
+            ? l10n.youllBeNotifiedOfNewChaptersFor(item.title)
+            : l10n.youllBeNotifiedOfNewEpisodesFor(item.title),
       );
     }
     // Mirror CS subs to native so the background worker picks up the change.
@@ -722,10 +854,14 @@ class _DetailViewState extends State<_DetailView>
         // next thing you usually want is a different mirror. Auto-playing
         // takes that choice away and tends to fail again on the same source.
         // Re-primes in the background so the play you do make is still quick.
-        sl<SourceRepository>().prefetch(
-          ep.url,
-          sourceId: widget.item.sourceId,
-        );
+        // (SourceRepository.prefetch has no metadata-catalogue equivalent and
+        // throws for the zm pseudo source, so skip it there.)
+        if (widget.item.sourceId != ZmodeIds.sourceId) {
+          sl<SourceRepository>().prefetch(
+            ep.url,
+            sourceId: widget.item.sourceId,
+          );
+        }
         if (!mounted) return;
         ScaffoldMessenger.of(
           context,
@@ -934,7 +1070,7 @@ class _DetailViewState extends State<_DetailView>
           episodes: episodes,
           startIndex: index,
           resume: sl<ResumeStore>(),
-          resolveSources: (u) => sl<SourceRepository>().sources(
+          resolveSources: (u) => sl<CatalogueRepository>().sources(
             u,
             sourceId: widget.item.sourceId,
             fast: true,
@@ -942,7 +1078,7 @@ class _DetailViewState extends State<_DetailView>
           // The resolve above returns on the first usable link so playback
           // starts fast; the remaining mirrors keep resolving natively. This
           // lets the Sources sheet pick them up once they land.
-          pollSources: (u) => sl<SourceRepository>().polledSources(
+          pollSources: (u) => sl<CatalogueRepository>().polledSources(
             u,
             sourceId: widget.item.sourceId,
           ),
@@ -985,8 +1121,8 @@ class _DetailViewState extends State<_DetailView>
         Navigator.of(context).push(
           MaterialPageRoute(
             builder: (_) => NovelReaderScreen(
-              sourceId: widget.item.sourceId,
-              showId: widget.item.id,
+              sourceId: detail.sourceId,
+              showId: detail.id,
               showTitle: detail.title,
               cover: detail.cover ?? widget.item.cover,
               chapters: chapters,
@@ -1001,8 +1137,8 @@ class _DetailViewState extends State<_DetailView>
         Navigator.of(context).push(
           MaterialPageRoute(
             builder: (_) => MangaReaderScreen(
-              sourceId: widget.item.sourceId,
-              showId: widget.item.id,
+              sourceId: detail.sourceId,
+              showId: detail.id,
               showTitle: detail.title,
               cover: detail.cover ?? widget.item.cover,
               chapters: chapters,
@@ -1202,7 +1338,7 @@ class _DetailViewState extends State<_DetailView>
             availableCategories: availableCategories,
             coverUrl: detail.cover ?? widget.item.cover ?? '',
             coverHeaders: detail.coverHeaders ?? widget.item.coverHeaders,
-            resolve: (ep) => sl<SourceRepository>().sources(
+            resolve: (ep) => sl<CatalogueRepository>().sources(
               ep.url,
               sourceId: widget.item.sourceId,
             ),
@@ -1216,7 +1352,7 @@ class _DetailViewState extends State<_DetailView>
   /// Re-resolve a title's episodes for a given sub/dub [category] (without
   /// touching the detail page's own toggle), grouped by season.
   Future<Map<int, List<Episode>>> _episodesByCategory(String category) async {
-    final d = await sl<SourceRepository>().detail(
+    final d = await sl<CatalogueRepository>().detail(
       widget.item.url,
       category: category,
       sourceId: widget.item.sourceId,
@@ -1290,7 +1426,7 @@ class _DetailViewState extends State<_DetailView>
           builder: (_) => _SourcePickerSheet(
             title: ep.title.trim().isNotEmpty ? ep.title : detail.title,
             resolve: () =>
-                sl<SourceRepository>().sources(ep.url, sourceId: item.sourceId),
+                sl<CatalogueRepository>().sources(ep.url, sourceId: item.sourceId),
           ),
         );
     if (res == null || !mounted) return;
@@ -1353,10 +1489,19 @@ class _DetailViewState extends State<_DetailView>
           if (state.status == DetailStatus.loading) {
             return const _DetailSkeleton(heroHeight: _expandedHeight);
           }
+          if (state.cloudflareUrl != null) {
+            return _DetailCloudflareBlocked(url: state.cloudflareUrl!);
+          }
           if (state.status == DetailStatus.error || state.detail == null) {
+            // Offline is not the title failing: saying "failed to load this
+            // title" over a dropped connection sends people hunting a
+            // problem that isn't there.
+            final offline = state.error == 'offline';
             return EmptyState(
-              icon: Icons.error_outline,
-              message: context.l10n.failedToLoadThisTitle,
+              icon: offline ? Icons.wifi_off_rounded : Icons.error_outline,
+              message: offline
+                  ? '${context.l10n.offlineTitle}\n${context.l10n.offlineBody}'
+                  : context.l10n.failedToLoadThisTitle,
             );
           }
           return _buildBody(context, state, state.detail!);
@@ -1415,8 +1560,9 @@ class _DetailViewState extends State<_DetailView>
               ? context.l10n.continueEpisode(episodeNum)
               : context.l10n.play);
 
-    // Cover / backdrop.
-    final coverUrl = detail.cover ?? item.cover ?? '';
+    // Cover / backdrop — the wide banner when Z Mode supplied one, else the
+    // regular poster cover, exactly as before [MediaDetail.banner] existed.
+    final coverUrl = detail.banner ?? item.banner ?? detail.cover ?? item.cover ?? '';
     final coverHeaders = detail.coverHeaders ?? item.coverHeaders;
     final hasCover = coverUrl.isNotEmpty;
 
@@ -1583,12 +1729,19 @@ class _DetailViewState extends State<_DetailView>
 
         // ── 3. White Play + gray Download buttons (full-width, stacked) ─────
         // (The hero banner autoplays the trailer; tap it for fullscreen.)
+        //
+        // Each button carries its own 16px side padding (rather than one
+        // Padding wrapping the whole Column) so the Z Mode selector below
+        // can sit as a plain last child: it already supplies its own 16px
+        // side padding (it's normally a top-level sliver child), and a
+        // shared wrapper would double that indent.
         SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 18, 16, 0),
-            child: Column(
-              children: [
-                _PlayButton(
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 18, 16, 0),
+                child: _PlayButton(
+                  loading: state.episodesLoading,
                   label: buttonLabel,
                   icon: isReading
                       ? Icons.menu_book_rounded
@@ -1597,21 +1750,37 @@ class _DetailViewState extends State<_DetailView>
                       ? () => _openPlayer(eps, resumeIdx, detail, category)
                       : null,
                 ),
-                // Reading downloads are out of scope for this plan.
-                if (!isReading) ...[
-                  const SizedBox(height: 10),
-                  _DownloadButton(
+              ),
+              // Reading downloads are out of scope for this plan.
+              if (!isReading)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                  child: _DownloadButton(
+                    // Gated exactly like Play above: with no episodes there is
+                    // nothing to download, and leaving it live on a title no
+                    // source matched just moves the dead end one tap later.
+                    loading: state.episodesLoading,
                     label: downloadLabel,
-                    onPressed: () => _openDownloadSheet(
-                      detail: detail,
-                      category: category,
-                      episodesBySeason: episodesBySeason,
-                      initialSeason: currentSeason,
-                    ),
+                    onPressed: eps.isEmpty
+                        ? null
+                        : () => _openDownloadSheet(
+                            detail: detail,
+                            category: category,
+                            episodesBySeason: episodesBySeason,
+                            initialSeason: currentSeason,
+                          ),
                   ),
-                ],
-              ],
-            ),
+                ),
+              // Z Mode: matched source + "Wrong title?", kept with the
+              // actions it controls instead of under the synopsis.
+              if (ZmodeIds.isZ(widget.item.url))
+                MatchLine(
+                  canonical: ZmodeIds.parseShow(widget.item.url)!,
+                  title: detail.title,
+                  altTitle: detail.englishTitle,
+                  malId: detail.malId,
+                ),
+            ],
           ),
         ),
 
@@ -1774,6 +1943,7 @@ class _DetailViewState extends State<_DetailView>
         children: [
           // ── Episodes ──────────────────────────────────────────────────────
           _EpisodesTab(
+            loading: state.episodesLoading,
             eps: eps,
             seasonEps: seasonEps,
             fillerEps: _fillerEps,

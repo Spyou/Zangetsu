@@ -9,6 +9,7 @@ part of 'detail_screen.dart';
 
 class _EpisodesTab extends StatefulWidget {
   const _EpisodesTab({
+    required this.loading,
     required this.eps,
     required this.seasonEps,
     required this.fillerEps,
@@ -33,6 +34,11 @@ class _EpisodesTab extends StatefulWidget {
     this.onDownloadMany,
     this.isReading = false,
   });
+
+  /// The matched source's list is still being fetched — show the skeleton
+  /// rather than the "no episodes" empty state (see
+  /// [DetailState.episodesLoading]).
+  final bool loading;
 
   final List<Episode> eps;
   final List<Episode> seasonEps;
@@ -232,6 +238,7 @@ class _EpisodesTabState extends State<_EpisodesTab> {
   @override
   Widget build(BuildContext context) {
     if (widget.seasonEps.isEmpty) {
+      if (widget.loading) return const _EpisodeListSkeleton();
       return EmptyState(
         icon: Icons.video_library_outlined,
         message: context.l10n.noEpisodesAvailableFromThisSource,

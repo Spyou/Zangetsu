@@ -15,8 +15,14 @@ class _StubCubit extends ScheduleCubit {
   @override
   Future<void> load() async {}
 }
-class _FA implements AiringService { @override noSuchMethod(Invocation i) => super.noSuchMethod(i); }
-class _FS implements ComingSoonService { @override noSuchMethod(Invocation i) => super.noSuchMethod(i); }
+class _FA implements AiringService {
+  @override
+  bool lastFailureOffline = false;
+ @override noSuchMethod(Invocation i) => super.noSuchMethod(i); }
+class _FS implements ComingSoonService {
+  @override
+  bool lastFailureOffline = false;
+ @override noSuchMethod(Invocation i) => super.noSuchMethod(i); }
 class _FMyList implements MyListStore { @override noSuchMethod(Invocation i) => super.noSuchMethod(i); }
 
 void main() {

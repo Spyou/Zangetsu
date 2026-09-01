@@ -33,5 +33,7 @@ void main() {
     expect(detail.status, MediaStatus.unknown);
     expect(detail.genres, isEmpty);
     expect(detail.episodes, isEmpty);
+    // Non-Z-Mode sources never set a hero banner — only AniList/TMDB do.
+    expect(detail.banner, isNull);
   });
 }

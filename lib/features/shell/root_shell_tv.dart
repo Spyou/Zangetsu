@@ -12,6 +12,7 @@ import '../../core/provider/provider_registry.dart';
 import '../../core/state/active_source_cubit.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/tv/tv_focusable.dart';
+import '../../core/zmode/zmode_prefs.dart';
 import '../auth/auth_cubit.dart';
 import '../auth/auth_screens_tv.dart';
 import '../auth/reconnect.dart';
@@ -20,6 +21,7 @@ import '../../l10n/l10n.dart';
 import '../home/cubit/home_cubit.dart';
 import '../schedule/schedule_screen.dart';
 import 'root_shell.dart';
+import 'tv_mode_page.dart';
 import 'tv_source_picker.dart';
 
 /// Collapsed (icon-only) and expanded (labelled) drawer widths.
@@ -64,7 +66,8 @@ class _RailItem {
 }
 
 /// Nav item definitions (label + icons). Order matches [_RootShellTvState._pages].
-const int _kRailItemCount = 6;
+/// Six today; a seventh, Mode, when Z Mode is on.
+int get _kRailItemCount => ZModePrefs.enabled ? 7 : 6;
 
 List<_RailItem> _railItems(BuildContext context) {
   final l = context.l10n;
@@ -99,6 +102,12 @@ List<_RailItem> _railItems(BuildContext context) {
       icon: Icons.settings_outlined,
       selectedIcon: Icons.settings,
     ),
+    if (ZModePrefs.enabled)
+      _RailItem(
+        label: l.zMode,
+        icon: Icons.auto_awesome_outlined,
+        selectedIcon: Icons.auto_awesome,
+      ),
   ];
 }
 
@@ -138,15 +147,28 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
       FocusScopeNode(debugLabel: 'tv-content-scope');
 
   // One focus node per nav item so entering the rail can land straight on the
-  // CURRENT page's item (so you always see where you are).
-  final List<FocusNode> _navNodes =
-      List.generate(_kRailItemCount, (_) => FocusNode());
+  // CURRENT page's item (so you always see where you are). Always allocate
+  // for the max (7): _kRailItemCount can change at runtime (the Z Mode
+  // toggle), but this list is built once at field-initialisation — a hidden
+  // node past the current count is simply never drawn (see [_railColumn]).
+  final List<FocusNode> _navNodes = List.generate(7, (_) => FocusNode());
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    ZModePrefs.revision.addListener(_onZMode);
     _recoverFocusIfNeeded();
+  }
+
+  /// The rail redraws when the Z Mode toggle flips. If it just turned off
+  /// while the user was on the (now hidden) 7th page, clamp back to Home so
+  /// `_index` can't point past the end of `_pages`.
+  void _onZMode() {
+    if (!mounted) return;
+    setState(() {
+      if (_index >= _kRailItemCount) _index = 0;
+    });
   }
 
   @override
@@ -329,6 +351,7 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    ZModePrefs.revision.removeListener(_onZMode);
     _searchFocusSignal.dispose();
     _railScope.dispose();
     _contentScope.dispose();
@@ -422,6 +445,7 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
       const DownloadsScreen(),
       const ScheduleScreen(),
       shared.last, // Settings
+      if (ZModePrefs.enabled) const TvModePage(),
     ];
   }
 

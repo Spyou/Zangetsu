@@ -12,7 +12,7 @@ import '../../core/playback/my_list.dart';
 import '../../core/playback/resume_store.dart';
 import '../../core/playback/watch_history.dart';
 import '../../core/reading/read_history.dart';
-import '../../core/repository/source_repository.dart';
+import '../../core/repository/catalogue_repository.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../l10n/l10n.dart';
@@ -51,7 +51,7 @@ class _HistoryScreenState extends State<HistoryScreen>
     with SingleTickerProviderStateMixin {
   final _watch = sl<WatchHistory>();
   final _read = sl<ReadHistory>();
-  final _repo = sl<SourceRepository>();
+  final _repo = sl<CatalogueRepository>();
   final _myList = sl<MyListStore>();
 
   late int _shownIndex = widget.initialIndex.clamp(0, 2);
@@ -436,7 +436,7 @@ class _HistoryScreenState extends State<HistoryScreen>
     return ListView.builder(
       padding: EdgeInsets.only(
         top: 4,
-        bottom: 24 + MediaQuery.paddingOf(context).bottom,
+        bottom: MediaQuery.paddingOf(context).bottom,
       ),
       itemCount: groups.length,
       itemBuilder: (_, gi) {

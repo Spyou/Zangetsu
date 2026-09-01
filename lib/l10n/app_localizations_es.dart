@@ -1760,6 +1760,12 @@ class AppLocalizationsEs extends AppLocalizations {
   String get failedToLoadThisTitle => 'No se pudo cargar este título';
 
   @override
+  String get offlineTitle => 'You are offline';
+
+  @override
+  String get offlineBody => 'Check your connection and try again.';
+
+  @override
   String get changeStatus => 'Cambiar estado';
 
   @override
@@ -2304,6 +2310,18 @@ class AppLocalizationsEs extends AppLocalizations {
   String get sourceSettings => 'Ajustes de la fuente';
 
   @override
+  String get sourceDomain => 'Dominio de la fuente';
+
+  @override
+  String get sourceDomainHint =>
+      'Déjalo vacío para usar el dominio propio de la fuente.';
+
+  @override
+  String resetSourceDataConfirm(String name) {
+    return '¿Restablecer los datos guardados de $name? Esto borra su configuración guardada, el inicio de sesión y las cookies. Tu lista, historial y descargas no se ven afectados.';
+  }
+
+  @override
   String get removeRepository2 => '¿Quitar repositorio?';
 
   @override
@@ -2589,6 +2607,10 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get navTabsEveryTabOnBar => 'Todas las pestañas están en la barra.';
+
+  @override
+  String get searchMovesToHomeInZMode =>
+      'Search moves to the top of Home in Z Mode.';
 
   @override
   String navTabsHelp(int minTabs, int maxTabs) {
@@ -4799,4 +4821,140 @@ class AppLocalizationsEs extends AppLocalizations {
   @override
   String get closeConfirmExitImmediatelyLabel =>
       'Cierre directo: salida inmediata';
+
+  @override
+  String get zMode => 'Z Mode';
+
+  @override
+  String get zModeSubtitle =>
+      'Browse from AniList and TMDB, play from your sources';
+
+  @override
+  String get animeMetadata => 'Anime metadata';
+
+  @override
+  String get animeMetadataSubtitle => 'Where anime and manga info comes from';
+
+  @override
+  String get videoMetadata => 'Movie & TV metadata';
+
+  @override
+  String get videoMetadataSubtitle => 'Where movie and series info comes from';
+
+  @override
+  String get malLoginForLists =>
+      'Log in to MyAnimeList in Trackers to sync your lists';
+
+  @override
+  String get zModeExperimental => 'Experimental';
+
+  @override
+  String get modeAnime => 'Anime';
+
+  @override
+  String get modeMovieTv => 'Movie/TV';
+
+  @override
+  String sourceLabel(String name) {
+    return 'Source: $name';
+  }
+
+  @override
+  String get wrongTitle => 'Wrong title?';
+
+  @override
+  String get noSourceHasThisYet => 'No source has this yet';
+
+  @override
+  String get pickTheRightTitle => 'Pick the right title';
+
+  @override
+  String get searchThisSource => 'Search this source';
+
+  @override
+  String matchSaved(String name) {
+    return 'Saved. Matched to $name now.';
+  }
+
+  @override
+  String get chooseSource => 'Choose a source';
+
+  @override
+  String get scheduleAndLists => 'Schedule & lists';
+
+  @override
+  String get scheduleHubDesc => 'What is airing, day by day';
+
+  @override
+  String get trackerCoversVideo => 'Movies and series';
+
+  @override
+  String get listKindManga => 'Manga';
+
+  @override
+  String get listKindNovel => 'Novel';
+
+  @override
+  String get listKindAnimeDesc => 'Watching, completed, planning';
+
+  @override
+  String get listKindMangaDesc => 'Reading, completed, planning';
+
+  @override
+  String get listKindNovelDesc => 'Light novels on this account';
+
+  @override
+  String get sortPopularity => 'Popular';
+
+  @override
+  String get sortScore => 'Top rated';
+
+  @override
+  String get sortTrending => 'Trending';
+
+  @override
+  String get sortNewest => 'Newest';
+
+  @override
+  String get sortTitle => 'A-Z';
+
+  @override
+  String filtersNeedProvider(String provider) {
+    return 'Filters need $provider. Switch it in Settings.';
+  }
+
+  @override
+  String get format => 'Format';
+
+  @override
+  String get minimumScore => 'Minimum score';
+
+  @override
+  String get searchAnime => 'Search anime';
+
+  @override
+  String get searchMoviesTv => 'Search movies & TV';
+
+  @override
+  String get searchManga => 'Search manga';
+
+  @override
+  String get searchNovels => 'Search novels';
+
+  @override
+  String get adultCatalogue => 'Adult titles in catalogue';
+
+  @override
+  String get adultCatalogueSubtitle =>
+      'Let AniList, MyAnimeList and TMDB return 18+ results';
+
+  @override
+  String get enableAdultCatalogue => 'Show adult titles?';
+
+  @override
+  String get enableAdultCatalogueBody =>
+      'Search and browse may return 18+ titles from your metadata provider. Simkl has no such setting and is unaffected.';
+
+  @override
+  String get adultOnly => 'Adult';
 }

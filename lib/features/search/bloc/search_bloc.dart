@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../../core/zmode/metadata_provider_prefs.dart';
 import '../../../core/di/injector.dart';
 import '../../../core/mode/content_mode.dart';
 import '../../../core/mode/content_mode_cubit.dart';
@@ -10,7 +11,7 @@ import '../../../core/playback/search_history.dart';
 import '../../../core/playback/search_prefs.dart';
 import '../../../core/playback/search_source_prefs.dart';
 import '../../../core/playback/source_health_store.dart';
-import '../../../core/repository/source_repository.dart';
+import '../../../core/repository/catalogue_repository.dart';
 import '../../../core/search/title_suggestion_service.dart';
 import '../../../core/state/active_source_cubit.dart';
 // sourceTypeOf lives with the source picker; search_screen.dart reaches for it
@@ -21,10 +22,11 @@ import 'search_state.dart';
 
 class SearchBloc extends Bloc<SearchEvent, SearchState> {
   SearchBloc({
-    required SourceRepository repo,
+    required CatalogueRepository repo,
     required SearchHistory history,
     SearchPrefs? prefs,
     TitleSuggestionService? suggestions,
+    this.forceMode,
   }) : _repo = repo,
        _history = history,
        _prefs = prefs ?? sl<SearchPrefs>(),
@@ -56,6 +58,12 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
     // Guarded: bloc tests construct SearchBloc with explicit deps and never
     // register the cubit, and subscribing unconditionally would blow up at
     // construction before such a test does anything. Production always has it.
+    // The same argument one step over: results belong to the PROVIDER they
+    // were fetched from, and switching AniList→MAL (or TMDB→Simkl) leaves the
+    // Z Mode source id as 'zm' either way — so nothing else on screen would
+    // notice that every zm result now came from a different catalogue. Home
+    // already reloads on this revision; search kept its stale hits.
+    MetadataProviderPrefs.revision.addListener(_onProviderChanged);
     if (sl.isRegistered<ContentModeCubit>()) {
       _modeSub = sl<ContentModeCubit>().stream.listen((_) {
         add(const SearchModeChanged());
@@ -63,11 +71,17 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
     }
   }
 
-  final SourceRepository _repo;
+  final CatalogueRepository _repo;
   final SearchHistory _history;
   final SearchPrefs _prefs;
   final TitleSuggestionService _suggestions;
   StreamSubscription<ContentMode>? _modeSub;
+
+  /// Overrides [ContentModeCubit.state] for [_modeSources] when set — the
+  /// tab a caller opened search from (see `BrowseSourcesScreen`), rather than
+  /// whatever the app's global content mode happens to be. Null keeps
+  /// today's behaviour byte-identical.
+  final ContentMode? forceMode;
 
   /// Hard cap on one source's search.
   ///
@@ -95,14 +109,15 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
   static ({List<MediaItem> items, SourceOutcome outcome}) _timedOut() =>
       (items: const <MediaItem>[], outcome: SourceOutcome.timeout);
 
-  /// [SourceRepository.loadedSources] narrowed to the active content mode, so an
-  /// all-sources search only fans out over sources that mode can actually show —
-  /// a manga search shouldn't query novel (or anime) sources, and vice versa.
+  /// [SourceRepository.loadedSources] narrowed to the active content mode (or
+  /// [forceMode] when a caller set one), so an all-sources search only fans
+  /// out over sources that mode can actually show — a manga search shouldn't
+  /// query novel (or anime) sources, and vice versa.
   ///
   /// Mirrors `_modeSources` in `search_screen.dart`, which already narrows the
-  /// source *list* the UI offers; without the same narrowing here the bloc
-  /// searched everything regardless of mode, so the picker and the results
-  /// disagreed.
+  /// source *list* the UI offers (with the same [forceMode] override); without
+  /// the same narrowing here the bloc searched everything regardless of mode,
+  /// so the picker and the results disagreed.
   ///
   /// Every mode narrows, anime included. Anime used to short-circuit to the
   /// unfiltered list — harmless when the only sources were video ones, but once
@@ -113,7 +128,7 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
   /// `sourceTypeOf` types `cs:`/`ani:`/untyped sources as anime, so the only
   /// sources this drops are the manga and novel ones.
   List<({String id, String name})> _modeSources() {
-    final mode = sl<ContentModeCubit>().state;
+    final mode = forceMode ?? sl<ContentModeCubit>().state;
     return filterSourcesForMode(
       {for (final s in _repo.loadedSources) s.id: s},
       mode,
@@ -544,9 +559,7 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
     if (acc.isEmpty) {
       emit(
         state.copyWith(
-          status: failed.isNotEmpty
-              ? SearchStatus.error
-              : SearchStatus.success,
+          status: failed.isNotEmpty ? SearchStatus.error : SearchStatus.success,
           groups: const [],
           failedSources: Map.of(failed),
         ),
@@ -855,10 +868,15 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
     );
   }
 
+  void _onProviderChanged() {
+    if (!isClosed) add(const SearchModeChanged());
+  }
+
   @override
   Future<void> close() {
     _suggestDebounce?.cancel();
     _modeSub?.cancel();
+    MetadataProviderPrefs.revision.removeListener(_onProviderChanged);
     return super.close();
   }
 }

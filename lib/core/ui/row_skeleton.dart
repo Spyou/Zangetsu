@@ -50,9 +50,11 @@ class _RowSkeletonState extends State<RowSkeleton>
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Header strip — mimics the title/overline area
+              // Header strip — mimics the title/overline area. Padding
+              // matches ContentRow's own header so real rows don't jump
+              // when a skeleton is replaced by loaded content.
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                padding: const EdgeInsets.fromLTRB(16, 20, 16, 10),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(6),
                   child: SizedBox(

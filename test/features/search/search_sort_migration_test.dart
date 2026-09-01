@@ -72,6 +72,9 @@ class _FakeSuggestions extends TitleSuggestionService {
 /// only restores state from prefs.
 class _FakeRepo implements SourceRepository {
   @override
+  List<({String id, String name})> get pickableSources => loadedSources;
+
+  @override
   dynamic noSuchMethod(Invocation invocation) => throw UnimplementedError();
 }
 

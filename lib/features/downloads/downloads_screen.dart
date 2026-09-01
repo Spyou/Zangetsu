@@ -461,7 +461,11 @@ class _DownloadsScreenState extends State<DownloadsScreen>
 
     final anyExpanded = showIds.any(_expanded.contains);
     return ListView(
-      padding: const EdgeInsets.only(bottom: 32),
+      // Clear the floating dock, which overlays content (this tab has no
+      // reserved space of its own for it).
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.paddingOf(context).bottom,
+      ),
       children: [
         _summaryStrip(
           count: done.length,
