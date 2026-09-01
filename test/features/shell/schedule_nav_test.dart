@@ -39,6 +39,7 @@ import 'package:watch_app/core/theme/theme_controller.dart';
 import 'package:watch_app/core/tracker/mal_service.dart';
 import 'package:watch_app/core/tracker/simkl_service.dart';
 import 'package:watch_app/core/tracker/tracker_hub.dart';
+import 'package:watch_app/core/download/chapter_download_store.dart';
 import 'package:watch_app/core/zmode/zmode_prefs.dart';
 import 'package:watch_app/features/auth/auth_cubit.dart';
 import 'package:watch_app/features/auth/migration_bridge.dart';
@@ -313,6 +314,13 @@ void main() {
     // (its default) in every test regardless of run order.
     await Hive.deleteBoxFromDisk(ZModePrefs.boxName);
     await ZModePrefs.init();
+    // The dock builds every tab's screen into an IndexedStack, and Downloads
+    // is a default tab now — so DownloadsScreen is constructed by every test
+    // here and needs its store, whether or not the test looks at it.
+    await ChapterDownloadStore.init();
+    if (!sl.isRegistered<ChapterDownloadStore>()) {
+      sl.registerSingleton<ChapterDownloadStore>(ChapterDownloadStore());
+    }
 
     sl.registerSingleton<HomeCubit>(HomeCubit(fakeRepo));
     sl.registerSingleton<ContentModeCubit>(contentMode);
@@ -371,8 +379,9 @@ void main() {
   );
 
   // Schedule left the dock for the card row on Home, beside the Manga/Novel
-  // mode cards — two doors to one screen was the point of removing it.
-  testWidgets('the phone dock offers neither Schedule nor Downloads', (
+  // mode cards — two doors to one screen was the point of removing it — and
+  // Downloads took the slot it left.
+  testWidgets('the phone dock swapped Schedule for Downloads', (
     tester,
   ) async {
     sl.registerSingleton<AppMode>(const AppMode(isTv: false));
@@ -380,7 +389,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(dockLabel('Schedule'), findsNothing);
-    expect(find.text('Downloads'), findsNothing);
+    expect(dockLabel('Downloads'), findsOneWidget);
   });
 
   // Task 17: Search moved from the dock to the Home header (HomeSearchAction

@@ -60,6 +60,7 @@ void main() {
     test('the default dock has neither Search nor Schedule', () {
       expect(NavPrefs.defaultTabs, [
         DockTab.home,
+        DockTab.downloads,
         DockTab.myList,
         DockTab.profile,
       ]);
@@ -100,6 +101,8 @@ void main() {
 
       expect(out, contains(DockTab.profile));
       expect(out.length, greaterThanOrEqualTo(NavPrefs.minTabs));
+      // Downloads is in defaultTabs now, but this list was SAVED by the user
+      // and never had it — only the unknown 'search'/'schedule' entries drop.
       expect(out, [
         DockTab.home,
         DockTab.myList,
