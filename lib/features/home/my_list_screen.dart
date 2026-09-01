@@ -44,7 +44,7 @@ import 'search_screen.dart';
 /// each connected tracker) via a segmented control, and by status via tabs.
 /// Trackers are connected/managed from the header's accounts button.
 class MyListScreen extends StatelessWidget {
-  const MyListScreen({super.key, this.initialTracker});
+  const MyListScreen({super.key, this.initialTracker, this.initialKind});
 
   /// Open straight onto one tracker's library instead of your own list, with
   /// the account switcher hidden.
@@ -53,6 +53,12 @@ class MyListScreen extends StatelessWidget {
   /// than writing a thinner one keeps statuses, custom lists, sort and filter
   /// working, which a purpose-built list screen would have quietly lost.
   final Tracker? initialTracker;
+
+  /// Which kind of list to open for [initialTracker]. The hub names the kind
+  /// on the row itself ("AniList → Manga"), so the screen must honour that
+  /// rather than following whatever mode the app happens to be in — otherwise
+  /// tapping Manga while in anime mode would land on the anime list.
+  final ContentMode? initialKind;
 
   @override
   Widget build(BuildContext context) {
@@ -70,17 +76,21 @@ class MyListScreen extends StatelessWidget {
           },
         ),
       ],
-      child: _MyListView(pinnedTracker: pinned),
+      child: _MyListView(pinnedTracker: pinned, pinnedKind: initialKind),
     );
   }
 }
 
 class _MyListView extends StatefulWidget {
-  const _MyListView({this.pinnedTracker});
+  const _MyListView({this.pinnedTracker, this.pinnedKind});
 
   /// Non-null when this screen was opened FOR one tracker — the switcher is
   /// hidden and there is nothing to switch to.
   final Tracker? pinnedTracker;
+
+  /// The kind a pinned tracker screen was opened for. Null falls back to the
+  /// app's current mode, which is what the old Home cards relied on.
+  final ContentMode? pinnedKind;
 
   @override
   State<_MyListView> createState() => _MyListViewState();
@@ -922,7 +932,7 @@ class _MyListViewState extends State<_MyListView> {
     // A tracker screen has no tabs and keeps following the app mode.
     final mode = widget.pinnedTracker == null
         ? _kind
-        : sl<ContentModeCubit>().state;
+        : (widget.pinnedKind ?? sl<ContentModeCubit>().state);
     final modeEntries =
         entries.where((e) => mode.matchesProvider(e.item.type)).toList();
 
