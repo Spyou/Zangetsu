@@ -152,6 +152,12 @@ class SourceMatcher {
   /// the network work and the wait.
   final Map<String, Future<SourceMatch?>> _inFlight = {};
 
+  /// How many candidates are searched at once once the first has missed.
+  /// Small on purpose: firing every installed source at once invites rate
+  /// limiting, and the JS providers still decode on the main isolate, so a
+  /// wide fan-out would jank the very screen this exists to speed up.
+  static const int _sweepWidth = 4;
+
   Future<SourceMatch?> resolve(
     ZCanonical c, {
     required String title,
@@ -186,13 +192,32 @@ class SourceMatcher {
       // pick a new one below.
     }
 
-    for (final s in _candidates(c.kind)) {
-      if (s.id == selId) continue; // already checked above
-      final hit = await _matchOn(c, s.id, title: title, altTitle: altTitle, malId: malId);
-      if (hit != null) {
-        await _store.selectSource(c, s.id);
-        return hit;
+    final rest = [
+      for (final s in _candidates(c.kind))
+        if (s.id != selId) s, // already checked above
+    ];
+    for (var i = 0; i < rest.length;) {
+      // The FIRST candidate is probed alone. It usually has the title, and
+      // searching past a source that is about to say yes would put load on
+      // other sources for nothing. Only once it misses is it worth
+      // speculating, and then the rest go out [_sweepWidth] at a time.
+      final width = i == 0 ? 1 : _sweepWidth;
+      final end = i + width < rest.length ? i + width : rest.length;
+      final batch = rest.sublist(i, end);
+      final found = await Future.wait([
+        for (final s in batch)
+          _matchOn(c, s.id, title: title, altTitle: altTitle, malId: malId),
+      ]);
+      // Searched together, READ in candidate order: which source wins must
+      // not depend on which one happened to answer first, or the selection a
+      // title lands on changes between runs.
+      for (var j = 0; j < found.length; j++) {
+        if (found[j] != null) {
+          await _store.selectSource(c, batch[j].id);
+          return found[j];
+        }
       }
+      i = end;
     }
     return null;
   }

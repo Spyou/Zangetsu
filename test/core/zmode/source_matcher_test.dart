@@ -41,6 +41,42 @@ class _FakeSources implements SourceRepository {
   }
 }
 
+/// Records how many searches are in flight AT ONCE, and lets a source be made
+/// slow, so the sweep's concurrency and its ordering can be asserted without
+/// depending on wall-clock timing.
+class _ConcurrentSources implements SourceRepository {
+  _ConcurrentSources(this.bySource, {this.slow = const {}});
+  final Map<String, List<MediaItem>> bySource;
+
+  /// Sources that yield to the event loop [slow] times before answering, so a
+  /// later-but-faster source would win any race decided by reply order.
+  final Map<String, int> slow;
+
+  final searched = <String>[];
+  int _live = 0;
+  int peak = 0;
+
+  @override
+  noSuchMethod(Invocation i) => super.noSuchMethod(i);
+  @override
+  List<({String id, String name})> get pickableSources => loadedSources;
+  @override
+  bool hasSource(String sourceId) => bySource.containsKey(sourceId);
+
+  @override
+  Future<List<MediaItem>> search(String query,
+      {String category = 'sub', String? sourceId}) async {
+    searched.add(sourceId!);
+    _live++;
+    if (_live > peak) peak = _live;
+    for (var i = 0; i < (slow[sourceId] ?? 0); i++) {
+      await Future<void>.delayed(Duration.zero);
+    }
+    _live--;
+    return bySource[sourceId] ?? const [];
+  }
+}
+
 void main() {
   late Directory dir;
   late MatchStore store;
@@ -256,6 +292,54 @@ void main() {
       expect(r.pinned, isTrue);
       expect(store.get(fma, 'hianime')?.pinned, isTrue);
       expect(store.selectedSource(fma), 'hianime');
+    });
+  });
+
+  group('parallel sweep', () {
+    // 5 candidates; only the last has it, so the whole list gets searched.
+    List<({String id, String name})> five() => const [
+      (id: 's0', name: 'S0'),
+      (id: 's1', name: 'S1'),
+      (id: 's2', name: 'S2'),
+      (id: 's3', name: 'S3'),
+      (id: 's4', name: 'S4'),
+    ];
+
+    test('the first candidate is probed alone, the rest go out together',
+        () async {
+      final repo = _ConcurrentSources({
+        's0': [_hit('s0', 'Nope')],
+        's1': [_hit('s1', 'Nope')],
+        's2': [_hit('s2', 'Nope')],
+        's3': [_hit('s3', 'Nope')],
+        's4': [_hit('s4', 'FMA')],
+        // every one is made slow so overlap is observable at all
+      }, slow: {'s0': 2, 's1': 2, 's2': 2, 's3': 2, 's4': 2});
+      final m = SourceMatcher(
+          sources: repo, store: store, candidates: (_) => five());
+
+      expect((await m.resolve(fma, title: 'FMA'))?.sourceId, 's4');
+      expect(repo.searched.length, 5);
+      // s0 alone, then s1..s4 four-wide.
+      expect(repo.peak, 4);
+    });
+
+    test('a slow earlier source still beats a fast later one', () async {
+      final repo = _ConcurrentSources({
+        's0': [_hit('s0', 'Nope')], // head misses, so the tail runs in parallel
+        's1': [_hit('s1', 'FMA')], // slow, but earlier
+        's2': [_hit('s2', 'FMA')], // instant, but later
+      }, slow: {'s1': 8});
+      final m = SourceMatcher(sources: repo, store: store, candidates: (_) => const [
+        (id: 's0', name: 'S0'),
+        (id: 's1', name: 'S1'),
+        (id: 's2', name: 'S2'),
+      ]);
+
+      // Candidate order decides, not who replied first — otherwise which
+      // source a title lands on would change between runs.
+      expect((await m.resolve(fma, title: 'FMA'))?.sourceId, 's1');
+      expect(store.selectedSource(fma), 's1');
     });
   });
 
