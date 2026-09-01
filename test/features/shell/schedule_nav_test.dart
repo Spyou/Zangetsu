@@ -425,41 +425,55 @@ void main() {
   // switcher cards. Since Schedule left the dock this is the ONLY way in, so
   // this test is now load-bearing rather than a second opinion. Anime mode
   // only — Schedule has nothing to say in a reading mode.
-  testWidgets(
-    "Home's Schedule card shows in Anime mode, hidden in Manga/Novel",
-    (tester) async {
-      sl.registerSingleton<AppMode>(const AppMode(isTv: false));
-      await tester.pumpWidget(wrap(const RootShell()));
-      await tester.pumpAndSettle();
+  // Schedule now lives behind the hub card rather than a card of its own, so
+  // the guarantee got stronger: it is reachable from every mode instead of
+  // vanishing in Manga and Novel the way the old Schedule card did.
+  testWidgets("Home's hub card shows in every mode", (tester) async {
+    sl.registerSingleton<AppMode>(const AppMode(isTv: false));
+    await tester.pumpWidget(wrap(const RootShell()));
+    await tester.pumpAndSettle();
 
-      expect(find.byKey(const ValueKey('home_schedule_card')), findsOneWidget);
+    expect(find.byKey(const ValueKey('home_lists_hub_card')), findsOneWidget);
 
-      await tester.runAsync(() => contentMode.setMode(ContentMode.manga));
+    for (final m in ContentMode.values) {
+      await tester.runAsync(() => contentMode.setMode(m));
       await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('home_schedule_card')), findsNothing);
-
-      await tester.runAsync(() => contentMode.setMode(ContentMode.novel));
-      await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('home_schedule_card')), findsNothing);
-
-      await tester.runAsync(() => contentMode.setMode(ContentMode.anime));
-      await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('home_schedule_card')), findsOneWidget);
-    },
-  );
+      expect(
+        find.byKey(const ValueKey('home_lists_hub_card')),
+        findsOneWidget,
+        reason: 'Schedule has no other entry point in $m',
+      );
+    }
+  });
 
   // The row used to be hidden entirely under Z Mode (`if (!ZModePrefs.enabled)`),
   // which was survivable while Schedule also had a dock tab. It doesn't, so the
   // card has to be there in BOTH modes or Schedule has no entry point at all.
-  testWidgets('Home keeps the Schedule card with Z Mode on', (tester) async {
+  // The hub label is a phrase, not a word, which is why it gets twice the width
+  // of a switcher. On the narrowest phone we support that is still three cards
+  // sharing one row, so pin the case that would ellipsise or overflow it.
+  testWidgets('the card row survives a narrow phone', (tester) async {
+    tester.view.physicalSize = const Size(320 * 3, 640 * 3);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+
     sl.registerSingleton<AppMode>(const AppMode(isTv: false));
     await tester.pumpWidget(wrap(const RootShell()));
     await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('home_schedule_card')), findsOneWidget);
+
+    expect(find.byKey(const ValueKey('home_lists_hub_card')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Home keeps the hub card with Z Mode on', (tester) async {
+    sl.registerSingleton<AppMode>(const AppMode(isTv: false));
+    await tester.pumpWidget(wrap(const RootShell()));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('home_lists_hub_card')), findsOneWidget);
 
     await tester.runAsync(() => ZModePrefs.setEnabled(true));
     await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('home_schedule_card')), findsOneWidget);
+    expect(find.byKey(const ValueKey('home_lists_hub_card')), findsOneWidget);
 
     await tester.runAsync(() => ZModePrefs.setEnabled(false));
     await tester.pumpAndSettle();

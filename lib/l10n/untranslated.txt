@@ -19,7 +19,15 @@
     "pickTheRightTitle",
     "searchThisSource",
     "matchSaved",
-    "chooseSource"
+    "chooseSource",
+    "scheduleAndLists",
+    "scheduleHubDesc",
+    "trackerCoversVideo",
+    "listKindManga",
+    "listKindNovel",
+    "listKindAnimeDesc",
+    "listKindMangaDesc",
+    "listKindNovelDesc"
   ],
 
   "es": [
@@ -42,7 +50,15 @@
     "pickTheRightTitle",
     "searchThisSource",
     "matchSaved",
-    "chooseSource"
+    "chooseSource",
+    "scheduleAndLists",
+    "scheduleHubDesc",
+    "trackerCoversVideo",
+    "listKindManga",
+    "listKindNovel",
+    "listKindAnimeDesc",
+    "listKindMangaDesc",
+    "listKindNovelDesc"
   ],
 
   "fr": [
@@ -65,7 +81,15 @@
     "pickTheRightTitle",
     "searchThisSource",
     "matchSaved",
-    "chooseSource"
+    "chooseSource",
+    "scheduleAndLists",
+    "scheduleHubDesc",
+    "trackerCoversVideo",
+    "listKindManga",
+    "listKindNovel",
+    "listKindAnimeDesc",
+    "listKindMangaDesc",
+    "listKindNovelDesc"
   ],
 
   "it": [
@@ -88,7 +112,15 @@
     "pickTheRightTitle",
     "searchThisSource",
     "matchSaved",
-    "chooseSource"
+    "chooseSource",
+    "scheduleAndLists",
+    "scheduleHubDesc",
+    "trackerCoversVideo",
+    "listKindManga",
+    "listKindNovel",
+    "listKindAnimeDesc",
+    "listKindMangaDesc",
+    "listKindNovelDesc"
   ],
 
   "ja": [
@@ -111,7 +143,15 @@
     "pickTheRightTitle",
     "searchThisSource",
     "matchSaved",
-    "chooseSource"
+    "chooseSource",
+    "scheduleAndLists",
+    "scheduleHubDesc",
+    "trackerCoversVideo",
+    "listKindManga",
+    "listKindNovel",
+    "listKindAnimeDesc",
+    "listKindMangaDesc",
+    "listKindNovelDesc"
   ],
 
   "zh": [
@@ -134,7 +174,15 @@
     "pickTheRightTitle",
     "searchThisSource",
     "matchSaved",
-    "chooseSource"
+    "chooseSource",
+    "scheduleAndLists",
+    "scheduleHubDesc",
+    "trackerCoversVideo",
+    "listKindManga",
+    "listKindNovel",
+    "listKindAnimeDesc",
+    "listKindMangaDesc",
+    "listKindNovelDesc"
   ],
 
   "zh_TW": [
@@ -157,6 +205,14 @@
     "pickTheRightTitle",
     "searchThisSource",
     "matchSaved",
-    "chooseSource"
+    "chooseSource",
+    "scheduleAndLists",
+    "scheduleHubDesc",
+    "trackerCoversVideo",
+    "listKindManga",
+    "listKindNovel",
+    "listKindAnimeDesc",
+    "listKindMangaDesc",
+    "listKindNovelDesc"
   ]
 }
