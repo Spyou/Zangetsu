@@ -30,7 +30,6 @@ import '../../core/zmode/metadata_repository.dart';
 import '../../core/zmode/zmode_prefs.dart';
 import '../../l10n/l10n.dart';
 import '../../l10n/ui_strings.dart';
-import '../../core/ui/dock_visibility.dart';
 import '../../core/ui/media_info_sheet.dart';
 import '../../core/ui/row_skeleton.dart';
 import '../../core/ui/source_switcher.dart';
@@ -1359,7 +1358,7 @@ class _SearchViewState extends State<_SearchView>
     return ListView(
       padding: EdgeInsets.only(
         top: 6,
-        bottom: kDockClearance + MediaQuery.paddingOf(context).bottom,
+        bottom: MediaQuery.paddingOf(context).bottom,
       ),
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       children: [
@@ -1573,9 +1572,9 @@ class _SearchViewState extends State<_SearchView>
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           padding: const EdgeInsets.symmetric(horizontal: 16),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: 3,
-            childAspectRatio: 0.62,
+            childAspectRatio: posterGridAspect(context),
             crossAxisSpacing: 12,
             mainAxisSpacing: 16,
           ),
@@ -1805,13 +1804,13 @@ class _SearchViewState extends State<_SearchView>
         16,
         6,
         16,
-        kDockClearance + MediaQuery.paddingOf(context).bottom,
+        MediaQuery.paddingOf(context).bottom,
       ),
       cacheExtent: 800,
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 3,
-        childAspectRatio: 0.62,
+        childAspectRatio: posterGridAspect(context),
         crossAxisSpacing: 12,
         mainAxisSpacing: 16,
       ),
@@ -1883,7 +1882,7 @@ class _SearchViewState extends State<_SearchView>
           16,
           4,
           16,
-          kDockClearance + MediaQuery.paddingOf(context).bottom,
+          MediaQuery.paddingOf(context).bottom,
         ),
         keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         children: [
@@ -1956,9 +1955,9 @@ class _SearchViewState extends State<_SearchView>
             GridView.builder(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: 3,
-                childAspectRatio: 0.62,
+                childAspectRatio: posterGridAspect(context),
                 crossAxisSpacing: 12,
                 mainAxisSpacing: 16,
               ),
@@ -2001,7 +2000,7 @@ class _SearchViewState extends State<_SearchView>
     return ListView.builder(
       padding: EdgeInsets.only(
         top: 4,
-        bottom: kDockClearance + MediaQuery.paddingOf(context).bottom,
+        bottom: MediaQuery.paddingOf(context).bottom,
       ),
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       itemCount: suggestions.length,

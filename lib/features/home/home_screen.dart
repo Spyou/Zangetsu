@@ -49,7 +49,6 @@ import '../sources/zangetsu_sources_screen.dart';
 import '../update/update_dialog.dart';
 import 'continue_section.dart';
 import '../../core/ui/content_row.dart';
-import '../../core/ui/dock_visibility.dart';
 import '../../core/ui/featured_carousel.dart';
 import '../../core/ui/featured_hero.dart';
 import '../../core/metadata/title_logo_service.dart';
@@ -68,6 +67,7 @@ import '../schedule/schedule_screen.dart';
 import '../search/browse_sources_screen.dart';
 import '../shell/dock_icons.dart';
 import '../../core/zmode/source_matcher.dart';
+import '../../core/zmode/metadata_repository.dart';
 import '../../core/zmode/zmode_ids.dart';
 import 'cubit/home_cubit.dart';
 import 'home_screen_tv.dart';
@@ -674,15 +674,15 @@ class _HomeViewState extends State<_HomeView>
     return _animated(
       ContentRow(
         title: section.title,
-        itemWidth: 140,
-        itemHeight: 236,
+        itemWidth: 116,
+        itemHeight: 216,
         itemCount: items.length,
         onSeeAll: () => _openSeeAll(section),
         itemBuilder: (c, i) => PosterCard(
           title: items[i].title,
           imageUrl: items[i].cover,
           headers: items[i].coverHeaders,
-          cellWidth: 140,
+          cellWidth: 116,
           qualityBadge: items[i].quality,
           dubBadge: items[i].dubBadge,
           onTap: () => _openDetail(items[i]),
@@ -717,14 +717,18 @@ class _HomeViewState extends State<_HomeView>
           items: section.items,
           onTap: _openDetail,
           onLongPress: _showInfo,
-          // Only paginable rows (Aniyomi popular/latest, CloudStream mainPage)
-          // carry a `more` descriptor; everything else stays a fixed list.
-          // Pagination isn't part of CatalogueRepository — go straight to the
-          // source for it, same as it always has.
+          // Only paginable rows carry a `more` descriptor; everything else
+          // stays a fixed list. Pagination isn't part of CatalogueRepository,
+          // so go to whichever repository owns the row: the metadata providers
+          // stamp the Z Mode source id, everything else is a real source.
           onLoadMore: section.more == null
               ? null
-              : (page) =>
-                    sl<SourceRepository>().browseMore(section.more!, page),
+              // Compare the source id, NOT ZmodeIds.isZ — that tests a zm://
+              // URL, and a sourceId is never one, so every metadata row would
+              // have been sent to the source repository instead.
+              : (page) => section.more!.sourceId == ZmodeIds.sourceId
+                    ? sl<MetadataRepository>().browseMore(section.more!, page)
+                    : sl<SourceRepository>().browseMore(section.more!, page),
         ),
       ),
     ).then((_) {
@@ -895,7 +899,11 @@ class _HomeViewState extends State<_HomeView>
           child: Stack(
             fit: StackFit.expand,
             children: [
-              _modeArtBg((cover: null, headers: null)),
+              // Always the last thing you WATCHED, in every mode. Anime and
+              // movies share [WatchHistory], so this is a show cover whether
+              // you are browsing manga or not — and on the flat fallback
+              // gradient this card looked dead next to the switchers.
+              _modeArtBg(_modeArt(ContentMode.anime)),
               const DecoratedBox(
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
@@ -1352,9 +1360,7 @@ class _HomeViewState extends State<_HomeView>
                       // shell's extendBody reserves it no space of its own).
                       SliverToBoxAdapter(
                         child: SizedBox(
-                          height:
-                              kDockClearance +
-                              MediaQuery.paddingOf(context).bottom,
+                          height: MediaQuery.paddingOf(context).bottom,
                         ),
                       ),
                     ],

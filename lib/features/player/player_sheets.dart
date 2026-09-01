@@ -174,7 +174,11 @@ class _AudioSubsSheetState extends State<_AudioSubsSheet> {
                   },
                 ),
               if (cats.length <= 1 && tracks.length <= 1)
-                _SheetRow(label: context.l10n.defaultLabel, active: true, onTap: () {}),
+                _SheetRow(
+                  label: context.l10n.defaultLabel,
+                  active: true,
+                  onTap: () {},
+                ),
             ],
           ),
         ),
@@ -209,7 +213,9 @@ class _AudioSubsSheetState extends State<_AudioSubsSheet> {
                 active: false,
                 onTap: () async {
                   final picked = await showSubtitleLanguagePicker(
-                    context, sl<PlaybackPrefs>().subtitlePreference);
+                    context,
+                    sl<PlaybackPrefs>().subtitlePreference,
+                  );
                   if (picked == null) return;
                   await sl<PlaybackPrefs>().setSubtitlePreference(picked);
                   c.reapplyPreferredSubtitle();
@@ -404,7 +410,10 @@ class _OnlineSubtitleSheetState extends State<_OnlineSubtitleSheet> {
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
-            child: Text(context.l10n.searchSubtitlesOnline, style: AppText.headline),
+            child: Text(
+              context.l10n.searchSubtitlesOnline,
+              style: AppText.headline,
+            ),
           ),
           // Language picker — defaults to the user's preferred subtitle
           // language (when set in Settings) and lets the user change it
@@ -663,16 +672,16 @@ class _SubtitleStyleSheetState extends State<_SubtitleStyleSheet> {
 
   /// Reset every subtitle-style pref to its default value.
   Future<void> _resetToDefault() => _apply(() async {
-        await _prefs.setSubtitleFont('');
-        await _prefs.setSubtitleColorHex('#FFFFFFFF');
-        await _prefs.setSubtitleTextOpacity(1.0);
-        await _prefs.setSubtitleOutlineType('soft');
-        await _prefs.setSubtitleOutlineColorHex('#000000FF');
-        await _prefs.setSubtitleOutlineWidth(2.0);
-        await _prefs.setSubtitleBgOpacity(0.0);
-        await _prefs.setSubtitlePosition(95);
-        await _prefs.setSubtitleScale(1.0);
-      });
+    await _prefs.setSubtitleFont('');
+    await _prefs.setSubtitleColorHex('#FFFFFFFF');
+    await _prefs.setSubtitleTextOpacity(1.0);
+    await _prefs.setSubtitleOutlineType('soft');
+    await _prefs.setSubtitleOutlineColorHex('#000000FF');
+    await _prefs.setSubtitleOutlineWidth(2.0);
+    await _prefs.setSubtitleBgOpacity(0.0);
+    await _prefs.setSubtitlePosition(95);
+    await _prefs.setSubtitleScale(1.0);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -796,7 +805,8 @@ class _SubtitleStyleSheetState extends State<_SubtitleStyleSheet> {
                           color: _colorFromHex(hex),
                           label: _subtitleColourLabel(context.l10n, hex),
                           active:
-                              _prefs.subtitleOutlineColorHex.toUpperCase() == hex,
+                              _prefs.subtitleOutlineColorHex.toUpperCase() ==
+                              hex,
                           onTap: () => _apply(
                             () => _prefs.setSubtitleOutlineColorHex(hex),
                           ),
@@ -958,8 +968,12 @@ class _SliderRow extends StatelessWidget {
       final step = (max - min) / divisions;
       return _TvStepperRow(
         label: label,
-        onDec: value <= min ? null : () => onChanged((value - step).clamp(min, max)),
-        onInc: value >= max ? null : () => onChanged((value + step).clamp(min, max)),
+        onDec: value <= min
+            ? null
+            : () => onChanged((value - step).clamp(min, max)),
+        onInc: value >= max
+            ? null
+            : () => onChanged((value + step).clamp(min, max)),
       );
     }
     return Padding(
@@ -1016,7 +1030,8 @@ class _TvStepperRowState extends State<_TvStepperRow> {
   bool _focused = false;
 
   KeyEventResult _onKey(FocusNode node, KeyEvent e) {
-    if (e is! KeyDownEvent && e is! KeyRepeatEvent) return KeyEventResult.ignored;
+    if (e is! KeyDownEvent && e is! KeyRepeatEvent)
+      return KeyEventResult.ignored;
     if (e.logicalKey == LogicalKeyboardKey.arrowLeft) {
       widget.onDec?.call();
       return KeyEventResult.handled;
@@ -1048,10 +1063,12 @@ class _TvStepperRowState extends State<_TvStepperRow> {
         ),
         child: Row(
           children: [
-            Icon(Icons.chevron_left,
-                color: widget.onDec == null
-                    ? AppColors.textTertiary
-                    : AppColors.accent),
+            Icon(
+              Icons.chevron_left,
+              color: widget.onDec == null
+                  ? AppColors.textTertiary
+                  : AppColors.accent,
+            ),
             Expanded(
               child: Text(
                 widget.label,
@@ -1062,10 +1079,12 @@ class _TvStepperRowState extends State<_TvStepperRow> {
                 ),
               ),
             ),
-            Icon(Icons.chevron_right,
-                color: widget.onInc == null
-                    ? AppColors.textTertiary
-                    : AppColors.accent),
+            Icon(
+              Icons.chevron_right,
+              color: widget.onInc == null
+                  ? AppColors.textTertiary
+                  : AppColors.accent,
+            ),
           ],
         ),
       ),
@@ -1073,10 +1092,10 @@ class _TvStepperRowState extends State<_TvStepperRow> {
   }
 }
 
-/// Play/pause button whose icon MORPHS between play and pause (Dantotsu/YouTube
+/// Play/pause button whose icon MORPHS between play and pause (the YouTube
 /// style) instead of a hard swap. Driven by [playing]; sits in a soft ringed
 /// circle. Pure UI — [onTap] is the same togglePlay call as before.
-/// Soft, rounded play/pause (reDantotsu-style) — the stock [AnimatedIcons]
+/// Soft, rounded play/pause — the stock [AnimatedIcons]
 /// morph uses sharp, blocky shapes; the `_rounded` variants have the pill
 /// corners we want. Cross-fades + gently scales between the two on toggle.
 class _SheetSurface extends StatelessWidget {
@@ -1196,7 +1215,9 @@ class _ColorSheetState extends State<_ColorSheet> {
             data: SliderTheme.of(context).copyWith(
               activeTrackColor: AppColors.accent,
               thumbColor: AppColors.accent,
-              inactiveTrackColor: AppColors.textSecondary.withValues(alpha: 0.3),
+              inactiveTrackColor: AppColors.textSecondary.withValues(
+                alpha: 0.3,
+              ),
               overlayColor: AppColors.accent.withValues(alpha: 0.2),
             ),
             child: Slider(
@@ -1287,11 +1308,36 @@ class _ColorSheetState extends State<_ColorSheet> {
             shrinkWrap: true,
             padding: const EdgeInsets.fromLTRB(20, 10, 20, 4),
             children: [
-              _slider(context.l10n.brightness, 'brightness', _b, (v) => setState(() => _b = v)),
-              _slider(context.l10n.contrast, 'contrast', _c, (v) => setState(() => _c = v)),
-              _slider(context.l10n.saturation, 'saturation', _s, (v) => setState(() => _s = v)),
-              _slider(context.l10n.gamma, 'gamma', _g, (v) => setState(() => _g = v)),
-              _slider(context.l10n.hue, 'hue', _h, (v) => setState(() => _h = v)),
+              _slider(
+                context.l10n.brightness,
+                'brightness',
+                _b,
+                (v) => setState(() => _b = v),
+              ),
+              _slider(
+                context.l10n.contrast,
+                'contrast',
+                _c,
+                (v) => setState(() => _c = v),
+              ),
+              _slider(
+                context.l10n.saturation,
+                'saturation',
+                _s,
+                (v) => setState(() => _s = v),
+              ),
+              _slider(
+                context.l10n.gamma,
+                'gamma',
+                _g,
+                (v) => setState(() => _g = v),
+              ),
+              _slider(
+                context.l10n.hue,
+                'hue',
+                _h,
+                (v) => setState(() => _h = v),
+              ),
             ],
           ),
         ),
@@ -1347,9 +1393,7 @@ class _SheetChips extends StatelessWidget {
             children: [
               for (var i = 0; i < labels.length; i++)
                 Material(
-                  color: i == selected
-                      ? AppColors.accent
-                      : Colors.transparent,
+                  color: i == selected ? AppColors.accent : Colors.transparent,
                   shape: StadiumBorder(
                     side: i == selected
                         ? BorderSide.none
@@ -1656,7 +1700,9 @@ class _DelayAdjusterState extends State<_DelayAdjuster> {
                   shown,
                   textAlign: TextAlign.center,
                   style: AppText.body.copyWith(
-                    color: _ms == 0 ? AppColors.textSecondary : AppColors.accent,
+                    color: _ms == 0
+                        ? AppColors.textSecondary
+                        : AppColors.accent,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
@@ -1691,7 +1737,8 @@ class _DelayAdjusterState extends State<_DelayAdjuster> {
     final textOn = s.textOn();
     // Progress-aware hint so it's obvious what to do next (and that a capture
     // is still pending after you reopen the sheet).
-    final hint = _note ??
+    final hint =
+        _note ??
         (voiceOn
             ? context.l10n.subtitleSyncVoiceCaptured
             : textOn
@@ -1803,26 +1850,23 @@ class _DelayAdjusterState extends State<_DelayAdjuster> {
     );
   }
 
-  Widget _stepBtn(
-    IconData icon,
-    VoidCallback onTap, {
-    String? semanticLabel,
-  }) => Semantics(
-    button: true,
-    label: semanticLabel,
-    child: Material(
-      color: AppColors.surface2,
-      shape: const CircleBorder(),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(6),
-          child: Icon(icon, color: AppColors.textPrimary, size: 20),
+  Widget _stepBtn(IconData icon, VoidCallback onTap, {String? semanticLabel}) =>
+      Semantics(
+        button: true,
+        label: semanticLabel,
+        child: Material(
+          color: AppColors.surface2,
+          shape: const CircleBorder(),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.all(6),
+              child: Icon(icon, color: AppColors.textPrimary, size: 20),
+            ),
+          ),
         ),
-      ),
-    ),
-  );
+      );
 }
 
 /// "Stats for nerds" info panel — shows the user-selected [fields] (keys from

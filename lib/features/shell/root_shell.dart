@@ -73,8 +73,9 @@ class _RootShellState extends State<RootShell>
   /// the deps they care about. A bare [NavPrefs] reads no Hive box and returns
   /// [NavPrefs.defaultTabs], which is the dock those tests expect anyway —
   /// same guard the bloc uses for ContentModeCubit.
-  late final NavPrefs _navPrefs =
-      sl.isRegistered<NavPrefs>() ? sl<NavPrefs>() : NavPrefs();
+  late final NavPrefs _navPrefs = sl.isRegistered<NavPrefs>()
+      ? sl<NavPrefs>()
+      : NavPrefs();
 
   /// Double-back-to-exit: timestamp of the last root Back press. A second Back
   /// within 2s exits the app; the first just shows the "press back again" toast.
@@ -225,34 +226,36 @@ class _RootShellState extends State<RootShell>
           // Content runs under the floating dock (screens keep their own bottom
           // padding so the last row scrolls clear of it).
           extendBody: true,
-          body: Builder(builder: (context) {
-            final visible = _visibleTabs();
-            final active = visible.indexOf(_tab);
-            return AnimatedBuilder(
-            animation: _switch,
-            builder: (context, child) {
-              final v = _switch.value;
-              // Incoming tab fades in from 0.4 and slides up 20px. Never blanks.
-              return Opacity(
-                opacity: 0.4 + 0.6 * v,
-                child: Transform.translate(
-                  offset: Offset(0, (1 - v) * 20),
-                  child: child,
+          body: Builder(
+            builder: (context) {
+              final visible = _visibleTabs();
+              final active = visible.indexOf(_tab);
+              return AnimatedBuilder(
+                animation: _switch,
+                builder: (context, child) {
+                  final v = _switch.value;
+                  // Incoming tab fades in from 0.4 and slides up 20px. Never blanks.
+                  return Opacity(
+                    opacity: 0.4 + 0.6 * v,
+                    child: Transform.translate(
+                      offset: Offset(0, (1 - v) * 20),
+                      child: child,
+                    ),
+                  );
+                },
+                // RepaintBoundary → the page is a single cached layer the transition
+                // just composites (opacity + translate), so no repaint per frame.
+                child: RepaintBoundary(
+                  child: IndexedStack(
+                    // indexOf can be -1 for one frame if the mode flipped before
+                    // the listener ran; clamp rather than throw.
+                    index: active < 0 ? 0 : active,
+                    children: _pagesFor(visible),
+                  ),
                 ),
               );
             },
-            // RepaintBoundary → the page is a single cached layer the transition
-            // just composites (opacity + translate), so no repaint per frame.
-            child: RepaintBoundary(
-              child: IndexedStack(
-                // indexOf can be -1 for one frame if the mode flipped before
-                // the listener ran; clamp rather than throw.
-                index: active < 0 ? 0 : active,
-                children: _pagesFor(visible),
-              ),
-            ),
-          );
-          }),
+          ),
           bottomNavigationBar: ValueListenableBuilder<bool>(
             valueListenable: dockHiddenBySection,
             builder: (context, sectionOpen, _) {
@@ -265,7 +268,7 @@ class _RootShellState extends State<RootShell>
                 children: [
                   if (ZModePrefs.enabled)
                     Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
+                      padding: const EdgeInsets.only(bottom: 8),
                       child: BlocBuilder<ContentModeCubit, ContentMode>(
                         bloc: sl<ContentModeCubit>(),
                         builder: (_, mode) => ModeBar(
@@ -280,27 +283,49 @@ class _RootShellState extends State<RootShell>
                         ),
                       ),
                     ),
-                  AnimatedSlide(
-                    offset: hide ? const Offset(0, 1.6) : Offset.zero,
+                  // Collapse the SLOT as well as sliding the dock out of it.
+                  // The dock is this Scaffold's bottomNavigationBar and the
+                  // shell sets extendBody, so its height lands in the body's
+                  // MediaQuery bottom padding whether or not it is on screen.
+                  // Sliding alone left an open Settings section reserving a
+                  // dock's worth of space for a dock that wasn't there.
+                  TweenAnimationBuilder<double>(
+                    tween: Tween<double>(begin: 1, end: hide ? 0 : 1),
                     duration: const Duration(milliseconds: 240),
                     curve: Curves.easeOutCubic,
-                    child: IgnorePointer(
-                      ignoring: hide,
-                      child: _FloatingDock(
-                        tabs: _visibleTabs(),
-                        active: _tab,
-                        onSelected: _onTabSelected,
-                        centre: ZModePrefs.enabled
-                            ? BlocBuilder<ContentModeCubit, ContentMode>(
-                                bloc: sl<ContentModeCubit>(),
-                                builder: (_, mode) => ModeFab(
-                                  open: _modeBarOpen,
-                                  icon: iconForMode(mode, ZModePrefs.streamKind),
-                                  onTap: () =>
-                                      setState(() => _modeBarOpen = !_modeBarOpen),
-                                ),
-                              )
-                            : null,
+                    builder: (context, factor, child) => ClipRect(
+                      child: Align(
+                        alignment: Alignment.topCenter,
+                        heightFactor: factor,
+                        child: child,
+                      ),
+                    ),
+                    child: AnimatedSlide(
+                      offset: hide ? const Offset(0, 1.6) : Offset.zero,
+                      duration: const Duration(milliseconds: 240),
+                      curve: Curves.easeOutCubic,
+                      child: IgnorePointer(
+                        ignoring: hide,
+                        child: _FloatingDock(
+                          tabs: _visibleTabs(),
+                          active: _tab,
+                          onSelected: _onTabSelected,
+                          centre: ZModePrefs.enabled
+                              ? BlocBuilder<ContentModeCubit, ContentMode>(
+                                  bloc: sl<ContentModeCubit>(),
+                                  builder: (_, mode) => ModeFab(
+                                    open: _modeBarOpen,
+                                    icon: iconForMode(
+                                      mode,
+                                      ZModePrefs.streamKind,
+                                    ),
+                                    onTap: () => setState(
+                                      () => _modeBarOpen = !_modeBarOpen,
+                                    ),
+                                  ),
+                                )
+                              : null,
+                        ),
                       ),
                     ),
                   ),
@@ -337,10 +362,7 @@ class _FloatingDock extends StatelessWidget {
   final Widget? centre;
 
   Widget _item(BuildContext context, DockTab t) => t == DockTab.profile
-      ? _ProfileDockItem(
-          selected: active == t,
-          onTap: () => onSelected(t),
-        )
+      ? _ProfileDockItem(selected: active == t, onTap: () => onSelected(t))
       : _DockItem(
           label: t.localizedLabel(context),
           glyph: dockGlyphFor(t),
@@ -391,14 +413,8 @@ class _FloatingDock extends StatelessWidget {
 
 /// (outline, filled) Material icons for tabs with no hand-drawn glyph.
 (IconData, IconData)? _iconFor(DockTab t) => switch (t) {
-  DockTab.downloads => (
-    Icons.download_outlined,
-    Icons.download_rounded,
-  ),
-  DockTab.history => (
-    Icons.history_outlined,
-    Icons.history_rounded,
-  ),
+  DockTab.downloads => (Icons.download_outlined, Icons.download_rounded),
+  DockTab.history => (Icons.history_outlined, Icons.history_rounded),
   _ => null,
 };
 

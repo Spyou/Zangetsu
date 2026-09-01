@@ -1,10 +1,14 @@
 import 'package:flutter/foundation.dart';
 
-/// Clearance a scrollable tab needs at its bottom edge to clear the shell's
-/// floating dock. The dock overlays content (the shell uses `extendBody`),
-/// so nothing reserves space for it automatically — every scrollable tab
-/// adds this on top of its own [MediaQuery] bottom inset. Same figure the
-/// root shell's "press back again" toast uses to float above the dock.
+/// Bottom offset for an overlay positioned from the SCREEN edge — the root
+/// shell's "press back again" toast — so it floats above the dock. Includes a
+/// typical system inset, because an overlay gets no inset of its own.
+///
+/// NOT for scrollable tabs. The dock is the shell's `bottomNavigationBar` and
+/// the shell sets `extendBody: true`, so Flutter already folds the dock's full
+/// height into the body's `MediaQuery.padding.bottom`. Adding this on top of
+/// that counted the whole dock twice and left a dead band under the last row
+/// on every tab. Scrollables want the MediaQuery bottom inset alone.
 const double kDockClearance = 104.0;
 
 /// True while an in-tab sub-page wants the shell's floating dock hidden — set

@@ -105,7 +105,10 @@ class _Choice extends StatelessWidget {
       borderRadius: BorderRadius.circular(14),
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 9),
+        // Slimmed from 9/21/4 and a 13pt caption. The layout is unchanged —
+        // icon over label, four across — it just stops eating so much of the
+        // screen while it is open.
+        padding: const EdgeInsets.symmetric(vertical: 6),
         decoration: BoxDecoration(
           color: selected ? AppColors.accent.withValues(alpha: 0.12) : null,
           borderRadius: BorderRadius.circular(14),
@@ -113,9 +116,18 @@ class _Choice extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 21, color: color),
-            const SizedBox(height: 4),
-            Text(label, style: AppText.caption.copyWith(color: color)),
+            Icon(icon, size: 19, color: color),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              // A tighter line box as well as a smaller face: caption's 1.3
+              // height was adding more than the font size did.
+              style: AppText.caption.copyWith(
+                color: color,
+                fontSize: 11,
+                height: 1.1,
+              ),
+            ),
           ],
         ),
       ),
