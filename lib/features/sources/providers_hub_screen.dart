@@ -53,10 +53,7 @@ class ProvidersHubScreen extends StatefulWidget {
 
 class _ProvidersHubScreenState extends State<ProvidersHubScreen> {
   Future<void> _open(Widget screen) async {
-    await Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => screen),
-    );
+    await Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
     if (mounted) setState(() {});
   }
 
@@ -108,8 +105,9 @@ class _HubPhoneView extends StatelessWidget {
     final csRepos = csGroups.length;
     final aniCount = sl<AniyomiManager>().all.length;
     final mihonCount = sl<MihonManager>().all.length;
-    final lnrCount =
-        showLnReader ? sl<LnReaderManager>().installedSources.length : 0;
+    final lnrCount = showLnReader
+        ? sl<LnReaderManager>().installedSources.length
+        : 0;
 
     // Read-only pending-update counts. Zangetsu reuses SourcesState's own
     // installed-vs-manifest comparison (same result the Zangetsu screen shows);
@@ -134,7 +132,9 @@ class _HubPhoneView extends StatelessWidget {
         1 + (showCs ? 1 : 0) + (showAniyomi ? 1 : 0) + (showMihon ? 1 : 0);
 
     final activeId = sl<ActiveSourceCubit>().state;
-    final activeName = activeId.isEmpty ? context.l10n.subtitleOutlineNone : _activeSourceLabel(activeId);
+    final activeName = activeId.isEmpty
+        ? context.l10n.subtitleOutlineNone
+        : _activeSourceLabel(activeId);
     final activeIsCs = activeId.startsWith('cs:');
     final activeIsAni = activeId.startsWith('ani:');
     final activeIsMihon = activeId.startsWith('mihon:');
@@ -194,7 +194,8 @@ class _HubPhoneView extends StatelessWidget {
               icon: Icons.extension_outlined,
               title: context.l10n.cloudStream,
               desc: 'CloudStream extensions',
-              info: '$csInstalled sources · $csRepos repo${csRepos == 1 ? '' : 's'}',
+              info:
+                  '$csInstalled sources · $csRepos repo${csRepos == 1 ? '' : 's'}',
               active: activeIsCs,
               updateCount: csUpdates,
               onTap: () => open(const CloudStreamSourcesScreen()),
@@ -518,10 +519,7 @@ class _HubTvView extends StatefulWidget {
 
 class _HubTvViewState extends State<_HubTvView> {
   Future<void> _open(Widget screen) async {
-    await Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => screen),
-    );
+    await Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
     if (mounted) setState(() {});
   }
 
@@ -591,55 +589,57 @@ class _HubTvViewState extends State<_HubTvView> {
 
     return Scaffold(
       backgroundColor: AppColors.bg,
-      body: Stack(
-        children: [
-          SafeArea(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(48, 24, 48, 16),
-                  child: Text(context.l10n.providers, style: AppText.largeTitle),
-                ),
-                Expanded(
-                  child: ListView(
-                    padding: const EdgeInsets.fromLTRB(40, 0, 40, 48),
-                    children: [
-                      row(
-                        icon: Icons.dns_rounded,
-                        title: context.l10n.zangetsuProviders,
-                        subtitle: '$zangetsuCount installed',
-                        tint: AppColors.accent,
-                        onTap: () => _open(const ZangetsuSourcesScreen()),
-                      ),
-                      if (showCs)
-                        row(
-                          icon: Icons.extension_outlined,
-                          title: context.l10n.cloudStream,
-                          subtitle: _csSubtitle(),
-                          tint: _csBlue,
-                          onTap: () => _open(const CloudStreamSourcesScreen()),
-                        ),
-                      if (showAniyomi)
-                        row(
-                          icon: Icons.movie_filter_outlined,
-                          title: context.l10n.aniyomi,
-                          subtitle: _aniyomiSubtitle(),
-                          tint: _aniGreen,
-                          onTap: () => _open(const AniyomiSourcesScreen()),
-                        ),
-                    ],
+      body: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 48, 16),
+              child: Row(
+                children: [
+                  const TvBackButton(),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Text(
+                      context.l10n.providers,
+                      style: AppText.largeTitle,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-          const Positioned(
-            top: 8,
-            left: 8,
-            child: SafeArea(child: TvBackButton()),
-          ),
-        ],
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(40, 0, 40, 48),
+                children: [
+                  row(
+                    icon: Icons.dns_rounded,
+                    title: context.l10n.zangetsuProviders,
+                    subtitle: '$zangetsuCount installed',
+                    tint: AppColors.accent,
+                    onTap: () => _open(const ZangetsuSourcesScreen()),
+                  ),
+                  if (showCs)
+                    row(
+                      icon: Icons.extension_outlined,
+                      title: context.l10n.cloudStream,
+                      subtitle: _csSubtitle(),
+                      tint: _csBlue,
+                      onTap: () => _open(const CloudStreamSourcesScreen()),
+                    ),
+                  if (showAniyomi)
+                    row(
+                      icon: Icons.movie_filter_outlined,
+                      title: context.l10n.aniyomi,
+                      subtitle: _aniyomiSubtitle(),
+                      tint: _aniGreen,
+                      onTap: () => _open(const AniyomiSourcesScreen()),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

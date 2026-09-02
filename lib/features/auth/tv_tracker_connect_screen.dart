@@ -10,6 +10,7 @@ import '../../core/theme/app_text.dart';
 import '../../core/tracker/relay/tracker_blob.dart';
 import '../../core/tracker/relay/tracker_relay.dart';
 import '../../core/tracker/relay/tracker_relay_crypto.dart';
+import '../../core/tv/tv_back_button.dart';
 import 'tv_pairing_service.dart';
 import '../../l10n/l10n.dart';
 
@@ -27,11 +28,11 @@ class _TvTrackerConnectScreenState extends State<TvTrackerConnectScreen> {
   Timer? _poll;
 
   String get _label => switch (widget.trackerId) {
-        'anilist' => context.l10n.anilist,
-        'mal' => context.l10n.myAnimeList,
-        'simkl' => context.l10n.simkl,
-        _ => widget.trackerId,
-      };
+    'anilist' => context.l10n.anilist,
+    'mal' => context.l10n.myAnimeList,
+    'simkl' => context.l10n.simkl,
+    _ => widget.trackerId,
+  };
 
   @override
   void initState() {
@@ -102,15 +103,19 @@ class _TvTrackerConnectScreenState extends State<TvTrackerConnectScreen> {
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-              color: Colors.white, borderRadius: BorderRadius.circular(16)),
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+          ),
           child: QrImageView(data: data, size: 200, gapless: true),
         ),
         const SizedBox(height: 14),
         Text(title, style: AppText.title),
         const SizedBox(height: 4),
-        Text(subtitle,
-            textAlign: TextAlign.center,
-            style: AppText.body.copyWith(color: AppColors.textSecondary)),
+        Text(
+          subtitle,
+          textAlign: TextAlign.center,
+          style: AppText.body.copyWith(color: AppColors.textSecondary),
+        ),
       ],
     );
   }
@@ -121,13 +126,22 @@ class _TvTrackerConnectScreenState extends State<TvTrackerConnectScreen> {
       backgroundColor: AppColors.bg,
       appBar: AppBar(
         backgroundColor: AppColors.bg,
-        title: Text('Connect $_label', style: AppText.headline),
+        automaticallyImplyLeading: false,
+        toolbarHeight: 72,
+        titleSpacing: 8,
+        title: Row(
+          children: [
+            const TvBackButton(),
+            const SizedBox(width: 12),
+            Expanded(child: Text('Connect $_label', style: AppText.headline)),
+          ],
+        ),
       ),
       body: Center(
         child: _code == null
             ? (_error != null
-                ? Text(_error!, style: AppText.body)
-                : const CircularProgressIndicator())
+                  ? Text(_error!, style: AppText.body)
+                  : const CircularProgressIndicator())
             : Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -152,18 +166,21 @@ class _TvTrackerConnectScreenState extends State<TvTrackerConnectScreen> {
                       // $_label login in the phone's browser and relays the token
                       // to this TV (same encrypted-blob path the poll consumes).
                       _qrOption(
-                        data: 'https://zangetsu.online/tv-connect/'
+                        data:
+                            'https://zangetsu.online/tv-connect/'
                             '?code=$_code&nonce=$_nonce&tracker=${widget.trackerId}',
                         title: context.l10n.noApp,
-                        subtitle: 'Scan to log in with\n$_label in your browser',
+                        subtitle:
+                            'Scan to log in with\n$_label in your browser',
                       ),
                     ],
                   ),
                   if (_error != null) ...[
                     const SizedBox(height: 16),
-                    Text(_error!,
-                        style:
-                            AppText.caption.copyWith(color: Colors.redAccent)),
+                    Text(
+                      _error!,
+                      style: AppText.caption.copyWith(color: Colors.redAccent),
+                    ),
                   ],
                 ],
               ),

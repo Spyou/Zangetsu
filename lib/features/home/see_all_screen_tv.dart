@@ -132,16 +132,29 @@ class _SeeAllScreenTvState extends State<SeeAllScreenTv> {
       backgroundColor: AppColors.bg,
       appBar: AppBar(
         backgroundColor: AppColors.bg,
-        // Suppress the touch-only auto back arrow; TvBackButton in the body
-        // Stack provides a D-pad-focusable alternative.
         automaticallyImplyLeading: false,
-        title: Text(widget.title, style: AppText.headline),
+        toolbarHeight: 72,
+        titleSpacing: 16,
+        title: Row(
+          children: [
+            const TvBackButton(),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Text(
+                widget.title,
+                style: AppText.headline,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
       ),
       body: Stack(
         children: [
           GridView.builder(
             controller: paginating ? _controller : null,
-            padding: const EdgeInsets.fromLTRB(40, 0, 40, 40),
+            padding: const EdgeInsets.fromLTRB(40, 8, 40, 40),
             cacheExtent: 800,
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: _crossAxisCount,
@@ -167,9 +180,6 @@ class _SeeAllScreenTvState extends State<SeeAllScreenTv> {
               );
             },
           ),
-          // D-pad-focusable back button at top-left — reachable via D-pad up/left
-          // from the first poster without stealing the initial autofocus.
-          const Positioned(top: 8, left: 8, child: TvBackButton()),
           // Bottom loading indicator while the next page is in flight (only in
           // the paginating configuration, so non-paginating callers are unchanged).
           if (paginating && _loading)

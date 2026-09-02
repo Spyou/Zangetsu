@@ -12,6 +12,30 @@ import 'tv_pair_screen.dart';
 import '../../l10n/l10n.dart';
 import '../../l10n/ui_strings.dart';
 
+/// Puts [TvBackButton] in layout flow so D-pad up from the first field can
+/// reach it. Overlaying Back on the form made it unreachable.
+class _TvPushedScaffold extends StatelessWidget {
+  const _TvPushedScaffold({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.bg,
+      body: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const TvBackHeader(),
+            Expanded(child: child),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Login (TV)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -37,169 +61,198 @@ class _LoginScreenTvState extends State<LoginScreenTv> {
   }
 
   Future<void> _submit(BuildContext context) async {
-    final ok = await context.read<AuthCubit>().login(_email.text.trim(), _password.text);
+    final ok = await context.read<AuthCubit>().login(
+      _email.text.trim(),
+      _password.text,
+    );
     if (ok && context.mounted) Navigator.of(context).pop();
   }
 
-  InputDecoration _fieldDecoration(String hint, IconData icon) => InputDecoration(
-    hintText: hint,
-    hintStyle: AppText.body.copyWith(color: AppColors.textTertiary),
-    prefixIcon: Icon(icon, color: AppColors.textTertiary, size: 20),
-    filled: true,
-    fillColor: AppColors.surface,
-    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
-    enabledBorder: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(14),
-      borderSide: const BorderSide(color: AppColors.hairline, width: 0.5),
-    ),
-    focusedBorder: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(14),
-      borderSide: BorderSide(color: AppColors.accent, width: 2),
-    ),
-  );
+  InputDecoration _fieldDecoration(String hint, IconData icon) =>
+      InputDecoration(
+        hintText: hint,
+        hintStyle: AppText.body.copyWith(color: AppColors.textTertiary),
+        prefixIcon: Icon(icon, color: AppColors.textTertiary, size: 20),
+        filled: true,
+        fillColor: AppColors.surface,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 18,
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: AppColors.hairline, width: 0.5),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: AppColors.accent, width: 2),
+        ),
+      );
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.bg,
-      body: Stack(
-        children: [
-          SafeArea(
-            child: Center(
-              child: SizedBox(
-                width: 480,
-                child: ListView(
-                  shrinkWrap: true,
-                  padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 48),
-                  children: [
-                    Text(context.l10n.welcomeBack, style: AppText.largeTitle),
-                    const SizedBox(height: 8),
-                    Text(context.l10n.signInToSyncYourListAcrossDevices, style: AppText.body),
-                    const SizedBox(height: 32),
+    return _TvPushedScaffold(
+      child: Center(
+        child: SizedBox(
+          width: 480,
+          child: ListView(
+            shrinkWrap: true,
+            padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 48),
+            children: [
+              Text(context.l10n.welcomeBack, style: AppText.largeTitle),
+              const SizedBox(height: 8),
+              Text(
+                context.l10n.signInToSyncYourListAcrossDevices,
+                style: AppText.body,
+              ),
+              const SizedBox(height: 32),
 
-                    // Email — focused on entry so the remote has a starting point,
-                    // but IME stays closed until OK (see [TvTextField]).
-                    TvTextField(
-                      controller: _email,
-                      autofocus: true,
-                      keyboardType: TextInputType.emailAddress,
-                      textInputAction: TextInputAction.next,
-                      decoration: _fieldDecoration(context.l10n.email, Icons.mail_outline),
-                    ),
-                    const SizedBox(height: 14),
+              // Email — focused on entry so the remote has a starting point,
+              // but IME stays closed until OK (see [TvTextField]).
+              TvTextField(
+                controller: _email,
+                autofocus: true,
+                keyboardType: TextInputType.emailAddress,
+                textInputAction: TextInputAction.next,
+                decoration: _fieldDecoration(
+                  context.l10n.email,
+                  Icons.mail_outline,
+                ),
+              ),
+              const SizedBox(height: 14),
 
-                    // Password — IME Done / onSubmitted calls _submit.
-                    TvTextField(
-                      controller: _password,
-                      obscureText: true,
-                      textInputAction: TextInputAction.done,
-                      onSubmitted: (_) => _submit(context),
-                      decoration: _fieldDecoration(context.l10n.password, Icons.lock_outline),
-                    ),
-                    const SizedBox(height: 24),
+              // Password — IME Done / onSubmitted calls _submit.
+              TvTextField(
+                controller: _password,
+                obscureText: true,
+                textInputAction: TextInputAction.done,
+                onSubmitted: (_) => _submit(context),
+                decoration: _fieldDecoration(
+                  context.l10n.password,
+                  Icons.lock_outline,
+                ),
+              ),
+              const SizedBox(height: 24),
 
-                    BlocBuilder<AuthCubit, AuthState>(
-                      builder: (context, state) {
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            if (state.error != null) ...[
-                              Text(localizeAuthError(context.l10n, state.error)!, style: AppText.caption.copyWith(color: AppColors.accent)),
-                              const SizedBox(height: 10),
-                            ],
-                            if (state.busy)
-                              Center(
-                                child: SizedBox(
-                                  width: 28,
-                                  height: 28,
-                                  child: CircularProgressIndicator(strokeWidth: 2.4, color: AppColors.accent),
-                                ),
-                              )
-                            else
-                              // D-pad OK on this TvFocusable submits the login form —
-                              // identical to the phone's context.l10n.logIn PrimaryButton.
-                              TvFocusable(
-                                onTap: () => _submit(context),
-                                child: SizedBox(
-                                  height: 56,
-                                  child: DecoratedBox(
-                                    decoration: BoxDecoration(
-                                      color: Colors.white,
-                                      borderRadius: BorderRadius.circular(14),
-                                    ),
-                                    child: Center(
-                                      child: Text(context.l10n.logIn, style: AppText.button.copyWith(color: Colors.black)),
-                                    ),
+              BlocBuilder<AuthCubit, AuthState>(
+                builder: (context, state) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (state.error != null) ...[
+                        Text(
+                          localizeAuthError(context.l10n, state.error)!,
+                          style: AppText.caption.copyWith(
+                            color: AppColors.accent,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                      ],
+                      if (state.busy)
+                        Center(
+                          child: SizedBox(
+                            width: 28,
+                            height: 28,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.4,
+                              color: AppColors.accent,
+                            ),
+                          ),
+                        )
+                      else
+                        // D-pad OK on this TvFocusable submits the login form —
+                        // identical to the phone's context.l10n.logIn PrimaryButton.
+                        TvFocusable(
+                          onTap: () => _submit(context),
+                          child: SizedBox(
+                            height: 56,
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              child: Center(
+                                child: Text(
+                                  context.l10n.logIn,
+                                  style: AppText.button.copyWith(
+                                    color: Colors.black,
                                   ),
                                 ),
                               ),
-                          ],
-                        );
-                      },
-                    ),
-
-                    const SizedBox(height: 14),
-                    // Sign in without typing: pair with the already-signed-in phone.
-                    TvFocusable(
-                      onTap: () async {
-                        final paired = await Navigator.of(
-                          context,
-                        ).push<bool>(MaterialPageRoute<bool>(builder: (_) => const TvPairScreen()));
-                        // Paired via phone → the TV is signed in now; pop this login
-                        // screen too so we land straight back in the app instead of
-                        // lingering on the form.
-                        if (paired == true && context.mounted) {
-                          Navigator.of(context).pop();
-                        }
-                      },
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        child: Text.rich(
-                          TextSpan(
-                            text: '${context.l10n.typingIsAPain}  ',
-                            style: AppText.caption,
-                            children: [
-                              TextSpan(
-                                text: context.l10n.signInWithYourPhone,
-                                style: AppText.caption.copyWith(color: AppColors.accent, fontWeight: FontWeight.w700),
-                              ),
-                            ],
+                            ),
                           ),
-                          textAlign: TextAlign.center,
                         ),
-                      ),
-                    ),
+                    ],
+                  );
+                },
+              ),
 
-                    const SizedBox(height: 8),
-                    TvFocusable(
-                      onTap: () => Navigator.of(
-                        context,
-                      ).pushReplacement(MaterialPageRoute(builder: (_) => const SignupScreenTv())),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        child: Text.rich(
-                          TextSpan(
-                            text: '${context.l10n.dontHaveAnAccount}  ',
-                            style: AppText.caption,
-                            children: [
-                              TextSpan(
-                                text: context.l10n.signUp,
-                                style: AppText.caption.copyWith(color: AppColors.accent, fontWeight: FontWeight.w700),
-                              ),
-                            ],
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
+              const SizedBox(height: 14),
+              // Sign in without typing: pair with the already-signed-in phone.
+              TvFocusable(
+                onTap: () async {
+                  final paired = await Navigator.of(context).push<bool>(
+                    MaterialPageRoute<bool>(
+                      builder: (_) => const TvPairScreen(),
                     ),
-                  ],
+                  );
+                  // Paired via phone → the TV is signed in now; pop this login
+                  // screen too so we land straight back in the app instead of
+                  // lingering on the form.
+                  if (paired == true && context.mounted) {
+                    Navigator.of(context).pop();
+                  }
+                },
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: Text.rich(
+                    TextSpan(
+                      text: '${context.l10n.typingIsAPain}  ',
+                      style: AppText.caption,
+                      children: [
+                        TextSpan(
+                          text: context.l10n.signInWithYourPhone,
+                          style: AppText.caption.copyWith(
+                            color: AppColors.accent,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
                 ),
               ),
-            ),
-          ), // SafeArea
-          const Positioned(top: 8, left: 8, child: SafeArea(child: TvBackButton())),
-        ], // Stack children
-      ), // Stack (body)
+
+              const SizedBox(height: 8),
+              TvFocusable(
+                onTap: () => Navigator.of(context).pushReplacement(
+                  MaterialPageRoute(builder: (_) => const SignupScreenTv()),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: Text.rich(
+                    TextSpan(
+                      text: '${context.l10n.dontHaveAnAccount}  ',
+                      style: AppText.caption,
+                      children: [
+                        TextSpan(
+                          text: context.l10n.signUp,
+                          style: AppText.caption.copyWith(
+                            color: AppColors.accent,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -234,145 +287,174 @@ class _SignupScreenTvState extends State<SignupScreenTv> {
     if (_password.text.length < 8) {
       ScaffoldMessenger.of(context)
         ..clearSnackBars()
-        ..showSnackBar(SnackBar(content: Text(context.l10n.passwordMustBeAtLeast8Characters)));
+        ..showSnackBar(
+          SnackBar(
+            content: Text(context.l10n.passwordMustBeAtLeast8Characters),
+          ),
+        );
       return;
     }
-    final ok = await context.read<AuthCubit>().signUp(_name.text.trim(), _email.text.trim(), _password.text);
+    final ok = await context.read<AuthCubit>().signUp(
+      _name.text.trim(),
+      _email.text.trim(),
+      _password.text,
+    );
     if (ok && context.mounted) Navigator.of(context).pop();
   }
 
-  InputDecoration _fieldDecoration(String hint, IconData icon) => InputDecoration(
-    hintText: hint,
-    hintStyle: AppText.body.copyWith(color: AppColors.textTertiary),
-    prefixIcon: Icon(icon, color: AppColors.textTertiary, size: 20),
-    filled: true,
-    fillColor: AppColors.surface,
-    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
-    enabledBorder: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(14),
-      borderSide: const BorderSide(color: AppColors.hairline, width: 0.5),
-    ),
-    focusedBorder: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(14),
-      borderSide: BorderSide(color: AppColors.accent, width: 2),
-    ),
-  );
+  InputDecoration _fieldDecoration(String hint, IconData icon) =>
+      InputDecoration(
+        hintText: hint,
+        hintStyle: AppText.body.copyWith(color: AppColors.textTertiary),
+        prefixIcon: Icon(icon, color: AppColors.textTertiary, size: 20),
+        filled: true,
+        fillColor: AppColors.surface,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 18,
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: AppColors.hairline, width: 0.5),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: AppColors.accent, width: 2),
+        ),
+      );
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.bg,
-      body: Stack(
-        children: [
-          SafeArea(
-            child: Center(
-              child: SizedBox(
-                width: 480,
-                child: ListView(
-                  shrinkWrap: true,
-                  padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 48),
-                  children: [
-                    Text(context.l10n.createAccount, style: AppText.largeTitle),
-                    const SizedBox(height: 8),
-                    Text(context.l10n.saveYourListAndContinueWatchingAnywhere, style: AppText.body),
-                    const SizedBox(height: 32),
+    return _TvPushedScaffold(
+      child: Center(
+        child: SizedBox(
+          width: 480,
+          child: ListView(
+            shrinkWrap: true,
+            padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 48),
+            children: [
+              Text(context.l10n.createAccount, style: AppText.largeTitle),
+              const SizedBox(height: 8),
+              Text(
+                context.l10n.saveYourListAndContinueWatchingAnywhere,
+                style: AppText.body,
+              ),
+              const SizedBox(height: 32),
 
-                    TvTextField(
-                      controller: _name,
-                      autofocus: true,
-                      textInputAction: TextInputAction.next,
-                      decoration: _fieldDecoration(context.l10n.name, Icons.person_outline),
-                    ),
-                    const SizedBox(height: 14),
+              TvTextField(
+                controller: _name,
+                autofocus: true,
+                textInputAction: TextInputAction.next,
+                decoration: _fieldDecoration(
+                  context.l10n.name,
+                  Icons.person_outline,
+                ),
+              ),
+              const SizedBox(height: 14),
 
-                    TvTextField(
-                      controller: _email,
-                      keyboardType: TextInputType.emailAddress,
-                      textInputAction: TextInputAction.next,
-                      decoration: _fieldDecoration(context.l10n.email, Icons.mail_outline),
-                    ),
-                    const SizedBox(height: 14),
+              TvTextField(
+                controller: _email,
+                keyboardType: TextInputType.emailAddress,
+                textInputAction: TextInputAction.next,
+                decoration: _fieldDecoration(
+                  context.l10n.email,
+                  Icons.mail_outline,
+                ),
+              ),
+              const SizedBox(height: 14),
 
-                    TvTextField(
-                      controller: _password,
-                      obscureText: true,
-                      textInputAction: TextInputAction.done,
-                      onSubmitted: (_) => _submit(context),
-                      decoration: _fieldDecoration(context.l10n.password8Characters, Icons.lock_outline),
-                    ),
-                    const SizedBox(height: 24),
+              TvTextField(
+                controller: _password,
+                obscureText: true,
+                textInputAction: TextInputAction.done,
+                onSubmitted: (_) => _submit(context),
+                decoration: _fieldDecoration(
+                  context.l10n.password8Characters,
+                  Icons.lock_outline,
+                ),
+              ),
+              const SizedBox(height: 24),
 
-                    BlocBuilder<AuthCubit, AuthState>(
-                      builder: (context, state) {
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            if (state.error != null) ...[
-                              Text(localizeAuthError(context.l10n, state.error)!, style: AppText.caption.copyWith(color: AppColors.accent)),
-                              const SizedBox(height: 10),
-                            ],
-                            if (state.busy)
-                              Center(
-                                child: SizedBox(
-                                  width: 28,
-                                  height: 28,
-                                  child: CircularProgressIndicator(strokeWidth: 2.4, color: AppColors.accent),
-                                ),
-                              )
-                            else
-                              TvFocusable(
-                                onTap: () => _submit(context),
-                                child: SizedBox(
-                                  height: 56,
-                                  child: DecoratedBox(
-                                    decoration: BoxDecoration(
-                                      color: Colors.white,
-                                      borderRadius: BorderRadius.circular(14),
-                                    ),
-                                    child: Center(
-                                      child: Text(
-                                        context.l10n.createAccount,
-                                        style: AppText.button.copyWith(color: Colors.black),
-                                      ),
-                                    ),
+              BlocBuilder<AuthCubit, AuthState>(
+                builder: (context, state) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (state.error != null) ...[
+                        Text(
+                          localizeAuthError(context.l10n, state.error)!,
+                          style: AppText.caption.copyWith(
+                            color: AppColors.accent,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                      ],
+                      if (state.busy)
+                        Center(
+                          child: SizedBox(
+                            width: 28,
+                            height: 28,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.4,
+                              color: AppColors.accent,
+                            ),
+                          ),
+                        )
+                      else
+                        TvFocusable(
+                          onTap: () => _submit(context),
+                          child: SizedBox(
+                            height: 56,
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              child: Center(
+                                child: Text(
+                                  context.l10n.createAccount,
+                                  style: AppText.button.copyWith(
+                                    color: Colors.black,
                                   ),
                                 ),
                               ),
-                          ],
-                        );
-                      },
-                    ),
-
-                    const SizedBox(height: 16),
-                    TvFocusable(
-                      onTap: () => Navigator.of(
-                        context,
-                      ).pushReplacement(MaterialPageRoute(builder: (_) => const LoginScreenTv())),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        child: Text.rich(
-                          TextSpan(
-                            text: 'Already have an account?  ',
-                            style: AppText.caption,
-                            children: [
-                              TextSpan(
-                                text: context.l10n.logIn,
-                                style: AppText.caption.copyWith(color: AppColors.accent, fontWeight: FontWeight.w700),
-                              ),
-                            ],
+                            ),
                           ),
-                          textAlign: TextAlign.center,
                         ),
-                      ),
+                    ],
+                  );
+                },
+              ),
+
+              const SizedBox(height: 16),
+              TvFocusable(
+                onTap: () => Navigator.of(context).pushReplacement(
+                  MaterialPageRoute(builder: (_) => const LoginScreenTv()),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: Text.rich(
+                    TextSpan(
+                      text: 'Already have an account?  ',
+                      style: AppText.caption,
+                      children: [
+                        TextSpan(
+                          text: context.l10n.logIn,
+                          style: AppText.caption.copyWith(
+                            color: AppColors.accent,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
+                    textAlign: TextAlign.center,
+                  ),
                 ),
               ),
-            ),
-          ), // SafeArea
-          const Positioned(top: 8, left: 8, child: SafeArea(child: TvBackButton())),
-        ], // Stack children
-      ), // Stack (body)
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -389,84 +471,98 @@ class ProfileScreenTv extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.bg,
-      body: Stack(
-        children: [
-          SafeArea(
-            child: BlocBuilder<AuthCubit, AuthState>(
-              builder: (context, state) {
-                if (!state.isLoggedIn) {
-                  return Center(child: Text(context.l10n.notSignedIn));
-                }
-                return Center(
-                  child: SizedBox(
-                    width: 520,
-                    child: ListView(
-                      shrinkWrap: true,
-                      padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 48),
-                      children: [
-                        // Avatar
-                        Center(
-                          child: CircleAvatar(
-                            radius: 56,
-                            backgroundColor: AppColors.surface2,
-                            backgroundImage: state.avatarUrl != null
-                                ? CachedNetworkImageProvider(state.avatarUrl!)
-                                : null,
-                            child: state.avatarUrl == null
-                                ? Text(
-                                    state.displayName.isNotEmpty ? state.displayName[0].toUpperCase() : '?',
-                                    style: AppText.largeTitle,
-                                  )
-                                : null,
-                          ),
-                        ),
-                        const SizedBox(height: 20),
-
-                        Center(child: Text(state.displayName, style: AppText.title)),
-                        const SizedBox(height: 6),
-                        Center(child: Text(state.user?.email ?? '', style: AppText.caption)),
-                        const SizedBox(height: 40),
-
-                        // Logout
-                        TvFocusable(
-                          autofocus: true,
-                          onTap: () {
-                            context.read<AuthCubit>().logout();
-                            Navigator.of(context).pop();
-                          },
-                          child: SizedBox(
-                            height: 56,
-                            child: DecoratedBox(
-                              decoration: BoxDecoration(
-                                color: const Color(0x1AFFFFFF),
-                                borderRadius: BorderRadius.circular(14),
-                                border: Border.all(color: AppColors.hairline, width: 0.5),
-                              ),
-                              child: Center(
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Icon(Icons.logout_rounded, color: AppColors.textPrimary, size: 20),
-                                    const SizedBox(width: 8),
-                                    Text(context.l10n.logOut, style: AppText.button.copyWith(color: AppColors.textPrimary)),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
+    return _TvPushedScaffold(
+      child: BlocBuilder<AuthCubit, AuthState>(
+        builder: (context, state) {
+          if (!state.isLoggedIn) {
+            return Center(child: Text(context.l10n.notSignedIn));
+          }
+          return Center(
+            child: SizedBox(
+              width: 520,
+              child: ListView(
+                shrinkWrap: true,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 48,
+                  vertical: 48,
+                ),
+                children: [
+                  // Avatar
+                  Center(
+                    child: CircleAvatar(
+                      radius: 56,
+                      backgroundColor: AppColors.surface2,
+                      backgroundImage: state.avatarUrl != null
+                          ? CachedNetworkImageProvider(state.avatarUrl!)
+                          : null,
+                      child: state.avatarUrl == null
+                          ? Text(
+                              state.displayName.isNotEmpty
+                                  ? state.displayName[0].toUpperCase()
+                                  : '?',
+                              style: AppText.largeTitle,
+                            )
+                          : null,
                     ),
                   ),
-                );
-              },
+                  const SizedBox(height: 20),
+
+                  Center(child: Text(state.displayName, style: AppText.title)),
+                  const SizedBox(height: 6),
+                  Center(
+                    child: Text(
+                      state.user?.email ?? '',
+                      style: AppText.caption,
+                    ),
+                  ),
+                  const SizedBox(height: 40),
+
+                  // Logout
+                  TvFocusable(
+                    autofocus: true,
+                    onTap: () {
+                      context.read<AuthCubit>().logout();
+                      Navigator.of(context).pop();
+                    },
+                    child: SizedBox(
+                      height: 56,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: const Color(0x1AFFFFFF),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: AppColors.hairline,
+                            width: 0.5,
+                          ),
+                        ),
+                        child: Center(
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(
+                                Icons.logout_rounded,
+                                color: AppColors.textPrimary,
+                                size: 20,
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                context.l10n.logOut,
+                                style: AppText.button.copyWith(
+                                  color: AppColors.textPrimary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ), // SafeArea
-          const Positioned(top: 8, left: 8, child: SafeArea(child: TvBackButton())),
-        ], // Stack children
-      ), // Stack (body)
+          );
+        },
+      ),
     );
   }
 }

@@ -44,9 +44,7 @@ class _DiscordSettingsScreenState extends State<DiscordSettingsScreen> {
       builder: (c) => AlertDialog(
         backgroundColor: AppColors.surface,
         title: Text(context.l10n.disconnectDiscord),
-        content: Text(
-          context.l10n.disconnectDiscordBody,
-        ),
+        content: Text(context.l10n.disconnectDiscordBody),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(c, false),
@@ -54,7 +52,10 @@ class _DiscordSettingsScreenState extends State<DiscordSettingsScreen> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(c, true),
-            child: Text(context.l10n.disconnect, style: TextStyle(color: AppColors.accent)),
+            child: Text(
+              context.l10n.disconnect,
+              style: TextStyle(color: AppColors.accent),
+            ),
           ),
         ],
       ),
@@ -70,10 +71,7 @@ class _DiscordSettingsScreenState extends State<DiscordSettingsScreen> {
     final connected = _rpc.loggedIn;
     return Scaffold(
       backgroundColor: AppColors.bg,
-      appBar: AppBar(
-        backgroundColor: AppColors.bg,
-        title: Text(context.l10n.discord),
-      ),
+      appBar: settingsAppBar(context.l10n.discord),
       body: ListView(
         padding: const EdgeInsets.only(top: 8, bottom: 24),
         children: [
@@ -83,7 +81,9 @@ class _DiscordSettingsScreenState extends State<DiscordSettingsScreen> {
                 SettingsTile(
                   icon: Icons.warning_amber_rounded,
                   title: context.l10n.notConfigured,
-                  subtitle: context.l10n.aDiscordApplicationIDMustBeSetInTheBuildFirst,
+                  subtitle: context
+                      .l10n
+                      .aDiscordApplicationIDMustBeSetInTheBuildFirst,
                 ),
               ],
             ),
@@ -93,7 +93,9 @@ class _DiscordSettingsScreenState extends State<DiscordSettingsScreen> {
                 SettingsTile(
                   autofocus: true,
                   icon: Icons.link_rounded,
-                  title: _busy ? context.l10n.connectingEllipsis : context.l10n.connectDiscord,
+                  title: _busy
+                      ? context.l10n.connectingEllipsis
+                      : context.l10n.connectDiscord,
                   subtitle: _busy
                       ? null
                       : context.l10n.signInSoYourStatusCanShow,

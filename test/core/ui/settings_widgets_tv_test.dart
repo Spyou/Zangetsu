@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_it/get_it.dart';
 import 'package:watch_app/core/app_mode.dart';
+import 'package:watch_app/core/tv/tv_back_button.dart';
 import 'package:watch_app/core/tv/tv_list_focusable.dart';
 import 'package:watch_app/core/ui/settings_widgets.dart';
 
@@ -10,42 +11,65 @@ void main() {
     await GetIt.instance.reset();
   });
 
-  testWidgets('SettingsCard uses Clip.none on TV so focus chrome is not cropped',
-      (tester) async {
+  testWidgets(
+    'SettingsCard uses Clip.none on TV so focus chrome is not cropped',
+    (tester) async {
+      GetIt.instance.registerSingleton<AppMode>(const AppMode(isTv: true));
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SettingsCard(
+              children: [
+                SettingsTile(
+                  autofocus: true,
+                  icon: Icons.settings,
+                  title: 'Row',
+                  onTap: () {},
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final card = tester.widget<Container>(
+        find
+            .descendant(
+              of: find.byType(SettingsCard),
+              matching: find.byType(Container),
+            )
+            .first,
+      );
+      expect(card.clipBehavior, Clip.none);
+      expect(find.byType(TvListFocusable), findsOneWidget);
+    },
+  );
+
+  testWidgets('settingsAppBar on TV puts a D-pad Back control in the title', (
+    tester,
+  ) async {
     GetIt.instance.registerSingleton<AppMode>(const AppMode(isTv: true));
 
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: SettingsCard(
-            children: [
-              SettingsTile(
-                autofocus: true,
-                icon: Icons.settings,
-                title: 'Row',
-                onTap: () {},
-              ),
-            ],
-          ),
+          appBar: settingsAppBar('Playback'),
+          body: const SizedBox.shrink(),
         ),
       ),
     );
     await tester.pumpAndSettle();
 
-    final card = tester.widget<Container>(
-      find
-          .descendant(
-            of: find.byType(SettingsCard),
-            matching: find.byType(Container),
-          )
-          .first,
-    );
-    expect(card.clipBehavior, Clip.none);
-    expect(find.byType(TvListFocusable), findsOneWidget);
+    expect(find.text('Back'), findsOneWidget);
+    expect(find.byType(TvBackButton), findsOneWidget);
+    expect(find.text('Playback'), findsOneWidget);
   });
 
-  testWidgets('SettingsTile stays InkWell on phone (no TvListFocusable)',
-      (tester) async {
+  testWidgets('SettingsTile stays InkWell on phone (no TvListFocusable)', (
+    tester,
+  ) async {
     GetIt.instance.registerSingleton<AppMode>(const AppMode(isTv: false));
 
     await tester.pumpWidget(
@@ -53,11 +77,7 @@ void main() {
         home: Scaffold(
           body: SettingsCard(
             children: [
-              SettingsTile(
-                icon: Icons.settings,
-                title: 'Row',
-                onTap: () {},
-              ),
+              SettingsTile(icon: Icons.settings, title: 'Row', onTap: () {}),
             ],
           ),
         ),
