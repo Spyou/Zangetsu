@@ -1,4 +1,5 @@
-import '../repository/source_repository.dart';
+import '../logging/app_logger.dart';
+import '../repository/catalogue_repository.dart';
 import 'notification_service.dart';
 import 'subscription_store.dart';
 
@@ -10,7 +11,15 @@ import 'subscription_store.dart';
 /// source can't block the rest.
 class SubscriptionChecker {
   SubscriptionChecker(this._repo, this._store);
-  final SourceRepository _repo;
+
+  /// The ROUTER, not the source repository.
+  ///
+  /// It dispatches on the url, so a `zm://` subscription reaches the metadata
+  /// catalogue, which resolves the matched source itself. Asking
+  /// [SourceRepository] directly threw `Provider not loaded: zm` for every
+  /// metadata title — swallowed below, so the bell stored state and was then
+  /// never checked again.
+  final CatalogueRepository _repo;
   final SubscriptionStore _store;
 
   bool _running = false;
@@ -43,8 +52,13 @@ class SubscriptionChecker {
             }
             await _store.setCount(sub.sourceId, sub.url, count);
           }
-        } catch (_) {
-          // dead/slow source — skip; retried next sweep.
+        } catch (e) {
+          // Dead/slow source — skip; retried next sweep. Logged because a
+          // subscription that silently never fires is undiagnosable: the
+          // `zm` breakage above sat behind this exact catch.
+          AppLogger.instance.log(
+            '[notify] check failed · ${sub.sourceId} · ${sub.title} · $e',
+          );
         }
       }
     } finally {

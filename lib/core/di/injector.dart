@@ -868,7 +868,10 @@ Future<void> initDependencies() async {
   await SubscriptionStore.init();
   sl.registerSingleton<SubscriptionStore>(SubscriptionStore());
   sl.registerSingleton<SubscriptionChecker>(
-    SubscriptionChecker(sl<SourceRepository>(), sl<SubscriptionStore>()),
+    // The router: it sends `zm://` subscriptions to the metadata catalogue.
+  // Handing it SourceRepository meant every Z Mode subscription threw and was
+  // swallowed — the bell stored state and was never checked.
+  SubscriptionChecker(sl<CatalogueRepository>(), sl<SubscriptionStore>()),
   );
 
   // Developer announcements: read a public JSON feed on launch and surface new
