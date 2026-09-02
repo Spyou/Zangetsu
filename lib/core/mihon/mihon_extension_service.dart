@@ -129,6 +129,25 @@ class MihonExtensionService {
     }
   }
 
+  /// Opens the native WebView on [url] and leaves it open.
+  ///
+  /// The Cloudflare solver shares this screen but dismisses itself the moment a
+  /// clearance lands, which is exactly wrong for a sign-in — so this asks for
+  /// the mode that waits for the user instead. Returns as soon as the screen is
+  /// launched; nothing waits on the login finishing.
+  static Future<void> openSourceWebView(String url, {String? title}) async {
+    try {
+      await _channel.invokeMethod<void>('openSourceWebView', {
+        'url': url,
+        'title': title,
+      });
+    } on PlatformException catch (e) {
+      debugPrint('[mihon] openSourceWebView failed: $e');
+    } on MissingPluginException {
+      // Non-Android host — no native WebView.
+    }
+  }
+
   /// Downloads the extension APK from [entry.apkUrl], installs it, then
   /// builds a [MihonProvider] for every new source in the package.
   ///

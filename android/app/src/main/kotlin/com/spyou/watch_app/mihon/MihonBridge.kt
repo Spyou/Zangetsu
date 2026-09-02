@@ -488,6 +488,22 @@ class MihonBridge(
                     context.startActivity(intent)
                 }
 
+                "openSourceWebView" -> {
+                    val url = call.argument<String>("url")
+                    if (url.isNullOrBlank()) {
+                        result.error("bad_args", "url is required", null)
+                        return@setMethodCallHandler
+                    }
+                    val intent = Intent(context, MihonCloudflareActivity::class.java).apply {
+                        putExtra(MihonCloudflareActivity.EXTRA_URL, url)
+                        putExtra(MihonCloudflareActivity.EXTRA_STAY_OPEN, true)
+                        putExtra(MihonCloudflareActivity.EXTRA_TITLE, call.argument<String>("title"))
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    context.startActivity(intent)
+                    result.success(null)
+                }
+
                 else -> result.notImplemented()
             }
         }
