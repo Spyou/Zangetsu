@@ -55,6 +55,26 @@ class MediaItem extends Equatable {
   /// IMDb id (e.g. `tt1234567`) for Simkl tracking when no TMDB id is exposed.
   final String? imdbId;
 
+  /// Which metadata catalogue this title came from, stamped when it is saved.
+  ///
+  /// A saved title keeps the provider that gave it to you: change your
+  /// Settings pick later and your list still opens each entry where it came
+  /// from. It cannot be inferred afterwards — AniList and MAL both key on
+  /// `mal:`, TMDB and Simkl both on `tmdb:` — so it is recorded at save time.
+  /// Null on anything saved before this existed, and on source titles, which
+  /// carry their real source in [sourceId] already.
+  final String? savedFrom;
+
+  /// When this was saved, in millis since epoch. Stamped alongside
+  /// [savedFrom].
+  ///
+  /// "Recently added" used to trust the order the Hive box iterated in, which
+  /// is not a record of anything: a cloud restore repopulates the box in
+  /// whatever order the rows come back, and deletions perturb what is left.
+  /// Null on entries saved before this existed — those keep store order,
+  /// after everything that does have a date.
+  final int? savedAtMs;
+
   /// Genres, when the source provides them on the search/browse item itself
   /// (Mihon/Aniyomi carry these; most sources don't and this stays empty).
   /// Drives the search screen's genre filter — see [MediaDetail.genres] for
@@ -85,6 +105,8 @@ class MediaItem extends Equatable {
     this.dubBadge,
     this.subCount,
     this.dubCount,
+    this.savedFrom,
+    this.savedAtMs,
     this.malId,
     this.tmdbId,
     this.tmdbIsTv = false,
@@ -104,6 +126,8 @@ class MediaItem extends Equatable {
     int? malId,
     int? tmdbId,
     String? imdbId,
+    String? savedFrom,
+    int? savedAtMs,
   }) => MediaItem(
     id: id,
     title: title,
@@ -122,10 +146,13 @@ class MediaItem extends Equatable {
     tmdbId: tmdbId ?? this.tmdbId,
     tmdbIsTv: tmdbIsTv,
     imdbId: imdbId ?? this.imdbId,
+    savedFrom: savedFrom ?? this.savedFrom,
+    savedAtMs: savedAtMs ?? this.savedAtMs,
   );
 
   @override
   List<Object?> get props => [
+    savedFrom,
     id,
     title,
     englishTitle,

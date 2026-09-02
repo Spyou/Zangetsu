@@ -8515,6 +8515,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Adult'**
   String get adultOnly;
+
+  /// No description provided for @yourSavedAnimeList.
+  ///
+  /// In en, this message translates to:
+  /// **'Your saved anime list'**
+  String get yourSavedAnimeList;
+
+  /// No description provided for @yourSavedMangaList.
+  ///
+  /// In en, this message translates to:
+  /// **'Your saved manga list'**
+  String get yourSavedMangaList;
+
+  /// No description provided for @yourSavedNovelList.
+  ///
+  /// In en, this message translates to:
+  /// **'Your saved novel list'**
+  String get yourSavedNovelList;
 }
 
 class _AppLocalizationsDelegate

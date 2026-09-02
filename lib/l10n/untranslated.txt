@@ -44,7 +44,10 @@
     "adultCatalogueSubtitle",
     "enableAdultCatalogue",
     "enableAdultCatalogueBody",
-    "adultOnly"
+    "adultOnly",
+    "yourSavedAnimeList",
+    "yourSavedMangaList",
+    "yourSavedNovelList"
   ],
 
   "es": [
@@ -92,7 +95,10 @@
     "adultCatalogueSubtitle",
     "enableAdultCatalogue",
     "enableAdultCatalogueBody",
-    "adultOnly"
+    "adultOnly",
+    "yourSavedAnimeList",
+    "yourSavedMangaList",
+    "yourSavedNovelList"
   ],
 
   "fr": [
@@ -140,7 +146,10 @@
     "adultCatalogueSubtitle",
     "enableAdultCatalogue",
     "enableAdultCatalogueBody",
-    "adultOnly"
+    "adultOnly",
+    "yourSavedAnimeList",
+    "yourSavedMangaList",
+    "yourSavedNovelList"
   ],
 
   "it": [
@@ -188,7 +197,10 @@
     "adultCatalogueSubtitle",
     "enableAdultCatalogue",
     "enableAdultCatalogueBody",
-    "adultOnly"
+    "adultOnly",
+    "yourSavedAnimeList",
+    "yourSavedMangaList",
+    "yourSavedNovelList"
   ],
 
   "ja": [
@@ -236,7 +248,10 @@
     "adultCatalogueSubtitle",
     "enableAdultCatalogue",
     "enableAdultCatalogueBody",
-    "adultOnly"
+    "adultOnly",
+    "yourSavedAnimeList",
+    "yourSavedMangaList",
+    "yourSavedNovelList"
   ],
 
   "zh": [
@@ -284,7 +299,10 @@
     "adultCatalogueSubtitle",
     "enableAdultCatalogue",
     "enableAdultCatalogueBody",
-    "adultOnly"
+    "adultOnly",
+    "yourSavedAnimeList",
+    "yourSavedMangaList",
+    "yourSavedNovelList"
   ],
 
   "zh_TW": [
@@ -332,6 +350,9 @@
     "adultCatalogueSubtitle",
     "enableAdultCatalogue",
     "enableAdultCatalogueBody",
-    "adultOnly"
+    "adultOnly",
+    "yourSavedAnimeList",
+    "yourSavedMangaList",
+    "yourSavedNovelList"
   ]
 }

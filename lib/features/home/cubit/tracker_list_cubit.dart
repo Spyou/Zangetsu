@@ -1,7 +1,11 @@
+import 'package:flutter/foundation.dart';
 import 'dart:async';
 
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../../core/mode/content_mode_cubit.dart';
+import '../../../core/mode/content_mode.dart';
+import '../../../core/di/injector.dart';
 import '../../../core/anilist/anilist_service.dart';
 import '../../../core/tracker/tracker.dart';
 import 'my_list_cubit.dart';
@@ -76,8 +80,15 @@ class TrackerListState {
 /// pull-to-refresh. Selecting [MyListSource] just flips back to the existing
 /// [MyListCubit]-driven grid — no data is held here for it.
 class TrackerListCubit extends Cubit<TrackerListState> {
-  TrackerListCubit()
+  TrackerListCubit({this.pinnedKind})
     : super(const TrackerListState(source: MyListSource()));
+
+  /// The kind this screen was opened FOR, when it was opened for one.
+  ///
+  /// The hub opens "AniList → Manga" directly, so the app's current mode is
+  /// not the right answer there — it would fetch the anime lists while the
+  /// screen shows manga.
+  final ContentMode? pinnedKind;
 
   /// Per-session cache of a tracker's mapped entries, keyed by tracker. Lets
   /// switching between sources re-show a list instantly without refetching.
@@ -94,15 +105,17 @@ class TrackerListCubit extends Cubit<TrackerListState> {
   void selectTracker(Tracker tracker) {
     final cached = _cache[tracker];
     if (cached != null) {
-      emit(TrackerListState(
-        source: TrackerSource(tracker),
-        status: TrackerListStatus.ready,
-        entries: cached,
-        // Carry the names over. Emitting a bare state dropped them, so the
-        // custom-list tabs disappeared every time you switched back to this
-        // tracker and only returned after a full reload.
-        customListNames: _nameCache[tracker] ?? const [],
-      ));
+      emit(
+        TrackerListState(
+          source: TrackerSource(tracker),
+          status: TrackerListStatus.ready,
+          entries: cached,
+          // Carry the names over. Emitting a bare state dropped them, so the
+          // custom-list tabs disappeared every time you switched back to this
+          // tracker and only returned after a full reload.
+          customListNames: _nameCache[(tracker, _kind)] ?? const [],
+        ),
+      );
       // Show the cached copy immediately, then quietly re-read. Without this
       // the session cache never expires: a title filed into a custom list on
       // the AniList website (or from another device) kept reading as 0 here
@@ -110,10 +123,12 @@ class TrackerListCubit extends Cubit<TrackerListState> {
       unawaited(_fetch(tracker));
       return;
     }
-    emit(TrackerListState(
-      source: TrackerSource(tracker),
-      status: TrackerListStatus.loading,
-    ));
+    emit(
+      TrackerListState(
+        source: TrackerSource(tracker),
+        status: TrackerListStatus.loading,
+      ),
+    );
     unawaited(_fetch(tracker));
   }
 
@@ -124,16 +139,40 @@ class TrackerListCubit extends Cubit<TrackerListState> {
     await _fetch(tracker);
   }
 
-  /// Cached per tracker: the names change only when the user edits them, and
-  /// the un-cached version re-queried AniList on every load — five times in
-  /// half a minute, by the log.
-  final Map<Tracker, List<String>> _nameCache = {};
+  /// Cached per tracker AND kind: AniList keeps a separate set of custom
+  /// lists for anime and for manga, so one cache per tracker handed back the
+  /// anime names while you were looking at manga. The names change only when
+  /// the user edits them, and the un-cached version re-queried AniList on
+  /// every load — five times in half a minute, by the log.
+  final Map<(Tracker, MediaKind), List<String>> _nameCache = {};
+
+  /// The AniList side matching the mode on screen. Reading it here rather
+  /// than taking it as a parameter keeps the call sites unchanged, and the
+  /// mode cannot change without the screen rebuilding anyway.
+  MediaKind get _kind {
+    final mode =
+        pinnedKind ??
+        (sl.isRegistered<ContentModeCubit>()
+            ? sl<ContentModeCubit>().state
+            : ContentMode.anime);
+    // AniList has no novel lists — novels live on the manga side there, the
+    // same as everywhere else in its API.
+    return mode.isReading ? MediaKind.manga : MediaKind.anime;
+  }
 
   /// Fetches the tracker's own custom list names and folds them into state.
   /// Never throws into the caller: the tabs are a bonus, the library is not.
+  /// Exposed for tests: the names are fetched as a side effect of loading a
+  /// library, and the kind they are fetched for is the thing worth pinning.
+  @visibleForTesting
+  Future<void> loadCustomListNamesForTest(Tracker t) => _loadCustomListNames(t);
+
   Future<void> _loadCustomListNames(Tracker tracker) async {
     if (tracker is! AniListService) return;
-    final cached = _nameCache[tracker];
+    // Which side of AniList to read. It has no novel lists — novels live on
+    // the manga side there, the same as everywhere else in its API.
+    final kind = _kind;
+    final cached = _nameCache[(tracker, kind)];
     if (cached != null) {
       if (!isClosed && state.tracker == tracker) {
         emit(state.copyWith(customListNames: cached));
@@ -141,8 +180,8 @@ class TrackerListCubit extends Cubit<TrackerListState> {
       return;
     }
     try {
-      final names = await tracker.customListNames();
-      _nameCache[tracker] = names;
+      final names = await tracker.customListNames(kind: kind);
+      _nameCache[(tracker, kind)] = names;
       if (isClosed || state.tracker != tracker) return;
       emit(state.copyWith(customListNames: names));
     } catch (_) {
@@ -160,21 +199,21 @@ class TrackerListCubit extends Cubit<TrackerListState> {
       if (isClosed) return;
       final entries = [
         for (final t in raw)
-          MyListEntry(t.item, t.status,
-              progress: t.progress,
-              score: t.score,
-              tmdbIsTv: t.tmdbIsTv,
-              updatedAt: t.updatedAt,
-              customLists: t.customLists),
+          MyListEntry(
+            t.item,
+            t.status,
+            progress: t.progress,
+            score: t.score,
+            tmdbIsTv: t.tmdbIsTv,
+            updatedAt: t.updatedAt,
+            customLists: t.customLists,
+          ),
       ];
       _cache[tracker] = entries;
       if (isClosed) return;
       // Ignore a result that lands after the user switched away.
       if (state.tracker != tracker) return;
-      emit(state.copyWith(
-        status: TrackerListStatus.ready,
-        entries: entries,
-      ));
+      emit(state.copyWith(status: TrackerListStatus.ready, entries: entries));
       // The account's own list names arrive SEPARATELY, after the library is
       // already on screen. Awaiting them inline made the whole tab wait on a
       // second request it doesn't need — it looked unresponsive, and the

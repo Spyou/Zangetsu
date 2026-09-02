@@ -16,18 +16,28 @@ class ShareLink {
   /// The short web link to share for [item].
   static String forItem(MediaItem item) {
     final cover = item.cover;
-    return Uri.parse(Environment.siteOpenUrl).replace(queryParameters: {
-      's': item.sourceId,
-      'u': item.url,
-      't': item.title,
-      'y': item.type == ProviderType.movie ? 'm' : 'a',
-      // Carried so an opened link has art straight away. Detail otherwise has
-      // nothing to draw until the source's own detail call returns, and for a
-      // source that omits the cover there it never appears at all.
-      // Only the URL: covers needing a Referer are a minority and would bloat
-      // every link with headers to rescue them.
-      if (cover != null && cover.isNotEmpty) 'c': cover,
-    }).toString();
+    return Uri.parse(Environment.siteOpenUrl)
+        .replace(
+          queryParameters: {
+            's': item.sourceId,
+            'u': item.url,
+            't': item.title,
+            'y': item.type == ProviderType.movie ? 'm' : 'a',
+            // Carried so an opened link has art straight away. Detail otherwise has
+            // nothing to draw until the source's own detail call returns, and for a
+            // source that omits the cover there it never appears at all.
+            // Only the URL: covers needing a Referer are a minority and would bloat
+            // every link with headers to rescue them.
+            if (cover != null && cover.isNotEmpty) 'c': cover,
+            // The catalogue you were looking at, so the person opening it sees the
+            // same page rather than their own provider's version of the title.
+            // Absent on links from older builds, and on source titles, which carry
+            // their source in `s` already.
+            if (item.savedFrom != null && item.savedFrom!.isNotEmpty)
+              'p': item.savedFrom!,
+          },
+        )
+        .toString();
   }
 
   /// Human-facing share text: the title + the link.
@@ -54,6 +64,9 @@ class ShareLink {
       // Absent on links shared by older builds, which is why Detail still
       // falls back to whatever the source's detail call returns.
       cover: (c != null && c.isNotEmpty) ? c : null,
+      // Null on an older link: the recipient then reads it with their own
+      // provider, which is what happened before this was carried at all.
+      savedFrom: q['p'],
     );
   }
 }

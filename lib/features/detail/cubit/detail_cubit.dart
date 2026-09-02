@@ -1,6 +1,8 @@
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../../core/zmode/metadata_repository.dart';
+import '../../../core/zmode/metadata_provider_prefs.dart';
 import '../../../core/di/injector.dart';
 import '../../../core/error/exceptions.dart';
 import '../../../core/error/network_failure.dart';
@@ -116,6 +118,7 @@ class DetailCubit extends Cubit<DetailState> {
     TitlePrefsStore? prefs,
     int? seedMalId,
     ProviderType? seedType,
+    this.prefer,
   }) : _repo = repo,
        _url = url,
        _sourceId = sourceId,
@@ -141,6 +144,37 @@ class DetailCubit extends Cubit<DetailState> {
   }
 
   final CatalogueRepository _repo;
+
+  /// Read this title from a specific metadata catalogue — set when it was
+  /// opened from a tracker that has one, so an AniList library entry opens
+  /// AniList's page even if MyAnimeList is the app-wide pick.
+  final PreferredProvider? prefer;
+
+  /// The metadata fetch, honouring [prefer] when there is one. The router has
+  /// no opinion about providers, so a preference goes straight to the
+  /// repository that does.
+  Future<MediaDetail> _fetchDetail({
+    required String category,
+    void Function(MediaDetail partial)? onPartial,
+  }) {
+    final p = prefer;
+    if (p != null && sl.isRegistered<MetadataRepository>()) {
+      return sl<MetadataRepository>().detail(
+        _url,
+        category: category,
+        sourceId: _sourceId,
+        onPartial: onPartial,
+        prefer: p,
+      );
+    }
+    return _repo.detail(
+      _url,
+      category: category,
+      sourceId: _sourceId,
+      onPartial: onPartial,
+    );
+  }
+
   final String _url;
   final TitlePrefsStore _prefs;
 
@@ -167,10 +201,8 @@ class DetailCubit extends Cubit<DetailState> {
       state.copyWith(status: DetailStatus.loading, clearCloudflareUrl: true),
     );
     try {
-      final detail = await _repo.detail(
-        _url,
+      final detail = await _fetchDetail(
         category: state.category,
-        sourceId: _sourceId,
         // Metadata titles resolve their source by searching every installed
         // one in turn; that used to hold the whole screen on the skeleton.
         // Paint as soon as the metadata lands and let the episode list fill
@@ -178,11 +210,13 @@ class DetailCubit extends Cubit<DetailState> {
         // loading → success, so it can't clobber a finished or failed load.
         onPartial: (partial) {
           if (isClosed || state.status != DetailStatus.loading) return;
-          emit(state.copyWith(
-            status: DetailStatus.success,
-            detail: partial,
-            episodesLoading: true,
-          ));
+          emit(
+            state.copyWith(
+              status: DetailStatus.success,
+              detail: partial,
+              episodesLoading: true,
+            ),
+          );
         },
       );
       // A novel (LNReader) plugin swallows its own fetch failure and returns
@@ -193,35 +227,43 @@ class DetailCubit extends Cubit<DetailState> {
       // gets mistaken for a block.
       final latched = detail.title.isEmpty ? NovelCloudflare.pendingUrl : null;
       if (latched != null) {
-        emit(state.copyWith(
-          status: DetailStatus.error,
-          cloudflareUrl: latched,
-          episodesLoading: false,
-        ));
+        emit(
+          state.copyWith(
+            status: DetailStatus.error,
+            cloudflareUrl: latched,
+            episodesLoading: false,
+          ),
+        );
         return;
       }
       NovelCloudflare.clear();
-      emit(state.copyWith(
-        status: DetailStatus.success,
-        detail: detail,
-        episodesLoading: false,
-      ));
+      emit(
+        state.copyWith(
+          status: DetailStatus.success,
+          detail: detail,
+          episodesLoading: false,
+        ),
+      );
       _enrich(detail);
     } on CloudflareRequiredException catch (e) {
-      emit(state.copyWith(
-        status: DetailStatus.error,
-        cloudflareUrl: e.url,
-        episodesLoading: false,
-      ));
+      emit(
+        state.copyWith(
+          status: DetailStatus.error,
+          cloudflareUrl: e.url,
+          episodesLoading: false,
+        ),
+      );
     } catch (e) {
       // Same distinction Home makes: a request that never left the device is
       // not the title failing to load.
       final offline = await isOfflineErrorConfirmed(e);
-      emit(state.copyWith(
-        status: DetailStatus.error,
-        error: offline ? 'offline' : 'load_failed',
-        episodesLoading: false,
-      ));
+      emit(
+        state.copyWith(
+          status: DetailStatus.error,
+          error: offline ? 'offline' : 'load_failed',
+          episodesLoading: false,
+        ),
+      );
     }
   }
 
@@ -245,22 +287,22 @@ class DetailCubit extends Cubit<DetailState> {
     if (dropCache) await _repo.clearHttpCache();
     final previous = state.detail;
     try {
-      final fresh = await _repo.detail(
-        _url,
+      final fresh = await _fetchDetail(
         category: state.category,
-        sourceId: _sourceId,
         // Same early paint load() gets. It matters more here: without it the
         // PREVIOUS source's episodes sit on screen, looking like this
         // source's, until the new list lands.
         onPartial: (partial) {
           if (isClosed || state.status != DetailStatus.success) return;
-          emit(state.copyWith(
-            detail: partial.copyWith(
-              malId: partial.malId ?? previous?.malId,
-              tmdbId: partial.tmdbId ?? previous?.tmdbId,
+          emit(
+            state.copyWith(
+              detail: partial.copyWith(
+                malId: partial.malId ?? previous?.malId,
+                tmdbId: partial.tmdbId ?? previous?.tmdbId,
+              ),
+              episodesLoading: true,
             ),
-            episodesLoading: true,
-          ));
+          );
         },
       );
       if (isClosed) return;
@@ -331,7 +373,9 @@ class DetailCubit extends Cubit<DetailState> {
           d = d.copyWith(tmdbId: id);
           emit(state.copyWith(detail: d));
         }
-      } catch (_) {/* keep going with what we have */}
+      } catch (_) {
+        /* keep going with what we have */
+      }
     }
 
     // Id-less anime (Aniyomi, most CloudStream): resolve the MAL id from title
@@ -345,7 +389,9 @@ class DetailCubit extends Cubit<DetailState> {
           d = d.copyWith(malId: resolved);
           emit(state.copyWith(detail: d));
         }
-      } catch (_) {/* keep going without it */}
+      } catch (_) {
+        /* keep going without it */
+      }
     }
 
     // A movie-typed title from an anime-capable (mixed) source might actually be
@@ -362,7 +408,9 @@ class DetailCubit extends Cubit<DetailState> {
           d = d.copyWith(malId: mal, type: ProviderType.anime);
           emit(state.copyWith(detail: d));
         }
-      } catch (_) {/* stays a movie */}
+      } catch (_) {
+        /* stays a movie */
+      }
     }
 
     // Fill in per-episode descriptions (AniZip for anime, TMDB season for a
@@ -381,7 +429,9 @@ class DetailCubit extends Cubit<DetailState> {
           d = d.copyWith(episodes: enriched);
           emit(state.copyWith(detail: d));
         }
-      } catch (_) {/* keep episodes as-is */}
+      } catch (_) {
+        /* keep episodes as-is */
+      }
     }
 
     // Prefer id-based enrichment (AniList/TMDB) — it's richer: actor photos,
@@ -403,7 +453,9 @@ class DetailCubit extends Cubit<DetailState> {
           emit(state.copyWith(cast: extras.cast, relations: extras.relations));
           return;
         }
-      } catch (_) {/* fall through to source-supplied extras */}
+      } catch (_) {
+        /* fall through to source-supplied extras */
+      }
     }
     // Fall back to Cast/Relations the source supplied directly (e.g.
     // CloudStream's actors/recommendations) — so the tabs fill even without ids.
@@ -423,11 +475,7 @@ class DetailCubit extends Cubit<DetailState> {
     if (cat == state.category) return;
     emit(state.copyWith(category: cat, status: DetailStatus.loading));
     try {
-      final detail = await _repo.detail(
-        _url,
-        category: cat,
-        sourceId: _sourceId,
-      );
+      final detail = await _fetchDetail(category: cat);
       emit(
         state.copyWith(
           status: DetailStatus.success,
@@ -440,10 +488,12 @@ class DetailCubit extends Cubit<DetailState> {
       await _prefs.setCategory(_prefsSourceId, _url, cat);
     } catch (e) {
       final offline = await isOfflineErrorConfirmed(e);
-      emit(state.copyWith(
-        status: DetailStatus.error,
-        error: offline ? 'offline' : 'load_failed',
-      ));
+      emit(
+        state.copyWith(
+          status: DetailStatus.error,
+          error: offline ? 'offline' : 'load_failed',
+        ),
+      );
     }
   }
 

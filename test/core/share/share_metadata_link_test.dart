@@ -33,16 +33,63 @@ void main() {
     expect(back.url, 'zm://anime/mal:1735');
   });
 
-  test('the link names no provider, only the title', () {
-    // Deliberate: the id is provider-neutral, so the recipient opens it with
-    // THEIR provider. Encoding the sender's would tell a MAL user to go and
-    // use AniList for no reason.
+  test('an unsaved title names no provider', () {
+    // Nothing recorded to pass on: the recipient opens it with their own.
     final link = ShareLink.forItem(_zItem('mal:1735'));
 
     expect(link, contains('s=zm'));
-    for (final p in ['anilist', 'myanimelist', 'tmdb=', 'simkl']) {
-      expect(link.toLowerCase(), isNot(contains(p)));
-    }
+    expect(link, isNot(contains('p=')));
+  });
+
+  test('the catalogue you were on carries to the other person', () {
+    final item = MediaItem(
+      id: 'tmdb:9',
+      title: 'A Film',
+      url: 'zm://movie/tmdb:9',
+      type: ProviderType.movie,
+      sourceId: ZmodeIds.sourceId,
+      savedFrom: 'Simkl',
+    );
+
+    final link = ShareLink.forItem(item);
+    final back = ShareLink.parse(
+      Uri.parse(link.replaceFirst(RegExp(r'^https?://[^?]*'), 'zangetsu://open')),
+    );
+
+    expect(back!.savedFrom, 'Simkl');
+  });
+
+  test('a source share is unchanged', () {
+    // Source titles carry their source in `s` and have nothing to stamp, so
+    // their links must look exactly as they always did.
+    final src = MediaItem(
+      id: '1',
+      title: 'A Show',
+      url: 'https://example.test/show/1',
+      type: ProviderType.anime,
+      sourceId: 'ani:1',
+    );
+
+    final link = ShareLink.forItem(src);
+
+    expect(link, contains('s=ani%3A1'));
+    expect(link, isNot(contains('p=')));
+    final back = ShareLink.parse(
+      Uri.parse(link.replaceFirst(RegExp(r'^https?://[^?]*'), 'zangetsu://open')),
+    );
+    expect(back!.sourceId, 'ani:1');
+    expect(back.savedFrom, isNull);
+  });
+
+  test('an older link without the provider still opens', () {
+    // Shared before this existed: it must resolve, just with the recipient's
+    // own provider.
+    final back = ShareLink.parse(
+      Uri.parse('zangetsu://open?s=zm&u=zm%3A%2F%2Fanime%2Fmal%3A1&t=X'),
+    );
+
+    expect(back, isNotNull);
+    expect(back!.savedFrom, isNull);
   });
 
   test('movie and manga kinds keep their kind in the url', () {

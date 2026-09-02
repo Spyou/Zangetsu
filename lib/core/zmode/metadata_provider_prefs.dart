@@ -9,6 +9,15 @@ enum AnimeProvider { anilist, mal }
 /// Who supplies movie/TV metadata.
 enum VideoProvider { tmdb, simkl }
 
+/// A specific provider to prefer for one request, whatever the saved choice.
+///
+/// Opening a title from a tracker should read it from THAT tracker's own
+/// catalogue: you are looking at your AniList library, so the page you land on
+/// should be AniList's, even when MyAnimeList is the app-wide pick. A tracker
+/// with no catalogue behind it (Trakt, say) simply has no value here and falls
+/// back to the saved choice.
+enum PreferredProvider { anilist, mal, tmdb, simkl }
+
 /// The user's metadata provider choice, and nothing else — which provider is
 /// actually answering right now is [MetadataRepository]'s business, since it
 /// falls back on its own when the chosen one is unreachable.

@@ -5,6 +5,9 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 
+import '../di/injector.dart';
+import '../zmode/metadata_repository.dart';
+import '../zmode/zmode_ids.dart';
 import '../logging/app_logger.dart';
 import '../models/media_item.dart';
 import '../supabase/supabase_service.dart';
@@ -30,8 +33,10 @@ class MyListRemote {
   }
 
   Future<List<Map<String, dynamic>>> listFor(String userKey) async {
-    final res =
-        await _service.client.from('mylist').select().eq('user_key', userKey);
+    final res = await _service.client
+        .from('mylist')
+        .select()
+        .eq('user_key', userKey);
     return (res as List).cast<Map<String, dynamic>>();
   }
 }
@@ -46,9 +51,9 @@ class MyListStore {
     MyListRemote? remote,
     String? Function(MediaItem)? statusOf,
     void Function(String key, String? statusName)? onStatusPulled,
-  })  : _remote = remote ?? MyListRemote(service),
-        _statusOf = statusOf,
-        _onStatusPulled = onStatusPulled;
+  }) : _remote = remote ?? MyListRemote(service),
+       _statusOf = statusOf,
+       _onStatusPulled = onStatusPulled;
 
   final MyListRemote _remote;
 
@@ -120,7 +125,8 @@ class MyListStore {
     }
     var pushed = 0, failed = 0;
     for (final m in all()) {
-      if (cloudKeys.contains(_key(m))) continue; // already in cloud — don't clobber
+      if (cloudKeys.contains(_key(m)))
+        continue; // already in cloud — don't clobber
       try {
         await _remote.upsert(_cloudRow(uid, m));
         pushed++;
@@ -186,6 +192,27 @@ class MyListStore {
     await toggle(m);
   }
 
+  /// Records which catalogue a metadata title came from, once, on the way in.
+  ///
+  /// Done here rather than at the four call sites that add to the list, so no
+  /// path can forget. A saved title then keeps its origin: change the Settings
+  /// provider later and the list still opens each entry where it came from.
+  /// Source titles are left alone — [MediaItem.sourceId] already names theirs.
+  MediaItem _stamped(MediaItem m) {
+    // The date goes on everything, including source titles: "recently added"
+    // has to mean something for those too.
+    var out = m.savedAtMs != null
+        ? m
+        : m.copyWith(savedAtMs: DateTime.now().millisecondsSinceEpoch);
+    if (out.savedFrom != null || out.sourceId != ZmodeIds.sourceId) return out;
+    final c = ZmodeIds.parseShow(out.url);
+    if (c == null) return out;
+    final name = sl.isRegistered<MetadataRepository>()
+        ? sl<MetadataRepository>().nameForKind(c.kind)
+        : null;
+    return name == null ? out : out.copyWith(savedFrom: name);
+  }
+
   /// Remove [m] from the list (no-op if absent).
   Future<void> remove(MediaItem m) async {
     if (!_box.containsKey(_key(m))) return;
@@ -196,7 +223,7 @@ class MyListStore {
     final k = _key(m);
     final adding = !_box.containsKey(k);
     if (adding) {
-      await _box.put(k, m.toJson());
+      await _box.put(k, _stamped(m).toJson());
     } else {
       await _box.delete(k);
     }
@@ -215,8 +242,10 @@ class MyListStore {
       // local box already reflects the change; remember an un-synced ADD so
       // [retryPending] pushes it up once writes are available again. A
       // removed item no longer needs syncing.
-      AppLogger.instance.log('mylist cloud ${adding ? "add" : "remove"} failed: $e',
-          level: 'E');
+      AppLogger.instance.log(
+        'mylist cloud ${adding ? "add" : "remove"} failed: $e',
+        level: 'E',
+      );
       if (adding) _markPending(k);
     }
   }
@@ -246,7 +275,9 @@ class MyListStore {
     if (uid == null) return;
     try {
       await _remote.upsert(_cloudRow(uid, m));
-    } catch (_) {/* best-effort */}
+    } catch (_) {
+      /* best-effort */
+    }
   }
 
   // ── pending-sync retry queue ───────────────────────────────────────────────
@@ -294,7 +325,9 @@ class MyListStore {
       try {
         await _remote.upsert(_cloudRow(uid, m));
         _clearPending(k);
-      } catch (_) {/* keep pending, retry next launch */}
+      } catch (_) {
+        /* keep pending, retry next launch */
+      }
     }
   }
 
@@ -348,7 +381,9 @@ class MyListStore {
       }
       revision.value++;
       _markPulled();
-    } catch (_) {/* keep whatever is local */}
+    } catch (_) {
+      /* keep whatever is local */
+    }
   }
 
   /// Pull from cloud only when the last successful pull is older than [maxAge].
@@ -373,8 +408,9 @@ class MyListStore {
 
   void _markPulled() {
     if (Hive.isBoxOpen(syncMetaBox)) {
-      Hive.box(syncMetaBox)
-          .put(_syncMetaKey, DateTime.now().millisecondsSinceEpoch);
+      Hive.box(
+        syncMetaBox,
+      ).put(_syncMetaKey, DateTime.now().millisecondsSinceEpoch);
     }
   }
 
