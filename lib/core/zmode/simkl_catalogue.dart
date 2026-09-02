@@ -145,13 +145,24 @@ class SimklCatalogue implements VideoCatalogue {
 
     // Hop 1: Simkl's records are keyed by its own id, and all we hold is a
     // TMDB one.
-    final lookup = await _get('/search/id', {'tmdb': tmdbId});
+    // `type` is required, not optional: /search/id searches MOVIES by default,
+    // so a series id came back empty and every show failed to open while
+    // films were fine. Simkl keeps movies and shows in separate catalogues —
+    // the same split that makes search two calls.
+    final lookup = await _get('/search/id', {
+      'tmdb': tmdbId,
+      'type': isTv ? 'show' : 'movie',
+    });
     final first = (lookup.data is List && (lookup.data as List).isNotEmpty)
         ? (lookup.data as List).first
         : null;
-    final simklId = (first is Map ? first['ids'] : null) is Map
-        ? (first!['ids'] as Map)['simkl_id']
-        : null;
+    // `simkl` here, NOT `simkl_id`: Simkl spells this key both ways depending
+    // on the endpoint, and /search/id answers with `simkl`. Reading the wrong
+    // one made every lookup null, so detail threw for every title and the
+    // provider looked broken while quietly falling back to TMDB. Accept both,
+    // since the other spelling is what /search/* returns elsewhere.
+    final ids = first is Map ? first['ids'] : null;
+    final simklId = ids is Map ? (ids['simkl'] ?? ids['simkl_id']) : null;
     if (simklId == null) {
       throw StateError('Simkl has no record for ${c.id}');
     }
