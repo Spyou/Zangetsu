@@ -36,6 +36,7 @@ import '../auth/auth_cubit.dart';
 import '../auth/auth_screens.dart';
 import '../detail/detail_screen.dart';
 import 'cubit/my_list_cubit.dart';
+import 'library_tabs.dart';
 import 'cubit/tracker_list_cubit.dart';
 import 'my_list_screen_tv.dart';
 import 'search_screen.dart';
@@ -884,101 +885,157 @@ class _MyListViewState extends State<_MyListView> {
     }
     customLists.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
 
-    final filtered = modeEntries.where((e) {
-      if (_customListFilter != null &&
-          !e.customLists.contains(_customListFilter)) {
-        return false;
-      }
-      final cats = _cats;
-      if (isMyList &&
-          _categoryFilter != null &&
-          (cats == null || !cats.isIn(e.item, _categoryFilter!))) {
-        return false;
-      }
-      if (_statusFilter != null && e.status != _statusFilter) return false;
-      if (_query.isNotEmpty) {
-        // English titles count too: plenty of entries are filed under a romaji
-        // name nobody would think to type.
-        final q = _query.toLowerCase();
-        final t = e.item.title.toLowerCase();
-        final en = e.item.englishTitle?.toLowerCase() ?? '';
-        if (!t.contains(q) && !en.contains(q)) return false;
-      }
-      return true;
-    }).toList();
-
-    // Display order only. `filtered` is already a throwaway copy and
-    // sortLibrary returns another — the saved list in Hive is never touched,
-    // so no sort can reorder or lose what's stored.
-    final shown = sortLibrary(
-      filtered,
-      _sortFor(isMyList: isMyList),
-      _sortDesc,
-    );
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _statusTabs(
-          modeEntries,
-          presentStatuses,
-          isMyList: isMyList,
-          customLists: customLists,
-          anilist: trackerState.tracker is AniListService
-              ? trackerState.tracker as AniListService
-              : null,
+    // One entry per tab, in the order the row draws them. Each carries its own
+    // test rather than a shared filter field, so the pages can live side by
+    // side in a TabBarView and be swiped between.
+    final views = <LibraryTab>[
+      LibraryTab(
+        id: 'all',
+        label: context.l10n.all,
+        count: modeEntries.length,
+        test: (_) => true,
+      ),
+      for (final st in presentStatuses)
+        LibraryTab(
+          id: 'status:${st.name}',
+          label: shortLabelFor(
+            st,
+            reading: sl<ContentModeCubit>().state.isReading,
+          ),
+          count: modeEntries.where((e) => e.status == st).length,
+          test: (e) => e.status == st,
         ),
-        const SizedBox(height: 8),
-        Expanded(
-          child: shown.isEmpty
-              ? EmptyState(
-                  icon: Icons.filter_list_off_rounded,
-                  message: myListFilteredEmptyMessage(context.l10n, mode),
-                )
-              : GridView.builder(
-                  key: ValueKey(
-                    '${_statusFilter?.name}|$_categoryFilter|'
-                    '$_customListFilter|${_sort?.name}|$_sortDesc',
-                  ),
-                  // Bottom: clear the floating dock, which overlays content
-                  // (extendBody reserves it no space of its own).
-                  padding: EdgeInsets.fromLTRB(
-                    16,
-                    4,
-                    16,
-                    MediaQuery.paddingOf(context).bottom,
-                  ),
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  cacheExtent: 800,
-                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 3,
-                    childAspectRatio: posterGridAspect(context),
-                    crossAxisSpacing: 12,
-                    mainAxisSpacing: 16,
-                  ),
-                  itemCount: shown.length,
-                  itemBuilder: (context, i) {
-                    final entry = shown[i];
-                    return RevealItem(
-                      index: i,
-                      child: PosterCard(
-                        title: entry.item.title,
-                        imageUrl: entry.item.cover,
-                        headers: entry.item.coverHeaders,
-                        cellWidth: cellW,
-                        onTap: () => onTap(entry.item),
-                        // Long-press opens the per-card edit sheet (own list →
-                        // status/remove; tracker → the tracker editor).
-                        onLongPress: onMore == null
-                            ? null
-                            : () => onMore(entry),
-                      ),
-                    );
-                  },
-                ),
-        ),
-      ],
+      // User-made categories come after the statuses, in their own order.
+      // Long-press one to rename, delete or reorder it.
+      //
+      // Only the ones that mean something for the kind on screen: a category
+      // is not tied to a kind, so one made under Streaming used to appear
+      // under Manga and Novel as an empty tab.
+      if (isMyList)
+        for (final c in (_cats?.all() ?? const <ListCategory>[]).where(
+          _categoryFitsKind(modeEntries),
+        ))
+          LibraryTab(
+            id: 'cat:${c.id}',
+            label: c.name,
+            count: _categoryCount(modeEntries, c),
+            test: (e) => _cats?.isIn(e.item, c.id) ?? false,
+            onLongPress: () => _manageCategory(context, c),
+          ),
+      // AniList's own custom lists. Only ever non-empty on that tab — MAL and
+      // Simkl have no such concept, and My List uses categories instead.
+      if (!isMyList)
+        for (final name in customLists)
+          LibraryTab(
+            id: 'list:$name',
+            label: name,
+            count: modeEntries
+                .where((e) => e.customLists.contains(name))
+                .length,
+            test: (e) => e.customLists.contains(name),
+          ),
+    ];
+
+    // The + creates a list on the AniList account; on My List it makes a local
+    // category. Same gesture, different home. Parked beside the row rather
+    // than inside it so it can't be swiped to.
+    final tracker = trackerState.tracker;
+    final onAdd = isMyList
+        ? (_cats != null ? () => _createCategory(context) : null)
+        : (tracker is AniListService
+              ? () => _createAniListList(context, tracker)
+              : null);
+
+    return LibraryTabs(
+      tabs: views,
+      selectedId: _selectedTabId,
+      onSelected: _selectTab,
+      onAdd: onAdd,
+      bodyFor: (view) {
+        final shown = sortLibrary(
+          modeEntries.where((e) => view.test(e) && _matchesQuery(e)).toList(),
+          _sortFor(isMyList: isMyList),
+          _sortDesc,
+        );
+        if (shown.isEmpty) {
+          return EmptyState(
+            icon: Icons.filter_list_off_rounded,
+            message: myListFilteredEmptyMessage(context.l10n, mode),
+          );
+        }
+        return GridView.builder(
+          key: ValueKey('${view.id}|${_sort?.name}|$_sortDesc'),
+          // Bottom: clear the floating dock, which overlays content
+          // (extendBody reserves it no space of its own).
+          padding: EdgeInsets.fromLTRB(
+            16,
+            4,
+            16,
+            MediaQuery.paddingOf(context).bottom,
+          ),
+          physics: const AlwaysScrollableScrollPhysics(),
+          cacheExtent: 800,
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 3,
+            childAspectRatio: posterGridAspect(context),
+            crossAxisSpacing: 12,
+            mainAxisSpacing: 16,
+          ),
+          itemCount: shown.length,
+          itemBuilder: (context, i) {
+            final entry = shown[i];
+            return RevealItem(
+              index: i,
+              child: PosterCard(
+                title: entry.item.title,
+                imageUrl: entry.item.cover,
+                headers: entry.item.coverHeaders,
+                cellWidth: cellW,
+                onTap: () => onTap(entry.item),
+                // Long-press opens the per-card edit sheet (own list →
+                // status/remove; tracker → the tracker editor).
+                onLongPress: onMore == null ? null : () => onMore(entry),
+              ),
+            );
+          },
+        );
+      },
     );
+  }
+
+  /// Search narrows every tab, not just the one on screen — the counts in the
+  /// row stay whole so you can still see where the rest of your list is.
+  bool _matchesQuery(MyListEntry e) {
+    if (_query.isEmpty) return true;
+    // English titles count too: plenty of entries are filed under a romaji
+    // name nobody would think to type.
+    final q = _query.toLowerCase();
+    return e.item.title.toLowerCase().contains(q) ||
+        (e.item.englishTitle?.toLowerCase() ?? '').contains(q);
+  }
+
+  /// The selection, in the same id space the tabs use.
+  String get _selectedTabId {
+    if (_categoryFilter != null) return 'cat:$_categoryFilter';
+    if (_customListFilter != null) return 'list:$_customListFilter';
+    if (_statusFilter != null) return 'status:${_statusFilter!.name}';
+    return 'all';
+  }
+
+  void _selectTab(String id) {
+    setState(() {
+      _statusFilter = null;
+      _categoryFilter = null;
+      _customListFilter = null;
+      if (id.startsWith('status:')) {
+        final name = id.substring(7);
+        _statusFilter = WatchStatus.values.firstWhere((s) => s.name == name);
+      } else if (id.startsWith('cat:')) {
+        _categoryFilter = id.substring(4);
+      } else if (id.startsWith('list:')) {
+        _customListFilter = id.substring(5);
+      }
+    });
   }
 
   /// Open a tracker entry.
@@ -1056,171 +1113,6 @@ class _MyListViewState extends State<_MyListView> {
       if (_categoryCount(entries, c) > 0) return true;
       return cats.countIn(c.id) == 0;
     };
-  }
-
-  // ── Status tabs (counts baked into the labels) ─────────────────────────────
-
-  /// [isMyList] gates the category tabs and the + button. The row is shared
-  /// with the tracker lists, and categories are ours alone — AniList and MAL
-  /// have no idea they exist, so offering them there is meaningless.
-  Widget _statusTabs(
-    List<MyListEntry> entries,
-    List<WatchStatus> present, {
-    required bool isMyList,
-    List<String> customLists = const [],
-    AniListService? anilist,
-  }) {
-    int countOf(WatchStatus? s) =>
-        s == null ? entries.length : entries.where((e) => e.status == s).length;
-
-    Widget tab(String label, bool active, int count, VoidCallback onTap) {
-      return GestureDetector(
-        onTap: onTap,
-        child: Container(
-          margin: const EdgeInsets.only(right: 22),
-          padding: const EdgeInsets.only(top: 8, bottom: 10),
-          decoration: BoxDecoration(
-            border: Border(
-              bottom: BorderSide(
-                color: active ? AppColors.accent : Colors.transparent,
-                width: 2.5,
-              ),
-            ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                label,
-                style: AppText.body.copyWith(
-                  color: active ? AppColors.accent : AppColors.textSecondary,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 14.5,
-                ),
-              ),
-              const SizedBox(width: 4),
-              Text(
-                '$count',
-                style: AppText.caption.copyWith(
-                  color: active ? AppColors.accent : AppColors.textTertiary,
-                  fontSize: 12,
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    return Container(
-      decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: AppColors.hairline)),
-      ),
-      child: SizedBox(
-        height: 42,
-        child: ListView(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.only(left: 16),
-          children: [
-            tab(
-              context.l10n.all,
-              _statusFilter == null &&
-                  _categoryFilter == null &&
-                  _customListFilter == null,
-              countOf(null),
-              () => setState(() {
-                _statusFilter = null;
-                _categoryFilter = null;
-                _customListFilter = null;
-              }),
-            ),
-            for (final s in present)
-              tab(
-                shortLabelFor(
-                  s,
-                  reading: sl<ContentModeCubit>().state.isReading,
-                ),
-                _statusFilter == s && _categoryFilter == null,
-                countOf(s),
-                () => setState(() {
-                  _statusFilter = s;
-                  _categoryFilter = null;
-                  _customListFilter = null;
-                }),
-              ),
-            // User-made categories come after the statuses, in their own
-            // order. Long-press one to rename, delete or reorder it.
-            //
-            // Only the ones that mean something for the kind on screen: a
-            // category is not tied to a kind, so one made under Streaming used
-            // to appear under Manga and Novel as an empty tab. Counted against
-            // THIS kind's entries too, for the same reason.
-            for (final c
-                in isMyList
-                    ? (_cats?.all() ?? const <ListCategory>[])
-                          .where(_categoryFitsKind(entries))
-                          .toList()
-                    : const <ListCategory>[])
-              GestureDetector(
-                onLongPress: () => _manageCategory(context, c),
-                child: tab(
-                  c.name,
-                  _categoryFilter == c.id,
-                  _categoryCount(entries, c),
-                  () => setState(() {
-                    _categoryFilter = c.id;
-                    // A category is its own view; a status tab would fight it.
-                    _statusFilter = null;
-                    _customListFilter = null;
-                  }),
-                ),
-              ),
-            // AniList's own custom lists. Only ever non-empty on that tab —
-            // MAL and Simkl have no such concept, and My List uses categories
-            // instead.
-            for (final name in customLists)
-              tab(
-                name,
-                _customListFilter == name,
-                entries.where((e) => e.customLists.contains(name)).length,
-                () => setState(() {
-                  _customListFilter = name;
-                  _statusFilter = null;
-                }),
-              ),
-            // The AniList tab gets its own +, creating a list on the account
-            // rather than a local category. Same gesture, different home.
-            if (!isMyList && anilist != null)
-              GestureDetector(
-                onTap: () => _createAniListList(context, anilist),
-                child: Container(
-                  margin: const EdgeInsets.only(right: 22),
-                  padding: const EdgeInsets.only(top: 8, bottom: 10),
-                  child: Icon(
-                    Icons.add_rounded,
-                    size: 20,
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-              ),
-            // Last, so adding one never shifts the tabs already there.
-            if (isMyList && _cats != null)
-              GestureDetector(
-                onTap: () => _createCategory(context),
-                child: Container(
-                  margin: const EdgeInsets.only(right: 22),
-                  padding: const EdgeInsets.only(top: 8, bottom: 10),
-                  child: Icon(
-                    Icons.add_rounded,
-                    size: 20,
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
   }
 
   // ── Empty / sign-in ────────────────────────────────────────────────────────
