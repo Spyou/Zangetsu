@@ -2841,5 +2841,8 @@
 	"adultCatalogueSubtitle": "Let AniList, MyAnimeList and TMDB return 18+ results",
 	"enableAdultCatalogue": "Show adult titles?",
 	"enableAdultCatalogueBody": "Search and browse may return 18+ titles from your metadata provider. Simkl has no such setting and is unaffected.",
-	"adultOnly": "Adult"
+	"adultOnly": "Adult",
+	"yourSavedAnimeList": "Your saved anime list",
+	"yourSavedMangaList": "Your saved manga list",
+	"yourSavedNovelList": "Your saved novel list"
 }

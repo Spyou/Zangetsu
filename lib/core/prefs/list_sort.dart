@@ -26,18 +26,18 @@ enum ListSort {
 /// Labels, worded for the field rather than a generic ascending/descending —
 /// "Z → A" reads better than "descending" on a title.
 String listSortLabel(ListSort s) => switch (s) {
-      ListSort.title => 'Title',
-      ListSort.added => 'Recently added',
-      ListSort.score => 'Score',
-      ListSort.updated => 'Last updated',
-    };
+  ListSort.title => 'Title',
+  ListSort.added => 'Recently added',
+  ListSort.score => 'Score',
+  ListSort.updated => 'Last updated',
+};
 
 String listSortDirectionLabel(ListSort s, bool desc) => switch (s) {
-      ListSort.title => desc ? 'Z → A' : 'A → Z',
-      ListSort.added => desc ? 'Newest first' : 'Oldest first',
-      ListSort.score => desc ? 'High → Low' : 'Low → High',
-      ListSort.updated => desc ? 'Recent first' : 'Oldest first',
-    };
+  ListSort.title => desc ? 'Z → A' : 'A → Z',
+  ListSort.added => desc ? 'Newest first' : 'Oldest first',
+  ListSort.score => desc ? 'High → Low' : 'Low → High',
+  ListSort.updated => desc ? 'Recent first' : 'Oldest first',
+};
 
 /// What a given list can honestly sort by.
 List<ListSort> optionsFor({required bool isMyList}) => isMyList
@@ -54,22 +54,28 @@ ListSort defaultSortFor({required bool isMyList}) =>
 /// Never sorts in place and never writes anything: the saved list lives in
 /// Hive and is only ever reordered for display. Nothing here can lose or
 /// reorder what's stored.
-List<MyListEntry> sortLibrary(
-  List<MyListEntry> src,
-  ListSort by,
-  bool desc,
-) {
+List<MyListEntry> sortLibrary(List<MyListEntry> src, ListSort by, bool desc) {
   // Copy first — `src` belongs to the cubit, and sorting it in place would
   // quietly reorder the caller's state.
   final out = List<MyListEntry>.of(src);
   switch (by) {
     case ListSort.added:
-      // Store order IS the order things were added, so ascending is simply
-      // what came in; only the reverse needs doing.
-      break;
+      // By the recorded save date, oldest first — `desc` below flips it to
+      // newest. Box order was standing in for this, and it is not a record of
+      // anything: a cloud restore repopulates the box in whatever order the
+      // rows arrive. Entries saved before the date existed have none, so they
+      // keep store order and sit at the old end.
+      final undated = out.where((e) => e.item.savedAtMs == null).toList();
+      final dated = out.where((e) => e.item.savedAtMs != null).toList()
+        ..sort((a, b) => a.item.savedAtMs!.compareTo(b.item.savedAtMs!));
+      out
+        ..clear()
+        ..addAll([...undated, ...dated]);
     case ListSort.title:
-      out.sort((a, b) =>
-          a.item.title.toLowerCase().compareTo(b.item.title.toLowerCase()));
+      out.sort(
+        (a, b) =>
+            a.item.title.toLowerCase().compareTo(b.item.title.toLowerCase()),
+      );
     case ListSort.updated:
       // Entries the tracker gave no date for sink to the bottom either way,
       // for the same reason an unscored title does: "unknown" isn't "ancient".
@@ -106,8 +112,7 @@ class ListSortPrefs {
   static const String _byKey = 'libSortBy';
   static const String _descKey = 'libSortDesc';
 
-  static Box? get _box =>
-      Hive.isBoxOpen(boxName) ? Hive.box(boxName) : null;
+  static Box? get _box => Hive.isBoxOpen(boxName) ? Hive.box(boxName) : null;
 
   static ListSort? get sortBy {
     final name = _box?.get(_byKey) as String?;

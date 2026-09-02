@@ -11,6 +11,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/zmode/metadata_provider_prefs.dart';
 import '../../core/ui/jump_prompt.dart';
 import '../../core/app_mode.dart';
 import '../../core/cache/app_image_cache.dart';
@@ -114,11 +115,47 @@ String _friendlySourceId(String sourceId) {
 
 /// "Source · Repo" label for the detail screen, so the user can see which repo
 /// a source came from. Falls back to just the name when no repo is resolvable.
-String _sourceLabel(String sourceId) {
-  // Zangetsu Mode's pseudo source: "AniList"/"TMDB" per the current browse
-  // kind, not the raw "zm" id.
+/// The catalogue behind a recorded origin name, or null when it names a source
+/// (or a provider this build does not know).
+PreferredProvider? _preferFromName(String? name) => switch (name) {
+  'AniList' => PreferredProvider.anilist,
+  'MyAnimeList' => PreferredProvider.mal,
+  'TMDB' => PreferredProvider.tmdb,
+  'Simkl' => PreferredProvider.simkl,
+  _ => null,
+};
+
+String _sourceLabel(
+  String sourceId, {
+  String? url,
+  PreferredProvider? prefer,
+  String? savedFrom,
+}) {
+  // Zangetsu Mode's pseudo source: the provider that answers for THIS title,
+  // not the raw "zm" id — and keyed on the title's own kind, since the mode
+  // you happen to be browsing in may be a different one entirely.
   if (sourceId == ZmodeIds.sourceId) {
-    return sl<MetadataRepository>().displayName(sourceId);
+    // A title opened from a tracker is READ from that tracker's catalogue, so
+    // the name has to follow the same rule — otherwise the page says
+    // MyAnimeList over data that came from AniList.
+    switch (prefer) {
+      case PreferredProvider.anilist:
+        return 'AniList';
+      case PreferredProvider.mal:
+        return 'MyAnimeList';
+      case PreferredProvider.tmdb:
+        return 'TMDB';
+      case PreferredProvider.simkl:
+        return 'Simkl';
+      case null:
+        break;
+    }
+    // What it was saved from beats the current setting: your list should not
+    // relabel itself because you changed provider afterwards.
+    if (savedFrom != null && savedFrom.isNotEmpty) return savedFrom;
+    final repo = sl<MetadataRepository>();
+    final c = url == null ? null : ZmodeIds.parseShow(url);
+    return c == null ? repo.displayName(sourceId) : repo.nameForKind(c.kind);
   }
   // Aniyomi sources (ani:<id>) resolve to their extension's display name;
   // otherwise the detail screen would show the raw "ani:4383278740…" id.
@@ -278,36 +315,42 @@ class _DetailCloudflareBlockedState extends State<_DetailCloudflareBlocked> {
 }
 
 class DetailScreen extends StatelessWidget {
-  const DetailScreen({super.key, required this.item});
+  const DetailScreen({super.key, required this.item, this.prefer});
   final MediaItem item;
+
+  /// Read this title from a specific metadata catalogue. Set when it was
+  /// opened from a tracker that has one, so an AniList library entry shows
+  /// AniList's page even when MyAnimeList is the app-wide choice.
+  final PreferredProvider? prefer;
 
   /// Opening transition: the page fades in while sliding up and scaling from
   /// 0.96 — a smooth "rise" into the detail rather than the platform push.
-  static Route<void> route(MediaItem item) => PageRouteBuilder<void>(
-    transitionDuration: const Duration(milliseconds: 340),
-    reverseTransitionDuration: const Duration(milliseconds: 260),
-    pageBuilder: (_, _, _) => DetailScreen(item: item),
-    transitionsBuilder: (_, animation, _, child) {
-      final curved = CurvedAnimation(
-        parent: animation,
-        curve: Curves.easeOutCubic,
-        reverseCurve: Curves.easeInCubic,
+  static Route<void> route(MediaItem item, {PreferredProvider? prefer}) =>
+      PageRouteBuilder<void>(
+        transitionDuration: const Duration(milliseconds: 340),
+        reverseTransitionDuration: const Duration(milliseconds: 260),
+        pageBuilder: (_, _, _) => DetailScreen(item: item, prefer: prefer),
+        transitionsBuilder: (_, animation, _, child) {
+          final curved = CurvedAnimation(
+            parent: animation,
+            curve: Curves.easeOutCubic,
+            reverseCurve: Curves.easeInCubic,
+          );
+          return FadeTransition(
+            opacity: curved,
+            child: SlideTransition(
+              position: Tween(
+                begin: const Offset(0, 0.035),
+                end: Offset.zero,
+              ).animate(curved),
+              child: ScaleTransition(
+                scale: Tween(begin: 0.96, end: 1.0).animate(curved),
+                child: child,
+              ),
+            ),
+          );
+        },
       );
-      return FadeTransition(
-        opacity: curved,
-        child: SlideTransition(
-          position: Tween(
-            begin: const Offset(0, 0.035),
-            end: Offset.zero,
-          ).animate(curved),
-          child: ScaleTransition(
-            scale: Tween(begin: 0.96, end: 1.0).animate(curved),
-            child: child,
-          ),
-        ),
-      );
-    },
-  );
 
   @override
   Widget build(BuildContext context) {
@@ -319,8 +362,12 @@ class DetailScreen extends StatelessWidget {
         prefs: sl<TitlePrefsStore>(),
         seedMalId: item.malId,
         seedType: item.type,
+        // An explicit preference (opened from a tracker) wins; otherwise a
+        // saved title is READ from wherever it was saved, so the page and its
+        // label agree instead of one naming AniList over MAL's data.
+        prefer: prefer ?? _preferFromName(item.savedFrom),
       )..load(),
-      child: _DetailView(item: item),
+      child: _DetailView(item: item, prefer: prefer),
     );
   }
 }
@@ -334,8 +381,11 @@ class DetailScreen extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _DetailView extends StatefulWidget {
-  const _DetailView({required this.item});
+  const _DetailView({required this.item, this.prefer});
   final MediaItem item;
+
+  /// The catalogue this title was opened from, so the name matches the data.
+  final PreferredProvider? prefer;
 
   @override
   State<_DetailView> createState() => _DetailViewState();
@@ -526,8 +576,9 @@ class _DetailViewState extends State<_DetailView>
     final isAnime = detail.type == ProviderType.anime;
     final reading =
         detail.type == ProviderType.manga || detail.type == ProviderType.novel;
-    final pins = sl<TrackerBindingStore>()
-        .get(TrackerBindingStore.keyOf(widget.item.sourceId, widget.item.url));
+    final pins = sl<TrackerBindingStore>().get(
+      TrackerBindingStore.keyOf(widget.item.sourceId, widget.item.url),
+    );
     hub
         .fetchEntry(
           malId: detail.malId ?? widget.item.malId,
@@ -540,31 +591,31 @@ class _DetailViewState extends State<_DetailView>
           novel: detail.type == ProviderType.novel,
         )
         .then((e) {
-      if (!mounted) return;
-      // Same response the progress comes from — the airing fields were already
-      // being fetched and thrown away, so showing them costs no extra request.
-      // Both null for a finished show, a movie, or a title we couldn't match.
-      final ep = e?.nextAiringEpisode;
-      final at = e?.nextAiringAt;
-      final p = e?.progress;
-      final onList = e?.onList ?? false;
-      if (p == null || p <= 0) {
-        setState(() {
-          _tracked = onList;
-          if (ep != null && at != null) {
+          if (!mounted) return;
+          // Same response the progress comes from — the airing fields were already
+          // being fetched and thrown away, so showing them costs no extra request.
+          // Both null for a finished show, a movie, or a title we couldn't match.
+          final ep = e?.nextAiringEpisode;
+          final at = e?.nextAiringAt;
+          final p = e?.progress;
+          final onList = e?.onList ?? false;
+          if (p == null || p <= 0) {
+            setState(() {
+              _tracked = onList;
+              if (ep != null && at != null) {
+                _nextAiringEpisode = ep;
+                _nextAiringAt = at;
+              }
+            });
+            return;
+          }
+          setState(() {
+            _tracked = onList;
+            _trackerProgress = p;
             _nextAiringEpisode = ep;
             _nextAiringAt = at;
-          }
+          });
         });
-        return;
-      }
-      setState(() {
-        _tracked = onList;
-        _trackerProgress = p;
-        _nextAiringEpisode = ep;
-        _nextAiringAt = at;
-      });
-    });
   }
 
   /// Whether the Tracking button should show for [detail]. Only when a tracker
@@ -581,7 +632,8 @@ class _DetailViewState extends State<_DetailView>
       return true;
     }
     final simklOn = hub.connected.any((t) => t.displayName == 'Simkl');
-    final hasId = (detail.tmdbId ?? widget.item.tmdbId) != null ||
+    final hasId =
+        (detail.tmdbId ?? widget.item.tmdbId) != null ||
         ((detail.imdbId ?? widget.item.imdbId)?.isNotEmpty ?? false);
     return simklOn && hasId;
   }
@@ -592,8 +644,8 @@ class _DetailViewState extends State<_DetailView>
   /// tmdb/imdb id; manga/novel by malId or title (AniList/MAL manga lists).
   /// Returns the applied progress so grey-out can update immediately.
   Future<void> _openTrackingSheet(MediaDetail detail) async {
-    final reading = detail.type == ProviderType.manga ||
-        detail.type == ProviderType.novel;
+    final reading =
+        detail.type == ProviderType.manga || detail.type == ProviderType.novel;
     final applied = await showTrackerListSheet(
       context,
       title: detail.title,
@@ -956,6 +1008,7 @@ class _DetailViewState extends State<_DetailView>
     int index,
     MediaDetail detail,
     String category, {
+
     /// Set only by the long-press sheet: play this one episode in this player,
     /// ignoring the Settings default. Null keeps the existing behaviour.
     PlayerChoice? playerOverride,
@@ -1047,17 +1100,19 @@ class _DetailViewState extends State<_DetailView>
     // await the detail's in-flight promotion (started on load); if Play beat it,
     // resolve inline. Best-effort — a miss just leaves it a movie.
     var malId = detail.malId ?? widget.item.malId;
-    var scrobbleTitle =
-        detail.type == ProviderType.anime ? detail.title : null;
+    var scrobbleTitle = detail.type == ProviderType.anime ? detail.title : null;
     if (malId == null && detail.type == ProviderType.movie) {
       try {
-        final promoted = await (context.read<DetailCubit>().animePromotion ??
-            sl<MetadataEnrichment>().promoteMovieToAnimeMalId(detail));
+        final promoted =
+            await (context.read<DetailCubit>().animePromotion ??
+                sl<MetadataEnrichment>().promoteMovieToAnimeMalId(detail));
         if (promoted != null) {
           malId = promoted;
           scrobbleTitle = detail.title;
         }
-      } catch (_) {/* leave as a movie */}
+      } catch (_) {
+        /* leave as a movie */
+      }
     }
     if (!mounted) return;
 
@@ -1425,8 +1480,10 @@ class _DetailViewState extends State<_DetailView>
           ),
           builder: (_) => _SourcePickerSheet(
             title: ep.title.trim().isNotEmpty ? ep.title : detail.title,
-            resolve: () =>
-                sl<CatalogueRepository>().sources(ep.url, sourceId: item.sourceId),
+            resolve: () => sl<CatalogueRepository>().sources(
+              ep.url,
+              sourceId: item.sourceId,
+            ),
           ),
         );
     if (res == null || !mounted) return;
@@ -1562,7 +1619,8 @@ class _DetailViewState extends State<_DetailView>
 
     // Cover / backdrop — the wide banner when Z Mode supplied one, else the
     // regular poster cover, exactly as before [MediaDetail.banner] existed.
-    final coverUrl = detail.banner ?? item.banner ?? detail.cover ?? item.cover ?? '';
+    final coverUrl =
+        detail.banner ?? item.banner ?? detail.cover ?? item.cover ?? '';
     final coverHeaders = detail.coverHeaders ?? item.coverHeaders;
     final hasCover = coverUrl.isNotEmpty;
 
@@ -1641,7 +1699,12 @@ class _DetailViewState extends State<_DetailView>
     // a source came from. JS providers live in the registry; CloudStream sources
     // live in the CS manager — without the CS lookup this fell back to the raw
     // sourceId ("cs:Provider@31@tag"), leaking the file-id suffix.
-    final sourceName = _sourceLabel(item.sourceId);
+    final sourceName = _sourceLabel(
+      item.sourceId,
+      url: item.url,
+      prefer: widget.prefer ?? _preferFromName(item.savedFrom),
+      savedFrom: item.savedFrom,
+    );
 
     return NestedScrollView(
       controller: _scrollController,
@@ -1929,8 +1992,14 @@ class _DetailViewState extends State<_DetailView>
                 fontWeight: FontWeight.w500,
               ),
               tabs: [
-                Tab(text: isReading ? context.l10n.chapters : context.l10n.episodes),
-                Tab(text: isReading ? context.l10n.characters : context.l10n.cast),
+                Tab(
+                  text: isReading
+                      ? context.l10n.chapters
+                      : context.l10n.episodes,
+                ),
+                Tab(
+                  text: isReading ? context.l10n.characters : context.l10n.cast,
+                ),
                 Tab(text: context.l10n.relations),
                 Tab(text: context.l10n.details),
               ],

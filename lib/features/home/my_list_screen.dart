@@ -4,6 +4,9 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../core/zmode/metadata_provider_prefs.dart';
+import '../../core/zmode/zmode_ids.dart';
+import '../../core/models/provider_info.dart';
 import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
 import '../../core/mode/content_mode.dart';
@@ -16,7 +19,6 @@ import '../../core/ui/reveal_item.dart';
 import '../../core/ui/global_messenger.dart';
 import '../../core/ui/anilist_custom_lists_sheet.dart';
 import '../../core/prefs/list_sort.dart';
-import '../../core/models/provider_info.dart';
 import '../../core/models/watch_status.dart';
 import '../../core/playback/my_list.dart';
 import '../../core/playback/list_status_store.dart';
@@ -33,7 +35,6 @@ import '../../core/ui/tracker_entry_sheet.dart';
 import '../auth/auth_cubit.dart';
 import '../auth/auth_screens.dart';
 import '../detail/detail_screen.dart';
-import '../settings/tracker_settings_screen.dart';
 import 'cubit/my_list_cubit.dart';
 import 'cubit/tracker_list_cubit.dart';
 import 'my_list_screen_tv.dart';
@@ -69,7 +70,9 @@ class MyListScreen extends StatelessWidget {
         ),
         BlocProvider(
           create: (_) {
-            final c = TrackerListCubit();
+            // Pinned screens name their own kind: the hub opens a tracker
+            // FOR a kind, which is not necessarily the app's current mode.
+            final c = TrackerListCubit(pinnedKind: initialKind);
             if (pinned != null) c.selectTracker(pinned);
             return c;
           },
@@ -113,7 +116,6 @@ class _MyListViewState extends State<_MyListView> {
   /// optional feature — no store simply means no categories.
   CategoryStore? get _cats =>
       sl.isRegistered<CategoryStore>() ? sl<CategoryStore>() : null;
-  ProviderType? _typeFilter; // null = All
 
   /// Null until the user picks one — the default then depends on which list is
   /// showing (your own keeps insertion order, a tracker leads with score), and
@@ -137,11 +139,25 @@ class _MyListViewState extends State<_MyListView> {
     return defaultSortFor(isMyList: isMyList);
   }
 
-  Future<void> _openItem(BuildContext context, MediaItem item) async {
+  Future<void> _openItem(
+    BuildContext context,
+    MediaItem item, {
+    PreferredProvider? prefer,
+  }) async {
     final cubit = context.read<MyListCubit>();
-    await Navigator.push(context, DetailScreen.route(item));
+    await Navigator.push(context, DetailScreen.route(item, prefer: prefer));
     cubit.reload();
   }
+
+  /// The catalogue behind a tracker, when it has one. A tracker that is only a
+  /// tracker — no catalogue of its own — returns null and the app-wide choice
+  /// stands.
+  PreferredProvider? _providerOf(Tracker? t) => switch (t?.displayName) {
+    'AniList' => PreferredProvider.anilist,
+    'MyAnimeList' => PreferredProvider.mal,
+    'Simkl' => PreferredProvider.simkl,
+    _ => null,
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -159,6 +175,7 @@ class _MyListViewState extends State<_MyListView> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _header(context),
+                if (_searching) _searchField(context),
                 if (widget.pinnedTracker == null) _kindTabs(context),
                 Expanded(
                   child: tlState.isMyList
@@ -176,6 +193,75 @@ class _MyListViewState extends State<_MyListView> {
   double _cellW(BuildContext context) =>
       (MediaQuery.of(context).size.width - 32 - 24) / 3;
 
+  /// Filters the list you are looking at by title — My List and every tracker
+  /// list, in every kind. View state: it belongs to the screen, and a query
+  /// should not survive leaving it.
+  bool _searching = false;
+  String _query = '';
+  final _searchController = TextEditingController();
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _toggleSearch() {
+    setState(() {
+      _searching = !_searching;
+      if (!_searching) {
+        _query = '';
+        _searchController.clear();
+      }
+    });
+  }
+
+  /// The search field, shown under the header while searching.
+  Widget _searchField(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+    child: Container(
+      height: 42,
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(21),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.search_rounded, size: 18, color: AppColors.textSecondary),
+          const SizedBox(width: 10),
+          Expanded(
+            child: TextField(
+              controller: _searchController,
+              autofocus: true,
+              style: AppText.body.copyWith(color: AppColors.textPrimary),
+              cursorColor: AppColors.accent,
+              decoration: InputDecoration(
+                isDense: true,
+                border: InputBorder.none,
+                hintText: context.l10n.search2,
+                hintStyle: AppText.body,
+              ),
+              onChanged: (v) => setState(() => _query = v),
+            ),
+          ),
+          if (_query.isNotEmpty)
+            GestureDetector(
+              onTap: () => setState(() {
+                _query = '';
+                _searchController.clear();
+              }),
+              child: Icon(
+                Icons.clear_rounded,
+                size: 18,
+                color: AppColors.textSecondary,
+              ),
+            ),
+        ],
+      ),
+    ),
+  );
+
   // ── Header: frosted capsule (no avatar) + search/filter + accounts ─────────
 
   Widget _header(BuildContext context) {
@@ -188,10 +274,23 @@ class _MyListViewState extends State<_MyListView> {
         final pinned = widget.pinnedTracker;
         // Opened for one tracker: name it. Saying "Library / My List + 3
         // trackers" on a screen showing only AniList was just wrong.
-        final title = pinned?.displayName ?? l10n.libraryLabel;
-        // Always "your saved titles" now: the trackers moved out to their own
-        // screens, so counting them here described a switcher that is gone.
-        final subtitle = l10n.yourSavedTitles;
+        // Whose list this is: the account name earns its place here, where the
+        // avatar did not — it says the same thing in less space and reads.
+        final who = pinned?.viewerName;
+        final title = pinned == null
+            ? l10n.libraryLabel
+            : (who == null || who.isEmpty
+                  ? pinned.displayName
+                  : '${pinned.displayName} · $who');
+        // Names the kind on screen rather than "titles": a tracker screen is
+        // opened FOR one, so being vague about it helps nobody.
+        final subtitle = pinned == null
+            ? l10n.yourSavedTitles
+            : switch (widget.pinnedKind ?? sl<ContentModeCubit>().state) {
+                ContentMode.manga => l10n.yourSavedMangaList,
+                ContentMode.novel => l10n.yourSavedNovelList,
+                ContentMode.anime => l10n.yourSavedAnimeList,
+              };
         return Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
           child: DecoratedBox(
@@ -220,24 +319,37 @@ class _MyListViewState extends State<_MyListView> {
                     color: AppColors.surface.withValues(alpha: 0.72),
                     borderRadius: BorderRadius.circular(26),
                     border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.09),
-                        width: 0.5),
+                      color: Colors.white.withValues(alpha: 0.09),
+                      width: 0.5,
+                    ),
                   ),
-                  padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+                  padding: const EdgeInsets.fromLTRB(10, 6, 8, 6),
                   child: Row(
                     children: [
+                      // The account this list belongs to, round and leading —
+                      // a tracker's own avatar, or yours on My List.
+                      _headerAvatar(context, pinned),
+                      const SizedBox(width: 10),
                       Expanded(
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(title,
-                                style: AppText.title.copyWith(fontSize: 19)),
+                            Text(
+                              title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              // 19 overflowed the moment a handle was added
+                              // next to the tracker's name.
+                              style: AppText.title.copyWith(fontSize: 15.5),
+                            ),
                             const SizedBox(height: 1),
                             Text(
                               subtitle,
                               style: AppText.caption.copyWith(
-                                  color: AppColors.textTertiary, fontSize: 11),
+                                color: AppColors.textTertiary,
+                                fontSize: 11,
+                              ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
@@ -246,13 +358,12 @@ class _MyListViewState extends State<_MyListView> {
                       ),
                       const SizedBox(width: 8),
                       _pillIcon(
-                        _typeFilter == null
-                            ? Icons.tune_rounded
-                            : Icons.filter_alt_rounded,
-                        context.l10n.filter,
-                        () => _openFilterSheet(context),
-                        active: _typeFilter != null,
+                        _searching ? Icons.close_rounded : Icons.search_rounded,
+                        l10n.search2,
+                        _toggleSearch,
+                        active: _query.isNotEmpty,
                       ),
+
                       const SizedBox(width: 8),
                       _pillIcon(
                         Icons.sort_rounded,
@@ -261,7 +372,6 @@ class _MyListViewState extends State<_MyListView> {
                         active: _sort != null,
                       ),
                       const SizedBox(width: 8),
-                      _accountsButton(context, hub),
                     ],
                   ),
                 ),
@@ -398,7 +508,9 @@ class _MyListViewState extends State<_MyListView> {
     if (!mounted) return;
     if (made == null) {
       showGlobalSnack(
-        name.trim().isEmpty ? context.l10n.giveItAName : context.l10n.youAlreadyHaveThatOne,
+        name.trim().isEmpty
+            ? context.l10n.giveItAName
+            : context.l10n.youAlreadyHaveThatOne,
       );
       return;
     }
@@ -426,16 +538,22 @@ class _MyListViewState extends State<_MyListView> {
               ),
             ),
             ListTile(
-              leading: const Icon(Icons.edit_outlined,
-                  color: AppColors.textSecondary),
+              leading: const Icon(
+                Icons.edit_outlined,
+                color: AppColors.textSecondary,
+              ),
               title: Text(context.l10n.rename),
               onTap: () => Navigator.pop(ctx, 'rename'),
             ),
             ListTile(
-              leading: Icon(Icons.delete_outline_rounded,
-                  color: AppColors.accent),
-              title: Text(context.l10n.deleteCategory,
-                  style: TextStyle(color: AppColors.accent)),
+              leading: Icon(
+                Icons.delete_outline_rounded,
+                color: AppColors.accent,
+              ),
+              title: Text(
+                context.l10n.deleteCategory,
+                style: TextStyle(color: AppColors.accent),
+              ),
               subtitle: Text(context.l10n.yourTitlesStayOnlyTheLabelGoes),
               onTap: () => Navigator.pop(ctx, 'delete'),
             ),
@@ -491,8 +609,12 @@ class _MyListViewState extends State<_MyListView> {
     setState(() {});
   }
 
-  Widget _pillIcon(IconData icon, String tooltip, VoidCallback onTap,
-      {bool active = false}) {
+  Widget _pillIcon(
+    IconData icon,
+    String tooltip,
+    VoidCallback onTap, {
+    bool active = false,
+  }) {
     return Tooltip(
       message: tooltip,
       child: GestureDetector(
@@ -512,85 +634,40 @@ class _MyListViewState extends State<_MyListView> {
 
   // ── Accounts button (connected avatars + ＋, else "Connect") ───────────────
 
-  Widget _accountsButton(BuildContext context, TrackerHub hub) {
-    final connected =
-        hub.connectedForMode(sl<ContentModeCubit>().state).toList();
-    if (connected.isEmpty) {
-      return GestureDetector(
-        onTap: () => _openAccountsSheet(context),
-        child: Container(
-          height: 36,
-          alignment: Alignment.center,
-          padding: const EdgeInsets.symmetric(horizontal: 13),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(
-                color: AppColors.accent.withValues(alpha: 0.4), width: 1.5),
-          ),
-          child: Text(
-            context.l10n.connect,
-            style: AppText.caption.copyWith(
-                color: AppColors.accent,
-                fontWeight: FontWeight.w800,
-                fontSize: 13),
-          ),
-        ),
-      );
-    }
-    final show = connected.take(3).toList();
-    return Tooltip(
-      message: context.l10n.manageTrackers,
-      child: GestureDetector(
-        onTap: () => _openAccountsSheet(context),
-        child: Container(
-          height: 36,
-          padding: const EdgeInsets.fromLTRB(7, 0, 11, 0),
-          decoration: BoxDecoration(
-            color: AppColors.surface2,
-            borderRadius: BorderRadius.circular(18),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              SizedBox(
-                width: 24 + (show.length - 1) * 15.0,
-                height: 24,
-                child: Stack(
-                  children: [
-                    for (var i = 0; i < show.length; i++)
-                      Positioned(left: i * 15.0, child: _miniAvatar(show[i])),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 5),
-              Icon(Icons.add_rounded, size: 18, color: AppColors.accent),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _miniAvatar(Tracker t) {
-    final url = t.viewerAvatar;
-    final letter = t.displayName.isNotEmpty ? t.displayName[0] : '?';
-    final Widget inner = (url != null && url.isNotEmpty)
-        ? CachedNetworkImage(
-            imageUrl: url,
-            width: 20,
-            height: 20,
-            fit: BoxFit.cover,
-            errorWidget: (_, _, _) => _miniLetter(letter),
-          )
-        : _miniLetter(letter);
+  /// The header's round avatar: the tracker's own picture on a pinned screen,
+  /// and yours on My List. 30px — big enough to read as a face, small enough
+  /// that the capsule stays one line.
+  Widget _headerAvatar(BuildContext context, Tracker? pinned) {
+    final url = pinned != null
+        ? pinned.viewerAvatar
+        : (sl.isRegistered<AuthCubit>()
+              ? sl<AuthCubit>().state.avatarUrl
+              : null);
+    final letter = pinned?.displayName.isNotEmpty == true
+        ? pinned!.displayName[0]
+        : 'Z';
     return Container(
-      width: 24,
-      height: 24,
+      width: 30,
+      height: 30,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        border: Border.all(color: AppColors.surface2, width: 2),
+        color: AppColors.surface2,
+        border: Border.all(
+          color: AppColors.accent.withValues(alpha: 0.35),
+          width: 1.5,
+        ),
       ),
-      child: ClipOval(child: inner),
+      child: ClipOval(
+        child: (url != null && url.isNotEmpty)
+            ? CachedNetworkImage(
+                imageUrl: url,
+                width: 30,
+                height: 30,
+                fit: BoxFit.cover,
+                errorWidget: (_, _, _) => _miniLetter(letter),
+              )
+            : _miniLetter(letter),
+      ),
     );
   }
 
@@ -599,100 +676,16 @@ class _MyListViewState extends State<_MyListView> {
     height: 20,
     color: AppColors.accent,
     alignment: Alignment.center,
-    child: Text(letter,
-        style: const TextStyle(
-            color: Colors.white, fontWeight: FontWeight.w800, fontSize: 10)),
+    child: Text(
+      letter,
+      style: const TextStyle(
+        color: Colors.white,
+        fontWeight: FontWeight.w800,
+        fontSize: 10,
+      ),
+    ),
   );
 
-  Future<void> _openAccountsSheet(BuildContext context) async {
-    final hub = sl<TrackerHub>();
-    await showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: AppColors.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (sheetCtx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(height: 10),
-            Container(
-              width: 36,
-              height: 4,
-              decoration: BoxDecoration(
-                color: AppColors.hairline,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 14, 20, 6),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text(context.l10n.trackers, style: AppText.headline),
-              ),
-            ),
-            for (final t in hub.forMode(sl<ContentModeCubit>().state))
-              ListTile(
-                leading: SizedBox(
-                  width: 34,
-                  height: 34,
-                  child: (t.isConnected &&
-                          (t.viewerAvatar?.isNotEmpty ?? false))
-                      ? ClipOval(
-                          child: CachedNetworkImage(
-                            imageUrl: t.viewerAvatar!,
-                            fit: BoxFit.cover,
-                            errorWidget: (_, _, _) => const Icon(
-                                Icons.person_rounded,
-                                color: AppColors.textTertiary),
-                          ),
-                        )
-                      : Icon(
-                          t.isConnected
-                              ? Icons.check_circle_rounded
-                              : Icons.add_link_rounded,
-                          color: t.isConnected
-                              ? AppColors.accent
-                              : AppColors.textSecondary,
-                        ),
-                ),
-                title: Text(t.displayName,
-                    style: AppText.body.copyWith(color: AppColors.textPrimary)),
-                subtitle: Text(
-                  t.isConnected
-                      ? (t.viewerName != null
-                          ? context.l10n.connectedWithViewer(t.viewerName!)
-                          : context.l10n.connected)
-                      : context.l10n.notConnected,
-                  style: AppText.caption.copyWith(
-                    color: t.isConnected
-                        ? AppColors.accent
-                        : AppColors.textTertiary,
-                  ),
-                ),
-                trailing: const Icon(Icons.chevron_right_rounded,
-                    color: AppColors.textTertiary),
-                onTap: () {
-                  Navigator.pop(sheetCtx);
-                  Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => TrackerSettingsScreen(tracker: t),
-                    ),
-                  );
-                },
-              ),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// Streaming / Manga / Novel across your own list.
-  ///
-  /// This replaced the account switcher: accounts are their own screens now,
-  /// reached from Home, and My List is only ever yours.
   Widget _kindTabs(BuildContext context) {
     const kinds = ContentMode.values;
     return Padding(
@@ -758,71 +751,7 @@ class _MyListViewState extends State<_MyListView> {
     );
   }
 
-
   // ── Filter sheet (type) ────────────────────────────────────────────────────
-
-  Future<void> _openFilterSheet(BuildContext context) async {
-    await showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: AppColors.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (sheetCtx) => SafeArea(
-        child: StatefulBuilder(
-          builder: (sheetCtx, setSheet) {
-            Widget opt(String label, ProviderType? type, IconData icon) {
-              final on = _typeFilter == type;
-              return ListTile(
-                leading: Icon(icon,
-                    color: on ? AppColors.accent : AppColors.textSecondary),
-                title: Text(
-                  label,
-                  style: AppText.body.copyWith(
-                    color: on ? AppColors.accent : AppColors.textPrimary,
-                    fontWeight: on ? FontWeight.w600 : FontWeight.w400,
-                  ),
-                ),
-                trailing: on
-                    ? Icon(Icons.check_rounded, color: AppColors.accent)
-                    : null,
-                onTap: () {
-                  setState(() => _typeFilter = type);
-                  setSheet(() {});
-                },
-              );
-            }
-
-            return Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const SizedBox(height: 10),
-                Container(
-                  width: 36,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: AppColors.hairline,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 14, 20, 4),
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(context.l10n.showLabel, style: AppText.headline),
-                  ),
-                ),
-                opt(context.l10n.allTypes, null, Icons.apps_rounded),
-                opt(context.l10n.anime, ProviderType.anime, Icons.animation_rounded),
-                opt(context.l10n.moviesTV, ProviderType.movie, Icons.movie_rounded),
-                const SizedBox(height: 8),
-              ],
-            );
-          },
-        ),
-      ),
-    );
-  }
 
   // ── My List body ───────────────────────────────────────────────────────────
 
@@ -834,8 +763,7 @@ class _MyListViewState extends State<_MyListView> {
           context,
           entries,
           onTap: (item) => _openItem(context, item),
-          onMore: (entry) =>
-              showListStatusSheet(context, item: entry.item),
+          onMore: (entry) => showListStatusSheet(context, item: entry.item),
         );
       },
     );
@@ -876,8 +804,7 @@ class _MyListViewState extends State<_MyListView> {
                   tmdbIsTv: entry.tmdbIsTv,
                   customLists: entry.customLists,
                   onFind: () => _openTrackerItem(context, entry.item),
-                  onChanged: () =>
-                      context.read<TrackerListCubit>().refresh(),
+                  onChanged: () => context.read<TrackerListCubit>().refresh(),
                 ),
               );
     }
@@ -886,7 +813,8 @@ class _MyListViewState extends State<_MyListView> {
       color: AppColors.accent,
       backgroundColor: AppColors.surface,
       onRefresh: () => context.read<TrackerListCubit>().refresh(),
-      child: tlState.status == TrackerListStatus.ready &&
+      child:
+          tlState.status == TrackerListStatus.ready &&
               tlState.entries.isNotEmpty
           ? content
           : ListView(
@@ -932,8 +860,9 @@ class _MyListViewState extends State<_MyListView> {
     final mode = widget.pinnedTracker == null
         ? _kind
         : (widget.pinnedKind ?? sl<ContentModeCubit>().state);
-    final modeEntries =
-        entries.where((e) => mode.matchesProvider(e.item.type)).toList();
+    final modeEntries = entries
+        .where((e) => mode.matchesProvider(e.item.type))
+        .toList();
 
     final presentStatuses = tabOrder
         .where((s) => modeEntries.any((e) => e.status == s))
@@ -967,7 +896,14 @@ class _MyListViewState extends State<_MyListView> {
         return false;
       }
       if (_statusFilter != null && e.status != _statusFilter) return false;
-      if (_typeFilter != null && e.item.type != _typeFilter) return false;
+      if (_query.isNotEmpty) {
+        // English titles count too: plenty of entries are filed under a romaji
+        // name nobody would think to type.
+        final q = _query.toLowerCase();
+        final t = e.item.title.toLowerCase();
+        final en = e.item.englishTitle?.toLowerCase() ?? '';
+        if (!t.contains(q) && !en.contains(q)) return false;
+      }
       return true;
     }).toList();
 
@@ -983,12 +919,15 @@ class _MyListViewState extends State<_MyListView> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _statusTabs(modeEntries, presentStatuses,
-            isMyList: isMyList,
-            customLists: customLists,
-            anilist: trackerState.tracker is AniListService
-                ? trackerState.tracker as AniListService
-                : null),
+        _statusTabs(
+          modeEntries,
+          presentStatuses,
+          isMyList: isMyList,
+          customLists: customLists,
+          anilist: trackerState.tracker is AniListService
+              ? trackerState.tracker as AniListService
+              : null,
+        ),
         const SizedBox(height: 8),
         Expanded(
           child: shown.isEmpty
@@ -1003,12 +942,15 @@ class _MyListViewState extends State<_MyListView> {
                   ),
                   // Bottom: clear the floating dock, which overlays content
                   // (extendBody reserves it no space of its own).
-                  padding: EdgeInsets.fromLTRB(16, 4, 16,
-                      MediaQuery.paddingOf(context).bottom),
+                  padding: EdgeInsets.fromLTRB(
+                    16,
+                    4,
+                    16,
+                    MediaQuery.paddingOf(context).bottom,
+                  ),
                   physics: const AlwaysScrollableScrollPhysics(),
                   cacheExtent: 800,
-                  gridDelegate:
-                      SliverGridDelegateWithFixedCrossAxisCount(
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount: 3,
                     childAspectRatio: posterGridAspect(context),
                     crossAxisSpacing: 12,
@@ -1027,8 +969,9 @@ class _MyListViewState extends State<_MyListView> {
                         onTap: () => onTap(entry.item),
                         // Long-press opens the per-card edit sheet (own list →
                         // status/remove; tracker → the tracker editor).
-                        onLongPress:
-                            onMore == null ? null : () => onMore(entry),
+                        onLongPress: onMore == null
+                            ? null
+                            : () => onMore(entry),
                       ),
                     );
                   },
@@ -1038,14 +981,58 @@ class _MyListViewState extends State<_MyListView> {
     );
   }
 
-  /// Open a tracker stub (no provider attached): drop into the app's global
-  /// search pre-filled with the title so the user picks the source/result.
+  /// Open a tracker entry.
+  ///
+  /// The stub carries no provider, but it does carry the id the metadata
+  /// catalogue is keyed by — a MAL id from AniList/MAL, a TMDB one from Simkl
+  /// — which is the same identity a `zm://` title uses. So the title can be
+  /// opened directly instead of dumping you into a search for its own name.
+  /// Search stays the fallback for an entry with no id to go on.
   void _openTrackerItem(BuildContext context, MediaItem stub) {
+    final c = _canonicalOf(stub);
+    if (c != null) {
+      _openItem(
+        context,
+        prefer: _providerOf(widget.pinnedTracker),
+        MediaItem(
+          id: c.id,
+          title: stub.title,
+          englishTitle: stub.englishTitle,
+          cover: stub.cover,
+          url: ZmodeIds.showUrl(c),
+          type: stub.type,
+          sourceId: ZmodeIds.sourceId,
+          malId: stub.malId,
+          tmdbId: stub.tmdbId,
+          tmdbIsTv: stub.tmdbIsTv,
+          // Saved from here, it stays this tracker's title.
+          savedFrom: widget.pinnedTracker?.displayName,
+        ),
+      );
+      return;
+    }
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => SearchScreen(initialQuery: stub.title),
       ),
     );
+  }
+
+  /// The metadata identity of a tracker stub, or null when it has none.
+  ZCanonical? _canonicalOf(MediaItem stub) {
+    final mal = stub.malId;
+    if (mal != null) {
+      return ZCanonical(switch (stub.type) {
+        ProviderType.manga => ZKind.manga,
+        ProviderType.novel => ZKind.novel,
+        _ => ZKind.anime,
+      }, 'mal:$mal');
+    }
+    final tmdb = stub.tmdbId;
+    if (tmdb != null) {
+      return ZCanonical(stub.tmdbIsTv ? ZKind.tv : ZKind.movie, 'tmdb:$tmdb');
+    }
+    return null;
   }
 
   /// How many of [entries] — already narrowed to the kind on screen — are in
@@ -1136,27 +1123,31 @@ class _MyListViewState extends State<_MyListView> {
           padding: const EdgeInsets.only(left: 16),
           children: [
             tab(
-                context.l10n.all,
-                _statusFilter == null &&
-                    _categoryFilter == null &&
-                    _customListFilter == null,
-                countOf(null),
-                () => setState(() {
-                      _statusFilter = null;
-                      _categoryFilter = null;
-                      _customListFilter = null;
-                    })),
+              context.l10n.all,
+              _statusFilter == null &&
+                  _categoryFilter == null &&
+                  _customListFilter == null,
+              countOf(null),
+              () => setState(() {
+                _statusFilter = null;
+                _categoryFilter = null;
+                _customListFilter = null;
+              }),
+            ),
             for (final s in present)
               tab(
-                  shortLabelFor(s,
-                      reading: sl<ContentModeCubit>().state.isReading),
-                  _statusFilter == s && _categoryFilter == null,
-                  countOf(s),
-                  () => setState(() {
-                        _statusFilter = s;
-                        _categoryFilter = null;
-                        _customListFilter = null;
-                      })),
+                shortLabelFor(
+                  s,
+                  reading: sl<ContentModeCubit>().state.isReading,
+                ),
+                _statusFilter == s && _categoryFilter == null,
+                countOf(s),
+                () => setState(() {
+                  _statusFilter = s;
+                  _categoryFilter = null;
+                  _customListFilter = null;
+                }),
+              ),
             // User-made categories come after the statuses, in their own
             // order. Long-press one to rename, delete or reorder it.
             //
@@ -1164,11 +1155,12 @@ class _MyListViewState extends State<_MyListView> {
             // category is not tied to a kind, so one made under Streaming used
             // to appear under Manga and Novel as an empty tab. Counted against
             // THIS kind's entries too, for the same reason.
-            for (final c in isMyList
-                ? (_cats?.all() ?? const <ListCategory>[])
-                    .where(_categoryFitsKind(entries))
-                    .toList()
-                : const <ListCategory>[])
+            for (final c
+                in isMyList
+                    ? (_cats?.all() ?? const <ListCategory>[])
+                          .where(_categoryFitsKind(entries))
+                          .toList()
+                    : const <ListCategory>[])
               GestureDetector(
                 onLongPress: () => _manageCategory(context, c),
                 child: tab(
@@ -1204,19 +1196,25 @@ class _MyListViewState extends State<_MyListView> {
                 child: Container(
                   margin: const EdgeInsets.only(right: 22),
                   padding: const EdgeInsets.only(top: 8, bottom: 10),
-                  child: Icon(Icons.add_rounded,
-                      size: 20, color: AppColors.textSecondary),
+                  child: Icon(
+                    Icons.add_rounded,
+                    size: 20,
+                    color: AppColors.textSecondary,
+                  ),
                 ),
               ),
             // Last, so adding one never shifts the tabs already there.
             if (isMyList && _cats != null)
               GestureDetector(
                 onTap: () => _createCategory(context),
-              child: Container(
-                margin: const EdgeInsets.only(right: 22),
-                padding: const EdgeInsets.only(top: 8, bottom: 10),
-                  child: Icon(Icons.add_rounded,
-                      size: 20, color: AppColors.textSecondary),
+                child: Container(
+                  margin: const EdgeInsets.only(right: 22),
+                  padding: const EdgeInsets.only(top: 8, bottom: 10),
+                  child: Icon(
+                    Icons.add_rounded,
+                    size: 20,
+                    color: AppColors.textSecondary,
+                  ),
                 ),
               ),
           ],
@@ -1236,8 +1234,11 @@ class _MyListViewState extends State<_MyListView> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.bookmark_outline,
-                  size: 56, color: AppColors.textTertiary),
+              const Icon(
+                Icons.bookmark_outline,
+                size: 56,
+                color: AppColors.textTertiary,
+              ),
               const SizedBox(height: 16),
               Text(
                 context.l10n.signInToBuildYourList,
@@ -1272,16 +1273,16 @@ class _MyListViewState extends State<_MyListView> {
 /// type instead of the generic "Nothing".
 String myListFilteredEmptyMessage(AppLocalizations l10n, ContentMode mode) =>
     switch (mode) {
-  ContentMode.anime => l10n.nothingHereInThisFilter,
-  ContentMode.manga => l10n.noMangaHereInThisFilter,
-  ContentMode.novel => l10n.noNovelsHereInThisFilter,
-};
+      ContentMode.anime => l10n.nothingHereInThisFilter,
+      ContentMode.manga => l10n.noMangaHereInThisFilter,
+      ContentMode.novel => l10n.noNovelsHereInThisFilter,
+    };
 
 /// EmptyState message for a genuinely empty My List (nothing saved yet, of
 /// ANY type). Anime mode's wording is unchanged.
 String myListEmptyMessage(AppLocalizations l10n, ContentMode mode) =>
     switch (mode) {
-  ContentMode.anime => l10n.titlesYouAddAppearHere,
-  ContentMode.manga => l10n.mangaYouAddAppearHere,
-  ContentMode.novel => l10n.novelsYouAddAppearHere,
-};
+      ContentMode.anime => l10n.titlesYouAddAppearHere,
+      ContentMode.manga => l10n.mangaYouAddAppearHere,
+      ContentMode.novel => l10n.novelsYouAddAppearHere,
+    };

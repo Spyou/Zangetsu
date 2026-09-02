@@ -83,8 +83,22 @@ class MetadataRepository implements CatalogueRepository {
   /// Deliberately per-request rather than sticky: a provider that 500s once is
   /// usually back a moment later, and a session-long switch would leave the
   /// user on the fallback long after the outage ended, with no sign of it.
-  Future<T> _viaAnime<T>(Future<T> Function(AnimeCatalogue c) op) async {
-    final (primary, backup) = _animeChain;
+  Future<T> _viaAnime<T>(
+    Future<T> Function(AnimeCatalogue c) op, {
+    PreferredProvider? prefer,
+  }) async {
+    var (primary, backup) = _animeChain;
+    // A caller that knows which catalogue this title came from wins over the
+    // saved choice — the fallback still applies if that one fails.
+    final forced = switch (prefer) {
+      PreferredProvider.anilist => _al,
+      PreferredProvider.mal => _mal,
+      _ => null,
+    };
+    if (forced != null && forced != primary) {
+      backup = primary;
+      primary = forced;
+    }
     try {
       return await op(primary);
     } catch (primaryError, primaryStack) {
@@ -117,8 +131,20 @@ class MetadataRepository implements CatalogueRepository {
 
   /// The movie/TV twin of [_viaAnime]. Interchangeable for the same reason:
   /// Simkl carries a TMDB id on nearly everything, so both speak `tmdb:`.
-  Future<T> _viaVideo<T>(Future<T> Function(VideoCatalogue c) op) async {
-    final (primary, backup) = _videoChain;
+  Future<T> _viaVideo<T>(
+    Future<T> Function(VideoCatalogue c) op, {
+    PreferredProvider? prefer,
+  }) async {
+    var (primary, backup) = _videoChain;
+    final forced = switch (prefer) {
+      PreferredProvider.tmdb => _tmdb,
+      PreferredProvider.simkl => _simkl,
+      _ => null,
+    };
+    if (forced != null && forced != primary) {
+      backup = primary;
+      primary = forced;
+    }
     try {
       return await op(primary);
     } catch (primaryError, primaryStack) {
@@ -148,8 +174,16 @@ class MetadataRepository implements CatalogueRepository {
   /// failed. Hardcoding TMDB/AniList here stopped being true the moment MAL
   /// and Simkl could stand in for them.
   @override
-  String displayName(String sourceId) {
-    if (_isTmdb(_browseKind())) {
+  String displayName(String sourceId) => nameForKind(_browseKind());
+
+  /// The provider answering for [kind].
+  ///
+  /// Separate from [displayName] because that one only gets a source id, and
+  /// the browse kind is the wrong answer for a title you opened from
+  /// somewhere else — an anime opened while browsing movies was labelled
+  /// Simkl, which is a provider that never saw it.
+  String nameForKind(ZKind kind) {
+    if (_isTmdb(kind)) {
       return _providerPrefs?.video == VideoProvider.simkl ? 'Simkl' : 'TMDB';
     }
     return _providerPrefs?.anime == AnimeProvider.mal
@@ -294,12 +328,15 @@ class MetadataRepository implements CatalogueRepository {
     String category = 'sub',
     String? sourceId,
     void Function(MediaDetail partial)? onPartial,
+    /// Read this title from a specific catalogue — the tracker you opened it
+    /// from — rather than the app-wide choice.
+    PreferredProvider? prefer,
   }) async {
     final c = ZmodeIds.parseShow(url);
     if (c == null) throw ArgumentError('not a metadata url: $url');
     final d = _isTmdb(c.kind)
-        ? await _viaVideo((x) => x.detail(c))
-        : await _viaAnime((x) => x.detail(c));
+        ? await _viaVideo((x) => x.detail(c), prefer: prefer)
+        : await _viaAnime((x) => x.detail(c), prefer: prefer);
     _titles[c.key] = (title: d.title, alt: d.englishTitle, malId: d.malId);
 
     // Hand the caller everything that does NOT depend on a source right now:

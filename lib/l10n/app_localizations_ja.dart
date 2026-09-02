@@ -4826,4 +4826,13 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get adultOnly => 'Adult';
+
+  @override
+  String get yourSavedAnimeList => 'Your saved anime list';
+
+  @override
+  String get yourSavedMangaList => 'Your saved manga list';
+
+  @override
+  String get yourSavedNovelList => 'Your saved novel list';
 }
