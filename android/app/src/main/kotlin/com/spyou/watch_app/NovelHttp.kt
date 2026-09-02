@@ -1,7 +1,8 @@
 package com.spyou.watch_app
 
+import android.os.SystemClock
 import android.webkit.CookieManager
-import com.spyou.watch_app.mihon.SourceWebViewActivity
+import com.spyou.watch_app.mihon.WebViewVisits
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
@@ -19,24 +20,29 @@ import okhttp3.RequestBody.Companion.toRequestBody
  * across app restarts — ponytail: fine for now, a CF cookie is short-lived
  * and the plugin re-issues requests every session anyway.
  */
-private class InMemoryCookieJar : CookieJar {
+internal class InMemoryCookieJar : CookieJar {
     private val store = ConcurrentHashMap<String, List<Cookie>>()
     private val storedAtMs = ConcurrentHashMap<String, Long>()
 
     override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
         if (cookies.isNotEmpty()) {
             store[url.host] = cookies
-            storedAtMs[url.host] = System.currentTimeMillis()
+            // Monotonic, not wall clock: this is only ever compared against
+            // the WebView visit stamp, and an NTP correction landing between
+            // the two would otherwise order them backwards.
+            storedAtMs[url.host] = SystemClock.elapsedRealtime()
         }
     }
 
     override fun loadForRequest(url: HttpUrl): List<Cookie> {
+        // Expiry is an absolute epoch time, so that one comparison stays on
+        // the wall clock.
         val now = System.currentTimeMillis()
         val own = store[url.host]?.filter { it.expiresAt > now } ?: emptyList()
         return mergeCookies(
             own = own,
             fromWebView = webViewCookies(url),
-            webViewIsNewer = SourceWebViewActivity.lastVisitAtMs > (storedAtMs[url.host] ?: 0L),
+            webViewIsNewer = WebViewVisits.isNewerThan(url.host, storedAtMs[url.host] ?: 0L),
         )
     }
 
@@ -83,9 +89,13 @@ private class InMemoryCookieJar : CookieJar {
  * It is backwards the moment the user signs in. A logged-out session cookie is
  * stamped by okhttp with no expiry, so it never ages out and would shadow the
  * logged-in one for the rest of the process. [webViewIsNewer] is the tiebreak:
- * the user has been in the visible WebView SINCE this host's cookies were
- * stored, so the WebView's copy is the more recent truth. A response that
- * arrives after that visit stores again and takes precedence straight back.
+ * the user has been in the visible WebView on THIS host since this host's
+ * cookies were stored, so the WebView's copy is the more recent truth. A
+ * response that arrives after that visit stores again and takes precedence
+ * straight back.
+ *
+ * Both halves of that comparison are per host (see WebViewVisits), so a visit
+ * to one source can never hand the WebView's copy the win on another.
  */
 internal fun mergeCookies(
     own: List<Cookie>,

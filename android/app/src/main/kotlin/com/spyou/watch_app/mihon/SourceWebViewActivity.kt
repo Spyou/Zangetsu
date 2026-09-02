@@ -7,6 +7,7 @@ import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
 import android.os.Message
+import android.os.SystemClock
 import android.view.ViewGroup
 import android.webkit.CookieManager
 import android.webkit.WebChromeClient
@@ -21,6 +22,7 @@ import eu.kanade.tachiyomi.network.AndroidCookieJar
 import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.util.system.setDefaultSettings
 import eu.kanade.tachiyomi.util.system.setUserAgent
+import java.util.concurrent.ConcurrentHashMap
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 
 /**
@@ -55,10 +57,45 @@ internal fun shouldCloseOnPageFinished(
     return cookie.contains("cf_clearance")
 }
 
+/**
+ * When this screen was last closed, PER HOST.
+ *
+ * Read by the novel client's cookie jar to decide whether its own stored
+ * cookie or the WebView's is the newer one. Pulled out of the Activity so it
+ * can be tested without one, same as [shouldCloseOnPageFinished].
+ *
+ * Per host and not one shared stamp, because this screen serves every source
+ * and both modes: a single stamp meant a sign-in on one source marked every
+ * other host as freshly visited too, and a stale WebView cookie could then
+ * shadow a cookie that had just come off a response for an unrelated site.
+ *
+ * The stamp is monotonic. The value it is compared against is written on a
+ * response, so a wall clock stepped by an NTP correction in between can order
+ * the two backwards.
+ *
+ * Hosts are matched exactly, the same key the novel jar stores under — a
+ * sign-in on www.example.com does not cover a request to example.com. That
+ * only costs the sign-in tiebreak on a source whose site and requests
+ * disagree, which falls back to "the local copy wins", the safe default.
+ */
+internal object WebViewVisits {
+    private val visitedAtMs = ConcurrentHashMap<String, Long>()
+
+    fun record(host: String) {
+        if (host.isNotBlank()) visitedAtMs[host] = SystemClock.elapsedRealtime()
+    }
+
+    /** Whether [host] has been visited since its cookies were stored. */
+    fun isNewerThan(host: String, storedAtMs: Long): Boolean =
+        (visitedAtMs[host] ?: 0L) > storedAtMs
+}
+
 class SourceWebViewActivity : AppCompatActivity() {
 
     private var solved = false
     private var stayOpen = false
+    /** Empty until [onCreate] has a url — [onDestroy] runs even when it hasn't. */
+    private var siteHost = ""
     private lateinit var targetUrl: String
     private lateinit var webView: WebView
 
@@ -74,12 +111,12 @@ class SourceWebViewActivity : AppCompatActivity() {
         targetUrl = url
         stayOpen = intent.getBooleanExtra(EXTRA_STAY_OPEN, false)
         val screenTitle = intent.getStringExtra(EXTRA_TITLE)
-        val host = runCatching { Uri.parse(url).host }.getOrNull().orEmpty()
+        siteHost = runCatching { Uri.parse(url).host }.getOrNull().orEmpty()
 
         val toolbar = Toolbar(this).apply {
             setBackgroundColor(if (stayOpen) BROWSER_BLUE else CLOUDFLARE_ORANGE)
             title = if (stayOpen) (screenTitle ?: "Browser") else "Solve Cloudflare"
-            subtitle = host
+            subtitle = siteHost
             setTitleTextColor(Color.WHITE)
             setSubtitleTextColor(0xCCFFFFFF.toInt())
             navigationIcon = androidx.appcompat.content.res.AppCompatResources.getDrawable(
@@ -182,8 +219,10 @@ class SourceWebViewActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         // Whatever the mode was, the WebView jar has just been through a real
-        // browsing session and is the freshest view of this site's cookies.
-        lastVisitAtMs = System.currentTimeMillis()
+        // browsing session and is the freshest view of THIS site's cookies.
+        // Only this site's: every other host's cookies are exactly as old as
+        // they were before the user opened this screen.
+        WebViewVisits.record(siteHost)
         // Only the Cloudflare mode has a Dart call waiting on it. Resolving
         // from login mode could answer a solve started by a background browse
         // that nobody has actually completed.
@@ -250,15 +289,6 @@ class SourceWebViewActivity : AppCompatActivity() {
 
         /** Login mode's intent action — see [intentFor]. */
         const val ACTION_LOGIN = "com.spyou.watch_app.action.SOURCE_LOGIN"
-
-        /**
-         * When this screen was last closed (`System.currentTimeMillis()`,
-         * 0 = never). Read by the novel client's cookie jar to decide whether
-         * its own stored cookie or the WebView's is the newer one.
-         */
-        @Volatile
-        @JvmStatic
-        var lastVisitAtMs: Long = 0L
 
         /**
          * The launch intent for [url] in one of the two modes.
