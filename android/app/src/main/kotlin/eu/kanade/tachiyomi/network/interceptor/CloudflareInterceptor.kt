@@ -37,7 +37,7 @@ class CloudflareInterceptor(
         response: Response
     ): Response {
         // Remember the UA this source actually sends, so the visible solver
-        // (MihonCloudflareActivity) solves under the SAME UA — a cf_clearance
+        // (SourceWebViewActivity) solves under the SAME UA — a cf_clearance
         // cookie is bound to its UA; solving under the app default when the
         // source uses its own UA makes Cloudflare reject the cookie forever.
         eu.kanade.tachiyomi.network.NetworkHelper.challengeUserAgent =
@@ -111,7 +111,7 @@ class CloudflareInterceptor(
         catch (e: CloudflareBypassException) {
             // The headless solve can't pass an interactive challenge (Turnstile).
             // Surface it as a typed IOException carrying the URL so the bridge can
-            // offer the user a visible WebView solve (MihonCloudflareActivity).
+            // offer the user a visible WebView solve (SourceWebViewActivity).
             throw CloudflareRequiredException(request.url.toString())
         } catch (e: Exception) {
             throw IOException(e)
@@ -223,7 +223,7 @@ class CloudflareBypassException : Exception()
 /**
  * Thrown when the headless solver couldn't clear an interactive Cloudflare
  * challenge. Carries the [url] to solve so the app can open a visible WebView
- * ([com.spyou.watch_app.mihon.MihonCloudflareActivity]). Extends [IOException]
+ * ([com.spyou.watch_app.mihon.SourceWebViewActivity]). Extends [IOException]
  * so it propagates cleanly through OkHttp and the source call.
  */
 class CloudflareRequiredException(val url: String) :

@@ -115,7 +115,7 @@ class MihonExtensionService {
     }
   }
 
-  /// Opens the native visible WebView (MihonCloudflareActivity) so the user can
+  /// Opens the native visible WebView (SourceWebViewActivity) so the user can
   /// complete a Cloudflare challenge for [url]. The `cf_clearance` cookie it
   /// captures is shared with the Mihon OkHttp client, so the source loads
   /// afterwards. Best-effort — a missing channel (non-Android) is a silent no-op.

@@ -112,7 +112,7 @@ class MihonBridge(
     companion object {
         /**
          * The in-flight `solveCloudflare` call's result. Held (not completed)
-         * while [MihonCloudflareActivity] is open so the Dart Future only
+         * while [SourceWebViewActivity] is open so the Dart Future only
          * resolves once the user closes the solve WebView — then the browse
          * screen reloads with the fresh cf_clearance cookie. Completed on the
          * main thread from the activity's `onDestroy`.
@@ -482,8 +482,8 @@ class MihonBridge(
                     // Hold the result until the solve WebView closes (see the
                     // companion object) so Dart can reload only once it's done.
                     beginCloudflareSolve(result)
-                    val intent = Intent(context, MihonCloudflareActivity::class.java)
-                        .putExtra(MihonCloudflareActivity.EXTRA_URL, url)
+                    val intent = Intent(context, SourceWebViewActivity::class.java)
+                        .putExtra(SourceWebViewActivity.EXTRA_URL, url)
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     context.startActivity(intent)
                 }
@@ -494,10 +494,10 @@ class MihonBridge(
                         result.error("bad_args", "url is required", null)
                         return@setMethodCallHandler
                     }
-                    val intent = Intent(context, MihonCloudflareActivity::class.java).apply {
-                        putExtra(MihonCloudflareActivity.EXTRA_URL, url)
-                        putExtra(MihonCloudflareActivity.EXTRA_STAY_OPEN, true)
-                        putExtra(MihonCloudflareActivity.EXTRA_TITLE, call.argument<String>("title"))
+                    val intent = Intent(context, SourceWebViewActivity::class.java).apply {
+                        putExtra(SourceWebViewActivity.EXTRA_URL, url)
+                        putExtra(SourceWebViewActivity.EXTRA_STAY_OPEN, true)
+                        putExtra(SourceWebViewActivity.EXTRA_TITLE, call.argument<String>("title"))
                         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     }
                     context.startActivity(intent)
