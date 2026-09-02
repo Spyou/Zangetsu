@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
+import '../../core/app_mode.dart';
 import '../../core/cache/app_image_cache.dart';
 import '../../core/di/injector.dart';
 import '../../core/platform/apple_tv.dart';
@@ -70,6 +71,11 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
   /// _metaCache; futures are stored so carousel rotation never re-fetches.
   final Map<String, Future<HeroMeta?>> _metaCache = {};
 
+  /// Stable identities so Anime ↔ Movie/TV swaps reuse the already-built
+  /// 10-foot trees (hero + rails) instead of reconstructing them.
+  final GlobalKey _animeCatalogKey = GlobalKey();
+  final GlobalKey _movieCatalogKey = GlobalKey();
+
   /// tvOS: defer the Hive listenable until after the shell's first frame lands.
   bool _historyLive = !isAppleTv;
 
@@ -79,6 +85,11 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       if (isAppleTv) setState(() => _historyLive = true);
+      if (sl.isRegistered<AppMode>() && sl<AppMode>().isTv) {
+        // Dual catalogue keeps ~330 poster images warm — default cap (300) evicts
+        // half the prefetch and cold-load stalls the first swap.
+        PaintingBinding.instance.imageCache.maximumSize = 450;
+      }
       final cubit = context.read<HomeCubit>();
       if (cubit.state.sections == null && !cubit.state.loading) {
         cubit.load();
@@ -101,6 +112,37 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
     ]);
     if (!mounted) return;
     context.read<HomeCubit>().primeStreamKindCacheFromMetadata();
+    // Decode poster art for the inactive catalogue while Home is visible so
+    // Anime ↔ Movie/TV is a paint swap, not a cold image load.
+    unawaited(_precacheStreamCatalog(StreamKind.anime));
+    unawaited(_precacheStreamCatalog(StreamKind.movie));
+  }
+
+  Future<void> _precacheStreamCatalog(StreamKind kind) async {
+    final rows = context.read<HomeCubit>().sectionsFor(kind);
+    if (rows == null || !mounted) return;
+    var covers = 0;
+    for (final section in rows) {
+      for (final item in section.items) {
+        if (!mounted) return;
+        final url = item.banner ?? item.cover;
+        if (url == null || url.isEmpty) continue;
+        covers++;
+        try {
+          await precacheImage(
+            CachedNetworkImageProvider(
+              url,
+              cacheManager: AppImageCache.manager,
+              headers: item.coverHeaders,
+            ),
+            context,
+          );
+        } catch (_) {}
+        if (covers % 12 == 0) {
+          await Future<void>.delayed(Duration.zero);
+        }
+      }
+    }
   }
 
   // ── Navigation helpers ────────────────────────────────────────────────────
@@ -212,10 +254,7 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
   Future<HeroMeta?> _heroMeta(MediaItem m) =>
       _metaCache.putIfAbsent('${m.sourceId}:${m.id}', () async {
         if (ZmodeIds.isZ(m.url)) {
-          return HeroMeta(
-            genres: m.genres,
-            episodeCount: m.subCount ?? 0,
-          );
+          return HeroMeta(genres: m.genres, episodeCount: m.subCount ?? 0);
         }
         try {
           final d = await sl<CatalogueRepository>().detail(
@@ -234,9 +273,7 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
 
   void _openBrowseSources() {
     Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => const BrowseSourcesScreen(),
-      ),
+      MaterialPageRoute<void>(builder: (_) => const BrowseSourcesScreen()),
     );
   }
 
@@ -408,9 +445,7 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
 
     final repo = sl<CatalogueRepository>();
     final loadedEmpty =
-        !state.loading &&
-        state.sections != null &&
-        state.sections!.isEmpty;
+        !state.loading && state.sections != null && state.sections!.isEmpty;
     final activeId = context.watch<ActiveSourceCubit>().state;
     final noSourceForMode = ZModePrefs.enabled
         ? false
@@ -433,9 +468,7 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
           sourceName: repo.displayName(repo.sourceId),
           onRetry: () => context.read<HomeCubit>().load(reset: true),
           onInstallSources: () => Navigator.of(context).push(
-            MaterialPageRoute<void>(
-              builder: (_) => const ProvidersHubScreen(),
-            ),
+            MaterialPageRoute<void>(builder: (_) => const ProvidersHubScreen()),
           ),
           cloudflareUrl: state.cloudflareUrl,
           onSolveCloudflare: state.cloudflareUrl == null
@@ -454,65 +487,53 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
     }
 
     Widget historyBody(List<HistoryEntry> history) {
+      // Rebuild when rows arrive — NOT when Anime ↔ Movie/TV flips. The dual
+      // host listens to [ZModePrefs.revision] itself and only toggles Offstage.
       return ValueListenableBuilder<int>(
-        valueListenable: ZModePrefs.revision,
-        builder: (context, _, _) {
+        valueListenable: context.read<HomeCubit>().streamCatalogRevision,
+        builder: (context, _, __) {
+          final cubit = context.read<HomeCubit>();
+          final animeRows = cubit.sectionsFor(StreamKind.anime);
+          final movieRows = cubit.sectionsFor(StreamKind.movie);
+          final haveBoth = animeRows != null && movieRows != null;
+          if (haveBoth) {
+            return _TvDualCatalogHost(
+              animeKey: _animeCatalogKey,
+              movieKey: _movieCatalogKey,
+              animeSections: animeRows,
+              movieSections: movieRows,
+              history: history,
+              loading: state.loading,
+              buildCatalog: _catalogScroll,
+            );
+          }
           return ValueListenableBuilder<int>(
-            valueListenable: context.read<HomeCubit>().streamCatalogRevision,
-            builder: (context, _, _) {
-              final cubit = context.read<HomeCubit>();
+            valueListenable: ZModePrefs.revision,
+            builder: (context, _, __) {
               final kind = ZModePrefs.streamKind;
-              Widget catalog(StreamKind k) {
-                final visible = k == kind;
-                final rows = cubit.sectionsFor(k) ??
-                    (visible ? sections : const <HomeSection>[]);
-                return ExcludeFocus(
-                  excluding: !visible,
-                  child: TickerMode(
-                    enabled: visible,
-                    child: KeyedSubtree(
-                      key: ValueKey('tv-home-catalog-$k'),
-                      child: _catalogScroll(
-                        rows,
-                        history,
-                        loading: visible && state.loading,
-                        autofocus: visible,
-                      ),
-                    ),
-                  ),
-                );
-              }
-
-              final haveBoth = cubit.sectionsFor(StreamKind.anime) != null &&
-                  cubit.sectionsFor(StreamKind.movie) != null;
-              if (haveBoth) {
-                return IndexedStack(
-                  index: kind == StreamKind.movie ? 1 : 0,
-                  sizing: StackFit.expand,
-                  children: [
-                    catalog(StreamKind.anime),
-                    catalog(StreamKind.movie),
-                  ],
-                );
-              }
-              return catalog(kind);
+              final rows = cubit.sectionsFor(kind) ?? sections;
+              return _catalogScroll(
+                rows,
+                history,
+                loading: state.loading,
+                autofocus: true,
+                active: true,
+              );
             },
           );
         },
       );
     }
 
-    final body = (loggedIn && _historyLive && Hive.isBoxOpen(WatchHistory.boxName))
+    final body =
+        (loggedIn && _historyLive && Hive.isBoxOpen(WatchHistory.boxName))
         ? ValueListenableBuilder(
             valueListenable: Hive.box<Map>(WatchHistory.boxName).listenable(),
             builder: (context, _, _) =>
                 historyBody(sl<WatchHistory>().recent()),
           )
         : historyBody(const <HistoryEntry>[]);
-    return Scaffold(
-      backgroundColor: AppColors.bg,
-      body: body,
-    );
+    return Scaffold(backgroundColor: AppColors.bg, body: body);
   }
 
   Widget _catalogScroll(
@@ -520,9 +541,11 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
     List<HistoryEntry> history, {
     required bool loading,
     required bool autofocus,
+    required bool active,
   }) {
-    final heroItems =
-        sections.isNotEmpty ? sections.first.items : const <MediaItem>[];
+    final heroItems = sections.isNotEmpty
+        ? sections.first.items
+        : const <MediaItem>[];
     final heroItem = heroItems.isNotEmpty ? heroItems.first : null;
     return CustomScrollView(
       slivers: [
@@ -530,6 +553,7 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
           SliverToBoxAdapter(
             child: _TvHero(
               items: heroItems.take(6).toList(),
+              active: active,
               inListOf: _inList,
               metaOf: _heroMeta,
               onPlay: _play,
@@ -561,7 +585,8 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
               onTap: _openDetail,
               onLongPress: _showInfo,
               onSeeAll: () => _openSeeAll(sections[i]),
-              firstAutofocus: autofocus &&
+              firstAutofocus:
+                  autofocus &&
                   heroItem == null &&
                   history.isEmpty &&
                   i == 0 &&
@@ -578,6 +603,112 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
 /// for the current mode. Same wording, sized for a 10-foot screen, and its
 /// button is a [TvFocusable] with autofocus so the D-pad lands on it instead of
 /// on an empty screen with nothing to reach.
+typedef _TvCatalogBuilder =
+    Widget Function(
+      List<HomeSection> sections,
+      List<HistoryEntry> history, {
+      required bool loading,
+      required bool autofocus,
+      required bool active,
+    });
+
+/// Keeps both 10-foot catalogues mounted and swaps visibility without
+/// rebuilding hero + rails on every Anime ↔ Movie/TV flip.
+class _TvDualCatalogHost extends StatefulWidget {
+  const _TvDualCatalogHost({
+    required this.animeKey,
+    required this.movieKey,
+    required this.animeSections,
+    required this.movieSections,
+    required this.history,
+    required this.loading,
+    required this.buildCatalog,
+  });
+
+  final GlobalKey animeKey;
+  final GlobalKey movieKey;
+  final List<HomeSection> animeSections;
+  final List<HomeSection> movieSections;
+  final List<HistoryEntry> history;
+  final bool loading;
+  final _TvCatalogBuilder buildCatalog;
+
+  @override
+  State<_TvDualCatalogHost> createState() => _TvDualCatalogHostState();
+}
+
+class _TvDualCatalogHostState extends State<_TvDualCatalogHost> {
+  /// Autofocus only on the first paint — not on every Anime ↔ Movie/TV swap
+  /// (re-autofocus was walking the full 10-foot tree and freezing the UI).
+  bool _firstBuild = true;
+
+  @override
+  void initState() {
+    super.initState();
+    ZModePrefs.revision.addListener(_onStreamKind);
+  }
+
+  @override
+  void dispose() {
+    ZModePrefs.revision.removeListener(_onStreamKind);
+    super.dispose();
+  }
+
+  void _onStreamKind() {
+    if (!mounted) return;
+    setState(() {});
+  }
+
+  Widget _pane({
+    required StreamKind kind,
+    required GlobalKey key,
+    required List<HomeSection> rows,
+  }) {
+    final visible = ZModePrefs.streamKind == kind;
+    final grantAutofocus = visible && _firstBuild;
+    return Offstage(
+      offstage: !visible,
+      child: ExcludeFocus(
+        excluding: !visible,
+        child: KeyedSubtree(
+          key: key,
+          child: RepaintBoundary(
+            child: widget.buildCatalog(
+              rows,
+              widget.history,
+              loading: visible && widget.loading,
+              autofocus: grantAutofocus,
+              active: visible,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final stack = Stack(
+      key: const ValueKey('tv-home-dual-catalog'),
+      fit: StackFit.expand,
+      children: [
+        _pane(
+          kind: StreamKind.anime,
+          key: widget.animeKey,
+          rows: widget.animeSections,
+        ),
+        _pane(
+          kind: StreamKind.movie,
+          key: widget.movieKey,
+          rows: widget.movieSections,
+        ),
+      ],
+    );
+    _firstBuild = false;
+    return stack;
+  }
+}
+
 class _TvNoSourcesGuide extends StatelessWidget {
   const _TvNoSourcesGuide({required this.mode});
 

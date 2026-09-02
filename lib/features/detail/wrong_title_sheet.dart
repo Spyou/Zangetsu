@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
 import '../../core/mihon/mihon_extension_service.dart';
 import '../../core/provider/cf_solve_needed.dart';
@@ -10,11 +11,13 @@ import '../../core/repository/source_repository.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/ui/source_switcher.dart';
 import '../../core/theme/app_text.dart';
+import '../../core/tv/tv_focusable.dart';
 import '../../core/zmode/match_store.dart';
 import '../../core/zmode/source_matcher.dart';
 import '../../core/zmode/zmode_ids.dart';
 import '../../core/zmode/zmode_module.dart';
 import '../../l10n/l10n.dart';
+import '../shell/tv_source_picker.dart';
 import '../sources/zangetsu_sources_screen.dart';
 import 'cubit/detail_cubit.dart';
 import 'cubit/source_select_cubit.dart';
@@ -59,6 +62,8 @@ class _MatchLineState extends State<MatchLine> {
     super.dispose();
   }
 
+  bool get _isTv => sl.isRegistered<AppMode>() && sl<AppMode>().isTv;
+
   /// Every kind's episode/chapter list is substituted from the matched source
   /// (see `MetadataRepository.detail`) — anime and movie/TV now take their
   /// titles and count from the source too, not just manga/novel. So any
@@ -78,6 +83,20 @@ class _MatchLineState extends State<MatchLine> {
   /// ecosystem labels and repo tags. `onPick` keeps the choice local to this
   /// title: the app's ACTIVE source is deliberately not changed.
   void _pickSource(SourceSelectState state) {
+    if (_isTv) {
+      showDialog<void>(
+        context: context,
+        builder: (ctx) => TvSourcePicker(
+          currentId: state.selectedId ?? '',
+          onPick: (id) async {
+            if (id == state.selectedId) return;
+            await _cubit.selectSource(id);
+            if (mounted) _refreshAfterMatchChange();
+          },
+        ),
+      );
+      return;
+    }
     SourceSwitcher(
       currentId: state.selectedId ?? '',
       onChanged: (_) {},
@@ -102,6 +121,109 @@ class _MatchLineState extends State<MatchLine> {
   // reads as the same kind of "attention needed" everywhere it appears.
   static const Color _cfOrange = Color(0xFFF48120);
 
+  Widget _cfSolveButton(
+    BuildContext context,
+    String id, {
+    required bool compact,
+  }) {
+    final flaggedUrl = CfSolveNeeded.urlFor(id);
+    final solveTarget = flaggedUrl ?? sl<SourceRepository>().baseUrlFor(id);
+    final showSolve = solveTarget.isNotEmpty;
+    if (!showSolve) return const SizedBox.shrink();
+
+    final isJs = !id.startsWith('ani:') &&
+        !id.startsWith('mihon:') &&
+        !id.startsWith('cs:') &&
+        !id.startsWith('lnr:');
+
+    Future<void> solve() async {
+      final target =
+          await sl<SourceRepository>().cfSolveTargetFor(id) ?? solveTarget;
+      if (target.isEmpty) return;
+      if (isJs) {
+        await sl<ProviderManager>().solveCloudflareForHost(
+          Uri.parse(target).host,
+          target,
+        );
+      } else {
+        await MihonExtensionService.solveCloudflare(target);
+      }
+      if (!mounted) return;
+      await _cubit.load();
+      if (mounted) _refreshAfterMatchChange();
+    }
+
+    if (_isTv) {
+      return TvFocusable(
+        key: ValueKey('tv-source-cf-$id'),
+        variant: TvFocusVariant.pill,
+        scale: 1.0,
+        semanticLabel: context.l10n.solveCloudflare,
+        onTap: solve,
+        child: Padding(
+          padding: EdgeInsets.symmetric(horizontal: compact ? 8 : 12),
+          child: Icon(
+            Icons.shield_rounded,
+            size: 20,
+            color: flaggedUrl == null ? AppColors.textSecondary : _cfOrange,
+          ),
+        ),
+      );
+    }
+
+    return IconButton(
+      visualDensity: VisualDensity.compact,
+      tooltip: context.l10n.solveCloudflare,
+      icon: flaggedUrl == null
+          ? const Icon(Icons.shield_rounded, size: 18)
+          : const Badge(
+              backgroundColor: _cfOrange,
+              smallSize: 8,
+              child: Icon(Icons.shield_rounded, size: 18),
+            ),
+      color: flaggedUrl == null ? AppColors.textSecondary : _cfOrange,
+      onPressed: solve,
+    );
+  }
+
+  Widget _settingsButton(BuildContext context, String id, {required bool compact}) {
+    return FutureBuilder<bool>(
+      future: source_actions.hasSourceSettings(id),
+      builder: (context, snapshot) {
+        if (snapshot.data != true) return const SizedBox.shrink();
+        void open() => source_actions.openSourceSettings(
+          context,
+          id,
+          sl<SourceRepository>().displayName(id),
+        );
+        if (_isTv) {
+          return TvFocusable(
+            key: ValueKey('tv-source-settings-$id'),
+            variant: TvFocusVariant.pill,
+            scale: 1.0,
+            semanticLabel: context.l10n.sourceSettings,
+            onTap: open,
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: compact ? 8 : 12),
+              child: const Icon(
+                Icons.tune_rounded,
+                size: 20,
+                color: AppColors.textSecondary,
+              ),
+            ),
+          );
+        }
+        return IconButton(
+          visualDensity: VisualDensity.compact,
+          tooltip: context.l10n.sourceSettings,
+          icon: const Icon(Icons.tune_rounded, size: 18),
+          color: AppColors.textSecondary,
+          onPressed: open,
+        );
+      },
+    );
+  }
+
   /// Per-source controls on a picker row: solve Cloudflare, and open that
   /// source's own settings. Each is shown only when it will actually do
   /// something, and neither changes the selection — tapping the row body does.
@@ -112,77 +234,16 @@ class _MatchLineState extends State<MatchLine> {
   /// sweep runs — so gating visibility on it hid the action on a fresh launch
   /// for sources that plainly need it (AnimePahe). The flag instead drives
   /// the shield's PROMINENCE, below.
-  Widget _rowActions(BuildContext sheetContext, String id) {
-    final flaggedUrl = CfSolveNeeded.urlFor(id);
-    // Empty for a plain JS provider with no declared site — which doubles as
-    // the honest signal that there is nothing to solve, so it gets no shield.
-    final solveTarget = flaggedUrl ?? sl<SourceRepository>().baseUrlFor(id);
-    final showSolve = solveTarget.isNotEmpty;
-    // The native solver owns the Mihon/Aniyomi/CloudStream cookie jars; plain
-    // JS providers run on Dio and need ProviderManager's own solve. Same
-    // id-prefix routing source_actions.hasSourceSettings uses.
-    final isJs = !id.startsWith('ani:') &&
-        !id.startsWith('mihon:') &&
-        !id.startsWith('cs:') &&
-        !id.startsWith('lnr:');
+  Widget _rowActions(
+    BuildContext context,
+    String id, {
+    bool compact = false,
+  }) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (showSolve)
-          IconButton(
-            visualDensity: VisualDensity.compact,
-            tooltip: sheetContext.l10n.solveCloudflare,
-            // Orange + badged only when a challenge was actually seen, so
-            // "this one needs it" still reads differently from "this one
-            // offers it".
-            icon: flaggedUrl == null
-                ? const Icon(Icons.shield_rounded, size: 18)
-                : const Badge(
-                    backgroundColor: _cfOrange,
-                    smallSize: 8,
-                    child: Icon(Icons.shield_rounded, size: 18),
-                  ),
-            color: flaggedUrl == null ? AppColors.textSecondary : _cfOrange,
-            onPressed: () async {
-              // Resolve the target at TAP time, not render time: a CloudStream
-              // plugin rewrites its own mainUrl once it has fetched its live
-              // domain list, and a user-set domain override outranks both.
-              final target =
-                  await sl<SourceRepository>().cfSolveTargetFor(id) ??
-                      solveTarget;
-              if (target.isEmpty) return;
-              if (isJs) {
-                await sl<ProviderManager>().solveCloudflareForHost(
-                  Uri.parse(target).host,
-                  target,
-                );
-              } else {
-                await MihonExtensionService.solveCloudflare(target);
-              }
-              // Solving clears the flag — re-run the match + detail load so
-              // the user sees the result instead of retrying by hand.
-              if (!mounted) return;
-              await _cubit.load();
-              if (mounted) _refreshAfterMatchChange();
-            },
-          ),
-        FutureBuilder<bool>(
-          future: source_actions.hasSourceSettings(id),
-          builder: (context, snapshot) {
-            if (snapshot.data != true) return const SizedBox.shrink();
-            return IconButton(
-              visualDensity: VisualDensity.compact,
-              tooltip: sheetContext.l10n.sourceSettings,
-              icon: const Icon(Icons.tune_rounded, size: 18),
-              color: AppColors.textSecondary,
-              onPressed: () => source_actions.openSourceSettings(
-                sheetContext,
-                id,
-                sl<SourceRepository>().displayName(id),
-              ),
-            );
-          },
-        ),
+        _cfSolveButton(context, id, compact: compact),
+        _settingsButton(context, id, compact: compact),
       ],
     );
   }
@@ -274,8 +335,107 @@ class _MatchLineState extends State<MatchLine> {
           // Download and Source read as one stack. The row body opens the
           // picker; the trailing icons act on the SELECTED source and are
           // outside that InkWell so they never double as a row tap.
+          final edge = _isTv
+              ? const EdgeInsets.only(top: 10)
+              : const EdgeInsets.fromLTRB(16, 10, 16, 0);
+          final sourceRow = Row(
+            children: [
+              Flexible(
+                child: Text(
+                  label,
+                  style: AppText.button.copyWith(
+                    color: selectedId == null
+                        ? AppColors.textTertiary
+                        : AppColors.textPrimary,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(width: 4),
+              Icon(
+                Icons.keyboard_arrow_down_rounded,
+                size: 20,
+                color: AppColors.textSecondary,
+              ),
+            ],
+          );
+          if (_isTv) {
+            return Padding(
+              padding: edge,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  TvFocusable(
+                    key: const ValueKey('tv-detail-source'),
+                    variant: TvFocusVariant.pill,
+                    onTap: () => _pickSource(state),
+                    semanticLabel: label,
+                    child: ExcludeSemantics(
+                      child: Container(
+                        height: 52,
+                        padding: const EdgeInsets.symmetric(horizontal: 14),
+                        alignment: Alignment.centerLeft,
+                        decoration: BoxDecoration(
+                          color: AppColors.surface2,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: sourceRow,
+                      ),
+                    ),
+                  ),
+                  if (selectedId != null) ...[
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        _rowActions(context, selectedId, compact: true),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: state.loading
+                              ? const SizedBox.shrink()
+                              : Text(
+                                  state.match?.showTitle.isNotEmpty == true
+                                      ? state.match!.showTitle
+                                      : l10n.noEpisodesAvailableFromThisSource,
+                                  style: AppText.caption.copyWith(
+                                    color: AppColors.textSecondary,
+                                  ),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                        ),
+                        TvFocusable(
+                          key: const ValueKey('tv-detail-wrong-title'),
+                          variant: TvFocusVariant.pill,
+                          scale: 1.0,
+                          onTap: () => _fix(selectedId),
+                          semanticLabel: l10n.wrongTitle,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 8,
+                            ),
+                            child: Text(
+                              l10n.wrongTitle,
+                              style: AppText.caption.copyWith(
+                                color: AppColors.accent,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            );
+          }
           return Padding(
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+            padding: edge,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
@@ -292,33 +452,7 @@ class _MatchLineState extends State<MatchLine> {
                             onTap: () => _pickSource(state),
                             child: Padding(
                               padding: const EdgeInsets.only(left: 14),
-                              child: Row(
-                                children: [
-                                  Flexible(
-                                    child: Text(
-                                      label,
-                                      style: AppText.button.copyWith(
-                                        // Dimmed only when there is no source
-                                        // to name at all; a source the user
-                                        // picked reads normally even when it
-                                        // came up empty — the line below the
-                                        // pill says so outright.
-                                        color: selectedId == null
-                                            ? AppColors.textTertiary
-                                            : AppColors.textPrimary,
-                                      ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Icon(
-                                    Icons.keyboard_arrow_down_rounded,
-                                    size: 20,
-                                    color: AppColors.textSecondary,
-                                  ),
-                                ],
-                              ),
+                              child: sourceRow,
                             ),
                           ),
                         ),
@@ -389,6 +523,26 @@ Future<SourceMatch?> showWrongTitleSheet(
   required String title,
   required String sourceId,
 }) {
+  final body = _WrongTitleBody(
+    canonical: canonical,
+    initialQuery: title,
+    sourceId: sourceId,
+  );
+  if (sl.isRegistered<AppMode>() && sl<AppMode>().isTv) {
+    return showDialog<SourceMatch>(
+      context: context,
+      builder: (_) => Dialog(
+        backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        insetPadding: const EdgeInsets.symmetric(horizontal: 80, vertical: 48),
+        child: SizedBox(
+          width: 640,
+          height: MediaQuery.sizeOf(context).height * 0.75,
+          child: body,
+        ),
+      ),
+    );
+  }
   return showModalBottomSheet<SourceMatch>(
     context: context,
     isScrollControlled: true,
@@ -396,11 +550,7 @@ Future<SourceMatch?> showWrongTitleSheet(
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
     ),
-    builder: (_) => _WrongTitleBody(
-      canonical: canonical,
-      initialQuery: title,
-      sourceId: sourceId,
-    ),
+    builder: (_) => body,
   );
 }
 
@@ -444,62 +594,89 @@ class _WrongTitleViewState extends State<_WrongTitleView> {
     super.dispose();
   }
 
+  void _pickWrongTitleSource(WrongTitleCubit cubit) {
+    if (sl.isRegistered<AppMode>() && sl<AppMode>().isTv) {
+      showDialog<void>(
+        context: context,
+        builder: (ctx) => TvSourcePicker(
+          currentId: cubit.sourceId,
+          onPick: cubit.setSource,
+        ),
+      );
+      return;
+    }
+    SourceSwitcher(
+      currentId: cubit.sourceId,
+      onChanged: (_) {},
+      onInstallSources: () => Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => const ZangetsuSourcesScreen(openToRepos: true),
+        ),
+      ),
+    ).showPicker(
+      context,
+      onPick: cubit.setSource,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
     final cubit = context.read<WrongTitleCubit>();
+    final isTv = sl.isRegistered<AppMode>() && sl<AppMode>().isTv;
+    final sourceLabel = l10n.sourceLabel(
+      sl<SourceRepository>().displayName(cubit.sourceId),
+    );
+    final sourceChip = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          sourceLabel,
+          style: AppText.caption.copyWith(color: AppColors.textSecondary),
+        ),
+        Icon(
+          Icons.keyboard_arrow_down_rounded,
+          size: 16,
+          color: AppColors.textSecondary,
+        ),
+      ],
+    );
     return SafeArea(
       child: Padding(
         padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
         child: SizedBox(
-          height: MediaQuery.sizeOf(context).height * 0.75,
+          height: isTv ? null : MediaQuery.sizeOf(context).height * 0.75,
           child: BlocBuilder<WrongTitleCubit, WrongTitleState>(
             builder: (context, state) => Column(
               children: [
                 const SizedBox(height: 12),
                 Text(l10n.pickTheRightTitle, style: AppText.headline),
                 const SizedBox(height: 2),
-                // Tappable: the moment you discover a source doesn't have a
-                // title is the moment you want a different one, and backing
-                // out of this sheet to change it is the long way round.
-                InkWell(
-                  onTap: () => SourceSwitcher(
-                    currentId: cubit.sourceId,
-                    onChanged: (_) {},
-                    onInstallSources: () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) => const ZangetsuSourcesScreen(
-                          openToRepos: true,
-                        ),
+                if (isTv)
+                  TvFocusable(
+                    variant: TvFocusVariant.pill,
+                    scale: 1.0,
+                    onTap: () => _pickWrongTitleSource(cubit),
+                    semanticLabel: sourceLabel,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
                       ),
+                      child: sourceChip,
                     ),
-                  ).showPicker(
-                    context,
-                    onPick: (id) => cubit.setSource(id),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          l10n.sourceLabel(sl<SourceRepository>()
-                              .displayName(cubit.sourceId)),
-                          style: AppText.caption
-                              .copyWith(color: AppColors.textSecondary),
-                        ),
-                        Icon(
-                          Icons.keyboard_arrow_down_rounded,
-                          size: 16,
-                          color: AppColors.textSecondary,
-                        ),
-                      ],
+                  )
+                else
+                  InkWell(
+                    onTap: () => _pickWrongTitleSource(cubit),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      child: sourceChip,
                     ),
                   ),
-                ),
                 const SizedBox(height: 10),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),

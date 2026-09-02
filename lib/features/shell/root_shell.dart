@@ -106,6 +106,10 @@ class _RootShellState extends State<RootShell>
   /// any tab that somehow stopped being visible.
   void _onZMode() {
     if (!mounted) return;
+    // TV returns [RootShellTv] from [build], but this State is still the
+    // parent. setState here rebuilds every tab (two 10-foot Homes + Search +
+    // Schedule) and freezes the UI for seconds even on a HomeCubit cache hit.
+    if (sl.isRegistered<AppMode>() && sl<AppMode>().isTv) return;
     setState(() {
       _modeBarOpen = false;
       final visible = _visibleTabs();

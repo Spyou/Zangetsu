@@ -24,9 +24,17 @@ import '../../core/ui/source_switcher.dart';
 /// The list is grouped (Anime / Movies & Series / NSFW), mirrors the phone's
 /// "All" tab layout, with each source row wrapped in [TvListFocusable].
 class TvSourcePicker extends StatelessWidget {
-  const TvSourcePicker({super.key, required this.currentId});
+  const TvSourcePicker({
+    super.key,
+    required this.currentId,
+    this.onPick,
+  });
 
   final String currentId;
+
+  /// When set, choosing a row calls this and closes the dialog without
+  /// changing [ActiveSourceCubit] — used by Z Mode's per-title source selector.
+  final ValueChanged<String>? onPick;
 
   @override
   Widget build(BuildContext context) {
@@ -102,7 +110,13 @@ class TvSourcePicker extends StatelessWidget {
                     autofocus: index == activeIndex,
                     semanticLabel: row.label,
                     onTap: () {
-                      unawaited(_selectSource(context, row.sourceId!));
+                      final id = row.sourceId!;
+                      if (onPick != null) {
+                        onPick!(id);
+                        Navigator.of(context).pop();
+                        return;
+                      }
+                      unawaited(_selectSource(context, id));
                     },
                     child: Padding(
                       padding: const EdgeInsets.symmetric(

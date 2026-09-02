@@ -114,50 +114,56 @@ class _SearchScreenState extends State<SearchScreen> {
     SearchScope.sources => sl<SourceRepository>(),
   };
 
+  Widget _searchTree(SearchScope scope) {
+    return BlocProvider(
+      key: ValueKey(scope),
+      create: (_) {
+        final bloc = SearchBloc(
+          repo: _repoForScope(scope),
+          history: sl<SearchHistory>(),
+          forceMode: widget.forceMode,
+        )..add(const SearchStarted());
+        final q = widget.initialQuery?.trim();
+        // An initial query (e.g. "see all results" from Home) runs the
+        // full search straight away rather than waiting for the user to
+        // type.
+        if (q != null && q.isNotEmpty) bloc.add(SearchRunRequested(q));
+        return bloc;
+      },
+      // On Android TV, hand off to the D-pad-optimised layout. The
+      // BlocProvider above is still the provider for both paths —
+      // SearchScreenTv reads the same SearchBloc from context, so no
+      // duplication of bloc creation.
+      child: sl<AppMode>().isTv
+          ? SearchScreenTv(
+              initialQuery: widget.initialQuery,
+              history: sl<SearchHistory>(),
+              scope: scope,
+              forceMode: widget.forceMode,
+            )
+          : _SearchView(
+              initialQuery: widget.initialQuery,
+              showBack: widget.showBack,
+              focusSignal: widget.focusSignal,
+              scope: scope,
+              forceMode: widget.forceMode,
+            ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    // Reactive to ZModePrefs.revision so a mode-bar pick (Sources vs a
+    // Phone: reactive to ZModePrefs.revision so a mode-bar pick (Sources vs a
     // content mode) rebuilds this with the right derived scope, recreating
     // the bloc via the ValueKey below — same pattern as HomeSourceSwitcherSlot.
+    // TV: skip that listen. The rail toggle bumps the same notifier, and
+    // rebuilding the offstage Search tab (results grid + bloc tree) while
+    // Home is visible is a multi-second hitch. [SearchScreenTv] skips
+    // stream-kind rebuilds unless the Search shell tab is active.
+    if (sl<AppMode>().isTv) return _searchTree(_scope);
     return ValueListenableBuilder<int>(
       valueListenable: ZModePrefs.revision,
-      builder: (context, _, _) {
-        final scope = _scope;
-        return BlocProvider(
-          key: ValueKey(scope),
-          create: (_) {
-            final bloc = SearchBloc(
-              repo: _repoForScope(scope),
-              history: sl<SearchHistory>(),
-              forceMode: widget.forceMode,
-            )..add(const SearchStarted());
-            final q = widget.initialQuery?.trim();
-            // An initial query (e.g. "see all results" from Home) runs the
-            // full search straight away rather than waiting for the user to
-            // type.
-            if (q != null && q.isNotEmpty) bloc.add(SearchRunRequested(q));
-            return bloc;
-          },
-          // On Android TV, hand off to the D-pad-optimised layout. The
-          // BlocProvider above is still the provider for both paths —
-          // SearchScreenTv reads the same SearchBloc from context, so no
-          // duplication of bloc creation.
-          child: sl<AppMode>().isTv
-              ? SearchScreenTv(
-                  initialQuery: widget.initialQuery,
-                  history: sl<SearchHistory>(),
-                  scope: scope,
-                  forceMode: widget.forceMode,
-                )
-              : _SearchView(
-                  initialQuery: widget.initialQuery,
-                  showBack: widget.showBack,
-                  focusSignal: widget.focusSignal,
-                  scope: scope,
-                  forceMode: widget.forceMode,
-                ),
-        );
-      },
+      builder: (context, _, _) => _searchTree(_scope),
     );
   }
 }

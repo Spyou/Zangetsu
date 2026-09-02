@@ -1,7 +1,6 @@
 // The TV hero banner with its rotating backdrop.
 part of 'home_screen_tv.dart';
 
-
 // ── TV Hero ─────────────────────────────────────────────────────────────────
 
 /// Full-bleed cinematic hero for TV: the artwork fills the banner, a left-side
@@ -11,6 +10,7 @@ part of 'home_screen_tv.dart';
 class _TvHero extends StatefulWidget {
   const _TvHero({
     required this.items,
+    required this.active,
     required this.inListOf,
     required this.metaOf,
     required this.onPlay,
@@ -22,6 +22,10 @@ class _TvHero extends StatefulWidget {
 
   /// Featured titles the hero rotates through (Apple-TV style).
   final List<MediaItem> items;
+
+  /// False when this catalogue sits offstage in the dual-host stack — stops the
+  /// rotation timer and logo fetch from rebuilding 200+ posters in the background.
+  final bool active;
   final bool Function(MediaItem) inListOf;
   final Future<HeroMeta?>? Function(MediaItem) metaOf;
   final void Function(MediaItem) onPlay;
@@ -50,20 +54,34 @@ class _TvHeroState extends State<_TvHero> {
   @override
   void initState() {
     super.initState();
-    _loadLogo();
-    _startRotation();
+    if (widget.active) {
+      _loadLogo();
+      _startRotation();
+    }
   }
 
   @override
   void didUpdateWidget(_TvHero old) {
     super.didUpdateWidget(old);
-    final itemsChanged = old.items.length != widget.items.length ||
+    if (old.active != widget.active) {
+      if (widget.active) {
+        _startRotation();
+        _loadLogo();
+      } else {
+        _timer?.cancel();
+        _timer = null;
+      }
+    }
+    final itemsChanged =
+        old.items.length != widget.items.length ||
         !_sameHeroItems(old.items, widget.items);
     if (itemsChanged) {
       _i = 0;
       _logoUrl = null;
-      _startRotation();
-      _loadLogo();
+      if (widget.active) {
+        _startRotation();
+        _loadLogo();
+      }
     }
   }
 
@@ -79,16 +97,15 @@ class _TvHeroState extends State<_TvHero> {
   /// these rebuilds, so rotating never steals focus from the rows below.
   void _startRotation() {
     _timer?.cancel();
-    if (widget.items.length > 1) {
-      _timer = Timer.periodic(const Duration(seconds: 9), (_) {
-        if (!mounted) return;
-        setState(() {
-          _i = (_i + 1) % widget.items.length;
-          _logoUrl = null;
-        });
-        _loadLogo();
+    if (!widget.active || widget.items.length <= 1) return;
+    _timer = Timer.periodic(const Duration(seconds: 9), (_) {
+      if (!mounted || !widget.active) return;
+      setState(() {
+        _i = (_i + 1) % widget.items.length;
+        _logoUrl = null;
       });
-    }
+      _loadLogo();
+    });
   }
 
   @override
@@ -98,11 +115,16 @@ class _TvHeroState extends State<_TvHero> {
   }
 
   Future<void> _loadLogo() async {
+    if (!widget.active) return;
     if (!sl.isRegistered<TitleLogoService>()) return;
     final idx = _i;
     try {
       final url = await sl<TitleLogoService>().logoFor(_item);
-      if (mounted && idx == _i && url != null && url.isNotEmpty) {
+      if (mounted &&
+          widget.active &&
+          idx == _i &&
+          url != null &&
+          url.isNotEmpty) {
         setState(() => _logoUrl = url);
       }
     } catch (_) {}
@@ -118,8 +140,9 @@ class _TvHeroState extends State<_TvHero> {
     final hasCover = cover != null && cover.isNotEmpty;
     final mq = MediaQuery.of(context);
     final memW = (mq.size.width * mq.devicePixelRatio).round();
-    final provider =
-        hasCover ? nativeCoverProvider(cover, item.coverHeaders) : null;
+    final provider = hasCover
+        ? nativeCoverProvider(cover, item.coverHeaders)
+        : null;
 
     return SizedBox(
       height: mq.size.height * 0.72,
@@ -144,7 +167,11 @@ class _TvHeroState extends State<_TvHero> {
                   gradient: LinearGradient(
                     begin: Alignment.centerLeft,
                     end: Alignment.centerRight,
-                    colors: [Color(0xE60B0B0F), Color(0x4D0B0B0F), Color(0x000B0B0F)],
+                    colors: [
+                      Color(0xE60B0B0F),
+                      Color(0x4D0B0B0F),
+                      Color(0x000B0B0F),
+                    ],
                     stops: [0.0, 0.44, 0.72],
                   ),
                 ),
@@ -189,7 +216,7 @@ class _TvHeroState extends State<_TvHero> {
                             fit: BoxFit.contain,
                             alignment: Alignment.centerLeft,
                             memCacheWidth: memW,
-                            fadeInDuration: const Duration(milliseconds: 250),
+                            fadeInDuration: Duration.zero,
                             errorWidget: (_, _, _) => _titleText(),
                           ),
                         )
@@ -267,16 +294,16 @@ class _TvHeroState extends State<_TvHero> {
   }
 
   Widget _titleText() => Text(
-        _item.title,
-        style: AppText.largeTitle.copyWith(
-          fontSize: 52,
-          height: 1.0,
-          letterSpacing: -0.8,
-          fontWeight: FontWeight.w800,
-        ),
-        maxLines: 2,
-        overflow: TextOverflow.ellipsis,
-      );
+    _item.title,
+    style: AppText.largeTitle.copyWith(
+      fontSize: 52,
+      height: 1.0,
+      letterSpacing: -0.8,
+      fontWeight: FontWeight.w800,
+    ),
+    maxLines: 2,
+    overflow: TextOverflow.ellipsis,
+  );
 
   Widget _metaLine(MediaItem item) {
     return FutureBuilder<HeroMeta?>(
@@ -306,30 +333,30 @@ class _TvHeroState extends State<_TvHero> {
   }
 
   Widget _playBtn() => Container(
-        height: 50,
-        padding: const EdgeInsets.symmetric(horizontal: 28),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(10),
+    height: 50,
+    padding: const EdgeInsets.symmetric(horizontal: 28),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(10),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(Icons.play_arrow_rounded, color: AppColors.bg, size: 24),
+        const SizedBox(width: 8),
+        Text(
+          'Play',
+          style: TextStyle(
+            fontFamily: 'Inter',
+            fontFamilyFallback: AppText.fontFamilyFallback,
+            color: AppColors.bg,
+            fontWeight: FontWeight.w700,
+            fontSize: 16,
+          ),
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.play_arrow_rounded, color: AppColors.bg, size: 24),
-            const SizedBox(width: 8),
-            Text(
-              'Play',
-              style: TextStyle(
-                fontFamily: 'Inter',
-          fontFamilyFallback: AppText.fontFamilyFallback,
-                color: AppColors.bg,
-                fontWeight: FontWeight.w700,
-                fontSize: 16,
-              ),
-            ),
-          ],
-        ),
-      );
+      ],
+    ),
+  );
 
   Widget _glassBtn(IconData icon, String label, {bool active = false}) =>
       Container(
@@ -343,13 +370,17 @@ class _TvHeroState extends State<_TvHero> {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, color: active ? AppColors.accent : Colors.white, size: 20),
+            Icon(
+              icon,
+              color: active ? AppColors.accent : Colors.white,
+              size: 20,
+            ),
             const SizedBox(width: 8),
             Text(
               label,
               style: const TextStyle(
                 fontFamily: 'Inter',
-          fontFamilyFallback: AppText.fontFamilyFallback,
+                fontFamilyFallback: AppText.fontFamilyFallback,
                 color: Colors.white,
                 fontWeight: FontWeight.w600,
                 fontSize: 15,
