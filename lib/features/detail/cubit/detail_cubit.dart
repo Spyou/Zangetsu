@@ -40,7 +40,13 @@ class DetailState extends Equatable {
     this.relations = const [],
     this.cloudflareUrl,
     this.episodesLoading = false,
+    this.extrasLoading = false,
   });
+
+  /// Cast + Relations are still being fetched. They arrive after the detail
+  /// does, on their own request, so without this the tabs said "no cast" for
+  /// a second before filling — an empty state is a claim, and it was wrong.
+  final bool extrasLoading;
 
   final DetailStatus status;
   final MediaDetail? detail;
@@ -80,6 +86,7 @@ class DetailState extends Equatable {
     String? cloudflareUrl,
     bool clearCloudflareUrl = false,
     bool? episodesLoading,
+    bool? extrasLoading,
   }) => DetailState(
     status: status ?? this.status,
     detail: detail ?? this.detail,
@@ -93,6 +100,7 @@ class DetailState extends Equatable {
         ? null
         : (cloudflareUrl ?? this.cloudflareUrl),
     episodesLoading: episodesLoading ?? this.episodesLoading,
+    extrasLoading: extrasLoading ?? this.extrasLoading,
   );
 
   @override
@@ -100,6 +108,7 @@ class DetailState extends Equatable {
     status,
     detail,
     episodesLoading,
+    extrasLoading,
     category,
     selectedSeason,
     descExpanded,
@@ -346,6 +355,15 @@ class DetailCubit extends Cubit<DetailState> {
   /// out from under the metadata fetched for the previous one.
   Future<void> _enrich(MediaDetail detail, {bool force = false}) async {
     if (!force && (state.cast.isNotEmpty || state.relations.isNotEmpty)) return;
+    emit(state.copyWith(extrasLoading: true));
+    try {
+      await _enrichInner(detail, force: force);
+    } finally {
+      if (!isClosed) emit(state.copyWith(extrasLoading: false));
+    }
+  }
+
+  Future<void> _enrichInner(MediaDetail detail, {bool force = false}) async {
     var d = detail;
 
     // TMDB fallback: an id-less movie/series (e.g. some CloudStream sources)

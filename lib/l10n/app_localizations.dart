@@ -4946,6 +4946,72 @@ abstract class AppLocalizations {
   /// **'On the bar · {count}/{max}'**
   String navTabsOnBar(int count, int max);
 
+  /// No description provided for @episodeAirsIn.
+  ///
+  /// In en, this message translates to:
+  /// **'Ep {episode} · in {when}'**
+  String episodeAirsIn(int episode, String when);
+
+  /// No description provided for @duration.
+  ///
+  /// In en, this message translates to:
+  /// **'Duration'**
+  String get duration;
+
+  /// No description provided for @score.
+  ///
+  /// In en, this message translates to:
+  /// **'Score'**
+  String get score;
+
+  /// No description provided for @popularity.
+  ///
+  /// In en, this message translates to:
+  /// **'Popularity'**
+  String get popularity;
+
+  /// No description provided for @sourceMaterial.
+  ///
+  /// In en, this message translates to:
+  /// **'Source'**
+  String get sourceMaterial;
+
+  /// No description provided for @country.
+  ///
+  /// In en, this message translates to:
+  /// **'Country'**
+  String get country;
+
+  /// No description provided for @aired.
+  ///
+  /// In en, this message translates to:
+  /// **'Aired'**
+  String get aired;
+
+  /// No description provided for @nativeTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Native title'**
+  String get nativeTitle;
+
+  /// No description provided for @alsoKnownAs.
+  ///
+  /// In en, this message translates to:
+  /// **'Also known as'**
+  String get alsoKnownAs;
+
+  /// No description provided for @tags.
+  ///
+  /// In en, this message translates to:
+  /// **'Tags'**
+  String get tags;
+
+  /// No description provided for @showSpoilerTags.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, one{Show # spoiler tag} other{Show # spoiler tags}}'**
+  String showSpoilerTags(int count);
+
   /// No description provided for @navTabsSwitcher.
   ///
   /// In en, this message translates to:

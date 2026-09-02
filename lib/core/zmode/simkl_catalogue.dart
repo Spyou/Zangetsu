@@ -197,8 +197,40 @@ class SimklCatalogue implements VideoCatalogue {
       // series scrobbles as a film — TmdbCatalogue has always set this, and a
       // provider that stands in for it has to as well.
       tmdbIsTv: isTv,
+      // Simkl's own 0-10 rating, on the model's 0-100 scale. IMDb's sits
+      // beside it in the payload; the provider you picked should be the one
+      // answering, so its own number is the one shown.
+      score: _score(map['ratings']),
+      popularity: _votes(map['ratings']),
+      durationMins: (map['runtime'] as num?)?.toInt(),
+      country: map['country'] as String?,
+      startDate: _isoDate(map['first_aired'] as String?),
+      endDate: _isoDate(map['last_aired'] as String?),
+      synonyms: [
+        for (final t in (map['alt_titles'] as List? ?? const []))
+          if (t is Map && t['name'] is String)
+            t['name'] as String
+          else if (t is String)
+            t,
+      ],
     );
   }
+
+  static int? _score(Object? ratings) {
+    final simkl = (ratings is Map) ? ratings['simkl'] : null;
+    final v = (simkl is Map) ? (simkl['rating'] as num?)?.toDouble() : null;
+    return v == null || v <= 0 ? null : (v * 10).round();
+  }
+
+  static int? _votes(Object? ratings) {
+    final simkl = (ratings is Map) ? ratings['simkl'] : null;
+    return (simkl is Map) ? (simkl['votes'] as num?)?.toInt() : null;
+  }
+
+  /// `2008-01-21T02:00:00Z`. Parsed leniently: a malformed date is worth
+  /// dropping a row over, never throwing a detail page away.
+  static DateTime? _isoDate(String? raw) =>
+      (raw == null || raw.isEmpty) ? null : DateTime.tryParse(raw);
 
   // ── helpers ──────────────────────────────────────────────────────────────
 

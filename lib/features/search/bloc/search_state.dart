@@ -331,6 +331,14 @@ class SearchState extends Equatable {
   /// A next page is in flight — stops the scroll listener firing repeatedly.
   final bool filteredBrowseLoadingMore;
 
+  /// The FIRST page of a filters-only browse is in flight.
+  ///
+  /// [status] stays [SearchStatus.idle] throughout one of these — the query
+  /// box is empty, so as far as the bloc is concerned no search is running —
+  /// which left the screen showing its idle body (the search history) while
+  /// results were on the way.
+  final bool filteredBrowseLoading;
+
   /// The source returned nothing more, so paging stops asking.
   final bool filteredBrowseAtEnd;
 
@@ -365,6 +373,7 @@ class SearchState extends Equatable {
     this.filteredBrowseSourceId = '',
     this.filteredBrowsePage = 1,
     this.filteredBrowseLoadingMore = false,
+    this.filteredBrowseLoading = false,
     this.filteredBrowseAtEnd = false,
   });
 
@@ -711,6 +720,7 @@ class SearchState extends Equatable {
     String? filteredBrowseSourceId,
     int? filteredBrowsePage,
     bool? filteredBrowseLoadingMore,
+    bool? filteredBrowseLoading,
     bool? filteredBrowseAtEnd,
   }) => SearchState(
     status: status ?? this.status,
@@ -738,6 +748,8 @@ class SearchState extends Equatable {
     filteredBrowsePage: filteredBrowsePage ?? this.filteredBrowsePage,
     filteredBrowseLoadingMore:
         filteredBrowseLoadingMore ?? this.filteredBrowseLoadingMore,
+    filteredBrowseLoading:
+        filteredBrowseLoading ?? this.filteredBrowseLoading,
     filteredBrowseAtEnd: filteredBrowseAtEnd ?? this.filteredBrowseAtEnd,
   );
 
@@ -766,6 +778,7 @@ class SearchState extends Equatable {
     filteredBrowseSourceId,
     filteredBrowsePage,
     filteredBrowseLoadingMore,
+    filteredBrowseLoading,
     filteredBrowseAtEnd,
   ];
 }

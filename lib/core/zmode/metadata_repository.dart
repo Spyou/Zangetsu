@@ -328,6 +328,7 @@ class MetadataRepository implements CatalogueRepository {
     String category = 'sub',
     String? sourceId,
     void Function(MediaDetail partial)? onPartial,
+
     /// Read this title from a specific catalogue — the tracker you opened it
     /// from — rather than the app-wide choice.
     PreferredProvider? prefer,
@@ -372,23 +373,10 @@ class MetadataRepository implements CatalogueRepository {
         return d.copyWith(episodes: const <Episode>[]);
       }
       final chapters = await _src.episodes(m.showUrl, sourceId: m.sourceId);
-      return MediaDetail(
-        id: m.showId,
-        title: d.title,
-        englishTitle: d.englishTitle,
-        cover: d.cover,
-        banner: d.banner,
-        url: d.url,
-        description: d.description,
-        status: d.status,
-        genres: d.genres,
-        studios: d.studios,
-        episodes: chapters,
-        year: d.year,
-        type: d.type,
-        sourceId: m.sourceId,
-        malId: d.malId,
-      );
+      // copyWith, not a fresh MediaDetail: listing the fields by hand meant
+      // every one added later was silently dropped on the way through here,
+      // and the page showed a thinner record than the catalogue returned.
+      return d.copyWith(id: m.showId, episodes: chapters, sourceId: m.sourceId);
     }
 
     // Watching: playback is already routed through zm://…/ep/n (see

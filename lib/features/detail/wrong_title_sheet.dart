@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../core/di/injector.dart';
+import '../../core/ui/app_toast.dart';
 import '../../core/mihon/mihon_extension_service.dart';
 import '../../core/provider/cf_solve_needed.dart';
 import '../../core/provider/provider_manager.dart';
@@ -121,7 +122,8 @@ class _MatchLineState extends State<MatchLine> {
     // The native solver owns the Mihon/Aniyomi/CloudStream cookie jars; plain
     // JS providers run on Dio and need ProviderManager's own solve. Same
     // id-prefix routing source_actions.hasSourceSettings uses.
-    final isJs = !id.startsWith('ani:') &&
+    final isJs =
+        !id.startsWith('ani:') &&
         !id.startsWith('mihon:') &&
         !id.startsWith('cs:') &&
         !id.startsWith('lnr:');
@@ -149,7 +151,7 @@ class _MatchLineState extends State<MatchLine> {
               // domain list, and a user-set domain override outranks both.
               final target =
                   await sl<SourceRepository>().cfSolveTargetFor(id) ??
-                      solveTarget;
+                  solveTarget;
               if (target.isEmpty) return;
               if (isJs) {
                 await sl<ProviderManager>().solveCloudflareForHost(
@@ -208,10 +210,12 @@ class _MatchLineState extends State<MatchLine> {
     }
     _cubit.applyPinned(picked);
     _refreshAfterMatchChange();
-    ScaffoldMessenger.of(context)
-      ..clearSnackBars()
-      ..showSnackBar(SnackBar(content: Text(context.l10n.matchSaved(
-        sl<SourceRepository>().displayName(picked.sourceId)))));
+    showAppToast(
+      context,
+      context.l10n.matchSaved(
+        sl<SourceRepository>().displayName(picked.sourceId),
+      ),
+    );
   }
 
   @override
@@ -226,7 +230,11 @@ class _MatchLineState extends State<MatchLine> {
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
               child: Row(
                 children: [
-                  Icon(Icons.hub_outlined, size: 15, color: AppColors.textTertiary),
+                  Icon(
+                    Icons.hub_outlined,
+                    size: 15,
+                    color: AppColors.textTertiary,
+                  ),
                   const SizedBox(width: 6),
                   Text(l10n.noSourceHasThisYet, style: AppText.caption),
                 ],
@@ -322,7 +330,8 @@ class _MatchLineState extends State<MatchLine> {
                             ),
                           ),
                         ),
-                        if (selectedId != null) _rowActions(context, selectedId),
+                        if (selectedId != null)
+                          _rowActions(context, selectedId),
                         const SizedBox(width: 4),
                       ],
                     ),
@@ -365,8 +374,9 @@ class _MatchLineState extends State<MatchLine> {
                           ),
                           child: Text(
                             l10n.wrongTitle,
-                            style: AppText.caption
-                                .copyWith(color: AppColors.accent),
+                            style: AppText.caption.copyWith(
+                              color: AppColors.accent,
+                            ),
                           ),
                         ),
                       ),
@@ -450,7 +460,9 @@ class _WrongTitleViewState extends State<_WrongTitleView> {
     final cubit = context.read<WrongTitleCubit>();
     return SafeArea(
       child: Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.viewInsetsOf(context).bottom,
+        ),
         child: SizedBox(
           height: MediaQuery.sizeOf(context).height * 0.75,
           child: BlocBuilder<WrongTitleCubit, WrongTitleState>(
@@ -468,15 +480,11 @@ class _WrongTitleViewState extends State<_WrongTitleView> {
                     onChanged: (_) {},
                     onInstallSources: () => Navigator.of(context).push(
                       MaterialPageRoute<void>(
-                        builder: (_) => const ZangetsuSourcesScreen(
-                          openToRepos: true,
-                        ),
+                        builder: (_) =>
+                            const ZangetsuSourcesScreen(openToRepos: true),
                       ),
                     ),
-                  ).showPicker(
-                    context,
-                    onPick: (id) => cubit.setSource(id),
-                  ),
+                  ).showPicker(context, onPick: (id) => cubit.setSource(id)),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 8,
@@ -486,10 +494,12 @@ class _WrongTitleViewState extends State<_WrongTitleView> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
-                          l10n.sourceLabel(sl<SourceRepository>()
-                              .displayName(cubit.sourceId)),
-                          style: AppText.caption
-                              .copyWith(color: AppColors.textSecondary),
+                          l10n.sourceLabel(
+                            sl<SourceRepository>().displayName(cubit.sourceId),
+                          ),
+                          style: AppText.caption.copyWith(
+                            color: AppColors.textSecondary,
+                          ),
                         ),
                         Icon(
                           Icons.keyboard_arrow_down_rounded,
@@ -525,8 +535,9 @@ class _WrongTitleViewState extends State<_WrongTitleView> {
                       // only thing saying what is being re-searched.
                       child: Text(
                         '${l10n.searching}: ${state.query}',
-                        style: AppText.caption
-                            .copyWith(color: AppColors.textSecondary),
+                        style: AppText.caption.copyWith(
+                          color: AppColors.textSecondary,
+                        ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -541,7 +552,11 @@ class _WrongTitleViewState extends State<_WrongTitleView> {
                       return ListTile(
                         leading: r.cover == null
                             ? null
-                            : Image.network(r.cover!, width: 40, fit: BoxFit.cover),
+                            : Image.network(
+                                r.cover!,
+                                width: 40,
+                                fit: BoxFit.cover,
+                              ),
                         title: Text(r.title, style: AppText.body),
                         subtitle: r.englishTitle == null
                             ? null

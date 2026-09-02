@@ -46,6 +46,32 @@ MediaDetail _$MediaDetailFromJson(Map<String, dynamic> json) => MediaDetail(
   tmdbId: (json['tmdbId'] as num?)?.toInt(),
   tmdbIsTv: json['tmdbIsTv'] as bool? ?? false,
   imdbId: json['imdbId'] as String?,
+  score: (json['score'] as num?)?.toInt(),
+  format: json['format'] as String?,
+  durationMins: (json['durationMins'] as num?)?.toInt(),
+  airingAt: json['airingAt'] == null
+      ? null
+      : DateTime.parse(json['airingAt'] as String),
+  nextEpisode: (json['nextEpisode'] as num?)?.toInt(),
+  tags:
+      (json['tags'] as List<dynamic>?)
+          ?.map((e) => MediaTag.fromJson(e as Map<String, dynamic>))
+          .toList() ??
+      const [],
+  startDate: json['startDate'] == null
+      ? null
+      : DateTime.parse(json['startDate'] as String),
+  endDate: json['endDate'] == null
+      ? null
+      : DateTime.parse(json['endDate'] as String),
+  sourceMaterial: json['sourceMaterial'] as String?,
+  country: json['country'] as String?,
+  popularity: (json['popularity'] as num?)?.toInt(),
+  nativeTitle: json['nativeTitle'] as String?,
+  synonyms:
+      (json['synonyms'] as List<dynamic>?)?.map((e) => e as String).toList() ??
+      const [],
+  isAdult: json['isAdult'] as bool? ?? false,
 );
 
 Map<String, dynamic> _$MediaDetailToJson(MediaDetail instance) =>
@@ -72,6 +98,20 @@ Map<String, dynamic> _$MediaDetailToJson(MediaDetail instance) =>
       'tmdbId': instance.tmdbId,
       'tmdbIsTv': instance.tmdbIsTv,
       'imdbId': instance.imdbId,
+      'score': instance.score,
+      'format': instance.format,
+      'durationMins': instance.durationMins,
+      'airingAt': instance.airingAt?.toIso8601String(),
+      'nextEpisode': instance.nextEpisode,
+      'tags': instance.tags.map((e) => e.toJson()).toList(),
+      'startDate': instance.startDate?.toIso8601String(),
+      'endDate': instance.endDate?.toIso8601String(),
+      'sourceMaterial': instance.sourceMaterial,
+      'country': instance.country,
+      'popularity': instance.popularity,
+      'nativeTitle': instance.nativeTitle,
+      'synonyms': instance.synonyms,
+      'isAdult': instance.isAdult,
     };
 
 const _$MediaStatusEnumMap = {
@@ -87,4 +127,16 @@ const _$ProviderTypeEnumMap = {
   ProviderType.movie: 'movie',
   ProviderType.manga: 'manga',
   ProviderType.novel: 'novel',
+};
+
+MediaTag _$MediaTagFromJson(Map<String, dynamic> json) => MediaTag(
+  name: json['name'] as String,
+  rank: (json['rank'] as num?)?.toInt(),
+  isSpoiler: json['isSpoiler'] as bool? ?? false,
+);
+
+Map<String, dynamic> _$MediaTagToJson(MediaTag instance) => <String, dynamic>{
+  'name': instance.name,
+  'rank': instance.rank,
+  'isSpoiler': instance.isSpoiler,
 };

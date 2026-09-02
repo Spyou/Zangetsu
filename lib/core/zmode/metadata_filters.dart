@@ -11,6 +11,7 @@ import 'zmode_ids.dart';
 class MetaFilters {
   const MetaFilters({
     this.genres = const [],
+    this.tags = const [],
     this.year,
     this.season,
     this.format,
@@ -23,6 +24,11 @@ class MetaFilters {
   /// Genre names as the provider spells them, e.g. `Action`. Translated to
   /// TMDB's numeric ids on the way out; AniList takes the names directly.
   final List<String> genres;
+
+  /// AniList tags — finer than a genre ("Time Skip" against "Action"), and
+  /// AniList's alone. Nothing else exposes them, so a tag chip is only
+  /// offered while AniList is the one answering.
+  final List<String> tags;
   final int? year;
   final MetaSeason? season;
   final MetaFormat? format;
@@ -42,6 +48,7 @@ class MetaFilters {
   /// a search into a filtered browse.
   bool get isEmpty =>
       genres.isEmpty &&
+      tags.isEmpty &&
       year == null &&
       season == null &&
       format == null &&
@@ -61,6 +68,7 @@ class MetaFilters {
   /// finds almost nothing.
   bool get narrowsCatalogue =>
       genres.isNotEmpty ||
+      tags.isNotEmpty ||
       year != null ||
       season != null ||
       format != null ||
@@ -70,6 +78,7 @@ class MetaFilters {
 
   MetaFilters copyWith({
     List<String>? genres,
+    List<String>? tags,
     int? year,
     MetaSeason? season,
     MetaFormat? format,
@@ -84,6 +93,7 @@ class MetaFilters {
     bool clearScore = false,
   }) => MetaFilters(
     genres: genres ?? this.genres,
+    tags: tags ?? this.tags,
     year: clearYear ? null : (year ?? this.year),
     season: clearSeason ? null : (season ?? this.season),
     format: clearFormat ? null : (format ?? this.format),
@@ -98,6 +108,7 @@ class MetaFilters {
   /// parallel channel keeps one path for "filters were applied".
   String toJson() => jsonEncode({
     if (genres.isNotEmpty) 'g': genres,
+    if (tags.isNotEmpty) 't': tags,
     if (year != null) 'y': year,
     if (season != null) 's': season!.name,
     if (format != null) 'f': format!.name,
@@ -115,6 +126,7 @@ class MetaFilters {
           name == null ? null : values.where((v) => v.name == name).firstOrNull;
       return MetaFilters(
         genres: [...?(m['g'] as List?)?.cast<String>()],
+        tags: [...?(m['t'] as List?)?.cast<String>()],
         year: m['y'] as int?,
         season: pick(MetaSeason.values, m['s'] as String?),
         format: pick(MetaFormat.values, m['f'] as String?),

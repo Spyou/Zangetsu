@@ -58,8 +58,15 @@ class PersonProfile extends Equatable {
   final List<PersonRef> related;
 
   @override
-  List<Object?> get props =>
-      [name, nativeName, photo, description, subtitle, works, related];
+  List<Object?> get props => [
+    name,
+    nativeName,
+    photo,
+    description,
+    subtitle,
+    works,
+    related,
+  ];
 }
 
 /// One media entry on a person page (a role / appearance). Tapping opens the
@@ -71,6 +78,7 @@ class PersonWork extends Equatable {
     this.cover,
     this.subtitle,
     this.malId,
+    this.isReading = false,
   });
 
   final String title;
@@ -84,9 +92,14 @@ class PersonWork extends Equatable {
   final String? subtitle;
 
   /// MAL id (AniList works) — the reliable signal for opening the exact title
-  /// on the source. Null for TMDB works (matched by title instead).
+  /// on the source. Null for TMDB works (matched by title instead). Reads in
+  /// the catalogue [isReading] names: MAL numbers manga and anime separately.
   final int? malId;
 
+  /// True for a manga or light novel. An author's page is mostly these, and
+  /// they cannot be opened on a video source.
+  final bool isReading;
+
   @override
-  List<Object?> get props => [title, romaji, cover, subtitle, malId];
+  List<Object?> get props => [title, romaji, cover, subtitle, malId, isReading];
 }

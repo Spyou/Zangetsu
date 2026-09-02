@@ -38,6 +38,7 @@ class MediaRelation extends Equatable {
     this.malId,
     this.tmdbId,
     this.tmdbIsTv = false,
+    this.isReading = false,
   });
 
   final String title;
@@ -51,11 +52,29 @@ class MediaRelation extends Equatable {
   /// Human label for the link, e.g. "Sequel", "Side Story", "Recommended".
   final String? relation;
 
+  /// True when this points at a MANGA or NOVEL rather than something watched.
+  ///
+  /// A manga's relations reach into anime for its adaptation and back again,
+  /// so the row mixes both — and the two cannot be opened the same way. Kept
+  /// from AniList's `type` on the node, which was read for filtering and then
+  /// dropped.
+  final bool isReading;
+
+  /// MAL's id, in the catalogue [isReading] names — MAL numbers its manga and
+  /// its anime separately, so this means nothing without that flag.
   final int? malId;
   final int? tmdbId;
   final bool tmdbIsTv;
 
   @override
-  List<Object?> get props =>
-      [title, romaji, cover, relation, malId, tmdbId, tmdbIsTv];
+  List<Object?> get props => [
+    title,
+    romaji,
+    cover,
+    relation,
+    malId,
+    tmdbId,
+    tmdbIsTv,
+    isReading,
+  ];
 }

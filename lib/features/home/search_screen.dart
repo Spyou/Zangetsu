@@ -64,6 +64,7 @@ class SearchScreen extends StatefulWidget {
     this.focusSignal,
     this.forceSources = false,
     this.forceMode,
+    this.initialFilters,
   });
 
   final String? initialQuery;
@@ -92,6 +93,11 @@ class SearchScreen extends StatefulWidget {
   /// not whatever mode Home happens to be in. Null (every other call site)
   /// leaves behaviour unchanged.
   final ContentMode? forceMode;
+
+  /// Filters to open with, already applied. Set when this is pushed from a
+  /// genre or tag chip on a detail page: the point of that tap is to land on
+  /// the results, not on an empty filter sheet.
+  final MetaFilters? initialFilters;
 
   @override
   State<SearchScreen> createState() => _SearchScreenState();
@@ -153,6 +159,7 @@ class _SearchScreenState extends State<SearchScreen> {
                   focusSignal: widget.focusSignal,
                   scope: scope,
                   forceMode: widget.forceMode,
+                  initialFilters: widget.initialFilters,
                 ),
         );
       },
@@ -167,6 +174,7 @@ class _SearchView extends StatefulWidget {
     this.focusSignal,
     required this.scope,
     this.forceMode,
+    this.initialFilters,
   });
 
   final String? initialQuery;
@@ -174,6 +182,7 @@ class _SearchView extends StatefulWidget {
   final ValueListenable<int>? focusSignal;
   final SearchScope scope;
   final ContentMode? forceMode;
+  final MetaFilters? initialFilters;
 
   @override
   State<_SearchView> createState() => _SearchViewState();
@@ -240,6 +249,12 @@ class _SearchViewState extends State<_SearchView>
     super.initState();
     _controller = TextEditingController(text: widget.initialQuery ?? '');
     widget.focusSignal?.addListener(_onFocusSignal);
+    // Arrived from a genre or tag chip: run that filtered browse straight
+    // away, not a frame later. context.read is safe here, it subscribes to
+    // nothing.
+    if (!(widget.initialFilters ?? const MetaFilters()).isEmpty) {
+      _applyMetaFilters();
+    }
   }
 
   /// Focus the field when the Search tab is (re)selected so the keyboard is
@@ -362,7 +377,7 @@ class _SearchViewState extends State<_SearchView>
 
   /// What the metadata filter sheet last returned. View state: it belongs to
   /// this screen, not the bloc, because only this screen can open the sheet.
-  MetaFilters _metaFilters = const MetaFilters();
+  late MetaFilters _metaFilters = widget.initialFilters ?? const MetaFilters();
 
   /// What this search will actually look through.
   ///
@@ -603,6 +618,11 @@ class _SearchViewState extends State<_SearchView>
             // Control row — ecosystem tabs (or a result count once scoped to a
             // single source) on the left, sort + filter actions on the right.
             _controlRow(modeSources),
+            // What the catalogue is currently narrowed to, spelled out.
+            // Arriving here from a genre or tag chip, the results are already
+            // filtered before you have typed anything — without this the
+            // screen just looks like a browse that picked those titles.
+            if (widget.scope == SearchScope.library) _activeFilterChips(),
             // Per-source result pills — direct jump to one source's results.
             // Only meaningful once the scope is Sources.
             if (widget.scope == SearchScope.sources) _sourcePillsRow(),
@@ -626,6 +646,15 @@ class _SearchViewState extends State<_SearchView>
                   }
                   switch (state.status) {
                     case SearchStatus.idle:
+                      // A filters-only browse never leaves `idle` — the query
+                      // box is empty, so the bloc does not consider it a
+                      // search. Its own flag is what says results are coming.
+                      if (state.filteredBrowseLoading) {
+                        return const Padding(
+                          padding: EdgeInsets.all(20),
+                          child: SkeletonGrid(),
+                        );
+                      }
                       return _idleView(state);
                     case SearchStatus.loading:
                       return const Padding(
@@ -989,6 +1018,60 @@ class _SearchViewState extends State<_SearchView>
             _filterAction(),
           ],
         ),
+      ),
+    );
+  }
+
+  /// One removable chip per narrowing the catalogue is under, plus a Clear
+  /// when there is more than one. Tapping a chip drops that one term and
+  /// re-runs, so a filtered browse can be widened without opening the sheet.
+  Widget _activeFilterChips() {
+    final f = _metaFilters;
+    final chips = <(String, MetaFilters)>[
+      for (final g in f.genres)
+        (g, f.copyWith(genres: [...f.genres]..remove(g))),
+      for (final t in f.tags) (t, f.copyWith(tags: [...f.tags]..remove(t))),
+      if (f.year != null) ('${f.year}', f.copyWith(clearYear: true)),
+      if (f.season != null) (f.season!.name, f.copyWith(clearSeason: true)),
+      if (f.format != null) (f.format!.name, f.copyWith(clearFormat: true)),
+      if (f.status != null) (f.status!.name, f.copyWith(clearStatus: true)),
+      if (f.minScore != null) ('${f.minScore}+', f.copyWith(clearScore: true)),
+    ];
+    if (chips.isEmpty) return const SizedBox.shrink();
+    return SizedBox(
+      height: 40,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+        children: [
+          for (final (label, without) in chips)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: _ActiveFilterChip(
+                label: label,
+                onRemove: () {
+                  setState(() => _metaFilters = without);
+                  _applyMetaFilters();
+                },
+              ),
+            ),
+          if (chips.length > 1)
+            Center(
+              child: GestureDetector(
+                onTap: () {
+                  setState(() => _metaFilters = const MetaFilters());
+                  _applyMetaFilters();
+                },
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: Text(
+                    context.l10n.clearAll,
+                    style: AppText.caption.copyWith(color: AppColors.accent),
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -3043,6 +3126,44 @@ class _SearchFilterSheet extends StatelessWidget {
               onChanged: (v) => prefs.setIncluded(r.id, v),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// An active catalogue filter, with an × that removes just that one.
+class _ActiveFilterChip extends StatelessWidget {
+  const _ActiveFilterChip({required this.label, required this.onRemove});
+
+  final String label;
+  final VoidCallback onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: GestureDetector(
+        onTap: onRemove,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(12, 6, 8, 6),
+          decoration: BoxDecoration(
+            color: AppColors.accent.withValues(alpha: 0.16),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                label,
+                style: AppText.caption.copyWith(
+                  color: AppColors.accent,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(width: 4),
+              Icon(Icons.close_rounded, size: 14, color: AppColors.accent),
+            ],
+          ),
         ),
       ),
     );

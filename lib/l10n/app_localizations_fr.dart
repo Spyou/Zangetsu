@@ -2611,6 +2611,49 @@ class AppLocalizationsFr extends AppLocalizations {
   }
 
   @override
+  String episodeAirsIn(int episode, String when) {
+    return 'Ep $episode · in $when';
+  }
+
+  @override
+  String get duration => 'Duration';
+
+  @override
+  String get score => 'Score';
+
+  @override
+  String get popularity => 'Popularity';
+
+  @override
+  String get sourceMaterial => 'Source';
+
+  @override
+  String get country => 'Country';
+
+  @override
+  String get aired => 'Aired';
+
+  @override
+  String get nativeTitle => 'Native title';
+
+  @override
+  String get alsoKnownAs => 'Also known as';
+
+  @override
+  String get tags => 'Tags';
+
+  @override
+  String showSpoilerTags(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Show # spoiler tags',
+      one: 'Show # spoiler tag',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get navTabsSwitcher => 'Mode switcher';
 
   @override

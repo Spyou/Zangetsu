@@ -44,9 +44,17 @@ class AniListCatalogue implements AnimeCatalogue {
   };
 
   static const _fields =
-      'id idMal title{romaji english} coverImage{large extraLarge} bannerImage '
-      'episodes chapters status genres description(asHtml:false) seasonYear '
-      'studios(isMain:true){nodes{name}} nextAiringEpisode{episode}';
+      'id idMal title{romaji english native} coverImage{large extraLarge} '
+      'bannerImage episodes chapters status genres description(asHtml:false) '
+      'seasonYear studios(isMain:true){nodes{name}} '
+      // airingAt as well as the number: an episode count with no date is a
+      // fact nobody needs, a countdown is the reason to open the page.
+      'nextAiringEpisode{episode airingAt} '
+      'averageScore popularity format duration source countryOfOrigin '
+      'isAdult synonyms startDate{year month day} endDate{year month day} '
+      // Ranked, so the page can show the ones voters actually agreed on and
+      // drop the long tail of 3% tags.
+      'tags{name rank isMediaSpoiler}';
 
   /// Exactly what [_item] reads, and nothing else. Home asks for 7 rows of 30
   /// in one request, so every field here is paid for 210 times: carrying the
@@ -185,6 +193,10 @@ class AniListCatalogue implements AnimeCatalogue {
       if (f != null) ...[
         if (f.genres.isNotEmpty)
           'genre_in:[${f.genres.map((g) => '"$g"').join(',')}]',
+        // AniList's own, finer than a genre. Nothing else has them, which is
+        // why a tag chip is only offered while AniList is answering.
+        if (f.tags.isNotEmpty)
+          'tag_in:[${f.tags.map((t) => '"$t"').join(',')}]',
         if (f.year != null) 'seasonYear:${f.year}',
         if (f.season != null) 'season:${f.season!.name.toUpperCase()}',
         // Manga and novel already pin the format by kind (`format_in:[NOVEL]`
@@ -269,11 +281,75 @@ class AniListCatalogue implements AnimeCatalogue {
       type: _providerType(c.kind),
       sourceId: ZmodeIds.sourceId,
       malId: map['idMal'] as int?,
+      score: map['averageScore'] as int?,
+      format: _prettyEnum(map['format'] as String?),
+      durationMins: map['duration'] as int?,
+      airingAt: _airingAt(map['nextAiringEpisode']),
+      nextEpisode: (map['nextAiringEpisode'] as Map?)?['episode'] as int?,
+      tags: _tags(map['tags']),
+      startDate: _date(map['startDate']),
+      endDate: _date(map['endDate']),
+      sourceMaterial: _prettyEnum(map['source'] as String?),
+      country: map['countryOfOrigin'] as String?,
+      popularity: map['popularity'] as int?,
+      nativeTitle: t['native'] as String?,
+      synonyms: [for (final x in (map['synonyms'] as List? ?? const [])) '$x'],
+      isAdult: map['isAdult'] == true,
     );
   }
 
   Future<List<Episode>> episodes(ZCanonical c) async =>
       (await detail(c)).episodes;
+
+  /// `TV_SHORT` → `TV short`, `LIGHT_NOVEL` → `Light novel`. AniList SHOUTS
+  /// its enums; nothing on the page should.
+  static String? _prettyEnum(String? v) {
+    if (v == null || v.isEmpty) return null;
+    final words = v.replaceAll('_', ' ').toLowerCase();
+    return words[0].toUpperCase() + words.substring(1);
+  }
+
+  static DateTime? _airingAt(Object? node) {
+    final secs = (node is Map) ? node['airingAt'] as int? : null;
+    return secs == null
+        ? null
+        : DateTime.fromMillisecondsSinceEpoch(secs * 1000);
+  }
+
+  /// AniList reports a partial date as nulls in the parts it does not know, so
+  /// a year alone still yields a usable date rather than nothing.
+  static DateTime? _date(Object? node) {
+    if (node is! Map) return null;
+    final y = node['year'] as int?;
+    if (y == null) return null;
+    return DateTime(
+      y,
+      (node['month'] as int?) ?? 1,
+      (node['day'] as int?) ?? 1,
+    );
+  }
+
+  /// The tags voters agreed on. Below 50% is noise — a handful of people
+  /// tagging a show "Time Travel" does not make it a time travel show.
+  static List<MediaTag> _tags(Object? raw) {
+    if (raw is! List) return const [];
+    final out = <MediaTag>[];
+    for (final t in raw) {
+      if (t is! Map) continue;
+      final name = t['name'] as String?;
+      final rank = t['rank'] as int?;
+      if (name == null || name.isEmpty || (rank ?? 0) < 50) continue;
+      out.add(
+        MediaTag(
+          name: name,
+          rank: rank,
+          isSpoiler: t['isMediaSpoiler'] == true,
+        ),
+      );
+    }
+    out.sort((a, b) => (b.rank ?? 0).compareTo(a.rank ?? 0));
+    return out.take(20).toList();
+  }
 
   // ── helpers ──────────────────────────────────────────────────────────────
 

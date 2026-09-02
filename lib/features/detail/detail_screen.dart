@@ -12,6 +12,14 @@ import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/zmode/metadata_provider_prefs.dart';
+import '../../core/ui/poster_card.dart';
+import '../../core/metadata/synopsis.dart';
+import '../../core/mode/content_mode_cubit.dart';
+import '../../core/zmode/metadata_filters.dart';
+import '../../core/zmode/zmode_module.dart';
+import '../../core/zmode/zmode_prefs.dart';
+import '../../core/ui/app_toast.dart';
+import 'open_related.dart';
 import '../../core/ui/jump_prompt.dart';
 import '../../core/app_mode.dart';
 import '../../core/cache/app_image_cache.dart';
@@ -670,32 +678,27 @@ class _DetailViewState extends State<_DetailView>
     _maybeFetchTrackerProgress(detail);
   }
 
-  /// Open a related title. Relations come from a metadata API (not tied to a
-  /// provider URL), so we search the CURRENT source for the title and open the
-  /// first match's detail. Falls back to a snackbar when nothing is found.
-  Future<void> _openRelation(MediaRelation r) async {
-    _snack(context.l10n.findingTitle(r.title));
-    try {
-      final results = await sl<CatalogueRepository>().search(
-        r.title,
-        sourceId: widget.item.sourceId,
-      );
-      if (!mounted) return;
-      final match = bestTitleMatch(
-        results,
-        r.title,
-        altTitle: r.romaji,
-        wantedMalId: r.malId,
-      );
-      if (match == null) {
-        _snack(context.l10n.titleIsntOnThisSource(r.title));
-        return;
-      }
-      Navigator.of(context).push(DetailScreen.route(match));
-    } catch (_) {
-      if (mounted) _snack(context.l10n.couldntOpenTitle(r.title));
-    }
-  }
+  /// Open a related title.
+  ///
+  /// Used to search the CURRENT source for it, always. That works for a
+  /// sequel, and never for a manga's anime adaptation: the manga source it
+  /// asked has no anime in it, so the tap answered "not on this source" for
+  /// exactly the links people most want to follow. [openRelatedTitle] picks
+  /// the source or the metadata page by what the relation actually is.
+  Future<void> _openRelation(MediaRelation r) => openRelatedTitle(
+    context,
+    title: r.title,
+    romaji: r.romaji,
+    cover: r.cover,
+    isReading: r.isReading,
+    malId: r.malId,
+    tmdbId: r.tmdbId,
+    tmdbIsTv: r.tmdbIsTv,
+    sourceId: widget.item.sourceId,
+    fromReadingPage:
+        widget.item.type == ProviderType.manga ||
+        widget.item.type == ProviderType.novel,
+  );
 
   void _share(MediaDetail detail, String sourceName) {
     // Native OS share sheet with a Zangetsu deep link: on tap it opens the app
@@ -778,21 +781,12 @@ class _DetailViewState extends State<_DetailView>
     if (mounted) setState(() {});
   }
 
+  /// Every transient message on this screen. A toast rather than a SnackBar:
+  /// the bar docks to the bottom edge under the floating dock, pushes the
+  /// layout around, and one is still on screen while the next arrives.
   void _snack(String msg) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context)
-      ..clearSnackBars()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(
-            msg,
-            style: AppText.caption.copyWith(color: Colors.white),
-          ),
-          backgroundColor: AppColors.surface2,
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 2),
-        ),
-      );
+    showAppToast(context, msg);
   }
 
   // ── Cross-source player launch — PRESERVED EXACTLY ────────────────────────
@@ -915,9 +909,7 @@ class _DetailViewState extends State<_DetailView>
           );
         }
         if (!mounted) return;
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(context.l10n.linksReloaded)));
+        showAppToast(context, context.l10n.linksReloaded);
 
       case EpisodeAction.playMirror:
         // Scraping takes seconds, unlike every other row here, so the wait is
@@ -925,9 +917,7 @@ class _DetailViewState extends State<_DetailView>
         final sources = await _resolveWithProgress(ep);
         if (!mounted) return;
         if (sources.isEmpty) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(context.l10n.noSourcesFoundForThisEpisode)),
-          );
+          showAppToast(context, context.l10n.noSourcesFoundForThisEpisode);
           return;
         }
         final picked = await showMirrorSheet(
@@ -967,14 +957,11 @@ class _DetailViewState extends State<_DetailView>
         if (nowWatched) await _scrobbleUpTo(ep, detail);
         if (!mounted) return;
         setState(() {});
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              nowWatched
-                  ? context.l10n.markedAsWatched
-                  : context.l10n.markedUnwatched,
-            ),
-          ),
+        showAppToast(
+          context,
+          nowWatched
+              ? context.l10n.markedAsWatched
+              : context.l10n.markedUnwatched,
         );
 
       case EpisodeAction.markAboveWatched:
@@ -995,11 +982,7 @@ class _DetailViewState extends State<_DetailView>
         await _scrobbleUpTo(ep, detail);
         if (!mounted) return;
         setState(() {});
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(context.l10n.markedEpisodesAsWatched(index + 1)),
-          ),
-        );
+        showAppToast(context, context.l10n.markedEpisodesAsWatched(index + 1));
     }
   }
 
@@ -1664,8 +1647,19 @@ class _DetailViewState extends State<_DetailView>
     // ── Netflix-style meta line: "2010 · 10 Seasons · Completed" ────────────
     // Join only what we actually HAVE with " · " (no faked rating/HD/CC).
     // Seasons when multi-season, else episode count.
+    //
+    // Three items, and that is the whole line. It is ONE line with an
+    // ellipsis, so a fourth does not add anything — it pushes the end off the
+    // edge and shows less than three did. Score, format and per-episode
+    // duration each got a turn here and each cost more than it paid; they
+    // live in the Details tab now, where there is room to read them.
     final metaParts = <String>[];
     if ((detail.year ?? '').isNotEmpty) metaParts.add(detail.year!);
+    // A film has no episode count to fill the middle slot, so its run time
+    // takes it — there it IS the thing worth knowing before pressing play.
+    if (!isReading && eps.length <= 1 && (detail.durationMins ?? 0) > 0) {
+      metaParts.add('${detail.durationMins}m');
+    }
     if (hasMultipleSeasons) {
       metaParts.add(context.l10n.seasonCount(seasonSet.length));
     } else if (eps.isNotEmpty) {
@@ -1783,13 +1777,30 @@ class _DetailViewState extends State<_DetailView>
                   ),
                   if (metaLine.isNotEmpty) ...[
                     const SizedBox(height: 8),
-                    Text(
-                      metaLine,
-                      style: AppText.body.copyWith(
-                        color: AppColors.textSecondary,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            metaLine,
+                            style: AppText.body.copyWith(
+                              color: AppColors.textSecondary,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        // What the source claims it serves — "4K", "HD",
+                        // "CAM". Only CloudStream reports one, so it is
+                        // usually absent.
+                        if ((item.quality ?? '').trim().isNotEmpty) ...[
+                          const SizedBox(width: 8),
+                          _MetaBadge(item.quality!.trim().toUpperCase()),
+                        ],
+                        if (detail.isAdult) ...[
+                          const SizedBox(width: 8),
+                          const _MetaBadge('18+'),
+                        ],
+                      ],
                     ),
                   ],
                 ],
@@ -1856,12 +1867,12 @@ class _DetailViewState extends State<_DetailView>
         ),
 
         // ── 4. Synopsis (clamped) + "Read more" → Details tab ───────────────
-        if ((detail.description ?? '').isNotEmpty)
+        if ((cleanSynopsis(detail.description) ?? '').isNotEmpty)
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 18, 16, 0),
               child: _Description(
-                text: detail.description!,
+                text: cleanSynopsis(detail.description) ?? '',
                 // "Read more" reveals the Details tab (full synopsis) rather
                 // than expanding inline; the header stays clamped to 3 lines.
                 onReadMore: () => _revealTab(3),
@@ -2061,6 +2072,7 @@ class _DetailViewState extends State<_DetailView>
           ),
           // ── Cast ────────────────────────────────────────────────────────────
           _CastTab(
+            loading: state.extrasLoading,
             cast: state.cast.isNotEmpty
                 ? state.cast
                 : [for (final n in detail.cast) CastMember(name: n)],
@@ -2069,7 +2081,11 @@ class _DetailViewState extends State<_DetailView>
             ).push(PersonPage.route(ref, sourceId: widget.item.sourceId)),
           ),
           // ── Relations ─────────────────────────────────────────────────────────
-          _RelationsTab(relations: state.relations, onOpen: _openRelation),
+          _RelationsTab(
+            loading: state.extrasLoading,
+            relations: state.relations,
+            onOpen: _openRelation,
+          ),
           // ── Details ──────────────────────────────────────────────────────────
           _DetailsTab(
             sourceName: sourceName,
@@ -2079,7 +2095,8 @@ class _DetailViewState extends State<_DetailView>
             studios: detail.studios,
             episodeCount: eps.length,
             year: detail.year,
-            description: detail.description,
+            description: cleanSynopsis(detail.description),
+            detail: detail,
           ),
         ],
       ),

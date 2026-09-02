@@ -92,6 +92,52 @@ class MediaDetail extends Equatable {
   @JsonKey(includeFromJson: false, includeToJson: false)
   final List<MediaRelation> relations;
 
+  // ── Metadata extras ───────────────────────────────────────────────────────
+  // Everything below comes from a metadata provider and is absent for a
+  // source-only title, so every one is nullable or empty rather than
+  // defaulted — a missing score must read as "unknown", never as zero.
+
+  /// Average score out of 100.
+  final int? score;
+
+  /// TV / Movie / OVA / ONA / Special / Manga / Novel, as the provider spells
+  /// it.
+  final String? format;
+
+  /// Minutes per episode.
+  final int? durationMins;
+
+  /// When the next episode airs, and which one. Both or neither — a countdown
+  /// with no episode number is not worth showing.
+  final DateTime? airingAt;
+  final int? nextEpisode;
+
+  /// AniList's tags, most relevant first. Richer than [genres]: they carry a
+  /// percentage and a spoiler flag.
+  final List<MediaTag> tags;
+
+  final DateTime? startDate;
+  final DateTime? endDate;
+
+  /// What it was adapted from — Manga, Light novel, Original, Game.
+  final String? sourceMaterial;
+
+  /// ISO country code. Separates anime from donghua and aeni, which the
+  /// format alone does not.
+  final String? country;
+
+  /// How many people have it on a list. Ranking signal, not a score.
+  final int? popularity;
+
+  /// The title in its own script.
+  final String? nativeTitle;
+
+  /// Alternate titles. Shown on the details tab, and useful when matching this
+  /// title against a source that files it under another name.
+  final List<String> synonyms;
+
+  final bool isAdult;
+
   const MediaDetail({
     required this.id,
     required this.title,
@@ -117,6 +163,20 @@ class MediaDetail extends Equatable {
     this.imdbId,
     this.castMembers = const [],
     this.relations = const [],
+    this.score,
+    this.format,
+    this.durationMins,
+    this.airingAt,
+    this.nextEpisode,
+    this.tags = const [],
+    this.startDate,
+    this.endDate,
+    this.sourceMaterial,
+    this.country,
+    this.popularity,
+    this.nativeTitle,
+    this.synonyms = const [],
+    this.isAdult = false,
   });
 
   factory MediaDetail.fromJson(Map<String, dynamic> json) =>
@@ -148,6 +208,20 @@ class MediaDetail extends Equatable {
     String? imdbId,
     List<CastMember>? castMembers,
     List<MediaRelation>? relations,
+    int? score,
+    String? format,
+    int? durationMins,
+    DateTime? airingAt,
+    int? nextEpisode,
+    List<MediaTag>? tags,
+    DateTime? startDate,
+    DateTime? endDate,
+    String? sourceMaterial,
+    String? country,
+    int? popularity,
+    String? nativeTitle,
+    List<String>? synonyms,
+    bool? isAdult,
   }) => MediaDetail(
     id: id ?? this.id,
     title: title ?? this.title,
@@ -173,6 +247,20 @@ class MediaDetail extends Equatable {
     imdbId: imdbId ?? this.imdbId,
     castMembers: castMembers ?? this.castMembers,
     relations: relations ?? this.relations,
+    score: score ?? this.score,
+    format: format ?? this.format,
+    durationMins: durationMins ?? this.durationMins,
+    airingAt: airingAt ?? this.airingAt,
+    nextEpisode: nextEpisode ?? this.nextEpisode,
+    tags: tags ?? this.tags,
+    startDate: startDate ?? this.startDate,
+    endDate: endDate ?? this.endDate,
+    sourceMaterial: sourceMaterial ?? this.sourceMaterial,
+    country: country ?? this.country,
+    popularity: popularity ?? this.popularity,
+    nativeTitle: nativeTitle ?? this.nativeTitle,
+    synonyms: synonyms ?? this.synonyms,
+    isAdult: isAdult ?? this.isAdult,
   );
 
   @override
@@ -201,5 +289,41 @@ class MediaDetail extends Equatable {
     imdbId,
     castMembers,
     relations,
+    score,
+    format,
+    durationMins,
+    airingAt,
+    nextEpisode,
+    tags,
+    startDate,
+    endDate,
+    sourceMaterial,
+    country,
+    popularity,
+    nativeTitle,
+    synonyms,
+    isAdult,
   ];
+}
+
+/// One AniList tag: a descriptor with how strongly voters think it applies.
+@JsonSerializable()
+class MediaTag extends Equatable {
+  const MediaTag({required this.name, this.rank, this.isSpoiler = false});
+
+  factory MediaTag.fromJson(Map<String, dynamic> json) =>
+      _$MediaTagFromJson(json);
+  Map<String, dynamic> toJson() => _$MediaTagToJson(this);
+
+  final String name;
+
+  /// 0-100: how many voters agree it applies.
+  final int? rank;
+
+  /// Spoils the plot. Kept rather than dropped so the page can hide it behind
+  /// a tap instead of deciding for the reader.
+  final bool isSpoiler;
+
+  @override
+  List<Object?> get props => [name, rank, isSpoiler];
 }

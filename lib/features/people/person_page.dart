@@ -3,13 +3,11 @@ import 'package:flutter/material.dart';
 
 import '../../core/di/injector.dart';
 import '../../core/metadata/people_service.dart';
-import '../../core/models/media_item.dart';
+import '../detail/open_related.dart';
 import '../../core/models/person.dart';
-import '../../core/repository/catalogue_repository.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/ui/states.dart';
-import '../detail/detail_screen.dart';
 
 /// A person page — an anime character or voice actor/staff (AniList), or a
 /// movie/TV person (TMDB). Opened from the Detail screen's Cast tab. Metadata
@@ -42,39 +40,25 @@ class _PersonPageState extends State<PersonPage> {
     _future = sl<PeopleService>().load(widget.person);
   }
 
-  void _snack(String msg) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(msg)));
-  }
-
-  /// Open a title from this person's works — search the active source by title
-  /// and open the first match (same approach as the Relations tab).
-  Future<void> _openWork(PersonWork w) async {
-    _snack('Finding “${w.title}”…');
-    try {
-      final results =
-          await sl<CatalogueRepository>().search(w.title, sourceId: widget.sourceId);
-      if (!mounted) return;
-      final match = bestTitleMatch(
-        results,
-        w.title,
-        altTitle: w.romaji,
-        wantedMalId: w.malId,
-      );
-      if (match == null) {
-        _snack('“${w.title}” isn’t on this source');
-        return;
-      }
-      Navigator.of(context).push(DetailScreen.route(match));
-    } catch (_) {
-      if (mounted) _snack('Couldn’t open “${w.title}”');
-    }
-  }
+  /// Open a title from this person's works.
+  ///
+  /// An author's page is mostly manga, and a voice actor's is mostly anime —
+  /// so which source to ask depends on the work, not on where you came from.
+  Future<void> _openWork(PersonWork w) => openRelatedTitle(
+    context,
+    title: w.title,
+    romaji: w.romaji,
+    cover: w.cover,
+    isReading: w.isReading,
+    malId: w.malId,
+    sourceId: widget.sourceId,
+    fromReadingPage: !w.isReading,
+  );
 
   void _openRelated(PersonRef ref) {
-    Navigator.of(context).push(PersonPage.route(ref, sourceId: widget.sourceId));
+    Navigator.of(
+      context,
+    ).push(PersonPage.route(ref, sourceId: widget.sourceId));
   }
 
   @override
@@ -164,7 +148,8 @@ class _PersonPageState extends State<PersonPage> {
                   ? CachedNetworkImage(
                       imageUrl: p.photo!,
                       fit: BoxFit.cover,
-                      placeholder: (_, _) => Container(color: AppColors.surface2),
+                      placeholder: (_, _) =>
+                          Container(color: AppColors.surface2),
                       errorWidget: (_, _, _) => const _PortraitFallback(),
                     )
                   : const _PortraitFallback(),
@@ -184,8 +169,10 @@ class _PersonPageState extends State<PersonPage> {
                 if (p.subtitle != null && p.subtitle!.isNotEmpty) ...[
                   const SizedBox(height: 10),
                   Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 5,
+                    ),
                     decoration: BoxDecoration(
                       color: AppColors.accentSoft,
                       borderRadius: BorderRadius.circular(8),
@@ -290,9 +277,9 @@ class _PersonPageState extends State<PersonPage> {
   }
 
   Widget _sectionLabel(String text) => Padding(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
-        child: Text(text, style: AppText.overline),
-      );
+    padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
+    child: Text(text, style: AppText.overline),
+  );
 
   Widget _workCard(PersonWork w) {
     return GestureDetector(
@@ -309,7 +296,8 @@ class _PersonPageState extends State<PersonPage> {
                   ? CachedNetworkImage(
                       imageUrl: w.cover!,
                       fit: BoxFit.cover,
-                      placeholder: (_, _) => Container(color: AppColors.surface2),
+                      placeholder: (_, _) =>
+                          Container(color: AppColors.surface2),
                       errorWidget: (_, _, _) =>
                           Container(color: AppColors.surface2),
                     )
@@ -340,12 +328,12 @@ class _PortraitFallback extends StatelessWidget {
   const _PortraitFallback();
   @override
   Widget build(BuildContext context) => Container(
-        color: AppColors.surface2,
-        alignment: Alignment.center,
-        child: const Icon(
-          Icons.person_rounded,
-          color: AppColors.textTertiary,
-          size: 34,
-        ),
-      );
+    color: AppColors.surface2,
+    alignment: Alignment.center,
+    child: const Icon(
+      Icons.person_rounded,
+      color: AppColors.textTertiary,
+      size: 34,
+    ),
+  );
 }
