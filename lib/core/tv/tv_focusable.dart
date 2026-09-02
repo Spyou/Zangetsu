@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text.dart';
 import 'tv_keys.dart';
+import 'tv_route_pop_guard.dart';
 
 /// Visual style of the D-pad focus highlight.
 enum TvFocusVariant {
@@ -131,6 +132,7 @@ class _TvFocusableState extends State<TvFocusable> {
   // "click" (Semantics.onTap), deduped within a short window so a press that
   // arrives on both channels only fires onTap once.
   void _activate() {
+    if (TvRoutePopGuard.suppressActivate) return;
     final now = DateTime.now().millisecondsSinceEpoch;
     if (now - _lastActivateMs < 250) return;
     _lastActivateMs = now;
