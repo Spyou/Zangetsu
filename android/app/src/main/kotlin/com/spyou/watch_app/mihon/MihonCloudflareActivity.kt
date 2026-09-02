@@ -12,9 +12,11 @@ import android.widget.LinearLayout
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.Toolbar
+import eu.kanade.tachiyomi.network.AndroidCookieJar
 import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.util.system.setDefaultSettings
 import eu.kanade.tachiyomi.util.system.setUserAgent
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 
 /**
  * Full-screen WebView that lets the user complete a Cloudflare challenge — the
@@ -61,6 +63,7 @@ class MihonCloudflareActivity : AppCompatActivity() {
     private var solved = false
     private var stayOpen = false
     private lateinit var targetUrl: String
+    private lateinit var webView: WebView
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -87,6 +90,12 @@ class MihonCloudflareActivity : AppCompatActivity() {
                 androidx.appcompat.R.drawable.abc_ic_ab_back_material,
             )
             setNavigationOnClickListener { finish() }
+            if (stayOpen) {
+                menu.add("Clear cookies").setOnMenuItemClickListener {
+                    clearCookiesForSite()
+                    true
+                }
+            }
         }
 
         CookieManager.getInstance().setAcceptCookie(true)
@@ -111,6 +120,7 @@ class MihonCloudflareActivity : AppCompatActivity() {
                 }
             }
         }
+        webView = web
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -146,6 +156,26 @@ class MihonCloudflareActivity : AppCompatActivity() {
         Toast.makeText(this, "Cloudflare passed", Toast.LENGTH_SHORT).show()
         setResult(RESULT_OK)
         finish()
+    }
+
+    /**
+     * Expires this host's cookies and reloads — the escape hatch for a
+     * half-finished login or a session the site has stopped honouring.
+     *
+     * Scoped to the one host: a blanket clear would sign the user out of every
+     * other source and throw away Cloudflare clearances that took a captcha to
+     * earn.
+     */
+    private fun clearCookiesForSite() {
+        val url = targetUrl.toHttpUrlOrNull()
+        if (url == null) {
+            Toast.makeText(this, "Nothing to clear", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val cleared = AndroidCookieJar().remove(url)
+        CookieManager.getInstance().flush()
+        Toast.makeText(this, "Cleared $cleared cookies", Toast.LENGTH_SHORT).show()
+        webView.loadUrl(targetUrl)
     }
 
     override fun onDestroy() {
