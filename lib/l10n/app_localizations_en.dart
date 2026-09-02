@@ -2584,6 +2584,15 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get navTabsSwitcher => 'Mode switcher';
+
+  @override
+  String get navTabsSwitcherWhy => 'Takes the middle slot';
+
+  @override
+  String get navTabsOpensOn => 'Opens on launch';
+
+  @override
   String get navTabsNotShown => 'Not shown';
 
   @override
@@ -2595,7 +2604,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String navTabsHelp(int minTabs, int maxTabs) {
-    return 'Drag to reorder. $minTabs–$maxTabs tabs fit on the bar.\n\nProfile is pinned because it is the only way into Settings — hiding it would leave no way back to this screen. Schedule only appears in Streaming mode; there is no airing schedule to show while you are reading.';
+    return 'Drag to reorder. $minTabs–$maxTabs tabs fit on the bar, with the mode switcher taking the middle slot.\n\nProfile is pinned because it is the only way into Settings — hiding it would leave no way back to this screen. Schedule only appears in Streaming mode; there is no airing schedule to show while you are reading.';
   }
 
   @override

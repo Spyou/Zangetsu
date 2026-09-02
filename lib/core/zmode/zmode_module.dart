@@ -10,7 +10,6 @@ import 'anilist_catalogue.dart';
 import 'mal_catalogue.dart';
 import 'simkl_catalogue.dart';
 import 'metadata_provider_prefs.dart';
-import 'package:flutter/material.dart';
 
 import '../ui/app_toast.dart';
 import '../ui/global_messenger.dart';

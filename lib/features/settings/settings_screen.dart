@@ -12,7 +12,6 @@ import '../../core/app_config.dart';
 import '../../core/app_mode.dart';
 import '../../core/tracker/tracker_hub.dart';
 import '../../core/zmode/metadata_provider_prefs.dart';
-import '../../core/zmode/zmode_prefs.dart';
 import '../../core/cache/media_cache.dart';
 import '../../core/logging/app_logger.dart';
 import '../../core/tracker/mal_service.dart';

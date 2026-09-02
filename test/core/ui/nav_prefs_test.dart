@@ -56,14 +56,23 @@ void main() {
     });
 
     // Search left the dock for a Home header icon; Schedule left it for the
-    // card row on Home, beside the Manga/Novel mode cards.
+    // card row on Home. Sources went the other way — it was a header icon and
+    // is now a destination, which is why Downloads is no longer a default.
     test('the default dock has neither Search nor Schedule', () {
       expect(NavPrefs.defaultTabs, [
         DockTab.home,
-        DockTab.downloads,
         DockTab.myList,
+        DockTab.sources,
         DockTab.profile,
       ]);
+    });
+
+    // The bar fits five icons and the mode switcher takes one of them
+    // without being a DockTab, so the tab cap has to be four. Picking five
+    // tabs used to draw a sixth icon and squeeze the row.
+    test('the cap leaves a slot for the centre button', () {
+      expect(NavPrefs.maxTabs, 4);
+      expect(NavPrefs.defaultTabs.length, NavPrefs.maxTabs);
     });
   });
 
@@ -116,6 +125,33 @@ void main() {
       final out = NavPrefs().tabs;
 
       expect(out, NavPrefs.defaultTabs);
+    });
+
+    test('with nothing chosen, the app opens on the leftmost tab', () {
+      expect(NavPrefs().startTab, NavPrefs.defaultTabs.first);
+    });
+
+    test('a chosen landing tab survives a restart', () async {
+      await NavPrefs().setStartTab(DockTab.myList);
+
+      expect(NavPrefs().startTab, DockTab.myList);
+    });
+
+    // Launch has to land somewhere the dock can navigate away from. A tab
+    // that is no longer on the bar has no dock entry to return to.
+    test('a landing tab that was since hidden falls back', () async {
+      await NavPrefs().setStartTab(DockTab.sources);
+      await NavPrefs().setTabs([DockTab.home, DockTab.myList, DockTab.profile]);
+
+      expect(NavPrefs().startTab, DockTab.home);
+    });
+
+    test('resetting forgets the landing tab too', () async {
+      await NavPrefs().setStartTab(DockTab.myList);
+      await NavPrefs().reset();
+
+      expect(NavPrefs().startTab, NavPrefs.defaultTabs.first);
+      expect(NavPrefs().isDefault, isTrue);
     });
   });
 

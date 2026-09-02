@@ -2,6 +2,9 @@
   "de": [
     "offlineTitle",
     "offlineBody",
+    "navTabsSwitcher",
+    "navTabsSwitcherWhy",
+    "navTabsOpensOn",
     "searchMovesToHomeInZMode",
     "zMode",
     "zModeSubtitle",
@@ -53,6 +56,9 @@
   "es": [
     "offlineTitle",
     "offlineBody",
+    "navTabsSwitcher",
+    "navTabsSwitcherWhy",
+    "navTabsOpensOn",
     "searchMovesToHomeInZMode",
     "zMode",
     "zModeSubtitle",
@@ -104,6 +110,9 @@
   "fr": [
     "offlineTitle",
     "offlineBody",
+    "navTabsSwitcher",
+    "navTabsSwitcherWhy",
+    "navTabsOpensOn",
     "searchMovesToHomeInZMode",
     "zMode",
     "zModeSubtitle",
@@ -155,6 +164,9 @@
   "it": [
     "offlineTitle",
     "offlineBody",
+    "navTabsSwitcher",
+    "navTabsSwitcherWhy",
+    "navTabsOpensOn",
     "searchMovesToHomeInZMode",
     "zMode",
     "zModeSubtitle",
@@ -206,6 +218,9 @@
   "ja": [
     "offlineTitle",
     "offlineBody",
+    "navTabsSwitcher",
+    "navTabsSwitcherWhy",
+    "navTabsOpensOn",
     "searchMovesToHomeInZMode",
     "zMode",
     "zModeSubtitle",
@@ -257,6 +272,9 @@
   "zh": [
     "offlineTitle",
     "offlineBody",
+    "navTabsSwitcher",
+    "navTabsSwitcherWhy",
+    "navTabsOpensOn",
     "searchMovesToHomeInZMode",
     "zMode",
     "zModeSubtitle",
@@ -308,6 +326,9 @@
   "zh_TW": [
     "offlineTitle",
     "offlineBody",
+    "navTabsSwitcher",
+    "navTabsSwitcherWhy",
+    "navTabsOpensOn",
     "searchMovesToHomeInZMode",
     "zMode",
     "zModeSubtitle",

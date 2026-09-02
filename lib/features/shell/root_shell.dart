@@ -6,6 +6,7 @@ import 'package:flutter/services.dart' show SystemNavigator;
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 
+import '../search/browse_sources_screen.dart';
 import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
 import '../../core/mode/content_mode.dart';
@@ -60,7 +61,10 @@ class _RootShellState extends State<RootShell>
     with SingleTickerProviderStateMixin {
   /// The tab showing, by identity. Was an int index into a hardcoded five —
   /// which stopped meaning anything once the dock became reorderable.
-  DockTab _tab = DockTab.home;
+  ///
+  /// Starts wherever the user chose to land; [NavPrefs.startTab] falls back to
+  /// the leftmost tab, so an untouched install still opens on Home.
+  late DockTab _tab = _navPrefs.startTab;
 
   /// Whether the floating mode bar (Anime / Movie/TV / Manga / Novel) is
   /// showing above the dock. Z Mode only — the centre button that toggles it
@@ -198,6 +202,7 @@ class _RootShellState extends State<RootShell>
           // whole screen, so their own back affordance is suppressed.
           DockTab.downloads => const DownloadsScreen(showBack: false),
           DockTab.history => const HistoryScreen(showBack: false),
+          DockTab.sources => const BrowseSourcesScreen(),
         },
     ];
   }
@@ -415,6 +420,7 @@ class _FloatingDock extends StatelessWidget {
 (IconData, IconData)? _iconFor(DockTab t) => switch (t) {
   DockTab.downloads => (Icons.download_outlined, Icons.download_rounded),
   DockTab.history => (Icons.history_outlined, Icons.history_rounded),
+  DockTab.sources => (Icons.extension_outlined, Icons.extension_rounded),
   _ => null,
 };
 
