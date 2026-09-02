@@ -1,6 +1,7 @@
 package com.spyou.watch_app
 
 import android.webkit.CookieManager
+import com.spyou.watch_app.mihon.SourceWebViewActivity
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
@@ -20,15 +21,23 @@ import okhttp3.RequestBody.Companion.toRequestBody
  */
 private class InMemoryCookieJar : CookieJar {
     private val store = ConcurrentHashMap<String, List<Cookie>>()
+    private val storedAtMs = ConcurrentHashMap<String, Long>()
 
     override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
-        if (cookies.isNotEmpty()) store[url.host] = cookies
+        if (cookies.isNotEmpty()) {
+            store[url.host] = cookies
+            storedAtMs[url.host] = System.currentTimeMillis()
+        }
     }
 
     override fun loadForRequest(url: HttpUrl): List<Cookie> {
         val now = System.currentTimeMillis()
         val own = store[url.host]?.filter { it.expiresAt > now } ?: emptyList()
-        return own + webViewCookies(url, own)
+        return mergeCookies(
+            own = own,
+            fromWebView = webViewCookies(url),
+            webViewIsNewer = SourceWebViewActivity.lastVisitAtMs > (storedAtMs[url.host] ?: 0L),
+        )
     }
 
     /**
@@ -43,27 +52,52 @@ private class InMemoryCookieJar : CookieJar {
      *
      * Deliberately one-way: nothing received here is written back to the
      * WebView jar, so the novel lane still cannot disturb CloudStream or Mihon
-     * cookie state. Locally-held names win, so a fresh response cookie is never
-     * shadowed by a stale WebView one.
+     * cookie state. Which copy wins when both hold a name is [mergeCookies].
      */
-    private fun webViewCookies(url: HttpUrl, own: List<Cookie>): List<Cookie> {
+    private fun webViewCookies(url: HttpUrl): List<Cookie> {
         val raw = runCatching {
             CookieManager.getInstance().getCookie(url.toString())
         }.getOrNull() ?: return emptyList()
         if (raw.isBlank()) return emptyList()
-        val have = own.map { it.name }.toSet()
         return raw.split(';').mapNotNull { pair ->
             val t = pair.trim()
             val eq = t.indexOf('=')
             if (eq <= 0) return@mapNotNull null
-            val name = t.substring(0, eq)
-            if (name in have) return@mapNotNull null
             runCatching {
-                Cookie.Builder().name(name).value(t.substring(eq + 1))
+                Cookie.Builder().name(t.substring(0, eq)).value(t.substring(eq + 1))
                     .domain(url.host).build()
             }.getOrNull()
         }
     }
+}
+
+/**
+ * Merges the jar's own cookies with the WebView's, deciding by AGE which copy
+ * of a shared name is sent.
+ *
+ * Normally the locally-held one wins: it came off a response to one of our own
+ * requests, so a fresh response cookie is never shadowed by a stale WebView
+ * one. That is what carries a `cf_clearance` correctly and it stays the
+ * default.
+ *
+ * It is backwards the moment the user signs in. A logged-out session cookie is
+ * stamped by okhttp with no expiry, so it never ages out and would shadow the
+ * logged-in one for the rest of the process. [webViewIsNewer] is the tiebreak:
+ * the user has been in the visible WebView SINCE this host's cookies were
+ * stored, so the WebView's copy is the more recent truth. A response that
+ * arrives after that visit stores again and takes precedence straight back.
+ */
+internal fun mergeCookies(
+    own: List<Cookie>,
+    fromWebView: List<Cookie>,
+    webViewIsNewer: Boolean,
+): List<Cookie> {
+    if (webViewIsNewer) {
+        val shadowed = fromWebView.map { it.name }.toSet()
+        return own.filterNot { it.name in shadowed } + fromWebView
+    }
+    val have = own.map { it.name }.toSet()
+    return own + fromWebView.filterNot { it.name in have }
 }
 
 /**
