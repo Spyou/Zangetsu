@@ -1900,6 +1900,9 @@ class AppLocalizationsDe extends AppLocalizations {
   String get openSourceSite => 'Quell-Website öffnen';
 
   @override
+  String get signInToSource => 'Sign in';
+
+  @override
   String get welcomeBack => 'Willkommen zurück';
 
   @override

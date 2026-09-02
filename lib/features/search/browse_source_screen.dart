@@ -97,6 +97,7 @@ class _BrowseSourceViewState extends State<_BrowseSourceView> {
   String get _baseUrl => sl<SourceRepository>().baseUrlFor(widget.sourceId);
   bool get _canSolveCloudflare => _baseUrl.isNotEmpty;
   bool get _canOpenInBrowser => _baseUrl.isNotEmpty;
+  bool get _canSignIn => _baseUrl.isNotEmpty;
   late final Future<bool> _hasSettings = source_actions.hasSourceSettings(
     widget.sourceId,
   );
@@ -376,6 +377,7 @@ class _BrowseSourceViewState extends State<_BrowseSourceView> {
             hasSettings: _hasSettings,
             canSolveCloudflare: _canSolveCloudflare,
             canOpenInBrowser: _canOpenInBrowser,
+            canSignIn: _canSignIn,
             canResetData: _canResetData,
             onSettings: () => source_actions.openSourceSettings(
               context,
@@ -384,6 +386,8 @@ class _BrowseSourceViewState extends State<_BrowseSourceView> {
             ),
             onSolveCloudflare: _solveCloudflare,
             onOpenInBrowser: _openInBrowser,
+            onSignIn: () =>
+                source_actions.openSourceWebView(context, widget.sourceId),
             onEditDomain: _editDomain,
             onResetData: _confirmResetData,
           ),
@@ -540,12 +544,13 @@ class _BrowseSourceViewState extends State<_BrowseSourceView> {
 }
 
 /// The search icon's neighbour: source settings, solve Cloudflare, open in
-/// browser, reset source data — each entry present only when it will
-/// actually do something, no overflow button at all when none apply. No new
-/// plumbing: settings reuses [source_actions.hasSourceSettings]/
+/// browser, sign in, reset source data — each entry present only when it
+/// will actually do something, no overflow button at all when none apply.
+/// No new plumbing: settings reuses [source_actions.hasSourceSettings]/
 /// [source_actions.openSourceSettings] (same check the wrong-title sheet's
 /// per-row actions use), Cloudflare reuses [MihonExtensionService.solveCloudflare],
-/// the browser opener mirrors Detail's Web button, and reset reuses
+/// the browser opener mirrors Detail's Web button, sign-in reuses
+/// [source_actions.openSourceWebView], and reset reuses
 /// [source_actions.canResetSourceData]/[source_actions.resetSourceData].
 /// Never touches the active source — every callback is the caller's, and
 /// none of them call ActiveSourceCubit.
@@ -554,10 +559,12 @@ class _SourceOverflowMenu extends StatelessWidget {
     required this.hasSettings,
     required this.canSolveCloudflare,
     required this.canOpenInBrowser,
+    required this.canSignIn,
     required this.canResetData,
     required this.onSettings,
     required this.onSolveCloudflare,
     required this.onOpenInBrowser,
+    required this.onSignIn,
     required this.onEditDomain,
     required this.onResetData,
   });
@@ -565,10 +572,12 @@ class _SourceOverflowMenu extends StatelessWidget {
   final Future<bool> hasSettings;
   final bool canSolveCloudflare;
   final bool canOpenInBrowser;
+  final bool canSignIn;
   final bool canResetData;
   final VoidCallback onSettings;
   final VoidCallback onSolveCloudflare;
   final VoidCallback onOpenInBrowser;
+  final VoidCallback onSignIn;
   final VoidCallback onEditDomain;
   final VoidCallback onResetData;
 
@@ -596,6 +605,21 @@ class _SourceOverflowMenu extends StatelessWidget {
               PopupMenuItem<VoidCallback>(
                 value: onOpenInBrowser,
                 child: Text(context.l10n.openSourceSite),
+              ),
+            // Opens the same site in the app's OWN webview instead of the
+            // system browser, so cookies earned by signing in land in the
+            // jar the source's requests actually use — the external-browser
+            // item above can't do that; Chrome's cookies never reach here.
+            if (canSignIn)
+              PopupMenuItem<VoidCallback>(
+                value: onSignIn,
+                child: Row(
+                  children: [
+                    const Icon(Icons.login_rounded, size: 20),
+                    const SizedBox(width: 12),
+                    Text(context.l10n.signInToSource),
+                  ],
+                ),
               ),
             // Always offered: it exists precisely for the case where the
             // reported domain is wrong, so it cannot gate on that domain.

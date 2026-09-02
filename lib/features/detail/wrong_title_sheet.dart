@@ -103,9 +103,10 @@ class _MatchLineState extends State<MatchLine> {
   // reads as the same kind of "attention needed" everywhere it appears.
   static const Color _cfOrange = Color(0xFFF48120);
 
-  /// Per-source controls on a picker row: solve Cloudflare, and open that
-  /// source's own settings. Each is shown only when it will actually do
-  /// something, and neither changes the selection — tapping the row body does.
+  /// Per-source controls on a picker row: solve Cloudflare, sign in to the
+  /// source's site, and open that source's own settings. Each is shown only
+  /// when it will actually do something, and none of them changes the
+  /// selection — tapping the row body does.
   ///
   /// The solve action is offered wherever there is a site to solve AGAINST,
   /// not only where a challenge has already been seen. [CfSolveNeeded] is the
@@ -167,6 +168,15 @@ class _MatchLineState extends State<MatchLine> {
               await _cubit.load();
               if (mounted) _refreshAfterMatchChange();
             },
+          ),
+        if (source_actions.webViewUrlFor(id) != null)
+          IconButton(
+            visualDensity: VisualDensity.compact,
+            tooltip: sheetContext.l10n.signInToSource,
+            icon: const Icon(Icons.login_rounded, size: 18),
+            color: AppColors.textSecondary,
+            onPressed: () =>
+                source_actions.openSourceWebView(sheetContext, id),
           ),
         FutureBuilder<bool>(
           future: source_actions.hasSourceSettings(id),

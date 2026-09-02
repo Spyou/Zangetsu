@@ -3656,6 +3656,12 @@ abstract class AppLocalizations {
   /// **'Open source site'**
   String get openSourceSite;
 
+  /// No description provided for @signInToSource.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in'**
+  String get signInToSource;
+
   /// No description provided for @welcomeBack.
   ///
   /// In en, this message translates to:
