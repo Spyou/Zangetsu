@@ -36,6 +36,26 @@ import eu.kanade.tachiyomi.util.system.setUserAgent
  * once `cf_clearance` appears for the host; the user can also close it from the
  * toolbar / system back.
  */
+
+/**
+ * Whether `onPageFinished` should dismiss the screen.
+ *
+ * Pulled out of the Activity so it can be tested without one. The Cloudflare
+ * answer here is the app's oldest working behaviour — see
+ * SourceWebViewDecisionTest before changing any of it.
+ */
+internal fun shouldCloseOnPageFinished(
+    stayOpen: Boolean,
+    alreadySolved: Boolean,
+    cookie: String,
+): Boolean {
+    // Login mode is the user's screen to close. A challenge passing on the way
+    // to a sign-in page is not a reason to take it away from them.
+    if (stayOpen) return false
+    if (alreadySolved) return false
+    return cookie.contains("cf_clearance")
+}
+
 class MihonCloudflareActivity : AppCompatActivity() {
 
     private var solved = false
@@ -110,19 +130,19 @@ class MihonCloudflareActivity : AppCompatActivity() {
 
     /** Closes the screen as soon as a fresh `cf_clearance` cookie is present. */
     private fun maybeFinishIfSolved() {
-        if (solved) return
         val cookie = CookieManager.getInstance().getCookie(targetUrl).orEmpty()
-        if (cookie.contains("cf_clearance")) {
-            solved = true
-            CookieManager.getInstance().flush()
-            // Mark it fresh BEFORE the reload this finish() triggers, so the
-            // interceptor keeps the cookie instead of clearing it and prompting
-            // again — see NetworkHelper.lastSolveAtMs.
-            NetworkHelper.lastSolveAtMs = System.currentTimeMillis()
-            Toast.makeText(this, "Cloudflare passed", Toast.LENGTH_SHORT).show()
-            setResult(RESULT_OK)
-            finish()
+        if (!shouldCloseOnPageFinished(stayOpen = false, alreadySolved = solved, cookie = cookie)) {
+            return
         }
+        solved = true
+        CookieManager.getInstance().flush()
+        // Mark it fresh BEFORE the reload this finish() triggers, so the
+        // interceptor keeps the cookie instead of clearing it and prompting
+        // again — see NetworkHelper.lastSolveAtMs.
+        NetworkHelper.lastSolveAtMs = System.currentTimeMillis()
+        Toast.makeText(this, "Cloudflare passed", Toast.LENGTH_SHORT).show()
+        setResult(RESULT_OK)
+        finish()
     }
 
     override fun onDestroy() {
