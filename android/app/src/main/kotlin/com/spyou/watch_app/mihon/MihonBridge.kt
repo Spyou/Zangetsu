@@ -482,10 +482,9 @@ class MihonBridge(
                     // Hold the result until the solve WebView closes (see the
                     // companion object) so Dart can reload only once it's done.
                     beginCloudflareSolve(result)
-                    val intent = Intent(context, SourceWebViewActivity::class.java)
-                        .putExtra(SourceWebViewActivity.EXTRA_URL, url)
-                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    context.startActivity(intent)
+                    context.startActivity(
+                        SourceWebViewActivity.intentFor(context, url, stayOpen = false),
+                    )
                 }
 
                 "openSourceWebView" -> {
@@ -494,13 +493,14 @@ class MihonBridge(
                         result.error("bad_args", "url is required", null)
                         return@setMethodCallHandler
                     }
-                    val intent = Intent(context, SourceWebViewActivity::class.java).apply {
-                        putExtra(SourceWebViewActivity.EXTRA_URL, url)
-                        putExtra(SourceWebViewActivity.EXTRA_STAY_OPEN, true)
-                        putExtra(SourceWebViewActivity.EXTRA_TITLE, call.argument<String>("title"))
-                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    }
-                    context.startActivity(intent)
+                    context.startActivity(
+                        SourceWebViewActivity.intentFor(
+                            context,
+                            url,
+                            stayOpen = true,
+                            title = call.argument<String>("title"),
+                        ),
+                    )
                     result.success(null)
                 }
 
