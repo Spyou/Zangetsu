@@ -1,7 +1,6 @@
 // Episodes tab: list and grid rows, season sheet, range chips, jump dialog.
 part of 'detail_screen.dart';
 
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Episodes tab — season selector (multi-season) + rich episode rows. PRESERVES
 // season filtering and _openPlayer. Sub/Dub selection now lives in the player.
@@ -20,6 +19,7 @@ class _EpisodesTab extends StatefulWidget {
     required this.coverUrl,
     required this.coverHeaders,
     required this.sourceId,
+    required this.downloadSourceId,
     required this.showId,
     required this.showUrl,
     required this.resumeIndex,
@@ -50,6 +50,14 @@ class _EpisodesTab extends StatefulWidget {
   final String coverUrl;
   final Map<String, String>? coverHeaders;
   final String sourceId;
+
+  /// The source that owns the chapter FILES, which for a metadata title is
+  /// the matched extension rather than the `zm` pseudo-source in [sourceId].
+  ///
+  /// Kept apart on purpose: reading progress is keyed to the canonical id and
+  /// must stay there, while downloads have to name the source that can
+  /// actually fetch the pages.
+  final String downloadSourceId;
   final String showId;
   final String showUrl;
   final int Function(List<Episode>) resumeIndex;
@@ -167,7 +175,8 @@ class _EpisodesTabState extends State<_EpisodesTab> {
     final mark = store.get(widget.sourceId, widget.showId, ep.id);
     final done = store.finished(widget.sourceId, widget.showId, ep.id);
     final inProgress = mark != null && !done && mark.total > 0;
-    final watched = done ||
+    final watched =
+        done ||
         (widget.trackerProgress != null &&
             ep.number != null &&
             ep.number! <= widget.trackerProgress!);
@@ -194,7 +203,8 @@ class _EpisodesTabState extends State<_EpisodesTab> {
     // Only applied to single-season shows, where episode numbers map cleanly
     // to the tracker's per-entry progress (avoids mis-greying across seasons).
     final epNum = ep.number?.toInt();
-    final watched = (mark != null && mark.finished) ||
+    final watched =
+        (mark != null && mark.finished) ||
         (widget.trackerProgress != null &&
             !widget.hasMultipleSeasons &&
             epNum != null &&
@@ -272,8 +282,7 @@ class _EpisodesTabState extends State<_EpisodesTab> {
             onToggleView: () => setState(() => _grid = !_grid),
             onJump: showRanges ? _jump : null,
             isReading: widget.isReading,
-            onBulkDownload:
-                widget.onDownloadMany != null && !sl<AppMode>().isTv
+            onBulkDownload: widget.onDownloadMany != null && !sl<AppMode>().isTv
                 ? () => _openBulkDownload(eps)
                 : null,
           ),
@@ -292,7 +301,9 @@ class _EpisodesTabState extends State<_EpisodesTab> {
                   style: AppText.body.copyWith(color: AppColors.textSecondary),
                   children: [
                     TextSpan(
-                      text: context.l10n.episodeLabel(widget.nextAiringEpisode!),
+                      text: context.l10n.episodeLabel(
+                        widget.nextAiringEpisode!,
+                      ),
                     ),
                     TextSpan(text: context.l10n.airsIn),
                     // The countdown carries the weight — it's the part worth
@@ -315,7 +326,9 @@ class _EpisodesTabState extends State<_EpisodesTab> {
           SliverToBoxAdapter(
             child: _RangeChips(
               count: groups.length + 1,
-              selected: _scanlator == null ? 0 : groups.indexOf(_scanlator!) + 1,
+              selected: _scanlator == null
+                  ? 0
+                  : groups.indexOf(_scanlator!) + 1,
               labelFor: (i) => i == 0 ? context.l10n.all : groups[i - 1],
               onSelect: (i) => setState(() {
                 _scanlator = i == 0 ? null : groups[i - 1];
@@ -351,7 +364,7 @@ class _EpisodesTabState extends State<_EpisodesTab> {
   void _openBulkDownload(List<Episode> eps) {
     final store = sl<ChapterDownloadStore>();
     final pending = eps
-        .where((e) => !store.isDownloaded(widget.sourceId, e.url))
+        .where((e) => !store.isDownloaded(widget.downloadSourceId, e.url))
         .toList();
 
     if (pending.isEmpty) {
@@ -392,7 +405,10 @@ class _EpisodesTabState extends State<_EpisodesTab> {
               child: Row(
                 children: [
                   Expanded(
-                    child: Text(context.l10n.downloadChapters, style: AppText.headline),
+                    child: Text(
+                      context.l10n.downloadChapters,
+                      style: AppText.headline,
+                    ),
                   ),
                   Text(
                     context.l10n.notSavedCount(pending.length),
@@ -450,7 +466,10 @@ class _EpisodesTabState extends State<_EpisodesTab> {
         context: context,
         builder: (dctx) => AlertDialog(
           backgroundColor: AppColors.surface,
-          title: Text(context.l10n.downloadChaptersQuestion(chapters.length), style: AppText.headline),
+          title: Text(
+            context.l10n.downloadChaptersQuestion(chapters.length),
+            style: AppText.headline,
+          ),
           content: Text(
             context.l10n.chapterOneAtATimeWarning,
             style: AppText.body,
@@ -481,9 +500,7 @@ class _EpisodesTabState extends State<_EpisodesTab> {
     ScaffoldMessenger.of(context)
       ..clearSnackBars()
       ..showSnackBar(
-        SnackBar(
-          content: Text(context.l10n.queuedChapters(chapters.length)),
-        ),
+        SnackBar(content: Text(context.l10n.queuedChapters(chapters.length))),
       );
   }
 
@@ -512,6 +529,7 @@ class _EpisodesTabState extends State<_EpisodesTab> {
               onTap: () => widget.onOpen(fullIndex),
               onDownload: () => widget.onDownload(ep),
               sourceId: widget.sourceId,
+              downloadSourceId: widget.downloadSourceId,
             ),
           );
         }
@@ -715,7 +733,9 @@ class _EpisodesHeader extends StatelessWidget {
               _circle(
                 grid ? Icons.view_list_rounded : Icons.grid_view_rounded,
                 onToggleView,
-                semanticLabel: grid ? context.l10n.listView : context.l10n.gridView,
+                semanticLabel: grid
+                    ? context.l10n.listView
+                    : context.l10n.gridView,
               ),
               const SizedBox(width: 8),
               if (onRefresh != null) ...[
@@ -1073,6 +1093,7 @@ class _ChapterRow extends StatelessWidget {
     required this.onTap,
     required this.onDownload,
     required this.sourceId,
+    required this.downloadSourceId,
   });
 
   /// Key on the portrait cover — the one structural marker that tells a
@@ -1090,6 +1111,10 @@ class _ChapterRow extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback onDownload;
   final String sourceId;
+
+  /// The source holding the chapter files — the matched extension for a
+  /// metadata title, where [sourceId] is the pseudo-source.
+  final String downloadSourceId;
 
   @override
   Widget build(BuildContext context) {
@@ -1187,7 +1212,7 @@ class _ChapterRow extends StatelessWidget {
             if (!sl<AppMode>().isTv) ...[
               const SizedBox(width: 8),
               _ChapterDownloadIcon(
-                sourceId: sourceId,
+                sourceId: downloadSourceId,
                 chapterUrl: ep.url,
                 onDownload: onDownload,
               ),
@@ -1274,7 +1299,8 @@ class _EpisodeRow extends StatelessWidget {
     // "Episode N" (or nothing); keep the source's own title when it has a real
     // one.
     final srcTitle = displayTitle.trim();
-    final titleText = episodeDisplayTitle(ep, sourceTitle: srcTitle, number: epNum) ?? '';
+    final titleText =
+        episodeDisplayTitle(ep, sourceTitle: srcTitle, number: epNum) ?? '';
     final heading = titleText.isNotEmpty
         ? '$epNum. $titleText'
         : context.l10n.episodeLabel(epNum);
@@ -1306,7 +1332,8 @@ class _EpisodeRow extends StatelessWidget {
                           thumbUrl.isNotEmpty
                               ? CachedNetworkImage(
                                   imageUrl: thumbUrl,
-                                  cacheManager: AppImageCache.cacheManagerOrDefault,
+                                  cacheManager:
+                                      AppImageCache.cacheManagerOrDefault,
                                   httpHeaders: coverHeaders,
                                   fit: BoxFit.cover,
                                   memCacheWidth: 320,
@@ -1435,9 +1462,11 @@ class _EpisodeRow extends StatelessWidget {
                         const SizedBox(height: 6),
                         Row(
                           children: [
-                            if (isResume) TagBadge(text: context.l10n.continueBadge),
+                            if (isResume)
+                              TagBadge(text: context.l10n.continueBadge),
                             if (isResume && filler) const SizedBox(width: 6),
-                            if (filler) TagBadge(text: context.l10n.fillerBadge),
+                            if (filler)
+                              TagBadge(text: context.l10n.fillerBadge),
                           ],
                         ),
                       ],
@@ -1617,7 +1646,8 @@ class _EpisodeDownloadIcon extends StatelessWidget {
         final s = rec?.status;
         // While a download is live (or paused/queued/resolving), tapping the ring
         // opens a Pause/Cancel menu instead of re-opening the server picker.
-        final inProgress = rec != null &&
+        final inProgress =
+            rec != null &&
             (s == DownloadStatus.downloading ||
                 s == DownloadStatus.paused ||
                 s == DownloadStatus.queued ||
