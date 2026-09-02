@@ -1450,9 +1450,17 @@ class _DetailViewState extends State<_DetailView>
   /// chapter, which is what a "download all" on a long series needs.
   Future<void> _downloadChapters(List<Episode> eps, MediaDetail detail) {
     final item = widget.item;
+    // The SOURCE that owns these chapters, not the item's id. A metadata
+    // title's item is the `zm` pseudo-source, and the queue later asks
+    // `pages(chapterUrl, sourceId:)` — with `zm` that reaches the source
+    // registry, which has no such source, so every manga download failed.
+    // The reader already opens with `detail.sourceId` for the same reason.
+    final sourceId = detail.sourceId.isNotEmpty
+        ? detail.sourceId
+        : item.sourceId;
     return sl<ChapterDownloader>().enqueueMany(
       chapters: eps,
-      sourceId: item.sourceId,
+      sourceId: sourceId,
       showId: item.id,
       showTitle: detail.title,
       cover: detail.cover ?? item.cover,
@@ -2023,6 +2031,11 @@ class _DetailViewState extends State<_DetailView>
             coverUrl: coverUrl,
             coverHeaders: coverHeaders,
             sourceId: item.sourceId,
+            // Downloads name the source that has the files; progress above
+            // stays on the canonical id.
+            downloadSourceId: detail.sourceId.isNotEmpty
+                ? detail.sourceId
+                : item.sourceId,
             showId: item.id,
             showUrl: item.url,
             resumeIndex: _resumeIndex,
