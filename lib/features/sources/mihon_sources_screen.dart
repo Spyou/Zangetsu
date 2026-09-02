@@ -7,6 +7,7 @@ import 'package:hive/hive.dart';
 
 import '../../core/di/injector.dart';
 import '../../core/prefs/source_lang_prefs.dart';
+import '../../core/repository/source_actions.dart' as source_actions;
 import '../../core/mihon/mihon_extension_service.dart';
 import '../../core/mihon/mihon_manager.dart';
 import '../../core/mihon/mihon_provider.dart';
@@ -660,6 +661,14 @@ class _MihonSourceRowState extends State<_MihonSourceRow> {
                 icon: const Icon(Icons.tune_rounded, size: 20),
                 color: AppColors.textSecondary,
                 onPressed: _openSettings,
+              ),
+            if (source_actions.webViewUrlFor(source.sourceId) != null)
+              IconButton(
+                tooltip: context.l10n.signInToSource,
+                icon: const Icon(Icons.login_rounded, size: 20),
+                color: AppColors.textSecondary,
+                onPressed: () =>
+                    source_actions.openSourceWebView(source.sourceId),
               ),
             IconButton(
               tooltip: context.l10n.uninstall,

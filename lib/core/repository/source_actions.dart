@@ -100,7 +100,7 @@ String? webViewUrlFor(String sourceId) {
 /// Silent no-op when the source has no site — the callers hide the action in
 /// that case, and a second guard here means a new caller cannot open a blank
 /// screen by forgetting to check.
-Future<void> openSourceWebView(BuildContext context, String sourceId) async {
+Future<void> openSourceWebView(String sourceId) async {
   final url = webViewUrlFor(sourceId);
   if (url == null) return;
   await MihonExtensionService.openSourceWebView(

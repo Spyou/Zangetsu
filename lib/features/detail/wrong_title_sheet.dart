@@ -175,8 +175,7 @@ class _MatchLineState extends State<MatchLine> {
             tooltip: sheetContext.l10n.signInToSource,
             icon: const Icon(Icons.login_rounded, size: 18),
             color: AppColors.textSecondary,
-            onPressed: () =>
-                source_actions.openSourceWebView(sheetContext, id),
+            onPressed: () => source_actions.openSourceWebView(id),
           ),
         FutureBuilder<bool>(
           future: source_actions.hasSourceSettings(id),
