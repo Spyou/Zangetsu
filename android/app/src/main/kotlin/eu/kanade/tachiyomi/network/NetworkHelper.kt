@@ -197,7 +197,7 @@ class NetworkHelper(
 
         /**
          * The User-Agent of the last request that hit a Cloudflare challenge.
-         * The visible solver (MihonCloudflareActivity) reads this so it solves
+         * The visible solver (SourceWebViewActivity) reads this so it solves
          * with the SAME UA the source's okhttp requests actually send — a
          * cf_clearance cookie is bound to its UA, so a mismatch (source uses its
          * own UA, solver used the app default) makes Cloudflare reject the

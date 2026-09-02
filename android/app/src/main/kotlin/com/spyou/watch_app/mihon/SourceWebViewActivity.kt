@@ -19,24 +19,16 @@ import eu.kanade.tachiyomi.util.system.setUserAgent
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 
 /**
- * Full-screen WebView that lets the user complete a Cloudflare challenge — the
- * interactive Turnstile that the headless solver ([eu.kanade.tachiyomi.network
- * .interceptor.CloudflareInterceptor]) can't pass on its own.
+ * The app's one visible WebView, in two modes.
  *
- * The `cf_clearance` cookie the challenge issues lands in the global WebView
- * [CookieManager] — the same store [eu.kanade.tachiyomi.network.AndroidCookieJar]
- * (and therefore the Mihon OkHttp client) reads — so once it's solved, the
- * source's own requests succeed with no further work. This is the same approach
- * Mihon's WebViewActivity and AnymeX's CloudflareBypassWebView use.
+ * Cloudflare mode (the default) loads a challenged URL and dismisses itself the
+ * moment a `cf_clearance` cookie appears. Login mode ([EXTRA_STAY_OPEN]) leaves
+ * the screen to the user, so a source that gates content behind a sign-in can
+ * be signed in to; it also offers a per-site cookie clear.
  *
- * The WebView is configured with the SAME user agent (+ Sec-CH-UA metadata via
- * [setUserAgent]) and third-party-cookie setting ([setDefaultSettings]) as the
- * headless solver, so the clearance it issues is bound to a UA the OkHttp client
- * will resend.
- *
- * Launch with an [android.content.Intent] carrying [EXTRA_URL]. Auto-finishes
- * once `cf_clearance` appears for the host; the user can also close it from the
- * toolbar / system back.
+ * The name said Mihon because Mihon needed it first, but it is launched from
+ * the shared `eu.kanade.tachiyomi.network` interceptor and serves Aniyomi too,
+ * and the cookies it earns are read by the novel client as well.
  */
 
 /**
@@ -58,7 +50,7 @@ internal fun shouldCloseOnPageFinished(
     return cookie.contains("cf_clearance")
 }
 
-class MihonCloudflareActivity : AppCompatActivity() {
+class SourceWebViewActivity : AppCompatActivity() {
 
     private var solved = false
     private var stayOpen = false
@@ -86,7 +78,7 @@ class MihonCloudflareActivity : AppCompatActivity() {
             setTitleTextColor(Color.WHITE)
             setSubtitleTextColor(0xCCFFFFFF.toInt())
             navigationIcon = androidx.appcompat.content.res.AppCompatResources.getDrawable(
-                this@MihonCloudflareActivity,
+                this@SourceWebViewActivity,
                 androidx.appcompat.R.drawable.abc_ic_ab_back_material,
             )
             setNavigationOnClickListener { finish() }

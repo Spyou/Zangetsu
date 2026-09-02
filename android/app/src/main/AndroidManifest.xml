@@ -199,7 +199,7 @@
              challenge; cf_clearance lands in the shared CookieManager the Mihon
              OkHttp client reads. -->
         <activity
-            android:name=".mihon.MihonCloudflareActivity"
+            android:name=".mihon.SourceWebViewActivity"
             android:exported="false"
             android:taskAffinity=""
             android:theme="@style/Theme.MihonSettings"
