@@ -1,10 +1,11 @@
 import 'package:dio/dio.dart';
 
+import '../anilist/anilist_graphql.dart';
 import '../models/media_item.dart' show normalizeTitle;
 import '../error/network_failure.dart';
 import 'schedule_models.dart';
 
-const String _kAniListEndpoint = 'https://graphql.anilist.co';
+const String _kAniListEndpoint = AniListGraphql.endpoint;
 
 /// UTC-epoch-seconds window: local midnight today .. +7 days.
 ({int startSec, int endSec}) weekWindowUtc(DateTime nowLocal) {
@@ -226,10 +227,7 @@ query ($start: Int, $end: Int, $page: Int) {
         'variables': {'start': startSec, 'end': endSec, 'page': page},
       },
       options: Options(
-        headers: const {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
+        headers: AniListGraphql.headers,
         validateStatus: (s) => s != null && s < 500,
       ),
     );

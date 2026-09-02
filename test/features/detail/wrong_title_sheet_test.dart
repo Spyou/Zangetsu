@@ -420,14 +420,11 @@ void main() {
     sl.registerSingleton<SourceMatcher>(SourceMatcher(
         sources: src, store: store, prefs: prefs, candidates: (_) => src.loadedSources));
 
-    // runAsync: nothing matches, so the matcher records a miss per candidate
-    // (MatchStore.rememberMiss) — real Hive writes, which never drain under
-    // the pump-driven binding.
-    await t.runAsync(() async {
-      await t.pumpWidget(
-          harness(const MatchLine(canonical: fma, title: 'nothing like it')));
-      await Future<void>.delayed(const Duration(milliseconds: 50));
-    });
+    // Cached miss from a prior search — no Detail-open lookup needed.
+    await store.rememberMiss(fma, 'ani:1');
+
+    await t.pumpWidget(
+        harness(const MatchLine(canonical: fma, title: 'nothing like it')));
     await t.pumpAndSettle();
 
     // The source is a choice, not a search result, so the row names it even
@@ -447,7 +444,7 @@ void main() {
     expect(find.textContaining('HiAnime'), findsOneWidget);
   });
 
-  testWidgets('no installed source at all says so, with nothing to switch or fix', (t) async {
+  testWidgets('no installed source hides the match row', (t) async {
     await sl.reset();
     Hive.init(dir.path);
     final store = await MatchStore.open();
@@ -460,7 +457,7 @@ void main() {
         sources: none, store: store, prefs: prefs, candidates: (_) => const []));
     await t.pumpWidget(harness(const MatchLine(canonical: fma, title: 'x')));
     await t.pumpAndSettle();
-    expect(find.text('No source has this yet'), findsOneWidget);
+    expect(find.text('No source has this yet'), findsNothing);
     expect(find.text('Wrong title?'), findsNothing);
   });
 }

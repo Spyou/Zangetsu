@@ -704,7 +704,26 @@ class SourceRepository implements CatalogueRepository {
     // A source detail arrives whole — there is no slow second half to skip
     // ahead of, so this is accepted for the interface and never called.
     void Function(MediaDetail partial)? onPartial,
-  }) => _providerFor(sourceId).getDetail(url, category: category);
+  }) async {
+    final sw = Stopwatch()..start();
+    final sid = sourceId ?? _active.state;
+    AppLogger.instance.log('[detail] source fetch start sourceId=$sid url=$url');
+    try {
+      final d = await _providerFor(sourceId).getDetail(url, category: category);
+      AppLogger.instance.log(
+        '[detail] source fetch done title="${d.title}" eps=${d.episodes.length} '
+        '${sw.elapsedMilliseconds}ms',
+      );
+      return d;
+    } catch (e, st) {
+      AppLogger.instance.log(
+        '[detail] source fetch failed ${sw.elapsedMilliseconds}ms: $e',
+        level: 'E',
+      );
+      AppLogger.instance.logError(e, st);
+      rethrow;
+    }
+  }
 
   /// Drop the native source HTTP cache (Mihon/Aniyomi) so a subsequent fetch is
   /// fresh — used by pull-to-refresh. No-op on platforms/sources without it.

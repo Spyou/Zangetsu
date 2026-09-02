@@ -138,7 +138,8 @@ class SourceMatcher {
   /// the source was since uninstalled); an unpinned match is trusted only
   /// while the source is still installed (otherwise it's stale — null so the
   /// caller re-searches); anything else searches fresh via [resolveOn].
-  Future<SourceMatch?> _matchOn(
+  /// A source's remembered/fresh match — see [_matchOn].
+  Future<SourceMatch?> matchOn(
     ZCanonical c,
     String sourceId, {
     required String title,
@@ -197,7 +198,15 @@ class SourceMatcher {
   }) async {
     final selId = sourceForTitle(c);
     if (selId == null) return null; // nothing installed that can play this
-    return _matchOn(c, selId, title: title, altTitle: altTitle, malId: malId);
+    return matchOn(c, selId, title: title, altTitle: altTitle, malId: malId);
+  }
+
+  /// Which [sourceId] has a pinned match for [c], if any.
+  String? pinnedSource(ZCanonical c) {
+    for (final s in _candidates(c.kind)) {
+      if (_store.get(c, s.id)?.pinned == true) return s.id;
+    }
+    return null;
   }
 
   /// The DEFAULT source for [kind]: the user's remembered pick when it is

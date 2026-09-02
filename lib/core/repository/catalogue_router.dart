@@ -4,6 +4,7 @@ import '../models/media_detail.dart';
 import '../models/media_item.dart';
 import '../playback/source_health_store.dart';
 import '../models/video_source.dart';
+import '../logging/app_logger.dart';
 import '../zmode/zmode_ids.dart';
 import 'catalogue_repository.dart';
 
@@ -83,12 +84,16 @@ class CatalogueRouter implements CatalogueRepository {
     String category = 'sub',
     String? sourceId,
     void Function(MediaDetail partial)? onPartial,
-  }) => _forUrl(url).detail(
-    url,
-    category: category,
-    sourceId: sourceId,
-    onPartial: onPartial,
-  );
+  }) {
+    final via = ZmodeIds.isZ(url) ? 'metadata' : 'source';
+    AppLogger.instance.log('[detail] route $via url=$url sourceId=$sourceId');
+    return _forUrl(url).detail(
+      url,
+      category: category,
+      sourceId: sourceId,
+      onPartial: onPartial,
+    );
+  }
 
   @override
   Future<void> clearHttpCache() => _source.clearHttpCache();

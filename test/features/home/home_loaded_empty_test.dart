@@ -27,6 +27,7 @@ import 'package:watch_app/core/provider/provider_downloader.dart';
 import 'package:watch_app/core/provider/provider_manager.dart';
 import 'package:watch_app/core/provider/provider_registry.dart';
 import 'package:watch_app/core/provider/provider_repo_registry.dart';
+import 'package:watch_app/core/zmode/zmode_prefs.dart';
 import 'package:watch_app/features/home/home_screen.dart';
 
 class _FakeManager implements ProviderRuntimeLoader {
@@ -138,6 +139,8 @@ void main() {
     setUp(() async {
       tempDir = await Directory.systemTemp.createTemp('home_loaded_empty_test');
       Hive.init(tempDir.path);
+      await ZModePrefs.init();
+      await ZModePrefs.setEnabled(false);
       await ProviderRegistry.init();
       await ProviderReposRegistry.init();
       await PlaybackPrefs.init();
@@ -164,6 +167,18 @@ void main() {
         await tempDir.delete(recursive: true);
       } catch (_) {}
     });
+
+    testWidgets(
+      'anime mode, Z Mode on, no sources: catalogue miss shows retry, not install',
+      (tester) async {
+        await ZModePrefs.setEnabled(true);
+        await pumpEmptyView(tester, mode: ContentMode.anime);
+
+        expect(find.text("Couldn't load allanime"), findsOneWidget);
+        expect(find.text('Retry'), findsOneWidget);
+        expect(find.text('No Streaming sources yet'), findsNothing);
+      },
+    );
 
     testWidgets(
       'anime mode, no anime source installed: shows the install guide, '

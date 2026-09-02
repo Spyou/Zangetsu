@@ -111,7 +111,9 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
       meta.ensureHomeCached(ZKind.movie),
     ]);
     if (!mounted) return;
-    context.read<HomeCubit>().primeStreamKindCacheFromMetadata();
+    final cubit = context.read<HomeCubit>();
+    cubit.primeStreamKindCacheFromMetadata();
+    cubit.applyMetadataCacheIfEmpty();
     // Decode poster art for the inactive catalogue while Home is visible so
     // Anime ↔ Movie/TV is a paint swap, not a cold image load.
     unawaited(_precacheStreamCatalog(StreamKind.anime));
@@ -444,8 +446,8 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
     }
 
     final repo = sl<CatalogueRepository>();
-    final loadedEmpty =
-        !state.loading && state.sections != null && state.sections!.isEmpty;
+    final cubit = context.read<HomeCubit>();
+    final loadedEmpty = cubit.showsEmptyHome;
     final activeId = context.watch<ActiveSourceCubit>().state;
     final noSourceForMode = ZModePrefs.enabled
         ? false

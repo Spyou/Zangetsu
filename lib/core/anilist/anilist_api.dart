@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
+import 'anilist_graphql.dart';
 import '../models/media_extras.dart';
 import '../zmode/metadata_provider_prefs.dart';
 import 'anilist_title.dart';
@@ -100,17 +101,14 @@ class AniListApi {
   final Dio _dio;
   final String? Function() _token;
 
-  static const String _endpoint = 'https://graphql.anilist.co';
+  static const String _endpoint = AniListGraphql.endpoint;
 
   Future<Map<String, dynamic>?> _gql(
     String query,
     Map<String, dynamic> variables, {
     bool auth = false,
   }) async {
-    final headers = <String, String>{
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-    };
+    final headers = Map<String, String>.from(AniListGraphql.headers);
     if (auth) {
       final t = _token();
       if (t == null || t.isEmpty) return null;

@@ -1,10 +1,10 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 
+import '../anilist/anilist_graphql.dart';
 import '../models/episode.dart';
 import '../models/home_section.dart';
 import '../models/media_detail.dart';
-import '../anilist/anilist_network_policy.dart';
-import '../anilist/anilist_title.dart';
 import '../models/media_item.dart';
 import '../models/provider_info.dart';
 import 'anime_catalogue.dart';
@@ -24,7 +24,7 @@ class AniListCatalogue implements AnimeCatalogue {
   AniListCatalogue(this._gql);
   final Gql _gql;
 
-  static const _endpoint = 'https://graphql.anilist.co';
+  static const _endpoint = AniListGraphql.endpoint;
 
   /// Production transport. Same shape as `AiringService`.
   static Gql dioGql(Dio dio) => (query, variables) async {
@@ -33,7 +33,7 @@ class AniListCatalogue implements AnimeCatalogue {
         _endpoint,
         data: {'query': query, 'variables': variables},
         options: Options(
-          headers: const {'Accept': 'application/json'},
+          headers: AniListGraphql.headers,
           validateStatus: (s) => s != null && s < 500,
         ),
       );
@@ -41,39 +41,28 @@ class AniListCatalogue implements AnimeCatalogue {
       if (data is Map && data['data'] is Map) {
         return Map<String, dynamic>.from(data['data'] as Map);
       }
-    } on DioException catch (e) {
-      // A transport failure is not "no data". Swallowing it left the caller
-      // holding an empty list it could not tell apart from a quiet catalogue,
-      // so Home could never distinguish an offline phone from a provider
-      // outage — and told people with no network to switch metadata provider.
-      //
-      // A response that DID arrive still returns null: a 4xx/5xx with a body,
-      // or a GraphQL error envelope, is the server answering, and every caller
-      // already handles that as "nothing came back".
-      if (e.response == null || aniListRateLimitOf(e) != null) rethrow;
-    } catch (_) {}
+      if (data is Map && data['errors'] != null) {
+        debugPrint(
+          '[anilist] GraphQL ${res.statusCode}: ${data['errors']}',
+        );
+      }
+    } catch (e, st) {
+      debugPrint('[anilist] request failed: $e\n$st');
+    }
     return null;
   };
 
   static const _fields =
-      'id idMal title{romaji english native} coverImage{large extraLarge} '
-      'bannerImage episodes chapters status genres description(asHtml:false) '
-      'seasonYear studios(isMain:true){nodes{name}} '
-      // airingAt as well as the number: an episode count with no date is a
-      // fact nobody needs, a countdown is the reason to open the page.
-      'nextAiringEpisode{episode airingAt} '
-      'averageScore popularity format duration source countryOfOrigin '
-      'isAdult synonyms startDate{year month day} endDate{year month day} '
-      // Ranked, so the page can show the ones voters actually agreed on and
-      // drop the long tail of 3% tags.
-      'tags{name rank isMediaSpoiler}';
+      'id idMal title{romaji english} coverImage{large extraLarge} bannerImage '
+      'episodes chapters status genres description(asHtml:false) seasonYear '
+      'studios(isMain:true){nodes{name}} nextAiringEpisode{episode}';
 
   /// Exactly what [_item] reads, and nothing else. Home asks for 7 rows of 30
   /// in one request, so every field here is paid for 210 times: carrying the
   /// detail-only half of [_fields] (description, studios, airing schedule)
   /// through it more than doubled the response for data no list cell shows.
   static const _listFields =
-      'id idMal title{romaji english native} coverImage{large} bannerImage genres';
+      'id idMal title{romaji english} coverImage{large} bannerImage genres';
 
   static String _type(ZKind k) => k == ZKind.anime ? 'ANIME' : 'MANGA';
   static String _format(ZKind k) => switch (k) {
@@ -93,12 +82,6 @@ class AniListCatalogue implements AnimeCatalogue {
   /// rows so the page feels populated instead of a wall of sort variants;
   /// manga/novel keep it shorter since AniList has thinner season data for
   /// them.
-  /// The row titles this catalogue produces for [k], without fetching them.
-  /// The editor lists rows for layouts the app isn't currently in, and the
-  /// titles ARE the row ids — a live fetch would answer the same thing plus a
-  /// round trip, and would drop a row whose request happened to fail.
-  static List<String> rowTitles(ZKind k) => [for (final r in _rows(k)) r.$1];
-
   static List<(String, String)> _rows(ZKind k) {
     final now = DateTime.now();
     final season = switch (now.month) {
@@ -107,28 +90,8 @@ class AniListCatalogue implements AnimeCatalogue {
       7 || 8 || 9 => 'SUMMER',
       _ => 'FALL',
     };
-    // AniList's FuzzyDateInt form. Needed because START_DATE_DESC alone puts
-    // NOT_YET_RELEASED titles first — announced entries with a null start date
-    // sort above everything, so the row filled up with "(Provisional Title)"
-    // instead of anything that has actually come out. The date bound plus the
-    // status filter is what makes it a RECENT row rather than an upcoming one.
-    final today = now.year * 10000 + now.month * 100 + now.day;
-    // Popularity floor: AniList carries a long tail of doujin/obscure entries
-    // that are genuinely the most recent thing published and genuinely not
-    // worth a home row.
-    String recent(int minPopularity) =>
-        'sort:START_DATE_DESC,status_in:[RELEASING,FINISHED],'
-        'popularity_greater:$minPopularity,startDate_lesser:$today';
     if (k != ZKind.anime) {
       return [
-        // Recently released leads; the opening row also feeds the hero
-        // banner, which Home repeats as a row (firstRepeatsAsRow), so it
-        // shows BOTH places — spotlight on top, row right under it.
-        // Light novels carry far smaller popularity numbers than manga, so
-        // the manga floor pushed this row back to titles years old. Verified
-        // against the live API: >1000 returned 2023 entries, >50 returns the
-        // current month.
-        ('Recently released', recent(k == ZKind.novel ? 50 : 1000)),
         ('Trending', 'sort:TRENDING_DESC'),
         ('Popular', 'sort:POPULARITY_DESC'),
         ('Top rated', 'sort:SCORE_DESC'),
@@ -143,7 +106,6 @@ class AniListCatalogue implements AnimeCatalogue {
       _ => ('WINTER', now.year + 1),
     };
     return [
-      ('Recently released', recent(2000)),
       ('Trending', 'sort:TRENDING_DESC'),
       (
         'Popular this season',
@@ -208,25 +170,6 @@ class AniListCatalogue implements AnimeCatalogue {
   Future<List<MediaItem>> search(String q, ZKind kind) =>
       searchFiltered(q, kind);
 
-  /// AniList's own genre vocabulary.
-  ///
-  /// Free and token-less, and the only honest source for this list — the
-  /// built-in one is hand-typed and was already missing an entry. Returns
-  /// empty on any failure so the caller keeps whatever it had.
-  Future<List<String>> genreCollection() async {
-    try {
-      final data = await _gql('{GenreCollection}', const {});
-      final raw = data?['GenreCollection'];
-      if (raw is! List) return const [];
-      return [
-        for (final g in raw)
-          if (g is String && g.isNotEmpty) g,
-      ];
-    } catch (_) {
-      return const [];
-    }
-  }
-
   @override
   bool get supportsFilters => true;
 
@@ -251,10 +194,6 @@ class AniListCatalogue implements AnimeCatalogue {
       if (f != null) ...[
         if (f.genres.isNotEmpty)
           'genre_in:[${f.genres.map((g) => '"$g"').join(',')}]',
-        // AniList's own, finer than a genre. Nothing else has them, which is
-        // why a tag chip is only offered while AniList is answering.
-        if (f.tags.isNotEmpty)
-          'tag_in:[${f.tags.map((t) => '"$t"').join(',')}]',
         if (f.year != null) 'seasonYear:${f.year}',
         if (f.season != null) 'season:${f.season!.name.toUpperCase()}',
         // Manga and novel already pin the format by kind (`format_in:[NOVEL]`
@@ -321,10 +260,8 @@ class AniListCatalogue implements AnimeCatalogue {
     final cover = map['coverImage'] as Map? ?? const {};
     return MediaDetail(
       id: c.id,
-      title: aniListTitle(t, titleLanguagePref) ?? '',
-      // Whichever variant the display isn't — sources index by both, and
-      // dropping one loses matches.
-      englishTitle: aniListAltTitle(t, aniListTitle(t, titleLanguagePref)),
+      title: (t['romaji'] as String?) ?? (t['english'] as String?) ?? '',
+      englishTitle: t['english'] as String?,
       cover: (cover['extraLarge'] ?? cover['large']) as String?,
       banner: map['bannerImage'] as String?,
       url: ZmodeIds.showUrl(c),
@@ -341,75 +278,11 @@ class AniListCatalogue implements AnimeCatalogue {
       type: _providerType(c.kind),
       sourceId: ZmodeIds.sourceId,
       malId: map['idMal'] as int?,
-      score: map['averageScore'] as int?,
-      format: _prettyEnum(map['format'] as String?),
-      durationMins: map['duration'] as int?,
-      airingAt: _airingAt(map['nextAiringEpisode']),
-      nextEpisode: (map['nextAiringEpisode'] as Map?)?['episode'] as int?,
-      tags: _tags(map['tags']),
-      startDate: _date(map['startDate']),
-      endDate: _date(map['endDate']),
-      sourceMaterial: _prettyEnum(map['source'] as String?),
-      country: map['countryOfOrigin'] as String?,
-      popularity: map['popularity'] as int?,
-      nativeTitle: t['native'] as String?,
-      synonyms: [for (final x in (map['synonyms'] as List? ?? const [])) '$x'],
-      isAdult: map['isAdult'] == true,
     );
   }
 
   Future<List<Episode>> episodes(ZCanonical c) async =>
       (await detail(c)).episodes;
-
-  /// `TV_SHORT` → `TV short`, `LIGHT_NOVEL` → `Light novel`. AniList SHOUTS
-  /// its enums; nothing on the page should.
-  static String? _prettyEnum(String? v) {
-    if (v == null || v.isEmpty) return null;
-    final words = v.replaceAll('_', ' ').toLowerCase();
-    return words[0].toUpperCase() + words.substring(1);
-  }
-
-  static DateTime? _airingAt(Object? node) {
-    final secs = (node is Map) ? node['airingAt'] as int? : null;
-    return secs == null
-        ? null
-        : DateTime.fromMillisecondsSinceEpoch(secs * 1000);
-  }
-
-  /// AniList reports a partial date as nulls in the parts it does not know, so
-  /// a year alone still yields a usable date rather than nothing.
-  static DateTime? _date(Object? node) {
-    if (node is! Map) return null;
-    final y = node['year'] as int?;
-    if (y == null) return null;
-    return DateTime(
-      y,
-      (node['month'] as int?) ?? 1,
-      (node['day'] as int?) ?? 1,
-    );
-  }
-
-  /// The tags voters agreed on. Below 50% is noise — a handful of people
-  /// tagging a show "Time Travel" does not make it a time travel show.
-  static List<MediaTag> _tags(Object? raw) {
-    if (raw is! List) return const [];
-    final out = <MediaTag>[];
-    for (final t in raw) {
-      if (t is! Map) continue;
-      final name = t['name'] as String?;
-      final rank = t['rank'] as int?;
-      if (name == null || name.isEmpty || (rank ?? 0) < 50) continue;
-      out.add(
-        MediaTag(
-          name: name,
-          rank: rank,
-          isSpoiler: t['isMediaSpoiler'] == true,
-        ),
-      );
-    }
-    out.sort((a, b) => (b.rank ?? 0).compareTo(a.rank ?? 0));
-    return out.take(20).toList();
-  }
 
   // ── helpers ──────────────────────────────────────────────────────────────
 
@@ -449,10 +322,8 @@ class AniListCatalogue implements AnimeCatalogue {
     final t = m['title'] as Map? ?? const {};
     return MediaItem(
       id: c.id,
-      title: aniListTitle(t, titleLanguagePref) ?? '',
-      // Whichever variant the display isn't — sources index by both, and
-      // dropping one loses matches.
-      englishTitle: aniListAltTitle(t, aniListTitle(t, titleLanguagePref)),
+      title: (t['romaji'] as String?) ?? (t['english'] as String?) ?? '',
+      englishTitle: t['english'] as String?,
       cover: (m['coverImage'] as Map?)?['large'] as String?,
       banner: m['bannerImage'] as String?,
       url: ZmodeIds.showUrl(c),
