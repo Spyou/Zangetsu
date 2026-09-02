@@ -97,7 +97,10 @@ class _BrowseSourceViewState extends State<_BrowseSourceView> {
   String get _baseUrl => sl<SourceRepository>().baseUrlFor(widget.sourceId);
   bool get _canSolveCloudflare => _baseUrl.isNotEmpty;
   bool get _canOpenInBrowser => _baseUrl.isNotEmpty;
-  bool get _canSignIn => _baseUrl.isNotEmpty;
+  // Not _baseUrl.isNotEmpty: webViewUrlFor trims, so a whitespace-only base
+  // url would offer an item that opens nothing.
+  bool get _canSignIn =>
+      source_actions.webViewUrlFor(widget.sourceId) != null;
   late final Future<bool> _hasSettings = source_actions.hasSourceSettings(
     widget.sourceId,
   );
@@ -386,8 +389,7 @@ class _BrowseSourceViewState extends State<_BrowseSourceView> {
             ),
             onSolveCloudflare: _solveCloudflare,
             onOpenInBrowser: _openInBrowser,
-            onSignIn: () =>
-                source_actions.openSourceWebView(context, widget.sourceId),
+            onSignIn: () => source_actions.openSourceWebView(widget.sourceId),
             onEditDomain: _editDomain,
             onResetData: _confirmResetData,
           ),
@@ -601,15 +603,10 @@ class _SourceOverflowMenu extends StatelessWidget {
                 value: onSolveCloudflare,
                 child: Text(context.l10n.solveCloudflare),
               ),
-            if (canOpenInBrowser)
-              PopupMenuItem<VoidCallback>(
-                value: onOpenInBrowser,
-                child: Text(context.l10n.openSourceSite),
-              ),
-            // Opens the same site in the app's OWN webview instead of the
-            // system browser, so cookies earned by signing in land in the
-            // jar the source's requests actually use — the external-browser
-            // item above can't do that; Chrome's cookies never reach here.
+            // Above the external browser on purpose: this one opens the site
+            // in the app's OWN webview, so cookies earned by signing in land
+            // in the jar the source's requests actually use. A sign-in done in
+            // Chrome gives the app nothing.
             if (canSignIn)
               PopupMenuItem<VoidCallback>(
                 value: onSignIn,
@@ -620,6 +617,11 @@ class _SourceOverflowMenu extends StatelessWidget {
                     Text(context.l10n.signInToSource),
                   ],
                 ),
+              ),
+            if (canOpenInBrowser)
+              PopupMenuItem<VoidCallback>(
+                value: onOpenInBrowser,
+                child: Text(context.l10n.openSourceSite),
               ),
             // Always offered: it exists precisely for the case where the
             // reported domain is wrong, so it cannot gate on that domain.

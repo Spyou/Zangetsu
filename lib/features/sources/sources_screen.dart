@@ -10,7 +10,6 @@ import '../../core/aniyomi/aniyomi_update.dart';
 import '../../core/provider/base_provider.dart';
 import '../../core/di/injector.dart';
 import '../../core/provider/provider_manager.dart';
-import '../../core/repository/source_actions.dart' as source_actions;
 import '../../core/state/active_source_cubit.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
@@ -369,14 +368,6 @@ class _AniSourceRowState extends State<_AniSourceRow> {
                 icon: const Icon(Icons.tune_rounded, size: 20),
                 color: AppColors.textSecondary,
                 onPressed: _openSettings,
-              ),
-            if (source_actions.webViewUrlFor(source.sourceId) != null)
-              IconButton(
-                tooltip: context.l10n.signInToSource,
-                icon: const Icon(Icons.login_rounded, size: 20),
-                color: AppColors.textSecondary,
-                onPressed: () =>
-                    source_actions.openSourceWebView(context, source.sourceId),
               ),
             IconButton(
               tooltip: context.l10n.uninstall,

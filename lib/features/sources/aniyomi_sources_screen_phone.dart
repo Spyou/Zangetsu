@@ -460,6 +460,14 @@ class _AniSourceRowState extends State<_AniSourceRow> {
                 color: AppColors.textSecondary,
                 onPressed: _openSettings,
               ),
+            if (source_actions.webViewUrlFor(source.sourceId) != null)
+              IconButton(
+                tooltip: context.l10n.signInToSource,
+                icon: const Icon(Icons.login_rounded, size: 20),
+                color: AppColors.textSecondary,
+                onPressed: () =>
+                    source_actions.openSourceWebView(source.sourceId),
+              ),
             IconButton(
               tooltip: context.l10n.uninstall,
               icon: const Icon(Icons.delete_outline_rounded, size: 20),

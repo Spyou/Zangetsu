@@ -15,6 +15,7 @@ import '../../core/i18n/source_languages.dart';
 import '../../core/prefs/source_lang_prefs.dart';
 import '../../core/provider/base_provider.dart';
 import '../../core/provider/provider_manager.dart';
+import '../../core/repository/source_actions.dart' as source_actions;
 import '../../core/state/active_source_cubit.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
