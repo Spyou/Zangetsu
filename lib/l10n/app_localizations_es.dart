@@ -2603,6 +2603,15 @@ class AppLocalizationsEs extends AppLocalizations {
   }
 
   @override
+  String get navTabsSwitcher => 'Mode switcher';
+
+  @override
+  String get navTabsSwitcherWhy => 'Takes the middle slot';
+
+  @override
+  String get navTabsOpensOn => 'Opens on launch';
+
+  @override
   String get navTabsNotShown => 'No se muestra';
 
   @override

@@ -64,7 +64,6 @@ import '../detail/detail_screen.dart';
 import '../history/history_screen.dart';
 import '../player/player_screen.dart';
 import '../schedule/schedule_screen.dart';
-import '../search/browse_sources_screen.dart';
 import '../shell/dock_icons.dart';
 import '../../core/zmode/source_matcher.dart';
 import '../../core/zmode/metadata_repository.dart';
@@ -607,7 +606,6 @@ class _HomeViewState extends State<_HomeView>
             // Header bell is parked for now (design TBD) — re-add
             // `_notificationBell(context)` here once one is chosen.
             const HomeSearchAction(),
-            const HomeBrowseSourcesAction(),
             const HomeSourceSwitcherSlot(),
           ],
         ),
@@ -1395,45 +1393,6 @@ class HomeSearchAction extends StatelessWidget {
       onPressed: () => Navigator.of(
         context,
       ).push(MaterialPageRoute<void>(builder: (_) => const SearchScreen())),
-    );
-  }
-}
-
-/// Opens [BrowseSourcesScreen] — pick any installed source, browse its
-/// catalogue, and search within it, WITHOUT touching the active source (it
-/// never calls [ActiveSourceCubit.setSource]). That's the header's own
-/// [HomeSourceSwitcherSlot] chip's job; this is for peeking at a different
-/// source without switching what Home itself is driven by.
-///
-/// Z Mode only: with Z Mode off, Home is already source-driven and the
-/// switcher below covers it — this is the ONLY way into the sources
-/// destination once Z Mode is on, so it shows whenever the toggle is on,
-/// full stop.
-///
-/// Reactive to [ZModePrefs.revision], same pattern as
-/// [HomeSourceSwitcherSlot].
-class HomeBrowseSourcesAction extends StatelessWidget {
-  const HomeBrowseSourcesAction({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return ValueListenableBuilder<int>(
-      valueListenable: ZModePrefs.revision,
-      builder: (context, _, _) => ZModePrefs.enabled
-          ? IconButton(
-              icon: const Icon(
-                Icons.extension_outlined,
-                color: AppColors.textSecondary,
-                size: 20,
-              ),
-              tooltip: context.l10n.sources,
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => const BrowseSourcesScreen(),
-                ),
-              ),
-            )
-          : const SizedBox.shrink(),
     );
   }
 }

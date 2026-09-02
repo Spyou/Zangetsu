@@ -4946,6 +4946,24 @@ abstract class AppLocalizations {
   /// **'On the bar · {count}/{max}'**
   String navTabsOnBar(int count, int max);
 
+  /// No description provided for @navTabsSwitcher.
+  ///
+  /// In en, this message translates to:
+  /// **'Mode switcher'**
+  String get navTabsSwitcher;
+
+  /// No description provided for @navTabsSwitcherWhy.
+  ///
+  /// In en, this message translates to:
+  /// **'Takes the middle slot'**
+  String get navTabsSwitcherWhy;
+
+  /// No description provided for @navTabsOpensOn.
+  ///
+  /// In en, this message translates to:
+  /// **'Opens on launch'**
+  String get navTabsOpensOn;
+
   /// No description provided for @navTabsNotShown.
   ///
   /// In en, this message translates to:
@@ -4967,7 +4985,7 @@ abstract class AppLocalizations {
   /// No description provided for @navTabsHelp.
   ///
   /// In en, this message translates to:
-  /// **'Drag to reorder. {minTabs}–{maxTabs} tabs fit on the bar.\n\nProfile is pinned because it is the only way into Settings — hiding it would leave no way back to this screen. Schedule only appears in Streaming mode; there is no airing schedule to show while you are reading.'**
+  /// **'Drag to reorder. {minTabs}–{maxTabs} tabs fit on the bar, with the mode switcher taking the middle slot.\n\nProfile is pinned because it is the only way into Settings — hiding it would leave no way back to this screen. Schedule only appears in Streaming mode; there is no airing schedule to show while you are reading.'**
   String navTabsHelp(int minTabs, int maxTabs);
 
   /// No description provided for @navTabsStreamingOnly.

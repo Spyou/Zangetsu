@@ -383,16 +383,14 @@ void main() {
 
   // Schedule left the dock for the card row on Home, beside the Manga/Novel
   // mode cards — two doors to one screen was the point of removing it — and
-  // Downloads took the slot it left.
-  testWidgets('the phone dock swapped Schedule for Downloads', (
-    tester,
-  ) async {
+  // Sources took the slot it left, moved down from the Home header.
+  testWidgets('the phone dock swapped Schedule for Sources', (tester) async {
     sl.registerSingleton<AppMode>(const AppMode(isTv: false));
     await tester.pumpWidget(wrap(const RootShell()));
     await tester.pumpAndSettle();
 
     expect(dockLabel('Schedule'), findsNothing);
-    expect(dockLabel('Downloads'), findsOneWidget);
+    expect(dockLabel('Sources'), findsOneWidget);
   });
 
   // Task 17: Search moved from the dock to the Home header (HomeSearchAction

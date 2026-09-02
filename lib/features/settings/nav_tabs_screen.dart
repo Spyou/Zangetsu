@@ -3,13 +3,17 @@ import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
 
 import '../../core/di/injector.dart';
+import '../../core/mode/content_mode.dart';
+import '../../core/mode/content_mode_cubit.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/ui/nav_prefs.dart';
 import '../../core/ui/settings_widgets.dart';
 import '../../l10n/l10n.dart';
+import '../../core/zmode/zmode_prefs.dart';
 import '../../l10n/ui_strings.dart';
 import '../shell/dock_icons.dart';
+import '../shell/mode_bar.dart' show iconForMode;
 
 /// Choose which tabs the bottom bar shows, and in what order.
 ///
@@ -36,12 +40,26 @@ class _NavTabsScreenState extends State<NavTabsScreen> {
   bool get _canRemove => _shown.length > NavPrefs.minTabs;
   bool get _canAdd => _shown.length < NavPrefs.maxTabs;
 
+  late DockTab _start = _prefs.startTab;
+
+  /// The centre button is drawn from a real [DockTab]'s slot count, so it has
+  /// to be mirrored here too: it is always on the bar and never editable.
+  bool get _hasSwitcher => ZModePrefs.enabled;
+
   Future<void> _save() => _prefs.setTabs(_shown);
+
+  Future<void> _setStart(DockTab t) async {
+    setState(() => _start = t);
+    await _prefs.setStartTab(t);
+  }
 
   void _remove(DockTab t) {
     if (t.isPinned || !_canRemove) return;
     setState(() => _shown.remove(t));
     _save();
+    // Dropping the landing tab would leave the picker with nothing checked
+    // until the next launch re-resolved it. Move it now, visibly.
+    if (_start == t) _setStart(_shown.first);
   }
 
   void _add(DockTab t) {
@@ -66,7 +84,10 @@ class _NavTabsScreenState extends State<NavTabsScreen> {
   Future<void> _reset() async {
     await _prefs.reset();
     if (!mounted) return;
-    setState(() => _shown = List.of(_prefs.tabs));
+    setState(() {
+      _shown = List.of(_prefs.tabs);
+      _start = _prefs.startTab;
+    });
   }
 
   @override
@@ -114,8 +135,13 @@ class _NavTabsScreenState extends State<NavTabsScreen> {
                     _row(_shown[i], index: i),
                 ],
               ),
+              // Listed but not editable: it explains the sixth icon in the
+              // preview, which otherwise looks like the count is wrong.
+              if (_hasSwitcher) _switcherRow(),
             ],
           ),
+          SettingsSectionLabel(l10n.navTabsOpensOn),
+          SettingsCard(children: [for (final t in _shown) _startRow(t)]),
           SettingsSectionLabel(l10n.navTabsNotShown),
           SettingsCard(
             children: hidden.isEmpty
@@ -184,10 +210,13 @@ class _NavTabsScreenState extends State<NavTabsScreen> {
                       ),
                       child: Row(
                         children: [
-                          // First tab drawn active, exactly as the dock lands
-                          // on open.
-                          for (var i = 0; i < _shown.length; i++)
-                            Expanded(child: _previewItem(_shown[i], i == 0)),
+                          // Split where _FloatingDock splits, so the centre
+                          // button sits exactly where it will on the phone.
+                          for (final t in _shown.take(_shown.length ~/ 2))
+                            Expanded(child: _previewItem(t, t == _start)),
+                          if (_hasSwitcher) _previewFab(),
+                          for (final t in _shown.skip(_shown.length ~/ 2))
+                            Expanded(child: _previewItem(t, t == _start)),
                         ],
                       ),
                     ),
@@ -228,6 +257,126 @@ class _NavTabsScreenState extends State<NavTabsScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  /// The mode switcher, at the preview's scale. Static: this screen edits the
+  /// bar, not the mode, so tapping it here would be a trap.
+  Widget _previewFab() {
+    final mode = sl.isRegistered<ContentModeCubit>()
+        ? sl<ContentModeCubit>().state
+        : ContentMode.anime;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 3),
+      child: Container(
+        width: 26,
+        height: 26,
+        decoration: BoxDecoration(
+          color: AppColors.accent,
+          borderRadius: BorderRadius.circular(9),
+        ),
+        child: Icon(
+          iconForMode(mode, ZModePrefs.streamKind),
+          color: Colors.white,
+          size: 15,
+        ),
+      ),
+    );
+  }
+
+  Widget _switcherRow() {
+    final l10n = context.l10n;
+    final mode = sl.isRegistered<ContentModeCubit>()
+        ? sl<ContentModeCubit>().state
+        : ContentMode.anime;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 9, 12, 9),
+      child: Row(
+        children: [
+          const SizedBox(width: 29),
+          SizedBox(
+            width: 20,
+            child: Center(
+              child: Icon(
+                iconForMode(mode, ZModePrefs.streamKind),
+                size: 19,
+                color: AppColors.accent,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  l10n.navTabsSwitcher,
+                  style: AppText.body.copyWith(
+                    color: AppColors.textPrimary,
+                    fontSize: 14.5,
+                  ),
+                ),
+                Text(
+                  l10n.navTabsSwitcherWhy,
+                  style: AppText.caption.copyWith(
+                    color: AppColors.textTertiary,
+                    fontSize: 11.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: Text(
+              l10n.pinned,
+              style: AppText.caption.copyWith(
+                color: AppColors.textTertiary,
+                fontSize: 11.5,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _startRow(DockTab t) {
+    final chosen = t == _start;
+    final glyph = dockGlyphFor(t);
+    final tint = chosen ? AppColors.accent : AppColors.textSecondary;
+    return InkWell(
+      onTap: chosen ? null : () => _setStart(t),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 20,
+              child: Center(
+                child: glyph != null
+                    ? DockIcon(glyph, color: tint, filled: chosen, size: 19)
+                    : Icon(_iconFor(t, chosen), size: 19, color: tint),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                t.localizedLabel(context),
+                style: AppText.body.copyWith(
+                  color: chosen
+                      ? AppColors.textPrimary
+                      : AppColors.textSecondary,
+                  fontSize: 14.5,
+                ),
+              ),
+            ),
+            if (chosen)
+              // Not const: accent is repainted from the wallpaper at runtime.
+              Icon(Icons.check_rounded, size: 19, color: AppColors.accent),
+          ],
+        ),
+      ),
     );
   }
 
@@ -306,8 +455,8 @@ class _NavTabsScreenState extends State<NavTabsScreen> {
       constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
       tooltip: onBar
           ? (enabled
-              ? l10n.navTabsRemove
-              : l10n.navTabsKeepMinTabs(NavPrefs.minTabs))
+                ? l10n.navTabsRemove
+                : l10n.navTabsKeepMinTabs(NavPrefs.minTabs))
           : (enabled ? l10n.navTabsAdd : l10n.navTabsBarFull),
       icon: Icon(
         onBar
@@ -318,8 +467,7 @@ class _NavTabsScreenState extends State<NavTabsScreen> {
             ? (onBar ? AppColors.textSecondary : AppColors.accent)
             : AppColors.textTertiary.withValues(alpha: 0.35),
       ),
-      onPressed:
-          enabled ? () => onBar ? _remove(t) : _add(t) : null,
+      onPressed: enabled ? () => onBar ? _remove(t) : _add(t) : null,
     );
   }
 }

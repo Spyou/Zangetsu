@@ -13,6 +13,7 @@ enum DockTab {
   myList('My List'),
   downloads('Downloads'),
   history('History'),
+  sources('Sources'),
   profile('Profile');
 
   const DockTab(this.label);
@@ -33,19 +34,27 @@ enum DockTab {
 class NavPrefs extends ChangeNotifier {
   static const String boxName = 'nav_prefs';
   static const String _tabsKey = 'tabs';
+  static const String _startKey = 'start';
 
-  /// The dock is a fixed-width capsule; below three it looks empty and above
-  /// five the labels start colliding.
+  /// The dock is a fixed-width capsule that fits five icons; below three it
+  /// looks empty and above five the labels start colliding.
+  ///
+  /// The cap is four, not five, because the mode switcher is drawn between
+  /// the tabs as the dock's centre button and is not a [DockTab] — so the
+  /// bar always renders one more icon than there are tabs.
   static const int minTabs = 3;
-  static const int maxTabs = 5;
+  static const int maxTabs = 4;
 
   /// What the dock shipped with, and what a corrupt or empty value falls back
   /// to. Search lives in the Home header and Schedule on the Home card row,
-  /// so neither is here; Downloads took the slot Schedule left.
+  /// so neither is here. Sources moved down from the Home header, where a
+  /// small icon was doing the work of a destination; the mode switcher sits
+  /// between My List and Sources as the dock's centre button rather than a
+  /// tab, so these four names fill all five icon slots.
   static const List<DockTab> defaultTabs = [
     DockTab.home,
-    DockTab.downloads,
     DockTab.myList,
+    DockTab.sources,
     DockTab.profile,
   ];
 
@@ -81,12 +90,33 @@ class NavPrefs extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> reset() async {
-    await _box?.delete(_tabsKey);
+  /// The tab the app lands on at launch.
+  ///
+  /// Validated against [tabs] on the way out rather than on the way in: a tab
+  /// the user later hides would otherwise open a page the dock has no way back
+  /// to. Falls back to the leftmost tab, which is where the app used to always
+  /// start.
+  DockTab get startTab {
+    final shown = tabs;
+    final saved = DockTab.values
+        .where((t) => t.name == _box?.get(_startKey))
+        .firstOrNull;
+    return saved != null && shown.contains(saved) ? saved : shown.first;
+  }
+
+  Future<void> setStartTab(DockTab tab) async {
+    await _box?.put(_startKey, tab.name);
     notifyListeners();
   }
 
-  bool get isDefault => listEquals(tabs, defaultTabs);
+  Future<void> reset() async {
+    await _box?.delete(_tabsKey);
+    await _box?.delete(_startKey);
+    notifyListeners();
+  }
+
+  bool get isDefault =>
+      listEquals(tabs, defaultTabs) && startTab == defaultTabs.first;
 
   /// The validation the getter and setter both apply, exposed so the
   /// invariants can be tested without opening a Hive box.
@@ -109,7 +139,10 @@ class NavPrefs extends ChangeNotifier {
     if (out.length > maxTabs) {
       // Drop from the end, but never the pinned tab.
       while (out.length > maxTabs) {
-        final victim = out.lastWhere((t) => !t.isPinned, orElse: () => out.last);
+        final victim = out.lastWhere(
+          (t) => !t.isPinned,
+          orElse: () => out.last,
+        );
         out.remove(victim);
       }
     }
