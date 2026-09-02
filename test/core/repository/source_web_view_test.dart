@@ -12,6 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:watch_app/core/di/injector.dart' show sl;
 import 'package:watch_app/core/repository/source_actions.dart' as source_actions;
 import 'package:watch_app/core/repository/source_repository.dart';
+import 'package:watch_app/core/zmode/zmode_ids.dart';
 
 /// Minimal [SourceRepository] stub — only [baseUrlFor] is used by
 /// [source_actions.webViewUrlFor], the rest just isn't called from these tests.
@@ -50,10 +51,19 @@ void main() {
   });
 
   test('the metadata catalogue is not a site you can log in to', () {
-    // Z Mode is a catalogue, not a provider with an account. This is checked
-    // before the repository is even consulted, so it returns null with no
-    // repository registered.
-    expect(source_actions.webViewUrlFor('zm'), isNull);
+    // Z Mode is a catalogue, not a provider with an account. The repository
+    // registered here DOES answer for 'zm', so the null can only come from the
+    // Z Mode gate — drop that gate and this fails instead of quietly passing
+    // on an unregistered-repository guard.
+    sl.registerSingleton<SourceRepository>(
+      _FakeSourceRepository(const {ZmodeIds.sourceId: 'https://zangetsu.online'}),
+    );
+    expect(
+      source_actions.webViewUrlFor('not-zm'),
+      isNull,
+      reason: 'guard sanity: the fake answers for zm and nothing else',
+    );
+    expect(source_actions.webViewUrlFor(ZmodeIds.sourceId), isNull);
   });
 
   test('with no repository registered at all, offers no browser', () {

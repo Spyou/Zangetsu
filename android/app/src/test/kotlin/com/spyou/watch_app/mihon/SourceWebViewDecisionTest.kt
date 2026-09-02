@@ -65,26 +65,23 @@ class SourceWebViewDecisionTest {
     // -- Login mode (stayOpen = true) ---------------------------------------
 
     @Test
-    fun `login mode ignores a clearance cookie`() {
+    fun `login mode ignores a clearance cookie, solved or not`() {
         // The whole point: passing Cloudflare mid-login must not dismiss the
         // screen before the user has signed in.
-        assertFalse(
-            shouldCloseOnPageFinished(
-                stayOpen = true,
-                alreadySolved = false,
-                cookie = "cf_clearance=abc",
-            ),
-        )
-    }
-
-    @Test
-    fun `login mode never closes on its own`() {
-        assertFalse(
-            shouldCloseOnPageFinished(
-                stayOpen = true,
-                alreadySolved = true,
-                cookie = "cf_clearance=abc; session=xyz",
-            ),
-        )
+        //
+        // Both values of alreadySolved, because only the first one proves the
+        // stayOpen guard is doing the work — with alreadySolved = true the
+        // second guard answers first and the case would pass with
+        // `if (stayOpen) return false` deleted.
+        for (alreadySolved in listOf(false, true)) {
+            assertFalse(
+                "alreadySolved=$alreadySolved",
+                shouldCloseOnPageFinished(
+                    stayOpen = true,
+                    alreadySolved = alreadySolved,
+                    cookie = "cf_clearance=abc; session=xyz",
+                ),
+            )
+        }
     }
 }
