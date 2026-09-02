@@ -774,10 +774,15 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
   ) async {
     if (filtersJson == null || filtersJson.isEmpty) {
       emit(
-        state.copyWith(filteredBrowse: const [], filteredBrowseSourceId: ''),
+        state.copyWith(
+          filteredBrowse: const [],
+          filteredBrowseSourceId: '',
+          filteredBrowseLoading: false,
+        ),
       );
       return;
     }
+    emit(state.copyWith(filteredBrowseLoading: true));
     try {
       final res = await _repo.searchStatus(
         '',
@@ -791,13 +796,18 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
           filteredBrowseSourceId: res.items.isEmpty ? '' : sourceId,
           filteredBrowsePage: 1,
           filteredBrowseLoadingMore: false,
+          filteredBrowseLoading: false,
           filteredBrowseAtEnd: false,
         ),
       );
     } catch (_) {
       if (isClosed) return;
       emit(
-        state.copyWith(filteredBrowse: const [], filteredBrowseSourceId: ''),
+        state.copyWith(
+          filteredBrowse: const [],
+          filteredBrowseSourceId: '',
+          filteredBrowseLoading: false,
+        ),
       );
     }
   }

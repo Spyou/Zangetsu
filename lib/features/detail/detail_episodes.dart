@@ -368,11 +368,7 @@ class _EpisodesTabState extends State<_EpisodesTab> {
         .toList();
 
     if (pending.isEmpty) {
-      ScaffoldMessenger.of(context)
-        ..clearSnackBars()
-        ..showSnackBar(
-          SnackBar(content: Text(context.l10n.everyChapterIsAlreadyDownloaded)),
-        );
+      showAppToast(context, context.l10n.everyChapterIsAlreadyDownloaded);
       return;
     }
 
@@ -497,11 +493,7 @@ class _EpisodesTabState extends State<_EpisodesTab> {
     }
     await widget.onDownloadMany!(chapters);
     if (!mounted) return;
-    ScaffoldMessenger.of(context)
-      ..clearSnackBars()
-      ..showSnackBar(
-        SnackBar(content: Text(context.l10n.queuedChapters(chapters.length))),
-      );
+    showAppToast(context, context.l10n.queuedChapters(chapters.length));
   }
 
   Widget _buildList(ResumeStore store, List<Episode> visible, int offset) {
@@ -743,18 +735,12 @@ class _EpisodesHeader extends StatelessWidget {
                   Icons.refresh_rounded,
                   () {
                     onRefresh!();
-                    ScaffoldMessenger.of(context)
-                      ..clearSnackBars()
-                      ..showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            isReading
-                                ? context.l10n.refreshingChapters
-                                : context.l10n.refreshingEpisodes,
-                          ),
-                          duration: const Duration(milliseconds: 1200),
-                        ),
-                      );
+                    showAppToast(
+                      context,
+                      isReading
+                          ? context.l10n.refreshingChapters
+                          : context.l10n.refreshingEpisodes,
+                    );
                   },
                   semanticLabel: isReading
                       ? context.l10n.refreshChapters

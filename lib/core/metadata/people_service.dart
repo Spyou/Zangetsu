@@ -27,13 +27,19 @@ class PeopleService {
 
   // ── AniList ─────────────────────────────────────────────────────────────────
 
-  Future<Map<String, dynamic>?> _gql(String query, Map<String, dynamic> vars) async {
+  Future<Map<String, dynamic>?> _gql(
+    String query,
+    Map<String, dynamic> vars,
+  ) async {
     try {
       final res = await _dio.post<dynamic>(
         _anilist,
         data: {'query': query, 'variables': vars},
         options: Options(
-          headers: const {'Content-Type': 'application/json', 'Accept': 'application/json'},
+          headers: const {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
           validateStatus: (s) => s != null && s < 500,
         ),
       );
@@ -49,8 +55,10 @@ class PeopleService {
     const q =
         'query(\$id:Int){ Character(id:\$id){ '
         'name{ full native } image{ large } description(asHtml:false) '
-        'media(type:ANIME,sort:[POPULARITY_DESC],perPage:25){ edges{ characterRole '
-        'node{ idMal title{ romaji english } coverImage{ large } } '
+        // No type filter: a manga character's appearances ARE manga, and
+        // pinning this to ANIME left every reading character empty.
+        'media(sort:[POPULARITY_DESC],perPage:25){ edges{ characterRole '
+        'node{ idMal type title{ romaji english } coverImage{ large } } '
         'voiceActors(language:JAPANESE){ id name{ full } image{ large } } } } } }';
     final d = await _gql(q, {'id': id});
     final c = d?['Character'];
@@ -65,13 +73,16 @@ class PeopleService {
         final node = e['node'];
         final title = _aniTitle(node);
         if (title != null) {
-          works.add(PersonWork(
-            title: title,
-            romaji: _aniRomaji(node),
-            cover: _aniImage(node, 'coverImage'),
-            subtitle: _titleCase(e['characterRole'] as String?),
-            malId: _aniMalId(node),
-          ));
+          works.add(
+            PersonWork(
+              title: title,
+              romaji: _aniRomaji(node),
+              cover: _aniImage(node, 'coverImage'),
+              subtitle: _titleCase(e['characterRole'] as String?),
+              malId: _aniMalId(node),
+              isReading: node['type'] == 'MANGA',
+            ),
+          );
         }
         final vas = e['voiceActors'];
         if (vas is List) {
@@ -100,20 +111,22 @@ class PeopleService {
         'primaryOccupations '
         'characterMedia(sort:[POPULARITY_DESC],perPage:25){ edges{ '
         'characters{ name{ full } } '
-        'node{ idMal title{ romaji english } coverImage{ large } } } } '
+        'node{ idMal type title{ romaji english } coverImage{ large } } } } '
         // What this person MADE, as opposed to characterMedia's "who they
         // voiced". A manga author voices nobody, so characterMedia comes back
         // empty for them and their page had nothing on it — staffMedia is the
         // field that answers "show me everything they wrote".
         'staffMedia(sort:[POPULARITY_DESC],perPage:25){ edges{ staffRole '
-        'node{ idMal title{ romaji english } coverImage{ large } } } } } }';
+        'node{ idMal type title{ romaji english } coverImage{ large } } } } } }';
     final d = await _gql(q, {'id': id});
     final s = d?['Staff'];
     if (s is! Map) return null;
 
     final works = <PersonWork>[];
     final seenTitles = <String>{};
-    final edges = (s['characterMedia'] is Map) ? s['characterMedia']['edges'] : null;
+    final edges = (s['characterMedia'] is Map)
+        ? s['characterMedia']['edges']
+        : null;
     if (edges is List) {
       for (final e in edges) {
         if (e is! Map) continue;
@@ -126,31 +139,39 @@ class PeopleService {
           if (n is Map) character = n['full'] as String?;
         }
         if (!seenTitles.add(title)) continue;
-        works.add(PersonWork(
-          title: title,
-          romaji: _aniRomaji(e['node']),
-          cover: _aniImage(e['node'], 'coverImage'),
-          subtitle: character,
-          malId: _aniMalId(e['node']),
-        ));
+        works.add(
+          PersonWork(
+            title: title,
+            romaji: _aniRomaji(e['node']),
+            cover: _aniImage(e['node'], 'coverImage'),
+            subtitle: character,
+            malId: _aniMalId(e['node']),
+            isReading: e['node']['type'] == 'MANGA',
+          ),
+        );
       }
     }
 
     // Then the things they worked ON, deduped against the above so someone who
     // both voiced and directed a title isn't listed twice.
-    final staffEdges = (s['staffMedia'] is Map) ? s['staffMedia']['edges'] : null;
+    final staffEdges = (s['staffMedia'] is Map)
+        ? s['staffMedia']['edges']
+        : null;
     if (staffEdges is List) {
       for (final e in staffEdges) {
         if (e is! Map) continue;
         final title = _aniTitle(e['node']);
         if (title == null || !seenTitles.add(title)) continue;
-        works.add(PersonWork(
-          title: title,
-          romaji: _aniRomaji(e['node']),
-          cover: _aniImage(e['node'], 'coverImage'),
-          subtitle: e['staffRole'] as String?,
-          malId: _aniMalId(e['node']),
-        ));
+        works.add(
+          PersonWork(
+            title: title,
+            romaji: _aniRomaji(e['node']),
+            cover: _aniImage(e['node'], 'coverImage'),
+            subtitle: e['staffRole'] as String?,
+            malId: _aniMalId(e['node']),
+            isReading: e['node']['type'] == 'MANGA',
+          ),
+        );
       }
     }
 
@@ -179,7 +200,8 @@ class PeopleService {
     );
   }
 
-  String? _aniName(Map m) => (m['name'] is Map) ? m['name']['full'] as String? : null;
+  String? _aniName(Map m) =>
+      (m['name'] is Map) ? m['name']['full'] as String? : null;
   String? _aniNative(Map m) {
     final n = (m['name'] is Map) ? m['name']['native'] as String? : null;
     return (n != null && n.isNotEmpty) ? n : null;
@@ -220,23 +242,32 @@ class PeopleService {
     final castList = credits?['cast'];
     if (castList is List) {
       final sorted = castList.whereType<Map>().toList()
-        ..sort((a, b) =>
-            ((b['popularity'] as num?) ?? 0).compareTo((a['popularity'] as num?) ?? 0));
+        ..sort(
+          (a, b) => ((b['popularity'] as num?) ?? 0).compareTo(
+            (a['popularity'] as num?) ?? 0,
+          ),
+        );
       for (final c in sorted.take(30)) {
         final title = (c['title'] ?? c['name']) as String?;
         if (title == null || title.isEmpty) continue;
         final poster = c['poster_path'] as String?;
-        works.add(PersonWork(
-          title: title,
-          cover: (poster != null && poster.isNotEmpty) ? '$_img/w342$poster' : null,
-          subtitle: c['character'] as String?,
-        ));
+        works.add(
+          PersonWork(
+            title: title,
+            cover: (poster != null && poster.isNotEmpty)
+                ? '$_img/w342$poster'
+                : null,
+            subtitle: c['character'] as String?,
+          ),
+        );
       }
     }
     final profile = person['profile_path'] as String?;
     return PersonProfile(
       name: name,
-      photo: (profile != null && profile.isNotEmpty) ? '$_img/w300$profile' : null,
+      photo: (profile != null && profile.isNotEmpty)
+          ? '$_img/w300$profile'
+          : null,
       description: (person['biography'] as String?)?.trim().isEmpty ?? true
           ? null
           : (person['biography'] as String).trim(),

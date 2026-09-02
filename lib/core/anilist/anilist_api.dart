@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 
 import '../models/media_extras.dart';
 import '../models/person.dart';
@@ -153,18 +154,16 @@ class AniListApi {
     // wrong wipes the account. Only the caller knows it asked for a create, so
     // an empty result is treated as legitimate ONLY when the query succeeded —
     // customListNames returns [] on error too, so re-run it strictly.
-    final probe = await _gql(
-      'query{ Viewer{ id } }',
-      const {},
-      auth: true,
-    );
+    final probe = await _gql('query{ Viewer{ id } }', const {}, auth: true);
     if (probe?['Viewer'] is! Map) return null; // not signed in / API down
 
     if (existing.any((e) => e.toLowerCase() == trimmed.toLowerCase())) {
       return existing; // already there — nothing to write
     }
     final next = [...existing, trimmed];
-    final field = kind == MediaKind.manga ? 'mangaListOptions' : 'animeListOptions';
+    final field = kind == MediaKind.manga
+        ? 'mangaListOptions'
+        : 'animeListOptions';
     final d = await _gql(
       'mutation(\$lists:[String]){'
       ' UpdateUser($field:{ customLists:\$lists }){ id } }',
@@ -238,7 +237,8 @@ class AniListApi {
       'node{ id name{full} image{medium} } '
       'voiceActors(language:JAPANESE,sort:[RELEVANCE]){ name{full} } } } '
       'relations{ edges{ relationType '
-      'node{ idMal type format title{romaji english} coverImage{medium} } } }';
+      'node{ idMal type format title{romaji english} coverImage{medium} } } } '
+      'recommendations(sort:RATING_DESC,perPage:16){ edges{ node{ mediaRecommendation{ idMal type format title{romaji english} coverImage{medium} } } } }';
 
   /// Manga/novel twin of [_extrasSelection].
   ///
@@ -251,7 +251,8 @@ class AniListApi {
       'staff(sort:[RELEVANCE],perPage:6){ edges{ role '
       'node{ id name{full} image{medium} } } } '
       'relations{ edges{ relationType '
-      'node{ idMal type format title{romaji english} coverImage{medium} } } }';
+      'node{ idMal type format title{romaji english} coverImage{medium} } } } '
+      'recommendations(sort:RATING_DESC,perPage:16){ edges{ node{ mediaRecommendation{ idMal type format title{romaji english} coverImage{medium} } } } }';
 
   /// Cast + relations for a MANGA or NOVEL, resolved by title.
   ///
@@ -264,7 +265,7 @@ class AniListApi {
   /// AniList files light novels under MANGA (format NOVEL), so novels use the
   /// same path. Best-effort; empty on a miss.
   Future<({List<CastMember> cast, List<MediaRelation> relations})>
-      readingExtrasBySearch(String search) async {
+  readingExtrasBySearch(String search) async {
     Future<({List<CastMember> cast, List<MediaRelation> relations})> tryOne(
       String q,
     ) async {
@@ -313,21 +314,23 @@ class AniListApi {
           ? node['image']['medium'] as String?
           : null;
       final id = (node is Map) ? (node['id'] as num?)?.toInt() : null;
-      out.add(CastMember(
-        name: name,
-        role: e['role'] as String?,
-        photo: img,
-        // Tappable, so an author's card opens their page and lists everything
-        // else they've written. Without the ref the card is inert.
-        person: id == null
-            ? null
-            : PersonRef(
-                id: id,
-                source: PersonSource.anilistStaff,
-                name: name,
-                photo: img,
-              ),
-      ));
+      out.add(
+        CastMember(
+          name: name,
+          role: e['role'] as String?,
+          photo: img,
+          // Tappable, so an author's card opens their page and lists everything
+          // else they've written. Without the ref the card is inert.
+          person: id == null
+              ? null
+              : PersonRef(
+                  id: id,
+                  source: PersonSource.anilistStaff,
+                  name: name,
+                  photo: img,
+                ),
+        ),
+      );
     }
     return out;
   }
@@ -348,12 +351,44 @@ class AniListApi {
     return _parseExtras(media);
   }
 
+  /// Cast + relations for a MANGA or NOVEL, by its MAL **manga** id.
+  ///
+  /// The anime twin ([mediaExtras]) pins `type:ANIME`, and MAL numbers its
+  /// manga and its anime separately — so a manga id sent there resolves to
+  /// whatever anime happens to hold the same number. MAL manga 25 is Fullmetal
+  /// Alchemist; MAL anime 25 is Sunabouzu. Reading titles went down that path
+  /// for every id-carrying source, so the tabs filled with a stranger's cast,
+  /// or stayed empty when no anime held the number at all.
+  Future<({List<CastMember> cast, List<MediaRelation> relations})>
+  readingExtras(int idMal) async {
+    final d = await _gql(
+      'query(\$idMal:Int){ Media(idMal:\$idMal,type:MANGA){ '
+      '$_readingExtrasSelection } }',
+      {'idMal': idMal},
+    );
+    final media = d?['Media'];
+    if (media is! Map) {
+      return (cast: <CastMember>[], relations: <MediaRelation>[]);
+    }
+    // AniList files light novels under MANGA, and a manga's relations reach
+    // into ANIME for its adaptation — both belong on a reading page.
+    final base = _parseExtras(media, keepTypes: const {'MANGA', 'ANIME'});
+    // Characters first, creators after — same order the title-search twin
+    // uses, and for the same reason: the header's "Starring:" line takes the
+    // head of this list, so staff in front made a manga read
+    // "Starring: <the author>".
+    return (
+      cast: [...base.cast, ..._parseStaff(media)],
+      relations: base.relations,
+    );
+  }
+
   /// Cast + relations for an anime resolved by TITLE search — the fallback for
   /// id-less sources (Aniyomi, most CloudStream) that expose no MAL id. Tries
   /// the raw title, then a cleaned variant (bracketed "(Dub)"/"(TV)"/
   /// "[Uncensored]" suffixes break AniList's search). Best-effort, empty on miss.
   Future<({List<CastMember> cast, List<MediaRelation> relations})>
-      mediaExtrasBySearch(String search) async {
+  mediaExtrasBySearch(String search) async {
     var r = await _searchExtras(search);
     if (r.cast.isEmpty && r.relations.isEmpty) {
       final cleaned = _cleanSearchTitle(search);
@@ -385,7 +420,7 @@ class AniListApi {
   }
 
   Future<({List<CastMember> cast, List<MediaRelation> relations})>
-      _searchExtras(String search) async {
+  _searchExtras(String search) async {
     final d = await _gql(
       'query(\$search:String){ Media(search:\$search,type:ANIME){ $_extrasSelection } }',
       {'search': search},
@@ -416,12 +451,22 @@ class AniListApi {
   ///
   /// Defaulting to ANIME-only is what silently emptied the tab: a manga's
   /// relations are MANGA, so every one was dropped.
+  /// Exposed so the shape AniList actually returns can be pinned in a test
+  /// without a token — the API refuses anonymous reads.
+  @visibleForTesting
+  ({List<CastMember> cast, List<MediaRelation> relations}) parseExtrasForTest(
+    Map media, {
+    Set<String> keepTypes = const {'ANIME'},
+  }) => _parseExtras(media, keepTypes: keepTypes);
+
   ({List<CastMember> cast, List<MediaRelation> relations}) _parseExtras(
     Map media, {
     Set<String> keepTypes = const {'ANIME'},
   }) {
     final cast = <CastMember>[];
-    final cEdges = media['characters'] is Map ? media['characters']['edges'] : null;
+    final cEdges = media['characters'] is Map
+        ? media['characters']['edges']
+        : null;
     if (cEdges is List) {
       for (final e in cEdges) {
         if (e is! Map) continue;
@@ -434,31 +479,36 @@ class AniListApi {
             ? node['image']['medium'] as String?
             : null;
         final vas = e['voiceActors'];
-        final va = (vas is List &&
+        final va =
+            (vas is List &&
                 vas.isNotEmpty &&
                 vas.first is Map &&
                 (vas.first as Map)['name'] is Map)
             ? (vas.first as Map)['name']['full'] as String?
             : null;
         final charId = (node is Map) ? (node['id'] as num?)?.toInt() : null;
-        cast.add(CastMember(
-          name: name,
-          role: va,
-          photo: img,
-          person: charId == null
-              ? null
-              : PersonRef(
-                  id: charId,
-                  source: PersonSource.anilistCharacter,
-                  name: name,
-                  photo: img,
-                ),
-        ));
+        cast.add(
+          CastMember(
+            name: name,
+            role: va,
+            photo: img,
+            person: charId == null
+                ? null
+                : PersonRef(
+                    id: charId,
+                    source: PersonSource.anilistCharacter,
+                    name: name,
+                    photo: img,
+                  ),
+          ),
+        );
       }
     }
 
     final relations = <MediaRelation>[];
-    final rEdges = media['relations'] is Map ? media['relations']['edges'] : null;
+    final rEdges = media['relations'] is Map
+        ? media['relations']['edges']
+        : null;
     if (rEdges is List) {
       for (final e in rEdges) {
         if (e is! Map) continue;
@@ -466,22 +516,61 @@ class AniListApi {
         if (node is! Map || !keepTypes.contains(node['type'])) continue;
         final t = node['title'];
         final romaji = (t is Map) ? t['romaji'] as String? : null;
-        final title =
-            (t is Map) ? (t['english'] ?? t['romaji']) as String? : null;
+        final title = (t is Map)
+            ? (t['english'] ?? t['romaji']) as String?
+            : null;
         if (title == null || title.isEmpty) continue;
         final cover = (node['coverImage'] is Map)
             ? node['coverImage']['medium'] as String?
             : null;
-        relations.add(MediaRelation(
-          title: title,
-          romaji: romaji,
-          cover: cover,
-          relation: _relationLabel(
-            e['relationType'] as String?,
-            node['format'] as String?,
+        relations.add(
+          MediaRelation(
+            title: title,
+            romaji: romaji,
+            cover: cover,
+            relation: _relationLabel(
+              e['relationType'] as String?,
+              node['format'] as String?,
+            ),
+            malId: (node['idMal'] as num?)?.toInt(),
+            isReading: node['type'] == 'MANGA',
           ),
-          malId: (node['idMal'] as num?)?.toInt(),
-        ));
+        );
+      }
+    }
+
+    // Recommendations come after the relations, never mixed in: a sequel is a
+    // fact about the title, a recommendation is someone else's opinion, and the
+    // row reads wrong when the two are interleaved. Sorted by AniList's own
+    // rating, so the top of the list is what its users actually voted up.
+    final recEdges = media['recommendations'] is Map
+        ? media['recommendations']['edges']
+        : null;
+    if (recEdges is List) {
+      final seen = {for (final r in relations) r.title};
+      for (final e in recEdges) {
+        if (e is! Map) continue;
+        final node = e['node'];
+        final rec = (node is Map) ? node['mediaRecommendation'] : null;
+        // Null when the recommended entry has been deleted from AniList.
+        if (rec is! Map || !keepTypes.contains(rec['type'])) continue;
+        final t = rec['title'];
+        final title = (t is Map)
+            ? (t['english'] ?? t['romaji']) as String?
+            : null;
+        if (title == null || title.isEmpty || !seen.add(title)) continue;
+        relations.add(
+          MediaRelation(
+            title: title,
+            romaji: (t is Map) ? t['romaji'] as String? : null,
+            cover: (rec['coverImage'] is Map)
+                ? rec['coverImage']['medium'] as String?
+                : null,
+            relation: 'Recommended',
+            malId: (rec['idMal'] as num?)?.toInt(),
+            isReading: rec['type'] == 'MANGA',
+          ),
+        );
       }
     }
     return (cast: cast, relations: relations);

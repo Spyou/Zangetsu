@@ -216,6 +216,11 @@ void main() {
     expect(sl<MatchStore>().get(fma, 'ani:1')?.pinned, isTrue);
     // HiAnime was never touched by this correction.
     expect(sl<MatchStore>().get(fma, 'ani:2'), isNull);
+
+    // Confirming a match toasts, and a toast is a two-second timer. Left
+    // running, it outlives the widget tree and the binding fails the test on
+    // a pending timer — nothing to do with the correction itself.
+    await t.pump(const Duration(seconds: 3));
   });
 
   testWidgets('Wrong title? correction on a video (anime) kind refreshes the Detail screen', (t) async {
@@ -248,6 +253,9 @@ void main() {
 
     expect(sl<MatchStore>().get(fma, 'ani:1')?.pinned, isTrue);
     expect(repo.detailCalls, greaterThan(0));
+
+    // Drain the confirmation toast's timer — see the note in the test above.
+    await t.pump(const Duration(seconds: 3));
   });
 
   testWidgets('the row names the title it matched, so a wrong one is visible',

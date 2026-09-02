@@ -36,7 +36,9 @@ class MalCatalogue implements AnimeCatalogue {
       // field says which one came back.
       'start_season,mean,media_type';
   static const String _detailFields =
-      '$_listFields,synopsis,studios,media_type,num_chapters';
+      '$_listFields,synopsis,studios,media_type,num_chapters,'
+      'mean,num_list_users,average_episode_duration,source,'
+      'start_date,end_date,nsfw';
 
   Future<Response<dynamic>> _get(String path, Map<String, dynamic> q) =>
       _dio.get<dynamic>(
@@ -225,11 +227,63 @@ class MalCatalogue implements AnimeCatalogue {
       type: _providerType(c.kind),
       sourceId: ZmodeIds.sourceId,
       malId: int.tryParse(id),
+      // MAL scores out of 10, the model holds out of 100 — the same scale
+      // AniList reports, so the page can print one number either way.
+      score: _score(map['mean']),
+      format: _prettyEnum(map['media_type'] as String?),
+      // Seconds per episode, not minutes.
+      durationMins: _durationMins(map['average_episode_duration']),
+      sourceMaterial: _prettyEnum(map['source'] as String?),
+      startDate: _date(map['start_date'] as String?),
+      endDate: _date(map['end_date'] as String?),
+      // How many people have it listed. MAL's own `popularity` is a RANK
+      // (3 = third most popular), which would read as a count of three.
+      popularity: map['num_list_users'] as int?,
+      nativeTitle: (titles['ja'] as String?)?.trim().isEmpty == true
+          ? null
+          : titles['ja'] as String?,
+      synonyms: [
+        for (final x in (titles['synonyms'] as List? ?? const [])) '$x',
+      ],
+      // 'white' is the safe bucket; 'gray' and 'black' are not.
+      isAdult: (map['nsfw'] as String?) != null && map['nsfw'] != 'white',
     );
   }
 
   Future<List<Episode>> episodes(ZCanonical c) async =>
       (await detail(c)).episodes;
+
+  static int? _score(Object? mean) {
+    final v = (mean as num?)?.toDouble();
+    return v == null || v <= 0 ? null : (v * 10).round();
+  }
+
+  static int? _durationMins(Object? seconds) {
+    final v = (seconds as num?)?.toInt();
+    return v == null || v <= 0 ? null : (v / 60).round();
+  }
+
+  /// `light_novel` → `Light novel`. MAL uses snake_case where AniList SHOUTS;
+  /// both end up reading the same on the page.
+  static String? _prettyEnum(String? v) {
+    if (v == null || v.isEmpty) return null;
+    final words = v.replaceAll('_', ' ').toLowerCase();
+    return words[0].toUpperCase() + words.substring(1);
+  }
+
+  /// MAL dates are `YYYY-MM-DD`, and a partial one is legitimately just the
+  /// year or the year and month.
+  static DateTime? _date(String? raw) {
+    if (raw == null || raw.isEmpty) return null;
+    final p = raw.split('-');
+    final y = int.tryParse(p.first);
+    if (y == null) return null;
+    return DateTime(
+      y,
+      p.length > 1 ? int.tryParse(p[1]) ?? 1 : 1,
+      p.length > 2 ? int.tryParse(p[2]) ?? 1 : 1,
+    );
+  }
 
   // ── helpers ──────────────────────────────────────────────────────────────
 

@@ -896,6 +896,34 @@
 			}
 		}
 	},
+	"episodeAirsIn": "Ep {episode} · in {when}",
+	"@episodeAirsIn": {
+		"placeholders": {
+			"episode": {
+				"type": "int"
+			},
+			"when": {
+				"type": "String"
+			}
+		}
+	},
+	"duration": "Duration",
+	"score": "Score",
+	"popularity": "Popularity",
+	"sourceMaterial": "Source",
+	"country": "Country",
+	"aired": "Aired",
+	"nativeTitle": "Native title",
+	"alsoKnownAs": "Also known as",
+	"tags": "Tags",
+	"showSpoilerTags": "{count, plural, one{Show # spoiler tag} other{Show # spoiler tags}}",
+	"@showSpoilerTags": {
+		"placeholders": {
+			"count": {
+				"type": "int"
+			}
+		}
+	},
 	"navTabsSwitcher": "Mode switcher",
 	"navTabsSwitcherWhy": "Takes the middle slot",
 	"navTabsOpensOn": "Opens on launch",

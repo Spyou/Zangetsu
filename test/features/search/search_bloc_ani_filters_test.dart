@@ -588,6 +588,49 @@ void main() {
       );
     });
 
+    // A filters-only browse never leaves SearchStatus.idle: the query box is
+    // empty, so the bloc does not consider it a search. The screen therefore
+    // has nothing in `status` to tell it results are coming, and showed its
+    // idle body — the search history — until they landed. This flag is what
+    // it reads instead, so it has to go up AND come back down, including when
+    // the fetch throws.
+    test('the browse announces that it is loading, then that it is not',
+        () async {
+      final seen = <bool>[];
+      final sub = bloc.stream.listen((s) => seen.add(s.filteredBrowseLoading));
+
+      await startBrowse([_fakeItem('ani:1', title: 'One')]);
+      await sub.cancel();
+
+      expect(seen, contains(true), reason: 'the skeleton needs a cue to show');
+      expect(
+        bloc.state.filteredBrowseLoading,
+        isFalse,
+        reason: 'left true, the skeleton never goes away',
+      );
+    });
+
+    test('a failed browse still lowers the flag', () async {
+      repo.throwOnSearch = StateError('source rejected the browse');
+      bloc.add(const SearchSourceFiltersApplied('ani:1', '["s"]'));
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+
+      expect(bloc.state.filteredBrowse, isEmpty);
+      expect(
+        bloc.state.filteredBrowseLoading,
+        isFalse,
+        reason: 'a failure that leaves it true hangs the screen on a skeleton',
+      );
+    });
+
+    test('clearing the filters lowers the flag too', () async {
+      await startBrowse([_fakeItem('ani:1', title: 'One')]);
+      bloc.add(const SearchSourceFiltersApplied('ani:1', ''));
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+
+      expect(bloc.state.filteredBrowseLoading, isFalse);
+    });
+
     test('re-applying filters resets paging to page 1', () async {
       await startBrowse([_fakeItem('ani:1', title: 'One')]);
       repo.searchItems = [_fakeItem('ani:1', title: 'Two')];

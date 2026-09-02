@@ -1,10 +1,12 @@
 import 'package:dio/dio.dart';
 
 import '../anilist/anilist_api.dart';
+import '../environment.dart';
 import '../models/media_detail.dart';
 import '../models/media_extras.dart';
 import '../models/person.dart';
 import '../models/provider_info.dart';
+import '../zmode/metadata_provider_prefs.dart';
 
 /// Fetches Cast + Relations for a title from a metadata API — AniList for anime
 /// (keyed by MAL id), TMDB for movies/series (keyed by TMDB id, via the same
@@ -16,12 +18,21 @@ class MetadataEnrichment {
   /// has disabled UNAUTHENTICATED API access, so anonymous searches (malId
   /// resolution, cast/relations by title) now 403 — pass the token so these
   /// calls authenticate like the tracker's do. Falls back to anonymous.
-  MetadataEnrichment(Dio dio, [String? Function()? anilistToken])
-      : _dio = dio,
-        _anilist = AniListApi(dio, anilistToken ?? () => null);
+  /// [providerPrefs] reads the user's metadata choice. Passed in rather than
+  /// looked up so this stays a plain object the tests can build; a null reader
+  /// (or a null return) simply means "no preference", and the AniList/TMDB
+  /// answer stands.
+  MetadataEnrichment(
+    Dio dio, [
+    String? Function()? anilistToken,
+    MetadataProviderPrefs? Function()? providerPrefs,
+  ]) : _dio = dio,
+       _prefs = providerPrefs,
+       _anilist = AniListApi(dio, anilistToken ?? () => null);
 
   final Dio _dio;
   final AniListApi _anilist;
+  final MetadataProviderPrefs? Function()? _prefs;
 
   // TMDB v3 — api_key attached by the Dio interceptor (initDependencies).
   static const String _tmdbBase = 'https://api.themoviedb.org/3';
@@ -102,10 +113,47 @@ class MetadataEnrichment {
   static String _normTitle(String s) =>
       s.toLowerCase().replaceAll(RegExp('[^a-z0-9]'), '');
 
+  /// Cast + Relations for [d].
+  ///
+  /// Cast always comes from AniList or TMDB: MyAnimeList's v2 API serves no
+  /// characters at all (the field is accepted and ignored) and Simkl has no
+  /// people data, so there is nothing to switch to. Relations DO follow the
+  /// user's provider where that provider has them — see [_providerRelations].
   Future<({List<CastMember> cast, List<MediaRelation> relations})> fetch(
     MediaDetail d,
   ) async {
+    // Both in flight at once: the overlay is a second network round trip and
+    // there is no reason to pay for it in series.
+    final baseCall = _base(d);
+    final ownCall = _providerRelations(d);
+    final base = await baseCall;
+    final own = await ownCall;
+    if (own == null || own.isEmpty) return base;
+    return (cast: base.cast, relations: own);
+  }
+
+  Future<({List<CastMember> cast, List<MediaRelation> relations})> _base(
+    MediaDetail d,
+  ) async {
     try {
+      // Reading kinds are decided FIRST, before any id branch. A manga's MAL
+      // id is a MANGA id, and the id branch below reads the ANIME catalogue —
+      // the numbers are unrelated, so sending one down there returns someone
+      // else's show or nothing at all. Goes to AniList's MANGA side, never the
+      // video databases: see readingExtras for why that distinction is the
+      // whole point.
+      if (d.type == ProviderType.manga || d.type == ProviderType.novel) {
+        if (d.malId != null) {
+          final byId = await _anilist.readingExtras(d.malId!);
+          if (byId.cast.isNotEmpty || byId.relations.isNotEmpty) return byId;
+          // An id AniList has never heard of still deserves the title search
+          // rather than an empty tab.
+        }
+        if (d.title.trim().isNotEmpty) {
+          return await _anilist.readingExtrasBySearch(d.title);
+        }
+        return (cast: <CastMember>[], relations: <MediaRelation>[]);
+      }
       if (d.malId != null) return await _anilist.mediaExtras(d.malId!);
       if (d.tmdbId != null) return await _tmdb(d.tmdbId!, d.tmdbIsTv);
       // Id-less anime (Aniyomi, most CloudStream): AniList exposes no id, so
@@ -114,15 +162,142 @@ class MetadataEnrichment {
       if (d.type == ProviderType.anime && d.title.trim().isNotEmpty) {
         return await _anilist.mediaExtrasBySearch(d.title);
       }
-      // Manga/novel (Mihon, LNReader) expose no id either. Goes to AniList's
-      // MANGA side, never the video databases — see readingExtrasBySearch for
-      // why that distinction is the whole point.
-      if ((d.type == ProviderType.manga || d.type == ProviderType.novel) &&
-          d.title.trim().isNotEmpty) {
-        return await _anilist.readingExtrasBySearch(d.title);
-      }
     } catch (_) {}
     return (cast: <CastMember>[], relations: <MediaRelation>[]);
+  }
+
+  /// Relations from the provider the user actually picked, or null to leave
+  /// the AniList/TMDB answer alone.
+  ///
+  /// Verified against the live APIs rather than assumed, because both of these
+  /// accept fields they do not serve:
+  ///  * MAL has `related_anime` / `related_manga` (with a relation label) and
+  ///    `recommendations` — but no characters, so cast never moves.
+  ///  * Simkl has real `relations` on ANIME only. Its movie and TV records
+  ///    carry `users_recommendations` and nothing else, so that is what a
+  ///    Simkl user gets there. Anime never reaches Simkl anyway: it answers
+  ///    for movies and TV, and anime follows the AniList/MAL choice.
+  Future<List<MediaRelation>?> _providerRelations(MediaDetail d) async {
+    final prefs = _prefs?.call();
+    if (prefs == null) return null;
+    try {
+      final reading =
+          d.type == ProviderType.manga || d.type == ProviderType.novel;
+      if (reading || d.type == ProviderType.anime) {
+        if (prefs.anime != AnimeProvider.mal || d.malId == null) return null;
+        return await _malRelations(d.malId!, reading: reading);
+      }
+      if (prefs.video != VideoProvider.simkl || d.tmdbId == null) return null;
+      return await _simklRelations(d.tmdbId!, isTv: d.tmdbIsTv);
+    } catch (_) {
+      // Any miss falls through to what AniList/TMDB already returned, which is
+      // strictly better than an empty Relations tab.
+      return null;
+    }
+  }
+
+  /// MAL keys manga relations by MANGA id and anime relations by ANIME id, and
+  /// [MediaDetail.malId] already follows the title's own kind — so the kind
+  /// picks the endpoint and no id can cross over.
+  Future<List<MediaRelation>> _malRelations(
+    int id, {
+    required bool reading,
+  }) async {
+    final kind = reading ? 'manga' : 'anime';
+    final relKey = reading ? 'related_manga' : 'related_anime';
+    final data = await _get(
+      'https://api.myanimelist.net/v2/$kind/$id',
+      {'fields': '$relKey,recommendations'},
+      const {'X-MAL-CLIENT-ID': Environment.malClientId},
+    );
+    if (data == null) return const [];
+
+    final out = <MediaRelation>[];
+    void take(String key, String? fallbackLabel) {
+      final list = data[key];
+      if (list is! List) return;
+      for (final e in list.take(20)) {
+        if (e is! Map) continue;
+        final node = e['node'];
+        if (node is! Map) continue;
+        final title = (node['title'] as String?)?.trim();
+        if (title == null || title.isEmpty) continue;
+        final pic = node['main_picture'];
+        out.add(
+          MediaRelation(
+            title: title,
+            cover: pic is Map
+                ? (pic['large'] ?? pic['medium']) as String?
+                : null,
+            relation:
+                (e['relation_type_formatted'] as String?) ?? fallbackLabel,
+            // Only for anime: a manga id here would be compared against the
+            // anime ids sources report and match the wrong show.
+            malId: reading ? null : (node['id'] as num?)?.toInt(),
+          ),
+        );
+      }
+    }
+
+    take(relKey, null);
+    take('recommendations', 'Recommended');
+    return out;
+  }
+
+  /// Simkl is keyed by its own id, so a TMDB id costs one lookup hop first.
+  /// Its entries carry no MAL or TMDB id of their own — only a Simkl id and a
+  /// slug — so relations opened from here match on title alone, which is the
+  /// same path an id-less source already takes.
+  Future<List<MediaRelation>> _simklRelations(
+    int tmdbId, {
+    required bool isTv,
+  }) async {
+    const key = {'simkl-api-key': Environment.simklClientId};
+    final found = await _dio.get<dynamic>(
+      'https://api.simkl.com/search/id',
+      queryParameters: {'tmdb': '$tmdbId', 'type': isTv ? 'show' : 'movie'},
+      options: Options(
+        headers: key,
+        validateStatus: (s) => s != null && s < 500,
+      ),
+    );
+    final list = found.data;
+    if (list is! List || list.isEmpty) return const [];
+    final ids = (list.first as Map?)?['ids'];
+    // `simkl_id` on search results, `simkl` on sync payloads — both appear.
+    final simklId = ids is Map ? (ids['simkl'] ?? ids['simkl_id']) : null;
+    if (simklId == null) return const [];
+
+    final full = await _get(
+      'https://api.simkl.com/${isTv ? 'tv' : 'movies'}/$simklId',
+      {'extended': 'full'},
+      key,
+    );
+    if (full == null) return const [];
+
+    final out = <MediaRelation>[];
+    // `relations` is the anime-only field; movies and TV only ever have the
+    // recommendations. Reading both keeps one parser for either shape.
+    for (final key in const ['relations', 'users_recommendations']) {
+      final entries = full[key];
+      if (entries is! List) continue;
+      for (final e in entries.take(20)) {
+        if (e is! Map) continue;
+        final title = ((e['en_title'] ?? e['title']) as String?)?.trim();
+        if (title == null || title.isEmpty) continue;
+        final poster = e['poster'] as String?;
+        out.add(
+          MediaRelation(
+            title: title,
+            cover: (poster != null && poster.isNotEmpty)
+                ? 'https://simkl.in/posters/${poster}_m.jpg'
+                : null,
+            relation: (e['relation_type'] as String?) ?? 'Recommended',
+          ),
+        );
+      }
+    }
+    return out;
   }
 
   Future<({List<CastMember> cast, List<MediaRelation> relations})> _tmdb(
@@ -133,7 +308,20 @@ class MetadataEnrichment {
     final cast = <CastMember>[];
     final relations = <MediaRelation>[];
 
-    final credits = await _get('$_tmdbBase/$kind/$id/credits');
+    // Both in flight at once. Nothing in the credits answer feeds the
+    // recommendations request, so asking for one only after the other landed
+    // cost a whole round trip for nothing.
+    //
+    // Safe as a pair ONLY because _get answers null on any failure instead of
+    // throwing: one dead request leaves the other's result untouched. Keep
+    // that contract — the day _get throws, a single failure here takes both
+    // tabs down instead of one.
+    final answers = await Future.wait([
+      _get('$_tmdbBase/$kind/$id/credits'),
+      _get('$_tmdbBase/$kind/$id/recommendations'),
+    ]);
+    final credits = answers[0];
+    final recs = answers[1];
     final castList = credits?['cast'];
     if (castList is List) {
       for (final c in castList.take(24)) {
@@ -143,23 +331,24 @@ class MetadataEnrichment {
         final pp = c['profile_path'] as String?;
         final personId = (c['id'] as num?)?.toInt();
         final photo = (pp != null && pp.isNotEmpty) ? '$_img/w185$pp' : null;
-        cast.add(CastMember(
-          name: name,
-          role: c['character'] as String?,
-          photo: photo,
-          person: personId == null
-              ? null
-              : PersonRef(
-                  id: personId,
-                  source: PersonSource.tmdb,
-                  name: name,
-                  photo: photo,
-                ),
-        ));
+        cast.add(
+          CastMember(
+            name: name,
+            role: c['character'] as String?,
+            photo: photo,
+            person: personId == null
+                ? null
+                : PersonRef(
+                    id: personId,
+                    source: PersonSource.tmdb,
+                    name: name,
+                    photo: photo,
+                  ),
+          ),
+        );
       }
     }
 
-    final recs = await _get('$_tmdbBase/$kind/$id/recommendations');
     final results = recs?['results'];
     if (results is List) {
       for (final r in results.take(20)) {
@@ -167,14 +356,17 @@ class MetadataEnrichment {
         final title = (r['title'] ?? r['name']) as String?;
         if (title == null || title.isEmpty) continue;
         final poster = r['poster_path'] as String?;
-        relations.add(MediaRelation(
-          title: title,
-          cover:
-              (poster != null && poster.isNotEmpty) ? '$_img/w342$poster' : null,
-          relation: 'Recommended',
-          tmdbId: (r['id'] as num?)?.toInt(),
-          tmdbIsTv: isTv,
-        ));
+        relations.add(
+          MediaRelation(
+            title: title,
+            cover: (poster != null && poster.isNotEmpty)
+                ? '$_img/w342$poster'
+                : null,
+            relation: 'Recommended',
+            tmdbId: (r['id'] as num?)?.toInt(),
+            tmdbIsTv: isTv,
+          ),
+        );
       }
     }
     return (cast: cast, relations: relations);
@@ -227,12 +419,16 @@ class MetadataEnrichment {
   Future<Map<String, dynamic>?> _get(
     String url, [
     Map<String, dynamic>? query,
+    Map<String, String>? headers,
   ]) async {
     try {
       final res = await _dio.get<dynamic>(
         url,
         queryParameters: query,
-        options: Options(validateStatus: (s) => s != null && s < 500),
+        options: Options(
+          headers: headers,
+          validateStatus: (s) => s != null && s < 500,
+        ),
       );
       final data = res.data;
       if (data is Map) return Map<String, dynamic>.from(data);

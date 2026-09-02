@@ -198,11 +198,49 @@ class TmdbCatalogue implements VideoCatalogue {
       type: ProviderType.movie,
       sourceId: ZmodeIds.sourceId,
       tmdbId: int.tryParse(id),
+      // Out of 10 in the payload, out of 100 in the model.
+      score: _score(m['vote_average']),
+      // vote_count, not `popularity`: TMDB's popularity is an internal
+      // trending float (55.6) that means nothing printed on a page.
+      popularity: (m['vote_count'] as num?)?.toInt(),
+      // A series reports per-episode run times as a list; a film reports one
+      // number. Both end up as minutes.
+      durationMins: _runtime(isTv ? m['episode_run_time'] : m['runtime']),
+      country: _country(m['production_countries']),
+      startDate: _isoDate(date),
+      endDate: _isoDate(m['last_air_date'] as String?),
+      nativeTitle: (isTv ? m['original_name'] : m['original_title']) as String?,
+      isAdult: m['adult'] == true,
       tmdbIsTv: isTv,
     );
   }
 
   // ── helpers ──────────────────────────────────────────────────────────────
+
+  static int? _score(Object? v) {
+    final d = (v as num?)?.toDouble();
+    return d == null || d <= 0 ? null : (d * 10).round();
+  }
+
+  static int? _runtime(Object? v) {
+    if (v is num && v > 0) return v.toInt();
+    // episode_run_time is a list, often with more than one entry when a show
+    // changed length. The first is the usual one.
+    if (v is List && v.isNotEmpty && v.first is num && (v.first as num) > 0) {
+      return (v.first as num).toInt();
+    }
+    return null;
+  }
+
+  static String? _country(Object? v) {
+    if (v is! List || v.isEmpty) return null;
+    final first = v.first;
+    return (first is Map) ? first['iso_3166_1'] as String? : null;
+  }
+
+  /// A malformed date is worth dropping a row over, never a detail page.
+  static DateTime? _isoDate(String? raw) =>
+      (raw == null || raw.isEmpty) ? null : DateTime.tryParse(raw);
 
   static String? _poster(String? path) =>
       path == null ? null : '${Tmdb.img}/w500$path';
