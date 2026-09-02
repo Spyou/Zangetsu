@@ -33,6 +33,7 @@ import 'core/zmode/metadata_provider_prefs.dart';
 import 'core/zmode/zmode_prefs.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/theme_controller.dart';
+import 'core/tv/tv_route_pop_guard.dart';
 import 'core/tv/tv_viewport.dart';
 import 'l10n/app_localizations.dart';
 import 'core/ui/global_messenger.dart';
@@ -575,7 +576,7 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
       scaffoldMessengerKey: shellFeatures ? rootMessengerKey : null,
       navigatorKey: rootNavigatorKey,
       navigatorObservers: shellFeatures
-          ? [Analytics.observer, appRouteObserver]
+          ? [Analytics.observer, appRouteObserver, TvRoutePopGuardObserver()]
           : const [],
       home: _buildHome(),
       builder: (_, child) {

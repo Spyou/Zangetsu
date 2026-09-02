@@ -107,6 +107,29 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
     debugLabel: 'tv-detail-right',
   );
 
+  /// Swallows remote Back KeyUp so it cannot land on Home and re-open this
+  /// title (same leak class as [TvExoPlayerScreen]'s deferred back handling).
+  bool _backKeyConsumed = false;
+
+  KeyEventResult _onRootBackKey(FocusNode _, KeyEvent event) {
+    final k = event.logicalKey;
+    if (k != LogicalKeyboardKey.goBack && k != LogicalKeyboardKey.escape) {
+      return KeyEventResult.ignored;
+    }
+    if (event is KeyDownEvent) {
+      _backKeyConsumed = false;
+      return KeyEventResult.handled;
+    }
+    if (event is KeyUpEvent) {
+      if (!_backKeyConsumed) {
+        _backKeyConsumed = true;
+        Navigator.of(context).maybePop();
+      }
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.handled;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -604,11 +627,13 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
     if (statusStr.isNotEmpty) metaParts.add(statusStr);
     final metaLine = metaParts.join('  ·  ');
 
-    return Scaffold(
-      backgroundColor: AppColors.bg,
-      // Back sits in the left column (above the poster) so D-pad up from Play
-      // can reach it. Overlaying it on the poster made it unreachable.
-      body: SafeArea(
+    return Focus(
+      onKeyEvent: _onRootBackKey,
+      child: Scaffold(
+        backgroundColor: AppColors.bg,
+        // Back sits in the left column (above the poster) so D-pad up from Play
+        // can reach it. Overlaying it on the poster made it unreachable.
+        body: SafeArea(
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -969,6 +994,7 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
           ],
         ),
       ),
+    ),
     );
   }
 }
