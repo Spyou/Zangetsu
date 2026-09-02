@@ -1845,6 +1845,9 @@ class AppLocalizationsJa extends AppLocalizations {
   String get openSourceSite => 'ソースサイトを開く';
 
   @override
+  String get signInToSource => 'Sign in';
+
+  @override
   String get welcomeBack => 'おかえりなさい';
 
   @override

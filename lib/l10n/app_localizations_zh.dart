@@ -1836,6 +1836,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get openSourceSite => '打开来源网站';
 
   @override
+  String get signInToSource => 'Sign in';
+
+  @override
   String get welcomeBack => '欢迎回来';
 
   @override

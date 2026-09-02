@@ -2,6 +2,7 @@
   "de": [
     "offlineTitle",
     "offlineBody",
+    "signInToSource",
     "episodeAirsIn",
     "duration",
     "score",
@@ -67,6 +68,7 @@
   "es": [
     "offlineTitle",
     "offlineBody",
+    "signInToSource",
     "episodeAirsIn",
     "duration",
     "score",
@@ -132,6 +134,7 @@
   "fr": [
     "offlineTitle",
     "offlineBody",
+    "signInToSource",
     "episodeAirsIn",
     "duration",
     "score",
@@ -197,6 +200,7 @@
   "it": [
     "offlineTitle",
     "offlineBody",
+    "signInToSource",
     "episodeAirsIn",
     "duration",
     "score",
@@ -262,6 +266,7 @@
   "ja": [
     "offlineTitle",
     "offlineBody",
+    "signInToSource",
     "episodeAirsIn",
     "duration",
     "score",
@@ -327,6 +332,7 @@
   "zh": [
     "offlineTitle",
     "offlineBody",
+    "signInToSource",
     "episodeAirsIn",
     "duration",
     "score",
@@ -392,6 +398,7 @@
   "zh_TW": [
     "offlineTitle",
     "offlineBody",
+    "signInToSource",
     "episodeAirsIn",
     "duration",
     "score",

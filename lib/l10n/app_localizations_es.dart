@@ -1901,6 +1901,9 @@ class AppLocalizationsEs extends AppLocalizations {
   String get openSourceSite => 'Abrir sitio de la fuente';
 
   @override
+  String get signInToSource => 'Sign in';
+
+  @override
   String get welcomeBack => 'Qué bueno verte';
 
   @override
