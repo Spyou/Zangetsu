@@ -1,7 +1,6 @@
 // Aniyomi sources — TV (D-pad) UI.
 part of 'aniyomi_sources_screen.dart';
 
-
 // ---------------------------------------------------------------------------
 // TV view
 // ---------------------------------------------------------------------------
@@ -39,152 +38,158 @@ class _AniScreenTvViewState extends State<_AniScreenTvView> {
     if (!Platform.isAndroid) {
       return Scaffold(
         backgroundColor: AppColors.bg,
-        body: Stack(
-          children: [
-            Center(
-              child: Padding(
-                padding: EdgeInsets.all(40),
-                child: Text(
-                  context.l10n.aniyomiIsnTAvailableOnThisDevice,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.white70, fontSize: 16),
+        body: SafeArea(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const TvBackHeader(),
+              Expanded(
+                child: Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(40),
+                    child: Text(
+                      context.l10n.aniyomiIsnTAvailableOnThisDevice,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.white70, fontSize: 16),
+                    ),
+                  ),
                 ),
               ),
-            ),
-            Positioned(top: 8, left: 8, child: TvBackButton()),
-          ],
+            ],
+          ),
         ),
       );
     }
     return Scaffold(
       backgroundColor: AppColors.bg,
-      body: Stack(
-        children: [
-          SafeArea(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(48, 24, 48, 16),
-                  child: Text(context.l10n.aniyomi, style: AppText.largeTitle),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(40, 0, 40, 16),
-                  child: Row(
-                    children: [
-                      _AniTvTabChip(
-                        title: context.l10n.installed,
-                        selected: _tab == 0,
-                        autofocus: true,
-                        onTap: () => setState(() => _tab = 0),
-                      ),
-                      const SizedBox(width: 12),
-                      _AniTvTabChip(
-                        title: context.l10n.repositories,
-                        selected: _tab == 1,
-                        onTap: () => setState(() => _tab = 1),
-                      ),
-                      const SizedBox(width: 20),
-                      Expanded(
-                        child: ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 340),
-                          child: SourcesSearchField(
-                            controller: _searchCtrl,
-                            onChanged: (q) => setState(() => _query = q),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      TvFocusable(
-                        scale: 1.04,
-                        onTap: () => showSourceLanguageSheetTv(
-                          context,
-                          sl<AnimeLangPrefs>(),
-                        ),
-                        semanticLabel: context.l10n.languages,
-                        child: ExcludeSemantics(
-                          child: Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: AppColors.surface,
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: Icon(
-                              Icons.language_rounded,
-                              color: AppColors.accent,
-                              size: 20,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
+      body: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 48, 16),
+              child: Row(
+                children: [
+                  const TvBackButton(),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Text(
+                      context.l10n.aniyomi,
+                      style: AppText.largeTitle,
+                    ),
                   ),
-                ),
-                Expanded(
-                  child: ListView(
-                    clipBehavior: Clip.none,
-                    padding: const EdgeInsets.fromLTRB(40, 0, 40, 48),
-                    children: _tab == 0
-                        ? [
-                            // ── Installed ────────────────────────────────
-                            _AniScreenTvInstalledContent(query: _query),
-                          ]
-                        : [
-                            // ── Repositories ─────────────────────────────
-                            _AniScreenTvContent(
-                              repoUrls: widget.repoUrls,
-                              onRemoveRepo: widget.onRemoveRepo,
-                              query: _query,
-                            ),
-                            Padding(
-                              padding: const EdgeInsets.only(top: 8),
-                              child: TvListFocusable(
-                                onTap: widget.onAddRepo,
-                                semanticLabel: context.l10n.addAniyomiRepo,
-                                child: ExcludeSemantics(
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 20,
-                                      vertical: 14,
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(40, 0, 40, 16),
+              child: Row(
+                children: [
+                  _AniTvTabChip(
+                    title: context.l10n.installed,
+                    selected: _tab == 0,
+                    autofocus: true,
+                    onTap: () => setState(() => _tab = 0),
+                  ),
+                  const SizedBox(width: 12),
+                  _AniTvTabChip(
+                    title: context.l10n.repositories,
+                    selected: _tab == 1,
+                    onTap: () => setState(() => _tab = 1),
+                  ),
+                  const SizedBox(width: 20),
+                  Expanded(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 340),
+                      child: SourcesSearchField(
+                        controller: _searchCtrl,
+                        onChanged: (q) => setState(() => _query = q),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  TvFocusable(
+                    scale: 1.04,
+                    onTap: () => showSourceLanguageSheetTv(
+                      context,
+                      sl<AnimeLangPrefs>(),
+                    ),
+                    semanticLabel: context.l10n.languages,
+                    child: ExcludeSemantics(
+                      child: Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: AppColors.surface,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Icon(
+                          Icons.language_rounded,
+                          color: AppColors.accent,
+                          size: 20,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: ListView(
+                clipBehavior: Clip.none,
+                padding: const EdgeInsets.fromLTRB(40, 0, 40, 48),
+                children: _tab == 0
+                    ? [
+                        // ── Installed ────────────────────────────────
+                        _AniScreenTvInstalledContent(query: _query),
+                      ]
+                    : [
+                        // ── Repositories ─────────────────────────────
+                        _AniScreenTvContent(
+                          repoUrls: widget.repoUrls,
+                          onRemoveRepo: widget.onRemoveRepo,
+                          query: _query,
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: TvListFocusable(
+                            onTap: widget.onAddRepo,
+                            semanticLabel: context.l10n.addAniyomiRepo,
+                            child: ExcludeSemantics(
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 20,
+                                  vertical: 14,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: AppColors.surface,
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.add,
+                                      color: AppColors.accent,
+                                      size: 18,
                                     ),
-                                    decoration: BoxDecoration(
-                                      color: AppColors.surface,
-                                      borderRadius: BorderRadius.circular(10),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      context.l10n.addAniyomiRepo,
+                                      style: AppText.headline.copyWith(
+                                        color: AppColors.accent,
+                                      ),
                                     ),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(
-                                          Icons.add,
-                                          color: AppColors.accent,
-                                          size: 18,
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Text(
-                                          context.l10n.addAniyomiRepo,
-                                          style: AppText.headline.copyWith(
-                                            color: AppColors.accent,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
+                                  ],
                                 ),
                               ),
                             ),
-                          ],
-                  ),
-                ),
-              ],
+                          ),
+                        ),
+                      ],
+              ),
             ),
-          ),
-          // D-pad-focusable back button at top-left.
-          const Positioned(
-            top: 8,
-            left: 8,
-            child: SafeArea(child: TvBackButton()),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -263,12 +268,14 @@ class _AniScreenTvInstalledContent extends StatelessWidget {
     return ListenableBuilder(
       listenable: sl<AniyomiManager>(),
       builder: (context, _) {
-        final sources = sl<AniyomiManager>()
-            .all
-            .where((p) => sourceSearchMatches(
+        final sources = sl<AniyomiManager>().all
+            .where(
+              (p) => sourceSearchMatches(
                 query,
                 p.displayName,
-                p is AniyomiProvider ? p.info.lang : null))
+                p is AniyomiProvider ? p.info.lang : null,
+              ),
+            )
             .toList();
         if (sources.isEmpty) {
           return Padding(
@@ -349,9 +356,12 @@ class _AniScreenTvSourceRowState extends State<_AniScreenTvSourceRow> {
           ScaffoldMessenger.of(context)
             ..clearSnackBars()
             ..showSnackBar(
-                SnackBar(
-                    content: Text(context.l10n.activeSourceColon(source.displayName))),
-              );
+              SnackBar(
+                content: Text(
+                  context.l10n.activeSourceColon(source.displayName),
+                ),
+              ),
+            );
         },
         semanticLabel: active
             ? '${source.displayName}, active'
@@ -383,10 +393,7 @@ class _AniScreenTvSourceRowState extends State<_AniScreenTvSourceRow> {
                       ),
                       if (lang.isNotEmpty) ...[
                         const SizedBox(height: 2),
-                        Text(
-                          'aniyomi • $lang',
-                          style: AppText.caption,
-                        ),
+                        Text('aniyomi • $lang', style: AppText.caption),
                       ],
                     ],
                   ),
@@ -398,8 +405,11 @@ class _AniScreenTvSourceRowState extends State<_AniScreenTvSourceRow> {
                   semanticLabel: '${source.displayName}, settings',
                   child: const Padding(
                     padding: EdgeInsets.all(8),
-                    child: Icon(Icons.tune_rounded,
-                        size: 20, color: AppColors.textSecondary),
+                    child: Icon(
+                      Icons.tune_rounded,
+                      size: 20,
+                      color: AppColors.textSecondary,
+                    ),
                   ),
                 ),
             ],
@@ -447,7 +457,8 @@ class _AniScreenTvContent extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 16),
         child: EmptyState(
           icon: Icons.extension_outlined,
-          message: context.l10n.noAniyomiReposAddedYetNPressAddAniyomiRepoToAddOne,
+          message:
+              context.l10n.noAniyomiReposAddedYetNPressAddAniyomiRepoToAddOne,
         ),
       );
     }
@@ -491,8 +502,9 @@ class _AniScreenTvRepoSectionState extends State<_AniScreenTvRepoSection> {
   bool _expanded = true;
   final Set<String> _installedPkgs = {};
 
-  final AnimeLangPrefs? _langPrefs =
-      sl.isRegistered<AnimeLangPrefs>() ? sl<AnimeLangPrefs>() : null;
+  final AnimeLangPrefs? _langPrefs = sl.isRegistered<AnimeLangPrefs>()
+      ? sl<AnimeLangPrefs>()
+      : null;
 
   @override
   void initState() {
@@ -516,9 +528,10 @@ class _AniScreenTvRepoSectionState extends State<_AniScreenTvRepoSection> {
     try {
       if (Hive.isBoxOpen(AniyomiExtensionService.installedBoxName)) {
         _installedPkgs.addAll(
-            Hive.box<dynamic>(AniyomiExtensionService.installedBoxName)
-                .keys
-                .cast<String>());
+          Hive.box<dynamic>(
+            AniyomiExtensionService.installedBoxName,
+          ).keys.cast<String>(),
+        );
       }
     } catch (_) {}
   }
@@ -527,8 +540,9 @@ class _AniScreenTvRepoSectionState extends State<_AniScreenTvRepoSection> {
     if (_installedPkgs.contains(pkg)) return true;
     try {
       if (Hive.isBoxOpen(AniyomiExtensionService.installedBoxName)) {
-        return Hive.box<dynamic>(AniyomiExtensionService.installedBoxName)
-            .containsKey(pkg);
+        return Hive.box<dynamic>(
+          AniyomiExtensionService.installedBoxName,
+        ).containsKey(pkg);
       }
     } catch (_) {}
     return false;
@@ -584,8 +598,13 @@ class _AniScreenTvRepoSectionState extends State<_AniScreenTvRepoSection> {
         children: [
           TvListFocusable(
             onTap: () => setState(() => _expanded = !_expanded),
-            semanticLabel: '$_repoDisplayName, '
-                '${_fetching ? 'loading' : _fetchError != null ? 'error' : '${entries.length} extensions'}',
+            semanticLabel:
+                '$_repoDisplayName, '
+                '${_fetching
+                    ? 'loading'
+                    : _fetchError != null
+                    ? 'error'
+                    : '${entries.length} extensions'}',
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               decoration: BoxDecoration(
@@ -689,17 +708,24 @@ class _AniScreenTvExtensionRowState extends State<_AniScreenTvExtensionRow> {
     final messenger = ScaffoldMessenger.of(context);
     try {
       final mgr = sl<AniyomiManager>();
-      await AniyomiExtensionService().installFromRepo(widget.entry, manager: mgr);
+      await AniyomiExtensionService().installFromRepo(
+        widget.entry,
+        manager: mgr,
+      );
       widget.onInstalled();
       messenger
         ..clearSnackBars()
         ..showSnackBar(
-            SnackBar(content: Text(context.l10n.installedName(widget.entry.name))),
+          SnackBar(
+            content: Text(context.l10n.installedName(widget.entry.name)),
+          ),
         );
     } catch (e) {
       messenger
         ..clearSnackBars()
-        ..showSnackBar(SnackBar(content: Text(context.l10n.installFailed('$e'))));
+        ..showSnackBar(
+          SnackBar(content: Text(context.l10n.installFailed('$e'))),
+        );
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -718,8 +744,9 @@ class _AniScreenTvExtensionRowState extends State<_AniScreenTvExtensionRow> {
     final messenger = ScaffoldMessenger.of(context);
     try {
       if (Hive.isBoxOpen(AniyomiExtensionService.installedBoxName)) {
-        await Hive.box<dynamic>(AniyomiExtensionService.installedBoxName)
-            .delete(widget.entry.pkg);
+        await Hive.box<dynamic>(
+          AniyomiExtensionService.installedBoxName,
+        ).delete(widget.entry.pkg);
       }
       sl<AniyomiManager>().removeWhere(
         (p) => p is AniyomiProvider && p.info.pkg == widget.entry.pkg,
@@ -728,12 +755,16 @@ class _AniScreenTvExtensionRowState extends State<_AniScreenTvExtensionRow> {
       messenger
         ..clearSnackBars()
         ..showSnackBar(
-            SnackBar(content: Text(context.l10n.uninstalledName(widget.entry.name))),
+          SnackBar(
+            content: Text(context.l10n.uninstalledName(widget.entry.name)),
+          ),
         );
     } catch (e) {
       messenger
         ..clearSnackBars()
-        ..showSnackBar(SnackBar(content: Text(context.l10n.uninstallFailed('$e'))));
+        ..showSnackBar(
+          SnackBar(content: Text(context.l10n.uninstallFailed('$e'))),
+        );
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -859,10 +890,8 @@ Future<bool> _aniScreenTvConfirm(
     barrierColor: Colors.black54,
     builder: (ctx) => Dialog(
       backgroundColor: AppColors.surface,
-      shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      insetPadding:
-          const EdgeInsets.symmetric(horizontal: 80, vertical: 48),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 80, vertical: 48),
       child: SizedBox(
         width: 440,
         child: Column(
@@ -877,8 +906,7 @@ Future<bool> _aniScreenTvConfirm(
               padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
               child: Text(
                 body,
-                style:
-                    AppText.body.copyWith(color: AppColors.textSecondary),
+                style: AppText.body.copyWith(color: AppColors.textSecondary),
               ),
             ),
             const Divider(height: 1, color: AppColors.hairline),
@@ -895,11 +923,14 @@ Future<bool> _aniScreenTvConfirm(
                     child: ExcludeSemantics(
                       child: Padding(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 20, vertical: 12),
+                          horizontal: 20,
+                          vertical: 12,
+                        ),
                         child: Text(
                           context.l10n.cancel,
                           style: AppText.body.copyWith(
-                              color: AppColors.textSecondary),
+                            color: AppColors.textSecondary,
+                          ),
                         ),
                       ),
                     ),
@@ -912,11 +943,12 @@ Future<bool> _aniScreenTvConfirm(
                     child: ExcludeSemantics(
                       child: Padding(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 20, vertical: 12),
+                          horizontal: 20,
+                          vertical: 12,
+                        ),
                         child: Text(
                           confirmLabel,
-                          style: AppText.body
-                              .copyWith(color: AppColors.accent),
+                          style: AppText.body.copyWith(color: AppColors.accent),
                         ),
                       ),
                     ),
@@ -1026,10 +1058,9 @@ Widget debugAniSourceRow({
   required String activeId,
   AniyomiUpdate? Function(String pkg)? updateLookupFn,
   Future<void> Function(AniyomiUpdate update)? applyUpdateFn,
-}) =>
-    _AniSourceRow(
-      source: source,
-      activeId: activeId,
-      updateLookupFn: updateLookupFn,
-      applyUpdateFn: applyUpdateFn,
-    );
+}) => _AniSourceRow(
+  source: source,
+  activeId: activeId,
+  updateLookupFn: updateLookupFn,
+  applyUpdateFn: applyUpdateFn,
+);

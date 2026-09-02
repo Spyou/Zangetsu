@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
+import '../../core/ui/settings_widgets.dart';
 import '../../l10n/l10n.dart';
 
 /// Beginner-friendly "how the app works" content — a few one-line tips plus a
@@ -15,7 +16,10 @@ class HowItWorksView extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
       children: [
-        Text(context.l10n.howToUseTheApp, style: AppText.title.copyWith(fontSize: 20)),
+        Text(
+          context.l10n.howToUseTheApp,
+          style: AppText.title.copyWith(fontSize: 20),
+        ),
         const SizedBox(height: 4),
         Text(
           context.l10n.aFewTapsToAnything,
@@ -52,14 +56,8 @@ class HowItWorksView extends StatelessWidget {
           q: context.l10n.faqSourceNotWorkingQ,
           a: context.l10n.faqSourceNotWorkingA,
         ),
-        _Faq(
-          q: context.l10n.faqSubOrDubQ,
-          a: context.l10n.faqSubOrDubA,
-        ),
-        _Faq(
-          q: context.l10n.faqDownloadsQ,
-          a: context.l10n.faqDownloadsA,
-        ),
+        _Faq(q: context.l10n.faqSubOrDubQ, a: context.l10n.faqSubOrDubA),
+        _Faq(q: context.l10n.faqDownloadsQ, a: context.l10n.faqDownloadsA),
       ],
     );
   }
@@ -155,11 +153,7 @@ class HowItWorksScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Scaffold(
     backgroundColor: AppColors.bg,
-    appBar: AppBar(
-      backgroundColor: AppColors.bg,
-      elevation: 0,
-      title: Text(context.l10n.howItWorks, style: AppText.title.copyWith(fontSize: 18)),
-    ),
+    appBar: settingsAppBar(context.l10n.howItWorks),
     body: const SafeArea(child: HowItWorksView()),
   );
 }

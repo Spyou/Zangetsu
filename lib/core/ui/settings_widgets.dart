@@ -4,6 +4,7 @@ import '../app_mode.dart';
 import '../di/injector.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text.dart';
+import '../tv/tv_back_button.dart';
 import '../tv/tv_list_focusable.dart';
 
 /// Compact, flat app bar for pushed settings screens — an 18px title with a
@@ -16,10 +17,27 @@ PreferredSizeWidget settingsAppBar(
   List<Widget>? actions,
   bool showBack = true,
 }) {
+  final tvBack = showBack && _isTvDevice();
   return AppBar(
-    titleSpacing: showBack ? 4 : 16,
-    automaticallyImplyLeading: showBack,
-    title: Text(title, style: AppText.barTitle),
+    titleSpacing: tvBack ? 8 : (showBack ? 4 : 16),
+    automaticallyImplyLeading: showBack && !tvBack,
+    toolbarHeight: tvBack ? 72 : kToolbarHeight,
+    title: tvBack
+        ? Row(
+            children: [
+              const TvBackButton(),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  title,
+                  style: AppText.barTitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          )
+        : Text(title, style: AppText.barTitle),
     actions: actions,
     bottom: const PreferredSize(
       preferredSize: Size.fromHeight(1),
@@ -28,8 +46,7 @@ PreferredSizeWidget settingsAppBar(
   );
 }
 
-bool _isTvDevice() =>
-    sl.isRegistered<AppMode>() && sl<AppMode>().isTv;
+bool _isTvDevice() => sl.isRegistered<AppMode>() && sl<AppMode>().isTv;
 
 /// One settings list row inside a [SettingsCard]: a rounded tinted icon tile +
 /// title with an optional description under it + trailing chevron / switch /
@@ -98,10 +115,7 @@ class SettingsTile extends StatelessWidget {
     return _row(onTap: tap, wrapTrailing: false);
   }
 
-  Widget _row({
-    required VoidCallback? onTap,
-    required bool wrapTrailing,
-  }) {
+  Widget _row({required VoidCallback? onTap, required bool wrapTrailing}) {
     final fg = destructive ? AppColors.accent : null;
     final accented = destructive || iconAccent;
 
@@ -219,7 +233,8 @@ class SettingsCard extends StatelessWidget {
       rows.add(children[i]);
     }
     return Container(
-      margin: margin ??
+      margin:
+          margin ??
           (isTv
               ? const EdgeInsets.fromLTRB(28, 0, 20, 0)
               : const EdgeInsets.fromLTRB(16, 0, 16, 0)),

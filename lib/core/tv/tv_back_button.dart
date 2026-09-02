@@ -4,24 +4,10 @@ import '../theme/app_colors.dart';
 import '../theme/app_text.dart';
 import 'tv_focusable.dart';
 
-/// A D-pad-focusable Back button for TV screens that have no navigation rail.
-///
-/// Wrap the screen body in a [Stack] and overlay this with [Positioned] at the
-/// top-left so the user can navigate back with the OK key as well as the remote
-/// Back button:
-///
-/// ```dart
-/// body: Stack(
-///   children: [
-///     SafeArea(child: <content>),
-///     const Positioned(top: 8, left: 8, child: SafeArea(child: TvBackButton())),
-///   ],
-/// ),
-/// ```
-///
-/// [autofocus] defaults to false — the primary action on the screen (e.g. the
-/// Play button on Detail) should keep its autofocus; the Back button is
-/// reachable via D-pad up/left.
+/// A D-pad-focusable Back control. Put it in the layout **above** content
+/// ([AppBar] leading, [TvBackHeader], or a header [Row]) — never as a
+/// [Positioned] overlay on posters. Overlays sit on the first cell, so D-pad
+/// up/left cannot land on them.
 class TvBackButton extends StatelessWidget {
   const TvBackButton({super.key, this.autofocus = false});
 
@@ -55,6 +41,44 @@ class TvBackButton extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Header row with [TvBackButton] in document flow so it is reachable with
+/// D-pad up from the first content row.
+class TvBackHeader extends StatelessWidget {
+  const TvBackHeader({super.key, this.title, this.titleWidget, this.trailing});
+
+  final String? title;
+  final Widget? titleWidget;
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 24, 8),
+      child: Row(
+        children: [
+          const TvBackButton(),
+          if (titleWidget != null) ...[
+            const SizedBox(width: 16),
+            Expanded(child: titleWidget!),
+          ] else if (title != null) ...[
+            const SizedBox(width: 16),
+            Expanded(
+              child: Text(
+                title!,
+                style: AppText.largeTitle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ] else
+            const Spacer(),
+          if (trailing != null) trailing!,
+        ],
       ),
     );
   }

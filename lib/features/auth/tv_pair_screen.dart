@@ -11,6 +11,7 @@ import '../../core/theme/app_text.dart';
 import '../../core/tracker/relay/tracker_blob.dart';
 import '../../core/tracker/relay/tracker_relay.dart';
 import '../../core/tracker/relay/tracker_relay_crypto.dart';
+import '../../core/tv/tv_back_button.dart';
 import '../../core/tv/tv_focusable.dart';
 import 'auth_cubit.dart';
 import 'tv_pairing_service.dart';
@@ -119,9 +120,13 @@ class _TvPairScreenState extends State<TvPairScreen> {
       if (applied.isNotEmpty && mounted) {
         ScaffoldMessenger.of(context)
           ..clearSnackBars()
-          ..showSnackBar(SnackBar(
-            content: Text('Trackers synced: ${applied.map(_label).join(', ')}'),
-          ));
+          ..showSnackBar(
+            SnackBar(
+              content: Text(
+                'Trackers synced: ${applied.map(_label).join(', ')}',
+              ),
+            ),
+          );
       }
     } catch (_) {
       // Decrypt/parse failed → app account is signed in regardless; the user
@@ -130,85 +135,118 @@ class _TvPairScreenState extends State<TvPairScreen> {
   }
 
   String _label(String id) => switch (id) {
-        'anilist' => context.l10n.anilist,
-        'mal' => context.l10n.myAnimeList,
-        'simkl' => context.l10n.simkl,
-        _ => id,
-      };
+    'anilist' => context.l10n.anilist,
+    'mal' => context.l10n.myAnimeList,
+    'simkl' => context.l10n.simkl,
+    _ => id,
+  };
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.bg,
       body: SafeArea(
-        child: Center(
-          child: switch (_phase) {
-            _Phase.loading => CircularProgressIndicator(color: AppColors.accent),
-            _Phase.expired || _Phase.error => _message(),
-            _ => _pairing(),
-          },
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const TvBackHeader(),
+            Expanded(
+              child: Center(
+                child: switch (_phase) {
+                  _Phase.loading => CircularProgressIndicator(
+                    color: AppColors.accent,
+                  ),
+                  _Phase.expired || _Phase.error => _message(),
+                  _ => _pairing(),
+                },
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 
   Widget _pairing() => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: QrImageView(
+          // Deeplink so an installed phone app opens Pair a TV directly.
+          data: PairLink.deepLink(code: _code ?? '', nonce: _nonce),
+          size: 220,
+          gapless: true,
+        ),
+      ),
+      const SizedBox(width: 52),
+      Column(
         mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: QrImageView(
-              // Deeplink so an installed phone app opens Pair a TV directly.
-              data: PairLink.deepLink(code: _code ?? '', nonce: _nonce),
-              size: 220,
-              gapless: true,
+          Text(context.l10n.signInWithYourPhone, style: AppText.title),
+          const SizedBox(height: 14),
+          Text(
+            context
+                .l10n
+                .onTheZangetsuAppOnYourPhoneOpenNPairATVAndEnterThisCodeOrScanTheQR,
+            style: AppText.body.copyWith(
+              color: AppColors.textSecondary,
+              height: 1.5,
             ),
           ),
-          const SizedBox(width: 52),
-          Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(context.l10n.signInWithYourPhone, style: AppText.title),
-              const SizedBox(height: 14),
-              Text(
-                context.l10n.onTheZangetsuAppOnYourPhoneOpenNPairATVAndEnterThisCodeOrScanTheQR,
-                style: AppText.body.copyWith(color: AppColors.textSecondary, height: 1.5),
-              ),
-              const SizedBox(height: 30),
-              Text(context.l10n.code,
-                  style: AppText.caption
-                      .copyWith(letterSpacing: 3, color: AppColors.textTertiary)),
-              const SizedBox(height: 6),
-              Text(_spacedCode(),
-                  style: AppText.title.copyWith(
-                      fontSize: 46, letterSpacing: 8, fontWeight: FontWeight.w800)),
-              const SizedBox(height: 14),
-              if (_phase == _Phase.signingIn)
-                Row(mainAxisSize: MainAxisSize.min, children: [
-                  SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: AppColors.accent)),
-                  const SizedBox(width: 10),
-                  Text(context.l10n.signingIn, style: AppText.body),
-                ]),
-            ],
+          const SizedBox(height: 30),
+          Text(
+            context.l10n.code,
+            style: AppText.caption.copyWith(
+              letterSpacing: 3,
+              color: AppColors.textTertiary,
+            ),
           ),
+          const SizedBox(height: 6),
+          Text(
+            _spacedCode(),
+            style: AppText.title.copyWith(
+              fontSize: 46,
+              letterSpacing: 8,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 14),
+          if (_phase == _Phase.signingIn)
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: AppColors.accent,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Text(context.l10n.signingIn, style: AppText.body),
+              ],
+            ),
         ],
-      );
+      ),
+    ],
+  );
 
   Widget _message() {
     final expired = _phase == _Phase.expired;
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(expired ? context.l10n.codeExpired : context.l10n.somethingWentWrong, style: AppText.title),
+        Text(
+          expired ? context.l10n.codeExpired : context.l10n.somethingWentWrong,
+          style: AppText.title,
+        ),
         const SizedBox(height: 10),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 60),

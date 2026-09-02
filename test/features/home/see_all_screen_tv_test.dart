@@ -49,8 +49,11 @@ void main() {
           tester.widgetList<TvFocusable>(find.byType(TvFocusable)).toList();
       expect(focusables.length, greaterThanOrEqualTo(2));
 
-      // The very first TvFocusable (first poster card) has autofocus=true.
-      expect(focusables.first.autofocus, isTrue);
+      // The very first poster has autofocus (Back in the app bar does not).
+      final focused = tester
+          .widgetList<TvFocusable>(find.byType(TvFocusable))
+          .where((w) => w.autofocus);
+      expect(focused, isNotEmpty);
     },
   );
 
@@ -70,14 +73,11 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // The first focusable card is autofocused; simulate OK activation.
-      final firstFocusable = find.byType(TvFocusable).first;
-      expect(firstFocusable, findsOneWidget);
-
-      // Trigger onTap directly through the widget's callback.
-      final widget =
-          tester.widget<TvFocusable>(firstFocusable);
-      widget.onTap();
+      // Trigger onTap on the autofocused poster (not the Back control).
+      final poster = tester
+          .widgetList<TvFocusable>(find.byType(TvFocusable))
+          .firstWhere((w) => w.autofocus);
+      poster.onTap();
 
       expect(tapped, equals(item1));
     },

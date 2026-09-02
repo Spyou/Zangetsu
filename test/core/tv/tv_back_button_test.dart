@@ -5,73 +5,70 @@ import 'package:watch_app/core/tv/tv_back_button.dart';
 import 'package:watch_app/core/tv/tv_focusable.dart';
 
 void main() {
-  testWidgets(
-    'TvBackButton renders a back-arrow icon and a "Back" label',
-    (tester) async {
-      await tester.pumpWidget(const MaterialApp(home: TvBackButton()));
-      await tester.pumpAndSettle();
-      expect(find.byIcon(Icons.arrow_back_rounded), findsOneWidget);
-      expect(find.text('Back'), findsOneWidget);
-    },
-  );
+  testWidgets('TvBackButton renders a back-arrow icon and a "Back" label', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const MaterialApp(home: TvBackButton()));
+    await tester.pumpAndSettle();
+    expect(find.byIcon(Icons.arrow_back_rounded), findsOneWidget);
+    expect(find.text('Back'), findsOneWidget);
+  });
 
-  testWidgets(
-    'TvBackButton is wrapped in a TvFocusable (D-pad focusable)',
-    (tester) async {
-      await tester.pumpWidget(const MaterialApp(home: TvBackButton()));
-      await tester.pumpAndSettle();
-      // TvFocusable must be in the subtree so that D-pad OK/select works.
-      expect(find.byType(TvFocusable), findsAtLeastNWidgets(1));
-    },
-  );
+  testWidgets('TvBackButton is wrapped in a TvFocusable (D-pad focusable)', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const MaterialApp(home: TvBackButton()));
+    await tester.pumpAndSettle();
+    // TvFocusable must be in the subtree so that D-pad OK/select works.
+    expect(find.byType(TvFocusable), findsAtLeastNWidgets(1));
+  });
 
-  testWidgets(
-    'TvBackButton with autofocus: true receives focus immediately',
-    (tester) async {
-      await tester.pumpWidget(
-        const MaterialApp(home: TvBackButton(autofocus: true)),
-      );
-      await tester.pumpAndSettle();
-      // The Focus widget inside TvFocusable should have primary focus.
-      expect(
-        tester.binding.focusManager.primaryFocus,
-        isNotNull,
-      );
-    },
-  );
+  testWidgets('TvBackButton with autofocus: true receives focus immediately', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(home: TvBackButton(autofocus: true)),
+    );
+    await tester.pumpAndSettle();
+    // The Focus widget inside TvFocusable should have primary focus.
+    expect(tester.binding.focusManager.primaryFocus, isNotNull);
+  });
 
-  testWidgets(
-    'TvBackButton with autofocus: false (default) does not steal focus',
-    (tester) async {
-      // When two focusables are present and TvBackButton is NOT autofocused,
-      // the other autofocused widget should win.
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Column(
-            children: [
-              TvFocusable(
-                autofocus: true,
-                onTap: () {},
-                child: const SizedBox(width: 100, height: 50, key: ValueKey('primary')),
+  testWidgets('TvBackButton with autofocus: false (default) does not steal focus', (
+    tester,
+  ) async {
+    // When two focusables are present and TvBackButton is NOT autofocused,
+    // the other autofocused widget should win.
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Column(
+          children: [
+            TvFocusable(
+              autofocus: true,
+              onTap: () {},
+              child: const SizedBox(
+                width: 100,
+                height: 50,
+                key: ValueKey('primary'),
               ),
-              const TvBackButton(), // autofocus defaults to false
-            ],
-          ),
+            ),
+            const TvBackButton(), // autofocus defaults to false
+          ],
         ),
-      );
-      await tester.pumpAndSettle();
-      // Primary focus is not on the TvBackButton (it's on the other widget).
-      final primaryFocus = tester.binding.focusManager.primaryFocus;
-      expect(primaryFocus, isNotNull);
-      // The primary focus widget context should be associated with 'primary' not 'Back'.
-      // Verify by checking that the Back text is NOT the primary focus target.
-      // (The primary focus is in the TvFocusable above, which has key 'primary'.)
-      final backButtonFinder = find.text('Back');
-      expect(backButtonFinder, findsOneWidget);
-      // As long as analyze passes and TvBackButton renders without stealing
-      // focus, this test confirms the default autofocus: false behaviour.
-    },
-  );
+      ),
+    );
+    await tester.pumpAndSettle();
+    // Primary focus is not on the TvBackButton (it's on the other widget).
+    final primaryFocus = tester.binding.focusManager.primaryFocus;
+    expect(primaryFocus, isNotNull);
+    // The primary focus widget context should be associated with 'primary' not 'Back'.
+    // Verify by checking that the Back text is NOT the primary focus target.
+    // (The primary focus is in the TvFocusable above, which has key 'primary'.)
+    final backButtonFinder = find.text('Back');
+    expect(backButtonFinder, findsOneWidget);
+    // As long as analyze passes and TvBackButton renders without stealing
+    // focus, this test confirms the default autofocus: false behaviour.
+  });
 
   testWidgets(
     'TvBackButton fires maybePop when OK key is pressed while focused',
@@ -83,20 +80,21 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           navigatorKey: navigatorKey,
-          home: Builder(builder: (ctx) {
-            return ElevatedButton(
-              onPressed: () {
-                Navigator.of(ctx).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => const Scaffold(
-                      body: TvBackButton(autofocus: true),
+          home: Builder(
+            builder: (ctx) {
+              return ElevatedButton(
+                onPressed: () {
+                  Navigator.of(ctx).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) =>
+                          const Scaffold(body: TvBackButton(autofocus: true)),
                     ),
-                  ),
-                );
-              },
-              child: const Text('Go'),
-            );
-          }),
+                  );
+                },
+                child: const Text('Go'),
+              );
+            },
+          ),
         ),
       );
       await tester.pumpAndSettle();
@@ -119,28 +117,48 @@ void main() {
     },
   );
 
-  testWidgets(
-    'TvBackButton exposes a "Back" semantics label for TalkBack',
-    (tester) async {
-      final handle = tester.ensureSemantics();
-      await tester.pumpWidget(const MaterialApp(home: TvBackButton()));
-      await tester.pumpAndSettle();
+  testWidgets('TvBackButton exposes a "Back" semantics label for TalkBack', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    await tester.pumpWidget(const MaterialApp(home: TvBackButton()));
+    await tester.pumpAndSettle();
 
-      final node = tester.getSemantics(find.byType(TvFocusable));
-      expect(
-        node,
-        matchesSemantics(
-          label: 'Back',
-          isButton: true,
-          isFocusable: true,
-          hasTapAction: true,
-          // Framework-supplied for anything focusable; matchesSemantics fails
-          // on any action it wasn't told to expect.
-          hasFocusAction: true,
+    final node = tester.getSemantics(find.byType(TvFocusable));
+    expect(
+      node,
+      matchesSemantics(
+        label: 'Back',
+        isButton: true,
+        isFocusable: true,
+        hasTapAction: true,
+        // Framework-supplied for anything focusable; matchesSemantics fails
+        // on any action it wasn't told to expect.
+        hasFocusAction: true,
+      ),
+    );
+
+    handle.dispose();
+  });
+
+  testWidgets('TvBackHeader places Back in layout flow with a title', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: Column(
+            children: [
+              TvBackHeader(title: 'Trending'),
+              SizedBox(height: 200, width: 200),
+            ],
+          ),
         ),
-      );
-
-      handle.dispose();
-    },
-  );
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(TvBackButton), findsOneWidget);
+    expect(find.text('Trending'), findsOneWidget);
+    expect(find.byType(TvFocusable), findsOneWidget);
+  });
 }
