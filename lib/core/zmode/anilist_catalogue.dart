@@ -1,5 +1,7 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 
+import '../anilist/anilist_graphql.dart';
 import '../models/episode.dart';
 import '../models/home_section.dart';
 import '../models/media_detail.dart';
@@ -22,7 +24,7 @@ class AniListCatalogue implements AnimeCatalogue {
   AniListCatalogue(this._gql);
   final Gql _gql;
 
-  static const _endpoint = 'https://graphql.anilist.co';
+  static const _endpoint = AniListGraphql.endpoint;
 
   /// Production transport. Same shape as `AiringService`.
   static Gql dioGql(Dio dio) => (query, variables) async {
@@ -31,7 +33,7 @@ class AniListCatalogue implements AnimeCatalogue {
         _endpoint,
         data: {'query': query, 'variables': variables},
         options: Options(
-          headers: const {'Accept': 'application/json'},
+          headers: AniListGraphql.headers,
           validateStatus: (s) => s != null && s < 500,
         ),
       );
@@ -39,7 +41,14 @@ class AniListCatalogue implements AnimeCatalogue {
       if (data is Map && data['data'] is Map) {
         return Map<String, dynamic>.from(data['data'] as Map);
       }
-    } catch (_) {}
+      if (data is Map && data['errors'] != null) {
+        debugPrint(
+          '[anilist] GraphQL ${res.statusCode}: ${data['errors']}',
+        );
+      }
+    } catch (e, st) {
+      debugPrint('[anilist] request failed: $e\n$st');
+    }
     return null;
   };
 

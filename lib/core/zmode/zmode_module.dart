@@ -3,6 +3,7 @@ import 'package:get_it/get_it.dart';
 
 import '../mode/content_mode.dart';
 import '../mode/content_mode_cubit.dart';
+import '../playback/source_health_store.dart';
 import '../repository/catalogue_repository.dart';
 import '../repository/catalogue_router.dart';
 import '../repository/source_repository.dart';
@@ -49,13 +50,15 @@ Future<void> registerZangetsuMode(GetIt sl) async {
     mal: MalCatalogue(sl<Dio>()),
     simkl: SimklCatalogue(sl<Dio>()),
     providerPrefs: providerPrefs,
-    // Say it out loud when the chosen provider was unreachable — silently
-    // serving different data is how "why do my rows look wrong" starts.
     onProviderFallback: (name) => rootMessengerKey.currentState
       ?..clearSnackBars()
       ..showSnackBar(SnackBar(content: Text('Showing results from $name'))),
     sources: sl<SourceRepository>(),
     matcher: sl<SourceMatcher>(),
+    matchStore: matchStore,
+    sourcePrefs: sourcePrefs,
+    health: sl<SourceHealthStore>(),
+    candidates: (kind) => candidatesForKind(sl<SourceRepository>(), kind),
     browseKind: () => browseKindFor(
       sl<ContentModeCubit>().state,
       ZModePrefs.streamKind,

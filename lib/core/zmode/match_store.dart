@@ -124,4 +124,19 @@ class MatchStore {
   Future<void> forgetMiss(ZCanonical c, String sourceId) =>
       _box.delete(_missKey(c, sourceId));
 
+  static const String _lastPrefix = 'last:';
+
+  String _lastKey(ZCanonical c) => '$_lastPrefix${c.key}';
+
+  /// The source that last successfully played this title, if any.
+  String? lastPlayed(ZCanonical c) {
+    final v = _box.get(_lastKey(c))?['sourceId'];
+    return v is String && v.isNotEmpty ? v : null;
+  }
+
+  /// Remember which source served this title on the last successful play.
+  Future<void> rememberLastPlayed(ZCanonical c, String sourceId) => _box.put(
+    _lastKey(c),
+    {'sourceId': sourceId, 'at': DateTime.now().millisecondsSinceEpoch},
+  );
 }

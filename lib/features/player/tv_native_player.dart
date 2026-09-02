@@ -19,6 +19,9 @@ import '../../core/playback/skip_service.dart';
 import '../../core/playback/source_selection.dart';
 import '../../core/playback/subtitle_font_stage.dart';
 import '../../core/playback/subtitle_search_service.dart';
+import '../../core/tv/tv_playback_failure.dart';
+import '../../core/zmode/playback_resolver.dart';
+import '../../core/zmode/source_matcher.dart';
 import '../../core/playback/tv_track_helpers.dart';
 import '../../core/playback/watch_history.dart';
 import '../../core/theme/app_colors.dart';
@@ -44,6 +47,10 @@ import 'subtitle_font_service.dart';
 class TvNativePlayer {
   static const _ch = MethodChannel('zangetsu/tv_player');
   static bool _handlerBound = false;
+
+  /// Set when [play] fails during source resolution — surfaced by
+  /// [launchTvPlayback] instead of a generic error dialog.
+  static TvPlaybackLoadFailure? lastFailure;
 
   // Current session context — set on [play], read by the native→Dart handlers.
   // Only one native player is on screen at a time, so a plain static context is
@@ -84,6 +91,7 @@ class TvNativePlayer {
     bool tmdbIsTv = false,
   }) async {
     if (startIndex < 0 || startIndex >= episodes.length) return false;
+    lastFailure = null;
 
     _resolve = resolveSources;
     _episodes = await _enrichEpisodes(
@@ -109,7 +117,12 @@ class TvNativePlayer {
     }
 
     final ep = _episodes[startIndex];
-    var src = await _resolveSource(ep);
+    VideoSource? src;
+    try {
+      src = await _resolveSource(ep);
+    } catch (_) {
+      return false;
+    }
     if (src == null) return false;
     final playUrl = await _playableUrl(src.url);
     if (playUrl == null) return false; // torrent failed / Wi-Fi-only
@@ -415,9 +428,34 @@ class TvNativePlayer {
     final cat = category ?? _category;
     try {
       final sources = await _resolve!(tvEpisodeUrl(ep.url, cat));
-      return pickDefault(sources, prefer: cat == 'dub' ? AudioKind.dub : AudioKind.sub);
+      final picked = pickDefault(
+        sources,
+        prefer: cat == 'dub' ? AudioKind.dub : AudioKind.sub,
+      );
+      if (picked == null && sources.isEmpty) {
+        lastFailure ??= const TvPlaybackLoadFailure(
+          TvPlaybackLoadFailureKind.episodeNotAvailable,
+        );
+      }
+      return picked;
+    } on NoSourceMatch catch (e) {
+      lastFailure ??= classifyPlaybackError(
+        e,
+        mode: playbackContentMode(showUrl: _showUrl),
+      );
+      rethrow;
+    } on EpisodeNotAvailable catch (e) {
+      lastFailure ??= classifyPlaybackError(
+        e,
+        mode: playbackContentMode(showUrl: _showUrl),
+      );
+      rethrow;
     } catch (_) {
-      return null;
+      lastFailure ??= TvPlaybackLoadFailure(
+        TvPlaybackLoadFailureKind.generic,
+        mode: playbackContentMode(showUrl: _showUrl),
+      );
+      rethrow;
     }
   }
 

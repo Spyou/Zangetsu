@@ -62,6 +62,7 @@ import '../metadata/tmdb.dart';
 import '../metadata/title_logo_service.dart';
 import '../mode/content_mode_cubit.dart';
 import '../trailer/trailer_service.dart';
+import '../anilist/anilist_graphql.dart';
 import '../anilist/anilist_service.dart';
 import '../anilist/anilist_store.dart';
 import '../tracker/mal_service.dart';
@@ -354,6 +355,9 @@ Future<void> initDependencies() async {
   dio.interceptors.add(
     InterceptorsWrapper(
       onRequest: (options, handler) {
+        if (options.uri.host == AniListGraphql.host) {
+          options.headers.addAll(AniListGraphql.headers);
+        }
         if (options.uri.host == Tmdb.host) {
           options.queryParameters = {
             ...options.queryParameters,

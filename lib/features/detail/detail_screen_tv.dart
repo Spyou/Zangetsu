@@ -366,6 +366,13 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
     required Map<int, List<Episode>> episodesBySeason,
     required int initialSeason,
   }) async {
+    if (!await ensureTvPlaybackSourcesOrPrompt(
+      context,
+      showUrl: widget.item.url,
+    )) {
+      return;
+    }
+    if (!mounted) return;
     final total = episodesBySeason.values.fold<int>(0, (a, b) => a + b.length);
     if (total == 0) {
       _snack(context.l10n.noEpisodesToDownload);

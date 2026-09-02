@@ -4,34 +4,54 @@ import '../../../core/zmode/match_store.dart';
 import '../../../core/zmode/source_matcher.dart';
 import '../../../core/zmode/zmode_ids.dart';
 
-/// Which installed source plays a Z Mode title, and that source's remembered
-/// match (or lack of one).
+/// Which installed source is preferred for Z Mode playback, and that source's
+/// remembered match (or lack of one) for this title.
 class SourceSelectState {
   const SourceSelectState({
     this.sources = const [],
     this.selectedId,
     this.match,
-    this.loading = true,
+    this.loading = false,
+    this.resolved = false,
   });
 
   /// The installed sources valid for this title's kind.
   final List<({String id, String name})> sources;
 
-  /// Which of [sources] plays this title. Null until the first resolve
-  /// completes.
+  /// Which of [sources] is preferred for this kind. Set synchronously from
+  /// [ZSourcePrefs] — not from a live search.
   final String? selectedId;
 
-  /// The selected source's match. Null while loading, or when the selected
-  /// source genuinely doesn't have this title — the honest empty state.
+  /// The selected source's remembered match, when [resolved] is true.
   final SourceMatch? match;
 
+  /// True while [selectSource] is searching the newly picked source.
   final bool loading;
+
+  /// Whether we know if the selected source has this title: a cached match or
+  /// miss on disk, or a search the user triggered (source pick / Wrong title?).
+  /// Playback still sweeps all sources at Play time regardless.
+  final bool resolved;
+
+  SourceSelectState copyWith({
+    List<({String id, String name})>? sources,
+    String? selectedId,
+    SourceMatch? match,
+    bool? loading,
+    bool? resolved,
+  }) =>
+      SourceSelectState(
+        sources: sources ?? this.sources,
+        selectedId: selectedId ?? this.selectedId,
+        match: match ?? this.match,
+        loading: loading ?? this.loading,
+        resolved: resolved ?? this.resolved,
+      );
 }
 
-/// Backs the Detail screen's source selector row: resolves/tracks which
-/// source plays a title, and lets the user switch it. Each source in
-/// [SourceSelectState.sources] keeps its own remembered match in
-/// [MatchStore] — switching the selection never touches another source's.
+/// Backs the Detail screen's preferred-playback-source row: shows the global
+/// per-kind pick and optional match status. Playback sweeps all sources at
+/// tap time; this row is for preference and "Wrong title?" corrections.
 class SourceSelectCubit extends Cubit<SourceSelectState> {
   SourceSelectCubit({
     required MatchStore store,
@@ -41,7 +61,8 @@ class SourceSelectCubit extends Cubit<SourceSelectState> {
     required String title,
     this.altTitle,
     this.malId,
-  })  : _matcher = matcher,
+  })  : _store = store,
+       _matcher = matcher,
        _canonical = canonical,
        _title = title,
        super(_seed(store, matcher, canonical, sources));
@@ -57,53 +78,101 @@ class SourceSelectCubit extends Cubit<SourceSelectState> {
     ZCanonical canonical,
     List<({String id, String name})> sources,
   ) {
-    // Both reads are synchronous, so the row names its source on the very
-    // first frame — for every title, including one never opened before. Only
-    // whether that source HAS this title still has to be looked up.
     final selected = matcher.selectedFor(canonical.kind);
+    final match =
+        selected == null ? null : store.get(canonical, selected);
+    final resolved = selected != null &&
+        (match != null || store.missedRecently(canonical, selected));
     return SourceSelectState(
       sources: sources,
       selectedId: selected,
-      match: selected == null ? null : store.get(canonical, selected),
-      loading: sources.isNotEmpty,
+      match: match,
+      loading: false,
+      resolved: resolved,
     );
   }
 
+  final MatchStore _store;
   final SourceMatcher _matcher;
   final ZCanonical _canonical;
   final String _title;
   final String? altTitle;
   final int? malId;
 
-  /// Resolves the current selection (or picks one, sweeping the candidates)
-  /// and reflects it. A no-op when there's nothing to select from.
+  /// Keeps [state.sources] in sync with a live [SourceRepository] read.
+  /// TV skips boot-time provider load, so the list at widget creation is
+  /// often empty even after the user has installed sources.
+  void syncSources(List<({String id, String name})> sources) {
+    if (sources.length == state.sources.length &&
+        sources.every((s) => state.sources.any((o) => o.id == s.id))) {
+      return;
+    }
+    final selected = _matcher.selectedFor(_canonical.kind);
+    final match =
+        selected == null ? null : _store.get(_canonical, selected);
+    final resolved = state.resolved ||
+        (selected != null &&
+            (match != null || _store.missedRecently(_canonical, selected)));
+    emit(SourceSelectState(
+      sources: sources,
+      selectedId: selected,
+      match: match ?? state.match,
+      loading: state.loading,
+      resolved: resolved,
+    ));
+  }
+
+  /// Re-search the preferred source (e.g. after Wrong title? closed without
+  /// pinning but changed the global pick). Not called on Detail open — Play
+  /// sweeps all sources; this row only reflects prefs + cached matches.
   Future<void> load() async {
     if (state.sources.isEmpty) return;
-    final m = await _matcher.resolve(_canonical, title: _title, altTitle: altTitle, malId: malId);
+    emit(state.copyWith(loading: true));
+    final m = await _matcher.resolve(
+      _canonical,
+      title: _title,
+      altTitle: altTitle,
+      malId: malId,
+    );
     if (isClosed) return;
     emit(SourceSelectState(
       sources: state.sources,
       selectedId: _matcher.selectedFor(_canonical.kind),
       match: m,
       loading: false,
+      resolved: true,
     ));
   }
 
-  /// The user picked a different source in the picker: it becomes the
-  /// remembered selection, and its own match (or honest lack of one) resolves.
-  /// Picking a source is global for this kind, not a note about this title:
-  /// every other title of the same kind opens on it from now on.
   Future<void> selectSource(String id) async {
-    emit(SourceSelectState(sources: state.sources, selectedId: id, loading: true));
+    emit(SourceSelectState(
+      sources: state.sources,
+      selectedId: id,
+      loading: true,
+      resolved: state.resolved,
+    ));
     await _matcher.selectSource(_canonical.kind, id);
-    final m = await _matcher.resolve(_canonical, title: _title, altTitle: altTitle, malId: malId);
+    final m = await _matcher.resolve(
+      _canonical,
+      title: _title,
+      altTitle: altTitle,
+      malId: malId,
+    );
     if (isClosed) return;
-    emit(SourceSelectState(sources: state.sources, selectedId: id, match: m, loading: false));
+    emit(SourceSelectState(
+      sources: state.sources,
+      selectedId: id,
+      match: m,
+      loading: false,
+      resolved: true,
+    ));
   }
 
-  /// "Wrong title?" just pinned [m] for the selected source — reflect it
-  /// directly, no re-search needed.
   void applyPinned(SourceMatch m) => emit(SourceSelectState(
-    sources: state.sources, selectedId: m.sourceId, match: m, loading: false,
-  ));
+        sources: state.sources,
+        selectedId: m.sourceId,
+        match: m,
+        loading: false,
+        resolved: true,
+      ));
 }

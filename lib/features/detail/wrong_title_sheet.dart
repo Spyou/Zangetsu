@@ -54,7 +54,7 @@ class _MatchLineState extends State<MatchLine> {
     title: widget.title,
     altTitle: widget.altTitle,
     malId: widget.malId,
-  )..load();
+  );
 
   @override
   void dispose() {
@@ -278,22 +278,16 @@ class _MatchLineState extends State<MatchLine> {
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
+    final liveSources =
+        candidatesForKind(sl<SourceRepository>(), widget.canonical.kind);
+    _cubit.syncSources(liveSources);
+    // Metadata detail is browsable without streaming extensions; matching
+    // happens at Play / download / an explicit source pick.
+    if (liveSources.isEmpty) return const SizedBox.shrink();
     return BlocProvider.value(
       value: _cubit,
       child: BlocBuilder<SourceSelectCubit, SourceSelectState>(
         builder: (context, state) {
-          if (state.sources.isEmpty) {
-            return Padding(
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-              child: Row(
-                children: [
-                  Icon(Icons.hub_outlined, size: 15, color: AppColors.textTertiary),
-                  const SizedBox(width: 6),
-                  Text(l10n.noSourceHasThisYet, style: AppText.caption),
-                ],
-              ),
-            );
-          }
           if (state.loading && state.selectedId == null) {
             // Hold the row's place. The Detail screen now paints before the
             // source is resolved, so an empty box here left a hole between
@@ -329,7 +323,7 @@ class _MatchLineState extends State<MatchLine> {
           // Just the name inside the pill — the shape already reads as a
           // control, so a "Source:" prefix only crowds it.
           final label = selectedId == null
-              ? l10n.noSourceHasThisYet
+              ? l10n.sourceFallback
               : sl<SourceRepository>().displayName(selectedId);
           // Sized and filled like _DownloadButton directly above, so Play,
           // Download and Source read as one stack. The row body opens the
@@ -396,6 +390,8 @@ class _MatchLineState extends State<MatchLine> {
                       children: [
                         Expanded(
                           child: state.loading
+                              ? const SizedBox.shrink()
+                              : !state.resolved
                               ? const SizedBox.shrink()
                               : Text(
                                   state.match?.showTitle.isNotEmpty == true
@@ -478,6 +474,8 @@ class _MatchLineState extends State<MatchLine> {
                       // "nothing here" for every title during that window.
                       Expanded(
                         child: state.loading
+                            ? const SizedBox.shrink()
+                            : !state.resolved
                             ? const SizedBox.shrink()
                             : Text(
                                 state.match?.showTitle.isNotEmpty == true

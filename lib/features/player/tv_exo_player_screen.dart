@@ -41,6 +41,9 @@ import '../../core/tv/tv_episode_range_chips.dart';
 import '../../core/tv/tv_focusable.dart';
 import '../../core/tv/tv_keys.dart';
 import '../../core/tv/tv_load_error_dialog.dart';
+import '../../core/tv/tv_playback_failure.dart';
+import '../../core/zmode/playback_resolver.dart';
+import '../../core/zmode/source_matcher.dart';
 import '../../core/ui/badge.dart';
 import '../../core/ui/subtitle_language_picker.dart';
 import '../../l10n/l10n.dart';
@@ -104,6 +107,7 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
   late List<Episode> _episodes;
   int _index = 0;
   bool _episodesEnriched = false;
+  bool _resolvingEpisode = false;
   bool _resumeSeeked = false;
   String? _error;
   int _lastSavedMs = 0;
@@ -398,10 +402,17 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
   }
 
   Future<void> _loadEpisode() async {
+    if (!mounted) return;
+    setState(() {
+      _resolvingEpisode = true;
+      _error = null;
+    });
     await _ensureEpisodeMeta();
     final ep = _ep;
     if (ep == null) {
-      await _onEpisodeLoadFailed('No episode to play.');
+      await _onEpisodeLoadFailed(
+        const TvPlaybackLoadFailure(TvPlaybackLoadFailureKind.generic),
+      );
       return;
     }
     _lastSavedMs = 0;
@@ -412,23 +423,50 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
       final prefer = _category == 'dub' ? AudioKind.dub : AudioKind.sub;
       final src = pickDefault(sources, prefer: prefer);
       if (src == null) {
-        await _onEpisodeLoadFailed('No playable source.');
+        await _onEpisodeLoadFailed(
+          TvPlaybackLoadFailure(
+            sources.isEmpty
+                ? TvPlaybackLoadFailureKind.episodeNotAvailable
+                : TvPlaybackLoadFailureKind.generic,
+            mode: playbackContentMode(showUrl: widget.showUrl),
+          ),
+        );
         return;
       }
+      if (!mounted) return;
+      setState(() => _resolvingEpisode = false);
       _sources = sources;
       final mark = widget.resume.get(widget.sourceId, _resumeShowId, ep.id);
       await _open(src, seekToMs: mark?.position.inMilliseconds ?? 0);
-    } catch (e) {
-      await _onEpisodeLoadFailed('Could not load this episode.');
+    } on NoSourceMatch catch (e) {
+      await _onEpisodeLoadFailed(
+        classifyPlaybackError(e, mode: playbackContentMode(showUrl: widget.showUrl)),
+      );
+    } on EpisodeNotAvailable catch (e) {
+      await _onEpisodeLoadFailed(
+        classifyPlaybackError(e, mode: playbackContentMode(showUrl: widget.showUrl)),
+      );
+    } catch (_) {
+      await _onEpisodeLoadFailed(
+        TvPlaybackLoadFailure(
+          TvPlaybackLoadFailureKind.generic,
+          mode: playbackContentMode(showUrl: widget.showUrl),
+        ),
+      );
     }
   }
 
-  Future<void> _onEpisodeLoadFailed(String message) async {
+  Future<void> _onEpisodeLoadFailed(TvPlaybackLoadFailure failure) async {
     if (!mounted) return;
-    setState(() => _error = message);
+    setState(() {
+      _resolvingEpisode = false;
+      _error = failure.kind == TvPlaybackLoadFailureKind.generic
+          ? "Couldn't load this episode."
+          : null;
+    });
     if (_loadErrorDialogOpen) return;
     _loadErrorDialogOpen = true;
-    await showTvPlaybackLoadError(context);
+    await showTvPlaybackLoadError(context, failure: failure);
     _loadErrorDialogOpen = false;
     if (!mounted) return;
     // First-open failure: leave the empty player so the user is back on
@@ -1921,6 +1959,35 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
                   onTap: _toggleControlsFromTouch,
                 ),
               ),
+              if (_resolvingEpisode && _activeSource == null && _error == null)
+                Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const SizedBox(
+                        width: 52,
+                        height: 52,
+                        child: CircularProgressIndicator(strokeWidth: 3),
+                      ),
+                      if (widget.showTitle != null &&
+                          widget.showTitle!.trim().isNotEmpty) ...[
+                        const SizedBox(height: 16),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 48),
+                          child: Text(
+                            context.l10n.findingTitle(widget.showTitle!.trim()),
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 18,
+                              height: 1.4,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
               if (_error != null)
                 Center(
                   child: Text(

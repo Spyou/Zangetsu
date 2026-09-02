@@ -1,6 +1,7 @@
 import '../error/exceptions.dart';
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'dart:async' show unawaited;
+import '../logging/app_logger.dart';
 import '../models/episode.dart';
 import '../models/home_section.dart';
 import '../models/media_detail.dart';
@@ -19,24 +20,30 @@ import 'metadata_provider_prefs.dart';
 import 'simkl_catalogue.dart';
 import 'video_catalogue.dart';
 import 'match_store.dart';
+import 'playback_resolver.dart';
 import 'source_matcher.dart';
 import 'tmdb_catalogue.dart';
 import 'zmode_ids.dart';
+import 'zmode_source_prefs.dart';
 
-/// The Zangetsu Mode catalogue: browsing comes from AniList/TMDB, playback
-/// from whichever installed source [SourceMatcher] pairs the title with.
-/// `sources()` is the one method that never answers from metadata.
+/// The Zangetsu Mode catalogue: browsing and episode lists come from
+/// AniList/TMDB; playback sweeps installed sources at play time via
+/// [PlaybackResolver].
 class MetadataRepository implements CatalogueRepository {
   MetadataRepository({
     required AniListCatalogue anilist,
     required TmdbCatalogue tmdb,
     required SourceRepository sources,
     required SourceMatcher matcher,
+    required MatchStore matchStore,
+    required ZSourcePrefs sourcePrefs,
     required ZKind Function() browseKind,
     MalCatalogue? mal,
     SimklCatalogue? simkl,
     MetadataProviderPrefs? providerPrefs,
     void Function(String message)? onProviderFallback,
+    SourceHealthStore? health,
+    List<({String id, String name})> Function(ZKind)? candidates,
   }) : _al = anilist,
        _tmdb = tmdb,
        _mal = mal,
@@ -45,7 +52,36 @@ class MetadataRepository implements CatalogueRepository {
        _onFallback = onProviderFallback,
        _src = sources,
        _matcher = matcher,
-       _browseKind = browseKind;
+       _browseKind = browseKind,
+       _playback = PlaybackResolver(
+         matcher: matcher,
+         sources: sources,
+         store: matchStore,
+         prefs: sourcePrefs,
+         health: health ?? (sl.isRegistered<SourceHealthStore>() ? sl<SourceHealthStore>() : SourceHealthStore()),
+         candidates: candidates ?? _defaultCandidates(sources),
+       ) {
+    _bindPlayback();
+  }
+
+  static List<({String id, String name})> Function(ZKind) _defaultCandidates(
+    SourceRepository sources,
+  ) =>
+      (kind) {
+        final all = sources.pickableSources;
+        return switch (kind) {
+          ZKind.manga => [for (final s in all) if (s.id.startsWith('mihon:')) s],
+          ZKind.novel => [for (final s in all) if (s.id.startsWith('lnr:')) s],
+          _ => [
+            for (final s in all)
+              if (!s.id.startsWith('mihon:') && !s.id.startsWith('lnr:')) s,
+          ],
+        };
+      };
+
+  void _bindPlayback() {
+    _playback.bindTitleLookup(titleFor);
+  }
 
   final AniListCatalogue _al;
   final MalCatalogue? _mal;
@@ -58,6 +94,7 @@ class MetadataRepository implements CatalogueRepository {
   final TmdbCatalogue _tmdb;
   final SourceRepository _src;
   final SourceMatcher _matcher;
+  final PlaybackResolver _playback;
   final ZKind Function() _browseKind;
 
   /// Cached metadata home rows per catalogue kind. Anime ↔ Movie/TV toggles can
@@ -122,15 +159,48 @@ class MetadataRepository implements CatalogueRepository {
   /// Deliberately per-request rather than sticky: a provider that 500s once is
   /// usually back a moment later, and a session-long switch would leave the
   /// user on the fallback long after the outage ended, with no sign of it.
-  Future<T> _viaAnime<T>(Future<T> Function(AnimeCatalogue c) op) async {
+  ///
+  /// Some providers swallow HTTP errors and return an empty value instead of
+  /// throwing (AniList's GraphQL client returns `null` → no home rows). Pass
+  /// [treatAsFailure] so that case still reaches the stand-in.
+  Future<T> _viaAnime<T>(
+    Future<T> Function(AnimeCatalogue c) op, {
+    bool Function(T)? treatAsFailure,
+  }) async {
     final (primary, backup) = _animeChain;
+    return _withProviderFallback(
+      primary: () => op(primary),
+      backup: backup == null ? null : () => op(backup),
+      fallbackLabel: backup == null ? '' : _fallbackName(backup),
+      treatAsFailure: treatAsFailure,
+    );
+  }
+
+  Future<T> _withProviderFallback<T>({
+    required Future<T> Function() primary,
+    required Future<T> Function()? backup,
+    required String fallbackLabel,
+    bool Function(T)? treatAsFailure,
+  }) async {
     try {
-      return await op(primary);
+      final result = await primary();
+      if (backup != null &&
+          treatAsFailure != null &&
+          treatAsFailure(result)) {
+        try {
+          final out = await backup();
+          if (!treatAsFailure(out)) {
+            _onFallback?.call(fallbackLabel);
+            return out;
+          }
+        } catch (_) {}
+      }
+      return result;
     } catch (primaryError, primaryStack) {
       if (backup == null) rethrow;
       try {
-        final out = await op(backup);
-        _onFallback?.call(_fallbackName(backup));
+        final out = await backup();
+        _onFallback?.call(fallbackLabel);
         return out;
       } catch (_) {
         // The stand-in failed too. Report the ORIGINAL failure with its own
@@ -156,20 +226,17 @@ class MetadataRepository implements CatalogueRepository {
 
   /// The movie/TV twin of [_viaAnime]. Interchangeable for the same reason:
   /// Simkl carries a TMDB id on nearly everything, so both speak `tmdb:`.
-  Future<T> _viaVideo<T>(Future<T> Function(VideoCatalogue c) op) async {
+  Future<T> _viaVideo<T>(
+    Future<T> Function(VideoCatalogue c) op, {
+    bool Function(T)? treatAsFailure,
+  }) async {
     final (primary, backup) = _videoChain;
-    try {
-      return await op(primary);
-    } catch (primaryError, primaryStack) {
-      if (backup == null) rethrow;
-      try {
-        final out = await op(backup);
-        _onFallback?.call(backup is SimklCatalogue ? 'Simkl' : 'TMDB');
-        return out;
-      } catch (_) {
-        Error.throwWithStackTrace(primaryError, primaryStack);
-      }
-    }
+    return _withProviderFallback(
+      primary: () => op(primary),
+      backup: backup == null ? null : () => op(backup),
+      fallbackLabel: backup is SimklCatalogue ? 'Simkl' : 'TMDB',
+      treatAsFailure: treatAsFailure,
+    );
   }
 
   // ── identity ─────────────────────────────────────────────────────────────
@@ -226,10 +293,12 @@ class MetadataRepository implements CatalogueRepository {
     return rows;
   }
 
+  static bool _homeFailed(List<HomeSection> rows) => rows.isEmpty;
+
   Future<List<HomeSection>> _homeForKind(ZKind k) async {
     final rows = _isTmdb(k)
-        ? await _viaVideo((c) => c.home())
-        : await _viaAnime((c) => c.home(k));
+        ? await _viaVideo((c) => c.home(), treatAsFailure: _homeFailed)
+        : await _viaAnime((c) => c.home(k), treatAsFailure: _homeFailed);
     for (final r in rows) {
       r.items.forEach(_remember);
     }
@@ -376,20 +445,35 @@ class MetadataRepository implements CatalogueRepository {
   }) async {
     final c = ZmodeIds.parseShow(url);
     if (c == null) throw ArgumentError('not a metadata url: $url');
+    final sw = Stopwatch()..start();
+    final via = _isTmdb(c.kind) ? 'video' : 'anime';
+    AppLogger.instance.log(
+      '[metadata] detail start kind=${c.kind} via=$via key=${c.key}',
+    );
     final d = _isTmdb(c.kind)
         ? await _viaVideo((x) => x.detail(c))
         : await _viaAnime((x) => x.detail(c));
     _titles[c.key] = (title: d.title, alt: d.englishTitle, malId: d.malId);
+    AppLogger.instance.log(
+      '[metadata] detail catalogue title="${d.title}" eps=${d.episodes.length} '
+      '${sw.elapsedMilliseconds}ms',
+    );
 
-    // Hand the caller everything that does NOT depend on a source right now:
-    // title, art, synopsis, cast. Everything past this point waits on
-    // _matcher.resolve, which searches installed sources one at a time — the
-    // whole reason opening a title used to sit on a spinner. Episodes are
-    // stripped for the same reason the no-match branches below strip them: a
-    // synthesised list has no source behind it and can't be played.
-    onPartial?.call(d.copyWith(episodes: const <Episode>[]));
+    // Video: paint catalogue episodes immediately. Reading: chapters still
+    // wait on source match below, so strip them from the partial.
+    final partial = c.kind == ZKind.manga || c.kind == ZKind.novel
+        ? d.copyWith(episodes: const <Episode>[])
+        : d;
+    if (onPartial != null) {
+      onPartial(partial);
+      AppLogger.instance.log(
+        '[metadata] detail onPartial eps=${partial.episodes.length} '
+        '${sw.elapsedMilliseconds}ms',
+      );
+    }
 
     if (c.kind == ZKind.manga || c.kind == ZKind.novel) {
+      AppLogger.instance.log('[metadata] detail matching source…');
       // Reading: the reader screens fetch pages/text from SourceRepository
       // with the detail's sourceId + id, so hand them the matched source's
       // chapters, real urls and all — progress there is keyed off that.
@@ -406,6 +490,10 @@ class MetadataRepository implements CatalogueRepository {
         // "no source has this yet".
         final blocked = _matcher.cfBlockedUrl(c.kind);
         if (blocked != null) throw CloudflareRequiredException(blocked);
+        AppLogger.instance.log(
+          '[metadata] detail no source match ${sw.elapsedMilliseconds}ms',
+          level: 'W',
+        );
         // No match: AniList may still have synthesised a full zm://…/ep/n
         // chapter list (it knows the chapter count for plenty of completed
         // manga), but those urls have no source behind them — drop them
@@ -414,6 +502,10 @@ class MetadataRepository implements CatalogueRepository {
         return d.copyWith(episodes: const <Episode>[]);
       }
       final chapters = await _src.episodes(m.showUrl, sourceId: m.sourceId);
+      AppLogger.instance.log(
+        '[metadata] detail matched ${m.sourceId} chapters=${chapters.length} '
+        '${sw.elapsedMilliseconds}ms',
+      );
       return MediaDetail(
         id: m.showId,
         title: d.title,
@@ -433,61 +525,10 @@ class MetadataRepository implements CatalogueRepository {
       );
     }
 
-    // Watching: playback is already routed through zm://…/ep/n (see
-    // _sourceEpisode below), and resume progress is keyed off that same
-    // canonical id/url — never the source's own. So only the DISPLAY comes
-    // from the matched source here: titles, thumbnails, dates, descriptions,
-    // and the count. id/url are rewritten back to the canonical, numbered-by-
-    // position form so progress keeps following the title, not the source.
-    final m = await _matcher.resolve(
-      c,
-      title: d.title,
-      altTitle: d.englishTitle,
-      malId: d.malId,
-    );
-    if (m == null) {
-      // Same Cloudflare-suppressed-search check as the reading branch above.
-      final blocked = _matcher.cfBlockedUrl(c.kind);
-      if (blocked != null) throw CloudflareRequiredException(blocked);
-      // No match: the catalogue may still have synthesised a full zm://…/ep/n
-      // list (TMDB knows a series' whole season/episode layout, AniList its
-      // episode count), but those urls have no source behind them — Play
-      // fails on the first tap. Drop them, exactly as the reading branch
-      // above does, so the honest empty state shows BEFORE the user commits
-      // to a tap instead of after it.
-      return d.copyWith(episodes: const <Episode>[]);
-    }
-    final srcEpisodes = await _src.episodes(m.showUrl, sourceId: m.sourceId);
-    final episodes = [
-      for (var i = 0; i < srcEpisodes.length; i++)
-        _canonicalize(srcEpisodes[i], c, i + 1),
-    ];
-    return d.copyWith(episodes: episodes);
+    // Video: episode list is catalogue-owned; playback resolves at tap time.
+    AppLogger.instance.log('[metadata] detail video done ${sw.elapsedMilliseconds}ms');
+    return d;
   }
-
-  /// [e] with its display kept but id/url/number replaced by the canonical,
-  /// position-numbered form — see the comment in [detail]. [number] in
-  /// particular is read as ground truth by trackers (AniList/MAL/Simkl
-  /// scrobbling), filler lookups and skip-time lookups — all keyed by the
-  /// canonical episode count, not whatever the source calls it (a source
-  /// that restarts numbering per season would otherwise scrobble the wrong
-  /// episode). The source's own number, if worth showing, belongs in the
-  /// title, never here.
-  static Episode _canonicalize(Episode e, ZCanonical c, int n) => Episode(
-    id: '$n',
-    title: e.title,
-    number: n.toDouble(),
-    url: ZmodeIds.episodeUrl(c, n),
-    date: e.date,
-    thumbnail: e.thumbnail,
-    filler: e.filler,
-    season: e.season,
-    scanlator: e.scanlator,
-    description: e.description,
-    metaTitle: e.metaTitle,
-    rating: e.rating,
-    runtimeMinutes: e.runtimeMinutes,
-  );
 
   @override
   Future<List<Episode>> episodes(
@@ -500,62 +541,30 @@ class MetadataRepository implements CatalogueRepository {
 
   @override
   Future<List<VideoSource>> sources(
-    String episodeUrl, {
+    String episodeUrl,
+    {
     String? sourceId,
     bool fast = false,
-  }) async {
-    final ep = await _sourceEpisode(episodeUrl);
-    return _src.sources(ep.url, sourceId: ep.sourceId, fast: fast);
-  }
+  }) async => _playback.sources(episodeUrl, fast: fast);
 
   @override
   Future<({List<VideoSource> sources, bool done})> polledSources(
     String episodeUrl, {
     String? sourceId,
-  }) async {
-    final ep = await _sourceEpisode(episodeUrl);
-    return _src.polledSources(ep.url, sourceId: ep.sourceId);
-  }
+  }) async => _playback.polledSources(episodeUrl);
 
-  /// The source episode behind a `zm://…/ep/n` url: the n-th entry of that
-  /// same source's episode list — the exact list [detail] builds the
-  /// DISPLAY from, fetched the exact same way, so position is not a guess,
-  /// it's the same lookup. Out of range is an honest "not found", not a
-  /// guess: [EpisodeNotOnSource], not [NoSourceMatch] (the show did match).
-  Future<({String url, String sourceId})> _sourceEpisode(
-    String episodeUrl,
+  /// Title metadata for play-time resolution — cached from detail/browse.
+  Future<({String title, String? alt, int? malId})> titleFor(
+    ZCanonical c,
   ) async {
-    final p = ZmodeIds.parseEpisode(episodeUrl);
-    if (p == null)
-      throw ArgumentError('not a metadata episode url: $episodeUrl');
-    final m = await _matchFor(p.show);
-    final eps = await _src.episodes(m.showUrl, sourceId: m.sourceId);
-    final i = p.episode - 1;
-    if (i < 0 || i >= eps.length) throw EpisodeNotOnSource(p.show, p.episode);
-    return (url: eps[i].url, sourceId: m.sourceId);
-  }
-
-  Future<SourceMatch> _matchFor(ZCanonical c) async {
-    // Already matched (e.g. from a previous run): skip the metadata round
-    // trip entirely, since resolve() wouldn't have used the title anyway.
-    final saved = _matcher.saved(c);
-    if (saved != null) return saved;
     var t = _titles[c.key];
-    if (t == null) {
-      final d = _isTmdb(c.kind)
-          ? await _viaVideo((x) => x.detail(c))
-          : await _viaAnime((x) => x.detail(c));
-      t = (title: d.title, alt: d.englishTitle, malId: d.malId);
-      _titles[c.key] = t;
-    }
-    final m = await _matcher.resolve(
-      c,
-      title: t.title,
-      altTitle: t.alt,
-      malId: t.malId,
-    );
-    if (m == null) throw NoSourceMatch(c);
-    return m;
+    if (t != null) return t;
+    final d = _isTmdb(c.kind)
+        ? await _viaVideo((x) => x.detail(c))
+        : await _viaAnime((x) => x.detail(c));
+    t = (title: d.title, alt: d.englishTitle, malId: d.malId);
+    _titles[c.key] = t;
+    return t;
   }
 
   void _remember(MediaItem i) {

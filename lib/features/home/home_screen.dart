@@ -1209,9 +1209,7 @@ class _HomeViewState extends State<_HomeView>
                   // always a dead/blocked site (or a search-only source). Show a
                   // clear message instead of a blank screen.
                   final loadedEmpty =
-                      !state.loading &&
-                      state.sections != null &&
-                      state.sections!.isEmpty;
+                      context.read<HomeCubit>().showsEmptyHome;
                   // Manga/novel with nothing installed: the mode-switch fallback
                   // sets a matching source when one exists, so a reading mode
                   // still on a non-matching (usually stale anime) active id means
@@ -1537,7 +1535,10 @@ class HomeLoadedEmptyView extends StatelessWidget {
         offline: true,
       );
     }
-    if (!hasSourcesFor(mode)) {
+    // Metadata catalogue (Z Mode) browses AniList/TMDB/MAL — installed
+    // streaming extensions are only needed at play time. An empty home here
+    // means the catalogue fetch failed, not "nothing installed".
+    if (!ZModePrefs.enabled && !hasSourcesFor(mode)) {
       return _NoSourcesGuide(mode: mode, onBrowse: onInstallSources);
     }
     return _SourceUnavailable(

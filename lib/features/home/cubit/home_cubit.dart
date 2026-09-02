@@ -110,6 +110,7 @@ class HomeCubit extends Cubit<HomeState> {
     if (sections.isEmpty) return;
     _streamKindCache[kind] = sections;
     streamCatalogRevision.value++;
+    applyMetadataCacheIfEmpty();
   }
 
   /// Pull any rows [MetadataRepository] already cached (prefetch / warm).
@@ -125,7 +126,49 @@ class HomeCubit extends Cubit<HomeState> {
         changed = true;
       }
     }
-    if (changed) streamCatalogRevision.value++;
+    if (changed) {
+      streamCatalogRevision.value++;
+      applyMetadataCacheIfEmpty();
+    }
+  }
+
+  /// When metadata home prefetch succeeds after an empty/failed first fetch,
+  /// paint the cached rows so Home doesn't stay on "Couldn't load AniList".
+  void applyMetadataCacheIfEmpty() {
+    if (!ZModePrefs.enabled || isClosed) return;
+    if (state.loading) return;
+    if (state.sections != null && state.sections!.isNotEmpty) return;
+    if (!sl.isRegistered<ContentModeCubit>() ||
+        sl<ContentModeCubit>().state != ContentMode.anime) {
+      return;
+    }
+    final rows = _cachedRowsForStreamKind(ZModePrefs.streamKind);
+    if (rows == null || rows.isEmpty) return;
+    debugPrint(
+      '[home] apply metadata cache · kind=${ZModePrefs.streamKind} '
+      '· ${rows.length} rows',
+    );
+    emit(
+      HomeState(
+        sections: rows,
+        loading: false,
+        cloudflareUrl: state.cloudflareUrl,
+      ),
+    );
+  }
+
+  /// True when the cubit has no paintable rows — including a check of the
+  /// metadata stream cache, which can fill while [sections] is still empty.
+  bool get showsEmptyHome {
+    if (state.loading) return false;
+    if (state.sections != null && state.sections!.isNotEmpty) return false;
+    if (ZModePrefs.enabled &&
+        sl.isRegistered<ContentModeCubit>() &&
+        sl<ContentModeCubit>().state == ContentMode.anime) {
+      final cached = sectionsFor(ZModePrefs.streamKind);
+      if (cached != null && cached.isNotEmpty) return false;
+    }
+    return state.sections != null && state.sections!.isEmpty;
   }
 
   /// Cached rows for [kind], if a previous load/prefetch already has them.

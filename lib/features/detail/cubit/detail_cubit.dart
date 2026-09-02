@@ -4,6 +4,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../core/di/injector.dart';
 import '../../../core/error/exceptions.dart';
 import '../../../core/error/network_failure.dart';
+import '../../../core/logging/app_logger.dart';
 import '../../../core/lnreader/novel_cloudflare.dart';
 import '../../../core/metadata/episode_metadata_service.dart';
 import '../../../core/metadata/metadata_enrichment.dart';
@@ -13,6 +14,7 @@ import '../../../core/models/media_extras.dart';
 import '../../../core/models/provider_info.dart';
 import '../../../core/playback/title_prefs.dart';
 import '../../../core/repository/catalogue_repository.dart';
+import '../../../core/zmode/zmode_ids.dart';
 
 export '../../../core/models/episode_title.dart' show cleanTitle;
 
@@ -160,9 +162,24 @@ class DetailCubit extends Cubit<DetailState> {
   /// owning source is unknown (active-source title) — robust, never throws.
   String get _prefsSourceId => _sourceId ?? '';
 
+  /// True for zm:// anime/movie/tv — catalogue episodes land in one shot.
+  bool get _zmVideoDetail {
+    final c = ZmodeIds.parseShow(_url);
+    if (c == null) return false;
+    return c.kind != ZKind.manga && c.kind != ZKind.novel;
+  }
+
+  void _log(String msg, {String level = 'I'}) =>
+      AppLogger.instance.log('[detail] $msg', level: level);
+
   /// Initial fetch. Emits loading then success/error for the current
   /// [DetailState.category] (the per-title remembered choice, else 'sub').
   Future<void> load() async {
+    final sw = Stopwatch()..start();
+    _log(
+      'load start url=$_url sourceId=${_sourceId ?? "active"} '
+      'cat=${state.category} zmVideo=$_zmVideoDetail',
+    );
     emit(
       state.copyWith(status: DetailStatus.loading, clearCloudflareUrl: true),
     );
@@ -171,17 +188,18 @@ class DetailCubit extends Cubit<DetailState> {
         _url,
         category: state.category,
         sourceId: _sourceId,
-        // Metadata titles resolve their source by searching every installed
-        // one in turn; that used to hold the whole screen on the skeleton.
-        // Paint as soon as the metadata lands and let the episode list fill
-        // in when the full detail below arrives. Only ever moves the screen
-        // loading → success, so it can't clobber a finished or failed load.
+        // Metadata titles paint catalogue episodes immediately; source matching
+        // is deferred to Play / download / the source row on the Detail screen.
         onPartial: (partial) {
           if (isClosed || state.status != DetailStatus.loading) return;
+          _log(
+            'load partial title="${partial.title}" eps=${partial.episodes.length} '
+            '${sw.elapsedMilliseconds}ms',
+          );
           emit(state.copyWith(
             status: DetailStatus.success,
             detail: partial,
-            episodesLoading: true,
+            episodesLoading: !_zmVideoDetail,
           ));
         },
       );
@@ -193,6 +211,7 @@ class DetailCubit extends Cubit<DetailState> {
       // gets mistaken for a block.
       final latched = detail.title.isEmpty ? NovelCloudflare.pendingUrl : null;
       if (latched != null) {
+        _log('load cloudflare latched ${sw.elapsedMilliseconds}ms', level: 'W');
         emit(state.copyWith(
           status: DetailStatus.error,
           cloudflareUrl: latched,
@@ -201,6 +220,10 @@ class DetailCubit extends Cubit<DetailState> {
         return;
       }
       NovelCloudflare.clear();
+      _log(
+        'load success title="${detail.title}" eps=${detail.episodes.length} '
+        '${sw.elapsedMilliseconds}ms',
+      );
       emit(state.copyWith(
         status: DetailStatus.success,
         detail: detail,
@@ -208,15 +231,21 @@ class DetailCubit extends Cubit<DetailState> {
       ));
       _enrich(detail);
     } on CloudflareRequiredException catch (e) {
+      _log('load cloudflare required ${e.url} ${sw.elapsedMilliseconds}ms', level: 'W');
       emit(state.copyWith(
         status: DetailStatus.error,
         cloudflareUrl: e.url,
         episodesLoading: false,
       ));
-    } catch (e) {
+    } catch (e, st) {
       // Same distinction Home makes: a request that never left the device is
       // not the title failing to load.
       final offline = await isOfflineErrorConfirmed(e);
+      _log(
+        'load failed offline=$offline ${sw.elapsedMilliseconds}ms: $e',
+        level: 'E',
+      );
+      AppLogger.instance.logError(e, st);
       emit(state.copyWith(
         status: DetailStatus.error,
         error: offline ? 'offline' : 'load_failed',
@@ -238,6 +267,8 @@ class DetailCubit extends Cubit<DetailState> {
   /// skip it. A match change makes that mandatory — the episode list is new,
   /// so its per-episode metadata has to be fetched again.
   Future<void> refresh({bool dropCache = true}) async {
+    final sw = Stopwatch()..start();
+    _log('refresh start dropCache=$dropCache url=$_url');
     // Pull-to-refresh wants genuinely fresh data, so it drops the cache. A
     // SOURCE CHANGE does not: the source being switched to was never in that
     // cache, and clearing it throws away every other source's responses too,
@@ -254,12 +285,16 @@ class DetailCubit extends Cubit<DetailState> {
         // source's, until the new list lands.
         onPartial: (partial) {
           if (isClosed || state.status != DetailStatus.success) return;
+          _log(
+            'refresh partial title="${partial.title}" eps=${partial.episodes.length} '
+            '${sw.elapsedMilliseconds}ms',
+          );
           emit(state.copyWith(
             detail: partial.copyWith(
               malId: partial.malId ?? previous?.malId,
               tmdbId: partial.tmdbId ?? previous?.tmdbId,
             ),
-            episodesLoading: true,
+            episodesLoading: !_zmVideoDetail,
           ));
         },
       );
@@ -268,6 +303,7 @@ class DetailCubit extends Cubit<DetailState> {
       // surfaces as an empty detail, not an exception.
       final latched = fresh.title.isEmpty ? NovelCloudflare.pendingUrl : null;
       if (latched != null) {
+        _log('refresh cloudflare latched ${sw.elapsedMilliseconds}ms', level: 'W');
         emit(state.copyWith(cloudflareUrl: latched, episodesLoading: false));
         return;
       }
@@ -275,6 +311,10 @@ class DetailCubit extends Cubit<DetailState> {
       final merged = fresh.copyWith(
         malId: fresh.malId ?? previous?.malId,
         tmdbId: fresh.tmdbId ?? previous?.tmdbId,
+      );
+      _log(
+        'refresh success title="${merged.title}" eps=${merged.episodes.length} '
+        '${sw.elapsedMilliseconds}ms',
       );
       emit(
         state.copyWith(
@@ -287,8 +327,11 @@ class DetailCubit extends Cubit<DetailState> {
       _enrich(merged, force: true);
     } on CloudflareRequiredException catch (e) {
       if (isClosed) return;
+      _log('refresh cloudflare required ${e.url} ${sw.elapsedMilliseconds}ms', level: 'W');
       emit(state.copyWith(cloudflareUrl: e.url, episodesLoading: false));
-    } catch (_) {
+    } catch (e, st) {
+      _log('refresh failed ${sw.elapsedMilliseconds}ms: $e', level: 'E');
+      AppLogger.instance.logError(e, st);
       // Keep what's on screen — a failed pull shouldn't blank the page. The
       // skeleton must still come down though: onPartial may have armed it,
       // and nothing else would ever turn it off.
@@ -304,6 +347,11 @@ class DetailCubit extends Cubit<DetailState> {
   /// out from under the metadata fetched for the previous one.
   Future<void> _enrich(MediaDetail detail, {bool force = false}) async {
     if (!force && (state.cast.isNotEmpty || state.relations.isNotEmpty)) return;
+    final sw = Stopwatch()..start();
+    _log(
+      'enrich start title="${detail.title}" type=${detail.type} '
+      'malId=${detail.malId} tmdbId=${detail.tmdbId} eps=${detail.episodes.length}',
+    );
     var d = detail;
 
     // TMDB fallback: an id-less movie/series (e.g. some CloudStream sources)
@@ -413,6 +461,7 @@ class DetailCubit extends Cubit<DetailState> {
         state.copyWith(cast: detail.castMembers, relations: detail.relations),
       );
     }
+    _log('enrich done ${sw.elapsedMilliseconds}ms');
   }
 
   /// Sub/Dub re-fetch. No-op when the category is unchanged. Otherwise
