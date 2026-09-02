@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:app_links/app_links.dart';
 
+import '../zmode/zmode_ids.dart';
 import '../../features/auth/pair_tv_screen.dart';
 import '../../features/auth/send_trackers_to_tv_screen.dart';
 import '../../features/detail/detail_screen.dart';
@@ -24,9 +25,12 @@ class OpenLinkService {
     if (isAppleTv) return;
     _sub = _appLinks.uriLinkStream.listen(_onLink, onError: (_) {});
     // Cold start: the browser/OS may have launched the app straight to the link.
-    _appLinks.getInitialLink().then((uri) {
-      if (uri != null) _onLink(uri);
-    }).catchError((_) {});
+    _appLinks
+        .getInitialLink()
+        .then((uri) {
+          if (uri != null) _onLink(uri);
+        })
+        .catchError((_) {});
   }
 
   final AppLinks _appLinks = AppLinks();
@@ -128,6 +132,12 @@ class OpenLinkService {
   }
 
   bool _sourceInstalled(String sourceId) {
+    // The metadata catalogue is not an installed source and never can be, so
+    // asking the source registry about it always said no — and a shared
+    // AniList/TMDB title was refused with "add it in Settings", naming
+    // something the recipient cannot install. The link resolves through
+    // MetadataRepository regardless of what they have installed.
+    if (sourceId == ZmodeIds.sourceId) return true;
     try {
       // Canonical check across cs:/ani:/JS ids (CS also matches a compatible
       // repo/version). The old code only knew cs: + JS, so every Aniyomi
