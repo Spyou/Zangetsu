@@ -59,6 +59,7 @@ internal fun shouldCloseOnPageFinished(
 class MihonCloudflareActivity : AppCompatActivity() {
 
     private var solved = false
+    private var stayOpen = false
     private lateinit var targetUrl: String
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -71,11 +72,13 @@ class MihonCloudflareActivity : AppCompatActivity() {
             return
         }
         targetUrl = url
+        stayOpen = intent.getBooleanExtra(EXTRA_STAY_OPEN, false)
+        val screenTitle = intent.getStringExtra(EXTRA_TITLE)
         val host = runCatching { Uri.parse(url).host }.getOrNull().orEmpty()
 
         val toolbar = Toolbar(this).apply {
-            setBackgroundColor(CLOUDFLARE_ORANGE)
-            title = "Solve Cloudflare"
+            setBackgroundColor(if (stayOpen) BROWSER_BLUE else CLOUDFLARE_ORANGE)
+            title = if (stayOpen) (screenTitle ?: "Browser") else "Solve Cloudflare"
             subtitle = host
             setTitleTextColor(Color.WHITE)
             setSubtitleTextColor(0xCCFFFFFF.toInt())
@@ -131,7 +134,7 @@ class MihonCloudflareActivity : AppCompatActivity() {
     /** Closes the screen as soon as a fresh `cf_clearance` cookie is present. */
     private fun maybeFinishIfSolved() {
         val cookie = CookieManager.getInstance().getCookie(targetUrl).orEmpty()
-        if (!shouldCloseOnPageFinished(stayOpen = false, alreadySolved = solved, cookie = cookie)) {
+        if (!shouldCloseOnPageFinished(stayOpen = stayOpen, alreadySolved = solved, cookie = cookie)) {
             return
         }
         solved = true
@@ -147,13 +150,21 @@ class MihonCloudflareActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        // Resolve the Dart solveCloudflare() call so the browse screen reloads —
-        // whether the user solved it or just backed out (a reload is harmless).
-        MihonBridge.finishCloudflareSolve()
+        // Only the Cloudflare mode has a Dart call waiting on it. Resolving
+        // from login mode could answer a solve started by a background browse
+        // that nobody has actually completed.
+        if (!stayOpen) {
+            // Resolve the Dart solveCloudflare() call so the browse screen reloads —
+            // whether the user solved it or just backed out (a reload is harmless).
+            MihonBridge.finishCloudflareSolve()
+        }
     }
 
     companion object {
         const val EXTRA_URL = "url"
+        const val EXTRA_STAY_OPEN = "stay_open"
+        const val EXTRA_TITLE = "title"
         private const val CLOUDFLARE_ORANGE = 0xFFF48120.toInt()
+        private const val BROWSER_BLUE = 0xFF2B3350.toInt()
     }
 }
