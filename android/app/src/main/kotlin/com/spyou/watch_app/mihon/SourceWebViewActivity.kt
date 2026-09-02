@@ -1,11 +1,16 @@
 package com.spyou.watch_app.mihon
 
 import android.annotation.SuppressLint
+import android.content.Context
+import android.content.Intent
 import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
+import android.os.Message
 import android.view.ViewGroup
 import android.webkit.CookieManager
+import android.webkit.WebChromeClient
+import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.LinearLayout
@@ -111,6 +116,7 @@ class SourceWebViewActivity : AppCompatActivity() {
                     maybeFinishIfSolved()
                 }
             }
+            webChromeClient = PopupToSameWindowClient()
         }
         webView = web
 
@@ -164,14 +170,20 @@ class SourceWebViewActivity : AppCompatActivity() {
             Toast.makeText(this, "Nothing to clear", Toast.LENGTH_SHORT).show()
             return
         }
-        val cleared = AndroidCookieJar().remove(url)
+        AndroidCookieJar().remove(url)
         CookieManager.getInstance().flush()
-        Toast.makeText(this, "Cleared $cleared cookies", Toast.LENGTH_SHORT).show()
+        // No count: remove() expires what it can see for this exact host, and a
+        // cookie set on a parent domain survives that, so any number printed
+        // here would claim more than actually went.
+        Toast.makeText(this, "Cleared cookies for ${url.host}", Toast.LENGTH_SHORT).show()
         webView.loadUrl(targetUrl)
     }
 
     override fun onDestroy() {
         super.onDestroy()
+        // Whatever the mode was, the WebView jar has just been through a real
+        // browsing session and is the freshest view of this site's cookies.
+        lastVisitAtMs = System.currentTimeMillis()
         // Only the Cloudflare mode has a Dart call waiting on it. Resolving
         // from login mode could answer a solve started by a background browse
         // that nobody has actually completed.
@@ -179,6 +191,52 @@ class SourceWebViewActivity : AppCompatActivity() {
             // Resolve the Dart solveCloudflare() call so the browse screen reloads —
             // whether the user solved it or just backed out (a reload is harmless).
             MihonBridge.finishCloudflareSolve()
+            return
+        }
+        // The solve branch above flushes on its way out; a login never reaches
+        // it, so without this the session cookie sits in Chromium's write
+        // buffer and can be lost to a process death.
+        CookieManager.getInstance().flush()
+        // A sign-in page behind Cloudflare hands out a clearance on the way in.
+        // Say so, or the next request clears it and re-solves for nothing.
+        NetworkHelper.lastSolveAtMs = System.currentTimeMillis()
+    }
+
+    /**
+     * Follows `window.open()` / `target="_blank"` in THIS WebView.
+     *
+     * `setDefaultSettings()` turns multiple windows on, and with nothing
+     * handling them the navigation is dropped in silence — which is every
+     * OAuth sign-in (Google, Discord, Patreon), the exact flow login mode
+     * exists for. There is no second screen to give a popup, so the throwaway
+     * WebView below exists only to catch the popup's first URL and hand it
+     * back.
+     */
+    private inner class PopupToSameWindowClient : WebChromeClient() {
+        override fun onCreateWindow(
+            view: WebView,
+            isDialog: Boolean,
+            isUserGesture: Boolean,
+            resultMsg: Message,
+        ): Boolean {
+            val transport = resultMsg.obj as? WebView.WebViewTransport ?: return false
+            val relay = WebView(view.context)
+            relay.webViewClient = object : WebViewClient() {
+                override fun shouldOverrideUrlLoading(
+                    relayView: WebView,
+                    request: WebResourceRequest,
+                ): Boolean {
+                    view.loadUrl(request.url.toString())
+                    // Not inside its own callback — destroying a WebView from
+                    // one of its client calls tears down the frame that is
+                    // still running.
+                    relayView.post { relayView.destroy() }
+                    return true
+                }
+            }
+            transport.webView = relay
+            resultMsg.sendToTarget()
+            return true
         }
     }
 
@@ -186,6 +244,54 @@ class SourceWebViewActivity : AppCompatActivity() {
         const val EXTRA_URL = "url"
         const val EXTRA_STAY_OPEN = "stay_open"
         const val EXTRA_TITLE = "title"
+
+        /** Cloudflare mode's intent action — see [intentFor]. */
+        const val ACTION_SOLVE = "com.spyou.watch_app.action.SOLVE_CLOUDFLARE"
+
+        /** Login mode's intent action — see [intentFor]. */
+        const val ACTION_LOGIN = "com.spyou.watch_app.action.SOURCE_LOGIN"
+
+        /**
+         * When this screen was last closed (`System.currentTimeMillis()`,
+         * 0 = never). Read by the novel client's cookie jar to decide whether
+         * its own stored cookie or the WebView's is the newer one.
+         */
+        @Volatile
+        @JvmStatic
+        var lastVisitAtMs: Long = 0L
+
+        /**
+         * The launch intent for [url] in one of the two modes.
+         *
+         * The mode has to live in the ACTION, not just the extras: with
+         * `FLAG_ACTIVITY_NEW_TASK` Android picks an existing task by
+         * `Intent.filterEquals`, which ignores extras entirely. Same action
+         * for both modes and a login screen left in the background gets
+         * recycled for a Cloudflare solve — `onCreate` never runs, the screen
+         * stays in login mode, and the Dart call waiting on the solve is never
+         * answered.
+         *
+         * Login intents also carry the url as DATA so two sources get two
+         * tasks. Solve intents deliberately do not: nothing waits on a login,
+         * but a solve holds a single pending Dart result, and letting two
+         * solver tasks exist at once means the older one's `onDestroy` answers
+         * the newer one's call. Solve-to-solve therefore keeps reusing one
+         * task, exactly as it always has.
+         */
+        fun intentFor(
+            context: Context,
+            url: String,
+            stayOpen: Boolean,
+            title: String? = null,
+        ): Intent = Intent(context, SourceWebViewActivity::class.java).apply {
+            action = if (stayOpen) ACTION_LOGIN else ACTION_SOLVE
+            if (stayOpen) data = Uri.parse(url)
+            putExtra(EXTRA_URL, url)
+            putExtra(EXTRA_STAY_OPEN, stayOpen)
+            putExtra(EXTRA_TITLE, title)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+
         private const val CLOUDFLARE_ORANGE = 0xFFF48120.toInt()
         private const val BROWSER_BLUE = 0xFF2B3350.toInt()
     }
