@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_colors.dart';
@@ -28,9 +30,7 @@ class TvStreamKindRailToggle extends StatelessWidget {
       builder: (context, _, __) {
         final l10n = context.l10n;
         final isAnime = ZModePrefs.streamKind == StreamKind.anime;
-        final icon = isAnime
-            ? Icons.play_circle_rounded
-            : Icons.movie;
+        final icon = isAnime ? Icons.play_circle_rounded : Icons.movie;
         final activeLabel = isAnime ? l10n.modeAnime : l10n.modeMovieTv;
 
         return TvFocusable(
@@ -38,13 +38,13 @@ class TvStreamKindRailToggle extends StatelessWidget {
           focusNode: focusNode,
           variant: TvFocusVariant.pill,
           semanticLabel: activeLabel,
+          // KeyUp (not postFrameCallback): a deferred toggle waits for the next
+          // frame, and a busy isolate can stall frames for seconds — the tap
+          // then appears to hang until the frame pipeline clears.
+          waitForKeyUp: true,
           onTap: () {
             final next = isAnime ? StreamKind.movie : StreamKind.anime;
-            // Defer until after KeyUp on this row — otherwise a Home rebuild
-            // can autofocus Continue Watching and swallow the release as Resume.
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              onToggle(next);
-            });
+            unawaited(onToggle(next));
           },
           builder: (focused) {
             final activeFg = focused ? Colors.black : AppColors.textPrimary;

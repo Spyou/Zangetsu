@@ -1,11 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:watch_app/core/app_mode.dart';
+import 'package:watch_app/core/di/injector.dart';
 import 'package:watch_app/core/models/home_section.dart';
 import 'package:watch_app/core/models/media_item.dart';
 import 'package:watch_app/core/models/provider_info.dart';
+import 'package:watch_app/core/repository/catalogue_repository.dart';
 import 'package:watch_app/core/repository/source_repository.dart';
+import 'package:watch_app/core/state/active_source_cubit.dart';
 import 'package:watch_app/core/tv/tv_focusable.dart';
+import 'package:watch_app/core/zmode/zmode_prefs.dart';
 import 'package:watch_app/features/auth/auth_cubit.dart';
 import 'package:watch_app/features/home/cubit/home_cubit.dart';
 import 'package:watch_app/features/home/home_screen_tv.dart';
@@ -28,8 +33,7 @@ class _StubSourceRepository implements SourceRepository {
   Future<List<HomeSection>> home({
     String category = 'sub',
     String? sourceId,
-  }) async =>
-      _sections;
+  }) async => _sections;
 
   @override
   String displayName(String id) => id;
@@ -51,6 +55,15 @@ class _FakeAuthCubit extends Cubit<AuthState> implements AuthCubit {
   @override
   noSuchMethod(Invocation i) => super.noSuchMethod(i);
 }
+
+Widget _homeApp(HomeCubit cubit) => MultiBlocProvider(
+  providers: [
+    BlocProvider<HomeCubit>.value(value: cubit),
+    BlocProvider<AuthCubit>.value(value: _FakeAuthCubit()),
+    BlocProvider<ActiveSourceCubit>.value(value: ActiveSourceCubit()),
+  ],
+  child: const MaterialApp(home: HomeScreenTv()),
+);
 
 // ── Test ──────────────────────────────────────────────────────────────────────
 
@@ -79,7 +92,12 @@ void main() {
     final sections = [
       const HomeSection(title: 'Trending Now', items: testItems),
     ];
-    cubit = HomeCubit(_StubSourceRepository(sections));
+    final repo = _StubSourceRepository(sections);
+    cubit = HomeCubit(repo);
+    if (sl.isRegistered<CatalogueRepository>()) {
+      sl.unregister<CatalogueRepository>();
+    }
+    sl.registerSingleton<CatalogueRepository>(repo);
     // Load populates the cubit state before the widget is pumped.
     await cubit.load();
   });
@@ -89,15 +107,7 @@ void main() {
   testWidgets(
     'HomeScreenTv renders rail items and the first focusable has autofocus',
     (tester) async {
-      await tester.pumpWidget(
-        MultiBlocProvider(
-          providers: [
-            BlocProvider<HomeCubit>.value(value: cubit),
-            BlocProvider<AuthCubit>.value(value: _FakeAuthCubit()),
-          ],
-          child: const MaterialApp(home: HomeScreenTv()),
-        ),
-      );
+      await tester.pumpWidget(_homeApp(cubit));
       await tester.pumpAndSettle();
 
       // Hero title + poster card title both contain 'Anime One'.
@@ -106,8 +116,9 @@ void main() {
       expect(find.text('Anime Two'), findsOneWidget);
 
       // At least the hero buttons + rail cards are wrapped in TvFocusable.
-      final focusables =
-          tester.widgetList<TvFocusable>(find.byType(TvFocusable)).toList();
+      final focusables = tester
+          .widgetList<TvFocusable>(find.byType(TvFocusable))
+          .toList();
       expect(focusables, isNotEmpty);
 
       // The very first TvFocusable (hero Play button) carries autofocus=true.
@@ -127,15 +138,7 @@ void main() {
     'poster rail items — with no duplicate-text nodes',
     (tester) async {
       final handle = tester.ensureSemantics();
-      await tester.pumpWidget(
-        MultiBlocProvider(
-          providers: [
-            BlocProvider<HomeCubit>.value(value: cubit),
-            BlocProvider<AuthCubit>.value(value: _FakeAuthCubit()),
-          ],
-          child: const MaterialApp(home: HomeScreenTv()),
-        ),
-      );
+      await tester.pumpWidget(_homeApp(cubit));
       await tester.pumpAndSettle();
 
       // Hero Play / My List / Info buttons each carry their visible label,
@@ -178,4 +181,39 @@ void main() {
       handle.dispose();
     },
   );
+
+  testWidgets('TV home mounts both catalogues offstage when both are cached', (
+    tester,
+  ) async {
+    if (sl.isRegistered<AppMode>()) sl.unregister<AppMode>();
+    sl.registerSingleton<AppMode>(const AppMode(isTv: true));
+
+    const movieItems = [
+      MediaItem(
+        id: 'm1',
+        title: 'Movie One',
+        url: '/m1',
+        type: ProviderType.movie,
+        sourceId: 'test',
+      ),
+    ];
+    cubit.rememberStreamKindRows(StreamKind.anime, [
+      const HomeSection(title: 'Trending Now', items: testItems),
+    ]);
+    cubit.rememberStreamKindRows(StreamKind.movie, [
+      const HomeSection(title: 'Trending Movies', items: movieItems),
+    ]);
+
+    await tester.pumpWidget(_homeApp(cubit));
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey('tv-home-dual-catalog')), findsOneWidget);
+    expect(find.byType(IndexedStack), findsNothing);
+    expect(find.text('Anime One'), findsWidgets);
+    expect(
+      find.text('Movie One', skipOffstage: false),
+      findsWidgets,
+      reason: 'the inactive Movie/TV catalogue must stay mounted offstage',
+    );
+  });
 }

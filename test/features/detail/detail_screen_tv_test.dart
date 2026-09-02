@@ -33,6 +33,7 @@ import 'package:watch_app/core/tv/tv_focusable.dart';
 import 'package:watch_app/core/tv/tv_list_focusable.dart';
 import 'package:watch_app/features/detail/cubit/detail_cubit.dart';
 import 'package:watch_app/features/detail/detail_screen.dart';
+import 'package:watch_app/features/detail/wrong_title_sheet.dart';
 
 // ── Minimal stubs — no Hive, no platform channels ────────────────────────────
 
@@ -494,6 +495,21 @@ void main() {
         find.byKey(const ValueKey('tv-rel-1')),
       );
       expect(rel1, isA<TvFocusable>());
+    },
+  );
+
+  testWidgets(
+    'DetailScreenTv does not show MatchLine for non-zm titles',
+    (tester) async {
+      await tester.pumpWidget(
+        BlocProvider<DetailCubit>.value(
+          value: cubit,
+          child: MaterialApp(home: DetailScreenTv(item: _testItem)),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.byType(MatchLine), findsNothing);
     },
   );
 

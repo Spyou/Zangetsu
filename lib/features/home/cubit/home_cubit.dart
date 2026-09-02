@@ -153,6 +153,7 @@ class HomeCubit extends Cubit<HomeState> {
     }
     final kind = ZModePrefs.streamKind;
     final sw = Stopwatch()..start();
+    final tv = sl.isRegistered<AppMode>() && sl<AppMode>().isTv;
     debugPrint('[home] stream kind → $kind');
     final gen = ++_gen;
     final cached = _cachedRowsForStreamKind(kind);
@@ -163,7 +164,6 @@ class HomeCubit extends Cubit<HomeState> {
       // Phone Home reads cubit.state.sections. TV keeps both catalogues
       // mounted and swaps with [ZModePrefs.revision] — emitting here would
       // rebuild the 10-foot hero + every poster and freeze for seconds.
-      final tv = sl.isRegistered<AppMode>() && sl<AppMode>().isTv;
       if (!tv) {
         emit(HomeState(sections: cached, loading: false));
       }
@@ -191,7 +191,9 @@ class HomeCubit extends Cubit<HomeState> {
     if (isAppleTv && !_repo.hasSource(sourceId)) {
       if (isClosed || gen != _gen) return;
       emit(const HomeState(sections: [], loading: false));
-      debugPrint('[home] load done · source=$sourceId · no provider · ${sw.elapsedMilliseconds}ms');
+      debugPrint(
+        '[home] load done · source=$sourceId · no provider · ${sw.elapsedMilliseconds}ms',
+      );
       return;
     }
 
@@ -225,15 +227,21 @@ class HomeCubit extends Cubit<HomeState> {
           ? await homeFuture.timeout(const Duration(seconds: 20))
           : await homeFuture;
     } on TimeoutException catch (_) {
-      debugPrint('[home] $logLabel · timed out after ${sw.elapsedMilliseconds}ms');
+      debugPrint(
+        '[home] $logLabel · timed out after ${sw.elapsedMilliseconds}ms',
+      );
       sections = const <HomeSection>[];
       offline = true; // nothing came back at all — same story as no route
     } on CloudflareRequiredException catch (e) {
-      debugPrint('[home] $logLabel · needs Cloudflare · ${sw.elapsedMilliseconds}ms');
+      debugPrint(
+        '[home] $logLabel · needs Cloudflare · ${sw.elapsedMilliseconds}ms',
+      );
       sections = const <HomeSection>[];
       cloudflareUrl = e.url;
     } catch (e, st) {
-      debugPrint('[home] $logLabel · failed · $e · ${sw.elapsedMilliseconds}ms\n$st');
+      debugPrint(
+        '[home] $logLabel · failed · $e · ${sw.elapsedMilliseconds}ms\n$st',
+      );
       sections = const <HomeSection>[];
       offline = await isOfflineErrorConfirmed(e);
     }
