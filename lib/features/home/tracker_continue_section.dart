@@ -113,17 +113,23 @@ class TrackerContinueSection extends StatelessWidget {
     required this.items,
     required this.trackerName,
     required this.onOpen,
+    this.onSeeAll,
   });
 
   final List<TrackerListItem> items;
   final String trackerName;
   final TrackerEntryOpen onOpen;
 
+  /// Opens the tracker's full library on the Watching tab — these entries are
+  /// the in-progress slice of it.
+  final VoidCallback? onSeeAll;
+
   @override
   Widget build(BuildContext context) {
     if (items.isEmpty) return const SizedBox.shrink();
     return ContentRow(
       title: context.l10n.homeRowTrackerContinue(trackerName),
+      onSeeAll: onSeeAll,
       itemWidth: _kTrackerCell,
       itemHeight: _kTrackerCellHeight,
       itemCount: items.length,
@@ -307,12 +313,16 @@ class TrackerListSection extends StatelessWidget {
     required this.items,
     required this.trackerName,
     required this.onOpen,
+    this.onSeeAll,
   });
 
   final WatchStatus status;
   final List<TrackerListItem> items;
   final String trackerName;
   final TrackerEntryOpen onOpen;
+
+  /// Opens the tracker's full library on this bucket's own tab.
+  final VoidCallback? onSeeAll;
 
   @override
   Widget build(BuildContext context) {
@@ -324,6 +334,7 @@ class TrackerListSection extends StatelessWidget {
     return ContentRow(
       title: trackerStatusLabel(context, status, reading: reading),
       overline: trackerName,
+      onSeeAll: onSeeAll,
       itemWidth: 116,
       itemHeight: 216,
       itemCount: items.length,

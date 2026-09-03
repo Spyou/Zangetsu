@@ -13,6 +13,8 @@ import '../../core/mihon/mihon_extension_service.dart';
 import '../../core/mihon/mihon_image_provider.dart';
 import '../../core/mode/content_mode.dart';
 import '../../core/mode/content_mode_cubit.dart';
+import '../../core/models/watch_status.dart';
+import '../../core/tracker/tracker_hub.dart';
 import '../../core/notify/notification_service.dart';
 import '../../core/ui/global_messenger.dart';
 import '../../core/update/extension_auto_updater.dart';
@@ -52,6 +54,7 @@ import '../sources/providers_hub_screen.dart';
 import '../sources/zangetsu_sources_screen.dart';
 import '../update/update_dialog.dart';
 import 'continue_section.dart';
+import 'my_list_screen.dart';
 import 'tracker_continue_section.dart';
 import '../../core/ui/content_row.dart';
 import '../../core/ui/featured_carousel.dart';
@@ -732,6 +735,8 @@ class _HomeViewState extends State<_HomeView>
           items: items,
           trackerName: trackerName,
           onOpen: _openTrackerEntry,
+          onSeeAll: () =>
+              _openTrackerList(trackerName, WatchStatus.watching),
         ),
       ),
     NewEpisodesHomeRow(:final items, :final trackerName) => SliverToBoxAdapter(
@@ -748,9 +753,37 @@ class _HomeViewState extends State<_HomeView>
           items: items,
           trackerName: trackerName,
           onOpen: _openTrackerEntry,
+          onSeeAll: () => _openTrackerList(trackerName, status),
         ),
       ),
   };
+
+  /// "See all" on a tracker row: that tracker's whole library, opened on the
+  /// tab the row came from.
+  ///
+  /// Reuses [MyListScreen] rather than a thinner grid, the same way the lists
+  /// hub does — statuses, custom lists, sort and filter all keep working, and
+  /// a purpose-built screen would have quietly lost them.
+  void _openTrackerList(String trackerName, WatchStatus status) {
+    if (!sl.isRegistered<TrackerHub>()) return;
+    Tracker? tracker;
+    for (final t in sl<TrackerHub>().trackers) {
+      if (t.displayName == trackerName) tracker = t;
+    }
+    if (tracker == null) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) => MyListScreen(
+          initialTracker: tracker,
+          // The row was built for the mode Home is in, so the library has to
+          // open on the same kind rather than following the app afterwards.
+          initialKind: sl<ContentModeCubit>().state,
+          initialStatus: status,
+        ),
+      ),
+    );
+  }
 
   /// Open a tracker entry from the home rows. The stub carries no provider,
   /// but it carries the id the metadata catalogue is keyed by, so a tap opens

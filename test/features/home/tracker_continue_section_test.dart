@@ -198,6 +198,53 @@ void main() {
     expect(find.text('EP 5'), findsOneWidget);
   });
 
+  testWidgets('tracker rows offer See All; New Episodes deliberately does not', (
+    tester,
+  ) async {
+    var continueSeeAll = 0;
+    var bucketSeeAll = 0;
+    await _pump(
+      tester,
+      Column(
+        children: [
+          TrackerContinueSection(
+            items: [_entry('One Piece', progress: 4, total: 12)],
+            trackerName: 'AniList',
+            onOpen: (_) {},
+            onSeeAll: () => continueSeeAll++,
+          ),
+          TrackerListSection(
+            status: WatchStatus.planning,
+            items: [_entry('Naruto', status: WatchStatus.planning)],
+            trackerName: 'AniList',
+            onOpen: (_) {},
+            onSeeAll: () => bucketSeeAll++,
+          ),
+        ],
+      ),
+    );
+
+    expect(find.text('See All'), findsNWidgets(2));
+    await tester.tap(find.text('See All').first);
+    await tester.tap(find.text('See All').last);
+    expect(continueSeeAll, 1);
+    expect(bucketSeeAll, 1);
+  });
+
+  testWidgets('New Episodes has no See All', (tester) async {
+    // Not a tracker bucket — a computed slice of Watching, with no library
+    // view behind it to open.
+    await _pump(
+      tester,
+      NewEpisodesSection(
+        items: [_entry('Bleach', progress: 4, total: 24)],
+        trackerName: 'AniList',
+        onOpen: (_) {},
+      ),
+    );
+    expect(find.text('See All'), findsNothing);
+  });
+
   testWidgets('TrackerListSection keeps the anime labels', (tester) async {
     await _pump(
       tester,
