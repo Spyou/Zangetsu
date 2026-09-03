@@ -268,6 +268,29 @@ void main() {
     expect(cubit.state.sections?.length, 1); // the provider load itself lived
   });
 
+  test('a reset load re-reads the library, not the cached parse', () async {
+    // The cache holds PARSED items — titles included — so a reset (source,
+    // provider, or title-language change) has to drop it or the rows keep the
+    // old spelling.
+    final t = _FakeTracker(library: [_entry('One Piece', progress: 1)]);
+    await HomeRowsPrefs.save('anilist::anime', [
+      'tracker:continue',
+      'local:continue',
+      'section:Trending',
+    ]);
+    final cubit = cubitWith(t, sections: [_zmSection('Trending')]);
+    addTearDown(cubit.close);
+
+    await cubit.load();
+    expect(t.fetchCount, 1);
+
+    await cubit.load(); // ordinary revisit still uses the cache
+    expect(t.fetchCount, 1);
+
+    await cubit.load(reset: true);
+    expect(t.fetchCount, 2);
+  });
+
   test('the library is cached: a second load does not re-fetch', () async {
     final t = _FakeTracker(library: [_entry('One Piece', progress: 1)]);
     final cubit = cubitWith(t, sections: [_zmSection('Trending')]);

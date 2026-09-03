@@ -1519,6 +1519,24 @@ abstract class AppLocalizations {
   /// **'Plan to Read'**
   String get statusPlanToRead;
 
+  /// No description provided for @titleLanguage.
+  ///
+  /// In en, this message translates to:
+  /// **'Title language'**
+  String get titleLanguage;
+
+  /// No description provided for @titleLanguageSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'How AniList titles are shown'**
+  String get titleLanguageSubtitle;
+
+  /// No description provided for @titleLanguageNative.
+  ///
+  /// In en, this message translates to:
+  /// **'Native'**
+  String get titleLanguageNative;
+
   /// No description provided for @homeRowsLayout.
   ///
   /// In en, this message translates to:

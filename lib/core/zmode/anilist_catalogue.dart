@@ -3,6 +3,7 @@ import 'package:dio/dio.dart';
 import '../models/episode.dart';
 import '../models/home_section.dart';
 import '../models/media_detail.dart';
+import '../anilist/anilist_title.dart';
 import '../models/media_item.dart';
 import '../models/provider_info.dart';
 import 'anime_catalogue.dart';
@@ -61,7 +62,7 @@ class AniListCatalogue implements AnimeCatalogue {
   /// detail-only half of [_fields] (description, studios, airing schedule)
   /// through it more than doubled the response for data no list cell shows.
   static const _listFields =
-      'id idMal title{romaji english} coverImage{large} bannerImage genres';
+      'id idMal title{romaji english native} coverImage{large} bannerImage genres';
 
   static String _type(ZKind k) => k == ZKind.anime ? 'ANIME' : 'MANGA';
   static String _format(ZKind k) => switch (k) {
@@ -290,8 +291,10 @@ class AniListCatalogue implements AnimeCatalogue {
     final cover = map['coverImage'] as Map? ?? const {};
     return MediaDetail(
       id: c.id,
-      title: (t['romaji'] as String?) ?? (t['english'] as String?) ?? '',
-      englishTitle: t['english'] as String?,
+      title: aniListTitle(t, titleLanguagePref) ?? '',
+      // Whichever variant the display isn't — sources index by both, and
+      // dropping one loses matches.
+      englishTitle: aniListAltTitle(t, aniListTitle(t, titleLanguagePref)),
       cover: (cover['extraLarge'] ?? cover['large']) as String?,
       banner: map['bannerImage'] as String?,
       url: ZmodeIds.showUrl(c),
@@ -416,8 +419,10 @@ class AniListCatalogue implements AnimeCatalogue {
     final t = m['title'] as Map? ?? const {};
     return MediaItem(
       id: c.id,
-      title: (t['romaji'] as String?) ?? (t['english'] as String?) ?? '',
-      englishTitle: t['english'] as String?,
+      title: aniListTitle(t, titleLanguagePref) ?? '',
+      // Whichever variant the display isn't — sources index by both, and
+      // dropping one loses matches.
+      englishTitle: aniListAltTitle(t, aniListTitle(t, titleLanguagePref)),
       cover: (m['coverImage'] as Map?)?['large'] as String?,
       banner: m['bannerImage'] as String?,
       url: ZmodeIds.showUrl(c),

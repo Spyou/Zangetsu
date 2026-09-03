@@ -200,6 +200,58 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// Both providers serve public data without a login, so this changes nothing
   /// about signing in — but MAL can only show YOUR lists once the MAL tracker
   /// is connected, which is easy to miss right after switching to it.
+  /// Label for the title-language row. Romaji and Native are proper nouns for
+  /// what they are, so only the third needs translating.
+  String _titleLanguageLabel(AppLocalizations l10n) =>
+      switch (_providerPrefs?.titleLanguage ?? TitleLanguage.romaji) {
+        TitleLanguage.romaji => 'Romaji',
+        TitleLanguage.english => 'English',
+        TitleLanguage.native => l10n.titleLanguageNative,
+      };
+
+  /// Which of AniList's three titles to show. Seeded from the account on
+  /// sign-in, so most people never open this.
+  Future<void> _pickTitleLanguage() async {
+    final prefs = _providerPrefs;
+    if (prefs == null) return;
+    final l10n = context.l10n;
+    final picked = await showModalBottomSheet<TitleLanguage>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheet) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 14),
+            Text(l10n.titleLanguage, style: AppText.headline),
+            const SizedBox(height: 10),
+            for (final t in TitleLanguage.values)
+              ListTile(
+                title: Text(
+                  switch (t) {
+                    TitleLanguage.romaji => 'Romaji',
+                    TitleLanguage.english => 'English',
+                    TitleLanguage.native => l10n.titleLanguageNative,
+                  },
+                  style: AppText.body,
+                ),
+                trailing: prefs.titleLanguage == t
+                    ? Icon(Icons.check_rounded, color: AppColors.accent)
+                    : null,
+                onTap: () => Navigator.of(sheet).pop(t),
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (picked == null) return;
+    await prefs.setTitleLanguage(picked);
+  }
+
   Future<void> _pickAnimeMetadataProvider() async {
     final prefs = _providerPrefs;
     if (prefs == null) return;
@@ -934,6 +986,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ],
         ),
         onTap: () => _push(const AppearanceScreen()),
+      ),
+      _SettingsEntry(
+        section: SettingsSection.interface,
+        icon: Icons.translate_rounded,
+        title: l10n.titleLanguage,
+        subtitle: l10n.titleLanguageSubtitle,
+        keywords: 'title language romaji english native japanese anilist name',
+        trailing: _value(_titleLanguageLabel(l10n)),
+        onTap: () async {
+          await _pickTitleLanguage();
+          if (mounted) setState(() {});
+        },
       ),
       _SettingsEntry(
         section: SettingsSection.interface,

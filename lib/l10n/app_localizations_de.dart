@@ -744,6 +744,15 @@ class AppLocalizationsDe extends AppLocalizations {
   String get statusPlanToRead => 'Lesen geplant';
 
   @override
+  String get titleLanguage => 'Titelsprache';
+
+  @override
+  String get titleLanguageSubtitle => 'Wie AniList-Titel angezeigt werden';
+
+  @override
+  String get titleLanguageNative => 'Original';
+
+  @override
   String get homeRowsLayout => 'Bearbeitet';
 
   @override

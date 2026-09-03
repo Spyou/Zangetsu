@@ -194,6 +194,11 @@ class HomeCubit extends Cubit<HomeState> {
   /// source's content while the (possibly slow) fetch runs.
   Future<void> load({bool reset = false}) async {
     final gen = ++_gen;
+    // A reset means the whole composition changed — source, provider, or the
+    // title language. The cached library holds PARSED items, titles included,
+    // so keeping it would show the old spelling until something else happened
+    // to invalidate it.
+    if (reset) _trackerCache = null;
     final sourceId = _repo.sourceId;
     emit(
       reset ? const HomeState(loading: true) : state.copyWith(loading: true),

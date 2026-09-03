@@ -2,6 +2,8 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
 import '../models/media_extras.dart';
+import '../zmode/metadata_provider_prefs.dart';
+import 'anilist_title.dart';
 import '../models/person.dart';
 import '../tracker/tracker.dart' show MediaKind;
 
@@ -31,7 +33,7 @@ String mediaBySearchQuery(MediaKind kind) {
 /// AniList's own [mediaId] is unambiguous across anime/manga, unlike idMal.
 String mediaEntryQuery(MediaKind kind) {
   return 'query(\$id:Int){ Media(id:\$id){ ${_totalCountFields(kind)} '
-      'title{ romaji english } '
+      'title{ romaji english native } '
       'nextAiringEpisode{ episode airingAt } '
       'mediaListEntry{ status score(format:POINT_10) progress } } }';
 }
@@ -44,7 +46,7 @@ String searchMediaQuery(MediaKind kind, {bool novelFormat = false}) {
       : '';
   return 'query(\$q:String,\$n:Int){ Page(perPage:\$n){ media(search:\$q,type:${_anilistType(kind)}$formatArg){ '
       'id idMal ${_totalCountFields(kind)} format seasonYear '
-      'title{ romaji english } coverImage{ medium } } } }';
+      'title{ romaji english native } coverImage{ medium } } } }';
 }
 
 /// Query text for the library read-back ([AniListService.fetchList]).
@@ -59,13 +61,32 @@ String mediaListCollectionQuery(MediaKind kind) {
   return 'query(\$u:String){ MediaListCollection(userName:\$u, type:${_anilistType(kind)}){ '
       'lists { status entries { status progress score(format:POINT_10) '
       'updatedAt customLists(asArray:true) '
-      'media { idMal title { romaji english }$formatField '
+      'media { idMal title { romaji english native }$formatField '
       '${_totalCountFields(kind)}$airingField coverImage { large } } } } } }';
 }
 
 /// The signed-in AniList user.
+/// AniList's own `UserTitleLanguage`, mapped onto ours. Its ROMAJI_STYLISED /
+/// ENGLISH_STYLISED / NATIVE_STYLISED variants only change how AniList's site
+/// renders them, so they fold into the same three. Null (or anything new)
+/// leaves the choice to us.
+TitleLanguage? _titleLanguage(String? raw) => switch (raw) {
+  'ROMAJI' || 'ROMAJI_STYLISED' => TitleLanguage.romaji,
+  'ENGLISH' || 'ENGLISH_STYLISED' => TitleLanguage.english,
+  'NATIVE' || 'NATIVE_STYLISED' => TitleLanguage.native,
+  _ => null,
+};
+
 class AniListViewer {
-  const AniListViewer({required this.id, required this.name, this.avatar});
+  const AniListViewer({
+    required this.id,
+    required this.name,
+    this.avatar,
+    this.titleLanguage,
+  });
+
+  /// The account's own title-language setting, when AniList reported one.
+  final TitleLanguage? titleLanguage;
   final int id;
   final String name;
   final String? avatar;
@@ -191,7 +212,8 @@ class AniListApi {
 
   Future<AniListViewer?> viewer() async {
     final d = await _gql(
-      'query{ Viewer{ id name avatar{ medium large } } }',
+      'query{ Viewer{ id name avatar{ medium large } '
+          'options{ titleLanguage } } }',
       const {},
       auth: true,
     );
@@ -202,6 +224,9 @@ class AniListApi {
       id: (v['id'] as num).toInt(),
       name: '${v['name']}',
       avatar: av is Map ? (av['large'] ?? av['medium']) as String? : null,
+      titleLanguage: _titleLanguage(
+        (v['options'] as Map?)?['titleLanguage'] as String?,
+      ),
     );
   }
 
@@ -239,8 +264,8 @@ class AniListApi {
       'node{ id name{full} image{medium} } '
       'voiceActors(language:JAPANESE,sort:[RELEVANCE]){ name{full} } } } '
       'relations{ edges{ relationType '
-      'node{ idMal type format title{romaji english} coverImage{medium} } } } '
-      'recommendations(sort:RATING_DESC,perPage:16){ edges{ node{ mediaRecommendation{ idMal type format title{romaji english} coverImage{medium} } } } }';
+      'node{ idMal type format title{romaji english native} coverImage{medium} } } } '
+      'recommendations(sort:RATING_DESC,perPage:16){ edges{ node{ mediaRecommendation{ idMal type format title{romaji english native} coverImage{medium} } } } }';
 
   /// Manga/novel twin of [_extrasSelection].
   ///
@@ -253,8 +278,8 @@ class AniListApi {
       'staff(sort:[RELEVANCE],perPage:6){ edges{ role '
       'node{ id name{full} image{medium} } } } '
       'relations{ edges{ relationType '
-      'node{ idMal type format title{romaji english} coverImage{medium} } } } '
-      'recommendations(sort:RATING_DESC,perPage:16){ edges{ node{ mediaRecommendation{ idMal type format title{romaji english} coverImage{medium} } } } }';
+      'node{ idMal type format title{romaji english native} coverImage{medium} } } } '
+      'recommendations(sort:RATING_DESC,perPage:16){ edges{ node{ mediaRecommendation{ idMal type format title{romaji english native} coverImage{medium} } } } }';
 
   /// Cast + relations for a MANGA or NOVEL, resolved by title.
   ///
@@ -518,9 +543,7 @@ class AniListApi {
         if (node is! Map || !keepTypes.contains(node['type'])) continue;
         final t = node['title'];
         final romaji = (t is Map) ? t['romaji'] as String? : null;
-        final title = (t is Map)
-            ? (t['english'] ?? t['romaji']) as String?
-            : null;
+        final title = aniListTitle(t, titleLanguagePref);
         if (title == null || title.isEmpty) continue;
         final cover = (node['coverImage'] is Map)
             ? node['coverImage']['medium'] as String?
@@ -557,9 +580,7 @@ class AniListApi {
         // Null when the recommended entry has been deleted from AniList.
         if (rec is! Map || !keepTypes.contains(rec['type'])) continue;
         final t = rec['title'];
-        final title = (t is Map)
-            ? (t['english'] ?? t['romaji']) as String?
-            : null;
+        final title = aniListTitle(t, titleLanguagePref);
         if (title == null || title.isEmpty || !seen.add(title)) continue;
         relations.add(
           MediaRelation(

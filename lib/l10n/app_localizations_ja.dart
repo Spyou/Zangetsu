@@ -726,6 +726,15 @@ class AppLocalizationsJa extends AppLocalizations {
   String get statusPlanToRead => '読書予定';
 
   @override
+  String get titleLanguage => 'タイトルの言語';
+
+  @override
+  String get titleLanguageSubtitle => 'AniList のタイトルの表示方法';
+
+  @override
+  String get titleLanguageNative => '原語';
+
+  @override
   String get homeRowsLayout => '編集中';
 
   @override

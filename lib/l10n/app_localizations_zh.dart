@@ -723,6 +723,15 @@ class AppLocalizationsZh extends AppLocalizations {
   String get statusPlanToRead => '计划阅读';
 
   @override
+  String get titleLanguage => '标题语言';
+
+  @override
+  String get titleLanguageSubtitle => 'AniList 标题的显示方式';
+
+  @override
+  String get titleLanguageNative => '原文';
+
+  @override
   String get homeRowsLayout => '正在编辑';
 
   @override
@@ -5611,6 +5620,15 @@ class AppLocalizationsZhTw extends AppLocalizationsZh {
 
   @override
   String get statusPlanToRead => '打算閱讀';
+
+  @override
+  String get titleLanguage => '標題語言';
+
+  @override
+  String get titleLanguageSubtitle => 'AniList 標題的顯示方式';
+
+  @override
+  String get titleLanguageNative => '原文';
 
   @override
   String get homeRowsLayout => '正在編輯';

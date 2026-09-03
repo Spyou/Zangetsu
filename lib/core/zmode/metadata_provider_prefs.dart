@@ -6,6 +6,15 @@ import '../hive/safe_box.dart';
 /// Who supplies anime/manga metadata.
 enum AnimeProvider { anilist, mal }
 
+/// Which of AniList's titles to show.
+///
+/// AniList carries all three for every entry and its accounts have their own
+/// preference, which we seed from on sign-in. Kept as our own setting rather
+/// than leaning on the API's `userPreferred` field: that only honours the
+/// account setting on AUTHENTICATED requests, so the browse rows (which are
+/// public) would keep drifting back to romaji while the library obeyed it.
+enum TitleLanguage { romaji, english, native }
+
 /// Who supplies movie/TV metadata.
 enum VideoProvider { tmdb, simkl }
 
@@ -54,5 +63,32 @@ class MetadataProviderPrefs {
     if (p == video) return;
     await _box.put(_kVideo, p.name);
     revision.value++;
+  }
+
+  static const String _kTitleLang = 'titleLanguage';
+
+  /// Romaji by default — AniList's own default, and what the browse rows
+  /// always showed. The library used to disagree and show English.
+  TitleLanguage get titleLanguage {
+    final v = _box.get(_kTitleLang) as String?;
+    return TitleLanguage.values.asNameMap()[v] ?? TitleLanguage.romaji;
+  }
+
+  /// Whether the user has ever chosen one. False means [seedTitleLanguage] may
+  /// still adopt the AniList account's setting.
+  bool get titleLanguageChosen => _box.get(_kTitleLang) != null;
+
+  Future<void> setTitleLanguage(TitleLanguage l) async {
+    if (titleLanguageChosen && l == titleLanguage) return;
+    await _box.put(_kTitleLang, l.name);
+    revision.value++;
+  }
+
+  /// Adopt the AniList account's own title language, but only when the user
+  /// has never picked one here — signing in should fix the mismatch this
+  /// setting exists for, and must never overwrite a deliberate choice.
+  Future<void> seedTitleLanguage(TitleLanguage l) async {
+    if (titleLanguageChosen) return;
+    await setTitleLanguage(l);
   }
 }

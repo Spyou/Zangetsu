@@ -5,10 +5,13 @@ import 'package:watch_app/core/models/provider_info.dart';
 import 'package:watch_app/core/models/watch_status.dart';
 import 'package:watch_app/core/tracker/tracker.dart';
 
-// Golden strings: the EXACT query text anilist_api.dart sent for anime before
-// this file existed. Copied verbatim (not retyped) from the pre-refactor
-// source so a change to any of these fails loudly — the whole point of Task
-// 15 is that MediaKind.manga must not perturb the anime request by one byte.
+// Golden strings: the EXACT query text anilist_api.dart sends for anime, so a
+// change to any of them fails loudly — MediaKind.manga must not perturb the
+// anime request by one byte.
+//
+// `native` was added to every title selection on purpose, when the title
+// language became a setting: AniList carries all three, and asking for the
+// third costs nothing on a request already being made.
 const _malIdAnimeGolden =
     r'query($idMal:Int){ Media(idMal:$idMal, type:ANIME){ id episodes } }';
 const _searchAnimeGolden =
@@ -17,13 +20,13 @@ const _searchAnimeGolden =
 // without it a wrong auto-match is invisible and unfixable.
 const _entryAnimeGolden =
     r'query($id:Int){ Media(id:$id){ episodes '
-    r'title{ romaji english } '
+    r'title{ romaji english native } '
     r'nextAiringEpisode{ episode airingAt } '
     r'mediaListEntry{ status score(format:POINT_10) progress } } }';
 const _searchMediaAnimeGolden =
     r'query($q:String,$n:Int){ Page(perPage:$n){ media(search:$q,type:ANIME){ '
     r'id idMal episodes format seasonYear '
-    r'title{ romaji english } coverImage{ medium } } } }';
+    r'title{ romaji english native } coverImage{ medium } } } }';
 // anilist_service.dart — the fetchList() library read. `format` is NOT
 // selected here: it only exists on the manga variant, so the anime request
 // must not grow a field through the manga path (the reason this golden
@@ -44,7 +47,7 @@ const _listCollectionAnimeGolden =
     r'query($u:String){ MediaListCollection(userName:$u, type:ANIME){ '
     r'lists { status entries { status progress score(format:POINT_10) '
     r'updatedAt customLists(asArray:true) '
-    r'media { idMal title { romaji english } episodes '
+    r'media { idMal title { romaji english native } episodes '
     r'nextAiringEpisode{episode} coverImage { large } } } } } }';
 
 /// A `MediaListCollection` response shaped exactly like AniList's — two lists
@@ -173,7 +176,7 @@ void main() {
       // Without `format` there is no way to tell a light novel from a manga.
       expect(
         q,
-        contains('title { romaji english } format chapters volumes coverImage'),
+        contains('title { romaji english native } format chapters volumes coverImage'),
       );
       // Airing is an anime-only concept — the manga read must not ask for it.
       expect(q, isNot(contains('nextAiringEpisode')));
@@ -389,7 +392,12 @@ void main() {
       final novel = out.firstWhere((e) => e.item.malId == 9115);
       expect(novel.item.type, ProviderType.novel);
       expect(novel.item.type, isNot(ProviderType.manga));
-      expect(novel.item.title, 'Mushoku Tensei: Jobless Reincarnation');
+      // Romaji by default, the same as the browse rows. This list used to
+      // hardcode English while browse used romaji, so one show read two ways.
+      expect(novel.item.title, 'Mushoku Tensei');
+      // The other variant survives for source matching — sources index by
+      // both, and a tracker entry with only one spelling matches less.
+      expect(novel.item.englishTitle, 'Mushoku Tensei: Jobless Reincarnation');
       expect(novel.progress, 47);
       expect(novel.status, WatchStatus.watching);
     });

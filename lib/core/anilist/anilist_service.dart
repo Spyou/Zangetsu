@@ -13,6 +13,9 @@ import '../platform/apple_tv.dart';
 import '../tracker/tracker.dart';
 import '../ui/global_messenger.dart';
 import 'anilist_api.dart';
+import '../di/injector.dart';
+import '../zmode/metadata_provider_prefs.dart';
+import 'anilist_title.dart';
 import 'anilist_store.dart';
 
 /// Outcome of a single scrobble attempt.
@@ -60,11 +63,10 @@ List<TrackerListItem> parseAniListCollection(Object? data, MediaKind kind) {
       if (malId != null && !seen.add(malId)) continue; // already have it
 
       final t = media['title'];
-      final english = (t is Map) ? t['english'] as String? : null;
-      final romaji = (t is Map) ? t['romaji'] as String? : null;
-      final title = (english?.isNotEmpty == true)
-          ? english!
-          : (romaji ?? 'Unknown');
+      // This row used to hardcode English while the browse rows used romaji,
+      // so the same show read differently in your library than on Home.
+      final title = aniListTitle(t, titleLanguagePref) ?? 'Unknown';
+      final altTitle = aniListAltTitle(t, title);
       final cover = (media['coverImage'] is Map)
           ? (media['coverImage'] as Map)['large'] as String?
           : null;
@@ -106,6 +108,9 @@ List<TrackerListItem> parseAniListCollection(Object? data, MediaKind kind) {
               ? 'tracker:anilist:manga:$key'
               : 'tracker:anilist:$key',
           title: title,
+          // The variant the display isn't, so a tracker entry can still be
+          // matched to a source that indexes by the other one.
+          englishTitle: altTitle,
           cover: cover,
           url: '',
           type: aniListProviderType(kind, media['format'] as String?),
@@ -211,6 +216,14 @@ class AniListService extends ChangeNotifier implements Tracker {
       return;
     }
     await _store.saveViewer(id: v.id, name: v.name, avatar: v.avatar);
+    // Adopt the account's title language on first sign-in. This is the whole
+    // point of the setting: someone whose AniList reads romaji shouldn't have
+    // to find a switch to stop us showing English. A choice already made here
+    // wins — seedTitleLanguage is a no-op then.
+    final lang = v.titleLanguage;
+    if (lang != null && sl.isRegistered<MetadataProviderPrefs>()) {
+      await sl<MetadataProviderPrefs>().seedTitleLanguage(lang);
+    }
     notifyListeners();
     _resolvePending(true);
     flushPending(); // push anything that queued while disconnected/offline
@@ -508,6 +521,7 @@ class AniListService extends ChangeNotifier implements Tracker {
   Future<List<TrackerListItem>> fetchList() async {
     final user = _store.viewerName;
     if (!isConnected || user == null || user.isEmpty) return const [];
+    await _seedTitleLanguageOnce();
     // Each kind is fetched + caught independently, so a failing manga read
     // can't take the anime list down with it.
     final both = await Future.wait([
@@ -515,6 +529,30 @@ class AniListService extends ChangeNotifier implements Tracker {
       _fetchListOf(MediaKind.manga, user),
     ]);
     return [...both[0], ...both[1]];
+  }
+
+  /// Adopt the AniList account's title language, for accounts that were
+  /// already signed in when the setting arrived.
+  ///
+  /// Seeding at sign-in alone would never reach them — [AniListApi.viewer] is
+  /// called once, on connect. Guarded on the pref never having been chosen, so
+  /// this is one extra request exactly once per install, and none afterwards.
+  bool _titleLanguageSeeded = false;
+  Future<void> _seedTitleLanguageOnce() async {
+    if (_titleLanguageSeeded) return;
+    if (!sl.isRegistered<MetadataProviderPrefs>()) return;
+    final prefs = sl<MetadataProviderPrefs>();
+    if (prefs.titleLanguageChosen) {
+      _titleLanguageSeeded = true; // nothing to adopt, and never ask again
+      return;
+    }
+    try {
+      final lang = (await _api.viewer())?.titleLanguage;
+      if (lang != null) await prefs.seedTitleLanguage(lang);
+      _titleLanguageSeeded = true;
+    } catch (_) {
+      // Offline or AniList down — leave it unseeded and retry next load.
+    }
   }
 
   Future<List<TrackerListItem>> _fetchListOf(MediaKind kind, String user) async {
@@ -654,16 +692,12 @@ class AniListService extends ChangeNotifier implements Tracker {
     final rawScore =
         (entry is Map) ? (entry['score'] as num?)?.toDouble() : null;
     final t = m['title'];
-    final tEnglish = (t is Map) ? t['english'] as String? : null;
-    final tRomaji = (t is Map) ? t['romaji'] as String? : null;
     return TrackerEntry(
       trackerName: displayName,
       onList: entry is Map,
       url: 'https://anilist.co/'
           '${kind == MediaKind.manga ? 'manga' : 'anime'}/$mediaId',
-      // English first, romaji second — the same order the search picker uses,
-      // so a row and its match candidates read the same way.
-      title: (tEnglish?.isNotEmpty == true) ? tEnglish : tRomaji,
+      title: aniListTitle(t, titleLanguagePref),
       status: (entry is Map)
           ? watchStatusFromAniList(entry['status'] as String?)
           : null,
@@ -745,12 +779,8 @@ class AniListService extends ChangeNotifier implements Tracker {
     ];
   }
 
-  static String _bestTitle(Object? t) {
-    if (t is! Map) return 'Unknown';
-    final english = t['english'] as String?;
-    final romaji = t['romaji'] as String?;
-    return (english?.isNotEmpty == true) ? english! : (romaji ?? 'Unknown');
-  }
+  static String _bestTitle(Object? t) =>
+      aniListTitle(t, titleLanguagePref) ?? 'Unknown';
 
   static String? _searchSubtitle(Map m) {
     final format = (m['format'] as String?)?.replaceAll('_', ' ');
