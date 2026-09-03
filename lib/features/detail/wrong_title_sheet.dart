@@ -116,9 +116,11 @@ class _MatchLineState extends State<MatchLine> {
   /// not only where a challenge has already been seen. [CfSolveNeeded] is the
   /// record of one, but it lives in memory and is only written while a search
   /// sweep runs — so gating visibility on it hid the action on a fresh launch
-  /// for sources that plainly need it (AnimePahe). The flag instead badges
-  /// the overflow itself, so "this one needs it" still reads at a glance
-  /// without the shield taking a permanent slot.
+  /// for sources that plainly need it (AnimePahe). The flag instead decides
+  /// WHERE the action sits: a flagged source keeps its shield on the row, one
+  /// tap from a solve, while an unflagged one folds it into the overflow with
+  /// everything else. Solving is the one action here you may do repeatedly,
+  /// and only a flagged source is about to need it.
   Widget _rowActions(BuildContext sheetContext, String id) {
     final flaggedUrl = CfSolveNeeded.urlFor(id);
     // Empty for a plain JS provider with no declared site — which doubles as
@@ -126,6 +128,9 @@ class _MatchLineState extends State<MatchLine> {
     final solveTarget = flaggedUrl ?? sl<SourceRepository>().baseUrlFor(id);
     final showSolve = solveTarget.isNotEmpty;
     final showSignIn = source_actions.webViewUrlFor(id) != null;
+    // A flagged source shows its shield on the row instead, so the menu
+    // must not offer the same solve a second time.
+    final flagged = flaggedUrl != null;
     // The native solver owns the Mihon/Aniyomi/CloudStream cookie jars; plain
     // JS providers run on Dio and need ProviderManager's own solve. Same
     // id-prefix routing source_actions.hasSourceSettings uses.
@@ -138,46 +143,79 @@ class _MatchLineState extends State<MatchLine> {
       future: source_actions.hasSourceSettings(id),
       builder: (context, snapshot) {
         final showSettings = snapshot.data == true;
+        // Solving is in the menu only when the shield isn't already on the row.
+        final menuSolve = showSolve && !flagged;
+        final hasMenu = menuSolve || showSignIn || showSettings;
         // Nothing to offer — no empty menu to tap into.
-        if (!showSolve && !showSignIn && !showSettings) {
-          return const SizedBox.shrink();
-        }
-        const icon = Icon(Icons.more_vert_rounded, size: 18);
-        return PopupMenuButton<VoidCallback>(
-          tooltip: sheetContext.l10n.more,
-          padding: EdgeInsets.zero,
-          icon: flaggedUrl == null
-              ? icon
-              : const Badge(
+        if (!flagged && !hasMenu) return const SizedBox.shrink();
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (flagged)
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                tooltip: sheetContext.l10n.solveCloudflare,
+                icon: const Badge(
                   backgroundColor: _cfOrange,
                   smallSize: 8,
-                  child: icon,
+                  child: Icon(Icons.shield_rounded, size: 18),
                 ),
-          iconColor: flaggedUrl == null ? AppColors.textSecondary : _cfOrange,
-          onSelected: (run) => run(),
-          itemBuilder: (_) => [
-            if (showSolve)
-              PopupMenuItem<VoidCallback>(
-                value: () => _solveCloudflare(id, solveTarget, isJs: isJs),
-                child: Text(sheetContext.l10n.solveCloudflare),
+                color: _cfOrange,
+                onPressed: () => _solveCloudflare(id, solveTarget, isJs: isJs),
               ),
-            if (showSignIn)
-              PopupMenuItem<VoidCallback>(
-                value: () => source_actions.openSourceWebView(id),
-                child: Text(sheetContext.l10n.signInToSource),
-              ),
-            if (showSettings)
-              PopupMenuItem<VoidCallback>(
-                value: () => source_actions.openSourceSettings(
-                  sheetContext,
-                  id,
-                  sl<SourceRepository>().displayName(id),
-                ),
-                child: Text(sheetContext.l10n.sourceSettings),
+            if (hasMenu)
+              _overflow(
+                sheetContext,
+                id,
+                solveTarget,
+                isJs: isJs,
+                showSolve: menuSolve,
+                showSignIn: showSignIn,
+                showSettings: showSettings,
               ),
           ],
         );
       },
+    );
+  }
+
+  /// The rare per-source actions, behind one button.
+  Widget _overflow(
+    BuildContext sheetContext,
+    String id,
+    String solveTarget, {
+    required bool isJs,
+    required bool showSolve,
+    required bool showSignIn,
+    required bool showSettings,
+  }) {
+    return PopupMenuButton<VoidCallback>(
+      tooltip: sheetContext.l10n.more,
+      padding: EdgeInsets.zero,
+      icon: const Icon(Icons.more_vert_rounded, size: 18),
+      iconColor: AppColors.textSecondary,
+      onSelected: (run) => run(),
+      itemBuilder: (_) => [
+        if (showSolve)
+          PopupMenuItem<VoidCallback>(
+            value: () => _solveCloudflare(id, solveTarget, isJs: isJs),
+            child: Text(sheetContext.l10n.solveCloudflare),
+          ),
+        if (showSignIn)
+          PopupMenuItem<VoidCallback>(
+            value: () => source_actions.openSourceWebView(id),
+            child: Text(sheetContext.l10n.signInToSource),
+          ),
+        if (showSettings)
+          PopupMenuItem<VoidCallback>(
+            value: () => source_actions.openSourceSettings(
+              sheetContext,
+              id,
+              sl<SourceRepository>().displayName(id),
+            ),
+            child: Text(sheetContext.l10n.sourceSettings),
+          ),
+      ],
     );
   }
 
