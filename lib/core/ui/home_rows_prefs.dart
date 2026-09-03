@@ -37,18 +37,26 @@ class HomeRowsPrefs {
       (_boxOrNull?.get(layoutKey) as List?)?.cast<String>();
 
   /// Persist the full arrangement for [layoutKey] (order + `!` marks).
-  static Future<void> save(String layoutKey, List<String> entries) async {
+  ///
+  /// Hive applies the value to the open box synchronously; only the disk flush
+  /// is asynchronous, and it is deliberately not awaited — the revision bump
+  /// below (and any reload it triggers) must observe the new value now, not
+  /// race the flush.
+  static Future<void> save(String layoutKey, List<String> entries) {
     final box = _boxOrNull;
-    if (box == null) return;
-    await box.put(layoutKey, entries);
+    if (box == null) return Future.value();
+    box.put(layoutKey, entries);
     revision.value++;
+    return Future.value();
   }
 
-  /// Back to the shipped arrangement for one layout.
-  static Future<void> resetFor(String layoutKey) async {
+  /// Back to the shipped arrangement for one layout. Same flush discipline as
+  /// [save].
+  static Future<void> resetFor(String layoutKey) {
     final box = _boxOrNull;
-    if (box == null) return;
-    await box.delete(layoutKey);
+    if (box == null) return Future.value();
+    box.delete(layoutKey);
     revision.value++;
+    return Future.value();
   }
 }

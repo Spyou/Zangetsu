@@ -413,6 +413,12 @@ final settingsLeaves = <SettingsLeaf>[
     (l) => l.animationStyle,
     keywords: 'transition motion',
   ),
+  SettingsLeaf(
+    LeafParent.appearance,
+    (l) => l.homeRows,
+    keywords: 'home screen rows reorder hide customize arrangement sections '
+        'discover tracker continue watching',
+  ),
 
   // Advanced → PrivacySettingsScreen
   SettingsLeaf(

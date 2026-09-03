@@ -4,6 +4,7 @@ import '../../core/ui/settings_widgets.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 
 import '../../core/app_icon/app_icon_service.dart';
+import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
 import '../../core/playback/playback_prefs.dart';
 import '../../core/theme/app_colors.dart';
@@ -11,6 +12,7 @@ import '../../core/theme/app_text.dart';
 import '../../core/theme/theme_controller.dart';
 import '../../l10n/l10n.dart';
 import '../../core/ui/animation_prefs.dart';
+import 'home_rows_screen.dart';
 
 /// Dedicated Appearance page (Aniyomi-style): accent colour as preview cards
 /// (+ a Custom colour picker), a pure-black AMOLED toggle, and the Home banner
@@ -184,6 +186,17 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
                   subtitle: _animStyleBlurb(context),
                   trailing: Text(_animStyleName(context), style: AppText.caption),
                   onTap: _pickAnimStyle,
+                ),
+              // Phone-only: TV mirrors the saved arrangement but has no
+              // editor of its own.
+              if (!sl<AppMode>().isTv)
+                SettingsTile(
+                  icon: Icons.view_agenda_outlined,
+                  title: context.l10n.homeRows,
+                  subtitle: context.l10n.homeRowsSubtitle,
+                  onTap: () => Navigator.of(
+                    context,
+                  ).push(MaterialPageRoute<void>(builder: (_) => const HomeRowsScreen())),
                 ),
             ],
           ),
