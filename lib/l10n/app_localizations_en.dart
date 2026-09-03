@@ -1144,6 +1144,20 @@ class AppLocalizationsEn extends AppLocalizations {
       'A jump-forward button in the player (any video)';
 
   @override
+  String get seekButton => 'Show video seek buttons';
+
+  @override
+  String get seekButtonDescription =>
+      'Show forward and backward seek buttons in the player';
+
+  @override
+  String get seekButtonDuration => 'Seek Duration';
+
+  @override
+  String get selectSeekButtonDurationDescription =>
+      'Select the seek duration for the seek buttons';
+
+  @override
   String get nativeTVPlayer => 'Native TV player';
 
   @override
