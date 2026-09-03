@@ -21,6 +21,7 @@ import 'core/notify/cs_notify.dart';
 import 'core/notify/notification_service.dart';
 import 'core/notify/push_service.dart';
 import 'core/ui/route_observer.dart';
+import 'core/ui/home_rows_prefs.dart';
 import 'core/notify/subscription_checker.dart';
 import 'core/notify/subscription_store.dart';
 import 'core/playback/category_store.dart';
@@ -309,6 +310,14 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
     if (mounted) setState(() {});
   }
 
+  /// A home-rows arrangement was saved or reset: re-merge the layout Home
+  /// already fetched (no refetch, no scroll reset — provider data is
+  /// unchanged, only its arrangement is).
+  void _onHomeRowsChanged() {
+    if (sl.isRegistered<HomeCubit>()) sl<HomeCubit>().load(reset: false);
+    if (mounted) setState(() {});
+  }
+
   @override
   void initState() {
     super.initState();
@@ -317,6 +326,7 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
     LocaleController.revision.addListener(_onLocaleChanged);
     ZModePrefs.revision.addListener(_onZModeChanged);
     MetadataProviderPrefs.revision.addListener(_onZModeChanged);
+    HomeRowsPrefs.revision.addListener(_onHomeRowsChanged);
     _watchBoot(_boot);
   }
 
@@ -326,6 +336,7 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
     LocaleController.revision.removeListener(_onLocaleChanged);
     ZModePrefs.revision.removeListener(_onZModeChanged);
     MetadataProviderPrefs.revision.removeListener(_onZModeChanged);
+    HomeRowsPrefs.revision.removeListener(_onHomeRowsChanged);
     WidgetsBinding.instance.removeObserver(this);
     _tvShellGate.dispose();
     super.dispose();

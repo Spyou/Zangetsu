@@ -52,6 +52,7 @@ import '../state/active_source_cubit.dart';
 import '../locale/locale_controller.dart';
 import '../zmode/zmode_module.dart';
 import '../zmode/zmode_prefs.dart';
+import '../ui/home_rows_prefs.dart';
 import '../theme/theme_controller.dart';
 import '../metadata/episode_metadata_service.dart';
 import '../metadata/metadata_enrichment.dart';
@@ -300,6 +301,7 @@ Future<void> initDependencies() async {
   await ThemeController.init();
   await LocaleController.init();
   await ZModePrefs.init();
+  await HomeRowsPrefs.init();
   await DownloadPrefs.init();
   sl.registerSingleton<DownloadPrefs>(DownloadPrefs());
   await TorrentPrefs.init();
