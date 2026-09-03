@@ -44,11 +44,21 @@ class HomeState extends Equatable {
   /// which sent people to reinstall extensions over a dropped connection.
   final bool offline;
 
-  /// Items that drive the hero carousel — the first section's items. Empty
-  /// until something loads.
-  List<MediaItem> get heroItems => (sections != null && sections!.isNotEmpty)
-      ? sections!.first.items
-      : const [];
+  /// Items that drive the hero carousel. Prefers the Trending section — the
+  /// banner is a trending spotlight, same as every catalogue names one (Simkl
+  /// prefixes its titles, hence the startsWith) — so the opening row can be
+  /// something else (recently released) without changing what the banner
+  /// shows. Falls back to the first section for sources with no Trending row
+  /// (CloudStream feeds, Aniyomi/Mihon Popular), which is every non-Z source.
+  /// Empty until something loads.
+  List<MediaItem> get heroItems {
+    final s = sections;
+    if (s == null || s.isEmpty) return const [];
+    for (final section in s) {
+      if (section.title.startsWith('Trending')) return section.items;
+    }
+    return s.first.items;
+  }
 
   HomeState copyWith({
     List<HomeSection>? sections,

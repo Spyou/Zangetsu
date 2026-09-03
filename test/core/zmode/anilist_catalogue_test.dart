@@ -47,9 +47,10 @@ void main() {
     });
     final rows = await cat.home(ZKind.anime);
     expect(calls, 1); // one round-trip for the whole page, not one per row
-    expect(rows.length, 7); // Trending, this season, next season, all-time
-                             // popular, top rated, Action, Romance
-    expect(rows.first.title, 'Trending');
+    expect(rows.length, 8); // Recently released, Trending, this season, next
+                             // season, all-time popular, top rated, Action,
+                             // Romance
+    expect(rows.first.title, 'Recently released');
     final item = rows.first.items.single;
     expect(item.url, 'zm://anime/mal:100');
     expect(item.sourceId, ZmodeIds.sourceId);
@@ -68,7 +69,57 @@ void main() {
     });
     final rows = await cat.home(ZKind.manga);
     expect(calls, 1);
-    expect(rows.length, 5); // Trending, Popular, Top rated, Action, Romance
+    expect(rows.length, 6); // Recently released, Trending, Popular,
+                            // Top rated, Action, Romance
+  });
+
+  // START_DATE_DESC on its own sorts NOT_YET_RELEASED titles to the top —
+  // announced entries have a null start date, so the row filled with
+  // "(Provisional Title)" placeholders instead of anything released. The
+  // status filter and the date bound are what make it a RECENT row, so both
+  // are pinned rather than left to whoever edits the row list next.
+  test('the recently-released row excludes anything not out yet', () async {
+    for (final kind in ZKind.values) {
+      late String query;
+      final cat = AniListCatalogue((q, v) async {
+        query = q;
+        return _aliasedResponse(q);
+      });
+      final rows = await cat.home(kind);
+      final i = rows.indexWhere((r) => r.title == 'Recently released');
+      expect(i, isNot(-1), reason: '$kind has no recently-released row');
+
+      final args = rows[i].more!.categoryId!;
+      expect(args, contains('sort:START_DATE_DESC'));
+      expect(args, contains('status_in:[RELEASING,FINISHED]'));
+      final now = DateTime.now();
+      final today = now.year * 10000 + now.month * 100 + now.day;
+      expect(args, contains('startDate_lesser:$today'));
+      // and it really is the args the request went out with
+      expect(query, contains(args));
+    }
+  });
+
+  // AniList's light-novel entries carry far smaller popularity numbers than
+  // manga, so sharing manga's floor pushed the novel row back to titles years
+  // old — verified against the live API. Novels need a lower bar to show the
+  // current month.
+  test('novels use a lower popularity floor than manga', () async {
+    int floorFor(List<dynamic> rows) {
+      final args = rows
+          .firstWhere((r) => r.title == 'Recently released')
+          .more!
+          .categoryId! as String;
+      return int.parse(
+        RegExp(r'popularity_greater:(\d+)').firstMatch(args)!.group(1)!,
+      );
+    }
+
+    final cat = AniListCatalogue((q, v) async => _aliasedResponse(q));
+    expect(
+      floorFor(await cat.home(ZKind.novel)),
+      lessThan(floorFor(await cat.home(ZKind.manga))),
+    );
   });
 
   test('a malformed/partial multi-row response still yields the rows it can',
@@ -83,7 +134,8 @@ void main() {
     });
     final rows = await cat.home(ZKind.anime);
     expect(rows.length, 1);
-    expect(rows.single.title, 'Trending');
+    // r0 is the opening row — the recently-released one.
+    expect(rows.single.title, 'Recently released');
   });
 
   test('a null response yields an empty home, not a throw', () async {

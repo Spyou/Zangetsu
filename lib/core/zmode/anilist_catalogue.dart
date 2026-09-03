@@ -89,8 +89,28 @@ class AniListCatalogue implements AnimeCatalogue {
       7 || 8 || 9 => 'SUMMER',
       _ => 'FALL',
     };
+    // AniList's FuzzyDateInt form. Needed because START_DATE_DESC alone puts
+    // NOT_YET_RELEASED titles first — announced entries with a null start date
+    // sort above everything, so the row filled up with "(Provisional Title)"
+    // instead of anything that has actually come out. The date bound plus the
+    // status filter is what makes it a RECENT row rather than an upcoming one.
+    final today = now.year * 10000 + now.month * 100 + now.day;
+    // Popularity floor: AniList carries a long tail of doujin/obscure entries
+    // that are genuinely the most recent thing published and genuinely not
+    // worth a home row.
+    String recent(int minPopularity) =>
+        'sort:START_DATE_DESC,status_in:[RELEASING,FINISHED],'
+        'popularity_greater:$minPopularity,startDate_lesser:$today';
     if (k != ZKind.anime) {
       return [
+        // Recently released leads; the opening row also feeds the hero
+        // banner, which Home repeats as a row (firstRepeatsAsRow), so it
+        // shows BOTH places — spotlight on top, row right under it.
+        // Light novels carry far smaller popularity numbers than manga, so
+        // the manga floor pushed this row back to titles years old. Verified
+        // against the live API: >1000 returned 2023 entries, >50 returns the
+        // current month.
+        ('Recently released', recent(k == ZKind.novel ? 50 : 1000)),
         ('Trending', 'sort:TRENDING_DESC'),
         ('Popular', 'sort:POPULARITY_DESC'),
         ('Top rated', 'sort:SCORE_DESC'),
@@ -105,6 +125,7 @@ class AniListCatalogue implements AnimeCatalogue {
       _ => ('WINTER', now.year + 1),
     };
     return [
+      ('Recently released', recent(2000)),
       ('Trending', 'sort:TRENDING_DESC'),
       (
         'Popular this season',

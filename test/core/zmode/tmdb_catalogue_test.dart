@@ -29,11 +29,12 @@ Map<String, dynamic> _tv({int id = 1399, String name = 'Game of Thrones'}) => {
 /// mirrors its private `_rows` so a test can assert the returned order
 /// without depending on internals.
 const _rowPaths = [
+  '/movie/now_playing',
+  '/tv/on_the_air',
   '/trending/all/week',
   '/movie/popular',
   '/tv/popular',
   '/movie/top_rated',
-  '/movie/now_playing',
   '/movie/upcoming',
 ];
 
@@ -41,17 +42,27 @@ void main() {
   test('home rows mix movies and tv, both typed as movie sources, banner carried', () async {
     final cat = TmdbCatalogue((p, q) async => {'results': [_movie(), _tv()]});
     final rows = await cat.home();
-    expect(rows.length, 6);
-    final items = rows.first.items;
-    expect(items[0].url, 'zm://movie/tmdb:438631');
-    expect(items[0].tmdbId, 438631);
-    expect(items[0].tmdbIsTv, isFalse);
-    expect(items[0].type, ProviderType.movie);
-    expect(items[0].cover, 'https://image.tmdb.org/t/p/w500/p.jpg');
-    expect(items[0].banner, 'https://image.tmdb.org/t/p/w780/b.jpg');
-    expect(items[1].url, 'zm://tv/tmdb:1399');
-    expect(items[1].tmdbIsTv, isTrue);
-    expect(items[1].title, 'Game of Thrones');
+    expect(rows.length, 7);
+    // Only mixed endpoints (/trending/all, /search/multi) keep the items'
+    // own media_type; /movie/* and /tv/* rows say what they hold. This mock
+    // feeds every path a movie and a tv entry, so the mixed-typing
+    // assertions aim at the Trending row — rows.first is Now playing.
+    final trending = rows
+        .firstWhere((r) => r.title == 'Trending')
+        .items;
+    expect(trending[0].url, 'zm://movie/tmdb:438631');
+    expect(trending[0].tmdbId, 438631);
+    expect(trending[0].tmdbIsTv, isFalse);
+    expect(trending[0].type, ProviderType.movie);
+    expect(trending[0].cover, 'https://image.tmdb.org/t/p/w500/p.jpg');
+    expect(trending[0].banner, 'https://image.tmdb.org/t/p/w780/b.jpg');
+    expect(trending[1].url, 'zm://tv/tmdb:1399');
+    expect(trending[1].tmdbIsTv, isTrue);
+    expect(trending[1].title, 'Game of Thrones');
+    // …while the /movie/now_playing row forces movie typing on everything,
+    // even the tv entry the unrealistic mock hands it.
+    expect(rows.first.title, 'Now playing');
+    expect(rows.first.items[1].tmdbIsTv, isFalse);
   });
 
   test('home fires every row request concurrently, not one at a time', () async {
@@ -65,7 +76,7 @@ void main() {
     });
 
     final future = cat.home();
-    // All six requests fired before any of them resolved — a serialized
+    // All seven requests fired before any of them resolved — a serialized
     // (for-loop + await) implementation would have only issued the first.
     expect(calledPaths.toSet(), _rowPaths.toSet());
 
@@ -76,8 +87,8 @@ void main() {
 
     // Future.wait preserves input order regardless of completion order.
     expect(rows.map((r) => r.title).toList(), [
-      'Trending', 'Popular movies', 'Popular series', 'Top rated',
-      'Now playing', 'Upcoming',
+      'Now playing', 'Airing now', 'Trending', 'Popular movies',
+      'Popular series', 'Top rated', 'Upcoming',
     ]);
   });
 
