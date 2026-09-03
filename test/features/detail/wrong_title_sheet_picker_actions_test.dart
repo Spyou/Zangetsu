@@ -208,8 +208,9 @@ void main() {
       findsOneWidget,
       reason: 'the actions must sit on the site-backed row, not the JS one',
     );
-    // An unflagged source's overflow is the plain one; the badge means a
-    // challenge was actually seen.
+    // Unflagged: nothing on the row but the overflow, and no badge — the
+    // badge means a challenge was actually seen.
+    expect(inSheet(find.byIcon(Icons.shield_rounded)), findsNothing);
     expect(inSheet(find.byType(Badge)), findsNothing);
 
     await t.tap(inSheet(find.byIcon(Icons.more_vert_rounded)));
@@ -217,10 +218,10 @@ void main() {
     expect(find.text('Solve Cloudflare'), findsOneWidget);
   });
 
-  // Task 20: a source CfSolveNeeded flagged gets a visually distinct overflow
-  // (badged), not the same plain one every base-url row already has —
+  // Task 20: a source CfSolveNeeded flagged gets a visually distinct control —
   // otherwise there's nothing telling the user THIS one actually needs a
-  // solve.
+  // solve. It also comes back OUT of the overflow: solving is the one action
+  // here you may do repeatedly, and only a flagged source is about to need it.
   testWidgets(
       'a source flagged by CfSolveNeeded gets a distinct badged overflow',
       (t) async {
@@ -241,10 +242,16 @@ void main() {
     await t.tap(find.textContaining('HiAnime'));
     await t.pumpAndSettle();
 
-    // Still one overflow (ani:1's — the only row this harness registers), now
-    // wearing the flagged badge instead of the plain unflagged one.
-    expect(inSheet(find.byIcon(Icons.more_vert_rounded)), findsOneWidget);
+    // The shield is back on the row, badged, one tap from a solve.
+    expect(inSheet(find.byIcon(Icons.shield_rounded)), findsOneWidget);
     expect(inSheet(find.byType(Badge)), findsOneWidget);
+    // The overflow stays (this source has settings) but is plain, and must
+    // not offer the same solve a second time.
+    expect(inSheet(find.byIcon(Icons.more_vert_rounded)), findsOneWidget);
+    await t.tap(inSheet(find.byIcon(Icons.more_vert_rounded)));
+    await t.pumpAndSettle();
+    expect(find.text('Solve Cloudflare'), findsNothing);
+    expect(find.text('Source settings'), findsOneWidget);
   });
 }
 
