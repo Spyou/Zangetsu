@@ -103,23 +103,29 @@ class _MatchLineState extends State<MatchLine> {
   // reads as the same kind of "attention needed" everywhere it appears.
   static const Color _cfOrange = Color(0xFFF48120);
 
-  /// Per-source controls on a picker row: solve Cloudflare, sign in to the
-  /// source's site, and open that source's own settings. Each is shown only
-  /// when it will actually do something, and none of them changes the
-  /// selection — tapping the row body does.
+  /// Per-source controls on a picker row, behind a single overflow: solve
+  /// Cloudflare, sign in to the source's site, and open that source's own
+  /// settings. Each entry is offered only when it will actually do something,
+  /// and none of them changes the selection — tapping the row body does.
+  ///
+  /// One button rather than three icons: these are rare, per-source actions
+  /// (you sign in to a source about twice, ever) and the row has a name to
+  /// show. Same shape the browse screen's toolbar already uses.
   ///
   /// The solve action is offered wherever there is a site to solve AGAINST,
   /// not only where a challenge has already been seen. [CfSolveNeeded] is the
   /// record of one, but it lives in memory and is only written while a search
   /// sweep runs — so gating visibility on it hid the action on a fresh launch
-  /// for sources that plainly need it (AnimePahe). The flag instead drives
-  /// the shield's PROMINENCE, below.
+  /// for sources that plainly need it (AnimePahe). The flag instead badges
+  /// the overflow itself, so "this one needs it" still reads at a glance
+  /// without the shield taking a permanent slot.
   Widget _rowActions(BuildContext sheetContext, String id) {
     final flaggedUrl = CfSolveNeeded.urlFor(id);
     // Empty for a plain JS provider with no declared site — which doubles as
-    // the honest signal that there is nothing to solve, so it gets no shield.
+    // the honest signal that there is nothing to solve, so it gets no entry.
     final solveTarget = flaggedUrl ?? sl<SourceRepository>().baseUrlFor(id);
     final showSolve = solveTarget.isNotEmpty;
+    final showSignIn = source_actions.webViewUrlFor(id) != null;
     // The native solver owns the Mihon/Aniyomi/CloudStream cookie jars; plain
     // JS providers run on Dio and need ProviderManager's own solve. Same
     // id-prefix routing source_actions.hasSourceSettings uses.
@@ -128,74 +134,77 @@ class _MatchLineState extends State<MatchLine> {
         !id.startsWith('mihon:') &&
         !id.startsWith('cs:') &&
         !id.startsWith('lnr:');
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        if (showSolve)
-          IconButton(
-            visualDensity: VisualDensity.compact,
-            tooltip: sheetContext.l10n.solveCloudflare,
-            // Orange + badged only when a challenge was actually seen, so
-            // "this one needs it" still reads differently from "this one
-            // offers it".
-            icon: flaggedUrl == null
-                ? const Icon(Icons.shield_rounded, size: 18)
-                : const Badge(
-                    backgroundColor: _cfOrange,
-                    smallSize: 8,
-                    child: Icon(Icons.shield_rounded, size: 18),
-                  ),
-            color: flaggedUrl == null ? AppColors.textSecondary : _cfOrange,
-            onPressed: () async {
-              // Resolve the target at TAP time, not render time: a CloudStream
-              // plugin rewrites its own mainUrl once it has fetched its live
-              // domain list, and a user-set domain override outranks both.
-              final target =
-                  await sl<SourceRepository>().cfSolveTargetFor(id) ??
-                  solveTarget;
-              if (target.isEmpty) return;
-              if (isJs) {
-                await sl<ProviderManager>().solveCloudflareForHost(
-                  Uri.parse(target).host,
-                  target,
-                );
-              } else {
-                await MihonExtensionService.solveCloudflare(target);
-              }
-              // Solving clears the flag — re-run the match + detail load so
-              // the user sees the result instead of retrying by hand.
-              if (!mounted) return;
-              await _cubit.load();
-              if (mounted) _refreshAfterMatchChange();
-            },
-          ),
-        if (source_actions.webViewUrlFor(id) != null)
-          IconButton(
-            visualDensity: VisualDensity.compact,
-            tooltip: sheetContext.l10n.signInToSource,
-            icon: const Icon(Icons.login_rounded, size: 18),
-            color: AppColors.textSecondary,
-            onPressed: () => source_actions.openSourceWebView(id),
-          ),
-        FutureBuilder<bool>(
-          future: source_actions.hasSourceSettings(id),
-          builder: (context, snapshot) {
-            if (snapshot.data != true) return const SizedBox.shrink();
-            return IconButton(
-              visualDensity: VisualDensity.compact,
-              tooltip: sheetContext.l10n.sourceSettings,
-              icon: const Icon(Icons.tune_rounded, size: 18),
-              color: AppColors.textSecondary,
-              onPressed: () => source_actions.openSourceSettings(
-                sheetContext,
-                id,
-                sl<SourceRepository>().displayName(id),
+    return FutureBuilder<bool>(
+      future: source_actions.hasSourceSettings(id),
+      builder: (context, snapshot) {
+        final showSettings = snapshot.data == true;
+        // Nothing to offer — no empty menu to tap into.
+        if (!showSolve && !showSignIn && !showSettings) {
+          return const SizedBox.shrink();
+        }
+        const icon = Icon(Icons.more_vert_rounded, size: 18);
+        return PopupMenuButton<VoidCallback>(
+          tooltip: sheetContext.l10n.more,
+          padding: EdgeInsets.zero,
+          icon: flaggedUrl == null
+              ? icon
+              : const Badge(
+                  backgroundColor: _cfOrange,
+                  smallSize: 8,
+                  child: icon,
+                ),
+          iconColor: flaggedUrl == null ? AppColors.textSecondary : _cfOrange,
+          onSelected: (run) => run(),
+          itemBuilder: (_) => [
+            if (showSolve)
+              PopupMenuItem<VoidCallback>(
+                value: () => _solveCloudflare(id, solveTarget, isJs: isJs),
+                child: Text(sheetContext.l10n.solveCloudflare),
               ),
-            );
-          },
-        ),
-      ],
+            if (showSignIn)
+              PopupMenuItem<VoidCallback>(
+                value: () => source_actions.openSourceWebView(id),
+                child: Text(sheetContext.l10n.signInToSource),
+              ),
+            if (showSettings)
+              PopupMenuItem<VoidCallback>(
+                value: () => source_actions.openSourceSettings(
+                  sheetContext,
+                  id,
+                  sl<SourceRepository>().displayName(id),
+                ),
+                child: Text(sheetContext.l10n.sourceSettings),
+              ),
+          ],
+        );
+      },
     );
+  }
+
+  /// Runs a Cloudflare solve for [id] and reloads the match, so the user sees
+  /// the result instead of having to retry by hand.
+  Future<void> _solveCloudflare(
+    String id,
+    String fallbackTarget, {
+    required bool isJs,
+  }) async {
+    // Resolve the target at TAP time, not render time: a CloudStream plugin
+    // rewrites its own mainUrl once it has fetched its live domain list, and
+    // a user-set domain override outranks both.
+    final target =
+        await sl<SourceRepository>().cfSolveTargetFor(id) ?? fallbackTarget;
+    if (target.isEmpty) return;
+    if (isJs) {
+      await sl<ProviderManager>().solveCloudflareForHost(
+        Uri.parse(target).host,
+        target,
+      );
+    } else {
+      await MihonExtensionService.solveCloudflare(target);
+    }
+    if (!mounted) return;
+    await _cubit.load();
+    if (mounted) _refreshAfterMatchChange();
   }
 
   Future<void> _fix(String sourceId) async {

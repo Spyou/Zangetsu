@@ -124,7 +124,11 @@ void main() {
     await dir.delete(recursive: true);
   });
 
-  testWidgets('a source with settings shows the gear, one without does not', (t) async {
+  // The per-source controls live behind one overflow now (three icons on a
+  // row that also has to show a name was too many for actions used about
+  // twice per source), so every assertion here opens the menu first.
+  testWidgets('a source with settings offers it in the overflow, one without does not',
+      (t) async {
     await t.runAsync(
       () => sl<SourceMatcher>().resolve(fma, title: 'Fullmetal Alchemist (2003)'),
     );
@@ -137,10 +141,17 @@ void main() {
     // The shared picker has no title row — its tabs identify it.
     expect(find.text('Movies/Series'), findsOneWidget);
 
-    expect(inSheet(find.byIcon(Icons.tune_rounded)), findsOneWidget);
+    // allanime is a JS provider with no site and no settings, so it gets no
+    // overflow at all rather than an empty menu — ani:1's is the only one.
+    expect(inSheet(find.byIcon(Icons.more_vert_rounded)), findsOneWidget);
+
+    await t.tap(inSheet(find.byIcon(Icons.more_vert_rounded)));
+    await t.pumpAndSettle();
+    expect(find.text('Source settings'), findsOneWidget);
   });
 
-  testWidgets('tapping the gear opens settings but does not change the selection', (t) async {
+  testWidgets('choosing Source settings opens them but does not change the selection',
+      (t) async {
     await t.runAsync(
       () => sl<SourceMatcher>().resolve(fma, title: 'Fullmetal Alchemist (2003)'),
     );
@@ -153,9 +164,10 @@ void main() {
     await t.pumpAndSettle();
 
     final before = prefs.get(fma.kind);
-    expect(inSheet(find.byIcon(Icons.tune_rounded)), findsOneWidget);
 
-    await t.tap(inSheet(find.byIcon(Icons.tune_rounded)));
+    await t.tap(inSheet(find.byIcon(Icons.more_vert_rounded)));
+    await t.pumpAndSettle();
+    await t.tap(find.text('Source settings'));
     await t.pumpAndSettle();
 
     // The sheet is still open (only a row's own body pops it) and the
@@ -167,10 +179,10 @@ void main() {
   });
 
   // Home already routes Mihon, Aniyomi and LNReader challenges through the one
-  // solver, so scoping the picker's shield to `mihon:` hid a control that
+  // solver, so scoping the picker's solve to `mihon:` hid a control that
   // works. The gate is the source's base url: site-backed ecosystems have one,
   // CloudStream/JS items are absolute and have none.
-  testWidgets('the Cloudflare shield follows the base url, not the ecosystem',
+  testWidgets('the Cloudflare entry follows the base url, not the ecosystem',
       (t) async {
     await t.runAsync(
       () => sl<SourceMatcher>().resolve(fma, title: 'Fullmetal Alchemist (2003)'),
@@ -182,31 +194,35 @@ void main() {
     await t.tap(find.textContaining('HiAnime'));
     await t.pumpAndSettle();
 
-    // ani:1 is site-backed and gets the shield; allanime is a JS provider
+    // ani:1 is site-backed and gets the overflow; allanime is a JS provider
     // with no base url and must not — "nothing to solve against" is the only
     // thing that hides it, not "not currently blocked".
-    expect(inSheet(find.byIcon(Icons.shield_rounded)), findsOneWidget);
+    expect(inSheet(find.byIcon(Icons.more_vert_rounded)), findsOneWidget);
     // The shared picker builds its own row widget, not a ListTile.
-    final shieldRow = find.ancestor(
-      of: inSheet(find.byIcon(Icons.shield_rounded)),
+    final actionRow = find.ancestor(
+      of: inSheet(find.byIcon(Icons.more_vert_rounded)),
       matching: find.byType(InkWell),
     );
     expect(
-      find.descendant(of: shieldRow, matching: find.textContaining('HiAnime')),
+      find.descendant(of: actionRow, matching: find.textContaining('HiAnime')),
       findsOneWidget,
-      reason: 'the shield must sit on the site-backed row, not the JS one',
+      reason: 'the actions must sit on the site-backed row, not the JS one',
     );
-    // An unflagged source's shield is the plain one; the badge means a
+    // An unflagged source's overflow is the plain one; the badge means a
     // challenge was actually seen.
     expect(inSheet(find.byType(Badge)), findsNothing);
+
+    await t.tap(inSheet(find.byIcon(Icons.more_vert_rounded)));
+    await t.pumpAndSettle();
+    expect(find.text('Solve Cloudflare'), findsOneWidget);
   });
 
-  // Task 20: a source CfSolveNeeded flagged gets a visually distinct shield
+  // Task 20: a source CfSolveNeeded flagged gets a visually distinct overflow
   // (badged), not the same plain one every base-url row already has —
   // otherwise there's nothing telling the user THIS one actually needs a
   // solve.
   testWidgets(
-      'a source flagged by CfSolveNeeded gets a distinct badged shield',
+      'a source flagged by CfSolveNeeded gets a distinct badged overflow',
       (t) async {
     CfSolveNeeded.needsSolve(
       'example.test',
@@ -225,9 +241,9 @@ void main() {
     await t.tap(find.textContaining('HiAnime'));
     await t.pumpAndSettle();
 
-    // Still one shield (ani:1's — the only row this harness registers), now
+    // Still one overflow (ani:1's — the only row this harness registers), now
     // wearing the flagged badge instead of the plain unflagged one.
-    expect(inSheet(find.byIcon(Icons.shield_rounded)), findsOneWidget);
+    expect(inSheet(find.byIcon(Icons.more_vert_rounded)), findsOneWidget);
     expect(inSheet(find.byType(Badge)), findsOneWidget);
   });
 }
