@@ -2233,6 +2233,30 @@ abstract class AppLocalizations {
   /// **'A jump-forward button in the player (any video)'**
   String get aJumpForwardButtonInThePlayerAnyVideo;
 
+  /// No description provided for @seekButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Show video seek buttons'**
+  String get seekButton;
+
+  /// No description provided for @seekButtonDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Show forward and backward seek buttons in the player'**
+  String get seekButtonDescription;
+
+  /// No description provided for @seekButtonDuration.
+  ///
+  /// In en, this message translates to:
+  /// **'Seek Duration'**
+  String get seekButtonDuration;
+
+  /// No description provided for @selectSeekButtonDurationDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Select the seek duration for the seek buttons'**
+  String get selectSeekButtonDurationDescription;
+
   /// No description provided for @nativeTVPlayer.
   ///
   /// In en, this message translates to:

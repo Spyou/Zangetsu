@@ -1155,6 +1155,20 @@ class AppLocalizationsIt extends AppLocalizations {
       'Un pulsante per saltare avanti nel player (qualsiasi video)';
 
   @override
+  String get seekButton => 'Mostra i pulsanti di avanzamento video';
+
+  @override
+  String get seekButtonDescription =>
+      'Mostra i pulsanti avanti e indietro nel player';
+
+  @override
+  String get seekButtonDuration => 'Durata avanzamento';
+
+  @override
+  String get selectSeekButtonDurationDescription =>
+      'Scegli la durata di avanzamento per questi pulsanti';
+
+  @override
   String get nativeTVPlayer => 'Player TV nativo';
 
   @override
