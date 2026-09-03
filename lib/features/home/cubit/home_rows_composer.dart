@@ -82,7 +82,8 @@ List<HomeSection> providerRowSections(
 }) {
   if (isTv || sections.length <= 1) return sections;
   final firstId = sections.first.more?.sourceId ?? '';
-  final firstRepeatsAsRow = firstId.startsWith('ani:') ||
+  final firstRepeatsAsRow =
+      firstId.startsWith('ani:') ||
       firstId.startsWith('mihon:') ||
       firstId == ZmodeIds.sourceId;
   return firstRepeatsAsRow ? sections : sections.sublist(1);
@@ -110,7 +111,8 @@ List<String> defaultLayout(
   required bool withTrackerRows,
 }) => [
   localContinueRowId,
-  if (withTrackerRows) for (final id in trackerRowIds) '!$id',
+  if (withTrackerRows)
+    for (final id in trackerRowIds) '!$id',
   ...sectionIds,
 ];
 
@@ -156,9 +158,7 @@ List<HomeRow> mergeHomeRows({
   required List<HomeSection> rowSections,
   required List<HomeRow> trackerRows,
 }) {
-  final sectionsById = {
-    for (final s in rowSections) 'section:${s.title}': s,
-  };
+  final sectionsById = {for (final s in rowSections) 'section:${s.title}': s};
   final trackersById = {for (final r in trackerRows) r.id: r};
   final out = <HomeRow>[];
   for (final e in layout) {
