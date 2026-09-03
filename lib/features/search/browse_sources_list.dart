@@ -76,7 +76,13 @@ class BrowseSourcesList extends StatelessWidget {
     }
 
     return ListView(
-      padding: const EdgeInsets.only(bottom: 24),
+      // This list is the Sources TAB, so the shell's floating dock is drawn
+      // over it (extendBody) and its height arrives as a bottom inset. An
+      // explicit padding opts out of absorbing that automatically, so add it
+      // back or the last source sits under the dock, unreachable.
+      padding: EdgeInsets.only(
+        bottom: 24 + MediaQuery.paddingOf(context).bottom,
+      ),
       children: [
         for (final (title, rows) in groups) ...[
           Padding(
