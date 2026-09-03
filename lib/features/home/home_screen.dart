@@ -19,6 +19,7 @@ import '../../core/update/extension_auto_updater.dart';
 import '../../core/provider/cloudstream_provider.dart';
 import '../../core/provider/provider_manager.dart';
 import '../../core/models/episode.dart';
+import '../../core/models/home_row.dart';
 import '../../core/models/home_section.dart';
 import '../../core/models/media_detail.dart';
 import '../../core/models/media_item.dart';
@@ -33,6 +34,8 @@ import '../../core/repository/catalogue_repository.dart';
 import '../../core/repository/source_repository.dart';
 import '../../core/privacy/incognito_mode.dart';
 import '../../core/state/active_source_cubit.dart';
+import '../../core/tracker/tracker.dart';
+import '../../core/tracker/tracker_item_url.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/zmode/zmode_prefs.dart';
@@ -49,6 +52,7 @@ import '../sources/providers_hub_screen.dart';
 import '../sources/zangetsu_sources_screen.dart';
 import '../update/update_dialog.dart';
 import 'continue_section.dart';
+import 'tracker_continue_section.dart';
 import '../../core/ui/content_row.dart';
 import '../../core/ui/featured_carousel.dart';
 import '../../core/ui/featured_hero.dart';
@@ -626,9 +630,9 @@ class _HomeViewState extends State<_HomeView>
         size: 22,
       ),
       tooltip: context.l10n.downloads,
-      onPressed: () => Navigator.of(context).push(
-        MaterialPageRoute<void>(builder: (_) => const DownloadsScreen()),
-      ),
+      onPressed: () => Navigator.of(
+        context,
+      ).push(MaterialPageRoute<void>(builder: (_) => const DownloadsScreen())),
     );
   }
 
@@ -701,6 +705,67 @@ class _HomeViewState extends State<_HomeView>
           onTap: () => _openDetail(items[i]),
           onLongPress: () => _showInfo(items[i]),
         ),
+      ),
+    );
+  }
+
+  /// One row of the merged home arrangement, as a sliver. Every [HomeRow]
+  /// type maps to the widget that already renders that shape — the sealed
+  /// switch makes a future row type a compile error here instead of a silent
+  /// gap, and the local row reuses [ContinueSection] itself so its reactive
+  /// Hive/mode behaviour is identical wherever the user drags it.
+  Widget _homeRowSliver(HomeRow row, {required bool loggedIn}) => switch (row) {
+    LocalContinueHomeRow() => ContinueSection(
+      loggedIn: loggedIn,
+      onResume: _resume,
+      onLongPress: _showContinueInfo,
+      onSeeAll: _openHistory,
+      onResumeReading: _resumeReading,
+      onLongPressReading: _showContinueReadingInfo,
+    ),
+    ProviderHomeRow(:final section) => SliverToBoxAdapter(
+      child: _sectionRow(section),
+    ),
+    TrackerContinueHomeRow(:final items, :final trackerName) =>
+      SliverToBoxAdapter(
+        child: TrackerContinueSection(
+          items: items,
+          trackerName: trackerName,
+          onOpen: _openTrackerEntry,
+        ),
+      ),
+    NewEpisodesHomeRow(:final items, :final trackerName) => SliverToBoxAdapter(
+      child: NewEpisodesSection(
+        items: items,
+        trackerName: trackerName,
+        onOpen: _openTrackerEntry,
+      ),
+    ),
+    TrackerListHomeRow(:final status, :final items, :final trackerName) =>
+      SliverToBoxAdapter(
+        child: TrackerListSection(
+          status: status,
+          items: items,
+          trackerName: trackerName,
+          onOpen: _openTrackerEntry,
+        ),
+      ),
+  };
+
+  /// Open a tracker entry from the home rows. The stub carries no provider,
+  /// but it carries the id the metadata catalogue is keyed by, so a tap opens
+  /// its Detail page directly; an entry with no id falls back to a search for
+  /// its own title — the same open path My List uses.
+  void _openTrackerEntry(TrackerListItem entry) {
+    final playable = playableTrackerItem(entry.item);
+    if (playable != null) {
+      _openDetail(playable);
+      return;
+    }
+    Navigator.push(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) => SearchScreen(initialQuery: entry.item.title),
       ),
     );
   }
@@ -1190,31 +1255,12 @@ class _HomeViewState extends State<_HomeView>
               child: BlocBuilder<HomeCubit, HomeState>(
                 builder: (context, state) {
                   final sections = state.sections ?? const <HomeSection>[];
-                  // The first section feeds the hero carousel; the rest render as
-                  // browse rows (so the spotlight isn't duplicated right below it).
-                  // A source with only ONE section (e.g. SubsPlease's single "Latest"
-                  // feed) would otherwise show a hero and NO rows — keep that one
-                  // section as a row too so there's something to browse.
-                  //
-                  // Aniyomi AND Mihon sources expose exactly two sections
-                  // (Popular + Latest); dropping the first would hide Popular
-                  // entirely, so keep the full list as rows for them — the banner
-                  // still spotlights Popular, and the row repeats it (like the
-                  // Aniyomi/Mihon apps' Popular grid). Z Mode metadata rows do the
-                  // same: the banner spotlights Trending, and Trending stays a row
-                  // below it — asked for explicitly, the banner is not a
-                  // replacement for the row.
-                  final firstId = sections.isNotEmpty
-                      ? (sections.first.more?.sourceId ?? '')
-                      : '';
-                  final firstRepeatsAsRow =
-                      firstId.startsWith('ani:') ||
-                      firstId.startsWith('mihon:') ||
-                      firstId == ZmodeIds.sourceId;
-                  final rowSections =
-                      (sections.length > 1 && !firstRepeatsAsRow)
-                      ? sections.sublist(1)
-                      : sections;
+                  // Which sections render as rows (the phone drops a
+                  // non-repeating first section so the hero isn't duplicated
+                  // right below itself) is decided by the cubit's merge now —
+                  // providerRowSections in home_rows_composer.dart, moved
+                  // verbatim from here. This build only branches on whether a
+                  // load finished at all.
                   final showSkeletons = state.loading && sections.isEmpty;
                   // The load finished but the source returned no rows — almost
                   // always a dead/blocked site (or a search-only source). Show a
@@ -1303,26 +1349,33 @@ class _HomeViewState extends State<_HomeView>
                       if (needsReconnect)
                         SliverToBoxAdapter(child: _reconnectBanner()),
 
-                      // ── Continue Watching / Continue Reading ──────────────────
-                      // Driven by the watch/read history box's listenable, NOT a
-                      // one-shot read: the cloud pull writes history AFTER this
-                      // build runs (the login / boot-migration race), so reading
-                      // recent() once here would render blank until the next
-                      // navigation. Reacting to the box makes the row appear the
-                      // instant the pull lands. Swapped by ContentMode — see
-                      // ContinueSection.
-                      ContinueSection(
-                        loggedIn: loggedIn,
-                        onResume: _resume,
-                        onLongPress: _showContinueInfo,
-                        onSeeAll: _openHistory,
-                        onResumeReading: _resumeReading,
-                        onLongPressReading: _showContinueReadingInfo,
-                      ),
+                      // ── The arrangement ─────────────────────────────────────
+                      // state.rows is the merged view of this load: the local
+                      // Continue row, the tracker rows the user enabled, and the
+                      // provider sections, in the saved order (Settings →
+                      // Interface → Home rows). ContinueSection renders wherever
+                      // the layout puts it — the same widgets as before, just
+                      // arranged. Before the first merge lands (rows null), the
+                      // ContinueSection keeps its old spot above the skeletons
+                      // so the loading screen is exactly today's.
+                      if (state.rows case final rows?)
+                        ...rows.map(
+                          (r) => _homeRowSliver(r, loggedIn: loggedIn),
+                        )
+                      else
+                        ContinueSection(
+                          loggedIn: loggedIn,
+                          onResume: _resume,
+                          onLongPress: _showContinueInfo,
+                          onSeeAll: _openHistory,
+                          onResumeReading: _resumeReading,
+                          onLongPressReading: _showContinueReadingInfo,
+                        ),
 
-                      // ── Provider-defined browse rows (CloudStream-style) ──────
-                      // The active provider decides the rows + their names; empty
-                      // ones are already dropped by SourceRepository.home.
+                      // ── Skeletons while the first load runs / empty states ───
+                      // The provider rows themselves are part of state.rows
+                      // above; this branch only owns the loading placeholders
+                      // and the "nothing came back" views.
                       if (showSkeletons && !noSourceForMode)
                         ...List.generate(
                           3,
@@ -1366,10 +1419,6 @@ class _HomeViewState extends State<_HomeView>
                                     }
                                   },
                           ),
-                        )
-                      else
-                        ...rowSections.map(
-                          (s) => SliverToBoxAdapter(child: _sectionRow(s)),
                         ),
 
                       // ── Bottom padding ────────────────────────────────────────
