@@ -108,6 +108,17 @@ final settingsLeaves = <SettingsLeaf>[
     (l) => l.resumePlayback,
     keywords: 'continue where left off',
   ),
+  // TV native player's on-screen seek buttons (and how far each press jumps).
+  SettingsLeaf(
+    LeafParent.playback,
+    (l) => l.seekButton,
+    keywords: 'tv remote skip jump interval',
+  ),
+  SettingsLeaf(
+    LeafParent.playback,
+    (l) => l.seekButtonDuration,
+    keywords: 'tv remote skip jump seconds',
+  ),
   SettingsLeaf(
     LeafParent.playback,
     (l) => l.askBeforeJumping,
