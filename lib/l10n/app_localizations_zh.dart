@@ -723,7 +723,10 @@ class AppLocalizationsZh extends AppLocalizations {
   String get statusPlanToRead => '计划阅读';
 
   @override
-  String get homeRows => '主页行';
+  String get homeRowsLayout => '正在编辑';
+
+  @override
+  String get homeRows => '自定义主页';
 
   @override
   String get homeRowsSubtitle => '选择主页上显示的内容';
@@ -741,6 +744,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String homeRowTrackerContinue(String tracker) {
     return '在$tracker上继续';
   }
+
+  @override
+  String get trackerCaughtUp => '已追平';
 
   @override
   String get homeRowNewEpisodes => '新集数';
@@ -5607,7 +5613,10 @@ class AppLocalizationsZhTw extends AppLocalizationsZh {
   String get statusPlanToRead => '打算閱讀';
 
   @override
-  String get homeRows => '首頁列';
+  String get homeRowsLayout => '正在編輯';
+
+  @override
+  String get homeRows => '自訂首頁';
 
   @override
   String get homeRowsSubtitle => '選擇首頁上顯示的內容';
@@ -5625,6 +5634,9 @@ class AppLocalizationsZhTw extends AppLocalizationsZh {
   String homeRowTrackerContinue(String tracker) {
     return '在 $tracker 上繼續';
   }
+
+  @override
+  String get trackerCaughtUp => '已追完';
 
   @override
   String get homeRowNewEpisodes => '新集數';

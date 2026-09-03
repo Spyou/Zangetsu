@@ -37,6 +37,9 @@ class TmdbCatalogue implements VideoCatalogue {
     return null;
   };
 
+  /// Row titles without a fetch — see [AniListCatalogue.rowTitles].
+  static List<String> rowTitles() => [for (final r in _rows) r.$1];
+
   static const _rows = [
     // What's out right now leads (and feeds the hero banner, which Home
     // repeats as a row); discovery rows follow, Trending first among them.

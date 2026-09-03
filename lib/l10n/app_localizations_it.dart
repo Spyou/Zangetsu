@@ -747,7 +747,10 @@ class AppLocalizationsIt extends AppLocalizations {
   String get statusPlanToRead => 'Da leggere';
 
   @override
-  String get homeRows => 'Righe della home';
+  String get homeRowsLayout => 'In modifica';
+
+  @override
+  String get homeRows => 'Personalizza Home';
 
   @override
   String get homeRowsSubtitle => 'Scegli cosa mostrare nella home';
@@ -766,6 +769,9 @@ class AppLocalizationsIt extends AppLocalizations {
   String homeRowTrackerContinue(String tracker) {
     return 'Continua su $tracker';
   }
+
+  @override
+  String get trackerCaughtUp => 'Aggiornato';
 
   @override
   String get homeRowNewEpisodes => 'Nuovi episodi';

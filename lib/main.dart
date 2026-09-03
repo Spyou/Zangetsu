@@ -314,7 +314,7 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
   /// already fetched (no refetch, no scroll reset — provider data is
   /// unchanged, only its arrangement is).
   void _onHomeRowsChanged() {
-    if (sl.isRegistered<HomeCubit>()) sl<HomeCubit>().load(reset: false);
+    if (sl.isRegistered<HomeCubit>()) sl<HomeCubit>().relayout();
     if (mounted) setState(() {});
   }
 

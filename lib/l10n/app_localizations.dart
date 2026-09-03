@@ -1519,10 +1519,16 @@ abstract class AppLocalizations {
   /// **'Plan to Read'**
   String get statusPlanToRead;
 
+  /// No description provided for @homeRowsLayout.
+  ///
+  /// In en, this message translates to:
+  /// **'Editing'**
+  String get homeRowsLayout;
+
   /// No description provided for @homeRows.
   ///
   /// In en, this message translates to:
-  /// **'Home rows'**
+  /// **'Customise Home'**
   String get homeRows;
 
   /// No description provided for @homeRowsSubtitle.
@@ -1554,6 +1560,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Continue on {tracker}'**
   String homeRowTrackerContinue(String tracker);
+
+  /// No description provided for @trackerCaughtUp.
+  ///
+  /// In en, this message translates to:
+  /// **'Caught up'**
+  String get trackerCaughtUp;
 
   /// No description provided for @homeRowNewEpisodes.
   ///

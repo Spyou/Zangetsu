@@ -744,7 +744,10 @@ class AppLocalizationsDe extends AppLocalizations {
   String get statusPlanToRead => 'Lesen geplant';
 
   @override
-  String get homeRows => 'Startzeilen';
+  String get homeRowsLayout => 'Bearbeitet';
+
+  @override
+  String get homeRows => 'Startseite anpassen';
 
   @override
   String get homeRowsSubtitle => 'Leg fest, was auf Start erscheint';
@@ -763,6 +766,9 @@ class AppLocalizationsDe extends AppLocalizations {
   String homeRowTrackerContinue(String tracker) {
     return 'Weiter auf $tracker';
   }
+
+  @override
+  String get trackerCaughtUp => 'Auf dem neuesten Stand';
 
   @override
   String get homeRowNewEpisodes => 'Neue Folgen';

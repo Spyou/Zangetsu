@@ -1,9 +1,11 @@
 import 'home_section.dart';
 import 'watch_status.dart';
 import '../tracker/tracker.dart';
+import '../zmode/zmode_ids.dart';
 
 /// One row of the customizable home screen, in the arrangement the user saved
-/// (Settings → Interface → Home rows). Sealed so phone and TV render by type
+/// (Settings → Interface → Appearance → Home rows). Sealed so phone and TV
+/// render by type
 /// and can't fall through an unhandled case, while the row's persistence id
 /// stays a plain string the editor and prefs layer never need to subtype.
 sealed class HomeRow {
@@ -114,6 +116,18 @@ final List<String> trackerRowIds = [
   newEpisodesRowId,
   for (final s in trackerListRowStatuses) 'tracker:${s.name}',
 ];
+
+/// The tracker rows [kind] can actually fill. Reading has no episode feed —
+/// `hasNewEpisode` is false for manga and novel — so a reading layout never
+/// gets the new-episodes row, and the editor shouldn't offer a switch that
+/// can never light up.
+List<String> trackerRowIdsFor(ZKind? kind) =>
+    kind == ZKind.manga || kind == ZKind.novel
+    ? [
+        for (final id in trackerRowIds)
+          if (id != newEpisodesRowId) id,
+      ]
+    : trackerRowIds;
 
 /// Whether [id] is one of the tracker rows (they default to hidden and only
 /// exist where a tracker can answer).

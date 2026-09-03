@@ -96,9 +96,10 @@ List<HomeSection> providerRowSections(
 List<String> availableRowIds(
   List<HomeSection> rowSections, {
   required bool withTrackerRows,
+  ZKind? kind,
 }) => [
   localContinueRowId,
-  if (withTrackerRows) ...trackerRowIds,
+  if (withTrackerRows) ...trackerRowIdsFor(kind),
   for (final s in rowSections) 'section:${s.title}',
 ];
 
@@ -109,10 +110,11 @@ List<String> availableRowIds(
 List<String> defaultLayout(
   List<String> sectionIds, {
   required bool withTrackerRows,
+  ZKind? kind,
 }) => [
   localContinueRowId,
   if (withTrackerRows)
-    for (final id in trackerRowIds) '!$id',
+    for (final id in trackerRowIdsFor(kind)) '!$id',
   ...sectionIds,
 ];
 

@@ -263,7 +263,8 @@
 	"statusPlanning": "予定",
 	"statusReading": "読書中",
 	"statusPlanToRead": "読書予定",
-	"homeRows": "ホームの行",
+	"homeRowsLayout": "編集中",
+	"homeRows": "ホームをカスタマイズ",
 	"homeRowsSubtitle": "ホームに表示する行を選択",
 	"homeRowsFromYourLists": "リストから",
 	"homeRowsDiscover": "見つける",
@@ -276,6 +277,7 @@
 			}
 		}
 	},
+	"trackerCaughtUp": "最新話まで視聴済み",
 	"homeRowNewEpisodes": "新着エピソード",
 	"modeStreaming": "ストリーミング",
 	"modeManga": "マンガ",

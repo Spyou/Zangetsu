@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../core/di/injector.dart';
@@ -8,10 +10,10 @@ import '../../core/mode/content_mode_cubit.dart';
 import '../../core/repository/catalogue_repository.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
-import '../../core/tracker/tracker.dart';
 import '../../core/tracker/tracker_hub.dart';
 import '../../core/ui/home_rows_prefs.dart';
 import '../../core/ui/settings_widgets.dart';
+import '../../core/zmode/home_layouts.dart';
 import '../../core/zmode/metadata_provider_prefs.dart';
 import '../../core/zmode/zmode_ids.dart';
 import '../../core/zmode/zmode_module.dart' show browseKindFor;
@@ -22,15 +24,20 @@ import '../home/cubit/home_rows_composer.dart';
 import '../home/cubit/tracker_home_rows.dart';
 import '../home/tracker_continue_section.dart';
 
-/// The home-rows editor (Settings → Appearance → Home rows, phone only).
+/// The home-rows editor (Settings → Interface → Appearance → Customise Home,
+/// phone only).
 ///
-/// Edits the arrangement of the CURRENT home layout — the same layout key the
-/// cubit merges with — so what you see here is what Home renders next. Rows
-/// keep their saved order verbatim; the two group labels ("From your lists" /
-/// "Discover") are anchored above each group's first row, not fixed slots, so
-/// dragging a row across groups is a real move. Every change saves and bumps
-/// [HomeRowsPrefs.revision], which reloads Home live behind this screen. TV
-/// has no editor; it mirrors whatever was saved here.
+/// Opens on the layout the app is currently in, but every metadata layout is
+/// reachable from the picker at the top — AniList, MyAnimeList, TMDB and Simkl
+/// each keep their own arrangement per browse kind, and this screen used to
+/// follow the mode bar silently, so Simkl's rows could only be arranged by
+/// switching Home to Movies & TV first.
+///
+/// Rows keep their saved order verbatim; the two group labels ("From your
+/// lists" / "Discover") are anchored above each group's first row, not fixed
+/// slots, so dragging a row across groups is a real move. Every change saves
+/// and bumps [HomeRowsPrefs.revision], which re-merges Home live behind this
+/// screen. TV has no editor; it mirrors whatever was saved here.
 class HomeRowsScreen extends StatefulWidget {
   const HomeRowsScreen({super.key});
 
@@ -39,60 +46,189 @@ class HomeRowsScreen extends StatefulWidget {
 }
 
 class _HomeRowsScreenState extends State<HomeRowsScreen> {
-  /// Computed once: the editor edits one layout per visit, and the mode can't
-  /// change under a pushed screen.
-  late final String _layoutKey;
-  late final bool _withTrackerRows;
+  /// The layout being edited. Starts on the one the app is in, but the picker
+  /// can move it anywhere — the screen used to follow the mode bar silently,
+  /// so the only way to arrange Simkl's rows was to switch Home to Movies & TV
+  /// first.
+  late String _layoutKey;
+  late bool _withTrackerRows;
 
   /// The browse kind of the layout being edited, or null when source-backed.
   ZKind? _kind;
 
-  /// The sanitized arrangement being edited, in saved order. False until Home
-  /// has sections to offer (its load finished); editing without them could
-  /// save a sectionless layout over a sectioned one.
+  /// The metadata layout [_layoutKey] names, or null for a source-backed home
+  /// (no fixed row list, so its sections come from the cubit instead).
+  HomeLayout? _layoutInfo;
+
+  /// The sanitized arrangement being edited, in saved order. False until there
+  /// are sections to offer; editing without them could save a sectionless
+  /// layout over a sectioned one.
   List<HomeRowEntry> _layout = const [];
   bool _ready = false;
+
+  /// Only live while a source-backed Home's first load is in flight — see
+  /// [initState]. Metadata layouts never need it; their rows are static.
+  StreamSubscription<HomeState>? _sub;
 
   @override
   void initState() {
     super.initState();
     _kind = _browseKind();
-    _withTrackerRows = _kind != null;
     final providerPrefs = sl.isRegistered<MetadataProviderPrefs>()
         ? sl<MetadataProviderPrefs>()
         : null;
-    _layoutKey = layoutKeyFor(
-      sourceId: sl.isRegistered<CatalogueRepository>()
-          ? sl<CatalogueRepository>().sourceId
-          : '',
-      zModeOn: _kind != null,
-      browseKind: _kind,
-      malPreferred: providerPrefs?.anime == AnimeProvider.mal,
-      simklPreferred: providerPrefs?.video == VideoProvider.simkl,
+    _select(
+      layoutKeyFor(
+        sourceId: sl.isRegistered<CatalogueRepository>()
+            ? sl<CatalogueRepository>().sourceId
+            : '',
+        zModeOn: _kind != null,
+        browseKind: _kind,
+        malPreferred: providerPrefs?.anime == AnimeProvider.mal,
+        simklPreferred: providerPrefs?.video == VideoProvider.simkl,
+      ),
     );
+    // Only a source-backed home can be un-editable on arrival: its rows come
+    // from a fetch that may still be running. Wait for it rather than sit on
+    // the loading text until the screen is reopened.
+    if (!_ready && sl.isRegistered<HomeCubit>()) {
+      _sub = sl<HomeCubit>().stream.listen((s) {
+        if (s.sections == null || !mounted) return;
+        _sub?.cancel();
+        _sub = null;
+        setState(_reload);
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _sub?.cancel();
+    super.dispose();
+  }
+
+  /// Point the editor at [key] and load its arrangement.
+  void _select(String key) {
+    _layoutKey = key;
+    _layoutInfo = homeLayoutFor(key);
+    _kind = _layoutInfo?.kind ?? _kind;
+    _withTrackerRows = _canTrack(_kind);
     _reload();
   }
 
+  /// Whether this layout can have list rows at all: its own provider has to be
+  /// a tracker you're signed into that holds a library of this kind.
+  ///
+  /// TMDB is the case that forced it — a catalogue with no account, whose home
+  /// used to borrow Simkl's lists under a heading that read as if they were
+  /// TMDB's. The rule covers the rest too: signed out of AniList, the AniList
+  /// home shows no list rows rather than quietly serving MAL's.
+  bool _canTrack(ZKind? kind) {
+    if (kind == null || !trackerRowsForKind(kind)) return false;
+    if (!sl.isRegistered<TrackerHub>()) return false;
+    return pickHomeTracker(
+          sl<TrackerHub>(),
+          kind,
+          preferred: layoutTrackerName(_layoutKey),
+        ) !=
+        null;
+  }
+
   /// Re-derive the arrangement from the same inputs the cubit merges with:
-  /// Home's raw sections (phone row rule), the saved layout for this key, or
-  /// the shipped default when none was saved.
+  /// the layout's Discover rows, the saved arrangement for this key, or the
+  /// shipped default when none was saved.
+  ///
+  /// A metadata layout declares its rows statically, so any of the eight can
+  /// be arranged without the app being in that mode — and a row whose fetch
+  /// happened to fail can't quietly disappear from the editor and get dropped
+  /// from the saved order. Only a source-backed home falls back to the live
+  /// sections, since a source's rows are whatever it just returned.
   void _reload() {
-    final sections = sl.isRegistered<HomeCubit>()
-        ? sl<HomeCubit>().state.sections
-        : null;
-    if (sections == null) return; // not loaded yet — nothing safe to edit
-    final rowSections = providerRowSections(sections, isTv: false);
+    final info = _layoutInfo;
+    List<String> sectionIds;
+    if (info != null) {
+      sectionIds = info.sectionIds;
+    } else {
+      final sections = sl.isRegistered<HomeCubit>()
+          ? sl<HomeCubit>().state.sections
+          : null;
+      if (sections == null) return; // not loaded yet — nothing safe to edit
+      sectionIds = [
+        for (final s in providerRowSections(sections, isTv: false))
+          'section:${s.title}',
+      ];
+    }
     final stored =
         HomeRowsPrefs.savedFor(_layoutKey) ??
         defaultLayout(
-          [for (final s in rowSections) 'section:${s.title}'],
+          sectionIds,
           withTrackerRows: _withTrackerRows,
+          kind: _kind,
         );
-    _layout = sanitizeLayout(
-      stored,
-      availableRowIds(rowSections, withTrackerRows: _withTrackerRows),
-    );
+    _layout = sanitizeLayout(stored, [
+      localContinueRowId,
+      if (_withTrackerRows) ...trackerRowIdsFor(_kind),
+      ...sectionIds,
+    ]);
     _ready = true;
+  }
+
+  /// Choose which arrangement to edit. Every metadata layout is offered, not
+  /// just the ones your provider settings currently make live — arranging the
+  /// one you are about to switch to shouldn't require switching first.
+  Future<void> _pickLayout() async {
+    final layouts = allHomeLayouts();
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                child: Row(
+                  children: [
+                    Text(ctx.l10n.homeRowsLayout, style: AppText.headline),
+                  ],
+                ),
+              ),
+              const Divider(color: AppColors.hairline, height: 1),
+              for (final l in layouts)
+                ListTile(
+                  onTap: () => Navigator.pop(ctx, l.key),
+                  title: Text(
+                    _layoutLabel(ctx, l),
+                    style: AppText.body.copyWith(color: AppColors.textPrimary),
+                  ),
+                  trailing: l.key == _layoutKey
+                      ? Icon(Icons.check, color: AppColors.accent)
+                      : null,
+                ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (picked == null || !mounted || picked == _layoutKey) return;
+    setState(() => _select(picked));
+  }
+
+  /// "AniList · Anime" — the provider decides the Discover rows, the kind
+  /// decides which of its catalogues they come from.
+  String _layoutLabel(BuildContext context, HomeLayout l) {
+    final kind = switch (l.kind) {
+      ZKind.manga => context.l10n.modeManga,
+      ZKind.novel => context.l10n.modeNovel,
+      ZKind.movie || ZKind.tv => context.l10n.moviesTV,
+      ZKind.anime => context.l10n.modeAnime,
+    };
+    return '${l.provider} · $kind';
   }
 
   /// Same rule as the cubit's pick: mode and stream kind read live, Z Mode
@@ -105,19 +241,21 @@ class _HomeRowsScreenState extends State<HomeRowsScreen> {
     return browseKindFor(mode, ZModePrefs.streamKind);
   }
 
-  /// The tracker the rows would come from: the connected pick, else the first
-  /// one in hub order that could serve this layout, so the labels read the
-  /// same before and after a sign-in.
+  /// Which tracker's name the list rows carry. They only exist when
+  /// [_canTrack] found one, so this is that tracker; the layout's provider is
+  /// a label of last resort for a build order that can't happen.
   String get _trackerName {
     final kind = _kind;
-    if (kind == null || !sl.isRegistered<TrackerHub>()) return 'AniList';
-    final hub = sl<TrackerHub>();
-    Tracker? pick = pickHomeTracker(hub, kind);
-    for (final t in hub.trackers) {
-      if (pick != null) break;
-      if (trackerServesKind(t, kind)) pick = t;
+    final provider = layoutTrackerName(_layoutKey);
+    if (kind == null || !sl.isRegistered<TrackerHub>()) {
+      return provider ?? 'AniList';
     }
-    return pick?.displayName ?? 'AniList';
+    final pick = pickHomeTracker(
+      sl<TrackerHub>(),
+      kind,
+      preferred: provider,
+    );
+    return pick?.displayName ?? provider ?? 'AniList';
   }
 
   /// Reading layouts relabel the status rows ("Reading", "Plan to read"),
@@ -180,6 +318,7 @@ class _HomeRowsScreenState extends State<HomeRowsScreen> {
     final l10n = context.l10n;
     final arrangement = _arrangement();
     final canReset = HomeRowsPrefs.savedFor(_layoutKey) != null;
+    final info = _layoutInfo;
     return Scaffold(
       backgroundColor: AppColors.bg,
       appBar: settingsAppBar(
@@ -199,8 +338,30 @@ class _HomeRowsScreenState extends State<HomeRowsScreen> {
       body:
           _ready
               ? ListView(
-                padding: const EdgeInsets.fromLTRB(12, 8, 12, 32),
+                // SettingsCard brings its own 16px side margin; adding more
+                // here would inset these cards past every other settings page.
+                padding: const EdgeInsets.fromLTRB(0, 8, 0, 32),
                 children: [
+                  // Which arrangement is on screen, and the ONLY provider
+                  // choice here: the layout's provider is also the tracker
+                  // behind its list rows, so one control decides both.
+                  if (info != null)
+                    SettingsCard(
+                      children: [
+                        SettingsTile(
+                          icon: Icons.dashboard_customize_outlined,
+                          title: l10n.homeRowsLayout,
+                          trailing: Text(
+                            _layoutLabel(context, info),
+                            style: AppText.caption,
+                          ),
+                          onTap: _pickLayout,
+                        ),
+                      ],
+                    ),
+                  // Cards are normally spaced by the section label between
+                  // them; there is no heading to put here, just the gap.
+                  if (info != null) const SizedBox(height: 14),
                   SettingsCard(
                     children: [
                       ReorderableListView(
@@ -219,7 +380,7 @@ class _HomeRowsScreenState extends State<HomeRowsScreen> {
                     ],
                   ),
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(8, 14, 8, 0),
+                    padding: const EdgeInsets.fromLTRB(28, 14, 22, 0),
                     child: Text(
                       l10n.homeRowsHelp,
                       style: AppText.caption.copyWith(
@@ -301,7 +462,11 @@ class _HomeRowsScreenState extends State<HomeRowsScreen> {
   String _rowTitle(HomeRowEntry e) {
     final l10n = context.l10n;
     final id = e.id;
-    if (id == localContinueRowId) return l10n.continueWatching;
+    // Home swaps this row for ContinueReadingRow in a reading mode, so the
+    // editor has to name the row Home will actually render.
+    if (id == localContinueRowId) {
+      return _reading ? l10n.continueReading : l10n.continueWatching;
+    }
     if (id == trackerContinueRowId) {
       return l10n.homeRowTrackerContinue(_trackerName);
     }

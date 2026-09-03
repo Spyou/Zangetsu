@@ -263,7 +263,8 @@
 	"statusPlanning": "Planning",
 	"statusReading": "Reading",
 	"statusPlanToRead": "Plan to Read",
-	"homeRows": "Home rows",
+	"homeRowsLayout": "Editing",
+	"homeRows": "Customise Home",
 	"homeRowsSubtitle": "Choose what shows on Home",
 	"homeRowsFromYourLists": "From your lists",
 	"homeRowsDiscover": "Discover",
@@ -276,6 +277,7 @@
 			}
 		}
 	},
+	"trackerCaughtUp": "Caught up",
 	"homeRowNewEpisodes": "New Episodes",
 	"modeStreaming": "Streaming",
 	"modeManga": "Manga",

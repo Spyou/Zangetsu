@@ -413,7 +413,8 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
     // drives both the Continue Watching rail and the rails' autofocus.
     Widget buildScroll(List<HistoryEntry> history) {
       // The merged arrangement from the cubit — the SAME arrangement the phone
-      // saved (Settings → Interface → Home rows); TV has no editor of its own.
+      // saved (Settings → Interface → Appearance → Home rows); TV has no
+      // editor of its own.
       // Before the first merge lands (rows null, e.g. a test-built state),
       // derive today's fixed layout: local rail first, every section a rail —
       // TV never drops the first section.

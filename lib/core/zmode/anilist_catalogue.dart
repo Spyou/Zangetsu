@@ -81,6 +81,12 @@ class AniListCatalogue implements AnimeCatalogue {
   /// rows so the page feels populated instead of a wall of sort variants;
   /// manga/novel keep it shorter since AniList has thinner season data for
   /// them.
+  /// The row titles this catalogue produces for [k], without fetching them.
+  /// The editor lists rows for layouts the app isn't currently in, and the
+  /// titles ARE the row ids — a live fetch would answer the same thing plus a
+  /// round trip, and would drop a row whose request happened to fail.
+  static List<String> rowTitles(ZKind k) => [for (final r in _rows(k)) r.$1];
+
   static List<(String, String)> _rows(ZKind k) {
     final now = DateTime.now();
     final season = switch (now.month) {

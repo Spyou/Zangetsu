@@ -50,6 +50,9 @@ class SimklCatalogue implements VideoCatalogue {
   ///
   /// The first row also feeds Home's hero banner rather than showing as a
   /// row, which is why this list is one longer than what you see.
+  /// Row titles without a fetch — see [AniListCatalogue.rowTitles].
+  static List<String> rowTitles() => [for (final r in _rows) r.$1];
+
   static const List<(String, String, bool)> _rows = [
     ('Trending movies', '/movies/trending/week', false),
     ('Trending series', '/tv/trending/week', true),

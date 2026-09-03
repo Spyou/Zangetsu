@@ -263,7 +263,8 @@
 	"statusPlanning": "计划中",
 	"statusReading": "正在阅读",
 	"statusPlanToRead": "计划阅读",
-	"homeRows": "主页行",
+	"homeRowsLayout": "正在编辑",
+	"homeRows": "自定义主页",
 	"homeRowsSubtitle": "选择主页上显示的内容",
 	"homeRowsFromYourLists": "来自你的列表",
 	"homeRowsDiscover": "发现",
@@ -276,6 +277,7 @@
 			}
 		}
 	},
+	"trackerCaughtUp": "已追平",
 	"homeRowNewEpisodes": "新集数",
 	"modeStreaming": "流媒体",
 	"modeManga": "漫画",

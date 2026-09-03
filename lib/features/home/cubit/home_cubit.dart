@@ -19,6 +19,7 @@ import '../../../core/repository/catalogue_repository.dart';
 import '../../../core/tracker/tracker.dart';
 import '../../../core/tracker/tracker_hub.dart';
 import '../../../core/ui/home_rows_prefs.dart';
+import '../../../core/zmode/home_layouts.dart';
 import '../../../core/zmode/metadata_provider_prefs.dart';
 import '../../../core/zmode/zmode_ids.dart';
 import '../../../core/zmode/zmode_module.dart' show browseKindFor;
@@ -37,7 +38,8 @@ final _sl = GetIt.instance;
 /// sections as browse rows.
 ///
 /// [rows] is the merged, user-arranged view of the same load: local continue
-/// row, tracker rows (when enabled in Settings → Interface → Home rows) and
+/// row, tracker rows (when enabled in Settings → Interface → Appearance →
+/// Home rows) and
 /// the provider sections, in the saved order. Additive on top of [sections],
 /// which stays the raw fetch so the empty/offline/hero logic is unchanged.
 class HomeState extends Equatable {
@@ -167,6 +169,23 @@ class HomeCubit extends Cubit<HomeState> {
     return browseKindFor(mode, ZModePrefs.streamKind);
   }
 
+  /// The storage key of the arrangement this cubit is composing, from the
+  /// same inputs [_mergedRows] uses. Read per call, like [_browseKind]: mode
+  /// and provider prefs both change under the cubit.
+  String get _layoutKey {
+    final kind = _browseKind;
+    final providerPrefs = _sl.isRegistered<MetadataProviderPrefs>()
+        ? _sl<MetadataProviderPrefs>()
+        : null;
+    return layoutKeyFor(
+      sourceId: _repo.sourceId,
+      zModeOn: kind != null,
+      browseKind: kind,
+      malPreferred: providerPrefs?.anime == AnimeProvider.mal,
+      simklPreferred: providerPrefs?.video == VideoProvider.simkl,
+    );
+  }
+
   /// (Re)load the rows. Emits `loading: true` (keeping any existing sections so
   /// rows don't flash empty), fetches the provider's home, and emits the fresh
   /// result. A total failure yields an empty section list rather than throwing.
@@ -188,7 +207,7 @@ class HomeCubit extends Cubit<HomeState> {
     Future<List<TrackerListItem>>? libraryFuture;
     if (hub != null && kind != null) {
       _watchTrackersOnce(hub);
-      tracker = pickHomeTracker(hub, kind);
+      tracker = pickHomeTracker(hub, kind, preferred: layoutTrackerName(_layoutKey));
       if (tracker != null) {
         final cached = _trackerCache;
         libraryFuture = cached != null && cached.$1 == tracker.displayName
@@ -266,6 +285,35 @@ class HomeCubit extends Cubit<HomeState> {
     );
   }
 
+  /// Re-merge the rows over the sections already held, without refetching.
+  ///
+  /// This is the whole answer to an arrangement change: the provider data is
+  /// unchanged, only its order and visibility moved. Going through [load]
+  /// instead would put a provider round trip behind every switch flip and
+  /// every drag in the editor.
+  void relayout() {
+    final sections = state.sections;
+    // Nothing fetched yet — the first load merges the new arrangement itself.
+    if (sections == null) return;
+    final kind = _browseKind;
+    Tracker? tracker;
+    List<TrackerListItem>? library;
+    if (kind != null) {
+      final hub = _hubOrNull;
+      if (hub != null) {
+        tracker = pickHomeTracker(hub, kind, preferred: layoutTrackerName(_layoutKey));
+        final cached = _trackerCache;
+        // Only the cached library, never a fetch. A miss means the tracker
+        // rows sit this one out, the same as a load whose read timed out.
+        if (tracker != null && cached != null &&
+            cached.$1 == tracker.displayName) {
+          library = cached.$2;
+        }
+      }
+    }
+    emit(state.copyWith(rows: _mergedRows(sections, kind, library, tracker)));
+  }
+
   /// The sanitized, merged arrangement of one load. Pure given its inputs;
   /// kept here (not in the composer) because the layout key and platform
   /// come from app state.
@@ -278,26 +326,20 @@ class HomeCubit extends Cubit<HomeState> {
     final isTv = _sl.isRegistered<AppMode>() ? _sl<AppMode>().isTv : false;
     final rowSections = providerRowSections(sections, isTv: isTv);
     final withTrackerRows = kind != null;
-    final providerPrefs = _sl.isRegistered<MetadataProviderPrefs>()
-        ? _sl<MetadataProviderPrefs>()
-        : null;
-    final layoutKey = layoutKeyFor(
-      sourceId: _repo.sourceId,
-      zModeOn: kind != null,
-      browseKind: kind,
-      malPreferred: providerPrefs?.anime == AnimeProvider.mal,
-      simklPreferred: providerPrefs?.video == VideoProvider.simkl,
-    );
+    final layoutKey = _layoutKey;
     final available = availableRowIds(
       rowSections,
       withTrackerRows: withTrackerRows,
+      kind: kind,
     );
     final saved = HomeRowsPrefs.savedFor(layoutKey);
     final layout = sanitizeLayout(
       saved ??
-          defaultLayout([
-            for (final s in rowSections) 'section:${s.title}',
-          ], withTrackerRows: withTrackerRows),
+          defaultLayout(
+            [for (final s in rowSections) 'section:${s.title}'],
+            withTrackerRows: withTrackerRows,
+            kind: kind,
+          ),
       available,
     );
     return mergeHomeRows(

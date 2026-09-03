@@ -726,7 +726,10 @@ class AppLocalizationsJa extends AppLocalizations {
   String get statusPlanToRead => '読書予定';
 
   @override
-  String get homeRows => 'ホームの行';
+  String get homeRowsLayout => '編集中';
+
+  @override
+  String get homeRows => 'ホームをカスタマイズ';
 
   @override
   String get homeRowsSubtitle => 'ホームに表示する行を選択';
@@ -744,6 +747,9 @@ class AppLocalizationsJa extends AppLocalizations {
   String homeRowTrackerContinue(String tracker) {
     return '$trackerで続きを見る';
   }
+
+  @override
+  String get trackerCaughtUp => '最新話まで視聴済み';
 
   @override
   String get homeRowNewEpisodes => '新着エピソード';

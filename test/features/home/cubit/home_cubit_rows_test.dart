@@ -11,7 +11,9 @@ import 'package:watch_app/core/models/watch_status.dart';
 import 'package:watch_app/core/repository/catalogue_repository.dart';
 import 'package:watch_app/core/tracker/tracker.dart';
 import 'package:watch_app/core/tracker/tracker_hub.dart';
+import 'package:watch_app/core/di/injector.dart';
 import 'package:watch_app/core/ui/home_rows_prefs.dart';
+import 'package:watch_app/core/zmode/metadata_provider_prefs.dart';
 import 'package:watch_app/core/zmode/zmode_prefs.dart';
 import 'package:watch_app/features/home/cubit/home_cubit.dart';
 
@@ -50,11 +52,17 @@ class _StubRepo implements CatalogueRepository {
 
   final List<HomeSection> _sections;
 
+  /// How many times the provider was actually asked for its home.
+  int homeCount = 0;
+
   @override
   Future<List<HomeSection>> home({
     String category = 'sub',
     String? sourceId,
-  }) async => _sections;
+  }) async {
+    homeCount++;
+    return _sections;
+  }
 
   @override
   String get sourceId => 'test';
@@ -142,6 +150,53 @@ void main() {
 
   HomeCubit cubitWith(_FakeTracker t, {List<HomeSection> sections = const []}) =>
       HomeCubit(_StubRepo(sections), trackerHub: TrackerHub([t]));
+
+  test('relayout re-merges a saved arrangement without refetching', () async {
+    final t = _FakeTracker(library: [_entry('One Piece', progress: 100)]);
+    final repo = _StubRepo([_zmSection('Trending'), _zmSection('Popular')]);
+    final cubit = HomeCubit(repo, trackerHub: TrackerHub([t]));
+    addTearDown(cubit.close);
+
+    await cubit.load();
+    expect(repo.homeCount, 1);
+    expect(cubit.state.rows?.map((r) => r.id), [
+      'local:continue',
+      'section:Trending',
+      'section:Popular',
+    ]);
+
+    // What the editor does: save an arrangement, then let the revision bump
+    // land. Hiding a section and surfacing a tracker row must both show up.
+    await HomeRowsPrefs.save('anilist::anime', [
+      'tracker:watching',
+      'local:continue',
+      '!section:Trending',
+      'section:Popular',
+    ]);
+    cubit.relayout();
+
+    expect(cubit.state.rows?.map((r) => r.id), [
+      'tracker:watching',
+      'local:continue',
+      'section:Popular',
+    ]);
+    // The point of relayout: no second provider round trip, and the cached
+    // library serves the tracker row rather than a second list read.
+    expect(repo.homeCount, 1);
+    expect(t.fetchCount, 1);
+  });
+
+  test('relayout before the first load is a no-op, not a crash', () {
+    final t = _FakeTracker();
+    final repo = _StubRepo([_zmSection('Trending')]);
+    final cubit = HomeCubit(repo, trackerHub: TrackerHub([t]));
+    addTearDown(cubit.close);
+
+    cubit.relayout();
+
+    expect(cubit.state.rows, isNull);
+    expect(repo.homeCount, 0);
+  });
 
   test('DEFAULT: tracker data fetched but no tracker row renders', () async {
     final t = _FakeTracker(library: [_entry('One Piece', progress: 100)]);
@@ -271,6 +326,70 @@ void main() {
     final row = cubit.state.rows!.first as TrackerContinueHomeRow;
     expect(row.trackerName, 'AniList');
     expect(row.items.single.item.title, 'One Piece');
+  });
+
+  test('the layout provider decides which tracker answers', () async {
+    final anilist = _FakeTracker(name: 'AniList', library: [
+      _entry('One Piece', progress: 1),
+    ]);
+    final mal = _FakeTracker(name: 'MyAnimeList', library: [
+      _entry('Naruto', progress: 1),
+    ]);
+    // MAL as the anime metadata provider makes the layout 'mal::anime', and a
+    // layout's provider is the tracker behind its list rows — one choice, not
+    // a separate account setting to keep in sync.
+    final prefs = await MetadataProviderPrefs.open();
+    await prefs.setAnime(AnimeProvider.mal);
+    sl.registerSingleton<MetadataProviderPrefs>(prefs);
+    addTearDown(() => sl.unregister<MetadataProviderPrefs>());
+
+    await HomeRowsPrefs.save('mal::anime', [
+      'tracker:continue',
+      'local:continue',
+      'section:Trending',
+    ]);
+    final cubit = HomeCubit(
+      _StubRepo([_zmSection('Trending')]),
+      trackerHub: TrackerHub([anilist, mal]),
+    );
+    addTearDown(cubit.close);
+
+    await cubit.load();
+
+    // AniList is first in hub order and never even read.
+    expect(anilist.fetchCount, 0);
+    expect(mal.fetchCount, 1);
+    final row = cubit.state.rows!.first as TrackerContinueHomeRow;
+    expect(row.trackerName, 'MyAnimeList');
+    expect(row.items.single.item.title, 'Naruto');
+  });
+
+  test('a provider you are not signed into yields no tracker rows', () async {
+    // The layout is AniList's and AniList isn't connected. MAL's library is
+    // not a substitute — the row would carry the wrong account's name.
+    final anilist = _FakeTracker(name: 'AniList', connected: false);
+    final mal = _FakeTracker(name: 'MyAnimeList', library: [
+      _entry('Naruto', progress: 1),
+    ]);
+    await HomeRowsPrefs.save('anilist::anime', [
+      'tracker:continue',
+      'local:continue',
+      'section:Trending',
+    ]);
+    final cubit = HomeCubit(
+      _StubRepo([_zmSection('Trending')]),
+      trackerHub: TrackerHub([anilist, mal]),
+    );
+    addTearDown(cubit.close);
+
+    await cubit.load();
+
+    expect(mal.fetchCount, 0);
+    expect(cubit.state.rows!.any((r) => isTrackerRowId(r.id)), isFalse);
+    expect(cubit.state.rows?.map((r) => r.id), [
+      'local:continue',
+      'section:Trending',
+    ]);
   });
 
   test('a tracker disconnecting re-merges without its rows', () async {

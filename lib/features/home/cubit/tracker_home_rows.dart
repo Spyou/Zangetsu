@@ -9,14 +9,21 @@ import '../../../core/zmode/zmode_ids.dart';
 /// its library slices into rows. Everything here is pure except
 /// [pickHomeTracker], which reads connection state.
 
-/// Which tracker answers for [kind]: the FIRST connected one in hub order
-/// (AniList → MAL → Simkl) that can serve it. Reading drops video-only
-/// trackers; movies/series only Simkl has lists for. Null = no tracker rows.
-Tracker? pickHomeTracker(TrackerHub hub, ZKind kind) {
+/// Which tracker answers for [kind], or null for no tracker rows at all.
+///
+/// [preferred] is the layout's own provider (`layoutTrackerName`), and it must
+/// answer for itself: a MAL home reads MAL's lists or shows none. Substituting
+/// another account was misleading — the TMDB home has no account of its own,
+/// so it quietly served Simkl's lists under a "From your lists" heading that
+/// had nothing to do with what you were browsing. Not signed in, or nothing of
+/// that kind, now means no rows rather than someone else's.
+///
+/// Only a source-backed home passes no preference; there is no provider to
+/// name, so hub order (AniList → MAL → Simkl) decides.
+Tracker? pickHomeTracker(TrackerHub hub, ZKind kind, {String? preferred}) {
   for (final t in hub.trackers) {
-    if (!t.isConnected) continue;
-    if (!trackerServesKind(t, kind)) continue;
-    return t;
+    if (!t.isConnected || !trackerServesKind(t, kind)) continue;
+    if (preferred == null || t.displayName == preferred) return t;
   }
   return null;
 }

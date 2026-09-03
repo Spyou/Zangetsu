@@ -6,6 +6,8 @@ import 'package:watch_app/core/models/media_item.dart';
 import 'package:watch_app/core/models/provider_info.dart';
 import 'package:watch_app/core/models/watch_status.dart';
 import 'package:watch_app/core/tracker/tracker.dart';
+import 'package:watch_app/core/ui/continue_card.dart';
+import 'package:watch_app/core/ui/poster_card.dart';
 import 'package:watch_app/features/home/tracker_continue_section.dart';
 
 // The tracker-driven home rows render what the cubit sliced — titles, progress
@@ -82,6 +84,78 @@ void main() {
     expect(find.textContaining('/'), findsNothing);
   });
 
+  testWidgets('TrackerContinueSection is a poster row with no progress bar', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      TrackerContinueSection(
+        items: [_entry('One Piece', progress: 4, total: 12)],
+        trackerName: 'AniList',
+        onOpen: (_) {},
+      ),
+    );
+
+    expect(find.byType(PosterCard), findsOneWidget);
+    // A tracker has no playback position, so drawing its episode count as a
+    // bar made it read as one. The count stays, the bar goes.
+    expect(find.byType(ContinueCard), findsNothing);
+    expect(find.byType(LinearProgressIndicator), findsNothing);
+    expect(find.text('EP 4/12'), findsOneWidget);
+  });
+
+  testWidgets('caught up on an airing show says so instead of the fraction', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      TrackerContinueSection(
+        // Episode 7 airs next, so 6 are out and all 6 are watched. "EP 6/10"
+        // would promise four episodes that do not exist yet.
+        items: [_entry('Bleach', progress: 6, total: 10, nextAiring: 7)],
+        trackerName: 'AniList',
+        onOpen: (_) {},
+      ),
+    );
+
+    expect(find.text('Caught up'), findsOneWidget);
+    expect(find.text('EP 6/10'), findsNothing);
+  });
+
+  testWidgets('behind on an airing show still shows the fraction', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      TrackerContinueSection(
+        items: [_entry('Bleach', progress: 4, total: 10, nextAiring: 7)],
+        trackerName: 'AniList',
+        onOpen: (_) {},
+      ),
+    );
+
+    expect(find.text('EP 4/10'), findsOneWidget);
+    expect(find.text('Caught up'), findsNothing);
+  });
+
+  testWidgets('no next-airing (MAL, Simkl) never claims caught up', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      TrackerContinueSection(
+        // Same numbers, but nothing tells us how many aired — so the honest
+        // answer is the fraction, not a guess.
+        items: [_entry('Bleach', progress: 10, total: 10)],
+        trackerName: 'MyAnimeList',
+        onOpen: (_) {},
+      ),
+    );
+
+    expect(find.text('EP 10/10'), findsOneWidget);
+    expect(find.text('Caught up'), findsNothing);
+  });
+
   testWidgets('NewEpisodesSection: overline tracker, next-episode badge', (
     tester,
   ) async {
@@ -97,6 +171,31 @@ void main() {
     expect(find.text('New Episodes'), findsOneWidget);
     expect(find.text('AniList'), findsOneWidget); // the overline
     expect(find.text('EP 5'), findsOneWidget); // one past the progress
+    expect(find.text('Bleach'), findsOneWidget);
+    // 24 released, 4 seen — the count is what this row knows and the
+    // continue rows don't.
+    expect(find.text('+20'), findsOneWidget);
+    // The whole point of the design: NOT the landscape card the two continue
+    // rows use, so the row reads as a different thing while scrolling past.
+    expect(find.byType(ContinueCard), findsNothing);
+    expect(find.byType(PosterCard), findsOneWidget);
+  });
+
+  testWidgets('NewEpisodesSection counts only what has aired', (tester) async {
+    await _pump(
+      tester,
+      NewEpisodesSection(
+        // Still airing: episode 7 is next, so 6 are out and 2 are waiting —
+        // counting against the 24-episode season would promise 20 that do
+        // not exist yet.
+        items: [_entry('Bleach', progress: 4, total: 24, nextAiring: 7)],
+        trackerName: 'AniList',
+        onOpen: (_) {},
+      ),
+    );
+
+    expect(find.text('+2'), findsOneWidget);
+    expect(find.text('EP 5'), findsOneWidget);
   });
 
   testWidgets('TrackerListSection keeps the anime labels', (tester) async {

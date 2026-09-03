@@ -263,7 +263,8 @@
 	"statusPlanning": "Planificando",
 	"statusReading": "Leyendo",
 	"statusPlanToRead": "Pendiente de leer",
-	"homeRows": "Filas de inicio",
+	"homeRowsLayout": "Editando",
+	"homeRows": "Personalizar Inicio",
 	"homeRowsSubtitle": "Elige qué mostrar en Inicio",
 	"homeRowsFromYourLists": "De tus listas",
 	"homeRowsDiscover": "Descubrir",
@@ -276,6 +277,7 @@
 			}
 		}
 	},
+	"trackerCaughtUp": "Al día",
 	"homeRowNewEpisodes": "Episodios nuevos",
 	"modeStreaming": "Transmisión",
 	"modeManga": "Manga",

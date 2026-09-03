@@ -1353,7 +1353,7 @@ class _HomeViewState extends State<_HomeView>
                       // state.rows is the merged view of this load: the local
                       // Continue row, the tracker rows the user enabled, and the
                       // provider sections, in the saved order (Settings →
-                      // Interface → Home rows). ContinueSection renders wherever
+                      // Interface → Appearance → Home rows). ContinueSection renders wherever
                       // the layout puts it — the same widgets as before, just
                       // arranged. Before the first merge lands (rows null), the
                       // ContinueSection keeps its old spot above the skeletons

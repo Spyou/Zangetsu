@@ -83,6 +83,9 @@ class MalCatalogue implements AnimeCatalogue {
   /// AniList set so switching provider changes the data, not the shape of the
   /// screen. MAL has no "trending" or per-season ranking, so `airing`/`upcoming`
   /// stand in for the seasonal rows.
+  /// Row titles for [k] without a fetch — see [AniListCatalogue.rowTitles].
+  static List<String> rowTitles(ZKind k) => [for (final r in _rows(k)) r.$1];
+
   static List<(String, String)> _rows(ZKind k) => k == ZKind.anime
       ? const [
           ('Trending', 'airing'),
