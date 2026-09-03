@@ -34,6 +34,8 @@ class TrackerListItem {
     this.tmdbIsTv = false,
     this.updatedAt,
     this.customLists = const [],
+    this.totalEpisodes,
+    this.nextAiringEpisode,
   });
 
   final MediaItem item;
@@ -60,6 +62,17 @@ class TrackerListItem {
   /// For non-anime entries resolved by TMDB id (Simkl movies/TV): whether this
   /// is a TV show, so writes go to the right bucket. Ignored for anime.
   final bool tmdbIsTv;
+
+  /// Total episodes/chapters of the title, when the tracker's list response
+  /// happened to carry it. Powers the home rows' progress badges ("EP 4/12")
+  /// and the new-episodes count — null simply omits the badge; it is NOT
+  /// looked up on demand (no extra requests per row).
+  final int? totalEpisodes;
+
+  /// The next episode number that will air, while a show is still airing.
+  /// `released = nextAiringEpisode - 1` tells the home rows whether unwatched
+  /// episodes exist (released > progress). Null when the tracker didn't say.
+  final int? nextAiringEpisode;
 }
 
 /// The user's current entry for ONE title, read back from a tracker to fill the

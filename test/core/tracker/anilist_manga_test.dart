@@ -36,11 +36,16 @@ const _searchMediaAnimeGolden =
 // three with user-defined lists, and this is how the app reads which ones an
 // entry is in. Both sit on MediaList itself, not on `media`, so they're
 // identical for anime and manga and can't skew the split this file guards.
+//
+// `episodes` + `nextAiringEpisode{episode}` were added for the home rows
+// (progress badges + unwatched-episode detection) — same rationale as
+// `updatedAt`: ride the library read, no extra request.
 const _listCollectionAnimeGolden =
     r'query($u:String){ MediaListCollection(userName:$u, type:ANIME){ '
     r'lists { status entries { status progress score(format:POINT_10) '
     r'updatedAt customLists(asArray:true) '
-    r'media { idMal title { romaji english } coverImage { large } } } } } }';
+    r'media { idMal title { romaji english } episodes '
+    r'nextAiringEpisode{episode} coverImage { large } } } } } }';
 
 /// A `MediaListCollection` response shaped exactly like AniList's — two lists
 /// (Watching / Planning), the `media` sub-object carrying idMal + titles +
@@ -59,6 +64,8 @@ Map<String, dynamic> _entry({
   String? format,
   int? progress,
   num? score,
+  int? total,
+  int? nextEpisode,
 }) => {
   'status': status,
   'progress': progress,
@@ -67,6 +74,9 @@ Map<String, dynamic> _entry({
     'idMal': idMal,
     'title': {'romaji': romaji, 'english': english},
     'format': ?format,
+    'episodes': ?total,
+    'chapters': ?total,
+    if (nextEpisode != null) 'nextAiringEpisode': {'episode': nextEpisode},
     'coverImage': {'large': 'https://img.anili.st/$idMal.jpg'},
   },
 };
@@ -161,7 +171,12 @@ void main() {
       final q = mediaListCollectionQuery(MediaKind.manga);
       expect(q, contains('type:MANGA'));
       // Without `format` there is no way to tell a light novel from a manga.
-      expect(q, contains('title { romaji english } format coverImage'));
+      expect(
+        q,
+        contains('title { romaji english } format chapters volumes coverImage'),
+      );
+      // Airing is an anime-only concept — the manga read must not ask for it.
+      expect(q, isNot(contains('nextAiringEpisode')));
       expect(q, isNot(contains('type:ANIME')));
     });
   });
@@ -241,6 +256,32 @@ void main() {
       expect(fma.progress, 0);
       // A 0 score means "unrated" on AniList, not a real score of zero.
       expect(fma.score, isNull);
+    });
+
+    test('parses the total and next-airing episode off the same read', () {
+      final out = parseAniListCollection(
+        _collection([
+          {
+            'status': 'CURRENT',
+            'entries': [
+              _entry(
+                status: 'CURRENT',
+                idMal: 21,
+                romaji: 'One Piece',
+                total: 1122,
+                nextEpisode: 1123,
+              ),
+              _entry(status: 'CURRENT', idMal: 20, romaji: 'Naruto'),
+            ],
+          },
+        ]),
+        MediaKind.anime,
+      );
+      expect(out.first.totalEpisodes, 1122);
+      expect(out.first.nextAiringEpisode, 1123);
+      // Absent on the wire (finished title / old client cache) → null, not 0.
+      expect(out.last.totalEpisodes, isNull);
+      expect(out.last.nextAiringEpisode, isNull);
     });
 
     test('a NOVEL format on the anime list still types as anime', () {
@@ -357,6 +398,34 @@ void main() {
       final oneShot = out.firstWhere((e) => e.item.malId == 21);
       expect(oneShot.item.type, ProviderType.manga);
       expect(oneShot.status, WatchStatus.completed);
+    });
+
+    test('a manga entry reports chapters as its total, with no airing', () {
+      // Hand-built (not via _entry) so `episodes` is genuinely absent — the
+      // manga read must fall through to `chapters`, and airing never applies.
+      final mangaOut = parseAniListCollection(
+        _collection([
+          {
+            'status': 'CURRENT',
+            'entries': [
+              {
+                'status': 'CURRENT',
+                'progress': 3,
+                'media': {
+                  'idMal': 2,
+                  'title': {'romaji': 'Berserk'},
+                  'format': 'MANGA',
+                  'chapters': 364,
+                  'coverImage': {'large': 'x'},
+                },
+              },
+            ],
+          },
+        ]),
+        MediaKind.manga,
+      );
+      expect(mangaOut.single.totalEpisodes, 364);
+      expect(mangaOut.single.nextAiringEpisode, isNull);
     });
 
     test('reading ids are namespaced away from the anime id space', () {

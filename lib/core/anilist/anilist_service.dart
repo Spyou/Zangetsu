@@ -117,6 +117,13 @@ List<TrackerListItem> parseAniListCollection(Object? data, MediaKind kind) {
         // AniList uses the one `progress` field for both.
         progress: (e['progress'] as num?)?.toInt(),
         score: score,
+        // Totals ride along on the same list read (no extra requests); manga
+        // reports chapters, anime episodes. nextAiringEpisode nests one level.
+        totalEpisodes: (media['episodes'] as num? ?? media['chapters'] as num?)
+            ?.toInt(),
+        nextAiringEpisode: ((media['nextAiringEpisode'] as Map?)?['episode']
+                as num?)
+            ?.toInt(),
       ));
       idx++;
     }

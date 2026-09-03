@@ -417,6 +417,11 @@ class SimklService extends ChangeNotifier implements Tracker {
             progress: _asInt(e['watched_episodes_count']),
             score: score,
             tmdbIsTv: isTv,
+            // `extended=full` carries the total on both the entry and the
+            // nested media; take whichever is present. No next-airing field
+            // exists on this endpoint, so that stays null.
+            totalEpisodes: _asInt(
+                e['total_episodes_count'] ?? media['total_episodes_count']),
           ));
         }
       }

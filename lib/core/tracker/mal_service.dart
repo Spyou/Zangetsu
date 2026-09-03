@@ -147,6 +147,10 @@ List<TrackerListItem> parseMalListPage(Object? body, MediaKind kind) {
         // Chapters read for manga/novel, episodes watched for anime.
         progress: (ls[progressField] as num?)?.toInt(),
         score: (score != null && score > 0) ? score : null,
+        // The list request already selects the total ([malUserListPath]) —
+        // read it instead of dropping it. MAL's list response carries no
+        // next-airing field, so that one stays null here.
+        totalEpisodes: (node[malTotalField(kind)] as num?)?.toInt(),
       ),
     );
   }

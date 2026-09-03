@@ -45,6 +45,7 @@ Map<String, dynamic> _row({
   int? watched,
   int? read,
   num? score,
+  int? total,
 }) => {
   'node': {
     'id': id,
@@ -54,6 +55,10 @@ Map<String, dynamic> _row({
       'large': 'https://cdn.myanimelist.net/$id-l.jpg',
     },
     'media_type': ?mediaType,
+    // The list request selects the total ([malUserListPath]); both spellings
+    // sit here so the same fixture serves either kind.
+    'num_episodes': ?total,
+    'num_chapters': ?total,
   },
   'list_status': {
     'status': status,
@@ -312,6 +317,19 @@ void main() {
       expect(fma.status, WatchStatus.planning);
       expect(fma.progress, 0);
       expect(fma.score, isNull); // 0 = unrated
+    });
+
+    test('parses the node total; airing is never claimed', () {
+      final out = parseMalListPage(
+        _page([
+          _row(id: 21, title: 'One Piece', status: 'watching', total: 1122),
+          _row(id: 20, title: 'Naruto', status: 'watching'),
+        ]),
+        MediaKind.anime,
+      );
+      expect(out.first.totalEpisodes, 1122);
+      expect(out.first.nextAiringEpisode, isNull); // MAL lists carry no airing
+      expect(out.last.totalEpisodes, isNull); // absent → null, not 0
     });
 
     test('progress is read from num_episodes_watched, not the write name', () {
