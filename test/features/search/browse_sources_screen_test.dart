@@ -67,6 +67,34 @@ void main() {
     expect(find.textContaining('MangaDex'), findsNothing);
   });
 
+  // The shell draws its floating dock OVER this tab, so the dock's height
+  // arrives as a bottom inset on the screen's MediaQuery. It has to survive
+  // the screen's own Scaffold + TabBarView and reach the list's padding —
+  // testing the list widget alone would pass even if the inset never got
+  // there, which is exactly how the last source ended up under the dock.
+  testWidgets('the dock inset reaches the list through the screen', (t) async {
+    await t.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => MediaQuery(
+            data: MediaQuery.of(
+              context,
+            ).copyWith(padding: const EdgeInsets.only(bottom: 104)),
+            child: const BrowseSourcesScreen(),
+          ),
+        ),
+      ),
+    );
+    await t.pumpAndSettle();
+
+    final list = t.widget<ListView>(find.byType(ListView).first);
+    expect(
+      (list.padding! as EdgeInsets).bottom,
+      greaterThanOrEqualTo(104.0),
+      reason: 'the last source must scroll clear of the dock',
+    );
+  });
+
   testWidgets('Manga tab shows only the manga bucket', (t) async {
     await t.pumpWidget(const MaterialApp(home: BrowseSourcesScreen()));
     await t.pumpAndSettle();

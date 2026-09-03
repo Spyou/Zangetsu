@@ -42,6 +42,34 @@ void main() {
     expect(tappedId, 'ani:1');
   });
 
+  // This list is the Sources TAB, so the shell's floating dock is drawn over
+  // it and its height reaches the list as a bottom inset. A ListView with an
+  // explicit padding opts out of absorbing that, so the padding has to add it
+  // back — otherwise the last source sits under the dock with no way to
+  // scroll it clear.
+  testWidgets('the list clears the dock inset', (t) async {
+    await t.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => MediaQuery(
+            data: MediaQuery.of(
+              context,
+            ).copyWith(padding: const EdgeInsets.only(bottom: 104)),
+            child: Scaffold(body: BrowseSourcesList(onBrowse: (_, _) {})),
+          ),
+        ),
+      ),
+    );
+    await t.pumpAndSettle();
+
+    final list = t.widget<ListView>(find.byType(ListView).first);
+    expect(
+      (list.padding! as EdgeInsets).bottom,
+      greaterThanOrEqualTo(104.0),
+      reason: 'the last source must scroll clear of the dock',
+    );
+  });
+
   testWidgets('says so when nothing is installed', (t) async {
     await sl.reset();
     await registerPickerDeps();
