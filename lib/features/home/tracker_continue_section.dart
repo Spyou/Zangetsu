@@ -155,11 +155,16 @@ class NewEpisodesSection extends StatelessWidget {
     required this.items,
     required this.trackerName,
     required this.onOpen,
+    this.onSeeAll,
   });
 
   final List<TrackerListItem> items;
   final String trackerName;
   final TrackerEntryOpen onOpen;
+
+  /// Opens the same entries as a grid. Not a tracker bucket, so there is no
+  /// library tab to land on — the row's own contents ARE the whole set.
+  final VoidCallback? onSeeAll;
 
   @override
   Widget build(BuildContext context) {
@@ -167,6 +172,7 @@ class NewEpisodesSection extends StatelessWidget {
     return ContentRow(
       title: context.l10n.homeRowNewEpisodes,
       overline: trackerName,
+      onSeeAll: onSeeAll,
       itemWidth: _kTrackerCell,
       itemHeight: _kTrackerCellHeight,
       itemCount: items.length,

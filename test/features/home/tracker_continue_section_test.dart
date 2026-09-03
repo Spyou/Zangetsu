@@ -231,9 +231,25 @@ void main() {
     expect(bucketSeeAll, 1);
   });
 
-  testWidgets('New Episodes has no See All', (tester) async {
-    // Not a tracker bucket — a computed slice of Watching, with no library
-    // view behind it to open.
+  testWidgets('New Episodes gets its own See All', (tester) async {
+    var seen = 0;
+    await _pump(
+      tester,
+      NewEpisodesSection(
+        items: [_entry('Bleach', progress: 4, total: 24)],
+        trackerName: 'AniList',
+        onOpen: (_) {},
+        onSeeAll: () => seen++,
+      ),
+    );
+
+    await tester.tap(find.text('See All'));
+    expect(seen, 1);
+  });
+
+  testWidgets('New Episodes without a handler draws no See All', (
+    tester,
+  ) async {
     await _pump(
       tester,
       NewEpisodesSection(

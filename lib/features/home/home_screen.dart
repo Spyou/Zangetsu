@@ -80,6 +80,7 @@ import 'cubit/home_cubit.dart';
 import 'home_screen_tv.dart';
 import 'lists_hub_screen.dart';
 import 'search_screen.dart';
+import 'cubit/tracker_home_rows.dart' show releasedCount;
 import 'see_all_screen.dart';
 
 /// Provides the [HomeCubit] (which owns the three browse rows + the carousel's
@@ -744,6 +745,7 @@ class _HomeViewState extends State<_HomeView>
         items: items,
         trackerName: trackerName,
         onOpen: _openTrackerEntry,
+        onSeeAll: () => _openNewEpisodes(items),
       ),
     ),
     TrackerListHomeRow(:final status, :final items, :final trackerName) =>
@@ -757,6 +759,28 @@ class _HomeViewState extends State<_HomeView>
         ),
       ),
   };
+
+  /// "See all" on New Episodes: the same entries as a grid, keeping the count
+  /// badge so the reason each one is here survives the jump.
+  ///
+  /// A fixed list, not a paginated one — this row is computed from the library
+  /// already in hand, so there is no next page to ask anyone for.
+  void _openNewEpisodes(List<TrackerListItem> items) {
+    final waiting = {
+      for (final e in items) e.item.id: releasedCount(e) - (e.progress ?? 0),
+    };
+    Navigator.push(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) => SeeAllScreen(
+          title: context.l10n.homeRowNewEpisodes,
+          items: [for (final e in items) e.item],
+          onTap: _openTrackerItem,
+          tagsFor: (item) => ['+${waiting[item.id] ?? 0}'],
+        ),
+      ),
+    );
+  }
 
   /// "See all" on a tracker row: that tracker's whole library, opened on the
   /// tab the row came from.
@@ -789,8 +813,11 @@ class _HomeViewState extends State<_HomeView>
   /// but it carries the id the metadata catalogue is keyed by, so a tap opens
   /// its Detail page directly; an entry with no id falls back to a search for
   /// its own title — the same open path My List uses.
-  void _openTrackerEntry(TrackerListItem entry) {
-    final playable = playableTrackerItem(entry.item);
+  void _openTrackerEntry(TrackerListItem entry) => _openTrackerItem(entry.item);
+
+  /// The same open, from a bare item — the See All grid hands back MediaItems.
+  void _openTrackerItem(MediaItem item) {
+    final playable = playableTrackerItem(item);
     if (playable != null) {
       _openDetail(playable);
       return;
@@ -798,7 +825,7 @@ class _HomeViewState extends State<_HomeView>
     Navigator.push(
       context,
       MaterialPageRoute<void>(
-        builder: (_) => SearchScreen(initialQuery: entry.item.title),
+        builder: (_) => SearchScreen(initialQuery: item.title),
       ),
     );
   }
