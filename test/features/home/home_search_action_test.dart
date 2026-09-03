@@ -6,6 +6,7 @@ import 'package:hive/hive.dart';
 import 'package:watch_app/core/zmode/zmode_prefs.dart';
 import 'package:watch_app/features/home/home_screen.dart';
 import 'package:watch_app/features/home/search_screen.dart';
+import 'package:watch_app/features/shell/dock_icons.dart';
 
 /// Search left the dock (task 17) — this header icon, beside
 /// [HomeBrowseSourcesAction], is the primary way in now. Unlike the sources
@@ -61,7 +62,7 @@ void main() {
   testWidgets('Z Mode off: the search icon shows', (tester) async {
     expect(ZModePrefs.enabled, isFalse);
     await pumpAction(tester);
-    expect(find.byIcon(Icons.search_rounded), findsOneWidget);
+    expect(find.byWidgetPredicate((w) => w is DockIcon && w.glyph == DockGlyph.search), findsOneWidget);
   });
 
   testWidgets('Z Mode on: the search icon still shows', (tester) async {
@@ -69,7 +70,7 @@ void main() {
     // binding without runAsync — same gotcha as home_browse_sources_action's.
     await tester.runAsync(() => ZModePrefs.setEnabled(true));
     await pumpAction(tester);
-    expect(find.byIcon(Icons.search_rounded), findsOneWidget);
+    expect(find.byWidgetPredicate((w) => w is DockIcon && w.glyph == DockGlyph.search), findsOneWidget);
   });
 
   testWidgets('tapping it pushes SearchScreen', (tester) async {
@@ -78,7 +79,7 @@ void main() {
     final before = observer.pushed.length;
 
     // No pump() after this tap on purpose — see _RecordingNavigatorObserver.
-    await tester.tap(find.byIcon(Icons.search_rounded));
+    await tester.tap(find.byWidgetPredicate((w) => w is DockIcon && w.glyph == DockGlyph.search));
     expect(observer.pushed.length, before + 1);
 
     final pushedRoute = observer.pushed.last as MaterialPageRoute;

@@ -40,6 +40,7 @@ import '../../l10n/l10n.dart';
 import '../../core/announce/announcement.dart';
 import '../announce/announcement_sheet.dart';
 import '../community/community_sheet.dart';
+import '../downloads/downloads_screen.dart';
 import '../notify/subscriptions_screen.dart';
 import '../reader/manga_reader_screen.dart';
 import '../reader/novel_reader_screen.dart';
@@ -603,8 +604,8 @@ class _HomeViewState extends State<_HomeView>
                     )
                   : const SizedBox.shrink(),
             ),
-            // Header bell is parked for now (design TBD) — re-add
-            // `_notificationBell(context)` here once one is chosen.
+            _headerDownloadButton(),
+            _notificationBell(context),
             const HomeSearchAction(),
             const HomeSourceSwitcherSlot(),
           ],
@@ -613,13 +614,27 @@ class _HomeViewState extends State<_HomeView>
     );
   }
 
+  /// Header download shortcut → [DownloadsScreen]. Same shape as
+  /// [HomeSearchAction]: flat icon, no badge — the screen itself is the
+  /// progress view, so there's nothing to surface here. Pushed as a normal
+  /// route (with back), unlike the dock tab which suppresses it.
+  Widget _headerDownloadButton() {
+    return IconButton(
+      icon: const DockIcon(
+        DockGlyph.download,
+        color: AppColors.textSecondary,
+        size: 22,
+      ),
+      tooltip: context.l10n.downloads,
+      onPressed: () => Navigator.of(context).push(
+        MaterialPageRoute<void>(builder: (_) => const DownloadsScreen()),
+      ),
+    );
+  }
+
   /// Flat bell → Notifications screen. The accent dot shows while any
   /// announcement is unseen and clears itself reactively (the screen calls
   /// markAllSeen, the Hive box updates, the listenable rebuilds).
-  ///
-  /// Currently unwired — the header bell is parked until a design is chosen
-  /// (mockups in docs/mockups/bell-options.html).
-  // ignore: unused_element
   Widget _notificationBell(BuildContext context) {
     // Built fresh inside the listenable's builder — a captured widget
     // instance would be canonical and the rebuild would be skipped.
@@ -633,10 +648,10 @@ class _HomeViewState extends State<_HomeView>
         child: Stack(
           clipBehavior: Clip.none,
           children: [
-            const Icon(
-              Icons.notifications_none_rounded,
-              size: 24,
-              color: Colors.white,
+            const DockIcon(
+              DockGlyph.bell,
+              color: AppColors.textSecondary,
+              size: 22,
             ),
             if (Hive.isBoxOpen(AnnouncementStore.boxName) &&
                 AnnouncementStore().unseenCount() > 0)
@@ -1185,15 +1200,19 @@ class _HomeViewState extends State<_HomeView>
                   // (Popular + Latest); dropping the first would hide Popular
                   // entirely, so keep the full list as rows for them — the banner
                   // still spotlights Popular, and the row repeats it (like the
-                  // Aniyomi/Mihon apps' Popular grid).
+                  // Aniyomi/Mihon apps' Popular grid). Z Mode metadata rows do the
+                  // same: the banner spotlights Trending, and Trending stays a row
+                  // below it — asked for explicitly, the banner is not a
+                  // replacement for the row.
                   final firstId = sections.isNotEmpty
                       ? (sections.first.more?.sourceId ?? '')
                       : '';
-                  final firstIsNativeCatalog =
+                  final firstRepeatsAsRow =
                       firstId.startsWith('ani:') ||
-                      firstId.startsWith('mihon:');
+                      firstId.startsWith('mihon:') ||
+                      firstId == ZmodeIds.sourceId;
                   final rowSections =
-                      (sections.length > 1 && !firstIsNativeCatalog)
+                      (sections.length > 1 && !firstRepeatsAsRow)
                       ? sections.sublist(1)
                       : sections;
                   final showSkeletons = state.loading && sections.isEmpty;
@@ -1384,10 +1403,10 @@ class HomeSearchAction extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return IconButton(
-      icon: const Icon(
-        Icons.search_rounded,
+      icon: const DockIcon(
+        DockGlyph.search,
         color: AppColors.textSecondary,
-        size: 20,
+        size: 22,
       ),
       tooltip: context.l10n.search,
       onPressed: () => Navigator.of(
