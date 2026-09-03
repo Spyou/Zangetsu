@@ -6,6 +6,7 @@ import '../../core/di/injector.dart';
 import '../../core/lnreader/lnreader_extension_service.dart';
 import '../../core/lnreader/lnreader_manager.dart';
 import '../../core/lnreader/novel_lang_prefs.dart';
+import '../../core/repository/source_actions.dart' as source_actions;
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/ui/states.dart';
@@ -848,6 +849,10 @@ class _LnReaderSourceRowState extends State<_LnReaderSourceRow> {
     }
   }
 
+  /// The id [SourceRepository] knows this plugin by — the manager registers
+  /// every LNReader plugin as `lnr:<pluginId>`.
+  String get _sourceId => 'lnr:${widget.meta.id}';
+
   // ponytail: no confirm dialog here (every sibling *Reader/*Mihon uninstall
   // row has one) — the brief calls this screen out as deliberately simpler
   // than Mihon/Aniyomi and doesn't ask for one. Add if novel-source
@@ -916,11 +921,24 @@ class _LnReaderSourceRowState extends State<_LnReaderSourceRow> {
             // Installed tab: compact trash icon, mirroring Mihon's
             // `_MihonSourceRow` (LNReader plugins have no per-source settings,
             // so no `tune` icon alongside it).
-            IconButton(
-              tooltip: context.l10n.navTabsRemove,
-              icon: const Icon(Icons.delete_outline_rounded, size: 20),
-              color: AppColors.textSecondary,
-              onPressed: _remove,
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (source_actions.webViewUrlFor(_sourceId) != null)
+                  IconButton(
+                    tooltip: context.l10n.signInToSource,
+                    icon: const Icon(Icons.login_rounded, size: 20),
+                    color: AppColors.textSecondary,
+                    onPressed: () =>
+                        source_actions.openSourceWebView(_sourceId),
+                  ),
+                IconButton(
+                  tooltip: context.l10n.navTabsRemove,
+                  icon: const Icon(Icons.delete_outline_rounded, size: 20),
+                  color: AppColors.textSecondary,
+                  onPressed: _remove,
+                ),
+              ],
             )
           else if (widget.installed)
             // A repo's catalog: an installed source shows an context.l10n.uninstall text
