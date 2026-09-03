@@ -744,6 +744,30 @@ class AppLocalizationsDe extends AppLocalizations {
   String get statusPlanToRead => 'Lesen geplant';
 
   @override
+  String get homeRows => 'Startzeilen';
+
+  @override
+  String get homeRowsSubtitle => 'Leg fest, was auf Start erscheint';
+
+  @override
+  String get homeRowsFromYourLists => 'Aus deinen Listen';
+
+  @override
+  String get homeRowsDiscover => 'Entdecken';
+
+  @override
+  String get homeRowsHelp =>
+      'Zum Sortieren ziehen. Schalte eine Zeile aus, um sie auszublenden.';
+
+  @override
+  String homeRowTrackerContinue(String tracker) {
+    return 'Weiter auf $tracker';
+  }
+
+  @override
+  String get homeRowNewEpisodes => 'Neue Folgen';
+
+  @override
   String get modeStreaming => 'Streaming';
 
   @override

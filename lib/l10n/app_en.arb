@@ -263,6 +263,20 @@
 	"statusPlanning": "Planning",
 	"statusReading": "Reading",
 	"statusPlanToRead": "Plan to Read",
+	"homeRows": "Home rows",
+	"homeRowsSubtitle": "Choose what shows on Home",
+	"homeRowsFromYourLists": "From your lists",
+	"homeRowsDiscover": "Discover",
+	"homeRowsHelp": "Drag to reorder. Turn a row off to hide it.",
+	"homeRowTrackerContinue": "Continue on {tracker}",
+	"@homeRowTrackerContinue": {
+		"placeholders": {
+			"tracker": {
+				"type": "String"
+			}
+		}
+	},
+	"homeRowNewEpisodes": "New Episodes",
 	"modeStreaming": "Streaming",
 	"modeManga": "Manga",
 	"modeNovel": "Novel",

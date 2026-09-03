@@ -263,6 +263,20 @@
 	"statusPlanning": "予定",
 	"statusReading": "読書中",
 	"statusPlanToRead": "読書予定",
+	"homeRows": "ホームの行",
+	"homeRowsSubtitle": "ホームに表示する行を選択",
+	"homeRowsFromYourLists": "リストから",
+	"homeRowsDiscover": "見つける",
+	"homeRowsHelp": "ドラッグで並べ替え。オフにすると行が非表示になります。",
+	"homeRowTrackerContinue": "{tracker}で続きを見る",
+	"@homeRowTrackerContinue": {
+		"placeholders": {
+			"tracker": {
+				"type": "String"
+			}
+		}
+	},
+	"homeRowNewEpisodes": "新着エピソード",
 	"modeStreaming": "ストリーミング",
 	"modeManga": "マンガ",
 	"modeNovel": "小説",

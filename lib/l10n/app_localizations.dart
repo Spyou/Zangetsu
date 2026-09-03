@@ -1519,6 +1519,48 @@ abstract class AppLocalizations {
   /// **'Plan to Read'**
   String get statusPlanToRead;
 
+  /// No description provided for @homeRows.
+  ///
+  /// In en, this message translates to:
+  /// **'Home rows'**
+  String get homeRows;
+
+  /// No description provided for @homeRowsSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose what shows on Home'**
+  String get homeRowsSubtitle;
+
+  /// No description provided for @homeRowsFromYourLists.
+  ///
+  /// In en, this message translates to:
+  /// **'From your lists'**
+  String get homeRowsFromYourLists;
+
+  /// No description provided for @homeRowsDiscover.
+  ///
+  /// In en, this message translates to:
+  /// **'Discover'**
+  String get homeRowsDiscover;
+
+  /// No description provided for @homeRowsHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Drag to reorder. Turn a row off to hide it.'**
+  String get homeRowsHelp;
+
+  /// No description provided for @homeRowTrackerContinue.
+  ///
+  /// In en, this message translates to:
+  /// **'Continue on {tracker}'**
+  String homeRowTrackerContinue(String tracker);
+
+  /// No description provided for @homeRowNewEpisodes.
+  ///
+  /// In en, this message translates to:
+  /// **'New Episodes'**
+  String get homeRowNewEpisodes;
+
   /// No description provided for @modeStreaming.
   ///
   /// In en, this message translates to:

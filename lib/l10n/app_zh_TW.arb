@@ -263,6 +263,20 @@
 	"statusPlanning": "計畫中",
 	"statusReading": "正在閱讀",
 	"statusPlanToRead": "打算閱讀",
+	"homeRows": "首頁列",
+	"homeRowsSubtitle": "選擇首頁上顯示的內容",
+	"homeRowsFromYourLists": "來自你的清單",
+	"homeRowsDiscover": "探索",
+	"homeRowsHelp": "拖曳可重新排序。關閉開關即可隱藏該列。",
+	"homeRowTrackerContinue": "在 {tracker} 上繼續",
+	"@homeRowTrackerContinue": {
+		"placeholders": {
+			"tracker": {
+				"type": "String"
+			}
+		}
+	},
+	"homeRowNewEpisodes": "新集數",
 	"modeStreaming": "串流媒體",
 	"modeManga": "漫畫",
 	"modeNovel": "小說",

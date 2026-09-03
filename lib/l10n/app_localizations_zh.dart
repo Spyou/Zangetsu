@@ -723,6 +723,29 @@ class AppLocalizationsZh extends AppLocalizations {
   String get statusPlanToRead => '计划阅读';
 
   @override
+  String get homeRows => '主页行';
+
+  @override
+  String get homeRowsSubtitle => '选择主页上显示的内容';
+
+  @override
+  String get homeRowsFromYourLists => '来自你的列表';
+
+  @override
+  String get homeRowsDiscover => '发现';
+
+  @override
+  String get homeRowsHelp => '拖动可重新排序。关闭开关即可隐藏该行。';
+
+  @override
+  String homeRowTrackerContinue(String tracker) {
+    return '在$tracker上继续';
+  }
+
+  @override
+  String get homeRowNewEpisodes => '新集数';
+
+  @override
   String get modeStreaming => '流媒体';
 
   @override
@@ -5582,6 +5605,29 @@ class AppLocalizationsZhTw extends AppLocalizationsZh {
 
   @override
   String get statusPlanToRead => '打算閱讀';
+
+  @override
+  String get homeRows => '首頁列';
+
+  @override
+  String get homeRowsSubtitle => '選擇首頁上顯示的內容';
+
+  @override
+  String get homeRowsFromYourLists => '來自你的清單';
+
+  @override
+  String get homeRowsDiscover => '探索';
+
+  @override
+  String get homeRowsHelp => '拖曳可重新排序。關閉開關即可隱藏該列。';
+
+  @override
+  String homeRowTrackerContinue(String tracker) {
+    return '在 $tracker 上繼續';
+  }
+
+  @override
+  String get homeRowNewEpisodes => '新集數';
 
   @override
   String get modeStreaming => '串流媒體';

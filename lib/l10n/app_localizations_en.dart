@@ -736,6 +736,29 @@ class AppLocalizationsEn extends AppLocalizations {
   String get statusPlanToRead => 'Plan to Read';
 
   @override
+  String get homeRows => 'Home rows';
+
+  @override
+  String get homeRowsSubtitle => 'Choose what shows on Home';
+
+  @override
+  String get homeRowsFromYourLists => 'From your lists';
+
+  @override
+  String get homeRowsDiscover => 'Discover';
+
+  @override
+  String get homeRowsHelp => 'Drag to reorder. Turn a row off to hide it.';
+
+  @override
+  String homeRowTrackerContinue(String tracker) {
+    return 'Continue on $tracker';
+  }
+
+  @override
+  String get homeRowNewEpisodes => 'New Episodes';
+
+  @override
   String get modeStreaming => 'Streaming';
 
   @override

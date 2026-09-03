@@ -263,6 +263,20 @@
 	"statusPlanning": "In programma",
 	"statusReading": "In lettura",
 	"statusPlanToRead": "Da leggere",
+	"homeRows": "Righe della home",
+	"homeRowsSubtitle": "Scegli cosa mostrare nella home",
+	"homeRowsFromYourLists": "Dalle tue liste",
+	"homeRowsDiscover": "Scopri",
+	"homeRowsHelp": "Trascina per riordinare. Disattiva una riga per nasconderla.",
+	"homeRowTrackerContinue": "Continua su {tracker}",
+	"@homeRowTrackerContinue": {
+		"placeholders": {
+			"tracker": {
+				"type": "String"
+			}
+		}
+	},
+	"homeRowNewEpisodes": "Nuovi episodi",
 	"modeStreaming": "Streaming",
 	"modeManga": "Manga",
 	"modeNovel": "Romanzo",

@@ -455,14 +455,14 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
             ),
             TrackerContinueHomeRow(:final items, :final trackerName) =>
               _TvTrackerRail(
-                title: trackerContinueRowTitle(trackerName),
+                title: context.l10n.homeRowTrackerContinue(trackerName),
                 items: items,
                 newEpisodes: false,
                 onOpen: _openTrackerEntry,
                 firstAutofocus: claimAutofocus(),
               ),
             NewEpisodesHomeRow(:final items) => _TvTrackerRail(
-              title: newEpisodesRowTitle,
+              title: context.l10n.homeRowNewEpisodes,
               items: items,
               newEpisodes: true,
               onOpen: _openTrackerEntry,

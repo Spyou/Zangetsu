@@ -21,20 +21,13 @@ import '../../l10n/l10n.dart';
 typedef TrackerEntryOpen = void Function(TrackerListItem entry);
 
 // ── Shared tracker-row bits (phone rows AND TV rails) ────────────────────────
-// One definition each so the two platforms can't drift: the row titles step 8
-// localizes by editing exactly these, and the label/badge rules are what the
-// editor preview will show too.
-
-/// The continue row's title: "Continue on AniList".
-String trackerContinueRowTitle(String trackerName) =>
-    'Continue on $trackerName';
-
-/// The new-episodes row's title.
-const String newEpisodesRowTitle = 'New Episodes';
+// One definition each so the two platforms can't drift; row titles come from
+// the l10n keys (homeRowTrackerContinue / homeRowNewEpisodes), status labels
+// reuse the statusX keys.
 
 /// Whether a row's entries are reading titles — every row picks its unit
 /// ("Ch" vs "EP") and its labels from the items themselves, so phone and TV
-/// agree without passing a mode around.
+// agree without passing a mode around.
 bool trackerEntryIsReading(TrackerListItem e) =>
     e.item.type == ProviderType.manga || e.item.type == ProviderType.novel;
 
@@ -95,7 +88,7 @@ class TrackerContinueSection extends StatelessWidget {
   Widget build(BuildContext context) {
     if (items.isEmpty) return const SizedBox.shrink();
     return ContentRow(
-      title: trackerContinueRowTitle(trackerName),
+      title: context.l10n.homeRowTrackerContinue(trackerName),
       itemWidth: 190,
       itemHeight: 107,
       itemCount: items.length,
@@ -133,7 +126,7 @@ class NewEpisodesSection extends StatelessWidget {
   Widget build(BuildContext context) {
     if (items.isEmpty) return const SizedBox.shrink();
     return ContentRow(
-      title: newEpisodesRowTitle,
+      title: context.l10n.homeRowNewEpisodes,
       overline: trackerName,
       itemWidth: 190,
       itemHeight: 107,

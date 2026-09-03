@@ -726,6 +726,29 @@ class AppLocalizationsJa extends AppLocalizations {
   String get statusPlanToRead => '読書予定';
 
   @override
+  String get homeRows => 'ホームの行';
+
+  @override
+  String get homeRowsSubtitle => 'ホームに表示する行を選択';
+
+  @override
+  String get homeRowsFromYourLists => 'リストから';
+
+  @override
+  String get homeRowsDiscover => '見つける';
+
+  @override
+  String get homeRowsHelp => 'ドラッグで並べ替え。オフにすると行が非表示になります。';
+
+  @override
+  String homeRowTrackerContinue(String tracker) {
+    return '$trackerで続きを見る';
+  }
+
+  @override
+  String get homeRowNewEpisodes => '新着エピソード';
+
+  @override
   String get modeStreaming => 'ストリーミング';
 
   @override

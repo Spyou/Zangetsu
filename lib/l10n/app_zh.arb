@@ -263,6 +263,20 @@
 	"statusPlanning": "计划中",
 	"statusReading": "正在阅读",
 	"statusPlanToRead": "计划阅读",
+	"homeRows": "主页行",
+	"homeRowsSubtitle": "选择主页上显示的内容",
+	"homeRowsFromYourLists": "来自你的列表",
+	"homeRowsDiscover": "发现",
+	"homeRowsHelp": "拖动可重新排序。关闭开关即可隐藏该行。",
+	"homeRowTrackerContinue": "在{tracker}上继续",
+	"@homeRowTrackerContinue": {
+		"placeholders": {
+			"tracker": {
+				"type": "String"
+			}
+		}
+	},
+	"homeRowNewEpisodes": "新集数",
 	"modeStreaming": "流媒体",
 	"modeManga": "漫画",
 	"modeNovel": "小说",
