@@ -20,6 +20,62 @@ import '../../l10n/l10n.dart';
 /// stay interchangeable in tests.
 typedef TrackerEntryOpen = void Function(TrackerListItem entry);
 
+// ── Shared tracker-row bits (phone rows AND TV rails) ────────────────────────
+// One definition each so the two platforms can't drift: the row titles step 8
+// localizes by editing exactly these, and the label/badge rules are what the
+// editor preview will show too.
+
+/// The continue row's title: "Continue on AniList".
+String trackerContinueRowTitle(String trackerName) =>
+    'Continue on $trackerName';
+
+/// The new-episodes row's title.
+const String newEpisodesRowTitle = 'New Episodes';
+
+/// Whether a row's entries are reading titles — every row picks its unit
+/// ("Ch" vs "EP") and its labels from the items themselves, so phone and TV
+/// agree without passing a mode around.
+bool trackerEntryIsReading(TrackerListItem e) =>
+    e.item.type == ProviderType.manga || e.item.type == ProviderType.novel;
+
+/// A status bucket's label, relabeling the bookends in a reading layout
+/// ("Reading", "Plan to Read").
+String trackerStatusLabel(
+  BuildContext context,
+  WatchStatus status, {
+  required bool reading,
+}) => switch (status) {
+  WatchStatus.watching =>
+    reading ? context.l10n.statusReading : context.l10n.statusWatching,
+  WatchStatus.planning =>
+    reading ? context.l10n.statusPlanToRead : context.l10n.statusPlanning,
+  WatchStatus.paused => context.l10n.statusPaused,
+  WatchStatus.dropped => context.l10n.statusDropped,
+  WatchStatus.completed => context.l10n.statusCompleted,
+};
+
+/// Resume progress in [0, 1]; 0 when the total is unknown (no total means no
+/// honest fraction at all).
+double trackerResumeFraction(TrackerListItem e) {
+  final total = e.totalEpisodes ?? 0;
+  return total > 0 ? ((e.progress ?? 0) / total).clamp(0.0, 1.0) : 0;
+}
+
+/// `EP 4/12` (or `Ch 12/104` in a reading row); the count alone when the
+/// tracker didn't send a total.
+String trackerProgressSubtitle(TrackerListItem e) {
+  final unit = trackerEntryIsReading(e) ? 'Ch' : 'EP';
+  final total = e.totalEpisodes;
+  return total != null && total > 0
+      ? '$unit ${e.progress ?? 0}/$total'
+      : '$unit ${e.progress ?? 0}';
+}
+
+/// The episode waiting next: one past the user's progress.
+String trackerNextSubtitle(TrackerListItem e) => trackerEntryIsReading(e)
+    ? 'Ch ${(e.progress ?? 0) + 1}'
+    : 'EP ${(e.progress ?? 0) + 1}';
+
 /// "Continue on the tracker": in-progress entries, most recently updated first.
 /// Same compact 16:9 card as the local Continue Watching row — the progress
 /// bar and EP/Ch badge tell the two apart at a glance.
@@ -39,7 +95,7 @@ class TrackerContinueSection extends StatelessWidget {
   Widget build(BuildContext context) {
     if (items.isEmpty) return const SizedBox.shrink();
     return ContentRow(
-      title: 'Continue on $trackerName',
+      title: trackerContinueRowTitle(trackerName),
       itemWidth: 190,
       itemHeight: 107,
       itemCount: items.length,
@@ -49,9 +105,9 @@ class TrackerContinueSection extends StatelessWidget {
           title: e.item.title,
           imageUrl: e.item.cover,
           headers: e.item.coverHeaders,
-          progress: _progress(e),
+          progress: trackerResumeFraction(e),
           cellWidth: 190,
-          subtitle: _progressSubtitle(e),
+          subtitle: trackerProgressSubtitle(e),
           onTap: () => onOpen(e),
         );
       },
@@ -77,7 +133,7 @@ class NewEpisodesSection extends StatelessWidget {
   Widget build(BuildContext context) {
     if (items.isEmpty) return const SizedBox.shrink();
     return ContentRow(
-      title: 'New Episodes',
+      title: newEpisodesRowTitle,
       overline: trackerName,
       itemWidth: 190,
       itemHeight: 107,
@@ -88,9 +144,9 @@ class NewEpisodesSection extends StatelessWidget {
           title: e.item.title,
           imageUrl: e.item.cover,
           headers: e.item.coverHeaders,
-          progress: _progress(e),
+          progress: trackerResumeFraction(e),
           cellWidth: 190,
-          subtitle: _nextSubtitle(e),
+          subtitle: trackerNextSubtitle(e),
           onTap: () => onOpen(e),
         );
       },
@@ -117,20 +173,12 @@ class TrackerListSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (items.isEmpty) return const SizedBox.shrink();
-    // Reading layouts relabel the bookends ("Reading", "Plan to Read"); the
+    // Reading rows relabel the bookends ("Reading", "Plan to Read"); the
     // bucket itself is decided by each item's own type, like every other
     // kind split in the tracker rows.
-    final reading = _isReading(items.first.item.type);
+    final reading = trackerEntryIsReading(items.first);
     return ContentRow(
-      title: switch (status) {
-        WatchStatus.watching =>
-          reading ? context.l10n.statusReading : context.l10n.statusWatching,
-        WatchStatus.planning =>
-          reading ? context.l10n.statusPlanToRead : context.l10n.statusPlanning,
-        WatchStatus.paused => context.l10n.statusPaused,
-        WatchStatus.dropped => context.l10n.statusDropped,
-        WatchStatus.completed => context.l10n.statusCompleted,
-      },
+      title: trackerStatusLabel(context, status, reading: reading),
       overline: trackerName,
       itemWidth: 116,
       itemHeight: 216,
@@ -148,30 +196,3 @@ class TrackerListSection extends StatelessWidget {
     );
   }
 }
-
-// ── Shared item bits ─────────────────────────────────────────────────────────
-
-bool _isReading(ProviderType t) =>
-    t == ProviderType.manga || t == ProviderType.novel;
-
-/// Resume progress in [0, 1]; 0 when the total is unknown (a bare bar would
-/// lie less than a full one, but no total means no honest fraction at all).
-double _progress(TrackerListItem e) {
-  final total = e.totalEpisodes ?? 0;
-  return total > 0 ? ((e.progress ?? 0) / total).clamp(0.0, 1.0) : 0;
-}
-
-/// `EP 4/12` (or `Ch 12/104` in a reading layout); the count alone when the
-/// tracker didn't send a total.
-String _progressSubtitle(TrackerListItem e) {
-  final unit = _isReading(e.item.type) ? 'Ch' : 'EP';
-  final total = e.totalEpisodes;
-  return total != null && total > 0
-      ? '$unit ${e.progress ?? 0}/$total'
-      : '$unit ${e.progress ?? 0}';
-}
-
-/// The episode waiting next: one past the user's progress.
-String _nextSubtitle(TrackerListItem e) => _isReading(e.item.type)
-    ? 'Ch ${(e.progress ?? 0) + 1}'
-    : 'EP ${(e.progress ?? 0) + 1}';

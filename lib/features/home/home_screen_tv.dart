@@ -12,6 +12,7 @@ import '../../core/ui/global_messenger.dart';
 import '../../core/ui/native_cover_provider.dart';
 import '../../core/metadata/title_logo_service.dart';
 import '../../core/models/episode.dart';
+import '../../core/models/home_row.dart';
 import '../../core/models/home_section.dart';
 import '../../core/models/media_detail.dart';
 import '../../core/models/media_item.dart';
@@ -23,6 +24,8 @@ import '../../core/playback/title_prefs.dart';
 import '../../core/playback/watch_history.dart';
 import '../../core/repository/catalogue_repository.dart';
 import '../../core/repository/source_repository.dart';
+import '../../core/tracker/tracker.dart';
+import '../../core/tracker/tracker_item_url.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../l10n/l10n.dart';
@@ -39,12 +42,15 @@ import '../../core/ui/source_switcher.dart';
 import '../detail/detail_screen.dart';
 import '../player/tv_playback_launch.dart';
 import '../sources/providers_hub_screen.dart';
+import 'search_screen.dart';
 import 'see_all_screen.dart';
+import 'tracker_continue_section.dart';
 import 'cubit/home_cubit.dart';
 
 part 'home_screen_tv_rail.dart';
 part 'home_screen_tv_continue.dart';
 part 'home_screen_tv_hero.dart';
+part 'home_screen_tv_tracker.dart';
 
 /// TV Home: a full-screen vertically-scrolling layout with the phone's real
 /// [FeaturedHero] banner followed by horizontal poster rails (one per section).
@@ -240,6 +246,26 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
     });
   }
 
+  /// Open a tracker entry from the home rails — the same path the phone home
+  /// and My List use: re-key the stub to its metadata identity so OK opens
+  /// Detail directly; an entry with no id to go on falls back to a search for
+  /// its own title.
+  void _openTrackerEntry(TrackerListItem entry) => _openTrackerStub(entry.item);
+
+  void _openTrackerStub(MediaItem stub) {
+    final playable = playableTrackerItem(stub);
+    if (playable != null) {
+      _openDetail(playable);
+      return;
+    }
+    Navigator.push(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) => SearchScreen(initialQuery: stub.title),
+      ),
+    );
+  }
+
   String _typeLabel(AppLocalizations l10n, ProviderType t) =>
       t == ProviderType.movie ? l10n.movieLabel : l10n.anime;
 
@@ -386,6 +412,70 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
     // The scroll view, parameterised by the current history so a single source
     // drives both the Continue Watching rail and the rails' autofocus.
     Widget buildScroll(List<HistoryEntry> history) {
+      // The merged arrangement from the cubit — the SAME arrangement the phone
+      // saved (Settings → Interface → Home rows); TV has no editor of its own.
+      // Before the first merge lands (rows null, e.g. a test-built state),
+      // derive today's fixed layout: local rail first, every section a rail —
+      // TV never drops the first section.
+      final rows =
+          state.rows ??
+          [
+            const LocalContinueHomeRow(),
+            for (final s in sections) ProviderHomeRow(s),
+          ];
+
+      // D-pad autofocus lands on the first rail's first card, but only when
+      // the hero above didn't already claim the initial focus (and skipping
+      // rails that render nothing, like a signed-out Continue rail).
+      var focusClaimed = heroItem != null;
+      bool claimAutofocus() {
+        if (focusClaimed) return false;
+        focusClaimed = true;
+        return true;
+      }
+
+      final rails = <Widget>[
+        for (final row in rows)
+          switch (row) {
+            // Local row: the same login-gated WatchHistory rail as before,
+            // wherever the arrangement puts it.
+            LocalContinueHomeRow() when history.isNotEmpty => _TvContinueRail(
+              history: history,
+              onResume: _resume,
+              onLongPress: _showContinueInfo,
+              firstAutofocus: claimAutofocus(),
+            ),
+            LocalContinueHomeRow() => const SizedBox.shrink(),
+            ProviderHomeRow(:final section) => TvRail(
+              section: section,
+              onTap: _openDetail,
+              onLongPress: _showInfo,
+              onSeeAll: () => _openSeeAll(section),
+              firstAutofocus: claimAutofocus(),
+            ),
+            TrackerContinueHomeRow(:final items, :final trackerName) =>
+              _TvTrackerRail(
+                title: trackerContinueRowTitle(trackerName),
+                items: items,
+                newEpisodes: false,
+                onOpen: _openTrackerEntry,
+                firstAutofocus: claimAutofocus(),
+              ),
+            NewEpisodesHomeRow(:final items) => _TvTrackerRail(
+              title: newEpisodesRowTitle,
+              items: items,
+              newEpisodes: true,
+              onOpen: _openTrackerEntry,
+              firstAutofocus: claimAutofocus(),
+            ),
+            TrackerListHomeRow() => _TvTrackerListRail(
+              row: row,
+              onOpen: _openTrackerStub,
+              firstAutofocus: claimAutofocus(),
+            ),
+          },
+      ];
+
       return CustomScrollView(
         slivers: [
           // ── Hero banner ──────────────────────────────────────────────────
@@ -412,30 +502,8 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
               ),
             ),
 
-          // ── Continue Watching (login-gated, resume on OK) ───────────────
-          if (history.isNotEmpty)
-            SliverToBoxAdapter(
-              child: _TvContinueRail(
-                history: history,
-                onResume: _resume,
-                onLongPress: _showContinueInfo,
-                firstAutofocus: heroItem == null,
-              ),
-            ),
-
-          // ── Poster rails (one per section) ──────────────────────────────
-          for (var i = 0; i < sections.length; i++)
-            SliverToBoxAdapter(
-              child: TvRail(
-                section: sections[i],
-                onTap: _openDetail,
-                onLongPress: _showInfo,
-                onSeeAll: () => _openSeeAll(sections[i]),
-                // Autofocus the first rail's first card only when nothing above
-                // it (hero or Continue Watching) can take the initial focus.
-                firstAutofocus: heroItem == null && history.isEmpty && i == 0,
-              ),
-            ),
+          // ── Rails: the arrangement's rows, one horizontal rail each ─────
+          for (final rail in rails) SliverToBoxAdapter(child: rail),
 
           const SliverToBoxAdapter(child: SizedBox(height: 48)),
         ],

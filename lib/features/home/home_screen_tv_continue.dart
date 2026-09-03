@@ -1,6 +1,6 @@
-// Continue Watching rail and its progress card.
+// Continue Watching rail and the landscape progress card it (and the tracker
+// rails) build from.
 part of 'home_screen_tv.dart';
-
 
 // ── Continue Watching Rail ──────────────────────────────────────────────────
 
@@ -33,10 +33,10 @@ class _TvContinueRail extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: EdgeInsets.symmetric(horizontal: 48),
+            padding: const EdgeInsets.symmetric(horizontal: 48),
             child: Text(
               context.l10n.continueWatching,
-              style: TextStyle(
+              style: const TextStyle(
                 color: AppColors.textPrimary,
                 fontSize: 18,
                 fontWeight: FontWeight.w700,
@@ -55,15 +55,22 @@ class _TvContinueRail extends StatelessWidget {
               itemCount: history.length,
               itemBuilder: (context, index) {
                 final e = history[index];
+                final sub = e.episodeNumber != null
+                    ? context.l10n.continueDotEpisode(e.episodeNumber!.toInt())
+                    : context.l10n.continueLabel;
                 return Padding(
                   padding: const EdgeInsets.only(right: 16),
                   child: SizedBox(
                     width: _cardWidth,
-                    child: _TvContinueCard(
-                      entry: e,
+                    child: _TvLandscapeCard(
+                      title: e.showTitle,
+                      sub: sub,
+                      cover: e.cover,
+                      headers: e.coverHeaders,
+                      progress: e.progress,
                       width: _cardWidth,
                       autofocus: firstAutofocus && index == 0,
-                      onResume: () => onResume(e),
+                      onTap: () => onResume(e),
                       onLongPress: onLongPress == null
                           ? null
                           : () => onLongPress!(e),
@@ -79,31 +86,38 @@ class _TvContinueRail extends StatelessWidget {
   }
 }
 
-/// TV-only LANDSCAPE Continue Watching card (16:9 art + progress overlay, with
-/// the title and "Continue · E{n}" below). Landscape reads better on TV than
-/// the shared portrait ContinueCard; that shared widget is left untouched for
-/// the phone.
-class _TvContinueCard extends StatelessWidget {
-  const _TvContinueCard({
-    required this.entry,
+/// TV-only LANDSCAPE progress card (16:9 art + progress overlay, with the
+/// title and a sub line below) — the data-agnostic card the local Continue
+/// Watching rail AND the tracker rows build from. Landscape reads better on
+/// TV than the shared portrait ContinueCard; that shared widget is left
+/// untouched for the phone.
+class _TvLandscapeCard extends StatelessWidget {
+  const _TvLandscapeCard({
+    required this.title,
+    required this.sub,
+    required this.progress,
     required this.width,
-    required this.onResume,
+    required this.onTap,
+    this.cover,
+    this.headers,
     this.onLongPress,
     this.autofocus = false,
   });
-  final HistoryEntry entry;
+
+  final String title;
+  final String sub;
+
+  /// Resume progress in [0, 1], drawn as the bar pinned to the art's base.
+  final double progress;
   final double width;
-  final VoidCallback onResume;
+  final VoidCallback onTap;
   final VoidCallback? onLongPress;
   final bool autofocus;
+  final String? cover;
+  final Map<String, String>? headers;
 
   @override
   Widget build(BuildContext context) {
-    final e = entry;
-    final l10n = context.l10n;
-    final sub = e.episodeNumber != null
-        ? l10n.continueDotEpisode(e.episodeNumber!.toInt())
-        : l10n.continueLabel;
     return SizedBox(
       width: width,
       child: Column(
@@ -115,9 +129,9 @@ class _TvContinueCard extends StatelessWidget {
             autofocus: autofocus,
             variant: TvFocusVariant.float,
             scale: 1.05,
-            onTap: onResume,
+            onTap: onTap,
             onLongPress: onLongPress,
-            semanticLabel: '${e.showTitle}, $sub',
+            semanticLabel: '$title, $sub',
             child: ClipRRect(
               borderRadius: BorderRadius.circular(10),
               child: AspectRatio(
@@ -125,11 +139,11 @@ class _TvContinueCard extends StatelessWidget {
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    if ((e.cover ?? '').isNotEmpty)
+                    if ((cover ?? '').isNotEmpty)
                       CachedNetworkImage(
-                        imageUrl: e.cover!,
+                        imageUrl: cover!,
                         cacheManager: AppImageCache.manager,
-                        httpHeaders: e.coverHeaders,
+                        httpHeaders: headers,
                         fit: BoxFit.cover,
                         memCacheWidth: 600,
                         placeholder: (_, _) =>
@@ -148,7 +162,7 @@ class _TvContinueCard extends StatelessWidget {
                         color: Colors.black.withValues(alpha: 0.55),
                         alignment: Alignment.centerLeft,
                         child: FractionallySizedBox(
-                          widthFactor: e.progress.clamp(0.0, 1.0),
+                          widthFactor: progress.clamp(0.0, 1.0),
                           child: Container(color: AppColors.accent),
                         ),
                       ),
@@ -163,7 +177,7 @@ class _TvContinueCard extends StatelessWidget {
           // together via semanticLabel.
           ExcludeSemantics(
             child: Text(
-              e.showTitle,
+              title,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
