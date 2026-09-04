@@ -10,6 +10,7 @@ import 'package:watch_app/core/app_mode.dart';
 import 'package:watch_app/core/appwrite/appwrite_service.dart';
 import 'package:watch_app/core/locale/locale_controller.dart';
 import 'package:watch_app/core/playback/playback_prefs.dart';
+import 'package:watch_app/core/playback/search_prefs.dart';
 import 'package:watch_app/core/provider/provider_registry.dart';
 import 'package:watch_app/core/state/active_source_cubit.dart';
 import 'package:watch_app/core/supabase/supabase_service.dart';
@@ -27,6 +28,12 @@ MigrationBridge _fakeBridge() => MigrationBridge(
     );
 
 // ── Minimal stubs ─────────────────────────────────────────────────────────────
+
+/// [SearchPrefs] stub: overrides [layout] so no Hive box is accessed.
+class _StubSearchPrefs extends SearchPrefs {
+  @override
+  SearchLayout get layout => SearchLayout.vertical;
+}
 
 /// [ProviderRegistry] stub: returns empty entries; no Hive dependency.
 class _StubProviderRegistry implements ProviderRegistry {
@@ -57,6 +64,7 @@ Future<void> _registerStubs() async {
   // SettingsTile / SettingsCard gate TV focus chrome on AppMode.isTv.
   sl
     ..registerSingleton<AppMode>(const AppMode(isTv: true))
+    ..registerSingleton<SearchPrefs>(_StubSearchPrefs())
     ..registerSingleton<ProviderRegistry>(_StubProviderRegistry())
     ..registerSingleton<PlaybackPrefs>(PlaybackPrefs());
 }
@@ -121,6 +129,13 @@ void main() {
       final authCubit = AuthCubit(SupabaseService(), AppwriteService(), _fakeBridge());
       addTearDown(authCubit.close);
 
+      // Taller than any real panel on purpose: the list builds lazily, so a
+      // row below the fold is never created and find.text cannot see it. This
+      // asserts the rows EXIST, not that they fit on one screen.
+      tester.view.physicalSize = const Size(1920, 3200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
       await tester.pumpWidget(
         _buildUnderTest(authCubit: authCubit, activeCubit: activeCubit),
       );
@@ -129,7 +144,7 @@ void main() {
       // Page title is displayed.
       expect(find.text('Settings'), findsOneWidget);
 
-      // Section labels and tiles visible in the default 800×600 test viewport.
+      // Section labels and tiles visible in the TV viewport set above.
       expect(find.text('ACCOUNT & SYNC'), findsOneWidget);
       expect(find.text('Sign in'), findsOneWidget);
       expect(find.text('Connections'), findsOneWidget);
@@ -141,7 +156,14 @@ void main() {
       expect(find.text('Source health'), findsOneWidget);
       expect(find.text('Auto-update extensions'), findsOneWidget);
       expect(find.text('PLAYBACK'), findsOneWidget);
-      expect(find.text('Downloads'), findsNothing);
+      expect(find.text('DOWNLOADS'), findsOneWidget);
+      expect(find.text('Downloads'), findsOneWidget);
+
+      // Interface: the two rows the restructure has to keep reachable, since
+      // TV has no other route to either (see pickAppLanguageTv).
+      expect(find.text('INTERFACE'), findsOneWidget);
+      expect(find.text('App language'), findsOneWidget);
+      expect(find.text('Search layout'), findsOneWidget);
 
       // At least several tiles are wrapped in TvFocusable (via TvListFocusable).
       final focusables =

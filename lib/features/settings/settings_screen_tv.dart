@@ -6,9 +6,11 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../core/app_config.dart';
 import '../../core/di/injector.dart';
+import '../../core/locale/app_language_picker.dart';
 import '../../core/platform/apple_tv.dart';
 import '../../core/playback/my_list.dart';
 import '../../core/playback/playback_prefs.dart';
+import '../../core/playback/search_prefs.dart';
 import '../../core/playback/watch_history.dart';
 import '../../core/provider/cloudstream_provider.dart';
 import '../../core/provider/cs_dns.dart';
@@ -87,6 +89,22 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
     if (mounted) setState(() => _dnsChoice = picked);
   }
 
+  Future<void> _pickSearchLayoutTv() async {
+    final prefs = sl<SearchPrefs>();
+    final picked = await showDialog<SearchLayout>(
+      context: context,
+      barrierColor: Colors.black54,
+      builder: (ctx) => _TvOptionPicker<SearchLayout>(
+        title: ctx.l10n.searchLayout,
+        options: SearchLayout.values.map((l) => (l, l.localizedLabel(ctx))).toList(),
+        current: prefs.layout,
+      ),
+    );
+    if (picked == null) return;
+    await prefs.setLayout(picked);
+    if (mounted) setState(() {});
+  }
+
   void _pickActiveSourceTv() {
     final currentId = _active.state;
     showDialog<void>(
@@ -108,7 +126,8 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
       return;
     }
     final live = await ensureLiveSession(context);
-    if (!context.mounted) return;
+    // State.mounted, not context.mounted: every use below is State.context.
+    if (!mounted) return;
     if (!live) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(l10n.reconnectToSyncLibrary)),
@@ -362,6 +381,27 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
                         title: l10n.storage,
                         subtitle: l10n.storageSubtitle,
                         onTap: () => _push(const StorageSettingsScreen()),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  _sectionLabel(SettingsSection.interface),
+                  SettingsCard(
+                    children: [
+                      SettingsTile(
+                        icon: Icons.language_rounded,
+                        title: l10n.appLanguage,
+                        subtitle: appLanguageValueLabel(context),
+                        onTap: () async {
+                          await pickAppLanguageTv(context);
+                          if (mounted) setState(() {});
+                        },
+                      ),
+                      SettingsTile(
+                        icon: Icons.search_rounded,
+                        title: l10n.searchLayout,
+                        subtitle: sl<SearchPrefs>().layout.localizedLabel(context),
+                        onTap: _pickSearchLayoutTv,
                       ),
                     ],
                   ),
