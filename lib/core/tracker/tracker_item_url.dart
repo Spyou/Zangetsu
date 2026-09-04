@@ -5,8 +5,9 @@ import '../zmode/zmode_ids.dart';
 /// The metadata identity of a tracker stub, or null when it has none.
 ///
 /// A tracker entry carries no provider, but it does carry the id the metadata
-/// catalogue is keyed by — a MAL id from AniList/MAL, a TMDB one from Simkl —
-/// which is the same identity a `zm://` title uses. That lets the entry open
+/// catalogue is keyed by — a MAL id from AniList/MAL, a TMDB one from Simkl,
+/// or AniList's own id when there is no MAL one — which is the same identity a
+/// `zm://` title uses. That lets the entry open
 /// straight into Detail instead of a search for its own name.
 ZCanonical? trackerCanonical(MediaItem stub) {
   final mal = stub.malId;
@@ -20,6 +21,17 @@ ZCanonical? trackerCanonical(MediaItem stub) {
   final tmdb = stub.tmdbId;
   if (tmdb != null) {
     return ZCanonical(stub.tmdbIsTv ? ZKind.tv : ZKind.movie, 'tmdb:$tmdb');
+  }
+  // AniList's own id, for the many entries with no MAL id — the catalogue
+  // already resolves `al:` (it keys its own browse rows that way when idMal is
+  // null), so this is the same identity, not a new one.
+  final al = stub.anilistId;
+  if (al != null) {
+    return ZCanonical(switch (stub.type) {
+      ProviderType.manga => ZKind.manga,
+      ProviderType.novel => ZKind.novel,
+      _ => ZKind.anime,
+    }, 'al:$al');
   }
   return null;
 }
@@ -39,6 +51,7 @@ MediaItem? playableTrackerItem(MediaItem stub, {String? savedFrom}) {
     type: stub.type,
     sourceId: ZmodeIds.sourceId,
     malId: stub.malId,
+    anilistId: stub.anilistId,
     tmdbId: stub.tmdbId,
     tmdbIsTv: stub.tmdbIsTv,
     // Whoever surfaced the stub stays its origin after the re-key.

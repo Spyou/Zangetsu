@@ -48,6 +48,11 @@ class MediaItem extends Equatable {
   /// sync (AniList) can match this title without re-fetching the detail.
   final int? malId;
 
+  /// AniList's own media id. Plenty of AniList entries carry no MAL id at all
+  /// — Korean and Chinese titles especially — and without this they had no
+  /// metadata identity, so a tap fell back to searching for their name.
+  final int? anilistId;
+
   /// TMDB id (movies/series) for Simkl tracking; [tmdbIsTv] selects namespace.
   final int? tmdbId;
   final bool tmdbIsTv;
@@ -108,6 +113,7 @@ class MediaItem extends Equatable {
     this.savedFrom,
     this.savedAtMs,
     this.malId,
+    this.anilistId,
     this.tmdbId,
     this.tmdbIsTv = false,
     this.imdbId,
@@ -124,6 +130,7 @@ class MediaItem extends Equatable {
     int? subCount,
     int? dubCount,
     int? malId,
+    int? anilistId,
     int? tmdbId,
     String? imdbId,
     String? savedFrom,
@@ -143,6 +150,7 @@ class MediaItem extends Equatable {
     subCount: subCount ?? this.subCount,
     dubCount: dubCount ?? this.dubCount,
     malId: malId ?? this.malId,
+    anilistId: anilistId ?? this.anilistId,
     tmdbId: tmdbId ?? this.tmdbId,
     tmdbIsTv: tmdbIsTv,
     imdbId: imdbId ?? this.imdbId,
@@ -166,6 +174,7 @@ class MediaItem extends Equatable {
     subCount,
     dubCount,
     malId,
+    anilistId,
     tmdbId,
     tmdbIsTv,
     imdbId,

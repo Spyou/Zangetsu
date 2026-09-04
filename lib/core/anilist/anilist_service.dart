@@ -74,9 +74,12 @@ List<TrackerListItem> parseAniListCollection(Object? data, MediaKind kind) {
       final rawScore = (e['score'] as num?)?.toDouble();
       final score = (rawScore == null || rawScore == 0) ? null : rawScore;
 
+      final anilistId = (media['id'] as num?)?.toInt();
       // Reading kinds get their own id namespace for the same id-space-overlap
-      // reason as `seen`; anime keeps the original, unprefixed id.
-      final key = malId ?? idx;
+      // reason as `seen`; anime keeps the original, unprefixed id. AniList's
+      // own id stands in when there is no MAL one, so the row still has a
+      // stable key instead of a loop index.
+      final key = malId ?? anilistId ?? idx;
       // `customLists(asArray:true)` does NOT return the names this entry is
       // in — it returns EVERY custom list as {name, enabled}, and membership
       // is the flag. Reading it as a list of strings matched nothing, so all
@@ -116,6 +119,7 @@ List<TrackerListItem> parseAniListCollection(Object? data, MediaKind kind) {
           type: aniListProviderType(kind, media['format'] as String?),
           sourceId: '',
           malId: malId,
+          anilistId: anilistId,
         ),
         status: status,
         // Chapters read for a reading kind, episodes watched for anime —

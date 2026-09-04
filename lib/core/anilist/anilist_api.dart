@@ -61,7 +61,7 @@ String mediaListCollectionQuery(MediaKind kind) {
   return 'query(\$u:String){ MediaListCollection(userName:\$u, type:${_anilistType(kind)}){ '
       'lists { status entries { status progress score(format:POINT_10) '
       'updatedAt customLists(asArray:true) '
-      'media { idMal title { romaji english native }$formatField '
+      'media { id idMal title { romaji english native }$formatField '
       '${_totalCountFields(kind)}$airingField coverImage { large } } } } } }';
 }
 

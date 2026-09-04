@@ -11,7 +11,9 @@ import 'package:watch_app/core/tracker/tracker.dart';
 //
 // `native` was added to every title selection on purpose, when the title
 // language became a setting: AniList carries all three, and asking for the
-// third costs nothing on a request already being made.
+// third costs nothing on a request already being made. `id` joined the list
+// read for the same reason — entries with no MAL id had no metadata identity
+// at all, so tapping one searched for its name instead of opening it.
 const _malIdAnimeGolden =
     r'query($idMal:Int){ Media(idMal:$idMal, type:ANIME){ id episodes } }';
 const _searchAnimeGolden =
@@ -47,7 +49,7 @@ const _listCollectionAnimeGolden =
     r'query($u:String){ MediaListCollection(userName:$u, type:ANIME){ '
     r'lists { status entries { status progress score(format:POINT_10) '
     r'updatedAt customLists(asArray:true) '
-    r'media { idMal title { romaji english native } episodes '
+    r'media { id idMal title { romaji english native } episodes '
     r'nextAiringEpisode{episode} coverImage { large } } } } } }';
 
 /// A `MediaListCollection` response shaped exactly like AniList's — two lists
@@ -176,7 +178,7 @@ void main() {
       // Without `format` there is no way to tell a light novel from a manga.
       expect(
         q,
-        contains('title { romaji english native } format chapters volumes coverImage'),
+        contains('media { id idMal title { romaji english native } format'),
       );
       // Airing is an anime-only concept — the manga read must not ask for it.
       expect(q, isNot(contains('nextAiringEpisode')));

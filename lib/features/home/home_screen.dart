@@ -738,6 +738,7 @@ class _HomeViewState extends State<_HomeView>
           onOpen: _openTrackerEntry,
           onSeeAll: () =>
               _openTrackerList(trackerName, WatchStatus.watching),
+          onLongPress: _showTrackerInfo,
         ),
       ),
     NewEpisodesHomeRow(:final items, :final trackerName) => SliverToBoxAdapter(
@@ -746,6 +747,7 @@ class _HomeViewState extends State<_HomeView>
         trackerName: trackerName,
         onOpen: _openTrackerEntry,
         onSeeAll: () => _openNewEpisodes(items),
+        onLongPress: _showTrackerInfo,
       ),
     ),
     TrackerListHomeRow(:final status, :final items, :final trackerName) =>
@@ -756,6 +758,7 @@ class _HomeViewState extends State<_HomeView>
           trackerName: trackerName,
           onOpen: _openTrackerEntry,
           onSeeAll: () => _openTrackerList(trackerName, status),
+          onLongPress: _showTrackerInfo,
         ),
       ),
   };
@@ -814,6 +817,12 @@ class _HomeViewState extends State<_HomeView>
   /// its Detail page directly; an entry with no id falls back to a search for
   /// its own title — the same open path My List uses.
   void _openTrackerEntry(TrackerListItem entry) => _openTrackerItem(entry.item);
+
+  /// The info sheet for a tracker row, the same one every other poster on Home
+  /// opens on a long-press. Re-keyed first so the sheet can look the title up
+  /// in the catalogue — a raw stub carries no resolvable url.
+  void _showTrackerInfo(TrackerListItem entry) =>
+      _showInfo(playableTrackerItem(entry.item) ?? entry.item);
 
   /// The same open, from a bare item — the See All grid hands back MediaItems.
   void _openTrackerItem(MediaItem item) {

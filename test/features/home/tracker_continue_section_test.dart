@@ -34,6 +34,11 @@ TrackerListItem _entry(
 );
 
 Future<void> _pump(WidgetTester tester, Widget child) async {
+  // Poster rows are 216 tall; three stacked ones do not fit the 800x600
+  // default surface, and a gesture on an off-screen row lands nowhere.
+  tester.view.physicalSize = const Size(1080, 2400);
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(tester.view.reset);
   await tester.pumpWidget(MaterialApp(home: Scaffold(body: child)));
   await tester.pumpAndSettle();
 }
@@ -259,6 +264,44 @@ void main() {
       ),
     );
     expect(find.text('See All'), findsNothing);
+  });
+
+  testWidgets('every tracker row opens the info sheet on a long-press', (
+    tester,
+  ) async {
+    // Poster rows on Home all do this; the tracker ones were the exception.
+    final held = <String>[];
+    await _pump(
+      tester,
+      Column(
+        children: [
+          TrackerContinueSection(
+            items: [_entry('One Piece', progress: 4, total: 12)],
+            trackerName: 'AniList',
+            onOpen: (_) {},
+            onLongPress: (e) => held.add(e.item.title),
+          ),
+          NewEpisodesSection(
+            items: [_entry('Bleach', progress: 4, total: 24)],
+            trackerName: 'AniList',
+            onOpen: (_) {},
+            onLongPress: (e) => held.add(e.item.title),
+          ),
+          TrackerListSection(
+            status: WatchStatus.planning,
+            items: [_entry('Naruto', status: WatchStatus.planning)],
+            trackerName: 'AniList',
+            onOpen: (_) {},
+            onLongPress: (e) => held.add(e.item.title),
+          ),
+        ],
+      ),
+    );
+
+    await tester.longPress(find.text('One Piece'));
+    await tester.longPress(find.text('Bleach'));
+    await tester.longPress(find.text('Naruto'));
+    expect(held, ['One Piece', 'Bleach', 'Naruto']);
   });
 
   testWidgets('TrackerListSection keeps the anime labels', (tester) async {

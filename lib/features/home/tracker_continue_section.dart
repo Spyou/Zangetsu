@@ -23,8 +23,8 @@ import 'cubit/tracker_home_rows.dart' show releasedCount;
 /// resolves them to a Detail page (or a search fallback) the same way My List
 /// opens a tracker entry.
 
-/// What a tap on a tracker entry does. Kept as one typedef so the three rows
-/// stay interchangeable in tests.
+/// What a tap (or long-press) on a tracker entry does. Kept as one typedef so
+/// the three rows stay interchangeable in tests.
 typedef TrackerEntryOpen = void Function(TrackerListItem entry);
 
 // ── Shared tracker-row bits (phone rows AND TV rails) ────────────────────────
@@ -114,6 +114,7 @@ class TrackerContinueSection extends StatelessWidget {
     required this.trackerName,
     required this.onOpen,
     this.onSeeAll,
+    this.onLongPress,
   });
 
   final List<TrackerListItem> items;
@@ -123,6 +124,9 @@ class TrackerContinueSection extends StatelessWidget {
   /// Opens the tracker's full library on the Watching tab — these entries are
   /// the in-progress slice of it.
   final VoidCallback? onSeeAll;
+
+  /// The info sheet, same as a long-press on any other poster on Home.
+  final TrackerEntryOpen? onLongPress;
 
   @override
   Widget build(BuildContext context) {
@@ -138,6 +142,9 @@ class TrackerContinueSection extends StatelessWidget {
         caption: trackerContinueCaption(c, items[i]),
         captionColor: AppColors.textSecondary,
         onTap: () => onOpen(items[i]),
+        onLongPress: onLongPress == null
+            ? null
+            : () => onLongPress!(items[i]),
       ),
     );
   }
@@ -156,11 +163,15 @@ class NewEpisodesSection extends StatelessWidget {
     required this.trackerName,
     required this.onOpen,
     this.onSeeAll,
+    this.onLongPress,
   });
 
   final List<TrackerListItem> items;
   final String trackerName;
   final TrackerEntryOpen onOpen;
+
+  /// The info sheet, same as a long-press on any other poster on Home.
+  final TrackerEntryOpen? onLongPress;
 
   /// Opens the same entries as a grid. Not a tracker bucket, so there is no
   /// library tab to land on — the row's own contents ARE the whole set.
@@ -185,6 +196,9 @@ class NewEpisodesSection extends StatelessWidget {
           releasedCount(items[i]) - (items[i].progress ?? 0),
         ),
         onTap: () => onOpen(items[i]),
+        onLongPress: onLongPress == null
+            ? null
+            : () => onLongPress!(items[i]),
       ),
     );
   }
@@ -203,6 +217,7 @@ class _TrackerPosterCard extends StatelessWidget {
     required this.caption,
     required this.captionColor,
     required this.onTap,
+    this.onLongPress,
     this.captionBold = false,
     this.badge,
   });
@@ -212,6 +227,7 @@ class _TrackerPosterCard extends StatelessWidget {
   final Color captionColor;
   final bool captionBold;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
   final Widget? badge;
 
   @override
@@ -222,6 +238,7 @@ class _TrackerPosterCard extends StatelessWidget {
     // for taps on the art itself, so nothing fires twice.
     return GestureDetector(
       onTap: onTap,
+      onLongPress: onLongPress,
       behavior: HitTestBehavior.opaque,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -320,6 +337,7 @@ class TrackerListSection extends StatelessWidget {
     required this.trackerName,
     required this.onOpen,
     this.onSeeAll,
+    this.onLongPress,
   });
 
   final WatchStatus status;
@@ -329,6 +347,9 @@ class TrackerListSection extends StatelessWidget {
 
   /// Opens the tracker's full library on this bucket's own tab.
   final VoidCallback? onSeeAll;
+
+  /// The info sheet, same as a long-press on any other poster on Home.
+  final TrackerEntryOpen? onLongPress;
 
   @override
   Widget build(BuildContext context) {
@@ -352,6 +373,7 @@ class TrackerListSection extends StatelessWidget {
           headers: e.item.coverHeaders,
           cellWidth: 116,
           onTap: () => onOpen(e),
+          onLongPress: onLongPress == null ? null : () => onLongPress!(e),
         );
       },
     );
