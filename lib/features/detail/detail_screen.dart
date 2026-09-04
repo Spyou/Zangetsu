@@ -805,7 +805,14 @@ class _DetailViewState extends State<_DetailView>
       builder: (_) => const Center(child: CircularProgressIndicator()),
     );
     try {
-      return await sl<SourceRepository>().sources(
+      // Through the router, like every other playback path on this screen.
+      // Asking SourceRepository directly worked on a source page and could
+      // never work on a metadata one: `zm` is a pseudo source with nothing to
+      // resolve, so Play mirror always reported "no sources" for a title that
+      // played perfectly from the same row. The router hands a zm:// url to
+      // MetadataRepository, which resolves it to the real source's episode
+      // first — exactly what Play already does.
+      return await sl<CatalogueRepository>().sources(
         ep.url,
         sourceId: widget.item.sourceId,
         fast: false,

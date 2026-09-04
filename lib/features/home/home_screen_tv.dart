@@ -24,6 +24,8 @@ import '../../core/playback/title_prefs.dart';
 import '../../core/playback/watch_history.dart';
 import '../../core/repository/catalogue_repository.dart';
 import '../../core/repository/source_repository.dart';
+import '../../core/zmode/zmode_ids.dart';
+import '../../core/zmode/metadata_repository.dart';
 import '../../core/tracker/tracker.dart';
 import '../../core/tracker/tracker_item_url.dart';
 import '../../core/theme/app_colors.dart';
@@ -233,12 +235,16 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
           items: section.items,
           onTap: _openDetail,
           onLongPress: _showInfo,
-          // Pagination isn't part of CatalogueRepository — go straight to the
-          // source for it, same as it always has.
+          // Pagination isn't part of CatalogueRepository, so pick the
+          // repository by hand — the same branch the phone home already has.
+          // Compare the source id, NOT ZmodeIds.isZ: that tests a zm:// URL
+          // and a sourceId is never one, so every metadata row was being sent
+          // to the source repository, which has nothing to page.
           onLoadMore: section.more == null
               ? null
-              : (page) =>
-                    sl<SourceRepository>().browseMore(section.more!, page),
+              : (page) => section.more!.sourceId == ZmodeIds.sourceId
+                    ? sl<MetadataRepository>().browseMore(section.more!, page)
+                    : sl<SourceRepository>().browseMore(section.more!, page),
         ),
       ),
     ).then((_) {
