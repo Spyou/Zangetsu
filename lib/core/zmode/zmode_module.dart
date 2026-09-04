@@ -15,6 +15,7 @@ import 'package:flutter/material.dart';
 
 import '../ui/global_messenger.dart';
 import 'match_store.dart';
+import 'playback_resolver.dart';
 import 'zmode_source_prefs.dart';
 import 'metadata_repository.dart';
 import 'source_matcher.dart';
@@ -70,6 +71,10 @@ Future<void> registerZangetsuMode(GetIt sl) async {
     metadata: sl<MetadataRepository>(),
     enabled: () => ZModePrefs.enabled,
   ));
+
+  // Expose PlaybackResolver directly so TvNativePlayer can invalidate the
+  // winner cache when the native player reports a playback error.
+  sl.registerSingleton<PlaybackResolver>(sl<MetadataRepository>().playbackResolver);
 }
 
 /// Which installed sources may play a title of [kind]. Prefix rules match

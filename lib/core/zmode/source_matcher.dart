@@ -70,6 +70,18 @@ class SourceMatcher {
     String? altTitle,
     int? malId,
   }) async {
+    // On TV, JS providers may not be loaded in the runtime (loadAll was
+    // skipped). Ensure the provider is loaded before searching so the JS
+    // runtime can actually execute its search function.
+    final loaded = await _sources.ensureSourceLoaded(sourceId);
+    if (!loaded) {
+      debugPrint(
+        '[source-matcher] resolveOn · $sourceId → null '
+        '(ensureSourceLoaded failed)',
+      );
+      return null;
+    }
+
     List<MediaItem> results;
     try {
       results = await _sources.search(title, sourceId: sourceId);
@@ -135,11 +147,35 @@ class SourceMatcher {
   }) async {
     final saved = _store.get(c, sourceId);
     if (saved != null && (saved.pinned || _sources.hasSource(sourceId))) {
-      return saved;
+      // Even with a cached match, the runtime may be empty on TV — ensure
+      // the provider is loaded so episodes()/sources() can resolve.
+      final loaded = await _sources.ensureSourceLoaded(sourceId);
+      debugPrint(
+        '[source-matcher] matchOn · "$sourceId" → cached '
+        '(pinned=${saved.pinned} installed=${_sources.hasSource(sourceId)} '
+        'loaded=$loaded)',
+      );
+      return loaded ? saved : null;
     }
-    if (!_sources.hasSource(sourceId)) return null;
+    if (!_sources.hasSource(sourceId)) {
+      debugPrint(
+        '[source-matcher] matchOn · "$sourceId" → null '
+        '(not installed)',
+      );
+      return null;
+    }
     // Asked recently, said no — don't ask again until the miss expires.
-    if (_store.missedRecently(c, sourceId)) return null;
+    if (_store.missedRecently(c, sourceId)) {
+      debugPrint(
+        '[source-matcher] matchOn · "$sourceId" → null '
+        '(recently missed, skipping)',
+      );
+      return null;
+    }
+    debugPrint(
+      '[source-matcher] matchOn · "$sourceId" → fresh search '
+      'for "$title"',
+    );
     return resolveOn(c, sourceId, title: title, altTitle: altTitle, malId: malId);
   }
 
@@ -184,7 +220,20 @@ class SourceMatcher {
     int? malId,
   }) async {
     final selId = selectedFor(c.kind);
-    if (selId == null) return null; // nothing installed that can play this
+    final candidates = _candidates(c.kind);
+    debugPrint(
+      '[source-matcher] _resolve · kind=${c.kind} title="$title" '
+      'selected=$selId candidates=${candidates.length} '
+      '(${candidates.map((s) => s.id).take(5).join(",")}'
+      '${candidates.length > 5 ? "…" : ""})',
+    );
+    if (selId == null) {
+      debugPrint(
+        '[source-matcher] _resolve → null (no source selected for '
+        'kind=${c.kind})',
+      );
+      return null; // nothing installed that can play this
+    }
     return matchOn(c, selId, title: title, altTitle: altTitle, malId: malId);
   }
 
@@ -209,9 +258,21 @@ class SourceMatcher {
   /// not to have a title now says so instead of being silently replaced.
   String? selectedFor(ZKind kind) {
     final list = _candidates(kind);
-    if (list.isEmpty) return null;
+    if (list.isEmpty) {
+      debugPrint('[source-matcher] selectedFor($kind) → null (no candidates)');
+      return null;
+    }
     final saved = _prefs.get(kind);
-    if (saved != null && list.any((s) => s.id == saved)) return saved;
+    if (saved != null && list.any((s) => s.id == saved)) {
+      debugPrint(
+        '[source-matcher] selectedFor($kind) → "$saved" (saved, still valid)',
+      );
+      return saved;
+    }
+    debugPrint(
+      '[source-matcher] selectedFor($kind) → "${list.first.id}" '
+      '(first of ${list.length})',
+    );
     return list.first.id;
   }
 

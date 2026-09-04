@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart' show debugPrint;
+
 import '../aniyomi/aniyomi_filters.dart';
 import '../aniyomi/aniyomi_provider.dart';
 import '../lnreader/lnreader_manager.dart';
@@ -22,6 +24,7 @@ import '../prefs/source_lang_prefs.dart';
 import '../provider/cf_solve_needed.dart';
 import '../provider/cloudstream_provider.dart';
 import '../provider/provider_manager.dart';
+import '../provider/provider_registry.dart';
 import '../provider/reading_provider.dart';
 import '../state/active_source_cubit.dart';
 import 'catalogue_repository.dart';
@@ -175,8 +178,44 @@ class SourceRepository implements CatalogueRepository {
   /// Every installed, enabled, non-hidden source — including ones the language
   /// preference narrows out of [loadedSources]. For explicit per-title source
   /// pickers only; browse and search must keep using [loadedSources].
-  List<({String id, String name})> get pickableSources =>
-      _named(_rawSources(narrowByLang: false));
+  ///
+  /// On TV, the QuickJS runtime may be empty (loadAll is skipped to avoid
+  /// freezing the boot), so we also pull enabled entries from the
+  /// [ProviderRegistry] and merge them in. The registry is the source of
+  /// truth for what's installed+enabled; the runtime is just a cache of
+  /// what's currently loaded.
+  List<({String id, String name})> get pickableSources {
+    final raw = _rawSources(narrowByLang: false);
+
+    // ── Registry supplement (TV: loadAll skipped, runtime empty) ──
+    final runtimeIds = raw.map((s) => s.id).toSet();
+    final registryOnly = <({String id, String name, String? lang})>[];
+    if (sl.isRegistered<ProviderRegistry>()) {
+      for (final entry in sl<ProviderRegistry>().getAll()) {
+        if (entry.enabled && !runtimeIds.contains(entry.name)) {
+          registryOnly.add((
+            id: entry.name,
+            name: (entry.displayName.isNotEmpty
+                ? entry.displayName
+                : entry.name),
+            lang: null,
+          ));
+        }
+      }
+    }
+
+    final merged = [...raw, ...registryOnly];
+    final named = _named(merged);
+    debugPrint(
+      '[source-repo] pickableSources · '
+      'js=${_manager.all.length} cs=${_csManager.enabled.length} '
+      'ani=${_aniManager.all.length} mihon=${_mihonManager.all.length} '
+      'lnr=${_lnrManager?.installedSources.length ?? 0} '
+      'registrySupplement=${registryOnly.length} '
+      '→ ${named.length} pickable',
+    );
+    return named;
+  }
 
   @override
   List<({String id, String name})> get loadedSources => _named(_rawLoadedSources);
@@ -399,6 +438,12 @@ class SourceRepository implements CatalogueRepository {
   /// CS ids use identity-compatible lookup ([resolveCompatible]); Aniyomi and JS
   /// ids use their respective manager registries.
   @override
+  /// True when [sourceId] is installed and available for playback.
+  ///
+  /// On TV the QuickJS runtime may be empty (loadAll is skipped), so for JS
+  /// providers we also check the [ProviderRegistry] — the registry is the
+  /// source of truth for what's installed+enabled; the runtime is just a cache
+  /// of what's currently loaded.
   bool hasSource(String sourceId) {
     if (_isCloudStream(sourceId)) {
       return _csManager.resolveCompatible(sourceId) != null;
@@ -412,7 +457,39 @@ class SourceRepository implements CatalogueRepository {
     if (_isLnReader(sourceId)) {
       return _lnrManager?.get(sourceId) != null;
     }
-    return _manager.get(sourceId) != null;
+    // JS provider: check runtime first, then registry (TV: runtime may be
+    // empty because loadAll was skipped).
+    if (_manager.get(sourceId) != null) return true;
+    if (sl.isRegistered<ProviderRegistry>()) {
+      final entry = sl<ProviderRegistry>().entryFor(sourceId);
+      if (entry != null && entry.enabled) return true;
+    }
+    return false;
+  }
+
+  /// Ensures a JS provider is loaded into the QuickJS runtime so it can be
+  /// searched/resolved. On phone, providers are loaded at boot; on TV, loadAll
+  /// is skipped and providers load on demand. Non-JS sources (CS/Aniyomi/etc.)
+  /// are always available through their native managers.
+  ///
+  /// Returns true if the provider is now available (was already loaded or
+  /// loaded successfully). Returns false on timeout or failure — callers
+  /// should skip the source.
+  Future<bool> ensureSourceLoaded(String sourceId) async {
+    if (_isCloudStream(sourceId) ||
+        _isAniyomi(sourceId) ||
+        _isMihon(sourceId) ||
+        _isLnReader(sourceId)) {
+      return true; // non-JS sources are always available
+    }
+    if (_manager.get(sourceId) != null) return true; // already loaded
+    if (!sl.isRegistered<ProviderRegistry>()) return false;
+    try {
+      return await sl<ProviderRegistry>().ensureRuntimeLoaded(sourceId);
+    } catch (e) {
+      debugPrint('[source-repo] ensureSourceLoaded failed for $sourceId: $e');
+      return false;
+    }
   }
 
   /// Resolves the provider for a per-call [id], falling back to the active

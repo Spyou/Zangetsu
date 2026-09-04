@@ -11,7 +11,7 @@ import '../../core/playback/search_prefs.dart';
 import '../../core/provider/cloudstream_provider.dart';
 import '../../core/provider/cs_dns.dart';
 import '../../core/provider/provider_registry.dart';
-import '../../core/state/active_source_cubit.dart';
+// import '../../core/state/active_source_cubit.dart';
 import '../../core/tracker/tracker_hub.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/zmode/metadata_provider_prefs.dart';
@@ -37,7 +37,7 @@ import 'connections_screen_tv.dart';
 import 'discord_settings_screen.dart';
 import 'donate_screen.dart';
 import 'settings_screen.dart';
-import '../shell/tv_source_picker.dart';
+// import '../shell/tv_source_picker.dart';
 
 /// TV Settings list: same sections as the phone [SettingsScreen]. Tappable
 /// rows use the TV-aware [SettingsTile] (white pill focus). Pickers open
@@ -69,20 +69,20 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
     });
   }
 
-  ActiveSourceCubit get _active => context.read<ActiveSourceCubit>();
+  // ActiveSourceCubit get _active => context.read<ActiveSourceCubit>();
   ProviderRegistry get _registry => sl<ProviderRegistry>();
   CloudStreamManager get _csManager => sl<CloudStreamManager>();
 
   Future<void> _push(Widget screen) => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => screen));
 
-  String _activeLabel(String activeId) {
-    if (activeId.startsWith('cs:')) {
-      return _csManager.get(activeId)?.displayName ?? activeId;
-    }
-    final entry = _registry.entryFor(activeId);
-    if (entry == null) return activeId;
-    return entry.displayName.isNotEmpty ? entry.displayName : entry.name;
-  }
+  // String _activeLabel(String activeId) {
+  //   if (activeId.startsWith('cs:')) {
+  //     return _csManager.get(activeId)?.displayName ?? activeId;
+  //   }
+  //   final entry = _registry.entryFor(activeId);
+  //   if (entry == null) return activeId;
+  //   return entry.displayName.isNotEmpty ? entry.displayName : entry.name;
+  // }
 
   Future<void> _pickDnsTv() async {
     final picked = await showDialog<int>(
@@ -182,17 +182,17 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
     if (mounted) setState(() {});
   }
 
-  void _pickActiveSourceTv() {
-    final currentId = _active.state;
-    showDialog<void>(
-      context: context,
-      barrierColor: Colors.black54,
-      builder: (_) => BlocProvider<ActiveSourceCubit>.value(
-        value: context.read<ActiveSourceCubit>(),
-        child: TvSourcePicker(currentId: currentId),
-      ),
-    );
-  }
+  // void _pickActiveSourceTv() {
+  //   final currentId = _active.state;
+  //   showDialog<void>(
+  //     context: context,
+  //     barrierColor: Colors.black54,
+  //     builder: (_) => BlocProvider<ActiveSourceCubit>.value(
+  //       value: context.read<ActiveSourceCubit>(),
+  //       child: TvSourcePicker(currentId: currentId),
+  //     ),
+  //   );
+  // }
 
   Future<void> _addCloudStreamRepo() async {
     final url = await showDialog<String>(context: context, builder: (_) => const _TvAddRepoDialog());
@@ -268,7 +268,7 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
   Widget build(BuildContext context) {
     final l10n = context.l10n;
     final enabledCount = _registry.getAll().where((e) => e.enabled).length;
-    final activeId = context.watch<ActiveSourceCubit>().state;
+    // final activeId = context.watch<ActiveSourceCubit>().state;
     return Scaffold(
       backgroundColor: AppColors.bg,
       body: SafeArea(
@@ -309,12 +309,12 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
                           if (mounted) setState(() {});
                         },
                       ),
-                      SettingsTile(
-                        icon: Icons.swap_horiz_rounded,
-                        title: l10n.activeSource,
-                        subtitle: _activeLabel(activeId),
-                        onTap: _pickActiveSourceTv,
-                      ),
+                      // SettingsTile(
+                      //   icon: Icons.swap_horiz_rounded,
+                      //   title: l10n.activeSource,
+                      //   subtitle: _activeLabel(activeId),
+                      //   onTap: _pickActiveSourceTv,
+                      // ),
                       SettingsTile(
                         icon: Icons.health_and_safety_outlined,
                         title: l10n.sourceHealth,

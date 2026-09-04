@@ -354,9 +354,15 @@ class ProviderRegistry {
   /// per-entry failures are logged, not thrown, so one broken provider
   /// doesn't sink the app.
   Future<List<String>> loadAll({bool force = false, Duration? perEntryTimeout}) async {
+    final allEntries = getAll();
+    final enabledEntries = allEntries.where((e) => e.enabled).toList();
+    debugPrint(
+      '[ProviderRegistry] loadAll start · '
+      '${allEntries.length} total · ${enabledEntries.length} enabled',
+    );
     final loaded = <String>[];
-    for (final entry in getAll()) {
-      if (!entry.enabled) continue;
+    final skipped = <String>[];
+    for (final entry in enabledEntries) {
       try {
         final load = _loadEntryIntoRuntime(entry, force: force);
         await (perEntryTimeout == null ? load : load.timeout(perEntryTimeout));
@@ -365,9 +371,15 @@ class ProviderRegistry {
         // Includes TimeoutException: a provider whose JS load HANGS (an infinite
         // loop / flutter_js stall) is skipped rather than trapping the loop — and,
         // upstream, the splash. A provider that just throws was already skipped.
+        skipped.add(entry.name);
         debugPrint('[ProviderRegistry] failed to load ${entry.name}: $e');
       }
     }
+    debugPrint(
+      '[ProviderRegistry] loadAll done · '
+      '${loaded.length} loaded · ${skipped.length} skipped '
+      '${skipped.isNotEmpty ? "(${skipped.join(", ")})" : ""}',
+    );
     return loaded;
   }
 

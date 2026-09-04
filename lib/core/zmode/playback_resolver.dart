@@ -103,17 +103,44 @@ class PlaybackResolver {
   Future<ResolvedPlayback> _resolve(String zmEpisodeUrl, {required bool fast}) async {
     final p = ZmodeIds.parseEpisode(zmEpisodeUrl);
     if (p == null) {
+      debugPrint('[playback] _resolve → ArgumentError: not a zm episode url');
       throw ArgumentError('not a metadata episode url: $zmEpisodeUrl');
     }
+    debugPrint(
+      '[playback] _resolve · url=$zmEpisodeUrl episode=${p.episode} '
+      'show=${p.show.kind}/${p.show.id} fast=$fast',
+    );
     final t = await _titleLookup(p.show);
+    debugPrint(
+      '[playback] _resolve · titleLookup → "${t.title}" '
+      '(alt="${t.alt}" malId=${t.malId})',
+    );
     final ordered = _orderedCandidates(p.show);
-    if (ordered.isEmpty) throw NoSourceMatch(p.show);
+    debugPrint(
+      '[playback] _resolve · ${ordered.length} ordered candidates '
+      '(${ordered.join(", ")})',
+    );
+    if (ordered.isEmpty) {
+      debugPrint('[playback] _resolve → NoSourceMatch (no candidates)');
+      throw NoSourceMatch(p.show);
+    }
 
     var hadTitleMatch = false;
     for (final sourceId in ordered) {
-      if (CfSolveNeeded.sourceFlagged(sourceId)) continue;
-      if (_health.isSkippable(sourceId)) continue;
+      if (CfSolveNeeded.sourceFlagged(sourceId)) {
+        debugPrint(
+          '[playback] _resolve · skip $sourceId (CF blocked)',
+        );
+        continue;
+      }
+      if (_health.isSkippable(sourceId)) {
+        debugPrint(
+          '[playback] _resolve · skip $sourceId (unhealthy)',
+        );
+        continue;
+      }
 
+      debugPrint('[playback] _resolve · trying $sourceId');
       final match = await _matcher.matchOn(
         p.show,
         sourceId,
@@ -121,55 +148,94 @@ class PlaybackResolver {
         altTitle: t.alt,
         malId: t.malId,
       );
-      if (match == null) continue;
+      if (match == null) {
+        debugPrint('[playback] _resolve · $sourceId → no title match');
+        continue;
+      }
       hadTitleMatch = true;
 
-      final srcEp = _episodeAtIndex(
-        await _sources.episodes(match.showUrl, sourceId: match.sourceId),
-        p.episode,
-      );
-      if (srcEp == null) continue;
+      // Wrap episode + stream resolution in try-catch so a single source
+      // throwing (e.g. "no sources in response") doesn't kill the entire
+      // sweep — fall through to the next candidate instead.
+      try {
+        final srcEp = _episodeAtIndex(
+          await _sources.episodes(match.showUrl, sourceId: match.sourceId),
+          p.episode,
+        );
+        if (srcEp == null) {
+          debugPrint(
+            '[playback] _resolve · $sourceId → episode ${p.episode} not found',
+          );
+          continue;
+        }
 
-      final streams = await _sources.sources(
-        srcEp.url,
-        sourceId: match.sourceId,
-        fast: fast,
-      );
-      if (streams.isEmpty) continue;
+        final streams = await _sources.sources(
+          srcEp.url,
+          sourceId: match.sourceId,
+          fast: fast,
+        );
+        if (streams.isEmpty) {
+          debugPrint(
+            '[playback] _resolve · $sourceId → 0 streams for ep ${p.episode}',
+          );
+          continue;
+        }
 
-      _winners[zmEpisodeUrl] = (episodeUrl: srcEp.url, sourceId: match.sourceId);
-      if (!match.pinned) {
-        await _store.rememberLastPlayed(p.show, match.sourceId);
-        await _prefs.set(p.show.kind, match.sourceId);
+        _winners[zmEpisodeUrl] = (episodeUrl: srcEp.url, sourceId: match.sourceId);
+        if (!match.pinned) {
+          await _store.rememberLastPlayed(p.show, match.sourceId);
+          await _prefs.set(p.show.kind, match.sourceId);
+        }
+        debugPrint(
+          '[playback] $zmEpisodeUrl -> ${match.sourceId} (${streams.length} streams)',
+        );
+        return ResolvedPlayback(
+          match: match,
+          episodeUrl: srcEp.url,
+          streams: streams,
+          show: p.show,
+          episode: p.episode,
+        );
+      } catch (e) {
+        debugPrint(
+          '[playback] _resolve · $sourceId → error during resolution: $e',
+        );
+        continue;
       }
-      debugPrint(
-        '[playback] $zmEpisodeUrl -> ${match.sourceId} (${streams.length} streams)',
-      );
-      return ResolvedPlayback(
-        match: match,
-        episodeUrl: srcEp.url,
-        streams: streams,
-        show: p.show,
-        episode: p.episode,
-      );
     }
 
     final blocked = _matcher.cfBlockedUrl(p.show.kind);
     if (blocked != null && !hadTitleMatch) {
+      debugPrint(
+        '[playback] _resolve · CF blocked for kind=${p.show.kind} '
+        'url=$blocked',
+      );
       // Let CloudflareRequiredException propagate from SourceRepository if thrown;
       // cfBlockedUrl covers suppressed searches.
     }
 
     if (hadTitleMatch) {
+      debugPrint(
+        '[playback] _resolve → EpisodeNotAvailable '
+        '(hadTitleMatch=true, episode=${p.episode})',
+      );
       throw EpisodeNotAvailable(p.show, p.episode, hadTitleMatch: true);
     }
+    debugPrint('[playback] _resolve → NoSourceMatch');
     throw NoSourceMatch(p.show);
   }
 
   /// Returns streams for [zmEpisodeUrl], sweeping sources when needed.
+  ///
+  /// When a winner is already cached, it is reused regardless of [fast] —
+  /// this avoids re-running the full source sweep (title match → episode list
+  /// → stream resolve) for the same episode just because the native player's
+  /// Server picker calls back for its mirror list. [fast] is still forwarded
+  /// to [SourceRepository.sources] so stream URLs are resolved with the fast
+  /// path (first usable link) and served from the TTL cache when fresh.
   Future<List<VideoSource>> sources(String zmEpisodeUrl, {bool fast = false}) async {
     final hit = _winners[zmEpisodeUrl];
-    if (hit != null && !fast) {
+    if (hit != null) {
       return _sources.sources(hit.episodeUrl, sourceId: hit.sourceId, fast: fast);
     }
     return (await resolveForPlayback(zmEpisodeUrl, fast: fast)).streams;
@@ -192,6 +258,15 @@ class PlaybackResolver {
   /// The source that last resolved [zmEpisodeUrl], if any this session.
   String? resolvedSourceId(String zmEpisodeUrl) =>
       _winners[zmEpisodeUrl]?.sourceId;
+
+  /// Drop the cached winner for [zmEpisodeUrl] so the next
+  /// [resolveForPlayback] re-sweeps sources instead of reusing the failed one.
+  void invalidateWinner(String zmEpisodeUrl) {
+    final removed = _winners.remove(zmEpisodeUrl);
+    if (removed != null) {
+      debugPrint('[playback] invalidateWinner · $zmEpisodeUrl (was ${removed.sourceId})');
+    }
+  }
 
   /// n-th entry in [eps] (1-based), same positional rule as detail playback.
   static Episode? _episodeAtIndex(List<Episode> eps, int n) {

@@ -1239,8 +1239,8 @@ class _EpisodeRow extends StatelessWidget {
   final double fraction;
   final VoidCallback onTap;
 
-  /// Long-press opens the "play this episode with" sheet. Optional because the
-  /// reading path reuses none of this — a chapter opens the reader, where a
+  /// Long-press opens the "play this episode with" sheet. Optional so the
+  /// reading path can leave it off — a chapter opens the reader, where a
   /// player picker has nothing to say.
   final VoidCallback? onLongPress;
   final VoidCallback onDownload;

@@ -117,6 +117,7 @@ class TvPlayerActivity : Activity() {
         const val RESULT_POSITION = "positionMs"
         const val RESULT_DURATION = "durationMs"
         const val RESULT_EP_INDEX = "episodeIndex"
+        const val RESULT_PLAYBACK_ERROR = "playbackError"
         private const val TAG = "TvPlayer"
         private const val SEEK_MS = 10_000L
         private const val AUTO_HIDE_MS = 4_000L
@@ -381,6 +382,21 @@ class TvPlayerActivity : Activity() {
                     "Playback error: ${error.errorCodeName}",
                     android.widget.Toast.LENGTH_LONG,
                 ).show()
+                try {
+                    MainActivity.tvBridge?.invokeMethod(
+                        "playbackError",
+                        mapOf(
+                            "errorCode" to (error.errorCodeName ?: ""),
+                            "message" to (error.message ?: ""),
+                            "index" to currentIndex,
+                        ),
+                    )
+                } catch (_: Exception) {}
+                // The stream is dead — stop the frozen player and hand the
+                // result back so Dart can offer Try Next Source / Select Source.
+                if (!switching) {
+                    reportAndFinish(true)
+                }
             }
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 syncKeepScreenOn()
@@ -2516,7 +2532,7 @@ class TvPlayerActivity : Activity() {
     }
 
     /** Hand the final position back so Flutter saves resume + Continue Watching. */
-    private fun reportAndFinish() {
+    private fun reportAndFinish(playbackError: Boolean = false) {
         if (!reported) {
             reported = true
             val p = player
@@ -2524,6 +2540,7 @@ class TvPlayerActivity : Activity() {
                 .putExtra(RESULT_POSITION, p?.currentPosition ?: 0L)
                 .putExtra(RESULT_DURATION, (p?.duration ?: 0L).coerceAtLeast(0L))
                 .putExtra(RESULT_EP_INDEX, currentIndex)
+                .putExtra(RESULT_PLAYBACK_ERROR, playbackError)
             setResult(RESULT_OK, data)
         }
         finish()

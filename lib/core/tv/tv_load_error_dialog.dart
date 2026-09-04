@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter/material.dart';
 
 import '../../features/sources/providers_hub_screen.dart';
@@ -62,6 +63,10 @@ Future<void> showTvPlaybackLoadError(
     TvPlaybackLoadFailureKind.generic,
   ),
 }) {
+  debugPrint(
+    '[tv-dialog] showTvPlaybackLoadError · kind=${failure.kind} '
+    'mode=${failure.mode}',
+  );
   return showDialog<void>(
     context: context,
     barrierColor: Colors.black54,
@@ -211,6 +216,161 @@ class _TvPlaybackLoadErrorDialog extends StatelessWidget {
                 ],
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Symbolic result of the TV playback-error dialog.
+enum TvPlaybackErrorAction {
+  /// Re-run resolution — the failed source was already marked unhealthy so a
+  /// re-resolve sweeps to the next candidate.
+  tryNext,
+
+  /// Open the source picker so the user can pick a specific source.
+  selectSource,
+
+  /// Just close — do nothing.
+  close,
+}
+
+/// TV dialog shown when the native ExoPlayer reports a fatal playback error
+/// AFTER a source resolved successfully (e.g. PARSING_CONTAINER_NOT_SUPPORTED).
+/// The stream was playable in theory but the container/decoder rejected it, so
+/// re-running resolution with a different source is the sensible recovery.
+Future<TvPlaybackErrorAction> showTvPlaybackErrorDialog(
+  BuildContext context, {
+  required String errorCode,
+  required String showTitle,
+}) async {
+  debugPrint(
+    '[tv-dialog] showTvPlaybackErrorDialog · code=$errorCode show=$showTitle',
+  );
+  final result = await showDialog<TvPlaybackErrorAction>(
+    context: context,
+    barrierColor: Colors.black54,
+    builder: (ctx) => _TvPlaybackErrorDialog(
+      errorCode: errorCode,
+      showTitle: showTitle,
+    ),
+  );
+  return result ?? TvPlaybackErrorAction.close;
+}
+
+class _TvPlaybackErrorDialog extends StatelessWidget {
+  const _TvPlaybackErrorDialog({
+    required this.errorCode,
+    required this.showTitle,
+  });
+
+  final String errorCode;
+  final String showTitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: AppColors.surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 96, vertical: 64),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minWidth: 560, maxWidth: 680),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(40, 36, 40, 28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                "Couldn't play this source",
+                style: AppText.largeTitle.copyWith(fontSize: 28),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                '$showTitle failed to play. The stream was found but the '
+                'player couldn\'t decode it${errorCode.isNotEmpty ? " ($errorCode)" : ""}. '
+                'Try another source, or pick one manually.',
+                style: AppText.body.copyWith(
+                  fontSize: 18,
+                  height: 1.45,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+              const SizedBox(height: 32),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  _ErrorActionButton(
+                    label: 'Close',
+                    autofocus: false,
+                    onTap: () =>
+                        Navigator.pop(context, TvPlaybackErrorAction.close),
+                  ),
+                  const SizedBox(width: 12),
+                  _ErrorActionButton(
+                    label: 'Select Source',
+                    autofocus: false,
+                    onTap: () => Navigator.pop(
+                      context,
+                      TvPlaybackErrorAction.selectSource,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  _ErrorActionButton(
+                    label: 'Try Next Source',
+                    autofocus: true,
+                    accent: true,
+                    onTap: () => Navigator.pop(
+                      context,
+                      TvPlaybackErrorAction.tryNext,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ErrorActionButton extends StatelessWidget {
+  const _ErrorActionButton({
+    required this.label,
+    required this.onTap,
+    this.autofocus = false,
+    this.accent = false,
+  });
+
+  final String label;
+  final VoidCallback onTap;
+  final bool autofocus;
+  final bool accent;
+
+  @override
+  Widget build(BuildContext context) {
+    return TvFocusable(
+      autofocus: autofocus,
+      variant: TvFocusVariant.pill,
+      onTap: onTap,
+      semanticLabel: label,
+      builder: (focused) => DecoratedBox(
+        decoration: BoxDecoration(
+          color: focused
+              ? (accent ? Colors.white : Colors.white24)
+              : (accent ? AppColors.accent : AppColors.surface2),
+          borderRadius: BorderRadius.circular(24),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
+          child: Text(
+            label,
+            style: AppText.headline.copyWith(
+              fontSize: 18,
+              color: focused ? Colors.black : Colors.white,
+            ),
           ),
         ),
       ),

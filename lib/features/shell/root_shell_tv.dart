@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -378,14 +379,20 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
   /// tvOS: load provider JS before [HomeCubit] hits QuickJS — a cloud-restore
   /// pick (e.g. AniKoto) can be enabled in the registry but not yet evaluated.
   Future<void> _reloadHomeForSource(String sourceId) async {
+    debugPrint('[tv-shell] _reloadHomeForSource · sourceId=$sourceId');
     if (isAppleTv) {
       final ok = await sl<ProviderRegistry>()
           .ensureRuntimeLoaded(sourceId)
           .catchError((_) => false);
       if (!ok || sl<ProviderManager>().get(sourceId) == null) {
+        debugPrint(
+          '[tv-shell] _reloadHomeForSource · '
+          'ensureRuntimeLoaded failed or provider not found',
+        );
         return;
       }
     }
+    debugPrint('[tv-shell] _reloadHomeForSource → loading HomeCubit');
     sl<HomeCubit>().load(reset: true);
   }
 

@@ -781,13 +781,13 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
                               ),
                             ),
                             const SizedBox(height: 10),
-                            if (ZmodeIds.isZ(widget.item.url))
-                              MatchLine(
-                                canonical: ZmodeIds.parseShow(widget.item.url)!,
-                                title: detail.title,
-                                altTitle: detail.englishTitle,
-                                malId: detail.malId,
-                              ),
+                            // if (ZmodeIds.isZ(widget.item.url))
+                            //   MatchLine(
+                            //     canonical: ZmodeIds.parseShow(widget.item.url)!,
+                            //     title: detail.title,
+                            //     altTitle: detail.englishTitle,
+                            //     malId: detail.malId,
+                            //   ),
                             const SizedBox(height: 10),
                             // Episode search — under Play/Download (tester
                             // request). Opens the type-dialog; the active
@@ -1159,6 +1159,12 @@ class _TvEpisodeListState extends State<_TvEpisodeList> {
           return TvListFocusable(
             key: ValueKey('tv-ep-$fullIndex'),
             onTap: () => widget.onOpen(fullIndex),
+            onLongPress: () => showTvEpisodeDescriptionDialog(
+              context,
+              ep: ep,
+              epNum: epNum,
+              displayTitle: displayTitle,
+            ),
             semanticLabel: heading,
             child: ExcludeSemantics(
               child: RepaintBoundary(
@@ -1277,6 +1283,260 @@ class _TvSeasonChips extends StatelessWidget {
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TV episode synopsis — long-press an episode row to read the full description.
+// The scroll body is focusable and moves with D-pad up/down; arrow-down at the
+// end hands focus to Close.
+// ─────────────────────────────────────────────────────────────────────────────
+
+Future<void> showTvEpisodeDescriptionDialog(
+  BuildContext context, {
+  required Episode ep,
+  required int epNum,
+  String? displayTitle,
+}) {
+  final l10n = context.l10n;
+  final srcTitle = (displayTitle ?? ep.title).trim();
+  final titleText =
+      episodeDisplayTitle(ep, sourceTitle: srcTitle, number: epNum) ?? '';
+  final heading = titleText.isNotEmpty
+      ? '$epNum. $titleText'
+      : l10n.episodeLabel(epNum);
+  final desc = (ep.description != null && ep.description!.trim().isNotEmpty)
+      ? ep.description!.trim()
+      : l10n.noDescriptionAvailable;
+
+  return showDialog<void>(
+    context: context,
+    barrierColor: Colors.black54,
+    builder: (ctx) => _TvEpisodeDescriptionDialog(
+      title: heading,
+      description: desc,
+    ),
+  );
+}
+
+class _TvEpisodeDescriptionDialog extends StatefulWidget {
+  const _TvEpisodeDescriptionDialog({
+    required this.title,
+    required this.description,
+  });
+
+  final String title;
+  final String description;
+
+  @override
+  State<_TvEpisodeDescriptionDialog> createState() =>
+      _TvEpisodeDescriptionDialogState();
+}
+
+class _TvEpisodeDescriptionDialogState extends State<_TvEpisodeDescriptionDialog> {
+  final _closeFocus = FocusNode();
+
+  @override
+  void dispose() {
+    _closeFocus.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    final height = MediaQuery.sizeOf(context).height * 0.65;
+
+    return Dialog(
+      backgroundColor: AppColors.surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 96, vertical: 64),
+      child: SizedBox(
+        width: 720,
+        height: height,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(40, 36, 40, 28),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                widget.title,
+                style: AppText.largeTitle.copyWith(fontSize: 26),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                l10n.synopsis,
+                style: AppText.caption.copyWith(
+                  color: AppColors.textTertiary,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.4,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Expanded(
+                child: _TvSynopsisScroll(
+                  description: widget.description,
+                  onReachEnd: () => _closeFocus.requestFocus(),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TvFocusable(
+                  focusNode: _closeFocus,
+                  variant: TvFocusVariant.pill,
+                  onTap: () => Navigator.pop(context),
+                  semanticLabel: l10n.close,
+                  builder: (focused) => DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: focused ? Colors.white : AppColors.accent,
+                      borderRadius: BorderRadius.circular(24),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 36,
+                        vertical: 14,
+                      ),
+                      child: Text(
+                        l10n.close,
+                        style: AppText.headline.copyWith(
+                          fontSize: 18,
+                          color: focused ? Colors.black : Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TvSynopsisScroll extends StatefulWidget {
+  const _TvSynopsisScroll({
+    required this.description,
+    required this.onReachEnd,
+  });
+
+  final String description;
+  final VoidCallback onReachEnd;
+
+  @override
+  State<_TvSynopsisScroll> createState() => _TvSynopsisScrollState();
+}
+
+class _TvSynopsisScrollState extends State<_TvSynopsisScroll> {
+  final _scroll = ScrollController();
+  final _focus = FocusNode();
+  bool _focused = false;
+
+  static const _step = 72.0;
+
+  @override
+  void initState() {
+    super.initState();
+    _focus.addListener(_onFocusChange);
+  }
+
+  void _onFocusChange() {
+    if (_focused != _focus.hasFocus) {
+      setState(() => _focused = _focus.hasFocus);
+    }
+  }
+
+  @override
+  void dispose() {
+    _focus.removeListener(_onFocusChange);
+    _scroll.dispose();
+    _focus.dispose();
+    super.dispose();
+  }
+
+  bool get _atTop => !_scroll.hasClients || _scroll.offset <= 0;
+  bool get _atBottom =>
+      !_scroll.hasClients ||
+      _scroll.offset >= _scroll.position.maxScrollExtent - 1;
+
+  void _scrollBy(double delta) {
+    if (!_scroll.hasClients) return;
+    final max = _scroll.position.maxScrollExtent;
+    _scroll.animateTo(
+      (_scroll.offset + delta).clamp(0.0, max),
+      duration: const Duration(milliseconds: 100),
+      curve: Curves.easeOut,
+    );
+  }
+
+  KeyEventResult _onKey(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+
+    if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+      if (_atBottom) {
+        widget.onReachEnd();
+        return KeyEventResult.handled;
+      }
+      _scrollBy(_step);
+      return KeyEventResult.handled;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+      if (_atTop) return KeyEventResult.ignored;
+      _scrollBy(-_step);
+      return KeyEventResult.handled;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.pageDown) {
+      if (_atBottom) {
+        widget.onReachEnd();
+        return KeyEventResult.handled;
+      }
+      _scrollBy(_step * 3);
+      return KeyEventResult.handled;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.pageUp) {
+      if (_atTop) return KeyEventResult.ignored;
+      _scrollBy(-_step * 3);
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Focus(
+      focusNode: _focus,
+      autofocus: true,
+      onKeyEvent: _onKey,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 120),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: _focused ? Colors.white54 : AppColors.hairline,
+            width: _focused ? 2 : 1,
+          ),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: SingleChildScrollView(
+            controller: _scroll,
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+            child: Text(
+              widget.description,
+              style: AppText.body.copyWith(
+                fontSize: 18,
+                height: 1.45,
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
