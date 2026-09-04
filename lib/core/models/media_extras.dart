@@ -36,6 +36,7 @@ class MediaRelation extends Equatable {
     this.cover,
     this.relation,
     this.malId,
+    this.anilistId,
     this.tmdbId,
     this.tmdbIsTv = false,
     this.isReading = false,
@@ -63,6 +64,11 @@ class MediaRelation extends Equatable {
   /// MAL's id, in the catalogue [isReading] names — MAL numbers its manga and
   /// its anime separately, so this means nothing without that flag.
   final int? malId;
+
+  /// AniList's own id, for the many entries carrying no MAL id — Korean and
+  /// Chinese titles especially. Without it a relation had no metadata identity
+  /// and a tap could only ever search the current source.
+  final int? anilistId;
   final int? tmdbId;
   final bool tmdbIsTv;
 
@@ -73,6 +79,7 @@ class MediaRelation extends Equatable {
     cover,
     relation,
     malId,
+    anilistId,
     tmdbId,
     tmdbIsTv,
     isReading,

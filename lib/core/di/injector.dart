@@ -62,6 +62,7 @@ import '../metadata/tmdb.dart';
 import '../metadata/title_logo_service.dart';
 import '../mode/content_mode_cubit.dart';
 import '../trailer/trailer_service.dart';
+import '../anilist/anilist_network_policy.dart';
 import '../anilist/anilist_service.dart';
 import '../anilist/anilist_store.dart';
 import '../tracker/mal_service.dart';
@@ -366,6 +367,11 @@ Future<void> initDependencies() async {
       },
     ),
   );
+  // AniList gets a longer read than the 8s above and honours 429 — see
+  // AniListNetworkPolicy. Registered so the UI can ask how long the wait is.
+  final aniListPolicy = AniListNetworkPolicy();
+  dio.interceptors.add(aniListPolicy);
+  sl.registerSingleton<AniListNetworkPolicy>(aniListPolicy);
   sl.registerSingleton<Dio>(dio);
   sl.registerSingleton<AiringService>(AiringService(sl<Dio>()));
   sl.registerSingleton<ComingSoonService>(ComingSoonService(sl<Dio>()));

@@ -263,6 +263,41 @@
 	"statusPlanning": "Geplant",
 	"statusReading": "Am Lesen",
 	"statusPlanToRead": "Lesen geplant",
+	"providerHavingAMoment": "{name} hat gerade einen Moment",
+	"@providerHavingAMoment": {
+		"placeholders": {
+			"name": {
+				"type": "String"
+			}
+		}
+	},
+	"providerHavingAMomentBody": "Antwortet gerade nicht. Warte kurz — oder wechsle den Metadaten-Anbieter in den Einstellungen.",
+	"sourceNotAnswering": "{name} antwortet nicht",
+	"@sourceNotAnswering": {
+		"placeholders": {
+			"name": {
+				"type": "String"
+			}
+		}
+	},
+	"sourceNotAnsweringBody": "Vielleicht offline oder Anfragen werden blockiert. Versuche es erneut oder wechsle oben die Quelle.",
+	"providerNeedsBreather": "{name} braucht eine Pause",
+	"@providerNeedsBreather": {
+		"placeholders": {
+			"name": {
+				"type": "String"
+			}
+		}
+	},
+	"providerNeedsBreatherBody": "Wir haben zu oft gefragt. Versuche es in {seconds}s erneut.",
+	"@providerNeedsBreatherBody": {
+		"placeholders": {
+			"seconds": {
+				"type": "int"
+			}
+		}
+	},
+	"showingWhatWeHave": "Vielleicht offline, oder dein Netzwerk blockiert es. Hier ist, was wir schon hatten.",
 	"titleLanguage": "Titelsprache",
 	"titleLanguageSubtitle": "Wie AniList-Titel angezeigt werden",
 	"titleLanguageNative": "Original",

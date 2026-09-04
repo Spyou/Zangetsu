@@ -1519,6 +1519,48 @@ abstract class AppLocalizations {
   /// **'Plan to Read'**
   String get statusPlanToRead;
 
+  /// No description provided for @providerHavingAMoment.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} is having a moment'**
+  String providerHavingAMoment(String name);
+
+  /// No description provided for @providerHavingAMomentBody.
+  ///
+  /// In en, this message translates to:
+  /// **'It\'s not answering right now. Give it a minute — or switch metadata provider in Settings.'**
+  String get providerHavingAMomentBody;
+
+  /// No description provided for @sourceNotAnswering.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} isn\'t answering'**
+  String sourceNotAnswering(String name);
+
+  /// No description provided for @sourceNotAnsweringBody.
+  ///
+  /// In en, this message translates to:
+  /// **'It may be down or blocking requests. Try again, or switch to another source from the top.'**
+  String get sourceNotAnsweringBody;
+
+  /// No description provided for @providerNeedsBreather.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} needs a breather'**
+  String providerNeedsBreather(String name);
+
+  /// No description provided for @providerNeedsBreatherBody.
+  ///
+  /// In en, this message translates to:
+  /// **'We asked a bit too often. Try again in {seconds}s.'**
+  String providerNeedsBreatherBody(int seconds);
+
+  /// No description provided for @showingWhatWeHave.
+  ///
+  /// In en, this message translates to:
+  /// **'Might be down, or your network is blocking it. Here\'s what we already had.'**
+  String get showingWhatWeHave;
+
   /// No description provided for @titleLanguage.
   ///
   /// In en, this message translates to:
@@ -3485,7 +3527,7 @@ abstract class AppLocalizations {
   /// No description provided for @offlineTitle.
   ///
   /// In en, this message translates to:
-  /// **'You are offline'**
+  /// **'You\'re offline'**
   String get offlineTitle;
 
   /// No description provided for @offlineBody.

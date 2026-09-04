@@ -263,6 +263,41 @@
 	"statusPlanning": "予定",
 	"statusReading": "読書中",
 	"statusPlanToRead": "読書予定",
+	"providerHavingAMoment": "{name} は少し休憩中です",
+	"@providerHavingAMoment": {
+		"placeholders": {
+			"name": {
+				"type": "String"
+			}
+		}
+	},
+	"providerHavingAMomentBody": "今は応答していません。少し待つか、設定でメタデータ提供元を切り替えてください。",
+	"sourceNotAnswering": "{name} が応答しません",
+	"@sourceNotAnswering": {
+		"placeholders": {
+			"name": {
+				"type": "String"
+			}
+		}
+	},
+	"sourceNotAnsweringBody": "ダウンしているか、リクエストを拒否している可能性があります。再試行するか、上部でソースを切り替えてください。",
+	"providerNeedsBreather": "{name} は一息つきたいようです",
+	"@providerNeedsBreather": {
+		"placeholders": {
+			"name": {
+				"type": "String"
+			}
+		}
+	},
+	"providerNeedsBreatherBody": "少し送りすぎました。{seconds}秒後に再試行してください。",
+	"@providerNeedsBreatherBody": {
+		"placeholders": {
+			"seconds": {
+				"type": "int"
+			}
+		}
+	},
+	"showingWhatWeHave": "ダウンしているか、ネットワークが遮断しているかもしれません。取得済みの情報はこちらです。",
 	"titleLanguage": "タイトルの言語",
 	"titleLanguageSubtitle": "AniList のタイトルの表示方法",
 	"titleLanguageNative": "原語",

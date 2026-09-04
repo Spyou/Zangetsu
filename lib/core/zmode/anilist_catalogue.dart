@@ -3,6 +3,7 @@ import 'package:dio/dio.dart';
 import '../models/episode.dart';
 import '../models/home_section.dart';
 import '../models/media_detail.dart';
+import '../anilist/anilist_network_policy.dart';
 import '../anilist/anilist_title.dart';
 import '../models/media_item.dart';
 import '../models/provider_info.dart';
@@ -40,6 +41,16 @@ class AniListCatalogue implements AnimeCatalogue {
       if (data is Map && data['data'] is Map) {
         return Map<String, dynamic>.from(data['data'] as Map);
       }
+    } on DioException catch (e) {
+      // A transport failure is not "no data". Swallowing it left the caller
+      // holding an empty list it could not tell apart from a quiet catalogue,
+      // so Home could never distinguish an offline phone from a provider
+      // outage — and told people with no network to switch metadata provider.
+      //
+      // A response that DID arrive still returns null: a 4xx/5xx with a body,
+      // or a GraphQL error envelope, is the server answering, and every caller
+      // already handles that as "nothing came back".
+      if (e.response == null || aniListRateLimitOf(e) != null) rethrow;
     } catch (_) {}
     return null;
   };

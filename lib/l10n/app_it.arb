@@ -263,6 +263,41 @@
 	"statusPlanning": "In programma",
 	"statusReading": "In lettura",
 	"statusPlanToRead": "Da leggere",
+	"providerHavingAMoment": "{name} ha bisogno di un momento",
+	"@providerHavingAMoment": {
+		"placeholders": {
+			"name": {
+				"type": "String"
+			}
+		}
+	},
+	"providerHavingAMomentBody": "Al momento non risponde. Aspetta un attimo, o cambia provider di metadati nelle Impostazioni.",
+	"sourceNotAnswering": "{name} non risponde",
+	"@sourceNotAnswering": {
+		"placeholders": {
+			"name": {
+				"type": "String"
+			}
+		}
+	},
+	"sourceNotAnsweringBody": "Potrebbe essere offline o bloccare le richieste. Riprova, o cambia fonte in alto.",
+	"providerNeedsBreather": "{name} ha bisogno di respirare",
+	"@providerNeedsBreather": {
+		"placeholders": {
+			"name": {
+				"type": "String"
+			}
+		}
+	},
+	"providerNeedsBreatherBody": "Abbiamo chiesto un po' troppo spesso. Riprova tra {seconds}s.",
+	"@providerNeedsBreatherBody": {
+		"placeholders": {
+			"seconds": {
+				"type": "int"
+			}
+		}
+	},
+	"showingWhatWeHave": "Forse è offline, o la tua rete lo blocca. Ecco quello che avevamo già.",
 	"titleLanguage": "Lingua dei titoli",
 	"titleLanguageSubtitle": "Come vengono mostrati i titoli di AniList",
 	"titleLanguageNative": "Originale",

@@ -19,6 +19,40 @@ Widget _emptyTab(IconData icon, String message) => LayoutBuilder(
   ),
 );
 
+/// A tap target that visibly reacts, the same 0.97 squeeze [PosterCard] uses.
+///
+/// These grids were bare [GestureDetector]s over static art, so a tap looked
+/// like nothing had happened — and opening a relation runs a source search
+/// first, so "nothing" lasted about a second before the page changed.
+class _PressableCard extends StatefulWidget {
+  const _PressableCard({required this.onTap, required this.child});
+
+  final VoidCallback onTap;
+  final Widget child;
+
+  @override
+  State<_PressableCard> createState() => _PressableCardState();
+}
+
+class _PressableCardState extends State<_PressableCard> {
+  bool _down = false;
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+    onTap: widget.onTap,
+    onTapDown: (_) => setState(() => _down = true),
+    onTapUp: (_) => setState(() => _down = false),
+    onTapCancel: () => setState(() => _down = false),
+    behavior: HitTestBehavior.opaque,
+    child: AnimatedScale(
+      scale: _down ? 0.97 : 1.0,
+      duration: const Duration(milliseconds: 120),
+      curve: Curves.easeOut,
+      child: widget.child,
+    ),
+  );
+}
+
 class _CastTab extends StatelessWidget {
   const _CastTab({required this.cast, this.onOpenPerson, this.loading = false});
   final List<CastMember> cast;
@@ -154,11 +188,7 @@ class _CastTab extends StatelessWidget {
         );
         final ref = m.person;
         if (ref == null || onOpenPerson == null) return card;
-        return GestureDetector(
-          onTap: () => onOpenPerson!(ref),
-          behavior: HitTestBehavior.opaque,
-          child: card,
-        );
+        return _PressableCard(onTap: () => onOpenPerson!(ref), child: card);
       },
     );
   }
@@ -274,12 +304,7 @@ class _RelationsTab extends StatelessWidget {
             child: ExcludeSemantics(child: visual),
           );
         }
-        // Phone path: original GestureDetector — byte-identical to the old code.
-        return GestureDetector(
-          onTap: () => onOpen(r),
-          behavior: HitTestBehavior.opaque,
-          child: visual,
-        );
+        return _PressableCard(onTap: () => onOpen(r), child: visual);
       },
     );
   }

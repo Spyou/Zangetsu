@@ -33,6 +33,7 @@ Future<void> openRelatedTitle(
   String? cover,
   required bool isReading,
   int? malId,
+  int? anilistId,
   int? tmdbId,
   bool tmdbIsTv = false,
   required String? sourceId,
@@ -41,6 +42,7 @@ Future<void> openRelatedTitle(
   final canonical = _canonicalFor(
     isReading: isReading,
     malId: malId,
+    anilistId: anilistId,
     tmdbId: tmdbId,
     tmdbIsTv: tmdbIsTv,
   );
@@ -98,13 +100,29 @@ Future<void> openRelatedTitle(
       Navigator.of(context).push(DetailScreen.route(match));
       return;
     }
-    // Nothing on this source. Say so and stay put.
+    // Nothing on this source. Open the metadata page rather than refusing.
     //
-    // This used to open the metadata page instead, which reads as the tap
-    // having worked while quietly moving you to a different library — you
-    // asked for this title ON this source, and it is not there. The
-    // cross-kind case above is the one exception, and it is decided before
-    // any search runs.
+    // Staying put was the older behaviour, on the reasoning that you asked for
+    // this title ON this source. In practice a relation is usually the first
+    // time you have heard of the title, a single source rarely carries a whole
+    // franchise, and a toast is a dead end — the metadata page at least lets
+    // you pick a source that does have it. The toast survives only for
+    // relations with no id, where there is no metadata page to open.
+    if (canonical != null) {
+      Navigator.of(context).push(
+        DetailScreen.route(
+          _metaItem(
+            canonical,
+            title: title,
+            cover: cover,
+            malId: malId,
+            tmdbId: tmdbId,
+            tmdbIsTv: tmdbIsTv,
+          ),
+        ),
+      );
+      return;
+    }
     showAppToast(context, context.l10n.titleIsntOnThisSource(title));
   } catch (_) {
     if (context.mounted) {
@@ -119,11 +137,13 @@ Future<void> openRelatedTitle(
 ZCanonical? canonicalForRelated({
   required bool isReading,
   int? malId,
+  int? anilistId,
   int? tmdbId,
   bool tmdbIsTv = false,
 }) => _canonicalFor(
   isReading: isReading,
   malId: malId,
+  anilistId: anilistId,
   tmdbId: tmdbId,
   tmdbIsTv: tmdbIsTv,
 );
@@ -131,6 +151,7 @@ ZCanonical? canonicalForRelated({
 ZCanonical? _canonicalFor({
   required bool isReading,
   int? malId,
+  int? anilistId,
   int? tmdbId,
   bool tmdbIsTv = false,
 }) {
@@ -143,6 +164,13 @@ ZCanonical? _canonicalFor({
   }
   if (tmdbId != null) {
     return ZCanonical(tmdbIsTv ? ZKind.tv : ZKind.movie, 'tmdb:$tmdbId');
+  }
+  // AniList's own id, for the entries with no MAL id. The catalogue resolves
+  // `al:` already — it keys its own rows that way when idMal is null — so this
+  // is the same identity, not a new one. Without it a relation on a Korean or
+  // Chinese title had nothing to open and could only search the source.
+  if (anilistId != null) {
+    return ZCanonical(isReading ? ZKind.manga : ZKind.anime, 'al:$anilistId');
   }
   return null;
 }

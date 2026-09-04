@@ -723,6 +723,35 @@ class AppLocalizationsZh extends AppLocalizations {
   String get statusPlanToRead => '计划阅读';
 
   @override
+  String providerHavingAMoment(String name) {
+    return '$name 需要缓一缓';
+  }
+
+  @override
+  String get providerHavingAMomentBody => '现在没有响应。稍等片刻，或在设置中切换元数据提供方。';
+
+  @override
+  String sourceNotAnswering(String name) {
+    return '$name 没有响应';
+  }
+
+  @override
+  String get sourceNotAnsweringBody => '可能已宕机或拒绝请求。请重试，或在顶部切换其他来源。';
+
+  @override
+  String providerNeedsBreather(String name) {
+    return '$name 需要喘口气';
+  }
+
+  @override
+  String providerNeedsBreatherBody(int seconds) {
+    return '我们请求得有点频繁。请在 $seconds 秒后重试。';
+  }
+
+  @override
+  String get showingWhatWeHave => '可能已宕机，或被你的网络拦截。这是我们已经拿到的内容。';
+
+  @override
   String get titleLanguage => '标题语言';
 
   @override
@@ -1751,7 +1780,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get failedToLoadThisTitle => '无法加载这部作品';
 
   @override
-  String get offlineTitle => 'You are offline';
+  String get offlineTitle => 'You\'re offline';
 
   @override
   String get offlineBody => 'Check your connection and try again.';
@@ -5620,6 +5649,35 @@ class AppLocalizationsZhTw extends AppLocalizationsZh {
 
   @override
   String get statusPlanToRead => '打算閱讀';
+
+  @override
+  String providerHavingAMoment(String name) {
+    return '$name 需要緩一緩';
+  }
+
+  @override
+  String get providerHavingAMomentBody => '現在沒有回應。稍等片刻，或在設定中切換中繼資料提供者。';
+
+  @override
+  String sourceNotAnswering(String name) {
+    return '$name 沒有回應';
+  }
+
+  @override
+  String get sourceNotAnsweringBody => '可能已當機或拒絕請求。請重試，或在頂部切換其他來源。';
+
+  @override
+  String providerNeedsBreather(String name) {
+    return '$name 需要喘口氣';
+  }
+
+  @override
+  String providerNeedsBreatherBody(int seconds) {
+    return '我們請求得有點頻繁。請在 $seconds 秒後重試。';
+  }
+
+  @override
+  String get showingWhatWeHave => '可能已當機，或被你的網路攔截。這是我們已經拿到的內容。';
 
   @override
   String get titleLanguage => '標題語言';

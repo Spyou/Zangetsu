@@ -264,8 +264,8 @@ class AniListApi {
       'node{ id name{full} image{medium} } '
       'voiceActors(language:JAPANESE,sort:[RELEVANCE]){ name{full} } } } '
       'relations{ edges{ relationType '
-      'node{ idMal type format title{romaji english native} coverImage{medium} } } } '
-      'recommendations(sort:RATING_DESC,perPage:16){ edges{ node{ mediaRecommendation{ idMal type format title{romaji english native} coverImage{medium} } } } }';
+      'node{ id idMal type format title{romaji english native} coverImage{medium} } } } '
+      'recommendations(sort:RATING_DESC,perPage:16){ edges{ node{ mediaRecommendation{ id idMal type format title{romaji english native} coverImage{medium} } } } }';
 
   /// Manga/novel twin of [_extrasSelection].
   ///
@@ -278,8 +278,8 @@ class AniListApi {
       'staff(sort:[RELEVANCE],perPage:6){ edges{ role '
       'node{ id name{full} image{medium} } } } '
       'relations{ edges{ relationType '
-      'node{ idMal type format title{romaji english native} coverImage{medium} } } } '
-      'recommendations(sort:RATING_DESC,perPage:16){ edges{ node{ mediaRecommendation{ idMal type format title{romaji english native} coverImage{medium} } } } }';
+      'node{ id idMal type format title{romaji english native} coverImage{medium} } } } '
+      'recommendations(sort:RATING_DESC,perPage:16){ edges{ node{ mediaRecommendation{ id idMal type format title{romaji english native} coverImage{medium} } } } }';
 
   /// Cast + relations for a MANGA or NOVEL, resolved by title.
   ///
@@ -558,6 +558,7 @@ class AniListApi {
               node['format'] as String?,
             ),
             malId: (node['idMal'] as num?)?.toInt(),
+            anilistId: (node['id'] as num?)?.toInt(),
             isReading: node['type'] == 'MANGA',
           ),
         );
@@ -591,6 +592,7 @@ class AniListApi {
                 : null,
             relation: 'Recommended',
             malId: (rec['idMal'] as num?)?.toInt(),
+            anilistId: (rec['id'] as num?)?.toInt(),
             isReading: rec['type'] == 'MANGA',
           ),
         );

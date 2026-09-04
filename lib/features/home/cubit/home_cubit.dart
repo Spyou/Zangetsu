@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:get_it/get_it.dart';
 
+import '../../../core/anilist/anilist_network_policy.dart';
 import '../../../core/app_mode.dart';
 import '../../../core/error/exceptions.dart';
 import '../../../core/error/network_failure.dart';
@@ -48,6 +49,7 @@ class HomeState extends Equatable {
     this.loading = false,
     this.cloudflareUrl,
     this.offline = false,
+    this.rateLimitedSeconds,
     this.rows,
   });
 
@@ -67,6 +69,12 @@ class HomeState extends Equatable {
   /// with nothing: both used to render as "this source returned nothing",
   /// which sent people to reinstall extensions over a dropped connection.
   final bool offline;
+
+  /// Seconds until the metadata provider will answer again, when the load
+  /// failed because we are rate-limited. Null in every other case — a limit
+  /// passes on its own, and saying how long is the difference between waiting
+  /// and hunting a fault that isn't there.
+  final int? rateLimitedSeconds;
 
   /// The merged arrangement the screens render. Null until the first load
   /// completes (skeletons show meanwhile), kept as-is across reloads so a
@@ -94,17 +102,26 @@ class HomeState extends Equatable {
     bool? loading,
     String? cloudflareUrl,
     bool? offline,
+    int? rateLimitedSeconds,
     List<HomeRow>? rows,
   }) => HomeState(
     sections: sections ?? this.sections,
     loading: loading ?? this.loading,
     cloudflareUrl: cloudflareUrl ?? this.cloudflareUrl,
     offline: offline ?? this.offline,
+    rateLimitedSeconds: rateLimitedSeconds ?? this.rateLimitedSeconds,
     rows: rows ?? this.rows,
   );
 
   @override
-  List<Object?> get props => [sections, loading, cloudflareUrl, offline, rows];
+  List<Object?> get props => [
+    sections,
+    loading,
+    cloudflareUrl,
+    offline,
+    rateLimitedSeconds,
+    rows,
+  ];
 }
 
 /// Owns the Home rows. Delegates entirely to [SourceRepository.home], which
@@ -236,6 +253,7 @@ class HomeCubit extends Cubit<HomeState> {
     List<HomeSection> sections;
     String? cloudflareUrl;
     var offline = false;
+    int? limitedSeconds;
     try {
       final homeFuture = _repo.home();
       sections = isAppleTv
@@ -252,7 +270,8 @@ class HomeCubit extends Cubit<HomeState> {
     } catch (e, st) {
       debugPrint('[home] load failed · source=$sourceId · $e\n$st');
       sections = const <HomeSection>[];
-      offline = await isOfflineErrorConfirmed(e);
+      limitedSeconds = aniListRateLimitOf(e)?.seconds;
+      offline = limitedSeconds == null && await isOfflineErrorConfirmed(e);
     }
 
     // The tracker read finishes on its own; a miss just means no tracker rows
@@ -285,6 +304,7 @@ class HomeCubit extends Cubit<HomeState> {
         // Only meaningful when nothing came back: a partial load that hit one
         // bad row is not an offline screen.
         offline: offline && sections.isEmpty,
+        rateLimitedSeconds: limitedSeconds,
         rows: _mergedRows(sections, kind, library, tracker),
       ),
     );

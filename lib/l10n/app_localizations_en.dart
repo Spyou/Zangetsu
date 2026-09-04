@@ -736,6 +736,38 @@ class AppLocalizationsEn extends AppLocalizations {
   String get statusPlanToRead => 'Plan to Read';
 
   @override
+  String providerHavingAMoment(String name) {
+    return '$name is having a moment';
+  }
+
+  @override
+  String get providerHavingAMomentBody =>
+      'It\'s not answering right now. Give it a minute — or switch metadata provider in Settings.';
+
+  @override
+  String sourceNotAnswering(String name) {
+    return '$name isn\'t answering';
+  }
+
+  @override
+  String get sourceNotAnsweringBody =>
+      'It may be down or blocking requests. Try again, or switch to another source from the top.';
+
+  @override
+  String providerNeedsBreather(String name) {
+    return '$name needs a breather';
+  }
+
+  @override
+  String providerNeedsBreatherBody(int seconds) {
+    return 'We asked a bit too often. Try again in ${seconds}s.';
+  }
+
+  @override
+  String get showingWhatWeHave =>
+      'Might be down, or your network is blocking it. Here\'s what we already had.';
+
+  @override
   String get titleLanguage => 'Title language';
 
   @override
@@ -1799,7 +1831,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get failedToLoadThisTitle => 'Failed to load this title';
 
   @override
-  String get offlineTitle => 'You are offline';
+  String get offlineTitle => 'You\'re offline';
 
   @override
   String get offlineBody => 'Check your connection and try again.';

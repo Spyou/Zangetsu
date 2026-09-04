@@ -726,6 +726,38 @@ class AppLocalizationsJa extends AppLocalizations {
   String get statusPlanToRead => '読書予定';
 
   @override
+  String providerHavingAMoment(String name) {
+    return '$name は少し休憩中です';
+  }
+
+  @override
+  String get providerHavingAMomentBody =>
+      '今は応答していません。少し待つか、設定でメタデータ提供元を切り替えてください。';
+
+  @override
+  String sourceNotAnswering(String name) {
+    return '$name が応答しません';
+  }
+
+  @override
+  String get sourceNotAnsweringBody =>
+      'ダウンしているか、リクエストを拒否している可能性があります。再試行するか、上部でソースを切り替えてください。';
+
+  @override
+  String providerNeedsBreather(String name) {
+    return '$name は一息つきたいようです';
+  }
+
+  @override
+  String providerNeedsBreatherBody(int seconds) {
+    return '少し送りすぎました。$seconds秒後に再試行してください。';
+  }
+
+  @override
+  String get showingWhatWeHave =>
+      'ダウンしているか、ネットワークが遮断しているかもしれません。取得済みの情報はこちらです。';
+
+  @override
   String get titleLanguage => 'タイトルの言語';
 
   @override
@@ -1760,7 +1792,7 @@ class AppLocalizationsJa extends AppLocalizations {
   String get failedToLoadThisTitle => 'この作品を読み込めませんでした';
 
   @override
-  String get offlineTitle => 'You are offline';
+  String get offlineTitle => 'You\'re offline';
 
   @override
   String get offlineBody => 'Check your connection and try again.';

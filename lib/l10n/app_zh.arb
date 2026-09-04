@@ -263,6 +263,41 @@
 	"statusPlanning": "计划中",
 	"statusReading": "正在阅读",
 	"statusPlanToRead": "计划阅读",
+	"providerHavingAMoment": "{name} 需要缓一缓",
+	"@providerHavingAMoment": {
+		"placeholders": {
+			"name": {
+				"type": "String"
+			}
+		}
+	},
+	"providerHavingAMomentBody": "现在没有响应。稍等片刻，或在设置中切换元数据提供方。",
+	"sourceNotAnswering": "{name} 没有响应",
+	"@sourceNotAnswering": {
+		"placeholders": {
+			"name": {
+				"type": "String"
+			}
+		}
+	},
+	"sourceNotAnsweringBody": "可能已宕机或拒绝请求。请重试，或在顶部切换其他来源。",
+	"providerNeedsBreather": "{name} 需要喘口气",
+	"@providerNeedsBreather": {
+		"placeholders": {
+			"name": {
+				"type": "String"
+			}
+		}
+	},
+	"providerNeedsBreatherBody": "我们请求得有点频繁。请在 {seconds} 秒后重试。",
+	"@providerNeedsBreatherBody": {
+		"placeholders": {
+			"seconds": {
+				"type": "int"
+			}
+		}
+	},
+	"showingWhatWeHave": "可能已宕机，或被你的网络拦截。这是我们已经拿到的内容。",
 	"titleLanguage": "标题语言",
 	"titleLanguageSubtitle": "AniList 标题的显示方式",
 	"titleLanguageNative": "原文",

@@ -1,5 +1,5 @@
 // Home's "provider returned no sections" branch (loadedEmpty in
-// home_screen.dart's build) renders _SourceUnavailable ("Couldn't load, try
+// home_screen.dart's build) renders _SourceUnavailable ("isn't answering, try
 // again") for anime, but for a reading mode with ZERO manga/novel sources
 // installed it shows an install guide ("No <mode> sources yet" → Open
 // Providers) — nothing's "unavailable", there's just nothing set up yet.
@@ -124,7 +124,7 @@ void main() {
       (tester) async {
         await pumpEmptyView(tester, mode: ContentMode.anime);
 
-        expect(find.text("Couldn't load allanime"), findsOneWidget);
+        expect(find.text("allanime isn't answering"), findsOneWidget);
         expect(find.text('Retry'), findsOneWidget);
         expect(find.widgetWithText(FilledButton, 'Browse sources'), findsNothing);
         expect(find.textContaining('sources yet'), findsNothing);
@@ -180,7 +180,7 @@ void main() {
         expect(find.text('No Streaming sources yet'), findsOneWidget);
         final cta = find.widgetWithText(FilledButton, 'Browse sources');
         expect(cta, findsOneWidget);
-        expect(find.text("Couldn't load allanime"), findsNothing);
+        expect(find.text("allanime isn't answering"), findsNothing);
 
         await tester.tap(cta);
         expect(installTapped, isTrue);
@@ -195,7 +195,7 @@ void main() {
 
         await pumpEmptyView(tester, mode: ContentMode.anime);
 
-        expect(find.text("Couldn't load allanime"), findsOneWidget);
+        expect(find.text("allanime isn't answering"), findsOneWidget);
         expect(find.text('Retry'), findsOneWidget);
         expect(find.textContaining('sources yet'), findsNothing);
       },
@@ -215,7 +215,7 @@ void main() {
         expect(find.text('No Manga sources yet'), findsOneWidget);
         final cta = find.widgetWithText(FilledButton, 'Browse sources');
         expect(cta, findsOneWidget);
-        expect(find.text("Couldn't load allanime"), findsNothing);
+        expect(find.text("allanime isn't answering"), findsNothing);
 
         await tester.tap(cta);
         expect(installTapped, isTrue);
@@ -230,7 +230,7 @@ void main() {
 
         await pumpEmptyView(tester, mode: ContentMode.manga);
 
-        expect(find.text("Couldn't load allanime"), findsOneWidget);
+        expect(find.text("allanime isn't answering"), findsOneWidget);
         expect(find.text('Retry'), findsOneWidget);
         expect(find.text('No Manga sources yet'), findsNothing);
         expect(find.widgetWithText(FilledButton, 'Browse sources'), findsNothing);
@@ -272,7 +272,7 @@ void main() {
         );
 
         expect(find.text('allanime is protected by Cloudflare'), findsOneWidget);
-        expect(find.text("Couldn't load allanime"), findsNothing);
+        expect(find.text("allanime isn't answering"), findsNothing);
         expect(
           find.widgetWithText(ElevatedButton, 'Solve Cloudflare'),
           findsOneWidget,
@@ -302,7 +302,7 @@ void main() {
       (tester) async {
         await pumpEmptyView(tester, mode: ContentMode.anime);
 
-        expect(find.text("Couldn't load allanime"), findsOneWidget);
+        expect(find.text("allanime isn't answering"), findsOneWidget);
         expect(find.text('Solve Cloudflare'), findsNothing);
       },
     );
@@ -314,9 +314,9 @@ void main() {
       await pumpEmptyView(tester, mode: ContentMode.anime, offline: true);
 
       expect(find.text("You're offline"), findsOneWidget);
-      // The whole point: "Couldn't load allanime" sent people off
+      // The whole point: the outage wording sent people off
       // reinstalling a source that was never the problem.
-      expect(find.text("Couldn't load allanime"), findsNothing);
+      expect(find.text("allanime isn't answering"), findsNothing);
       expect(find.textContaining('allanime is probably fine'), findsOneWidget);
     });
 

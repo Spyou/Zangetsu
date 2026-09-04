@@ -4,6 +4,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../core/zmode/metadata_repository.dart';
 import '../../../core/zmode/metadata_provider_prefs.dart';
 import '../../../core/di/injector.dart';
+import '../../../core/anilist/anilist_network_policy.dart';
 import '../../../core/error/exceptions.dart';
 import '../../../core/error/network_failure.dart';
 import '../../../core/lnreader/novel_cloudflare.dart';
@@ -264,12 +265,17 @@ class DetailCubit extends Cubit<DetailState> {
       );
     } catch (e) {
       // Same distinction Home makes: a request that never left the device is
-      // not the title failing to load.
-      final offline = await isOfflineErrorConfirmed(e);
+      // not the title failing to load. A rate limit is a third thing again —
+      // it passes on its own, and saying how long is the whole difference
+      // between waiting and hunting a fault.
+      final limited = aniListRateLimitOf(e);
+      final offline = limited == null && await isOfflineErrorConfirmed(e);
       emit(
         state.copyWith(
           status: DetailStatus.error,
-          error: offline ? 'offline' : 'load_failed',
+          error: limited != null
+              ? 'rate_limited:${limited.seconds}'
+              : (offline ? 'offline' : 'load_failed'),
           episodesLoading: false,
         ),
       );
@@ -339,11 +345,29 @@ class DetailCubit extends Cubit<DetailState> {
     } on CloudflareRequiredException catch (e) {
       if (isClosed) return;
       emit(state.copyWith(cloudflareUrl: e.url, episodesLoading: false));
-    } catch (_) {
+    } catch (e) {
       // Keep what's on screen — a failed pull shouldn't blank the page. The
       // skeleton must still come down though: onPartial may have armed it,
       // and nothing else would ever turn it off.
-      if (!isClosed) emit(state.copyWith(episodesLoading: false));
+      if (isClosed) return;
+      if (state.status != DetailStatus.error) {
+        emit(state.copyWith(episodesLoading: false));
+        return;
+      }
+      // Retrying from the failure banner: re-derive why it failed, or the
+      // banner keeps a countdown that expired minutes ago and a reason that
+      // may no longer be the reason.
+      final limited = aniListRateLimitOf(e);
+      final offline = limited == null && await isOfflineErrorConfirmed(e);
+      if (isClosed) return;
+      emit(
+        state.copyWith(
+          error: limited != null
+              ? 'rate_limited:${limited.seconds}'
+              : (offline ? 'offline' : 'load_failed'),
+          episodesLoading: false,
+        ),
+      );
     }
   }
 

@@ -263,6 +263,41 @@
 	"statusPlanning": "計畫中",
 	"statusReading": "正在閱讀",
 	"statusPlanToRead": "打算閱讀",
+	"providerHavingAMoment": "{name} 需要緩一緩",
+	"@providerHavingAMoment": {
+		"placeholders": {
+			"name": {
+				"type": "String"
+			}
+		}
+	},
+	"providerHavingAMomentBody": "現在沒有回應。稍等片刻，或在設定中切換中繼資料提供者。",
+	"sourceNotAnswering": "{name} 沒有回應",
+	"@sourceNotAnswering": {
+		"placeholders": {
+			"name": {
+				"type": "String"
+			}
+		}
+	},
+	"sourceNotAnsweringBody": "可能已當機或拒絕請求。請重試，或在頂部切換其他來源。",
+	"providerNeedsBreather": "{name} 需要喘口氣",
+	"@providerNeedsBreather": {
+		"placeholders": {
+			"name": {
+				"type": "String"
+			}
+		}
+	},
+	"providerNeedsBreatherBody": "我們請求得有點頻繁。請在 {seconds} 秒後重試。",
+	"@providerNeedsBreatherBody": {
+		"placeholders": {
+			"seconds": {
+				"type": "int"
+			}
+		}
+	},
+	"showingWhatWeHave": "可能已當機，或被你的網路攔截。這是我們已經拿到的內容。",
 	"titleLanguage": "標題語言",
 	"titleLanguageSubtitle": "AniList 標題的顯示方式",
 	"titleLanguageNative": "原文",

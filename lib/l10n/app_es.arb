@@ -263,6 +263,41 @@
 	"statusPlanning": "Planificando",
 	"statusReading": "Leyendo",
 	"statusPlanToRead": "Pendiente de leer",
+	"providerHavingAMoment": "{name} está teniendo un momento",
+	"@providerHavingAMoment": {
+		"placeholders": {
+			"name": {
+				"type": "String"
+			}
+		}
+	},
+	"providerHavingAMomentBody": "No responde ahora mismo. Espera un poco o cambia de proveedor de metadatos en Ajustes.",
+	"sourceNotAnswering": "{name} no responde",
+	"@sourceNotAnswering": {
+		"placeholders": {
+			"name": {
+				"type": "String"
+			}
+		}
+	},
+	"sourceNotAnsweringBody": "Puede estar caído o bloqueando peticiones. Reintenta o cambia de fuente arriba.",
+	"providerNeedsBreather": "{name} necesita un respiro",
+	"@providerNeedsBreather": {
+		"placeholders": {
+			"name": {
+				"type": "String"
+			}
+		}
+	},
+	"providerNeedsBreatherBody": "Preguntamos demasiadas veces. Reintenta en {seconds}s.",
+	"@providerNeedsBreatherBody": {
+		"placeholders": {
+			"seconds": {
+				"type": "int"
+			}
+		}
+	},
+	"showingWhatWeHave": "Quizá esté caído, o tu red lo esté bloqueando. Esto es lo que ya teníamos.",
 	"titleLanguage": "Idioma de los títulos",
 	"titleLanguageSubtitle": "Cómo se muestran los títulos de AniList",
 	"titleLanguageNative": "Original",

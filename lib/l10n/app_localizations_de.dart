@@ -744,6 +744,38 @@ class AppLocalizationsDe extends AppLocalizations {
   String get statusPlanToRead => 'Lesen geplant';
 
   @override
+  String providerHavingAMoment(String name) {
+    return '$name hat gerade einen Moment';
+  }
+
+  @override
+  String get providerHavingAMomentBody =>
+      'Antwortet gerade nicht. Warte kurz — oder wechsle den Metadaten-Anbieter in den Einstellungen.';
+
+  @override
+  String sourceNotAnswering(String name) {
+    return '$name antwortet nicht';
+  }
+
+  @override
+  String get sourceNotAnsweringBody =>
+      'Vielleicht offline oder Anfragen werden blockiert. Versuche es erneut oder wechsle oben die Quelle.';
+
+  @override
+  String providerNeedsBreather(String name) {
+    return '$name braucht eine Pause';
+  }
+
+  @override
+  String providerNeedsBreatherBody(int seconds) {
+    return 'Wir haben zu oft gefragt. Versuche es in ${seconds}s erneut.';
+  }
+
+  @override
+  String get showingWhatWeHave =>
+      'Vielleicht offline, oder dein Netzwerk blockiert es. Hier ist, was wir schon hatten.';
+
+  @override
   String get titleLanguage => 'Titelsprache';
 
   @override
@@ -1813,7 +1845,7 @@ class AppLocalizationsDe extends AppLocalizations {
   String get failedToLoadThisTitle => 'Titel konnte nicht geladen werden';
 
   @override
-  String get offlineTitle => 'You are offline';
+  String get offlineTitle => 'You\'re offline';
 
   @override
   String get offlineBody => 'Check your connection and try again.';

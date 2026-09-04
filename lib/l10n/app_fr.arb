@@ -263,6 +263,41 @@
 	"statusPlanning": "Prévu",
 	"statusReading": "En lecture",
 	"statusPlanToRead": "À lire",
+	"providerHavingAMoment": "{name} a besoin d'un moment",
+	"@providerHavingAMoment": {
+		"placeholders": {
+			"name": {
+				"type": "String"
+			}
+		}
+	},
+	"providerHavingAMomentBody": "Pas de réponse pour l'instant. Patiente un peu, ou change de fournisseur de métadonnées dans les Réglages.",
+	"sourceNotAnswering": "{name} ne répond pas",
+	"@sourceNotAnswering": {
+		"placeholders": {
+			"name": {
+				"type": "String"
+			}
+		}
+	},
+	"sourceNotAnsweringBody": "Peut-être hors service ou bloque les requêtes. Réessaie, ou change de source en haut.",
+	"providerNeedsBreather": "{name} a besoin de souffler",
+	"@providerNeedsBreather": {
+		"placeholders": {
+			"name": {
+				"type": "String"
+			}
+		}
+	},
+	"providerNeedsBreatherBody": "On a demandé un peu trop souvent. Réessaie dans {seconds}s.",
+	"@providerNeedsBreatherBody": {
+		"placeholders": {
+			"seconds": {
+				"type": "int"
+			}
+		}
+	},
+	"showingWhatWeHave": "Peut-être hors service, ou ton réseau le bloque. Voici ce qu'on avait déjà.",
 	"titleLanguage": "Langue des titres",
 	"titleLanguageSubtitle": "Comment les titres AniList sont affichés",
 	"titleLanguageNative": "Original",

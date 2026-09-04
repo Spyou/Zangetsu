@@ -1462,6 +1462,12 @@ class _HomeViewState extends State<_HomeView>
                             // pointing at the wrong thing. The router hands
                             // back the right name in either mode.
                             sourceName: _repo.displayName(_repo.sourceId),
+                            // A metadata catalogue, not an installed source —
+                            // the "switch source at the top" advice does not
+                            // apply to it.
+                            isMetadataProvider:
+                                _repo.sourceId == ZmodeIds.sourceId,
+                            rateLimitedSeconds: state.rateLimitedSeconds,
                             onRetry: () =>
                                 context.read<HomeCubit>().load(reset: true),
                             // No-source guide points at the Providers hub (all
@@ -1592,10 +1598,21 @@ class HomeLoadedEmptyView extends StatelessWidget {
     this.cloudflareUrl,
     this.onSolveCloudflare,
     this.offline = false,
+    this.isMetadataProvider = false,
+    this.rateLimitedSeconds,
   });
 
   final ContentMode mode;
   final String sourceName;
+
+  /// Whether [sourceName] is a metadata catalogue (AniList, TMDB…) rather than
+  /// an installed source. They fail the same way but the remedy differs, and
+  /// telling someone to "switch source at the top" when the catalogue is down
+  /// points at a control that has nothing to do with it.
+  final bool isMetadataProvider;
+
+  /// Seconds until it will answer again, when the failure was a rate limit.
+  final int? rateLimitedSeconds;
   final VoidCallback onRetry;
 
   /// Nothing reached the network. Takes priority over the no-sources guide:
@@ -1634,6 +1651,8 @@ class HomeLoadedEmptyView extends StatelessWidget {
       sourceName: sourceName,
       onRetry: onRetry,
       offline: offline,
+      isMetadataProvider: isMetadataProvider,
+      rateLimitedSeconds: rateLimitedSeconds,
     );
   }
 }
@@ -1720,10 +1739,18 @@ class _SourceUnavailable extends StatelessWidget {
     required this.onRetry,
     this.onSolveCloudflare,
     this.offline = false,
+    this.isMetadataProvider = false,
+    this.rateLimitedSeconds,
   });
 
   final String sourceName;
   final VoidCallback onRetry;
+
+  /// See [HomeLoadedEmptyView.isMetadataProvider].
+  final bool isMetadataProvider;
+
+  /// See [HomeLoadedEmptyView.rateLimitedSeconds].
+  final int? rateLimitedSeconds;
 
   /// The request never left the device. Says so instead of blaming the source
   /// — telling someone in a tunnel that their extension is down is how people
@@ -1768,8 +1795,12 @@ class _SourceUnavailable extends StatelessWidget {
             isCloudflare
                 ? '$sourceName is protected by Cloudflare'
                 : offline
-                ? "You're offline"
-                : "Couldn't load $sourceName",
+                ? context.l10n.offlineTitle
+                : rateLimitedSeconds != null
+                ? context.l10n.providerNeedsBreather(sourceName)
+                : isMetadataProvider
+                ? context.l10n.providerHavingAMoment(sourceName)
+                : context.l10n.sourceNotAnswering(sourceName),
             textAlign: TextAlign.center,
             style: const TextStyle(
               color: AppColors.textPrimary,
@@ -1785,9 +1816,11 @@ class _SourceUnavailable extends StatelessWidget {
                 : offline
                 ? "Nothing could reach the network. Check your connection "
                       "and try again — $sourceName is probably fine."
-                : "This source isn't responding right now. It may be down "
-                      "or blocking requests — try again, or switch to "
-                      "another source from the top.",
+                : rateLimitedSeconds != null
+                ? context.l10n.providerNeedsBreatherBody(rateLimitedSeconds!)
+                : isMetadataProvider
+                ? context.l10n.providerHavingAMomentBody
+                : context.l10n.sourceNotAnsweringBody,
             textAlign: TextAlign.center,
             style: const TextStyle(
               color: AppColors.textSecondary,

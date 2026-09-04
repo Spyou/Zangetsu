@@ -263,6 +263,41 @@
 	"statusPlanning": "Planning",
 	"statusReading": "Reading",
 	"statusPlanToRead": "Plan to Read",
+	"providerHavingAMoment": "{name} is having a moment",
+	"@providerHavingAMoment": {
+		"placeholders": {
+			"name": {
+				"type": "String"
+			}
+		}
+	},
+	"providerHavingAMomentBody": "It's not answering right now. Give it a minute — or switch metadata provider in Settings.",
+	"sourceNotAnswering": "{name} isn't answering",
+	"@sourceNotAnswering": {
+		"placeholders": {
+			"name": {
+				"type": "String"
+			}
+		}
+	},
+	"sourceNotAnsweringBody": "It may be down or blocking requests. Try again, or switch to another source from the top.",
+	"providerNeedsBreather": "{name} needs a breather",
+	"@providerNeedsBreather": {
+		"placeholders": {
+			"name": {
+				"type": "String"
+			}
+		}
+	},
+	"providerNeedsBreatherBody": "We asked a bit too often. Try again in {seconds}s.",
+	"@providerNeedsBreatherBody": {
+		"placeholders": {
+			"seconds": {
+				"type": "int"
+			}
+		}
+	},
+	"showingWhatWeHave": "Might be down, or your network is blocking it. Here's what we already had.",
 	"titleLanguage": "Title language",
 	"titleLanguageSubtitle": "How AniList titles are shown",
 	"titleLanguageNative": "Native",
@@ -625,7 +660,7 @@
 	"searchEpisodes": "Search episodes",
 	"titleOrEpisodeNumber": "Title or episode number",
 	"failedToLoadThisTitle": "Failed to load this title",
-	"offlineTitle": "You are offline",
+	"offlineTitle": "You're offline",
 	"offlineBody": "Check your connection and try again.",
 	"changeStatus": "Change status",
 	"tracking": "Tracking",

@@ -692,6 +692,7 @@ class _DetailViewState extends State<_DetailView>
     cover: r.cover,
     isReading: r.isReading,
     malId: r.malId,
+    anilistId: r.anilistId,
     tmdbId: r.tmdbId,
     tmdbIsTv: r.tmdbIsTv,
     sourceId: widget.item.sourceId,
@@ -1541,6 +1542,35 @@ class _DetailViewState extends State<_DetailView>
             return _DetailCloudflareBlocked(url: state.cloudflareUrl!);
           }
           if (state.status == DetailStatus.error || state.detail == null) {
+            // The row you tapped already carried a title and a cover, so a
+            // failed fetch does not have to blank the page — keep what we
+            // have and say what is missing over it. A rate limit especially:
+            // it passes on its own, and the wait is the useful part.
+            final fallback = _detailFromItem(widget.item);
+            if (fallback != null) {
+              return Stack(
+                children: [
+                  _buildBody(context, state, fallback),
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    child: _LoadFailureBanner(
+                      service: _sourceLabel(
+                        widget.item.sourceId,
+                        url: widget.item.url,
+                        savedFrom: widget.item.savedFrom,
+                      ),
+                      // Same distinction Home draws: a metadata catalogue and
+                      // an installed source fail alike but read differently.
+                      isMetadataProvider:
+                          widget.item.sourceId == ZmodeIds.sourceId,
+                      error: state.error,
+                    ),
+                  ),
+                ],
+              );
+            }
             // Offline is not the title failing: saying "failed to load this
             // title" over a dropped connection sends people hunting a
             // problem that isn't there.
@@ -1549,12 +1579,43 @@ class _DetailViewState extends State<_DetailView>
               icon: offline ? Icons.wifi_off_rounded : Icons.error_outline,
               message: offline
                   ? '${context.l10n.offlineTitle}\n${context.l10n.offlineBody}'
+                  : _limitSeconds(state.error) != null
+                  ? context.l10n.providerNeedsBreatherBody(
+                      _limitSeconds(state.error)!,
+                    )
                   : context.l10n.failedToLoadThisTitle,
             );
           }
           return _buildBody(context, state, state.detail!);
         },
       ),
+    );
+  }
+
+  /// Seconds left on a rate limit, or null when [error] is anything else.
+  static int? _limitSeconds(String? error) =>
+      error != null && error.startsWith('rate_limited:')
+      ? int.tryParse(error.substring('rate_limited:'.length))
+      : null;
+
+  /// A page built from the row that was tapped, so a failed fetch keeps the
+  /// cover and title instead of blanking. Null when the item itself is too
+  /// thin to render anything worth keeping.
+  MediaDetail? _detailFromItem(MediaItem item) {
+    if (item.title.isEmpty) return null;
+    return MediaDetail(
+      id: item.id,
+      title: item.title,
+      englishTitle: item.englishTitle,
+      cover: item.cover,
+      coverHeaders: item.coverHeaders,
+      banner: item.banner,
+      url: item.url,
+      type: item.type,
+      sourceId: item.sourceId,
+      malId: item.malId,
+      tmdbId: item.tmdbId,
+      tmdbIsTv: item.tmdbIsTv,
     );
   }
 
@@ -2099,6 +2160,177 @@ class _DetailViewState extends State<_DetailView>
             detail: detail,
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// The bar shown when a detail page only half-loaded.
+///
+/// Named after the service that actually failed, not the app: "couldn't load"
+/// on its own reads as Zangetsu being broken, when the usual causes are
+/// AniList rate-limiting or a source being down. It sits over the page rather
+/// than replacing it — the row you tapped already had a cover and a title, and
+/// throwing those away to show an error helps nobody.
+///
+/// It tells you and gets out of the way. No retry button: the page has two
+/// recoveries already — switching source re-runs the fetch, and reopening it
+/// starts clean — and a button that mostly cannot help (a rate limit rejects
+/// it before it leaves the device) is worse than no button.
+class _LoadFailureBanner extends StatefulWidget {
+  const _LoadFailureBanner({
+    required this.service,
+    required this.isMetadataProvider,
+    required this.error,
+  });
+
+  /// What failed, in the user's terms — "AniList", "Simkl", "AniKoto".
+  final String service;
+
+  /// A metadata catalogue rather than an installed source.
+  final bool isMetadataProvider;
+
+  final String? error;
+
+  @override
+  State<_LoadFailureBanner> createState() => _LoadFailureBannerState();
+}
+
+class _LoadFailureBannerState extends State<_LoadFailureBanner> {
+  /// It sits over the scroll view, so it hides the last of the page while it
+  /// is up. Long enough to read, short enough not to be in the way.
+  static const Duration _visibleFor = Duration(seconds: 4);
+
+  bool _dismissed = false;
+  Timer? _hide;
+
+  @override
+  void initState() {
+    super.initState();
+    _armAutoHide();
+  }
+
+  @override
+  void didUpdateWidget(_LoadFailureBanner old) {
+    super.didUpdateWidget(old);
+    if (old.error != widget.error) _armAutoHide(); // a new failure, shown again
+  }
+
+  @override
+  void dispose() {
+    _hide?.cancel();
+    super.dispose();
+  }
+
+  void _armAutoHide() {
+    _hide?.cancel();
+    _dismissed = false;
+    _hide = Timer(_visibleFor, () {
+      if (mounted) setState(() => _dismissed = true);
+    });
+  }
+
+  int? get _limitSeconds {
+    final e = widget.error;
+    return e != null && e.startsWith('rate_limited:')
+        ? int.tryParse(e.substring('rate_limited:'.length))
+        : null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    final secs = _limitSeconds;
+    final offline = widget.error == 'offline';
+    // Same words Home uses for the same failure — one voice, so the app does
+    // not describe an AniList outage two different ways depending on where you
+    // happen to be standing.
+    final (icon, title, body) = offline
+        ? (Icons.wifi_off_rounded, l10n.offlineTitle, l10n.offlineBody)
+        : secs != null
+        ? (
+            Icons.hourglass_bottom_rounded,
+            l10n.providerNeedsBreather(widget.service),
+            l10n.providerNeedsBreatherBody(secs),
+          )
+        : (
+            Icons.cloud_off_rounded,
+            widget.isMetadataProvider
+                ? l10n.providerHavingAMoment(widget.service)
+                : l10n.sourceNotAnswering(widget.service),
+            l10n.showingWhatWeHave,
+          );
+    return IgnorePointer(
+      ignoring: _dismissed,
+      child: AnimatedOpacity(
+        opacity: _dismissed ? 0 : 1,
+        duration: const Duration(milliseconds: 220),
+        child: SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: AppColors.settingsCard,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: AppColors.hairline),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x66000000),
+                    blurRadius: 16,
+                    offset: Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(14, 12, 6, 12),
+                child: Row(
+                  // Centred against the whole text block. Top-aligned, the
+                  // icon sat level with the title and looked adrift once the
+                  // body wrapped to a second line.
+                  children: [
+                    Icon(icon, size: 20, color: AppColors.accent),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppText.body.copyWith(
+                              color: AppColors.textPrimary,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(body, style: AppText.caption),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: l10n.dismiss,
+                      visualDensity: VisualDensity.compact,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints.tightFor(
+                        width: 32,
+                        height: 32,
+                      ),
+                      icon: const Icon(Icons.close_rounded, size: 18),
+                      color: AppColors.textTertiary,
+                      onPressed: () {
+                        _hide?.cancel();
+                        setState(() => _dismissed = true);
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
