@@ -526,7 +526,9 @@ class _MyListViewState extends State<_MyListView> {
       ),
     );
     if (name == null || !mounted) return;
-    final made = await sl<CategoryStore>().create(name);
+    // Stamped with the mode it was made in, so it stops appearing as an empty
+    // tab under the other two.
+    final made = await sl<CategoryStore>().create(name, kind: _kind.name);
     if (!mounted) return;
     if (made == null) {
       showGlobalSnack(
@@ -748,7 +750,10 @@ class _MyListViewState extends State<_MyListView> {
                       Expanded(
                         child: GestureDetector(
                           behavior: HitTestBehavior.opaque,
-                          onTap: () => setState(() => _kind = k),
+                          onTap: () => setState(() {
+                            _kind = k;
+                            _dropCategoryForeignTo(k);
+                          }),
                           child: Center(
                             child: Text(
                               contentModeLabel(context.l10n, k),
@@ -1121,16 +1126,44 @@ class _MyListViewState extends State<_MyListView> {
     return entries.where((e) => cats.isIn(e.item, c.id)).length;
   }
 
+  /// Drop the selected category when it does not belong to [k].
+  ///
+  /// The mode row only ever changed the kind, and [_categoryFitsKind] keeps
+  /// the SELECTED category visible whatever the mode — so a category picked
+  /// under Streaming followed you into Manga as a selected, empty tab, and
+  /// defeated the mode a category is stamped with.
+  ///
+  /// Categories from before the stamp carry no mode and are genuinely shared,
+  /// so those keep their selection.
+  void _dropCategoryForeignTo(ContentMode k) {
+    final id = _categoryFilter;
+    if (id == null) return;
+    final made = _cats
+        ?.all()
+        .where((c) => c.id == id)
+        .map((c) => c.kind)
+        .firstOrNull;
+    if (made != null && made != k.name) _categoryFilter = null;
+  }
+
   /// Whether [c] earns a tab for the kind currently on screen.
   ///
-  /// Kept if it holds something of this kind, if you are looking at it right
-  /// now, or if it is empty everywhere — that last case is what stops a
-  /// category vanishing the instant you create it, before anything is in it.
+  /// A category made since categories started remembering belongs to the mode
+  /// it was made in, full stop — that is what stops a new Streaming list from
+  /// showing up as an empty tab under Manga and Novel.
+  ///
+  /// Older ones carry no mode and keep the rules they always had: kept if they
+  /// hold something of this kind, if you are looking at one right now, or if
+  /// they are empty everywhere. That last rule is why a new category used to
+  /// appear in all three modes, and it is left alone here so the categories
+  /// already on people's devices do not look deleted from two of them.
   bool Function(ListCategory) _categoryFitsKind(List<MyListEntry> entries) {
     final cats = _cats;
     return (c) {
       if (cats == null) return false;
       if (_categoryFilter == c.id) return true;
+      final madeIn = c.kind;
+      if (madeIn != null) return madeIn == _kind.name;
       if (_categoryCount(entries, c) > 0) return true;
       return cats.countIn(c.id) == 0;
     };

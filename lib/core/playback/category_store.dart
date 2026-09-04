@@ -14,14 +14,31 @@ class ListCategory {
     required this.id,
     required this.name,
     required this.position,
+    this.kind,
   });
 
   final String id;
   final String name;
   final int position;
 
-  Map<String, dynamic> toMap() =>
-      {'id': id, 'name': name, 'position': position};
+  /// Which mode this was made in ([ContentMode.name]), or null for the ones
+  /// created before categories remembered. A kind means the category belongs
+  /// to that mode alone; null keeps the old behaviour, where an empty category
+  /// showed everywhere — those already exist on people's devices and quietly
+  /// moving them into one mode would look like they had been deleted from the
+  /// other two.
+  ///
+  /// Device-local on purpose: the cloud table has no such column, and sending
+  /// one it does not know would fail the upsert and take category creation
+  /// down with it.
+  final String? kind;
+
+  Map<String, dynamic> toMap() => {
+    'id': id,
+    'name': name,
+    'position': position,
+    if (kind != null) 'kind': kind,
+  };
 
   static ListCategory? fromMap(Object? raw) {
     if (raw is! Map) return null;
@@ -30,10 +47,12 @@ class ListCategory {
     if (id is! String || name is! String || id.isEmpty || name.isEmpty) {
       return null;
     }
+    final kind = raw['kind'];
     return ListCategory(
       id: id,
       name: name,
       position: (raw['position'] as num?)?.toInt() ?? 0,
+      kind: kind is String && kind.isNotEmpty ? kind : null,
     );
   }
 }
@@ -170,7 +189,7 @@ class CategoryStore {
   /// Creates a category and returns it, or null when [name] is blank or already
   /// taken (compared case-insensitively — two categories called "gym" and "Gym"
   /// would be indistinguishable on screen).
-  Future<ListCategory?> create(String name) async {
+  Future<ListCategory?> create(String name, {String? kind}) async {
     final trimmed = name.trim();
     if (trimmed.isEmpty) return null;
     final cats = all();
@@ -183,6 +202,7 @@ class CategoryStore {
       id: _uuidV4(),
       name: trimmed,
       position: cats.isEmpty ? 0 : cats.last.position + 1,
+      kind: kind,
     );
     await _writeAll([...cats, cat]);
     _push((r, uid) => r.upsertCategory({
