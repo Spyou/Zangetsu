@@ -121,15 +121,21 @@ class TmdbCatalogue implements VideoCatalogue {
     MetaFilters? filters,
     int page = 1,
   }) async {
-    final f = filters;
+    final f = filters ?? const MetaFilters();
     // Adult alone stays on /search: both endpoints take include_adult, but
     // only /search takes the query.
-    if (f == null || !f.narrowsCatalogue) {
+    //
+    // It also REQUIRES one. Asked with an empty string it answers with
+    // nothing, so a filters-only browse — sort by Popular and nothing else,
+    // which `narrowsCatalogue` counts as no filter at all — used to land here
+    // and come back empty. No query means browse, and browsing is /discover's
+    // job whatever the filters say.
+    if (q.trim().isNotEmpty && !f.narrowsCatalogue) {
       return _items(
         await _get('/search/multi', {
           'query': q,
           'page': page,
-          'include_adult': f?.adult ?? false,
+          'include_adult': f.adult,
         }),
         forcedTv: null,
       );
