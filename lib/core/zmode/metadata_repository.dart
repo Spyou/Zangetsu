@@ -12,6 +12,7 @@ import 'anime_catalogue.dart';
 import 'mal_catalogue.dart';
 import '../di/injector.dart';
 import '../playback/playback_prefs.dart';
+import 'episode_number.dart';
 import 'metadata_filters.dart';
 import 'metadata_provider_prefs.dart';
 import 'simkl_catalogue.dart';
@@ -476,7 +477,11 @@ class MetadataRepository implements CatalogueRepository {
       throw ArgumentError('not a metadata episode url: $episodeUrl');
     final m = await _matchFor(p.show);
     final eps = await _src.episodes(m.showUrl, sourceId: m.sourceId);
-    final i = p.episode - 1;
+    // By the episode's own number where the source numbers reliably, else by
+    // position — see [resolveEpisodeIndex]. Position alone put a recap in the
+    // slot of the episode after it and shifted the whole rest of the season,
+    // which sends the wrong video AND scrobbles the wrong number.
+    final i = resolveEpisodeIndex(eps, p.episode);
     if (i < 0 || i >= eps.length) throw EpisodeNotOnSource(p.show, p.episode);
     return (url: eps[i].url, sourceId: m.sourceId);
   }
