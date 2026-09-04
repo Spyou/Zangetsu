@@ -569,49 +569,7 @@ class _HomeViewState extends State<_HomeView>
                 ),
               ),
             ),
-            // Incognito indicator — visible only while on; tap to exit.
-            ValueListenableBuilder<bool>(
-              valueListenable: IncognitoMode.notifier,
-              builder: (_, on, _) => on
-                  ? GestureDetector(
-                      onTap: () => IncognitoMode.set(false),
-                      behavior: HitTestBehavior.opaque,
-                      child: Container(
-                        margin: const EdgeInsets.only(right: 8),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 9,
-                          vertical: 5,
-                        ),
-                        decoration: BoxDecoration(
-                          color: AppColors.surface2,
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: AppColors.hairline),
-                        ),
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.visibility_off_rounded,
-                              size: 13,
-                              color: AppColors.textSecondary,
-                            ),
-                            SizedBox(width: 5),
-                            Text(
-                              'Incognito',
-                              style: TextStyle(
-                                fontFamily: 'Inter',
-                                fontFamilyFallback: AppText.fontFamilyFallback,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                                color: AppColors.textSecondary,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    )
-                  : const SizedBox.shrink(),
-            ),
+            const _IncognitoChip(),
             _headerDownloadButton(),
             _notificationBell(context),
             const HomeSearchAction(),
@@ -736,8 +694,7 @@ class _HomeViewState extends State<_HomeView>
           items: items,
           trackerName: trackerName,
           onOpen: _openTrackerEntry,
-          onSeeAll: () =>
-              _openTrackerList(trackerName, WatchStatus.watching),
+          onSeeAll: () => _openTrackerList(trackerName, WatchStatus.watching),
           onLongPress: _showTrackerInfo,
         ),
       ),
@@ -1915,5 +1872,75 @@ Widget readerFor(ReadEntry e, Episode chapter) {
     chapters: [chapter],
     startIndex: 0,
     resolveChapters: true,
+  );
+}
+
+/// The "nothing is being recorded" badge, shown only while incognito is on.
+///
+/// Accent-tinted, not grey. It marks an ACTIVE mode, and in this app's colour
+/// language grey-on-grey is what a disabled control looks like — the opposite
+/// of what this means. It also has to hold its own beside the wordmark and
+/// four actions, which a low-contrast pill wedged against the logo did not.
+///
+/// Tap anywhere on it to leave incognito.
+class _IncognitoChip extends StatelessWidget {
+  const _IncognitoChip();
+
+  @override
+  Widget build(BuildContext context) => ValueListenableBuilder<bool>(
+    valueListenable: IncognitoMode.notifier,
+    builder: (context, on, _) {
+      if (!on) return const SizedBox.shrink();
+      final l10n = context.l10n;
+      return Padding(
+        // Its own breathing room. The old chip carried a right margin only, so
+        // it sat flush against the wordmark.
+        padding: const EdgeInsets.only(left: 10, right: 6),
+        child: Tooltip(
+          message: l10n.incognitoMode,
+          child: GestureDetector(
+            onTap: () => IncognitoMode.set(false),
+            behavior: HitTestBehavior.opaque,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: AppColors.accentSoft,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: AppColors.accent.withValues(alpha: 0.35),
+                ),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.visibility_off_rounded,
+                      size: 14,
+                      color: AppColors.accent,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      l10n.incognito,
+                      style: TextStyle(
+                        fontFamily: 'Inter',
+                        fontFamilyFallback: AppText.fontFamilyFallback,
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.2,
+                        color: AppColors.accent,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    },
   );
 }
