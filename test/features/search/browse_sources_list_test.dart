@@ -112,4 +112,5 @@ void main() {
     expect(find.text('No matches found'), findsOneWidget);
     expect(find.text('No sources installed'), findsNothing);
   });
+
 }
