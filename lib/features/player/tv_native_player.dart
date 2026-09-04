@@ -16,12 +16,14 @@ import '../../core/playback/playback_prefs.dart';
 import '../../core/playback/title_prefs.dart';
 import '../../core/playback/resume_store.dart';
 import '../../core/playback/skip_service.dart';
+import '../../core/playback/source_health_store.dart';
 import '../../core/playback/source_selection.dart';
 import '../../core/playback/subtitle_font_stage.dart';
 import '../../core/playback/subtitle_search_service.dart';
 import '../../core/tv/tv_playback_failure.dart';
 import '../../core/zmode/playback_resolver.dart';
 import '../../core/zmode/source_matcher.dart';
+import '../../core/zmode/zmode_ids.dart';
 import '../../core/playback/tv_track_helpers.dart';
 import '../../core/playback/watch_history.dart';
 import '../../core/theme/app_colors.dart';
@@ -51,6 +53,13 @@ class TvNativePlayer {
   /// Set when [play] fails during source resolution — surfaced by
   /// [launchTvPlayback] instead of a generic error dialog.
   static TvPlaybackLoadFailure? lastFailure;
+
+  /// Populated when the native ExoPlayer reports a fatal playback error
+  /// (e.g. PARSING_CONTAINER_NOT_SUPPORTED) — the source resolved fine, but
+  /// the stream couldn't play. [launchTvPlayback] reads this after [play]
+  /// returns and offers Try Next Source / Select Source. Null when play
+  /// succeeded or the user simply backed out.
+  static String? lastPlaybackErrorCode;
 
   // Current session context — set on [play], read by the native→Dart handlers.
   // Only one native player is on screen at a time, so a plain static context is
@@ -92,6 +101,7 @@ class TvNativePlayer {
   }) async {
     if (startIndex < 0 || startIndex >= episodes.length) return false;
     lastFailure = null;
+    lastPlaybackErrorCode = null;
 
     _resolve = resolveSources;
     _episodes = await _enrichEpisodes(
@@ -125,6 +135,7 @@ class TvNativePlayer {
     }
     if (src == null) return false;
     final playUrl = await _playableUrl(src.url);
+    debugPrint('[TvNativePlayer] playUrl=$playUrl (src.url=${src.url})');
     if (playUrl == null) return false; // torrent failed / Wi-Fi-only
     final mark = resume.get(sourceId, _showId, ep.id);
 
@@ -216,6 +227,8 @@ class TvNativePlayer {
       'fillerFlags': fillerFlags,
     });
 
+    debugPrint('[TvNativePlayer] launch returned: $res');
+
     // Player closed — stop any active torrent stream.
     _stopTorrent();
     // On close the native side returns the FINAL episode + position, so a session
@@ -224,6 +237,12 @@ class TvNativePlayer {
     final posMs = (res?['positionMs'] as num?)?.toInt() ?? 0;
     final durMs = (res?['durationMs'] as num?)?.toInt() ?? 0;
     _saveProgress(index, posMs, durMs);
+    // A fatal ExoPlayer error (e.g. PARSING_CONTAINER_NOT_SUPPORTED) is
+    // reported on the channel BEFORE the activity finishes; the result flag
+    // confirms it so launchTvPlayback can offer Try Next Source / Select Source.
+    if ((res?['playbackError'] as bool?) ?? false) {
+      lastPlaybackErrorCode ??= 'PLAYBACK_FAILED';
+    }
     // Player closed → drop Watching, then restore browsing. The detail screen
     // stays mounted underneath and won't re-fire it.
     _announceBrowsing();
@@ -391,8 +410,58 @@ class TvNativePlayer {
         } catch (_) {
           return const <Map>[];
         }
+      case 'playbackError':
+        // Native ExoPlayer hit a playback error (e.g. PARSING_CONTAINER_NOT_SUPPORTED).
+        // Mark the source unhealthy so the resolver deprioritizes it next time,
+        // and invalidate the winner cache so the next resolve re-sweeps.
+        {
+          final args = (call.arguments as Map).cast<String, dynamic>();
+          final code = args['errorCode'] as String? ?? '';
+          final msg = args['message'] as String? ?? '';
+          final index = (args['index'] as num?)?.toInt() ?? -1;
+          debugPrint('[TvNativePlayer] playbackError · code=$code msg=$msg index=$index');
+          lastPlaybackErrorCode = code.isEmpty ? 'PLAYBACK_FAILED' : code;
+          unawaited(_handlePlaybackError(code, msg, index));
+          return null;
+        }
     }
     return null;
+  }
+
+  /// Handles a playback error reported by the native ExoPlayer — marks the
+  /// source unhealthy so the resolver deprioritizes it, and invalidates the
+  /// winner cache so the next attempt re-sweeps instead of reusing the failed
+  /// source.
+  static Future<void> _handlePlaybackError(
+    String code,
+    String message,
+    int index,
+  ) async {
+    if (_showUrl == null) return;
+    // The actual source that served the stream (fourkhdhub, etc.) — for metadata
+    // (zm) this differs from _sourceId (which is 'zm').
+    String failedSourceId = _sourceId;
+    if (ZmodeIds.isZ(_showUrl!) && index >= 0 && index < _episodes.length) {
+      final epUrl = tvEpisodeUrl(_episodes[index].url, _category);
+      if (sl.isRegistered<PlaybackResolver>()) {
+        final resolver = sl<PlaybackResolver>();
+        failedSourceId = resolver.resolvedSourceId(epUrl) ?? _sourceId;
+        resolver.invalidateWinner(epUrl);
+      }
+    }
+    // Mark the source as unhealthy — it will be skipped (skippable) for the
+    // next 30 min, after which it auto-recovers (never permanent).
+    try {
+      if (sl.isRegistered<SourceHealthStore>()) {
+        await sl<SourceHealthStore>().record(
+          failedSourceId,
+          SourceOutcome.error,
+        );
+        debugPrint(
+          '[TvNativePlayer] playbackError · marked $failedSourceId unhealthy',
+        );
+      }
+    } catch (_) {}
   }
 
   /// Human label for a mirror in the Server picker: the provider's own name,

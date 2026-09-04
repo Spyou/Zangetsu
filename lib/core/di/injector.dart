@@ -694,6 +694,11 @@ Future<void> initDependencies() async {
   // Playback still loads a source on demand via ensureRuntimeLoaded.
   if (!isTv) {
     await loadProviders();
+  } else {
+    debugPrint(
+      '[boot] TV detected — skipping loadAll; '
+      'providers load on demand via ensureRuntimeLoaded',
+    );
   }
 
   // Push every saved per-provider settings row into the runtime so the

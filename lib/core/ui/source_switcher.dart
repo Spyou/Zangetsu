@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter/material.dart';
 
 import '../aniyomi/aniyomi_provider.dart';
@@ -321,12 +322,20 @@ bool hasReadingSourcesFor(ContentMode mode) {
 bool hasSourcesFor(ContentMode mode) {
   try {
     final b = filterBucketsForMode(categorizedSources(), mode);
-    return b.anime.isNotEmpty ||
+    final result = b.anime.isNotEmpty ||
         b.movies.isNotEmpty ||
         b.nsfw.isNotEmpty ||
         b.manga.isNotEmpty ||
         b.novel.isNotEmpty;
-  } catch (_) {
+    debugPrint(
+      '[source-switcher] hasSourcesFor($mode) → $result '
+      '(anime=${b.anime.length} movies=${b.movies.length} '
+      'nsfw=${b.nsfw.length} manga=${b.manga.length} '
+      'novel=${b.novel.length})',
+    );
+    return result;
+  } catch (e) {
+    debugPrint('[source-switcher] hasSourcesFor($mode) → catch → true · $e');
     return true;
   }
 }

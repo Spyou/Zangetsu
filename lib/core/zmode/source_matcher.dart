@@ -47,25 +47,12 @@ class SourceMatcher {
   final ZSourcePrefs _prefs;
   final List<({String id, String name})> Function(ZKind) _candidates;
 
-  /// The remembered match for the source that plays this title, without
+  /// The remembered match for the currently selected source, without
   /// searching. Null when no source is selected, or nothing is stored for it.
   SourceMatch? saved(ZCanonical c) {
-    final sel = sourceForTitle(c);
+    final sel = selectedFor(c.kind);
     return sel == null ? null : _store.get(c, sel);
   }
-
-  /// The source that plays THIS title: the one the user pinned for it, else
-  /// the kind's default ([selectedFor]).
-  ///
-  /// A pin used to be invisible unless it happened to sit on the kind's
-  /// selected source, so choosing a source for one show silently meant
-  /// choosing it for every show of that kind. Reading the pin first is what
-  /// makes the choice belong to the title.
-  ///
-  /// Synchronous and never searches: the Detail screen names its source on the
-  /// first frame from this.
-  String? sourceForTitle(ZCanonical c) =>
-      _store.pinnedFor(c)?.sourceId ?? selectedFor(c.kind);
 
   /// Match this title on exactly [sourceId]. Null when that source genuinely
   /// doesn't have it — never throws. A genuine hit is saved as a guess (a
@@ -83,6 +70,18 @@ class SourceMatcher {
     String? altTitle,
     int? malId,
   }) async {
+    // On TV, JS providers may not be loaded in the runtime (loadAll was
+    // skipped). Ensure the provider is loaded before searching so the JS
+    // runtime can actually execute its search function.
+    final loaded = await _sources.ensureSourceLoaded(sourceId);
+    if (!loaded) {
+      debugPrint(
+        '[source-matcher] resolveOn · $sourceId → null '
+        '(ensureSourceLoaded failed)',
+      );
+      return null;
+    }
+
     List<MediaItem> results;
     try {
       results = await _sources.search(title, sourceId: sourceId);
@@ -148,11 +147,35 @@ class SourceMatcher {
   }) async {
     final saved = _store.get(c, sourceId);
     if (saved != null && (saved.pinned || _sources.hasSource(sourceId))) {
-      return saved;
+      // Even with a cached match, the runtime may be empty on TV — ensure
+      // the provider is loaded so episodes()/sources() can resolve.
+      final loaded = await _sources.ensureSourceLoaded(sourceId);
+      debugPrint(
+        '[source-matcher] matchOn · "$sourceId" → cached '
+        '(pinned=${saved.pinned} installed=${_sources.hasSource(sourceId)} '
+        'loaded=$loaded)',
+      );
+      return loaded ? saved : null;
     }
-    if (!_sources.hasSource(sourceId)) return null;
+    if (!_sources.hasSource(sourceId)) {
+      debugPrint(
+        '[source-matcher] matchOn · "$sourceId" → null '
+        '(not installed)',
+      );
+      return null;
+    }
     // Asked recently, said no — don't ask again until the miss expires.
-    if (_store.missedRecently(c, sourceId)) return null;
+    if (_store.missedRecently(c, sourceId)) {
+      debugPrint(
+        '[source-matcher] matchOn · "$sourceId" → null '
+        '(recently missed, skipping)',
+      );
+      return null;
+    }
+    debugPrint(
+      '[source-matcher] matchOn · "$sourceId" → fresh search '
+      'for "$title"',
+    );
     return resolveOn(c, sourceId, title: title, altTitle: altTitle, malId: malId);
   }
 
@@ -196,8 +219,21 @@ class SourceMatcher {
     String? altTitle,
     int? malId,
   }) async {
-    final selId = sourceForTitle(c);
-    if (selId == null) return null; // nothing installed that can play this
+    final selId = selectedFor(c.kind);
+    final candidates = _candidates(c.kind);
+    debugPrint(
+      '[source-matcher] _resolve · kind=${c.kind} title="$title" '
+      'selected=$selId candidates=${candidates.length} '
+      '(${candidates.map((s) => s.id).take(5).join(",")}'
+      '${candidates.length > 5 ? "…" : ""})',
+    );
+    if (selId == null) {
+      debugPrint(
+        '[source-matcher] _resolve → null (no source selected for '
+        'kind=${c.kind})',
+      );
+      return null; // nothing installed that can play this
+    }
     return matchOn(c, selId, title: title, altTitle: altTitle, malId: malId);
   }
 
@@ -209,45 +245,40 @@ class SourceMatcher {
     return null;
   }
 
-  /// The DEFAULT source for [kind]: the user's remembered pick when it is
-  /// still installed, else the first candidate. Null only when nothing
-  /// installed can play this kind at all.
-  ///
-  /// What actually plays a given title is [sourceForTitle], which prefers a
-  /// pin on the title itself and only falls back here.
+  /// The source that plays [kind]: the user's remembered pick when it is still
+  /// installed, else the first candidate. Null only when nothing installed can
+  /// play this kind at all.
   ///
   /// Synchronous and never searches, which is the point — the Detail screen
   /// reads this to name its source on the first frame. This used to be derived
   /// by searching every installed source in turn and taking whichever had the
   /// title, so the row could name nothing until that finished, and could then
-  /// change under the user. One declared default means there is nothing to
-  /// wait for and nothing to disagree with; a source that turns out not to
-  /// have a title now says so instead of being silently replaced.
+  /// change under the user. One declared source per kind means there is
+  /// nothing to wait for and nothing to disagree with; a source that turns out
+  /// not to have a title now says so instead of being silently replaced.
   String? selectedFor(ZKind kind) {
     final list = _candidates(kind);
-    if (list.isEmpty) return null;
+    if (list.isEmpty) {
+      debugPrint('[source-matcher] selectedFor($kind) → null (no candidates)');
+      return null;
+    }
     final saved = _prefs.get(kind);
-    if (saved != null && list.any((s) => s.id == saved)) return saved;
+    if (saved != null && list.any((s) => s.id == saved)) {
+      debugPrint(
+        '[source-matcher] selectedFor($kind) → "$saved" (saved, still valid)',
+      );
+      return saved;
+    }
+    debugPrint(
+      '[source-matcher] selectedFor($kind) → "${list.first.id}" '
+      '(first of ${list.length})',
+    );
     return list.first.id;
   }
 
   /// Make [sourceId] the source for [kind], for every title of that kind.
   Future<void> selectSource(ZKind kind, String sourceId) =>
       _prefs.set(kind, sourceId);
-
-  /// Forget the per-title choice for [c] so the kind's default decides again.
-  /// The picker calls this before switching the default, otherwise a pin made
-  /// earlier would keep winning and the pick would look ignored.
-  Future<void> clearTitlePin(ZCanonical c) => _store.unpinAll(c);
-
-  /// The user picked [sourceId] for [c] from a picker: drop whatever this
-  /// title was pinned to and make it the kind's source. Both halves matter —
-  /// without the first the pick is ignored on this title, without the second
-  /// it is forgotten on every other one.
-  Future<void> chooseSource(ZCanonical c, String sourceId) async {
-    await clearTitlePin(c);
-    await selectSource(c.kind, sourceId);
-  }
 
   /// The Cloudflare-challenge url for a [kind] candidate that got flagged
   /// mid-search (see [CfSolveNeeded]), or null. [resolve] returning null
@@ -272,22 +303,6 @@ class SourceMatcher {
     // concluded — drop any remembered miss so it is never skipped again.
     await _store.forgetMiss(c, picked.sourceId);
     await _prefs.set(c.kind, picked.sourceId);
-    return m;
-  }
-
-  /// The user picked [picked] for THIS title only — browsing a source and
-  /// opening a show in it is a choice about that show, not about every show of
-  /// its kind, so unlike [pinManual] this leaves the kind's default alone.
-  Future<SourceMatch> pinForTitle(ZCanonical c, MediaItem picked) async {
-    final m = SourceMatch(
-      sourceId: picked.sourceId,
-      showUrl: picked.url,
-      showId: picked.id,
-      showTitle: picked.title,
-      pinned: true,
-    );
-    await _store.pin(c, m);
-    await _store.forgetMiss(c, picked.sourceId);
     return m;
   }
 }

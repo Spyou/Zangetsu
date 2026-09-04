@@ -160,14 +160,35 @@ class HomeCubit extends Cubit<HomeState> {
   /// True when the cubit has no paintable rows — including a check of the
   /// metadata stream cache, which can fill while [sections] is still empty.
   bool get showsEmptyHome {
-    if (state.loading) return false;
-    if (state.sections != null && state.sections!.isNotEmpty) return false;
+    if (state.loading) {
+      debugPrint('[home] showsEmptyHome → false (still loading)');
+      return false;
+    }
+    if (state.sections != null && state.sections!.isNotEmpty) {
+      debugPrint(
+        '[home] showsEmptyHome → false '
+        '(${state.sections!.length} sections)',
+      );
+      return false;
+    }
     if (ZModePrefs.enabled &&
         sl.isRegistered<ContentModeCubit>() &&
         sl<ContentModeCubit>().state == ContentMode.anime) {
       final cached = sectionsFor(ZModePrefs.streamKind);
-      if (cached != null && cached.isNotEmpty) return false;
+      if (cached != null && cached.isNotEmpty) {
+        debugPrint(
+          '[home] showsEmptyHome → false '
+          '(metadata cache: ${cached.length} rows for '
+          '${ZModePrefs.streamKind})',
+        );
+        return false;
+      }
     }
+    debugPrint(
+      '[home] showsEmptyHome → true '
+      '(sections=${state.sections?.length ?? "null"} '
+      'zMode=${ZModePrefs.enabled})',
+    );
     return state.sections != null && state.sections!.isEmpty;
   }
 

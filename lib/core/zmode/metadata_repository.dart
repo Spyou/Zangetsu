@@ -97,6 +97,10 @@ class MetadataRepository implements CatalogueRepository {
   final PlaybackResolver _playback;
   final ZKind Function() _browseKind;
 
+  /// Exposed so [PlaybackResolver] can be registered in DI and accessed
+  /// directly for cache invalidation on playback errors.
+  PlaybackResolver get playbackResolver => _playback;
+
   /// Cached metadata home rows per catalogue kind. Anime ↔ Movie/TV toggles can
   /// swap without waiting on AniList/TMDB again; the counterpart kind is
   /// prefetched after each successful home fetch.

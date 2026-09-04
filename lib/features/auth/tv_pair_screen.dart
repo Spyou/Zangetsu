@@ -151,14 +151,17 @@ class _TvPairScreenState extends State<TvPairScreen> {
           children: [
             const TvBackHeader(),
             Expanded(
-              child: Center(
-                child: switch (_phase) {
-                  _Phase.loading => CircularProgressIndicator(
-                    color: AppColors.accent,
-                  ),
-                  _Phase.expired || _Phase.error => _message(),
-                  _ => _pairing(),
-                },
+              child: Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: Center(
+                  child: switch (_phase) {
+                    _Phase.loading => CircularProgressIndicator(
+                      color: AppColors.accent,
+                    ),
+                    _Phase.expired || _Phase.error => _message(),
+                    _ => _pairing(),
+                  },
+                ),
               ),
             ),
           ],
@@ -184,10 +187,12 @@ class _TvPairScreenState extends State<TvPairScreen> {
         ),
       ),
       const SizedBox(width: 52),
-      Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+      SizedBox(
+        width: 500,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
           Text(context.l10n.signInWithYourPhone, style: AppText.title),
           const SizedBox(height: 14),
           Text(
@@ -233,7 +238,8 @@ class _TvPairScreenState extends State<TvPairScreen> {
                 Text(context.l10n.signingIn, style: AppText.body),
               ],
             ),
-        ],
+          ],
+        ),
       ),
     ],
   );

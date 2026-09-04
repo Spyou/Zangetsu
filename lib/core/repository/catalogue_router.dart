@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart' show debugPrint;
+
 import '../models/episode.dart';
 import '../models/home_section.dart';
 import '../models/media_detail.dart';
@@ -110,7 +112,18 @@ class CatalogueRouter implements CatalogueRepository {
     String episodeUrl, {
     String? sourceId,
     bool fast = false,
-  }) => _forUrl(episodeUrl).sources(episodeUrl, sourceId: sourceId, fast: fast);
+  }) {
+    final via = ZmodeIds.isZ(episodeUrl) ? 'metadata' : 'source';
+    debugPrint(
+      '[catalogue-router] sources · via=$via url=$episodeUrl '
+      'sourceId=$sourceId fast=$fast',
+    );
+    return _forUrl(episodeUrl).sources(
+      episodeUrl,
+      sourceId: sourceId,
+      fast: fast,
+    );
+  }
 
   @override
   Future<({List<VideoSource> sources, bool done})> polledSources(

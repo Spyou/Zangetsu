@@ -112,21 +112,23 @@ class _PairTvScreenState extends State<PairTvScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text(context.l10n.pairATV),
-        backgroundColor: AppColors.bg,
-        elevation: 0,
-      ),
       backgroundColor: AppColors.bg,
-      body: Padding(
-        padding: const EdgeInsets.all(24),
-        child: !_signedIn
-            ? _notSignedIn()
-            : switch (_phase) {
+      appBar: AppBar(backgroundColor: Colors.transparent),
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+          children: [
+            if (!_signedIn)
+              _notSignedIn()
+            else ...[
+              switch (_phase) {
                 _P.enter => _enter(),
                 _P.confirm => _confirm(),
                 _P.done => _done(),
               },
+            ],
+          ],
+        ),
       ),
     );
   }
@@ -142,11 +144,11 @@ class _PairTvScreenState extends State<PairTvScreen> {
   Widget _enter() => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(context.l10n.enterTheCodeFromYourTV, style: AppText.headline),
+          Text(context.l10n.enterTheCodeFromYourTV, style: AppText.largeTitle),
           const SizedBox(height: 8),
           Text(context.l10n.openZangetsuOnYourTVAndSignInWithYourPhoneToSeeIt,
-              style: AppText.body.copyWith(color: AppColors.textSecondary)),
-          const SizedBox(height: 24),
+              style: AppText.body),
+          const SizedBox(height: 28),
           TextField(
             controller: _code,
             autofocus: true,
@@ -174,10 +176,10 @@ class _PairTvScreenState extends State<PairTvScreen> {
         children: [
           Icon(Icons.tv_rounded, size: 48, color: AppColors.accent),
           const SizedBox(height: 16),
-          Text(context.l10n.signInOnDevice(_deviceName ?? context.l10n.thisTV), style: AppText.headline),
+          Text(context.l10n.signInOnDevice(_deviceName ?? context.l10n.thisTV), style: AppText.largeTitle),
           const SizedBox(height: 8),
           Text(context.l10n.thisTVWillSignIntoYourAccountYouCanSignItOutLater,
-              style: AppText.body.copyWith(color: AppColors.textSecondary)),
+              style: AppText.body),
           if (widget.nonce != null) ...[
             const SizedBox(height: 12),
             Row(children: [
@@ -202,11 +204,11 @@ class _PairTvScreenState extends State<PairTvScreen> {
           children: [
             const Icon(Icons.check_circle_rounded, size: 56, color: Colors.green),
             const SizedBox(height: 16),
-            Text(context.l10n.yourTVIsSignedIn, style: AppText.headline),
+            Text(context.l10n.yourTVIsSignedIn, style: AppText.largeTitle),
             const SizedBox(height: 8),
             Text(context.l10n.itShouldSwitchToYourAccountInAMoment,
                 textAlign: TextAlign.center,
-                style: AppText.body.copyWith(color: AppColors.textSecondary)),
+                style: AppText.body),
             const SizedBox(height: 24),
             _primary(context.l10n.done, () => Navigator.of(context).maybePop()),
           ],

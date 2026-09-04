@@ -117,9 +117,7 @@ class TvPlayerActivity : Activity() {
         const val RESULT_POSITION = "positionMs"
         const val RESULT_DURATION = "durationMs"
         const val RESULT_EP_INDEX = "episodeIndex"
-        // Seek Buttons
-        const val ENABLE_SEEK_BUTTONS = "enableSeekButtons"
-        const val SEEK_BUTTON_DURATION = "seekButtonDuration"
+        const val RESULT_PLAYBACK_ERROR = "playbackError"
         private const val TAG = "TvPlayer"
         private const val SEEK_MS = 10_000L
         private const val AUTO_HIDE_MS = 4_000L
@@ -195,13 +193,6 @@ class TvPlayerActivity : Activity() {
     private lateinit var btnMegaskip: TextView
     private lateinit var btnSpeed: TextView
     // MegaSkip jump size in seconds (read from the launch extras).
-
-    // Buttons to seek the video forward/backward
-    private lateinit var btnSeekBackward: TextView
-    private lateinit var btnSeekForward: TextView
-    private var seekDuration: Long = 10L
-    private var enableSeekButtons: Boolean = true // Enabled by default
-
     private var megaSkipSecs = 85
     // Whether the AniSkip "Skip intro/ending" pill may show (Settings toggle).
     private var skipIntroEnabled = true
@@ -335,10 +326,6 @@ class TvPlayerActivity : Activity() {
         subFontFamily = intent.getStringExtra(EXTRA_SUB_FONT_FAMILY) ?: ""
         subtitleApiKeySet = intent.getBooleanExtra(EXTRA_SUB_HAS_KEY, false)
 
-        // Seek Buttons
-        enableSeekButtons = intent.getBooleanExtra(ENABLE_SEEK_BUTTONS, true)
-        seekDuration = intent.getLongExtra(SEEK_BUTTON_DURATION, 10)
-
         setContentView(R.layout.tv_player)
         bindViews()
         styleControls()
@@ -395,6 +382,21 @@ class TvPlayerActivity : Activity() {
                     "Playback error: ${error.errorCodeName}",
                     android.widget.Toast.LENGTH_LONG,
                 ).show()
+                try {
+                    MainActivity.tvBridge?.invokeMethod(
+                        "playbackError",
+                        mapOf(
+                            "errorCode" to (error.errorCodeName ?: ""),
+                            "message" to (error.message ?: ""),
+                            "index" to currentIndex,
+                        ),
+                    )
+                } catch (_: Exception) {}
+                // The stream is dead — stop the frozen player and hand the
+                // result back so Dart can offer Try Next Source / Select Source.
+                if (!switching) {
+                    reportAndFinish(true)
+                }
             }
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 syncKeepScreenOn()
@@ -416,7 +418,7 @@ class TvPlayerActivity : Activity() {
                 // Autoplay the next episode when this one finishes. Honour
                 // auto-skip filler the same way the Flutter player does.
                 if (state == Player.STATE_ENDED && !switching && currentIndex < episodeCount - 1) {
-                    loadEpisode(nextAutoplayIndex(), completed = true)
+                    loadEpisode(nextAutoplayIndex())
                 }
             }
             // PlayerView also writes cues; we register after it so this wins and
@@ -502,7 +504,7 @@ class TvPlayerActivity : Activity() {
     }
 
     // ── Episode switching (via the native→Dart bridge) ───────────────────────
-    private fun loadEpisode(index: Int, completed: Boolean = false) {
+    private fun loadEpisode(index: Int) {
         if (index < 0 || index >= episodeCount || switching) return
         val bridge = MainActivity.tvBridge ?: return
         // Persist the outgoing episode before leaving it.
@@ -514,7 +516,6 @@ class TvPlayerActivity : Activity() {
                     "index" to currentIndex,
                     "positionMs" to p.currentPosition,
                     "durationMs" to p.duration,
-                    "completed" to completed,
                 ),
             )
         }
@@ -565,18 +566,6 @@ class TvPlayerActivity : Activity() {
         btnAspectRatio.text = currentValue.first
         val drawable = ContextCompat.getDrawable(this, currentValue.second)
         btnAspectRatio.setCompoundDrawablesWithIntrinsicBounds(drawable, null, null, null)
-    }
-
-    private fun seekVideo(isForward: Boolean) {
-        if(player == null) return
-
-        val position = if(isForward) {
-            (player?.currentPosition ?: 0L) + seekDuration * 1000L
-        } else {
-            maxOf(0, (player?.currentPosition ?: 0L) - seekDuration * 1000L)
-        }
-
-        player?.seekTo(position)
     }
 
     private fun applyResolved(index: Int, m: Map<String, Any?>) {
@@ -2065,18 +2054,6 @@ class TvPlayerActivity : Activity() {
         btnMegaskip.visibility =
             if (intent.getBooleanExtra(EXTRA_MEGASKIP, true)) View.VISIBLE else View.GONE
 
-        // Seek Buttons
-        val buttonText = "${seekDuration}s"
-
-        btnSeekBackward = findViewById(R.id.btn_seek_backward)
-        btnSeekBackward.text = buttonText
-        btnSeekBackward.visibility = if(enableSeekButtons) View.VISIBLE else View.GONE
-
-        btnSeekForward = findViewById(R.id.btn_seek_forward)
-        btnSeekForward.text = buttonText
-        btnSeekForward.visibility = if(enableSeekButtons) View.VISIBLE else View.GONE
-
-        // Video Title
         findViewById<TextView>(R.id.title).text = intent.getStringExtra(EXTRA_TITLE) ?: ""
         // episode_label / filler badge are set by updateEpisodeUi.
     }
@@ -2114,7 +2091,7 @@ class TvPlayerActivity : Activity() {
             }
         })
 
-        for (b in listOf(btnEpisodes, btnQuality, btnSources, btnAudioSubs, btnNext, btnAspectRatio, btnMegaskip, btnSpeed, btnSeekBackward, btnSeekForward)) {
+        for (b in listOf(btnEpisodes, btnQuality, btnSources, btnAudioSubs, btnNext, btnAspectRatio, btnMegaskip, btnSpeed)) {
             // Focusable even in touch mode so requestFocus() works on emulators
             // (real TVs are always in D-pad/non-touch mode anyway).
             applyPillFocus(b, false)
@@ -2139,8 +2116,6 @@ class TvPlayerActivity : Activity() {
         btnAudioSubs.bindSingleTapActivate { openAvMenu() }
         btnNext.bindSingleTapActivate { loadEpisode(nextAutoplayIndex()) }
         btnAspectRatio.bindSingleTapActivate { changeAspectRatio() }
-        btnSeekBackward.bindSingleTapActivate { seekVideo(false) }
-        btnSeekForward.bindSingleTapActivate { seekVideo(true) }
         btnMegaskip.bindSingleTapActivate { seekBy(megaSkipSecs * 1000L) }
         btnSpeed.bindSingleTapActivate { openSpeedMenu() }
         updateSpeedPillLabel()
@@ -2557,7 +2532,7 @@ class TvPlayerActivity : Activity() {
     }
 
     /** Hand the final position back so Flutter saves resume + Continue Watching. */
-    private fun reportAndFinish() {
+    private fun reportAndFinish(playbackError: Boolean = false) {
         if (!reported) {
             reported = true
             val p = player
@@ -2565,6 +2540,7 @@ class TvPlayerActivity : Activity() {
                 .putExtra(RESULT_POSITION, p?.currentPosition ?: 0L)
                 .putExtra(RESULT_DURATION, (p?.duration ?: 0L).coerceAtLeast(0L))
                 .putExtra(RESULT_EP_INDEX, currentIndex)
+                .putExtra(RESULT_PLAYBACK_ERROR, playbackError)
             setResult(RESULT_OK, data)
         }
         finish()

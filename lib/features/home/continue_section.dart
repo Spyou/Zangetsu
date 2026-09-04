@@ -7,9 +7,11 @@ import '../../core/mode/content_mode.dart';
 import '../../core/mode/content_mode_cubit.dart';
 import '../../core/models/provider_info.dart';
 import '../../core/playback/watch_history.dart';
+import '../../core/provider/provider_registry.dart';
 import '../../core/reading/read_history.dart';
 import '../../core/ui/content_row.dart';
 import '../../core/ui/continue_card.dart';
+import '../../core/zmode/zmode_prefs.dart';
 
 /// Home's "Continue Watching" / "Continue Reading" sliver. Anime mode renders
 /// the original [WatchHistory]-backed row exactly as before; reading modes
@@ -55,7 +57,7 @@ class ContinueSection extends StatelessWidget {
     );
   }
 
-  // ── Continue Watching (anime) — PRESERVED EXACTLY ─────────────────────────
+  // ── Continue Watching ────────────────────────────────────────────────────
 
   Widget _watchingRow() {
     // Login-gated, and guarded so a signed-out render (or the test env) never
@@ -65,12 +67,27 @@ class ContinueSection extends StatelessWidget {
     }
     return ValueListenableBuilder(
       valueListenable: Hive.box<Map>(WatchHistory.boxName).listenable(),
-      builder: (context, _, _) => ContinueWatchingRow(
-        history: sl<WatchHistory>().recent(),
-        onSeeAll: onSeeAll,
-        onResume: onResume,
-        onLongPress: onLongPress,
-      ),
+      builder: (context, _, _) {
+        var history = sl<WatchHistory>().recent();
+        // When Zangetsu Mode is active, filter to the current stream kind
+        // (Anime vs Movie/TV) so Continue Watching only shows matching content.
+        if (ZModePrefs.enabled) {
+          final kind = ZModePrefs.streamKind;
+          final registry = sl<ProviderRegistry>();
+          history = history.where((e) {
+            final type = registry.typeOf(e.sourceId);
+            return kind == StreamKind.anime
+                ? type != 'movie'
+                : type == 'movie';
+          }).toList();
+        }
+        return ContinueWatchingRow(
+          history: history,
+          onSeeAll: onSeeAll,
+          onResume: onResume,
+          onLongPress: onLongPress,
+        );
+      },
     );
   }
 

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -23,6 +24,8 @@ import '../../core/playback/playback_prefs.dart';
 import '../../core/playback/resume_store.dart';
 import '../../core/playback/title_prefs.dart';
 import '../../core/playback/watch_history.dart';
+import '../../core/provider/provider_manager.dart';
+import '../../core/provider/provider_registry.dart';
 import '../../core/repository/catalogue_repository.dart';
 import '../../core/repository/source_repository.dart';
 import '../../core/state/active_source_cubit.dart';
@@ -158,6 +161,10 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
   /// TV uses the native ExoPlayer player, which takes an episode LIST (not a
   /// resolver), so resolve the episodes first, then open it.
   Future<void> _play(MediaItem item) async {
+    debugPrint(
+      '[tv-home] _play · sourceId=${item.sourceId} '
+      'url=${item.url} title=${item.title}',
+    );
     final category =
         sl<TitlePrefsStore>().category(item.sourceId, item.url) ??
         sl<PlaybackPrefs>().defaultCategory;
@@ -204,21 +211,72 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
   /// ExoPlayer player at the saved episode (it seeks to the stored position on
   /// load via ResumeStore).
   Future<void> _resume(HistoryEntry e) async {
+    debugPrint(
+      '[tv-home] _resume · sourceId=${e.sourceId} '
+      'showUrl=${e.showUrl} episodeId=${e.episodeId}',
+    );
+    // On TV the QuickJS runtime is empty at boot (loadAll is skipped) and
+    // providers load on demand — ensure the JS provider is loaded before
+    // hitting _providerFor, which would otherwise throw "Provider not loaded".
+    // Metadata pseudo-sources (zm) don't live in the runtime — they resolve
+    // through CatalogueRouter → PlaybackResolver, so skip the check for them.
+    if (e.sourceId != ZmodeIds.sourceId &&
+        sl<ProviderManager>().get(e.sourceId) == null) {
+      debugPrint('[tv-home] _resume · loading runtime for ${e.sourceId} ...');
+      final ok = await sl<ProviderRegistry>()
+          .ensureRuntimeLoaded(e.sourceId)
+          .catchError((_) => false);
+      if (!ok || sl<ProviderManager>().get(e.sourceId) == null) {
+        debugPrint(
+          '[tv-home] _resume · RUNTIME LOAD FAILED for ${e.sourceId}',
+        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Could not load ${e.sourceId} — skipping resume'),
+            ),
+          );
+        }
+        return;
+      }
+      debugPrint('[tv-home] _resume · runtime loaded for ${e.sourceId}');
+    }
     List<Episode> episodes;
     try {
+      debugPrint('[tv-home] _resume · fetching episodes ...');
       episodes = await sl<CatalogueRepository>().episodes(
         e.showUrl,
         category: e.category,
         sourceId: e.sourceId,
       );
-    } catch (_) {
+      debugPrint(
+        '[tv-home] _resume · episodes fetched · count=${episodes.length}',
+      );
+    } catch (err, st) {
+      debugPrint(
+        '[tv-home] _resume · episodes FETCH FAILED · $err\n$st',
+      );
       episodes = const [];
     }
-    if (!mounted || episodes.isEmpty) return;
+    if (!mounted || episodes.isEmpty) {
+      debugPrint(
+        '[tv-home] _resume · aborting · mounted=$mounted '
+        'episodesEmpty=${episodes.isEmpty}',
+      );
+      return;
+    }
     var idx = episodes.indexWhere((ep) => ep.id == e.episodeId);
+    debugPrint(
+      '[tv-home] _resume · episodeId=${e.episodeId} '
+      'matchedIdx=$idx episodeCount=${episodes.length}',
+    );
     if (idx < 0) idx = 0;
     resolveSources(String u) =>
         sl<CatalogueRepository>().sources(u, sourceId: e.sourceId, fast: true);
+    debugPrint(
+      '[tv-home] _resume · launching playback · idx=$idx '
+      'showTitle=${e.showTitle}',
+    );
     await launchTvPlayback(
       context: context,
       sourceId: e.sourceId,
@@ -233,7 +291,9 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
       category: e.category,
       malId: e.malId,
       scrobbleTitle: e.malId != null ? e.showTitle : null,
+      skipOverlay: true, // source already worked — skip the "Finding…" cover
     );
+    debugPrint('[tv-home] _resume · launch complete');
     if (mounted) setState(() {});
   }
 
@@ -436,9 +496,18 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
     final mode = sl.isRegistered<ContentModeCubit>()
         ? sl<ContentModeCubit>().state
         : null;
+    debugPrint(
+      '[tv-home] build · mode=$mode zMode=${ZModePrefs.enabled} '
+      'sections=${sections.length} '
+      'loading=${state.loading}',
+    );
     // Metadata-first Home browse doesn't require installed extensions. Match
     // mobile: only show the no-sources guide in source-only mode (tests).
     if (mode != null && !ZModePrefs.enabled && !hasSourcesFor(mode)) {
+      debugPrint(
+        '[tv-home] build → _TvNoSourcesGuide '
+        '(zMode=false, hasSourcesFor($mode)=false)',
+      );
       return Scaffold(
         backgroundColor: AppColors.bg,
         body: _TvNoSourcesGuide(mode: mode),
@@ -458,10 +527,20 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
             null => false,
           };
 
+    debugPrint(
+      '[tv-home] build · activeSource=$activeId '
+      'loadedEmpty=$loadedEmpty noSourceForMode=$noSourceForMode',
+    );
+
     // Continue Watching — same login-gated local history the phone home uses.
     final loggedIn = context.watch<AuthCubit>().state.isLoggedIn;
 
     if (noSourceForMode || loadedEmpty) {
+      debugPrint(
+        '[tv-home] build → HomeLoadedEmptyView '
+        '(noSourceForMode=$noSourceForMode loadedEmpty=$loadedEmpty '
+        'offline=${state.offline})',
+      );
       return Scaffold(
         backgroundColor: AppColors.bg,
         body: HomeLoadedEmptyView(
@@ -514,9 +593,17 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
             builder: (context, _, __) {
               final kind = ZModePrefs.streamKind;
               final rows = cubit.sectionsFor(kind) ?? sections;
+              // Filter Continue Watching to match the active stream kind.
+              final registry = sl<ProviderRegistry>();
+              final filteredHistory = history.where((e) {
+                final type = registry.typeOf(e.sourceId);
+                return kind == StreamKind.anime
+                    ? type != 'movie'
+                    : type == 'movie';
+              }).toList();
               return _catalogScroll(
                 rows,
-                history,
+                filteredHistory,
                 loading: state.loading,
                 autofocus: true,
                 active: true,
@@ -668,6 +755,13 @@ class _TvDualCatalogHostState extends State<_TvDualCatalogHost> {
   }) {
     final visible = ZModePrefs.streamKind == kind;
     final grantAutofocus = visible && _firstBuild;
+    // Filter Continue Watching to match this pane's stream kind so anime
+    // titles don't appear on the Movie/TV page and vice-versa.
+    final registry = sl<ProviderRegistry>();
+    final filteredHistory = widget.history.where((e) {
+      final type = registry.typeOf(e.sourceId);
+      return kind == StreamKind.anime ? type != 'movie' : type == 'movie';
+    }).toList();
     return Offstage(
       offstage: !visible,
       child: ExcludeFocus(
@@ -677,7 +771,7 @@ class _TvDualCatalogHostState extends State<_TvDualCatalogHost> {
           child: RepaintBoundary(
             child: widget.buildCatalog(
               rows,
-              widget.history,
+              filteredHistory,
               loading: visible && widget.loading,
               autofocus: grantAutofocus,
               active: visible,

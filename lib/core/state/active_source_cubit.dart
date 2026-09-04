@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:watch_app/core/hive/safe_box.dart';
 import 'package:hive/hive.dart';
@@ -34,8 +35,16 @@ class ActiveSourceCubit extends Cubit<String> {
     if (saved != null &&
         saved.isNotEmpty &&
         (valid == null || valid.contains(saved))) {
+      debugPrint(
+        '[active-source] _restore · saved="$saved" → kept '
+        '(valid=${valid?.length ?? "any"})',
+      );
       return saved;
     }
+    debugPrint(
+      '[active-source] _restore · saved="$saved" → fallback="$fallback" '
+      '(valid=${valid?.length ?? "any"} validSet=${valid?.take(5).toList()})',
+    );
     return fallback;
   }
 
@@ -54,8 +63,18 @@ class ActiveSourceCubit extends Cubit<String> {
   /// actual pick is honored instead of the fallback. Returns true if it changed.
   bool reapplySaved(bool Function(String id) isNowValid) {
     final saved = _box?.get(_key) as String?;
-    if (saved == null || saved.isEmpty || saved == state) return false;
-    if (!isNowValid(saved)) return false;
+    if (saved == null || saved.isEmpty || saved == state) {
+      debugPrint(
+        '[active-source] reapplySaved · skip '
+        '(saved="$saved" current="${state}" same=${saved == state})',
+      );
+      return false;
+    }
+    if (!isNowValid(saved)) {
+      debugPrint('[active-source] reapplySaved · "$saved" not yet valid');
+      return false;
+    }
+    debugPrint('[active-source] reapplySaved · "$saved" → applied');
     emit(saved);
     return true;
   }
