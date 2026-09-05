@@ -6,9 +6,16 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import 'notification_router.dart';
 
-/// Thin wrapper over flutter_local_notifications for "new episode" alerts.
-/// Android-only in practice (iOS background refresh is too restrictive to rely
-/// on); a no-op on other platforms.
+/// Thin wrapper over flutter_local_notifications.
+///
+/// Two different jobs, with two different platform stories:
+///
+///   • "New episode" alerts stay ANDROID-ONLY. They depend on the app waking
+///     itself to check what aired, and iOS background refresh is a suggestion
+///     the system is free to ignore — an alert that fires whenever iOS feels
+///     like it is worse than none.
+///   • Push broadcasts ([showMessage]) work on iOS too: APNs does the waking,
+///     so none of the above applies.
 class NotificationService {
   NotificationService._();
   static final NotificationService instance = NotificationService._();
@@ -22,9 +29,16 @@ class NotificationService {
   bool _inited = false;
 
   Future<void> init() async {
-    if (_inited || !Platform.isAndroid) return;
+    if (_inited || !(Platform.isAndroid || Platform.isIOS)) return;
     const android = AndroidInitializationSettings('@mipmap/ic_launcher');
-    const settings = InitializationSettings(android: android);
+    // Permission is requested by PushService (one prompt, at a moment we
+    // choose) rather than here on first init.
+    const darwin = DarwinInitializationSettings(
+      requestAlertPermission: false,
+      requestBadgePermission: false,
+      requestSoundPermission: false,
+    );
+    const settings = InitializationSettings(android: android, iOS: darwin);
     await _plugin.initialize(
       settings,
       onDidReceiveNotificationResponse: (r) =>
@@ -44,6 +58,8 @@ class NotificationService {
   ///   • Native worker (CS): the zangetsu/notifications channel — openShow for
   ///     live taps (onNewIntent), getInitialNotification for cold/back launch.
   Future<void> handleLaunch() async {
+    // The native half below is the Android CloudStream worker's channel; there
+    // is no iOS equivalent, so iOS has nothing to handle here yet.
     if (!Platform.isAndroid) return;
     if (!_inited) await init();
     _notifChannel.setMethodCallHandler((call) async {
@@ -137,6 +153,9 @@ class NotificationService {
     String? imageUrl,
     String? payload,
   }) async {
+    // iOS draws foreground pushes itself once
+    // setForegroundNotificationPresentationOptions is set (see PushService),
+    // so redrawing here would show every broadcast twice.
     if (!Platform.isAndroid) return;
     if (!_inited) await init();
     StyleInformation? style;

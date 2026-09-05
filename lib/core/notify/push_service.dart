@@ -23,7 +23,11 @@ import 'notification_service.dart';
 /// Notifications list and bumps the bell badge. A background notification the
 /// user never taps stays in the system tray only — we don't write from a
 /// background isolate, which would risk the Hive box the main isolate holds
-/// open. Android-only (matches NotificationService).
+/// open.
+///
+/// Runs on Android AND iOS. Unlike the episode alerts this does not depend on
+/// the app waking itself — APNs and FCM do the delivering — so the reason
+/// [NotificationService]'s scheduled alerts stay Android-only does not apply.
 class PushService {
   PushService._();
   static final PushService instance = PushService._();
@@ -31,11 +35,28 @@ class PushService {
   bool _inited = false;
 
   Future<void> init() async {
-    if (_inited || !Platform.isAndroid) return;
+    if (_inited || !(Platform.isAndroid || Platform.isIOS)) return;
     _inited = true;
     final fm = FirebaseMessaging.instance;
-    await fm.requestPermission(); // Android 13+ POST_NOTIFICATIONS
-    await fm.subscribeToTopic('all');
+    // Android 13+ POST_NOTIFICATIONS; on iOS this is the system prompt.
+    await fm.requestPermission();
+    if (Platform.isIOS) {
+      // iOS keeps foreground pushes silent unless told otherwise. Letting the
+      // system draw them is why NotificationService.showMessage stays
+      // Android-only — otherwise every broadcast would appear twice.
+      await fm.setForegroundNotificationPresentationOptions(
+        alert: true,
+        badge: true,
+        sound: true,
+      );
+    }
+    // Subscribing needs a token, and on iOS a token needs APNs to be
+    // configured for the Firebase project. Without it this throws, and an
+    // un-caught throw here would take the rest of init (the listeners, and
+    // the in-app Notifications list) with it.
+    try {
+      await fm.subscribeToTopic('all');
+    } catch (_) {}
     // Foreground: draw it (FCM stays silent up front) + record it.
     FirebaseMessaging.onMessage.listen((m) {
       final n = m.notification;

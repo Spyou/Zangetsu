@@ -100,5 +100,12 @@
 			</array>
 		</dict>
 	</array>
+	<!-- FCM broadcasts. APNs wakes the app to deliver them, so unlike the
+	     scheduled episode alerts (Android-only) this needs no background
+	     refresh of our own. -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
 </dict>
 </plist>
