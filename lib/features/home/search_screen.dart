@@ -56,6 +56,23 @@ import '../search/bloc/search_event.dart';
 import '../search/bloc/search_state.dart';
 
 /// Dedicated search screen pushed from the Home header search icon.
+/// What a freshly opened Search starts filtered by.
+///
+/// [MetaFilters.adult] follows Settings → Privacy rather than starting false.
+/// Nothing on this screen is persisted, so defaulting it off meant someone who
+/// had deliberately turned 18+ on in Settings still had to tap NSFW again on
+/// every single search — the switch they had already set said nothing at all.
+///
+/// The chip stays visible either way, so one search can still be narrowed back
+/// down, and [MetadataRepository] re-checks the same Privacy switch on every
+/// request — so this can only widen what is OFFERED, never what Settings has
+/// already refused.
+///
+/// [provided] wins outright: arriving from a genre tile means that tile's
+/// filters, not the screen's defaults.
+MetaFilters initialSearchFilters(MetaFilters? provided, bool privacyAllowsAdult) =>
+    provided ?? MetaFilters(adult: privacyAllowsAdult);
+
 class SearchScreen extends StatefulWidget {
   const SearchScreen({
     super.key,
@@ -385,7 +402,11 @@ class _SearchViewState extends State<_SearchView>
 
   /// What the metadata filter sheet last returned. View state: it belongs to
   /// this screen, not the bloc, because only this screen can open the sheet.
-  late MetaFilters _metaFilters = widget.initialFilters ?? const MetaFilters();
+  ///
+  late MetaFilters _metaFilters = initialSearchFilters(
+    widget.initialFilters,
+    sl.isRegistered<PlaybackPrefs>() && sl<PlaybackPrefs>().adultMetadata,
+  );
 
   /// What this search will actually look through.
   ///
