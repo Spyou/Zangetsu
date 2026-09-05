@@ -41,6 +41,25 @@ void main() {
     expect(other.receiveTimeout, before);
   });
 
+  // Without this header AniList answers 403 "temporarily disabled" — which
+  // reads as an outage but is a block on third-party clients. Measured one
+  // header at a time: Referer alone passes, Origin alone and User-Agent alone
+  // do not. Losing it silently drops every AniList call onto the MAL fallback,
+  // so it is worth a test rather than a comment.
+  test('AniList requests carry the Referer that keeps them out of the 403', () {
+    final policy = AniListNetworkPolicy();
+    final ani = _req();
+    policy.onRequest(ani, RequestInterceptorHandler());
+    expect(ani.headers[AniListNetworkPolicy.referer], 'https://anilist.co/');
+  });
+
+  test('other hosts are not given an AniList Referer', () {
+    final policy = AniListNetworkPolicy();
+    final other = _req(host: 'some-embed-host.example');
+    policy.onRequest(other, RequestInterceptorHandler());
+    expect(other.headers[AniListNetworkPolicy.referer], isNull);
+  });
+
   test('a 429 records the window from Retry-After', () {
     var now = DateTime(2026, 1, 1, 12);
     final policy = AniListNetworkPolicy(now: () => now);

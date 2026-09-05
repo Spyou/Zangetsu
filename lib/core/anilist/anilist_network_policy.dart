@@ -40,6 +40,20 @@ class AniListNetworkPolicy extends Interceptor {
   /// AniList sends `Retry-After` in seconds; this stands in when it doesn't.
   static const Duration fallbackRetryAfter = Duration(seconds: 60);
 
+  /// Sent on every AniList request.
+  ///
+  /// Without it AniList answers 403 with "The AniList API has been temporarily
+  /// disabled due to severe stability issues." — which reads like an outage but
+  /// is a block: the same query with this header returns data. Measured, one
+  /// header at a time: Referer alone passes; Origin alone, User-Agent alone,
+  /// and Origin+User-Agent all 403.
+  ///
+  /// This is them turning away third-party clients, so treat it as something
+  /// that can stop working rather than a fix that will hold. The MAL fallback
+  /// in [MetadataRepository] stays the safety net either way.
+  static const String referer = 'Referer';
+  static const String refererValue = 'https://anilist.co/';
+
   final DateTime Function() _now;
   DateTime? _limitedUntil;
 
@@ -60,6 +74,7 @@ class AniListNetworkPolicy extends Interceptor {
     if (options.uri.host != host) return handler.next(options);
     options.receiveTimeout = readTimeout;
     options.sendTimeout = readTimeout;
+    options.headers[referer] = refererValue;
     final left = retryAfter;
     if (left != null) {
       return handler.reject(
