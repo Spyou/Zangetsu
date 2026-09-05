@@ -396,7 +396,15 @@ class _MetaFilterSheetState extends State<_MetaFilterSheet> {
                     spacing: 8,
                     runSpacing: 8,
                     children: [
-                      for (final g in metaGenresFor(widget.kind))
+                      // Follows the 18+ switch rather than Settings: the
+                      // toggle sits right beside this sheet, and offering the
+                      // adult genre while it is off would select a genre the
+                      // query then filters out — an empty grid and no reason
+                      // given. Turn 18+ on and it appears here.
+                      for (final g in metaGenresFor(
+                        widget.kind,
+                        adult: _f.adult,
+                      ))
                         GestureDetector(
                           onTap: () => setSheet(() {
                             sel.contains(g) ? sel.remove(g) : sel.add(g);
