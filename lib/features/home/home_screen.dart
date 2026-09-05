@@ -79,6 +79,7 @@ import '../../core/zmode/zmode_ids.dart';
 import 'cubit/home_cubit.dart';
 import 'home_screen_tv.dart';
 import 'lists_hub_screen.dart';
+import 'genres_screen.dart';
 import 'search_screen.dart';
 import 'cubit/tracker_home_rows.dart' show releasedCount;
 import 'see_all_screen.dart';
@@ -918,9 +919,24 @@ class _HomeViewState extends State<_HomeView>
                 Expanded(child: _modeCard(m)),
                 const SizedBox(width: 12),
               ],
-              // Twice the width of a switcher: its label is a phrase rather
-              // than a single word, and it would ellipsise at an even third.
-              Expanded(flex: 2, child: _hubCard()),
+              // Even halves with Genres beside it. Alone it still fills the
+              // row, so the old flex:2 (which existed to beat the switcher
+              // cards to a readable width) no longer buys anything.
+              Expanded(child: _hubCard()),
+              // Genres only means something on a catalogue that can actually
+              // narrow itself. MAL and Simkl take the parameter and answer
+              // with the same unfiltered list, so the card is not offered
+              // there rather than opening onto a screen that lies.
+              //
+              // isRegistered, not a bare sl<>: this row builds before the
+              // repository exists in some shells (and in every test that only
+              // cares about the dock), and a missing card is a better answer
+              // there than throwing the whole Home tree away.
+              if (sl.isRegistered<MetadataRepository>() &&
+                  sl<MetadataRepository>().supportsFilters) ...[
+                const SizedBox(width: 12),
+                Expanded(child: _genresCard()),
+              ],
             ],
           ),
         );
@@ -1031,6 +1047,99 @@ class _HomeViewState extends State<_HomeView>
                     Flexible(
                       child: Text(
                         context.l10n.scheduleAndLists,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppText.body.copyWith(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14,
+                          shadows: const [
+                            Shadow(color: Colors.black, blurRadius: 6),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// A cover for the Genres card that is NOT the one on the Lists card.
+  ///
+  /// The Lists card always shows the last thing watched, so feeding this the
+  /// same [_modeArt] put one image twice in a two-card row. Prefer something
+  /// read rather than watched, else the second distinct thing watched, else
+  /// nothing — at which point the tint below carries the difference.
+  ({String? cover, Map<String, String>? headers}) _genresArt() {
+    for (final m in const [ContentMode.manga, ContentMode.novel]) {
+      final a = _modeArt(m);
+      if (a.cover?.isNotEmpty ?? false) return a;
+    }
+    if (Hive.isBoxOpen(WatchHistory.boxName)) {
+      final seen = <String>{};
+      for (final e in sl<WatchHistory>().all()) {
+        final c = e.thumbnail ?? e.cover;
+        if (c == null || c.isEmpty) continue;
+        // The Lists card took the first, so hand back the second.
+        if (seen.add(c) && seen.length == 2) {
+          return (cover: c, headers: e.coverHeaders);
+        }
+      }
+    }
+    return (cover: null, headers: null);
+  }
+
+  /// Same card shell again, for [GenresScreen] — the genre list for whatever
+  /// mode you are in, each one a way straight into a filtered Search.
+  Widget _genresCard() {
+    return GestureDetector(
+      key: const ValueKey('home_genres_card'),
+      onTap: _slashing
+          ? null
+          : () => Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => const GenresScreen()),
+            ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: SizedBox(
+          height: 52,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              _modeArtBg(_genresArt()),
+              // Accent-tinted rather than the neutral black the Lists card
+              // uses: side by side at equal width, two identically scrimmed
+              // cards read as one wide slab split by a gap.
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                    colors: [
+                      AppColors.accent.withValues(alpha: 0.82),
+                      Colors.black.withValues(alpha: 0.42),
+                    ],
+                  ),
+                ),
+              ),
+              Center(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.local_offer_outlined,
+                      size: 18,
+                      color: Colors.white,
+                    ),
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Text(
+                        context.l10n.genres,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: AppText.body.copyWith(

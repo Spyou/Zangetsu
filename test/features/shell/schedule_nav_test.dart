@@ -40,6 +40,7 @@ import 'package:watch_app/core/tracker/mal_service.dart';
 import 'package:watch_app/core/tracker/simkl_service.dart';
 import 'package:watch_app/core/tracker/tracker_hub.dart';
 import 'package:watch_app/core/download/chapter_download_store.dart';
+import 'package:watch_app/core/zmode/metadata_repository.dart';
 import 'package:watch_app/core/zmode/zmode_prefs.dart';
 import 'package:watch_app/features/auth/auth_cubit.dart';
 import 'package:watch_app/features/auth/migration_bridge.dart';
@@ -363,6 +364,9 @@ void main() {
     await Hive.close();
   });
 
+  // Only supportsFilters is read while Home builds the card row.
+  // (declared below main's helpers so the tests above stay readable)
+
   Widget wrap(Widget child) => MultiBlocProvider(
     providers: [
       BlocProvider<ActiveSourceCubit>.value(value: activeSource),
@@ -466,6 +470,37 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  // The row above only ever holds one card, because no MetadataRepository is
+  // registered so Genres is hidden. Two cards splitting 320dp is the case
+  // that actually squeezes: "Schedule & lists" has to survive half a narrow
+  // phone next to Genres.
+  testWidgets('both cards fit side by side on a narrow phone', (tester) async {
+    tester.view.physicalSize = const Size(320 * 3, 640 * 3);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+
+    sl.registerSingleton<AppMode>(const AppMode(isTv: false));
+    sl.registerSingleton<MetadataRepository>(_FiltersRepo());
+    await tester.pumpWidget(wrap(const RootShell()));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('home_lists_hub_card')), findsOneWidget);
+    expect(find.byKey(const ValueKey('home_genres_card')), findsOneWidget);
+    // An overflow paints an exception rather than throwing, so this is what
+    // catches the row getting too tight.
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('no Genres card when the catalogue cannot filter', (tester) async {
+    sl.registerSingleton<AppMode>(const AppMode(isTv: false));
+    sl.registerSingleton<MetadataRepository>(_FiltersRepo(supports: false));
+    await tester.pumpWidget(wrap(const RootShell()));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('home_lists_hub_card')), findsOneWidget);
+    expect(find.byKey(const ValueKey('home_genres_card')), findsNothing);
+  });
+
   testWidgets('Home keeps the hub card with Z Mode on', (tester) async {
     sl.registerSingleton<AppMode>(const AppMode(isTv: false));
     await tester.pumpWidget(wrap(const RootShell()));
@@ -505,4 +540,15 @@ void main() {
     // header's icon-only action has a tooltip (not rendered as Text) instead.
     expect(find.text('Search'), findsNothing);
   });
+}
+
+/// Home reads only [MetadataRepository.supportsFilters] to decide whether the
+/// Genres card belongs in the row; stubbing the rest would be fiction.
+class _FiltersRepo implements MetadataRepository {
+  _FiltersRepo({this.supports = true});
+  final bool supports;
+  @override
+  bool get supportsFilters => supports;
+  @override
+  noSuchMethod(Invocation i) => super.noSuchMethod(i);
 }
