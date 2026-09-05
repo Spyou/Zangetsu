@@ -260,6 +260,27 @@ const Map<String, int> _tmdbTvGenres = {
   'Western': 37,
 };
 
+/// The genre names behind TMDB's `genre_ids`, which is all a list response
+/// carries — full `genres` objects only come back on a detail fetch.
+///
+/// Without this every movie/TV item reached the app with no genres at all, so
+/// anything keyed on them (the genre tiles' artwork) had nothing to match and
+/// silently fell back. Ids that map to more than one name (TV folds Adventure
+/// into Action, and Science Fiction into Fantasy) yield each of them; ids with
+/// no entry are dropped rather than guessed.
+List<String> tmdbGenreNames(List<dynamic> ids, {required bool isTv}) {
+  final table = isTv ? _tmdbTvGenres : _tmdbMovieGenres;
+  final out = <String>[];
+  for (final raw in ids) {
+    final id = raw is int ? raw : int.tryParse('$raw');
+    if (id == null) continue;
+    for (final e in table.entries) {
+      if (e.value == id && !out.contains(e.key)) out.add(e.key);
+    }
+  }
+  return out;
+}
+
 /// The TMDB id for [genre], or null when that genre has no equivalent on this
 /// side (Horror and Thriller are movie-only, for instance) — a null must drop
 /// the genre rather than send a wrong id.

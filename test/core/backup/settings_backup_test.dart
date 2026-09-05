@@ -90,6 +90,7 @@ void _driftGuard() {
       'provider_js_cache': 'cache',
       'episode_meta': 'cache',
       'cf_clearance': 'cache',
+      'genre_catalog': 'cache',
       'source_health': 'transient',
       'updates': 'transient',
       'announcements': 'transient',

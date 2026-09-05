@@ -7,6 +7,7 @@ import 'package:hive/hive.dart';
 ///   - `provider_settings` — belongs to the Sources bundle
 ///   - `auth_cache`        — authentication token cache
 ///   - `*_cache`           — transient caches, not user preferences
+///   - `genre_catalog`     — AniList's genre list, re-fetched on demand
 ///   - `download_prefs`    — holds the download LOCATION, which on a custom
 ///                           folder is a device-specific SAF `content://` URI.
 ///                           Restoring it onto another phone points downloads

@@ -51,6 +51,7 @@ import '../repository/source_repository.dart';
 import '../state/active_source_cubit.dart';
 import '../locale/locale_controller.dart';
 import '../zmode/zmode_module.dart';
+import '../zmode/genre_catalog.dart';
 import '../zmode/zmode_prefs.dart';
 import '../ui/home_rows_prefs.dart';
 import '../theme/theme_controller.dart';
@@ -302,6 +303,7 @@ Future<void> initDependencies() async {
   await ThemeController.init();
   await LocaleController.init();
   await ZModePrefs.init();
+  await GenreCatalog.init();
   await HomeRowsPrefs.init();
   await DownloadPrefs.init();
   sl.registerSingleton<DownloadPrefs>(DownloadPrefs());

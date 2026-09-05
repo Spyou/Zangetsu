@@ -208,6 +208,25 @@ class AniListCatalogue implements AnimeCatalogue {
   Future<List<MediaItem>> search(String q, ZKind kind) =>
       searchFiltered(q, kind);
 
+  /// AniList's own genre vocabulary.
+  ///
+  /// Free and token-less, and the only honest source for this list — the
+  /// built-in one is hand-typed and was already missing an entry. Returns
+  /// empty on any failure so the caller keeps whatever it had.
+  Future<List<String>> genreCollection() async {
+    try {
+      final data = await _gql('{GenreCollection}', const {});
+      final raw = data?['GenreCollection'];
+      if (raw is! List) return const [];
+      return [
+        for (final g in raw)
+          if (g is String && g.isNotEmpty) g,
+      ];
+    } catch (_) {
+      return const [];
+    }
+  }
+
   @override
   bool get supportsFilters => true;
 

@@ -296,6 +296,12 @@ class TmdbCatalogue implements VideoCatalogue {
           sourceId: ZmodeIds.sourceId,
           tmdbId: id,
           tmdbIsTv: isTv,
+          // List responses carry genre_ids, not genre objects. Mapping them
+          // here is what lets anything downstream key on genres at all.
+          genres: tmdbGenreNames(
+            (m['genre_ids'] as List?) ?? const [],
+            isTv: isTv,
+          ),
         ),
       );
     }

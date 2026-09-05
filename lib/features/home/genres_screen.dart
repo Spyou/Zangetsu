@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:dio/dio.dart';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
@@ -11,6 +13,8 @@ import '../../core/playback/playback_prefs.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/ui/app_toast.dart';
+import '../../core/zmode/anilist_catalogue.dart';
+import '../../core/zmode/genre_catalog.dart';
 import '../../core/zmode/metadata_filters.dart';
 import '../../core/zmode/metadata_repository.dart';
 import '../../core/zmode/zmode_ids.dart';
@@ -121,6 +125,26 @@ class _GenresScreenState extends State<GenresScreen> {
   void initState() {
     super.initState();
     if (_adultAllowed) unawaited(_loadAdultArt());
+    unawaited(_refreshGenres());
+  }
+
+  /// Top up AniList's genre list when the cache is stale.
+  ///
+  /// The screen has already drawn from [GenreCatalog] by the time this lands,
+  /// so a slow or failed fetch costs nothing — worst case you keep the list
+  /// you already had. Only AniList is asked; TMDB's genres are a different
+  /// vocabulary with their own ids and stay built in.
+  Future<void> _refreshGenres() async {
+    if (!GenreCatalog.isStale) return;
+    if (!sl.isRegistered<Dio>()) return;
+    // Built here rather than pulled from GetIt: the catalogue is a thin
+    // wrapper over one function and is not registered, and this is a single
+    // token-less query that does not belong in the module's wiring.
+    final anilist = AniListCatalogue(AniListCatalogue.dioGql(sl<Dio>()));
+    final fetched = await anilist.genreCollection();
+    if (fetched.isEmpty) return;
+    await GenreCatalog.save(fetched);
+    if (mounted) setState(() {});
   }
 
   Future<void> _loadAdultArt() async {
@@ -155,7 +179,7 @@ class _GenresScreenState extends State<GenresScreen> {
     // Settings → Privacy. Read here only to decide whether the adult tile is
     // OFFERED; the repository re-checks the same switch on every request, so
     // this cannot leak results on its own.
-    final genres = metaGenresFor(kind, adult: _adultAllowed);
+    final genres = GenreCatalog.genresFor(kind, adult: _adultAllowed);
     final art = {..._artByGenre(), kAdultGenre: ?_adultArt};
     return Scaffold(
       backgroundColor: AppColors.bg,
@@ -228,9 +252,11 @@ class _GenreTile extends StatelessWidget {
               imageUrl: a.url,
               httpHeaders: a.headers,
               fit: BoxFit.cover,
-              // The tint is the placeholder AND the error state: a tile that
-              // failed to load should still read as this genre, not as a hole.
-              placeholder: (_, _) => ColoredBox(color: genreTint(genre)),
+              // Neutral while loading, coloured only if it never arrives.
+              // Showing the tint here meant a tile that HAS artwork flashed a
+              // colour and then swapped, which reads as a glitch — grey says
+              // "loading", the tint says "this is all you're getting".
+              placeholder: (_, _) => ColoredBox(color: AppColors.surface2),
               errorWidget: (_, _, _) => ColoredBox(color: genreTint(genre)),
             )
           else
