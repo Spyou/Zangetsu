@@ -32,3 +32,7 @@ Runner/GeneratedPluginRegistrant.*
 !default.mode2v3
 !default.pbxuser
 !default.perspectivev3
+
+# Firebase config: keyed to the project, kept out of the repo the same
+# way android/app/google-services.json is.
+Runner/GoogleService-Info.plist

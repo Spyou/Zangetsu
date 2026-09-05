@@ -15,11 +15,13 @@
 		97C1470F1CF9000082B4168C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FD1CF9000082B4168C /* Assets.xcassets */; };
 		AAF20000000000000000F00D /* FlutterGeneratedPluginSwiftPackage in Frameworks */ = {isa = PBXBuildFile; productRef = AAF30000000000000000F00D /* FlutterGeneratedPluginSwiftPackage */; };
 		AAF40000000000000000TSVC /* TvSystemPlayerViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAF40000000000000000TSVR /* TvSystemPlayerViewController.swift */; };
+		D33B80241A90C80B086E74EC /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 33693F3A102AE7F17674C59D /* GoogleService-Info.plist */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		1498D2321E8E86230040F4C2 /* GeneratedPluginRegistrant.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = GeneratedPluginRegistrant.h; sourceTree = "<group>"; };
 		1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = GeneratedPluginRegistrant.m; sourceTree = "<group>"; };
+		33693F3A102AE7F17674C59D /* GoogleService-Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
 		3B3967151E833CAB004F5970 /* Flutter.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Flutter.framework; path = Flutter/Flutter.framework; sourceTree = "<group>"; };
 		6C2F05F3882057F790E47123 /* Pods-Runner.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.release.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.release.xcconfig"; sourceTree = "<group>"; };
 		74858FAE1ED2DC5600515810 /* AppFrameworkInfo.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = AppFrameworkInfo.plist; path = Flutter/AppFrameworkInfo.plist; sourceTree = "<group>"; };
@@ -92,6 +94,7 @@
 				97C146FE1CF9000082B4168C /* Info.plist */,
 				97C146FF1CF9000082B4168D /* Main.storyboard */,
 				97C146FF1CF9000082B4168E /* LaunchScreen.storyboard */,
+				33693F3A102AE7F17674C59D /* GoogleService-Info.plist */,
 			);
 			path = Runner;
 			sourceTree = "<group>";
@@ -187,6 +190,7 @@
 				97C1470F1CF9000082B4168C /* Assets.xcassets in Resources */,
 				97C1470A1CF9000082B4168D /* Main.storyboard in Resources */,
 				97C1470B1CF9000082B4168D /* LaunchScreen.storyboard in Resources */,
+				D33B80241A90C80B086E74EC /* GoogleService-Info.plist in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
