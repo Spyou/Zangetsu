@@ -32,8 +32,15 @@ class _EpisodesTab extends StatefulWidget {
     this.onRefresh,
     required this.onDownload,
     this.onDownloadMany,
+    this.onSwitchSource,
     this.isReading = false,
   });
+
+  /// Opens the source picker for this title. Set only for catalogue titles,
+  /// which are the ones that HAVE another source to try: when the one they
+  /// are on returns nothing, the empty state below is otherwise a dead end
+  /// and the way out (tapping the source name) is not obvious.
+  final VoidCallback? onSwitchSource;
 
   /// The matched source's list is still being fetched — show the skeleton
   /// rather than the "no episodes" empty state (see
@@ -252,6 +259,10 @@ class _EpisodesTabState extends State<_EpisodesTab> {
       return EmptyState(
         icon: Icons.video_library_outlined,
         message: context.l10n.noEpisodesAvailableFromThisSource,
+        actionLabel: widget.onSwitchSource == null
+            ? null
+            : context.l10n.switchSource,
+        onAction: widget.onSwitchSource,
       );
     }
     final store = sl<ResumeStore>();

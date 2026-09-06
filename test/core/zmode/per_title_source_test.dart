@@ -154,6 +154,21 @@ void main() {
     });
   });
 
+  group('chooseSource (the picker)', () {
+    test('clears the title pin AND moves the kind default', () async {
+      // Both halves matter: without the first the pick is ignored on this very
+      // title, without the second it is forgotten on every other one.
+      await prefs.set(ZKind.anime, 'allanime');
+      await matcher.pinForTitle(fma, _hit('hianime', 'FMA'));
+
+      await matcher.chooseSource(fma, 'allanime');
+
+      expect(store.pinnedFor(fma), isNull);
+      expect(prefs.get(ZKind.anime), 'allanime');
+      expect(matcher.sourceForTitle(fma), 'allanime');
+    });
+  });
+
   group('pinForTitle vs pinManual', () {
     test('pinForTitle leaves the kind default alone', () async {
       // This is the whole point: browsing a source and opening a show there is

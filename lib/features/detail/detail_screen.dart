@@ -83,6 +83,9 @@ import '../../core/tv/tv_back_button.dart';
 import '../../core/tv/tv_focusable.dart';
 import '../../core/tv/tv_list_focusable.dart';
 import '../../core/zmode/metadata_repository.dart';
+import '../../core/zmode/source_matcher.dart';
+import '../../core/ui/source_switcher.dart';
+import '../sources/zangetsu_sources_screen.dart';
 import '../../core/zmode/zmode_ids.dart';
 import '../../core/aniyomi/aniyomi_image_provider.dart';
 import '../../core/mihon/mihon_image_provider.dart';
@@ -843,6 +846,35 @@ class _DetailViewState extends State<_DetailView>
       episode: n.toInt(),
       // Asked for by hand, so it goes out even with auto-tracking off.
       auto: false,
+    );
+  }
+
+  /// Open the source picker for this title from the empty episode list.
+  ///
+  /// A source that has gone quiet leaves a catalogue title with no episodes
+  /// and a dimmed Play, and the only way out was knowing that the source name
+  /// above is tappable. Same picker, same effect — [SourceMatcher.chooseSource]
+  /// is what the source row itself calls.
+  Future<void> _switchSource() async {
+    final c = ZmodeIds.parseShow(widget.item.url);
+    if (c == null || !sl.isRegistered<SourceMatcher>()) return;
+    final matcher = sl<SourceMatcher>();
+    final cubit = context.read<DetailCubit>();
+    SourceSwitcher(
+      currentId: matcher.sourceForTitle(c) ?? '',
+      onChanged: (_) {},
+      onInstallSources: () => Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => const ZangetsuSourcesScreen(openToRepos: true),
+        ),
+      ),
+    ).showPicker(
+      context,
+      onPick: (id) async {
+        await matcher.chooseSource(c, id);
+        // dropCache: false — the source just switched TO was never in it.
+        cubit.refresh(dropCache: false);
+      },
     );
   }
 
@@ -2136,6 +2168,8 @@ class _DetailViewState extends State<_DetailView>
             onDownloadMany: isReading
                 ? (eps) => _downloadChapters(eps, detail)
                 : null,
+            // Only a catalogue title has another source to fall back on.
+            onSwitchSource: ZmodeIds.isZ(item.url) ? _switchSource : null,
             isReading: isReading,
           ),
           // ── Cast ────────────────────────────────────────────────────────────

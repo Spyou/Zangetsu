@@ -8,11 +8,13 @@ import '../../core/mihon/mihon_extension_service.dart';
 import '../../core/models/home_section.dart';
 import '../../core/models/media_item.dart';
 import '../../core/repository/source_actions.dart' as source_actions;
+import '../../core/provider/cf_solve_needed.dart';
 import '../../core/repository/source_domain_overrides.dart';
 import '../../core/repository/source_repository.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/ui/content_row.dart';
+import '../../core/ui/states.dart';
 import '../../core/ui/poster_card.dart';
 import '../../core/ui/source_switcher.dart' show sourceTypeOf;
 import '../../core/zmode/metadata_repository.dart';
@@ -498,17 +500,24 @@ class _BrowseSourceViewState extends State<_BrowseSourceView> {
                 return const Center(child: CircularProgressIndicator());
               }
               if (state.failed || state.sections.isEmpty) {
-                return Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Text(
-                      state.failed
-                          ? context.l10n.somethingWentWrong
-                          : context.l10n.noTitlesInThisList,
-                      style: AppText.caption,
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
+                // A source that answers with nothing used to be a dead end:
+                // the reason is usually a Cloudflare challenge or a blip, and
+                // both are fixable from right here rather than from the
+                // overflow menu the user has no reason to open.
+                final blocked = CfSolveNeeded.sourceFlagged(widget.sourceId);
+                return EmptyState(
+                  icon: blocked
+                      ? Icons.shield_outlined
+                      : Icons.cloud_off_rounded,
+                  message: state.failed
+                      ? context.l10n.somethingWentWrong
+                      : context.l10n.noTitlesInThisList,
+                  actionLabel: blocked
+                      ? context.l10n.solveCloudflare
+                      : context.l10n.retry,
+                  onAction: blocked
+                      ? _solveCloudflare
+                      : () => context.read<BrowseSourceCubit>().load(),
                 );
               }
               return ListView.builder(

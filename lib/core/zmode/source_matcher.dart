@@ -231,6 +231,15 @@ class SourceMatcher {
   /// earlier would keep winning and the pick would look ignored.
   Future<void> clearTitlePin(ZCanonical c) => _store.unpinAll(c);
 
+  /// The user picked [sourceId] for [c] from a picker: drop whatever this
+  /// title was pinned to and make it the kind's source. Both halves matter —
+  /// without the first the pick is ignored on this title, without the second
+  /// it is forgotten on every other one.
+  Future<void> chooseSource(ZCanonical c, String sourceId) async {
+    await clearTitlePin(c);
+    await selectSource(c.kind, sourceId);
+  }
+
   /// The Cloudflare-challenge url for a [kind] candidate that got flagged
   /// mid-search (see [CfSolveNeeded]), or null. [resolve] returning null
   /// doesn't say WHY — this lets a caller tell "genuinely not on any

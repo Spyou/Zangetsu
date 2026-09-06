@@ -579,6 +579,7 @@
 	"reconnectToSync": "Erneut verbinden zum Sync",
 	"yourSessionExpiredTapToSignInAndSyncYourLibrary": "Deine Sitzung ist abgelaufen — tippen zum Anmelden und Sync der Bibliothek.",
 	"solveCloudflare": "Cloudflare lösen",
+	"switchSource": "Quelle wechseln",
 	"moviesTV": "Filme & TV",
 	"couldnTLoadComingSoonPullToRefresh": "Coming Soon konnte nicht geladen werden — zum Aktualisieren ziehen.",
 	"streamURL": "Stream-URL",

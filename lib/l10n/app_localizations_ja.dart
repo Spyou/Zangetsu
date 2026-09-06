@@ -1546,6 +1546,9 @@ class AppLocalizationsJa extends AppLocalizations {
   String get solveCloudflare => 'Cloudflare を解決';
 
   @override
+  String get switchSource => 'ソースを変更';
+
+  @override
   String get moviesTV => '映画・テレビ';
 
   @override

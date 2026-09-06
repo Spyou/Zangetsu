@@ -579,6 +579,7 @@
 	"reconnectToSync": "重新連線以同步",
 	"yourSessionExpiredTapToSignInAndSyncYourLibrary": "登入已過期 — 點一下以登入並同步收藏庫。",
 	"solveCloudflare": "通過 Cloudflare 驗證",
+	"switchSource": "切換來源",
 	"moviesTV": "電影與電視",
 	"couldnTLoadComingSoonPullToRefresh": "無法載入即將上線 — 請下拉重新整理。",
 	"streamURL": "串流網址",

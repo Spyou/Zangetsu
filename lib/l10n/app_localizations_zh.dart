@@ -1535,6 +1535,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get solveCloudflare => '通过 Cloudflare 验证';
 
   @override
+  String get switchSource => '切换来源';
+
+  @override
   String get moviesTV => '电影与电视';
 
   @override
@@ -6467,6 +6470,9 @@ class AppLocalizationsZhTw extends AppLocalizationsZh {
 
   @override
   String get solveCloudflare => '通過 Cloudflare 驗證';
+
+  @override
+  String get switchSource => '切換來源';
 
   @override
   String get moviesTV => '電影與電視';

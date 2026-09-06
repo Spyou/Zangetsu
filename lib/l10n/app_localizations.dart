@@ -3038,6 +3038,12 @@ abstract class AppLocalizations {
   /// **'Solve Cloudflare'**
   String get solveCloudflare;
 
+  /// No description provided for @switchSource.
+  ///
+  /// In en, this message translates to:
+  /// **'Switch source'**
+  String get switchSource;
+
   /// No description provided for @moviesTV.
   ///
   /// In en, this message translates to:

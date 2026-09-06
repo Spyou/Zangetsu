@@ -1599,6 +1599,9 @@ class AppLocalizationsFr extends AppLocalizations {
   String get solveCloudflare => 'Résoudre Cloudflare';
 
   @override
+  String get switchSource => 'Changer de source';
+
+  @override
   String get moviesTV => 'Films et TV';
 
   @override

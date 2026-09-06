@@ -579,6 +579,7 @@
 	"reconnectToSync": "Riconnettiti per sincronizzare",
 	"yourSessionExpiredTapToSignInAndSyncYourLibrary": "La sessione è scaduta — tocca per accedere e sincronizzare la libreria.",
 	"solveCloudflare": "Risolvi Cloudflare",
+	"switchSource": "Cambia sorgente",
 	"moviesTV": "Film e TV",
 	"couldnTLoadComingSoonPullToRefresh": "Impossibile caricare in arrivo — tira per aggiornare.",
 	"streamURL": "URL dello stream",

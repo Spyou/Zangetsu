@@ -1581,6 +1581,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get solveCloudflare => 'Solve Cloudflare';
 
   @override
+  String get switchSource => 'Switch source';
+
+  @override
   String get moviesTV => 'Movies & TV';
 
   @override

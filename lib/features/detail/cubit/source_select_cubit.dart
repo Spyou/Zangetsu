@@ -98,8 +98,7 @@ class SourceSelectCubit extends Cubit<SourceSelectState> {
   /// leaving one in place would make this pick do nothing on this very title.
   Future<void> selectSource(String id) async {
     emit(SourceSelectState(sources: state.sources, selectedId: id, loading: true));
-    await _matcher.clearTitlePin(_canonical);
-    await _matcher.selectSource(_canonical.kind, id);
+    await _matcher.chooseSource(_canonical, id);
     final m = await _matcher.resolve(_canonical, title: _title, altTitle: altTitle, malId: malId);
     if (isClosed) return;
     emit(SourceSelectState(sources: state.sources, selectedId: id, match: m, loading: false));
