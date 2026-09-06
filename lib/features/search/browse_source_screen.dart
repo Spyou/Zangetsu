@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -31,11 +32,24 @@ import '../mihon/mihon_filter_sheet.dart';
 import 'bloc/search_state.dart' show SearchEcosystem, ecosystemOf;
 import 'cubit/browse_source_cubit.dart';
 
+/// How long a tap waits on the catalogue before it just opens the source's own
+/// page. Short on purpose: this sits between a tap and a screen, and a title
+/// the catalogue does not know is the case that always pays it in full.
+@visibleForTesting
+const Duration kCanonicalLookupTimeout = Duration(milliseconds: 1500);
+
+/// How long the lookup runs before the screen says anything about it. Most
+/// lookups finish inside this, and a bar that flashes for 200ms reads worse
+/// than no bar at all.
+@visibleForTesting
+const Duration kLinkingIndicatorDelay = Duration(milliseconds: 350);
+
 /// The catalogue title behind a source's own [item], with that source pinned
 /// for it, or null to open [item] exactly as before.
 ///
 /// Top-level so the decision can be tested without navigating: the pin, the
-/// timeout and every fallback live here, and the screen only adds a spinner.
+/// timeout and every fallback live here, and the screen only adds a progress
+/// bar.
 @visibleForTesting
 Future<MediaItem?> canonicalTargetFor(MediaItem item) async {
   if (!ZModePrefs.enabled || !sl.isRegistered<MetadataRepository>()) {
@@ -46,7 +60,7 @@ Future<MediaItem?> canonicalTargetFor(MediaItem item) async {
     // answering. A timeout falls back like any other miss.
     final hit = await sl<MetadataRepository>()
         .canonicalFor(item)
-        .timeout(const Duration(seconds: 3));
+        .timeout(kCanonicalLookupTimeout);
     final c = hit == null ? null : ZmodeIds.parseShow(hit.url);
     if (c == null) return null;
     // Pin the source the user is standing in, for THIS title only — otherwise
@@ -99,8 +113,12 @@ class _BrowseSourceViewState extends State<_BrowseSourceView> {
   // title or the field never needs to survive a rebuild of anything else.
   bool _searching = false;
 
-  /// True while a tapped title is being matched to the catalogue. The tap has
-  /// to wait for that, so the screen says so instead of looking frozen.
+  /// A tapped title is being matched to the catalogue. Set the moment the tap
+  /// lands, so a second tap can't stack a second detail screen.
+  bool _opening = false;
+
+  /// Show the progress bar. Set only once the lookup outlives
+  /// [kLinkingIndicatorDelay].
   bool _linking = false;
   late final _controller = TextEditingController();
   final _focusNode = FocusNode();
@@ -167,19 +185,23 @@ class _BrowseSourceViewState extends State<_BrowseSourceView> {
   /// catalogue has simply never heard of all open the source's own item
   /// exactly as before — a source-only title stays fully watchable.
   Future<void> _openDetail(BuildContext context, MediaItem item) async {
+    if (_opening) return; // a tap is already resolving
+    _opening = true;
     final nav = Navigator.of(context);
-    final canonical = await _canonicalFor(item);
-    if (!mounted) return;
-    nav.push(DetailScreen.route(canonical ?? item));
-  }
-
-  /// [canonicalTargetFor] with the screen's spinner around it.
-  Future<MediaItem?> _canonicalFor(MediaItem item) async {
-    setState(() => _linking = true);
+    // A bar, not a barrier: the lookup is short and the screen stays usable —
+    // scroll, tap Back, open the overflow. Covering it was what made a tap on
+    // a title the catalogue doesn't know feel like the app had frozen.
+    final show = Timer(kLinkingIndicatorDelay, () {
+      if (mounted) setState(() => _linking = true);
+    });
     try {
-      return await canonicalTargetFor(item);
+      final canonical = await canonicalTargetFor(item);
+      if (!mounted) return;
+      nav.push(DetailScreen.route(canonical ?? item));
     } finally {
-      if (mounted) setState(() => _linking = false);
+      show.cancel();
+      _opening = false;
+      if (mounted && _linking) setState(() => _linking = false);
     }
   }
 
@@ -460,16 +482,15 @@ class _BrowseSourceViewState extends State<_BrowseSourceView> {
           ),
         ],
       ),
-      body: Stack(
+      body: Column(
         children: [
-          _body(context),
-          if (_linking)
-            const Positioned.fill(
-              child: ColoredBox(
-                color: Color(0x66000000),
-                child: Center(child: CircularProgressIndicator()),
-              ),
-            ),
+          SizedBox(
+            height: 2,
+            child: _linking
+                ? const LinearProgressIndicator(minHeight: 2)
+                : null,
+          ),
+          Expanded(child: _body(context)),
         ],
       ),
     );

@@ -131,10 +131,22 @@ void main() {
   });
 
   test('a slow catalogue gives up and opens the source item', () async {
-    // The user tapped a poster; they must not be left staring at a spinner
-    // because a metadata API is hanging.
+    // The user tapped a poster; they must not be left waiting on a metadata
+    // API that is hanging.
     await registerCatalogue(results: [_al()], delay: const Duration(seconds: 6));
+    final sw = Stopwatch()..start();
+
     final target = await canonicalTargetFor(_tapped);
+
     expect(target, isNull);
+    // Bounded, and bounded SHORT: this sits between a tap and a screen.
+    expect(sw.elapsed, lessThan(const Duration(seconds: 3)));
   }, timeout: const Timeout(Duration(seconds: 20)));
+
+  test('the screen stays quiet for a beat before it says anything', () {
+    // A bar that flashes for 200ms is worse than no bar, and most lookups
+    // finish inside this.
+    expect(kLinkingIndicatorDelay.inMilliseconds, lessThan(500));
+    expect(kLinkingIndicatorDelay, lessThan(kCanonicalLookupTimeout));
+  });
 }
