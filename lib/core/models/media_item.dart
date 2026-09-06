@@ -205,6 +205,43 @@ final RegExp _titleDecorations = RegExp(
 
 String _stripTitleDecorations(String s) => s.replaceAll(_titleDecorations, ' ');
 
+/// Noise a source bolts onto a title that carries no identity at all: wrapper
+/// words and quality/audio tags. Deliberately NOT the year or the
+/// season/part markers — see [titleIdentityMatches].
+final RegExp _titleNoise = RegExp(
+  r'\b(?:'
+  r'watch|online|full\s*movie|free'
+  r'|dual\s*audio|multi\s*audio'
+  r'|\d{3,4}p|4k|hd|cam|hdrip|webrip|bluray'
+  r')\b',
+  caseSensitive: false,
+);
+
+/// Whether [m] is the SAME TITLE as [wanted], strictly enough to treat the two
+/// as one identity.
+///
+/// [titleMatches] strips the year and season/part markers before comparing,
+/// which is right when hunting a KNOWN title on a source: "Reacher" should
+/// find "Reacher Season 1". It is wrong in the other direction. Accepting a
+/// source's "Attack on Titan Season 3" as the catalogue's "Attack on Titan"
+/// would file that show's progress under season 1 and scrobble the wrong
+/// entry, and a remake would inherit the original's identity. So here those
+/// markers ARE part of the name and only the noise words come off.
+///
+/// A MAL id still wins outright: it is an exact identity, decorations or not.
+bool titleIdentityMatches(MediaItem m, String wanted, {int? wantedMalId}) {
+  if (wantedMalId != null && m.malId != null && m.malId == wantedMalId) {
+    return true;
+  }
+  final want = normalizeTitle(wanted.replaceAll(_titleNoise, ' '));
+  if (want.isEmpty) return false;
+  final title = normalizeTitle(m.title.replaceAll(_titleNoise, ' '));
+  final english = m.englishTitle == null
+      ? null
+      : normalizeTitle(m.englishTitle!.replaceAll(_titleNoise, ' '));
+  return want == title || (english != null && want == english);
+}
+
 /// Whether [m] is the title being looked for: same MAL id, or a normalized
 /// title (or English title) equal to [wanted] or [altTitle] once decorations
 /// (see [_stripTitleDecorations]) are stripped from both sides. This is the

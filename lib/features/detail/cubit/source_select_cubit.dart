@@ -60,7 +60,7 @@ class SourceSelectCubit extends Cubit<SourceSelectState> {
     // Both reads are synchronous, so the row names its source on the very
     // first frame — for every title, including one never opened before. Only
     // whether that source HAS this title still has to be looked up.
-    final selected = matcher.selectedFor(canonical.kind);
+    final selected = matcher.sourceForTitle(canonical);
     return SourceSelectState(
       sources: sources,
       selectedId: selected,
@@ -83,7 +83,7 @@ class SourceSelectCubit extends Cubit<SourceSelectState> {
     if (isClosed) return;
     emit(SourceSelectState(
       sources: state.sources,
-      selectedId: _matcher.selectedFor(_canonical.kind),
+      selectedId: _matcher.sourceForTitle(_canonical),
       match: m,
       loading: false,
     ));
@@ -93,8 +93,12 @@ class SourceSelectCubit extends Cubit<SourceSelectState> {
   /// remembered selection, and its own match (or honest lack of one) resolves.
   /// Picking a source is global for this kind, not a note about this title:
   /// every other title of the same kind opens on it from now on.
+  ///
+  /// Any per-title pin is cleared first. A pin beats the kind default now, so
+  /// leaving one in place would make this pick do nothing on this very title.
   Future<void> selectSource(String id) async {
     emit(SourceSelectState(sources: state.sources, selectedId: id, loading: true));
+    await _matcher.clearTitlePin(_canonical);
     await _matcher.selectSource(_canonical.kind, id);
     final m = await _matcher.resolve(_canonical, title: _title, altTitle: altTitle, malId: malId);
     if (isClosed) return;

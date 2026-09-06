@@ -47,12 +47,25 @@ class SourceMatcher {
   final ZSourcePrefs _prefs;
   final List<({String id, String name})> Function(ZKind) _candidates;
 
-  /// The remembered match for the currently selected source, without
+  /// The remembered match for the source that plays this title, without
   /// searching. Null when no source is selected, or nothing is stored for it.
   SourceMatch? saved(ZCanonical c) {
-    final sel = selectedFor(c.kind);
+    final sel = sourceForTitle(c);
     return sel == null ? null : _store.get(c, sel);
   }
+
+  /// The source that plays THIS title: the one the user pinned for it, else
+  /// the kind's default ([selectedFor]).
+  ///
+  /// A pin used to be invisible unless it happened to sit on the kind's
+  /// selected source, so choosing a source for one show silently meant
+  /// choosing it for every show of that kind. Reading the pin first is what
+  /// makes the choice belong to the title.
+  ///
+  /// Synchronous and never searches: the Detail screen names its source on the
+  /// first frame from this.
+  String? sourceForTitle(ZCanonical c) =>
+      _store.pinnedFor(c)?.sourceId ?? selectedFor(c.kind);
 
   /// Match this title on exactly [sourceId]. Null when that source genuinely
   /// doesn't have it — never throws. A genuine hit is saved as a guess (a
@@ -182,22 +195,25 @@ class SourceMatcher {
     String? altTitle,
     int? malId,
   }) async {
-    final selId = selectedFor(c.kind);
+    final selId = sourceForTitle(c);
     if (selId == null) return null; // nothing installed that can play this
     return _matchOn(c, selId, title: title, altTitle: altTitle, malId: malId);
   }
 
-  /// The source that plays [kind]: the user's remembered pick when it is still
-  /// installed, else the first candidate. Null only when nothing installed can
-  /// play this kind at all.
+  /// The DEFAULT source for [kind]: the user's remembered pick when it is
+  /// still installed, else the first candidate. Null only when nothing
+  /// installed can play this kind at all.
+  ///
+  /// What actually plays a given title is [sourceForTitle], which prefers a
+  /// pin on the title itself and only falls back here.
   ///
   /// Synchronous and never searches, which is the point — the Detail screen
   /// reads this to name its source on the first frame. This used to be derived
   /// by searching every installed source in turn and taking whichever had the
   /// title, so the row could name nothing until that finished, and could then
-  /// change under the user. One declared source per kind means there is
-  /// nothing to wait for and nothing to disagree with; a source that turns out
-  /// not to have a title now says so instead of being silently replaced.
+  /// change under the user. One declared default means there is nothing to
+  /// wait for and nothing to disagree with; a source that turns out not to
+  /// have a title now says so instead of being silently replaced.
   String? selectedFor(ZKind kind) {
     final list = _candidates(kind);
     if (list.isEmpty) return null;
@@ -209,6 +225,11 @@ class SourceMatcher {
   /// Make [sourceId] the source for [kind], for every title of that kind.
   Future<void> selectSource(ZKind kind, String sourceId) =>
       _prefs.set(kind, sourceId);
+
+  /// Forget the per-title choice for [c] so the kind's default decides again.
+  /// The picker calls this before switching the default, otherwise a pin made
+  /// earlier would keep winning and the pick would look ignored.
+  Future<void> clearTitlePin(ZCanonical c) => _store.unpinAll(c);
 
   /// The Cloudflare-challenge url for a [kind] candidate that got flagged
   /// mid-search (see [CfSolveNeeded]), or null. [resolve] returning null
@@ -233,6 +254,22 @@ class SourceMatcher {
     // concluded — drop any remembered miss so it is never skipped again.
     await _store.forgetMiss(c, picked.sourceId);
     await _prefs.set(c.kind, picked.sourceId);
+    return m;
+  }
+
+  /// The user picked [picked] for THIS title only — browsing a source and
+  /// opening a show in it is a choice about that show, not about every show of
+  /// its kind, so unlike [pinManual] this leaves the kind's default alone.
+  Future<SourceMatch> pinForTitle(ZCanonical c, MediaItem picked) async {
+    final m = SourceMatch(
+      sourceId: picked.sourceId,
+      showUrl: picked.url,
+      showId: picked.id,
+      showTitle: picked.title,
+      pinned: true,
+    );
+    await _store.pin(c, m);
+    await _store.forgetMiss(c, picked.sourceId);
     return m;
   }
 }

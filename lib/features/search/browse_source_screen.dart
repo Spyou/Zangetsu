@@ -15,6 +15,10 @@ import '../../core/theme/app_text.dart';
 import '../../core/ui/content_row.dart';
 import '../../core/ui/poster_card.dart';
 import '../../core/ui/source_switcher.dart' show sourceTypeOf;
+import '../../core/zmode/metadata_repository.dart';
+import '../../core/zmode/source_matcher.dart';
+import '../../core/zmode/zmode_ids.dart';
+import '../../core/zmode/zmode_prefs.dart';
 import '../../l10n/l10n.dart';
 import '../detail/detail_screen.dart';
 import '../home/see_all_screen.dart';
@@ -24,6 +28,36 @@ import '../aniyomi/aniyomi_filter_sheet.dart';
 import '../mihon/mihon_filter_sheet.dart';
 import 'bloc/search_state.dart' show SearchEcosystem, ecosystemOf;
 import 'cubit/browse_source_cubit.dart';
+
+/// The catalogue title behind a source's own [item], with that source pinned
+/// for it, or null to open [item] exactly as before.
+///
+/// Top-level so the decision can be tested without navigating: the pin, the
+/// timeout and every fallback live here, and the screen only adds a spinner.
+@visibleForTesting
+Future<MediaItem?> canonicalTargetFor(MediaItem item) async {
+  if (!ZModePrefs.enabled || !sl.isRegistered<MetadataRepository>()) {
+    return null;
+  }
+  try {
+    // Bounded: a tap must never sit waiting on a catalogue that isn't
+    // answering. A timeout falls back like any other miss.
+    final hit = await sl<MetadataRepository>()
+        .canonicalFor(item)
+        .timeout(const Duration(seconds: 3));
+    final c = hit == null ? null : ZmodeIds.parseShow(hit.url);
+    if (c == null) return null;
+    // Pin the source the user is standing in, for THIS title only — otherwise
+    // the canonical title would open on the kind's default source instead of
+    // the one they were browsing.
+    if (sl.isRegistered<SourceMatcher>()) {
+      await sl<SourceMatcher>().pinForTitle(c, item);
+    }
+    return hit;
+  } catch (_) {
+    return null;
+  }
+}
 
 /// One source's catalogue — today's Home, pinned to a chosen source.
 ///
@@ -62,6 +96,10 @@ class _BrowseSourceViewState extends State<_BrowseSourceView> {
   // Search is view state, not screen state — whether the AppBar shows the
   // title or the field never needs to survive a rebuild of anything else.
   bool _searching = false;
+
+  /// True while a tapped title is being matched to the catalogue. The tap has
+  /// to wait for that, so the screen says so instead of looking frozen.
+  bool _linking = false;
   late final _controller = TextEditingController();
   final _focusNode = FocusNode();
 
@@ -99,8 +137,7 @@ class _BrowseSourceViewState extends State<_BrowseSourceView> {
   bool get _canOpenInBrowser => _baseUrl.isNotEmpty;
   // Not _baseUrl.isNotEmpty: webViewUrlFor trims, so a whitespace-only base
   // url would offer an item that opens nothing.
-  bool get _canSignIn =>
-      source_actions.webViewUrlFor(widget.sourceId) != null;
+  bool get _canSignIn => source_actions.webViewUrlFor(widget.sourceId) != null;
   late final Future<bool> _hasSettings = source_actions.hasSourceSettings(
     widget.sourceId,
   );
@@ -115,8 +152,34 @@ class _BrowseSourceViewState extends State<_BrowseSourceView> {
     super.dispose();
   }
 
-  void _openDetail(BuildContext context, MediaItem item) =>
-      Navigator.of(context).push(DetailScreen.route(item));
+  /// Open a tapped title.
+  ///
+  /// A show opened from here used to become its own separate show: progress is
+  /// keyed by source id + show url, so watching a title here and watching the
+  /// same title from Home left two rows in Continue Watching at two different
+  /// episodes, and only the Home one ever reached a tracker. Ask the catalogue
+  /// which title this is and open THAT, with this source remembered for it.
+  ///
+  /// Every fallback lands on the old behaviour: catalogue mode off, no
+  /// confident match, a catalogue that is slow or down, or a title the
+  /// catalogue has simply never heard of all open the source's own item
+  /// exactly as before — a source-only title stays fully watchable.
+  Future<void> _openDetail(BuildContext context, MediaItem item) async {
+    final nav = Navigator.of(context);
+    final canonical = await _canonicalFor(item);
+    if (!mounted) return;
+    nav.push(DetailScreen.route(canonical ?? item));
+  }
+
+  /// [canonicalTargetFor] with the screen's spinner around it.
+  Future<MediaItem?> _canonicalFor(MediaItem item) async {
+    setState(() => _linking = true);
+    try {
+      return await canonicalTargetFor(item);
+    } finally {
+      if (mounted) setState(() => _linking = false);
+    }
+  }
 
   void _openSeeAll(BuildContext context, HomeSection section) =>
       Navigator.of(context).push(
@@ -395,72 +458,87 @@ class _BrowseSourceViewState extends State<_BrowseSourceView> {
           ),
         ],
       ),
-      body: Column(
+      body: Stack(
         children: [
-          // Above the rows, not the search field — matches the mockup, and
-          // keeps the search AppBar exactly as it was.
-          if (!_searching)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-              child: _SourceIdentityHeader(
-                name: _displayName,
-                ecosystem: _ecosystem,
-                language: _language,
-                kind: _kind,
+          _body(context),
+          if (_linking)
+            const Positioned.fill(
+              child: ColoredBox(
+                color: Color(0x66000000),
+                child: Center(child: CircularProgressIndicator()),
               ),
             ),
-          Expanded(
-            child: BlocBuilder<BrowseSourceCubit, BrowseSourceState>(
-              builder: (context, state) {
-                if (state.isSearchActive) {
-                  return _searchBody(context, state);
-                }
-                if (state.loading) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                if (state.failed || state.sections.isEmpty) {
-                  return Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Text(
-                        state.failed
-                            ? context.l10n.somethingWentWrong
-                            : context.l10n.noTitlesInThisList,
-                        style: AppText.caption,
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
-                  );
-                }
-                return ListView.builder(
-                  padding: const EdgeInsets.only(bottom: 24),
-                  itemCount: state.sections.length,
-                  itemBuilder: (_, i) {
-                    final section = state.sections[i];
-                    final items = section.items;
-                    return ContentRow(
-                      title: section.title,
-                      itemWidth: 116,
-                      itemHeight: 216,
-                      itemCount: items.length,
-                      onSeeAll: () => _openSeeAll(context, section),
-                      itemBuilder: (c, j) => PosterCard(
-                        title: items[j].title,
-                        imageUrl: items[j].cover,
-                        headers: items[j].coverHeaders,
-                        cellWidth: 116,
-                        qualityBadge: items[j].quality,
-                        dubBadge: items[j].dubBadge,
-                        onTap: () => _openDetail(context, items[j]),
-                      ),
-                    );
-                  },
-                );
-              },
-            ),
-          ),
         ],
       ),
+    );
+  }
+
+  Widget _body(BuildContext context) {
+    return Column(
+      children: [
+        // Above the rows, not the search field — matches the mockup, and
+        // keeps the search AppBar exactly as it was.
+        if (!_searching)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+            child: _SourceIdentityHeader(
+              name: _displayName,
+              ecosystem: _ecosystem,
+              language: _language,
+              kind: _kind,
+            ),
+          ),
+        Expanded(
+          child: BlocBuilder<BrowseSourceCubit, BrowseSourceState>(
+            builder: (context, state) {
+              if (state.isSearchActive) {
+                return _searchBody(context, state);
+              }
+              if (state.loading) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (state.failed || state.sections.isEmpty) {
+                return Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Text(
+                      state.failed
+                          ? context.l10n.somethingWentWrong
+                          : context.l10n.noTitlesInThisList,
+                      style: AppText.caption,
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                );
+              }
+              return ListView.builder(
+                padding: const EdgeInsets.only(bottom: 24),
+                itemCount: state.sections.length,
+                itemBuilder: (_, i) {
+                  final section = state.sections[i];
+                  final items = section.items;
+                  return ContentRow(
+                    title: section.title,
+                    itemWidth: 116,
+                    itemHeight: 216,
+                    itemCount: items.length,
+                    onSeeAll: () => _openSeeAll(context, section),
+                    itemBuilder: (c, j) => PosterCard(
+                      title: items[j].title,
+                      imageUrl: items[j].cover,
+                      headers: items[j].coverHeaders,
+                      cellWidth: 116,
+                      qualityBadge: items[j].quality,
+                      dubBadge: items[j].dubBadge,
+                      onTap: () => _openDetail(context, items[j]),
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 
@@ -502,7 +580,8 @@ class _BrowseSourceViewState extends State<_BrowseSourceView> {
       // reach the bottom; the cubit ignores the call while one is in flight
       // or once the source stops returning anything new.
       onNotification: (n) {
-        if (n.metrics.pixels >= n.metrics.maxScrollExtent - n.metrics.viewportDimension) {
+        if (n.metrics.pixels >=
+            n.metrics.maxScrollExtent - n.metrics.viewportDimension) {
           cubit.loadMore();
         }
         return false;

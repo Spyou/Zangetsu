@@ -3,6 +3,7 @@ import '../models/episode.dart';
 import '../models/home_section.dart';
 import '../models/media_detail.dart';
 import '../models/media_item.dart';
+import '../models/provider_info.dart';
 import '../playback/source_health_store.dart';
 import '../models/video_source.dart';
 import '../repository/catalogue_repository.dart';
@@ -292,6 +293,64 @@ class MetadataRepository implements CatalogueRepository {
         : await _viaAnime((c) => c.search(query, k));
     items.forEach(_remember);
     return items;
+  }
+
+  /// The catalogue title behind a source's OWN show, or null when the
+  /// catalogue doesn't recognise it.
+  ///
+  /// Browsing a source and opening a show there used to create a second
+  /// identity for it: progress is keyed by source id + show url, so the same
+  /// show watched from Home and from a source screen became two rows in
+  /// Continue Watching, and only the catalogue one ever reached a tracker.
+  /// Resolving the source's show back to its catalogue title is what keeps it
+  /// one show.
+  ///
+  /// The kind comes from the item itself, so a manga source is looked up in
+  /// the manga catalogue rather than whatever the app happens to be browsing.
+  ///
+  /// Strict on purpose: [titleMatches] (an exact normalised title, or an exact
+  /// MAL id) is the same rule [SourceMatcher] applies in the other direction.
+  /// A loose match here would open the WRONG show, which is worse than the
+  /// duplicate it is trying to avoid — so anything less returns null and the
+  /// caller keeps today's behaviour. Never throws: a catalogue that is down
+  /// must not stop the user opening what they tapped.
+  Future<MediaItem?> canonicalFor(MediaItem sourceItem) async {
+    if (ZmodeIds.isZ(sourceItem.url)) return sourceItem; // already canonical
+    final title = sourceItem.title.trim();
+    if (title.isEmpty) return null;
+    final k = switch (sourceItem.type) {
+      ProviderType.anime => ZKind.anime,
+      ProviderType.movie => ZKind.movie,
+      ProviderType.manga => ZKind.manga,
+      ProviderType.novel => ZKind.novel,
+    };
+    try {
+      final results = _isTmdb(k)
+          ? await _viaVideo((c) => c.search(title))
+          : await _viaAnime((c) => c.search(title, k));
+      // A MAL id anywhere in the results wins over a title match on an
+      // earlier one, the same order [bestTitleMatch] uses — but the title rule
+      // is [titleIdentityMatches], not the looser one, and there is no
+      // fall-back-to-first-result here at all.
+      MediaItem? hit;
+      if (sourceItem.malId != null) {
+        for (final m in results) {
+          if (m.malId != null && m.malId == sourceItem.malId) {
+            hit = m;
+            break;
+          }
+        }
+      }
+      for (final m in results) {
+        if (hit != null) break;
+        if (titleIdentityMatches(m, title)) hit = m;
+      }
+      if (hit == null) return null;
+      _remember(hit);
+      return hit;
+    } catch (_) {
+      return null;
+    }
   }
 
   @override

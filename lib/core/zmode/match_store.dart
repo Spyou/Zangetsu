@@ -49,9 +49,11 @@ class SourceMatch {
 ///  - a match:           `'${c.key}@$sourceId'`      → [SourceMatch.toMap]
 ///  - a remembered miss: `'miss:${c.key}@$sourceId'` → `{'at': millis}`
 ///
-/// Which source PLAYS a title is not here: that is one global choice per kind
-/// (see [ZSourcePrefs]), not a per-title one. Old `sel:` entries are simply
-/// never read again, the same way the pre-per-source scheme's were.
+/// Which source PLAYS a title is answered from these entries: a pinned match
+/// is the user's choice for that title (see [pinnedFor]), and only when there
+/// is none does the kind-wide default in [ZSourcePrefs] decide. Old `sel:`
+/// entries are simply never read again, the same way the pre-per-source
+/// scheme's were.
 ///
 /// The `@`/`sel:` prefixes can never collide with each other or with a plain
 /// `c.key` — so an entry written by the old (pre-per-source) scheme, keyed by
@@ -86,17 +88,60 @@ class MatchStore {
     await _box.put(_key(c, m.sourceId), m.toMap());
   }
 
-  /// The user's choice for [m.sourceId]. Always wins for that source.
-  Future<void> pin(ZCanonical c, SourceMatch m) => _box.put(
-    _key(c, m.sourceId),
-    SourceMatch(
-      sourceId: m.sourceId,
-      showUrl: m.showUrl,
-      showId: m.showId,
-      showTitle: m.showTitle,
-      pinned: true,
-    ).toMap(),
-  );
+  /// The user's choice for [m.sourceId]. Always wins for that source, and is
+  /// the title's source from now on.
+  ///
+  /// Any pin on a different source is demoted to a plain guess first: a title
+  /// has one chosen source, and leaving two pinned would make [pinnedFor]
+  /// answer whichever the box listed first.
+  Future<void> pin(ZCanonical c, SourceMatch m) async {
+    await unpinAll(c, except: m.sourceId);
+    await _box.put(
+      _key(c, m.sourceId),
+      SourceMatch(
+        sourceId: m.sourceId,
+        showUrl: m.showUrl,
+        showId: m.showId,
+        showTitle: m.showTitle,
+        pinned: true,
+      ).toMap(),
+    );
+  }
+
+  /// Demote every pin on this title to a plain guess, so the kind's default
+  /// decides again. [except] keeps one source's pin, which is how [pin] makes
+  /// a new choice exclusive.
+  ///
+  /// Demoted rather than deleted: the match itself is still a perfectly good
+  /// remembered result for that source, it just is not the user's choice any
+  /// more.
+  Future<void> unpinAll(ZCanonical c, {String? except}) async {
+    final prefix = '${c.key}@';
+    for (final k in _box.keys.toList()) {
+      if (k is! String || !k.startsWith(prefix)) continue;
+      if (except != null && k == _key(c, except)) continue;
+      final m = SourceMatch.fromMap(_box.get(k));
+      if (m == null || !m.pinned) continue;
+      await _box.put(k, {...m.toMap(), 'pinned': false});
+    }
+  }
+
+  /// The source the user chose for THIS title, whichever source that is, or
+  /// null when they never chose one.
+  ///
+  /// A pin is stored per source ([_key]), so reading it back means scanning the
+  /// title's own keys rather than guessing which source it might be on. Cheap:
+  /// the prefix ends in `@`, and no other title's key can start with
+  /// `'${c.key}@'` because the character after a key is either `@` or nothing.
+  SourceMatch? pinnedFor(ZCanonical c) {
+    final prefix = '${c.key}@';
+    for (final k in _box.keys) {
+      if (k is! String || !k.startsWith(prefix)) continue;
+      final m = SourceMatch.fromMap(_box.get(k));
+      if (m != null && m.pinned) return m;
+    }
+    return null;
+  }
 
   Future<void> forget(ZCanonical c, String sourceId) =>
       _box.delete(_key(c, sourceId));

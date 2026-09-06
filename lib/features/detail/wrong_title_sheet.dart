@@ -246,8 +246,7 @@ class _MatchLineState extends State<MatchLine> {
   }
 
   Future<void> _fix(String sourceId) async {
-    final kind = widget.canonical.kind;
-    final before = sl<SourceMatcher>().selectedFor(kind);
+    final before = sl<SourceMatcher>().sourceForTitle(widget.canonical);
     final picked = await showWrongTitleSheet(
       context,
       canonical: widget.canonical,
@@ -258,7 +257,7 @@ class _MatchLineState extends State<MatchLine> {
     if (picked == null) {
       // Closed without pinning — but the sheet can change the SOURCE on its
       // own, so a stale row here would name the source the user just left.
-      if (sl<SourceMatcher>().selectedFor(kind) != before) {
+      if (sl<SourceMatcher>().sourceForTitle(widget.canonical) != before) {
         await _cubit.load();
         if (mounted) _refreshAfterMatchChange();
       }
