@@ -23,6 +23,14 @@ async function search(query, page, opts) {
 }
 ''';
 
+/// A NON-search call, so the automatic solve runs instead of being suppressed.
+const String _cfBlockedHomeJs = r'''
+async function getHome(opts) {
+  await fetch('https://cf-blocked.test/home');
+  return [];
+}
+''';
+
 const String _healthyJs = r'''
 async function search(query, page, opts) {
   var res = await fetch('https://healthy.test/s?q=' + query);
@@ -98,6 +106,31 @@ void main() {
     expect(CfSolveNeeded.hostFlagged('healthy.test'), isFalse);
     expect(CfSolveNeeded.sourceFlagged('ok-src'), isFalse);
   });
+
+  test(
+    'an automatic solve that comes back empty still records the host',
+    () async {
+      // The non-search path solves by itself, and when that solve fails there
+      // was nothing left behind for the UI to offer — the source just looked
+      // broken with nothing to press.
+      const channel = MethodChannel('zangetsu/cloudstream');
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async => null);
+      addTearDown(() {
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(channel, null);
+      });
+
+      final provider = manager.load(
+        sourceId: 'cf-home-src',
+        jsSource: _cfBlockedHomeJs,
+      );
+      await provider.getHome();
+
+      expect(CfSolveNeeded.hostFlagged('cf-blocked.test'), isTrue);
+      expect(CfSolveNeeded.sourceFlagged('cf-home-src'), isTrue);
+    },
+  );
 
   test('a successful solve clears the flag', () async {
     final provider = manager.load(sourceId: 'cf-src', jsSource: _cfBlockedJs);

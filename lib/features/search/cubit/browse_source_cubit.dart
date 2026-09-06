@@ -64,17 +64,28 @@ class BrowseSourceState {
 /// is constructed with `SourceRepository`, never the Z Mode router: this screen
 /// browses a real source by definition.
 class BrowseSourceCubit extends Cubit<BrowseSourceState> {
-  BrowseSourceCubit({required CatalogueRepository repo, required this.sourceId})
-    : _repo = repo,
-      super(const BrowseSourceState());
+  BrowseSourceCubit({
+    required CatalogueRepository repo,
+    required this.sourceId,
+    this.timeout = const Duration(seconds: 40),
+  }) : _repo = repo,
+       super(const BrowseSourceState());
 
   final CatalogueRepository _repo;
   final String sourceId;
 
+  /// How long a source gets before the screen gives up on it.
+  ///
+  /// A source that never answers used to leave the spinner turning forever
+  /// with nothing to act on — no error, no retry, no way to tell a slow site
+  /// from a dead one. Generous on purpose: a first visit to a Cloudflare host
+  /// pays for the challenge solve before the real request even starts.
+  final Duration timeout;
+
   Future<void> load() async {
     emit(const BrowseSourceState());
     try {
-      final sections = await _repo.home(sourceId: sourceId);
+      final sections = await _repo.home(sourceId: sourceId).timeout(timeout);
       if (isClosed) return;
       emit(BrowseSourceState(sections: sections, loading: false));
     } catch (_) {
@@ -99,7 +110,9 @@ class BrowseSourceCubit extends Cubit<BrowseSourceState> {
       ),
     );
     try {
-      final results = await _repo.search(q, sourceId: sourceId);
+      final results = await _repo
+          .search(q, sourceId: sourceId)
+          .timeout(timeout);
       if (isClosed) return;
       emit(
         BrowseSourceState(

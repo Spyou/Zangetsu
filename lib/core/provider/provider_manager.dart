@@ -412,6 +412,12 @@ class _JsHost {
         if (_cfCookie.containsKey(host)) {
           _applyCf(host, hdr);
           resp = await _request(url, method, hdr, body, follow, tMs);
+        } else {
+          // Challenged, and we finished without a clearance — the solve failed,
+          // timed out, or is in its cool-off. Record it so the UI can offer a
+          // manual solve; the automatic path used to fail silently, leaving the
+          // source looking merely broken with nothing to press.
+          CfSolveNeeded.needsSolve(host, url, sourceId: srcId);
         }
       } else if (_looksLikeCfChallenge(resp) && _suppressCfSolve) {
         // Same challenge, but this call is a `search` — the solve is
@@ -475,6 +481,11 @@ class _JsHost {
   /// clearance cookie + matching UA. Best-effort; silent on failure or on
   /// platforms without the native handler (the MethodChannel invoke throws).
   /// Solve CF for [host], deduping concurrent callers onto one in-flight solve.
+  /// Ceiling for one native Cloudflare solve. The solver itself gives the
+  /// challenge about 30s, so this only catches the case where it never comes
+  /// back at all.
+  static const Duration solveTimeout = Duration(seconds: 35);
+
   Future<void> _solveCf(String url, String host) {
     final existing = _cfInflight[host];
     if (existing != null) return existing; // a solve for this host is running
@@ -496,10 +507,13 @@ class _JsHost {
 
   Future<void> _solveCfImpl(String url, String host) async {
     try {
-      final res = await _cf.invokeMapMethod<String, dynamic>(
-        'solveCloudflare',
-        {'url': url},
-      );
+      // Bounded: the solver runs a real WebView against a real challenge, and
+      // a challenge it cannot pass leaves this await hanging for good. Every
+      // fetch waiting on it hangs with it, which is what turned one stubborn
+      // host into a screen that span forever with nothing to act on.
+      final res = await _cf
+          .invokeMapMethod<String, dynamic>('solveCloudflare', {'url': url})
+          .timeout(solveTimeout);
       final cookie = res?['cookie'] as String?;
       final ua = res?['userAgent'] as String?;
       if (cookie != null && cookie.isNotEmpty) {
