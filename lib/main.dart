@@ -26,6 +26,9 @@ import 'core/notify/subscription_checker.dart';
 import 'core/notify/subscription_store.dart';
 import 'core/playback/category_store.dart';
 import 'core/playback/my_list.dart';
+import 'core/playback/history_merge.dart';
+import 'core/playback/resume_store.dart';
+import 'core/zmode/match_store.dart';
 import 'core/playback/watch_history.dart';
 import 'core/reading/read_history.dart';
 import 'core/state/active_source_cubit.dart';
@@ -428,6 +431,20 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
         }
       }
     } catch (_) {}
+    // Rows saved under a source before the browse screen started resolving
+    // titles to the catalogue: move them onto the show they belong to so
+    // Continue Watching stops listing the same title twice. Once, after the
+    // cloud pull so rows from another device are covered, and unawaited so it
+    // never sits in front of the splash.
+    if (sl.isRegistered<MatchStore>()) {
+      unawaited(
+        HistoryCanonicalMerge.runOnce(
+          history: sl<WatchHistory>(),
+          resume: sl<ResumeStore>(),
+          matches: sl<MatchStore>(),
+        ),
+      );
+    }
     if (isOnboarded()) {
       // tvOS: Home fetch waits until provider JS is loaded (deferred boot task).
       if (!isAppleTv) sl<HomeCubit>().load();
