@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart';
 
@@ -41,6 +42,22 @@ class _ProviderHealth {
 
 /// Single shared QuickJS runtime hosting every provider as
 /// `__providers[sourceId]` and every extractor as `__extractors[host]`.
+/// A Cloudflare **block** (error 1020), as opposed to a challenge.
+///
+/// The two look alike from the outside: both are a 403 served by Cloudflare, and
+/// the block page even loads the same challenge-platform script, so the
+/// challenge predicate says yes to both — and the app answers a block by opening
+/// a solver that can never clear it. A block has no puzzle; the host refuses this
+/// client outright, and kwik.cx refuses every HTTP/1.1 request whatever cookie it
+/// carries. Only the wording separates them: a real challenge says "just a
+/// moment", a block says it has blocked you.
+bool looksLikeCloudflareBlock(int status, String body) {
+  if (status != 403) return false;
+  final b = body.toLowerCase();
+  if (b.contains('just a moment') || b.contains('cf-chl')) return false;
+  return b.contains('you have been blocked') || b.contains('error code: 1020');
+}
+
 class _JsHost {
   _JsHost({required this.dio}) {
     _runtime = getJavascriptRuntime();
@@ -90,6 +107,8 @@ class _JsHost {
   // clearance cookie + matching User-Agent per host. Android-only; on platforms
   // without the handler the invoke throws and we fall back to a plain request.
   static const MethodChannel _cf = MethodChannel('zangetsu/cloudstream');
+  /// The novel path's OkHttp lane — see [_retryOverNative].
+  static const MethodChannel _novelHttp = MethodChannel('zangetsu/novel_http');
   final Map<String, String> _cfCookie = {}; // host -> cf_clearance cookie(s)
   final Map<String, String> _cfUa = {}; // host -> the solving User-Agent
   // Persists solved clearances across restarts so a JS source cleared once
@@ -398,6 +417,17 @@ class _JsHost {
       // the cookie was JUST solved by a concurrent fetch for this host — without
       // this, that fetch returns the challenge ("couldn't load") and only a
       // manual retry (which reuses the now-cached cookie) succeeds.
+      // A protocol block is not a challenge, so try the lane that can speak to
+      // it before the Cloudflare path treats it as one. Only ever after a
+      // request has already failed, so nothing that works today changes.
+      if (Platform.isAndroid && follow && _looksLikeBlocked(resp)) {
+        final viaNative = await _retryOverNative(url, method, hdr, body);
+        if (viaNative != null && (viaNative.statusCode ?? 0) < 400) {
+          // ignore: avoid_print
+          print('[fetch] retried over native lane -> ${viaNative.statusCode}');
+          resp = viaNative;
+        }
+      }
       if (_looksLikeCfChallenge(resp) && !_suppressCfSolve) {
         // A challenge despite a clearance WE sent means it's stale → forget it
         // (memory + disk) so the solve re-runs. A cookie a concurrent fetch just
@@ -583,6 +613,49 @@ class _JsHost {
   }
 
   /// True when a response is a Cloudflare interstitial rather than real content.
+  bool _looksLikeBlocked(Response<dynamic> resp) => looksLikeCloudflareBlock(
+    resp.statusCode ?? 0,
+    resp.data?.toString() ?? '',
+  );
+
+  /// Repeat a blocked request on the native OkHttp lane, which speaks HTTP/2.
+  ///
+  /// Dio rides `dart:io HttpClient` (HTTP/1.1 only) and hosts like kwik.cx now
+  /// refuse that protocol outright. The novel path already carries an OkHttp
+  /// client for the same class of problem, so this borrows it rather than
+  /// standing up a second stack. Android-only; null on any failure, and the
+  /// caller then keeps the original response.
+  Future<Response<dynamic>?> _retryOverNative(
+    String url,
+    String method,
+    Map<String, String> headers,
+    dynamic body,
+  ) async {
+    try {
+      final res = await _novelHttp.invokeMapMethod<String, dynamic>('request', {
+        'url': url,
+        'method': method,
+        'headers': headers,
+        'body': body is String ? body : (body == null ? null : '$body'),
+      });
+      if (res == null) return null;
+      final status = res['status'] as int? ?? 0;
+      final rawHeaders = (res['headers'] as Map?) ?? const {};
+      return Response<dynamic>(
+        requestOptions: RequestOptions(path: url),
+        statusCode: status,
+        data: res['body'] as String? ?? '',
+        headers: Headers.fromMap({
+          for (final e in rawHeaders.entries)
+            '${e.key}': ['${e.value}'],
+        }),
+      );
+    } catch (_) {
+      // No handler (iOS/desktop), or the lane failed. Keep what we had.
+      return null;
+    }
+  }
+
   bool _looksLikeCfChallenge(Response<dynamic> resp) {
     final code = resp.statusCode ?? 0;
     if (code != 403 && code != 503) return false;
