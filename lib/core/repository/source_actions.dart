@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../../features/sources/source_prefs_screen.dart';
+import '../models/source_pref.dart';
 
 import '../aniyomi/aniyomi_extension_service.dart';
 import '../di/injector.dart';
@@ -42,12 +44,28 @@ Future<void> openSourceSettings(
 ) async {
   if (id.startsWith('ani:')) {
     final raw = int.tryParse(id.substring(4));
-    if (raw != null) await AniyomiExtensionService().openSourceSettings(raw);
+    if (raw == null) return;
+    final svc = AniyomiExtensionService();
+    await _openExtensionSettings(
+      context,
+      name,
+      read: () => svc.readSourceSettings(raw),
+      write: (k, v) => svc.writeSourceSetting(raw, k, v),
+      native: () => svc.openSourceSettings(raw),
+    );
     return;
   }
   if (id.startsWith('mihon:')) {
     final raw = int.tryParse(id.substring(6));
-    if (raw != null) await MihonExtensionService().openSourceSettings(raw);
+    if (raw == null) return;
+    final svc = MihonExtensionService();
+    await _openExtensionSettings(
+      context,
+      name,
+      read: () => svc.readSourceSettings(raw),
+      write: (k, v) => svc.writeSourceSetting(raw, k, v),
+      native: () => svc.openSourceSettings(raw),
+    );
     return;
   }
   if (id.startsWith('cs:') && context.mounted) {
@@ -58,6 +76,45 @@ Future<void> openSourceSettings(
       ),
     );
   }
+}
+
+/// Draw the source's settings ourselves when we can, else hand it to the
+/// extension's own native screen.
+///
+/// A page we can partly draw is still drawn: the rows we understand render
+/// here, and a last row opens the extension's own screen for whatever is left,
+/// so an odd setting is never invisible AND unreachable. Only a page with
+/// nothing drawable on it (or a failed read) goes straight there.
+///
+/// The read is bounded: it builds the source's preference objects, and a source
+/// that does something slow in there must not leave a tap hanging.
+Future<void> _openExtensionSettings(
+  BuildContext context,
+  String name, {
+  required Future<List<SourcePref>?> Function() read,
+  required Future<bool> Function(String key, Object? value) write,
+  required Future<void> Function() native,
+}) async {
+  List<SourcePref>? prefs;
+  try {
+    prefs = await read().timeout(const Duration(seconds: 2));
+  } catch (_) {
+    prefs = null;
+  }
+  if (!SourcePref.canDrawAny(prefs) || !context.mounted) {
+    await native();
+    return;
+  }
+  await Navigator.of(context).push(
+    MaterialPageRoute<void>(
+      builder: (_) => SourcePrefsScreen(
+        title: name,
+        prefs: prefs!,
+        write: write,
+        onOpenNative: SourcePref.hasUndrawable(prefs) ? native : null,
+      ),
+    ),
+  );
 }
 
 /// Whether [id]'s source can have its OWN saved state (settings + cookies)

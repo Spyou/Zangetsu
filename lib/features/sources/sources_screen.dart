@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:hive/hive.dart';
 
+import '../../core/repository/source_actions.dart' as source_actions;
 import '../../core/aniyomi/aniyomi_extension_service.dart';
 import '../../core/aniyomi/aniyomi_provider.dart';
 import '../../core/aniyomi/aniyomi_update.dart';
@@ -191,7 +192,11 @@ class _AniSourceRowState extends State<_AniSourceRow> {
   Future<void> _openSettings() async {
     final src = widget.source;
     if (src is! AniyomiProvider) return;
-    await AniyomiExtensionService().openSourceSettings(src.info.id);
+    await source_actions.openSourceSettings(
+      context,
+      'ani:${src.info.id}',
+      src.info.name,
+    );
   }
 
   /// Shows a confirm dialog then uninstalls the source.

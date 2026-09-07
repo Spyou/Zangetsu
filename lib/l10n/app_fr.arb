@@ -833,6 +833,8 @@
 	"noCloudStreamSourcesInstalled": "Aucune source CloudStream installée.",
 	"cloudstream": "flux cloud",
 	"sourceSettings": "Réglages de la source",
+	"otherSettings": "Autres réglages",
+	"otherSettingsSubtitle": "Cette source a des réglages que nous ne pouvons pas encore afficher ici",
 	"sourceDomain": "Domaine de la source",
 	"sourceDomainHint": "Laissez vide pour utiliser le domaine propre à la source.",
 	"resetSourceDataConfirm": "Réinitialiser les données enregistrées de {name} ? Cela efface ses réglages enregistrés, sa connexion et ses cookies. Votre liste, historique et téléchargements restent intacts.",

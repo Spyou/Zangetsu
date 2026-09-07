@@ -2409,6 +2409,13 @@ class AppLocalizationsIt extends AppLocalizations {
   String get sourceSettings => 'Impostazioni della sorgente';
 
   @override
+  String get otherSettings => 'Altre impostazioni';
+
+  @override
+  String get otherSettingsSubtitle =>
+      'Questa fonte ha impostazioni che non possiamo ancora mostrare qui';
+
+  @override
   String get sourceDomain => 'Dominio della sorgente';
 
   @override

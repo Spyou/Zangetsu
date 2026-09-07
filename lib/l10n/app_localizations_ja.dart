@@ -2332,6 +2332,12 @@ class AppLocalizationsJa extends AppLocalizations {
   String get sourceSettings => 'ソース設定';
 
   @override
+  String get otherSettings => 'その他の設定';
+
+  @override
+  String get otherSettingsSubtitle => 'このソースには、ここではまだ表示できない設定があります';
+
+  @override
   String get sourceDomain => 'ソースのドメイン';
 
   @override

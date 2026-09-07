@@ -833,6 +833,8 @@
 	"noCloudStreamSourcesInstalled": "尚未安装 CloudStream 来源。",
 	"cloudstream": "云流",
 	"sourceSettings": "来源设置",
+	"otherSettings": "其他设置",
+	"otherSettingsSubtitle": "此来源有一些设置暂时无法在此显示",
 	"sourceDomain": "来源域名",
 	"sourceDomainHint": "留空则使用来源自带的域名。",
 	"resetSourceDataConfirm": "重置{name}的已保存数据?这会清除它保存的设置、登录状态和 Cookie。你的列表、历史记录和下载不受影响。",

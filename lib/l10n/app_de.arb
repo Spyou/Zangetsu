@@ -833,6 +833,8 @@
 	"noCloudStreamSourcesInstalled": "Keine CloudStream-Quellen installiert.",
 	"cloudstream": "Cloudstream",
 	"sourceSettings": "Quellen-Einstellungen",
+	"otherSettings": "Weitere Einstellungen",
+	"otherSettingsSubtitle": "Diese Quelle hat Einstellungen, die wir hier noch nicht anzeigen können",
 	"sourceDomain": "Quellen-Domain",
 	"sourceDomainHint": "Leer lassen, um die eigene Domain der Quelle zu verwenden.",
 	"resetSourceDataConfirm": "{name}s gespeicherte Daten zurücksetzen? Dadurch werden die gespeicherten Einstellungen, der Login und die Cookies gelöscht. Deine Liste, dein Verlauf und deine Downloads bleiben unberührt.",

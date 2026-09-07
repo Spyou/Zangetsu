@@ -18,6 +18,7 @@ package com.spyou.watch_app.mihon
 
 import android.content.Context
 import android.content.Intent
+import com.spyou.watch_app.SourcePrefsCodec
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.interceptor.CloudflareRequiredException
 import eu.kanade.tachiyomi.source.ConfigurableSource
@@ -502,6 +503,48 @@ class MihonBridge(
                         ),
                     )
                     result.success(null)
+                }
+
+                // Twin of the Aniyomi handler: hand the source's own settings
+                // to Flutter as plain data so the app draws them itself.
+                "readSourceSettings" -> {
+                    val sourceId = call.sourceId(result) ?: return@setMethodCallHandler
+                    val src = MihonSourceManager.get(sourceId)
+                    if (src !is ConfigurableSource) {
+                        result.success(emptyList<Map<String, Any?>>())
+                        return@setMethodCallHandler
+                    }
+                    try {
+                        val screen = SourcePrefsCodec.buildScreen(context, sourceId) {
+                            src.setupPreferenceScreen(it)
+                        }
+                        result.success(SourcePrefsCodec.read(screen))
+                    } catch (e: Throwable) {
+                        result.error("PREFS_READ", "${e::class.java.simpleName}: ${e.message}", null)
+                    }
+                }
+
+                "writeSourceSetting" -> {
+                    val sourceId = call.sourceId(result) ?: return@setMethodCallHandler
+                    val key = call.argument<String>("key") ?: run {
+                        result.error("BAD_ARGS", "key required", null)
+                        return@setMethodCallHandler
+                    }
+                    val src = MihonSourceManager.get(sourceId)
+                    if (src !is ConfigurableSource) {
+                        result.success(false)
+                        return@setMethodCallHandler
+                    }
+                    try {
+                        val screen = SourcePrefsCodec.buildScreen(context, sourceId) {
+                            src.setupPreferenceScreen(it)
+                        }
+                        result.success(
+                            SourcePrefsCodec.write(screen, key, call.argument<Any>("value")),
+                        )
+                    } catch (e: Throwable) {
+                        result.error("PREFS_WRITE", "${e::class.java.simpleName}: ${e.message}", null)
+                    }
                 }
 
                 else -> result.notImplemented()

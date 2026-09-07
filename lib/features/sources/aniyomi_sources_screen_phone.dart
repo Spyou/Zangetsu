@@ -282,7 +282,11 @@ class _AniSourceRowState extends State<_AniSourceRow> {
   Future<void> _openSettings() async {
     final src = widget.source;
     if (src is! AniyomiProvider) return;
-    await AniyomiExtensionService().openSourceSettings(src.info.id);
+    await source_actions.openSourceSettings(
+      context,
+      'ani:${src.info.id}',
+      src.info.name,
+    );
   }
 
   /// Shows a confirm dialog then uninstalls the source.

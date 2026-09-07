@@ -2390,6 +2390,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get sourceSettings => 'Source settings';
 
   @override
+  String get otherSettings => 'Other settings';
+
+  @override
+  String get otherSettingsSubtitle =>
+      'This source has settings we can\'t show here yet';
+
+  @override
   String get sourceDomain => 'Source domain';
 
   @override

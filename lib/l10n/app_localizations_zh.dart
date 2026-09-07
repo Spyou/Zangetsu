@@ -2318,6 +2318,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get sourceSettings => '来源设置';
 
   @override
+  String get otherSettings => '其他设置';
+
+  @override
+  String get otherSettingsSubtitle => '此来源有一些设置暂时无法在此显示';
+
+  @override
   String get sourceDomain => '来源域名';
 
   @override
@@ -7244,6 +7250,12 @@ class AppLocalizationsZhTw extends AppLocalizationsZh {
 
   @override
   String get sourceSettings => '來源設定';
+
+  @override
+  String get otherSettings => '其他設定';
+
+  @override
+  String get otherSettingsSubtitle => '此來源有一些設定暫時無法在此顯示';
 
   @override
   String get sourceDomain => '來源網域';

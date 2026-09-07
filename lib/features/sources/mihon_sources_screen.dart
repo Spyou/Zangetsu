@@ -497,7 +497,11 @@ class _MihonSourceRowState extends State<_MihonSourceRow> {
   }
 
   Future<void> _openSettings() async {
-    await MihonExtensionService().openSourceSettings(widget.source.info.id);
+    await source_actions.openSourceSettings(
+      context,
+      'mihon:${widget.source.info.id}',
+      widget.source.info.name,
+    );
   }
 
   /// Shows a confirm dialog then uninstalls the source.

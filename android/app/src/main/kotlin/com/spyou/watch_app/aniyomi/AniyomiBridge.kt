@@ -18,6 +18,7 @@ package com.spyou.watch_app.aniyomi
 
 import android.content.Context
 import android.content.Intent
+import com.spyou.watch_app.SourcePrefsCodec
 import eu.kanade.tachiyomi.animesource.AnimeCatalogueSource
 import eu.kanade.tachiyomi.animesource.ConfigurableAnimeSource
 import eu.kanade.tachiyomi.animesource.model.AnimeFilterList
@@ -383,6 +384,58 @@ class AniyomiBridge(
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     context.startActivity(intent)
                     result.success(true)
+                }
+
+                // Read the source's own settings as plain data so the app can
+                // draw them itself, instead of sending the user out to the
+                // native screen (a second task in recents, themed by Android).
+                "readSourceSettings" -> {
+                    val sourceId = (call.argument<Number>("sourceId") ?: run {
+                        result.error("BAD_ARGS", "sourceId required", null)
+                        return@setMethodCallHandler
+                    }).toLong()
+                    val src = AniyomiSourceManager.get(sourceId)
+                    if (src !is ConfigurableAnimeSource) {
+                        result.success(emptyList<Map<String, Any?>>())
+                        return@setMethodCallHandler
+                    }
+                    try {
+                        val screen = SourcePrefsCodec.buildScreen(context, sourceId) {
+                            src.setupPreferenceScreen(it)
+                        }
+                        result.success(SourcePrefsCodec.read(screen))
+                    } catch (e: Throwable) {
+                        // A source that throws while declaring its settings can
+                        // still be shown by the native screen, so report the
+                        // failure rather than pretending it has none.
+                        result.error("PREFS_READ", "${e::class.java.simpleName}: ${e.message}", null)
+                    }
+                }
+
+                "writeSourceSetting" -> {
+                    val sourceId = (call.argument<Number>("sourceId") ?: run {
+                        result.error("BAD_ARGS", "sourceId required", null)
+                        return@setMethodCallHandler
+                    }).toLong()
+                    val key = call.argument<String>("key") ?: run {
+                        result.error("BAD_ARGS", "key required", null)
+                        return@setMethodCallHandler
+                    }
+                    val src = AniyomiSourceManager.get(sourceId)
+                    if (src !is ConfigurableAnimeSource) {
+                        result.success(false)
+                        return@setMethodCallHandler
+                    }
+                    try {
+                        val screen = SourcePrefsCodec.buildScreen(context, sourceId) {
+                            src.setupPreferenceScreen(it)
+                        }
+                        result.success(
+                            SourcePrefsCodec.write(screen, key, call.argument<Any>("value")),
+                        )
+                    } catch (e: Throwable) {
+                        result.error("PREFS_WRITE", "${e::class.java.simpleName}: ${e.message}", null)
+                    }
                 }
 
                 else -> result.notImplemented()

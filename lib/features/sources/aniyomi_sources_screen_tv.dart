@@ -333,7 +333,14 @@ class _AniScreenTvSourceRowState extends State<_AniScreenTvSourceRow> {
   Future<void> _openSettings() async {
     final src = widget.source;
     if (src is! AniyomiProvider) return;
-    await AniyomiExtensionService().openSourceSettings(src.info.id);
+    // Through source_actions so the gear lands on the app's own settings
+    // screen when we can draw them, and on the extension's native one when we
+    // cannot — one rule everywhere the gear appears.
+    await source_actions.openSourceSettings(
+      context,
+      'ani:${src.info.id}',
+      src.info.name,
+    );
   }
 
   @override

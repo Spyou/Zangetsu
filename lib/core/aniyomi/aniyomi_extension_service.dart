@@ -8,6 +8,7 @@ import 'package:get_it/get_it.dart';
 import 'package:hive/hive.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../models/source_pref.dart';
 import '../provider/provider_manager.dart' show AniyomiManager;
 import 'aniyomi_provider.dart';
 import 'aniyomi_repo.dart';
@@ -97,6 +98,48 @@ class AniyomiExtensionService {
       await _channel.invokeMethod<void>('openSourceSettings', {'sourceId': sourceId});
     } on PlatformException catch (e) {
       debugPrint('[aniyomi] openSourceSettings($sourceId) failed: $e');
+    }
+  }
+
+  /// The source's own settings as data, so the app can draw them itself.
+  ///
+  /// Empty when the source has none. Never throws: a source that blows up while
+  /// declaring its settings returns null, and the caller falls back to the
+  /// native screen ([openSourceSettings]) rather than showing an empty page for
+  /// a source that does have settings.
+  Future<List<SourcePref>?> readSourceSettings(int sourceId) async {
+    try {
+      final raw = await _channel.invokeMethod<List<Object?>>(
+        'readSourceSettings',
+        {'sourceId': sourceId},
+      );
+      return SourcePref.listFrom(raw);
+    } catch (e) {
+      debugPrint('[aniyomi] readSourceSettings($sourceId) failed: $e');
+      return null;
+    }
+  }
+
+  /// Apply one setting. False when the source refused it or the key is gone.
+  ///
+  /// The write runs through the source's own change listener on the native
+  /// side, so a source that reacts to a setting — a domain switcher, a language
+  /// toggle — reacts exactly as it would on its own screen.
+  Future<bool> writeSourceSetting(
+    int sourceId,
+    String key,
+    Object? value,
+  ) async {
+    try {
+      final ok = await _channel.invokeMethod<bool>('writeSourceSetting', {
+        'sourceId': sourceId,
+        'key': key,
+        'value': value,
+      });
+      return ok ?? false;
+    } catch (e) {
+      debugPrint('[aniyomi] writeSourceSetting($key) failed: $e');
+      return false;
     }
   }
 

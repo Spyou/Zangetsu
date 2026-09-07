@@ -836,6 +836,8 @@
 	"noCloudStreamSourcesInstalled": "No CloudStream sources installed.",
 	"cloudstream": "cloudstream",
 	"sourceSettings": "Source settings",
+	"otherSettings": "Other settings",
+	"otherSettingsSubtitle": "This source has settings we can't show here yet",
 	"sourceDomain": "Source domain",
 	"sourceDomainHint": "Leave blank to use the source's own domain.",
 	"resetSourceDataConfirm": "Reset {name}'s saved data? This clears its saved settings, login and cookies. Your list, history and downloads stay untouched.",
