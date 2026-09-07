@@ -3,6 +3,7 @@ import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
 
 import '../../core/di/injector.dart';
 import '../../core/models/episode.dart';
+import '../../core/reading/chapter_nav.dart';
 import '../../core/models/page_content.dart';
 import '../../core/models/provider_info.dart';
 import '../../core/reading/read_history.dart';
@@ -386,11 +387,19 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
 
   void _flushProgress() => _saveProgress(flush: true);
 
-  void _goToChapter(int newIndex) {
+  /// Where next/prev actually go — same multi-group rule the manga reader
+  /// uses, so a source that lists several groups doesn't send the reader to
+  /// the chapter it just finished under a different name.
+  int? get _nextIndex => adjacentChapterIndex(_chapters, _index, step: 1);
+  int? get _prevIndex => adjacentChapterIndex(_chapters, _index, step: -1);
+
+  void _goToChapter(int? newIndex) {
     // See the manga reader: a live auto-scroll must not survive into a chapter
     // that hasn't laid out yet.
     _autoScroll.stop();
-    if (newIndex < 0 || newIndex >= _chapters.length) return;
+    if (newIndex == null || newIndex < 0 || newIndex >= _chapters.length) {
+      return;
+    }
     if (newIndex == _index) return;
     _flushProgress(); // chapter change: push the chapter we're leaving now
     setState(() {
@@ -431,11 +440,12 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
                 onPointerCancel: (_) => _autoScroll.resumeAfterTouch(),
                 child: ReaderPullChapter(
                   enabled: prefs.overscrollChapter,
-                  hasPrev: _index > 0,
-                  hasNext: _index < _chapters.length - 1,
-                  prevLabel: _chapterLabel(_index - 1),
-                  nextLabel: _chapterLabel(_index + 1),
-                  onChangeChapter: (d) => _goToChapter(_index + d),
+                  hasPrev: _prevIndex != null,
+                  hasNext: _nextIndex != null,
+                  prevLabel: _chapterLabel(_prevIndex),
+                  nextLabel: _chapterLabel(_nextIndex),
+                  onChangeChapter: (d) =>
+                      _goToChapter(d > 0 ? _nextIndex : _prevIndex),
                   child: _buildBody(theme, prefs),
                 ),
               ),
@@ -459,10 +469,10 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
   }
 
   /// Display name for a neighbouring chapter, for the pull indicator.
-  String? _chapterLabel(int i) {
-    if (i < 0 || i >= _chapters.length) return null;
+  String? _chapterLabel(int? i) {
+    if (i == null || i < 0 || i >= _chapters.length) return null;
     final t = _chapters[i].title.trim();
-    return t.isNotEmpty ? t : 'Chapter ${i + 1}';
+    return t.isNotEmpty ? t : 'Chapter ${chapterNumberLabel(_chapters, i)}';
   }
 
   Widget _buildBody(_ReaderTheme theme, ReaderPrefs prefs) {
@@ -489,7 +499,7 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
       wordSpacing: prefs.wordSpacing,
       color: theme.text,
     );
-    final hasNext = _index < _chapters.length - 1;
+    final hasNext = _nextIndex != null;
     // Same condition the old trailing `if (_atEnd && hasNext)` child used —
     // just expressed as one extra sliver, so it only exists (and only adds
     // to maxScrollExtent) once the chapter's actually been scrolled to the
@@ -564,7 +574,7 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
                   padding: const EdgeInsets.only(top: 28, bottom: 40),
                   child: Center(
                     child: TextButton(
-                      onPressed: () => _goToChapter(_index + 1),
+                      onPressed: () => _goToChapter(_nextIndex),
                       child: Text(
                         context.l10n.nextChapter2,
                         style: AppText.body.copyWith(color: AppColors.accent),
@@ -758,9 +768,9 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
       case ReaderAction.scrollDown:
         _scrollBy(1);
       case ReaderAction.nextChapter:
-        _goToChapter(_index + 1);
+        _goToChapter(_nextIndex);
       case ReaderAction.prevChapter:
-        _goToChapter(_index - 1);
+        _goToChapter(_prevIndex);
     }
   }
 
@@ -814,7 +824,9 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
                   Flexible(
                     child: ReaderTitlePill(
                       title: widget.showTitle,
-                      subtitle: 'Chapter ${_index + 1} / ${_chapters.length}',
+                      subtitle:
+                          'Chapter ${chapterNumberLabel(_chapters, _index)}'
+                          ' / ${chapterCountLabel(_chapters)}',
                       onTap: _openChapterSheet,
                     ),
                   ),
@@ -880,8 +892,8 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
   }
 
   Widget _buildBottomBar() {
-    final hasPrev = _index > 0;
-    final hasNext = _index < _chapters.length - 1;
+    final hasPrev = _prevIndex != null;
+    final hasNext = _nextIndex != null;
     final paged = sl<ReaderPrefs>().novelPaginated;
     // Same IgnorePointer-while-hidden reasoning as _buildTopBar.
     return Positioned(
@@ -907,7 +919,7 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
                 children: [
                   readerBarButton(
                     Icons.skip_previous_rounded,
-                    () => _goToChapter(_index - 1),
+                    () => _goToChapter(_prevIndex),
                     enabled: hasPrev,
                   ),
                   Expanded(
@@ -934,7 +946,9 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
                             child: Text(
                               paged
                                   ? 'Page ${_pageIndex + 1} / ${_pages.length}'
-                                  : 'Chapter ${_index + 1} / ${_chapters.length}',
+                                  : 'Chapter '
+                                        '${chapterNumberLabel(_chapters, _index)}'
+                                        ' / ${chapterCountLabel(_chapters)}',
                               style: AppText.caption.copyWith(
                                 color: AppColors.textSecondary,
                               ),
@@ -952,7 +966,7 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
                   ),
                   readerBarButton(
                     Icons.skip_next_rounded,
-                    () => _goToChapter(_index + 1),
+                    () => _goToChapter(_nextIndex),
                     enabled: hasNext,
                   ),
                 ],
@@ -1012,7 +1026,8 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
                 child: Text(
-                  '${_index + 1} of ${_chapters.length}',
+                  '${chapterNumberLabel(_chapters, _index)}'
+                  ' of ${chapterCountLabel(_chapters)}',
                   style: AppText.caption.copyWith(
                     color: AppColors.textSecondary,
                   ),
@@ -1050,7 +1065,7 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
                               SizedBox(
                                 width: 46,
                                 child: Text(
-                                  '${i + 1}',
+                                  chapterNumberLabel(_chapters, i),
                                   style: AppText.caption.copyWith(
                                     color: current
                                         ? AppColors.accent
@@ -1062,7 +1077,8 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
                                 child: Text(
                                   _chapters[i].title.trim().isNotEmpty
                                       ? _chapters[i].title
-                                      : 'Chapter ${i + 1}',
+                                      : 'Chapter '
+                                            '${chapterNumberLabel(_chapters, i)}',
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: AppText.body.copyWith(

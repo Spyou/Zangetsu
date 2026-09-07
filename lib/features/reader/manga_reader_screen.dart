@@ -9,6 +9,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../core/di/injector.dart';
 import '../../core/models/episode.dart';
+import '../../core/reading/chapter_nav.dart';
 import '../../core/download/cbz_image.dart';
 import '../../core/models/page_content.dart';
 import '../../core/models/provider_info.dart';
@@ -188,6 +189,12 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
   }
 
   Episode get _chapter => _chapters[_index];
+
+  /// Where next/prev actually go. A multi-group source lists every group's
+  /// release in one flat list, so stepping by row lands on the SAME chapter
+  /// from another group — see [adjacentChapterIndex].
+  int? get _nextIndex => adjacentChapterIndex(_chapters, _index, step: 1);
+  int? get _prevIndex => adjacentChapterIndex(_chapters, _index, step: -1);
 
   /// Background upgrade for a Continue Reading resume: opened with just the
   /// one already-read chapter, this fetches the show's real chapter list
@@ -511,8 +518,10 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
 
   void _flushProgress() => _saveProgress(flush: true);
 
-  void _goToChapter(int newIndex) {
-    if (newIndex < 0 || newIndex >= _chapters.length) return;
+  void _goToChapter(int? newIndex) {
+    if (newIndex == null || newIndex < 0 || newIndex >= _chapters.length) {
+      return;
+    }
     if (newIndex == _index) return;
     // The next chapter starts at the top with nothing laid out yet; carrying a
     // live auto-scroll across would race the load and creep through a blank.
@@ -679,9 +688,9 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
       case ReaderAction.scrollDown:
         _scrollStrip(1);
       case ReaderAction.nextChapter:
-        _goToChapter(_index + 1);
+        _goToChapter(_nextIndex);
       case ReaderAction.prevChapter:
-        _goToChapter(_index - 1);
+        _goToChapter(_prevIndex);
     }
   }
 
@@ -786,10 +795,10 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
 
   /// Display name for a neighbouring chapter, for the pull indicator. Null
   /// when the index is out of range, which the indicator treats as "no label".
-  String? _chapterLabel(int i) {
-    if (i < 0 || i >= _chapters.length) return null;
+  String? _chapterLabel(int? i) {
+    if (i == null || i < 0 || i >= _chapters.length) return null;
     final t = _chapters[i].title.trim();
-    return t.isNotEmpty ? t : 'Chapter ${i + 1}';
+    return t.isNotEmpty ? t : 'Chapter ${chapterNumberLabel(_chapters, i)}';
   }
 
   Widget _buildBody(ReaderPrefs prefs) {
@@ -829,11 +838,11 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
       onPointerCancel: (_) => _autoScroll.resumeAfterTouch(),
       child: ReaderPullChapter(
         enabled: prefs.overscrollChapter,
-        hasPrev: _index > 0,
-        hasNext: _index < _chapters.length - 1,
-        prevLabel: _chapterLabel(_index - 1),
-        nextLabel: _chapterLabel(_index + 1),
-        onChangeChapter: (d) => _goToChapter(_index + d),
+        hasPrev: _prevIndex != null,
+        hasNext: _nextIndex != null,
+        prevLabel: _chapterLabel(_prevIndex),
+        nextLabel: _chapterLabel(_nextIndex),
+        onChangeChapter: (d) => _goToChapter(d > 0 ? _nextIndex : _prevIndex),
         child: direction == 'vertical'
             ? _buildVertical(pages)
             : _buildPaged(pages, direction),
@@ -1153,8 +1162,8 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
   /// should: the page finishes, then the card, then a pull opens the next
   /// chapter — the three line up instead of overlapping.
   Widget _chapterEndFooter() {
-    final hasNext = _index < _chapters.length - 1;
-    final next = hasNext ? _chapterLabel(_index + 1) : null;
+    final hasNext = _nextIndex != null;
+    final next = _chapterLabel(_nextIndex);
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 28, 20, 44),
       child: Column(
@@ -1168,7 +1177,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
             const SizedBox(height: 12),
             ReaderPillSurface(
               radius: 22,
-              onTap: () => _goToChapter(_index + 1),
+              onTap: () => _goToChapter(_nextIndex),
               padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
@@ -1286,8 +1295,10 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                       builder: (context, pageIndex, _) => ReaderTitlePill(
                         title: widget.showTitle,
                         subtitle: pages == null || pages.isEmpty
-                            ? 'Chapter ${_index + 1} / ${_chapters.length}'
-                            : 'ch ${_index + 1} · pg ${pageIndex + 1}/${pages.length}',
+                            ? 'Chapter ${chapterNumberLabel(_chapters, _index)}'
+                                  ' / ${chapterCountLabel(_chapters)}'
+                            : 'ch ${chapterNumberLabel(_chapters, _index)}'
+                                  ' · pg ${pageIndex + 1}/${pages.length}',
                         onTap: _openChapterSheet,
                       ),
                     ),
@@ -1310,8 +1321,8 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
   Widget _buildBottomBar() {
     final pages = _pages;
     final pageCount = pages?.length ?? 0;
-    final hasPrev = _index > 0;
-    final hasNext = _index < _chapters.length - 1;
+    final hasPrev = _prevIndex != null;
+    final hasNext = _nextIndex != null;
     // Same IgnorePointer-while-hidden reasoning as _buildTopBar.
     return Positioned(
       left: 0,
@@ -1333,7 +1344,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                 children: [
                   readerBarButton(
                     Icons.skip_previous_rounded,
-                    () => _goToChapter(_index - 1),
+                    () => _goToChapter(_prevIndex),
                     enabled: hasPrev,
                   ),
                   Expanded(
@@ -1360,7 +1371,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                   ),
                   readerBarButton(
                     Icons.skip_next_rounded,
-                    () => _goToChapter(_index + 1),
+                    () => _goToChapter(_nextIndex),
                     enabled: hasNext,
                   ),
                 ],
@@ -1469,7 +1480,8 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
                 child: Text(
-                  '${_index + 1} of ${_chapters.length}',
+                  '${chapterNumberLabel(_chapters, _index)}'
+                  ' of ${chapterCountLabel(_chapters)}',
                   style: AppText.caption.copyWith(
                     color: AppColors.textSecondary,
                   ),
@@ -1509,7 +1521,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                               SizedBox(
                                 width: 46,
                                 child: Text(
-                                  '${i + 1}',
+                                  chapterNumberLabel(_chapters, i),
                                   style: AppText.caption.copyWith(
                                     color: current
                                         ? AppColors.accent
@@ -1521,7 +1533,8 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                                 child: Text(
                                   _chapters[i].title.trim().isNotEmpty
                                       ? _chapters[i].title
-                                      : 'Chapter ${i + 1}',
+                                      : 'Chapter '
+                                            '${chapterNumberLabel(_chapters, i)}',
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: AppText.body.copyWith(

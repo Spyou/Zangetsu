@@ -72,6 +72,7 @@ import '../../core/provider/cf_solve_needed.dart';
 import '../../core/provider/cloudstream_provider.dart';
 import '../../core/provider/provider_manager.dart';
 import '../../core/provider/provider_registry.dart';
+import '../../core/reading/chapter_nav.dart';
 import '../../core/reading/read_history.dart';
 import '../../core/reading/read_store.dart';
 import '../../core/repository/catalogue_repository.dart';
@@ -1345,9 +1346,12 @@ class _DetailViewState extends State<_DetailView>
       )) {
         return (index: highestMarked, hasResume: true);
       }
-      final next = highestMarked + 1 < chapters.length
-          ? highestMarked + 1
-          : highestMarked;
+      // Not highestMarked + 1: a multi-group source lists every group's
+      // release in one list, so the next ROW is the same chapter again from
+      // another group. Stay with the group that was read.
+      final next =
+          adjacentChapterIndex(chapters, highestMarked, step: 1) ??
+          highestMarked;
       return (index: next, hasResume: true);
     }
     final entry = sl<ReadHistory>().get(widget.item.sourceId, widget.item.id);
@@ -1355,7 +1359,9 @@ class _DetailViewState extends State<_DetailView>
       var idx = chapters.indexWhere((c) => c.id == entry.chapterId);
       if (idx < 0) idx = chapters.indexWhere((c) => c.url == entry.chapterUrl);
       if (idx >= 0) {
-        if (entry.finished && idx + 1 < chapters.length) idx += 1;
+        if (entry.finished) {
+          idx = adjacentChapterIndex(chapters, idx, step: 1) ?? idx;
+        }
         return (index: idx, hasResume: true);
       }
     }

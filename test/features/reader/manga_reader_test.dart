@@ -32,6 +32,7 @@ import 'package:watch_app/core/supabase/supabase_service.dart';
 import 'package:watch_app/core/tracker/tracker.dart';
 import 'package:watch_app/core/tracker/tracker_hub.dart';
 import 'package:watch_app/features/reader/manga_reader_screen.dart';
+import 'package:watch_app/features/reader/reader_pull_chapter.dart';
 
 // ── Pure-logic tests ────────────────────────────────────────────────────────
 
@@ -771,6 +772,81 @@ void main() {
       final flushesAfterDispose = spyHistory.flushCalls.where((f) => f).length;
       expect(flushesAfterDispose, greaterThan(flushesAfterChapterChange));
     });
+
+    testWidgets(
+      'the next chapter stays in the scanlation group being read',
+      (tester) async {
+        await tester.runAsync(() => sl<ReaderPrefs>().setDirection('ltr'));
+
+        // How a multi-group source really lists things: every chapter, once
+        // per group. The row after Alpha's chapter 1 is BETA's chapter 1 —
+        // the same chapter again, which is what the reader used to open.
+        Episode c(int n, String group) => Episode(
+          id: 'c$n$group',
+          title: 'ch$n $group',
+          number: n.toDouble(),
+          url: 'u$n$group',
+          scanlator: group,
+        );
+        ani.register(
+          _FakeReadingProvider('ani:m', {
+            'u1Alpha': pages(3),
+            'u1Beta': pages(3),
+            'u2Alpha': pages(3),
+            'u2Beta': pages(3),
+          }),
+        );
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: MangaReaderScreen(
+              sourceId: 'ani:m',
+              showId: 'm1',
+              showTitle: 'Some Manga',
+              cover: null,
+              chapters: [
+                c(1, 'Alpha'),
+                c(1, 'Beta'),
+                c(2, 'Alpha'),
+                c(2, 'Beta'),
+              ],
+              startIndex: 0,
+            ),
+          ),
+        );
+        await settle(tester);
+
+        // The pull indicator names Alpha's chapter 2, not Beta's chapter 1.
+        var pull = tester.widget<ReaderPullChapter>(
+          find.byType(ReaderPullChapter),
+        );
+        expect(pull.nextLabel, 'ch2 Alpha');
+
+        // Pull past the end, exactly as the widget does on a real overscroll.
+        await tester.runAsync(() async {
+          pull.onChangeChapter(1);
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+        });
+        await settle(tester);
+
+        pull = tester.widget<ReaderPullChapter>(
+          find.byType(ReaderPullChapter),
+        );
+        // Landed on Alpha's chapter 2: back one is Alpha's chapter 1, and
+        // Alpha has nothing after this, so there is no next. Landing on
+        // Beta's chapter 1 instead would leave prevLabel null.
+        expect(pull.prevLabel, 'ch1 Alpha');
+        expect(pull.hasNext, isFalse);
+
+        // …and the header says so: chapter 2 of 2, not "ch 3 of 4" — the row
+        // position is not the chapter number on a multi-group source.
+        await tester.tapAt(const Offset(400, 300)); // reveal chrome
+        await settle(tester);
+        expect(find.textContaining('ch 2 · pg 1/3'), findsOneWidget);
+
+        await disposeHarness(tester);
+      },
+    );
 
     testWidgets(
       'a pages() failure shows the error state (not a crash, not a stuck '

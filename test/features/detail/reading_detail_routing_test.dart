@@ -245,6 +245,47 @@ const _novelDetail = MediaDetail(
   ],
 );
 
+/// A source with two scanlation groups: every chapter listed once per group,
+/// which is how they really arrive. The row after Alpha's chapter 1 is Beta's
+/// chapter 1 — the same chapter again.
+const _multiGroupDetail = MediaDetail(
+  id: 'test-novel',
+  title: 'Test Novel',
+  url: 'http://test/novel',
+  type: ProviderType.novel,
+  sourceId: 'test',
+  episodes: [
+    Episode(
+      id: 'c1a',
+      title: 'Chapter 1',
+      url: '/c1a',
+      number: 1,
+      scanlator: 'Alpha',
+    ),
+    Episode(
+      id: 'c1b',
+      title: 'Chapter 1',
+      url: '/c1b',
+      number: 1,
+      scanlator: 'Beta',
+    ),
+    Episode(
+      id: 'c2a',
+      title: 'Chapter 2',
+      url: '/c2a',
+      number: 2,
+      scanlator: 'Alpha',
+    ),
+    Episode(
+      id: 'c2b',
+      title: 'Chapter 2',
+      url: '/c2b',
+      number: 2,
+      scanlator: 'Beta',
+    ),
+  ],
+);
+
 const _animeItem = MediaItem(
   id: 'test-anime',
   title: 'Test Anime',
@@ -437,6 +478,41 @@ void main() {
       );
       expect(reader.startIndex, 1); // resumed onto chapter 2 (index 1)
       expect(reader.chapters.length, 2); // still the full chapter list
+    },
+  );
+
+  testWidgets(
+    'Continue on a multi-group source opens the same group, not the same '
+    'chapter again from another one',
+    (tester) async {
+      tester.view.physicalSize = const Size(800, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      sl.registerSingleton<SourceRepository>(
+        _StubSourceRepository(_multiGroupDetail),
+      );
+      sl.registerSingleton<CatalogueRepository>(sl<SourceRepository>());
+      // Alpha's chapter 1 is finished. The next ROW is Beta's chapter 1;
+      // Continue has to skip it and open Alpha's chapter 2 (index 2).
+      sl.unregister<ReadStore>();
+      sl.registerSingleton<ReadStore>(
+        _FakeReadStore({'c1a': (pos: 19, total: 20)}),
+      );
+
+      await tester.pumpWidget(
+        const MaterialApp(home: DetailScreen(item: _novelItem)),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      await tester.tap(find.text('Continue').first);
+      await tester.pumpAndSettle();
+
+      final reader = tester.widget<NovelReaderScreen>(
+        find.byType(NovelReaderScreen),
+      );
+      expect(reader.startIndex, 2);
     },
   );
 
