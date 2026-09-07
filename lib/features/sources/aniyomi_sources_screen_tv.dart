@@ -296,28 +296,37 @@ class _AniScreenTvInstalledContent extends StatelessWidget {
 }
 
 class _AniScreenTvSourceRow extends StatefulWidget {
-  const _AniScreenTvSourceRow({required this.source, required this.activeId});
+  const _AniScreenTvSourceRow({
+    required this.source,
+    required this.activeId,
+    this.hasSettingsOverride,
+  });
 
   final BaseProvider source;
   final String activeId;
+
+  /// Test-only: whether the source reports settings, which normally comes from
+  /// a platform channel no widget test can answer.
+  final bool? hasSettingsOverride;
 
   @override
   State<_AniScreenTvSourceRow> createState() => _AniScreenTvSourceRowState();
 }
 
 class _AniScreenTvSourceRowState extends State<_AniScreenTvSourceRow> {
-  bool _hasSettings = false;
+  late bool _hasSettings = widget.hasSettingsOverride ?? false;
 
   @override
   void initState() {
     super.initState();
-    _checkSettings();
+    if (widget.hasSettingsOverride == null) _checkSettings();
   }
 
   @override
   void didUpdateWidget(_AniScreenTvSourceRow oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.source.sourceId != widget.source.sourceId) {
+    if (oldWidget.source.sourceId != widget.source.sourceId &&
+        widget.hasSettingsOverride == null) {
       _hasSettings = false;
       _checkSettings();
     }
@@ -348,69 +357,79 @@ class _AniScreenTvSourceRowState extends State<_AniScreenTvSourceRow> {
     final source = widget.source;
     final active = source.sourceId == widget.activeId;
     final lang = source is AniyomiProvider ? source.info.lang : '';
+    // Two focusables side by side, NOT one wrapping the other. Directional
+    // D-pad traversal picks its next target by geometry, so a gear nested
+    // INSIDE the row's rect is never "to the right of" it — the remote could
+    // reach the row and never the gear, which left source settings
+    // unreachable on TV entirely.
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 3),
-      child: TvListFocusable(
-        onTap: () {
-          context.read<ActiveSourceCubit>().setSource(source.sourceId);
-          ScaffoldMessenger.of(context)
-            ..clearSnackBars()
-            ..showSnackBar(
-                SnackBar(
-                    content: Text(context.l10n.activeSourceColon(source.displayName))),
-              );
-        },
-        semanticLabel: active
-            ? '${source.displayName}, active'
-            : '${source.displayName}, set active source',
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Row(
-            children: [
-              // Excluded — semanticLabel above already announces the name;
-              // the settings gear below is its own separate focusable and
-              // keeps its own semantics.
-              Expanded(
-                child: ExcludeSemantics(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        source.displayName,
-                        style: AppText.headline.copyWith(
-                          color: active
-                              ? AppColors.accent
-                              : AppColors.textPrimary,
-                          fontWeight: active ? FontWeight.w600 : null,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: TvListFocusable(
+                onTap: () {
+                  context.read<ActiveSourceCubit>().setSource(source.sourceId);
+                  ScaffoldMessenger.of(context)
+                    ..clearSnackBars()
+                    ..showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          context.l10n.activeSourceColon(source.displayName),
                         ),
                       ),
-                      if (lang.isNotEmpty) ...[
-                        const SizedBox(height: 2),
+                    );
+                },
+                semanticLabel: active
+                    ? '${source.displayName}, active'
+                    : '${source.displayName}, set active source',
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
+                  child: ExcludeSemantics(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
                         Text(
-                          'aniyomi • $lang',
-                          style: AppText.caption,
+                          source.displayName,
+                          style: AppText.headline.copyWith(
+                            color: active
+                                ? AppColors.accent
+                                : AppColors.textPrimary,
+                            fontWeight: active ? FontWeight.w600 : null,
+                          ),
                         ),
+                        if (lang.isNotEmpty) ...[
+                          const SizedBox(height: 2),
+                          Text('aniyomi • $lang', style: AppText.caption),
+                        ],
                       ],
-                    ],
+                    ),
                   ),
                 ),
               ),
-              if (_hasSettings)
-                TvListFocusable(
-                  onTap: _openSettings,
-                  semanticLabel: '${source.displayName}, settings',
-                  child: const Padding(
-                    padding: EdgeInsets.all(8),
-                    child: Icon(Icons.tune_rounded,
-                        size: 20, color: AppColors.textSecondary),
+            ),
+            if (_hasSettings)
+              TvListFocusable(
+                onTap: _openSettings,
+                semanticLabel: '${source.displayName}, settings',
+                child: const Padding(
+                  padding: EdgeInsets.fromLTRB(12, 20, 20, 20),
+                  child: Icon(
+                    Icons.tune_rounded,
+                    size: 20,
+                    color: AppColors.textSecondary,
                   ),
                 ),
-            ],
-          ),
+              ),
+          ],
         ),
       ),
     );
@@ -1040,3 +1059,15 @@ Widget debugAniSourceRow({
       updateLookupFn: updateLookupFn,
       applyUpdateFn: applyUpdateFn,
     );
+
+/// Test-only handle to the private TV installed-source row.
+@visibleForTesting
+Widget debugAniTvSourceRow({
+  required BaseProvider source,
+  required String activeId,
+  bool hasSettings = true,
+}) => _AniScreenTvSourceRow(
+  source: source,
+  activeId: activeId,
+  hasSettingsOverride: hasSettings,
+);
