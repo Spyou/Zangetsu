@@ -4258,6 +4258,10 @@ class AppLocalizationsEs extends AppLocalizations {
   String get outlineStyle => 'Estilo de contorno';
 
   @override
+  String get ownStylingKept =>
+      'Los subtítulos con estilo propio lo conservan mientras los subtítulos con estilo estén activados';
+
+  @override
   String get outlineColour => 'Color del contorno';
 
   @override

@@ -4106,6 +4106,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get outlineStyle => '轮廓样式';
 
   @override
+  String get ownStylingKept => '启用样式字幕时，自带样式的字幕会保留其样式';
+
+  @override
   String get outlineColour => '轮廓颜色';
 
   @override
@@ -8982,6 +8985,9 @@ class AppLocalizationsZhTw extends AppLocalizationsZh {
 
   @override
   String get outlineStyle => '輪廓樣式';
+
+  @override
+  String get ownStylingKept => '啟用樣式字幕時，自帶樣式的字幕會保留其樣式';
 
   @override
   String get outlineColour => '輪廓顏色';

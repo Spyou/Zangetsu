@@ -7466,6 +7466,12 @@ abstract class AppLocalizations {
   /// **'Outline style'**
   String get outlineStyle;
 
+  /// No description provided for @ownStylingKept.
+  ///
+  /// In en, this message translates to:
+  /// **'Subtitles with their own styling keep it while styled subtitles are on'**
+  String get ownStylingKept;
+
   /// No description provided for @outlineColour.
   ///
   /// In en, this message translates to:

@@ -2298,6 +2298,7 @@
 	"textColour": "Textfarbe",
 	"textOpacity": "Textopazität",
 	"outlineStyle": "Umrissstil",
+	"ownStylingKept": "Untertitel mit eigenem Stil behalten ihn, solange gestylte Untertitel aktiv sind",
 	"outlineColour": "Konturfarbe",
 	"outlineWidth": "Umrissbreite",
 	"positionTop": "Spitze",

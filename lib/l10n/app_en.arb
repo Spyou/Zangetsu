@@ -2333,6 +2333,7 @@
 	"textColour": "Text colour",
 	"textOpacity": "Text opacity",
 	"outlineStyle": "Outline style",
+	"ownStylingKept": "Subtitles with their own styling keep it while styled subtitles are on",
 	"outlineColour": "Outline colour",
 	"outlineWidth": "Outline width",
 	"positionTop": "Top",

@@ -4265,6 +4265,10 @@ class AppLocalizationsDe extends AppLocalizations {
   String get outlineStyle => 'Umrissstil';
 
   @override
+  String get ownStylingKept =>
+      'Untertitel mit eigenem Stil behalten ihn, solange gestylte Untertitel aktiv sind';
+
+  @override
   String get outlineColour => 'Konturfarbe';
 
   @override

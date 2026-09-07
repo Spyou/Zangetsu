@@ -44,6 +44,7 @@ import '../watch_together/model/room_state.dart';
 import 'color_profiles.dart';
 import 'shader_presets.dart';
 import 'subtitle_font_service.dart';
+import 'subtitle_style.dart' show libassOutline;
 
 /// The mpv video output (renderer) to create the player with, from the user's
 /// Video renderer setting.
@@ -2666,8 +2667,27 @@ class PlayerCubit extends Cubit<PlayerState> {
     }
     await set('sub-color', color);
     await set('sub-back-color', back);
-    // A thin border keeps text legible without a box; mpv default is ~3.
-    await set('sub-border-size', '3');
+    // Outline preset → libass. This used to be a hardcoded border size, so
+    // every preset (glow, bold, drop shadow…) drew the same thin black edge
+    // and only the Flutter overlay ever honoured the choice — the preview
+    // promised a look libass never delivered.
+    //
+    // libass has no "glow": a glow IS a coloured border with the blur turned
+    // up, which is what `sub-blur` does. The numbers mirror
+    // [buildSubtitleShadows] so both renderers land in the same place.
+    final o = libassOutline(
+      prefs.subtitleOutlineType,
+      prefs.subtitleOutlineWidth,
+    );
+    final outlineColor =
+        _mpvColor(prefs.subtitleOutlineColorHex) ?? '#FF000000';
+    await set('sub-border-color', outlineColor);
+    await set('sub-border-size', o.border.toStringAsFixed(1));
+    await set('sub-blur', o.blur.toStringAsFixed(1));
+    await set('sub-shadow-offset', o.shadow.toStringAsFixed(1));
+    // Shadows follow the outline colour, so a drop shadow reads as the user's
+    // choice rather than a second, always-black effect.
+    await set('sub-shadow-color', outlineColor);
     await set('sub-pos', prefs.subtitlePosition.toString());
     // media_kit renders text subtitles via a Flutter overlay (not libass), so
     // the above mpv props are ignored in practice — the real styling is the

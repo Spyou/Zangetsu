@@ -2298,6 +2298,7 @@
 	"textColour": "Color del texto",
 	"textOpacity": "Opacidad del texto",
 	"outlineStyle": "Estilo de contorno",
+	"ownStylingKept": "Los subtítulos con estilo propio lo conservan mientras los subtítulos con estilo estén activados",
 	"outlineColour": "Color del contorno",
 	"outlineWidth": "Ancho del contorno",
 	"positionTop": "Arriba",

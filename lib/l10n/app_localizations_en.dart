@@ -4226,6 +4226,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get outlineStyle => 'Outline style';
 
   @override
+  String get ownStylingKept =>
+      'Subtitles with their own styling keep it while styled subtitles are on';
+
+  @override
   String get outlineColour => 'Outline colour';
 
   @override

@@ -2298,6 +2298,7 @@
 	"textColour": "文字顏色",
 	"textOpacity": "文字不透明度",
 	"outlineStyle": "輪廓樣式",
+	"ownStylingKept": "啟用樣式字幕時，自帶樣式的字幕會保留其樣式",
 	"outlineColour": "輪廓顏色",
 	"outlineWidth": "輪廓寬度",
 	"positionTop": "頂部",

@@ -4268,6 +4268,10 @@ class AppLocalizationsFr extends AppLocalizations {
   String get outlineStyle => 'Style contour';
 
   @override
+  String get ownStylingKept =>
+      'Les sous-titres qui ont leur propre style le conservent tant que les sous-titres stylisés sont activés';
+
+  @override
   String get outlineColour => 'Couleur du contour';
 
   @override

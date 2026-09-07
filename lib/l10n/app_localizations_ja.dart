@@ -4142,6 +4142,9 @@ class AppLocalizationsJa extends AppLocalizations {
   String get outlineStyle => 'アウトラインスタイル';
 
   @override
+  String get ownStylingKept => '独自のスタイルを持つ字幕は、スタイル付き字幕が有効な間そのまま表示されます';
+
+  @override
   String get outlineColour => '輪郭の色';
 
   @override

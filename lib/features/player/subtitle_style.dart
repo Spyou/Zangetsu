@@ -65,6 +65,28 @@ List<Shadow> buildSubtitleShadows(String type, double width, Color outline) {
   }
 }
 
+/// The same presets, expressed as libass numbers: border thickness, blur and
+/// shadow offset (all in libass units, sent as mpv's `sub-border-size`,
+/// `sub-blur` and `sub-shadow-offset`).
+///
+/// libass has no "glow" of its own — a glow IS a coloured border with the blur
+/// turned up. Kept beside [buildSubtitleShadows] on purpose: these two are the
+/// same six presets drawn by two different renderers, and they drifted once
+/// already. mpv used to be sent one hardcoded border size, so every preset
+/// looked identical there while the preview promised otherwise.
+({double border, double blur, double shadow}) libassOutline(
+  String type,
+  double width,
+) => switch (type) {
+  'none' => (border: 0, blur: 0, shadow: 0),
+  'outline' => (border: width, blur: 0, shadow: 0),
+  'bold' => (border: width * 1.8, blur: 0, shadow: 0),
+  'shadow' => (border: width * 0.6, blur: 0, shadow: width),
+  'glow' => (border: width * 0.8, blur: 6 + width * 2, shadow: 0),
+  // 'soft' and anything unknown: the legacy soft halo.
+  _ => (border: width * 0.5, blur: 3 + width, shadow: 0),
+};
+
 /// Parse a `#RRGGBB`/`#RRGGBBAA` hex into a [Color], scaling alpha by [opacity].
 Color parseSubtitleHex(String hex, {double opacity = 1.0}) {
   var h = hex.replaceFirst('#', '').toUpperCase();

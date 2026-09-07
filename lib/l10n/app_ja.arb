@@ -2298,6 +2298,7 @@
 	"textColour": "テキストの色",
 	"textOpacity": "テキストの不透明度",
 	"outlineStyle": "アウトラインスタイル",
+	"ownStylingKept": "独自のスタイルを持つ字幕は、スタイル付き字幕が有効な間そのまま表示されます",
 	"outlineColour": "輪郭の色",
 	"outlineWidth": "アウトラインの幅",
 	"positionTop": "上",

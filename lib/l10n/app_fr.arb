@@ -2298,6 +2298,7 @@
 	"textColour": "Couleur du Texte",
 	"textOpacity": "Opacité du texte",
 	"outlineStyle": "Style contour",
+	"ownStylingKept": "Les sous-titres qui ont leur propre style le conservent tant que les sous-titres stylisés sont activés",
 	"outlineColour": "Couleur du contour",
 	"outlineWidth": "Largeur du contour",
 	"positionTop": "Haut",

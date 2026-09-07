@@ -847,6 +847,20 @@ class _SubtitleStyleSheetState extends State<_SubtitleStyleSheet> {
                       _apply(() => _prefs.setSubtitleTextOpacity(v)),
                 ),
                 _SheetSectionHeader(context.l10n.outlineStyle),
+                // Subtitles that carry their own styling (.ass signs, karaoke)
+                // keep it while styled subtitles are on — that is the whole
+                // point of that switch — so say so here rather than let this
+                // sheet look broken for those tracks.
+                if (_prefs.styledSubtitles)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 6),
+                    child: Text(
+                      context.l10n.ownStylingKept,
+                      style: AppText.caption.copyWith(
+                        color: AppColors.textTertiary,
+                      ),
+                    ),
+                  ),
                 for (final (id, _) in kSubtitleOutlineTypes)
                   _SheetRow(
                     label: _subtitleOutlineLabel(context.l10n, id),
