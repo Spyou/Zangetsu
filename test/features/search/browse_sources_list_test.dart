@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 import 'package:watch_app/core/di/injector.dart' show sl;
+import 'package:watch_app/core/provider/provider_manager.dart';
 import 'package:watch_app/features/search/browse_sources_list.dart';
 
 import '../../support/picker_deps.dart';
@@ -68,6 +69,25 @@ void main() {
       greaterThanOrEqualTo(104.0),
       reason: 'the last source must scroll clear of the dock',
     );
+  });
+
+  // Sources are not all present when this screen first builds — CloudStream
+  // plugins load from disk seconds after launch. The list used to read them
+  // once and keep that answer, so a source that arrived later stayed invisible
+  // until something forced a rebuild; switching tabs and back was the only way
+  // to see it.
+  testWidgets('a source that arrives after the first build shows up', (t) async {
+    await t.pumpWidget(MaterialApp(
+      home: Scaffold(body: BrowseSourcesList(onBrowse: (_, _) {})),
+    ));
+    await t.pumpAndSettle();
+    expect(find.textContaining('AllAnime'), findsNothing);
+
+    // What a late extension load does: register, then announce.
+    sl<AniyomiManager>().registerAll([aniSource(id: 2, name: 'AllAnime')]);
+    await t.pumpAndSettle();
+
+    expect(find.textContaining('AllAnime'), findsOneWidget);
   });
 
   testWidgets('says so when nothing is installed', (t) async {

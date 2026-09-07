@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 
+import '../../core/di/injector.dart';
+import '../../core/mihon/mihon_manager.dart';
 import '../../core/playback/pinned_sources.dart';
+import '../../core/provider/cloudstream_provider.dart';
+import '../../core/provider/provider_manager.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/ui/source_switcher.dart';
@@ -67,12 +71,27 @@ class BrowseSourcesList extends StatelessWidget {
   final SourceListKind? kind;
 
   @override
-  Widget build(BuildContext context) => ValueListenableBuilder<List<String>>(
-    // Pinning is a long-press away on every row, and the switcher can change
-    // it too — rebuild rather than hand back a list that lies until you leave
-    // the screen.
-    valueListenable: PinnedSources.notifier,
-    builder: (context, pinnedIds, _) => _build(context, pinnedIds),
+  Widget build(BuildContext context) => ListenableBuilder(
+    // Sources are not all there when this first builds. CloudStream plugins
+    // in particular load from disk a few seconds after launch, so the list
+    // drew without them and kept that stale answer until something else
+    // forced a rebuild — switching tabs and back was the only way to see
+    // them. These three announce when their set changes; the hub screen
+    // already listens to the same three.
+    listenable: Listenable.merge([
+      // Whichever are actually registered: the app registers all three, but
+      // a screen has no business crashing over a manager its host left out.
+      if (sl.isRegistered<CloudStreamManager>()) sl<CloudStreamManager>(),
+      if (sl.isRegistered<AniyomiManager>()) sl<AniyomiManager>(),
+      if (sl.isRegistered<MihonManager>()) sl<MihonManager>(),
+    ]),
+    builder: (context, _) => ValueListenableBuilder<List<String>>(
+      // Pinning is a long-press away on every row, and the switcher can
+      // change it too — rebuild rather than hand back a list that lies until
+      // you leave the screen.
+      valueListenable: PinnedSources.notifier,
+      builder: (context, pinnedIds, _) => _build(context, pinnedIds),
+    ),
   );
 
   Widget _build(BuildContext context, List<String> pinnedIds) {
