@@ -8540,6 +8540,18 @@ abstract class AppLocalizations {
   /// **'Browse from AniList and TMDB, play from your sources'**
   String get zModeSubtitle;
 
+  /// No description provided for @metadata.
+  ///
+  /// In en, this message translates to:
+  /// **'Metadata'**
+  String get metadata;
+
+  /// No description provided for @metadataSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Covers, titles and descriptions'**
+  String get metadataSubtitle;
+
   /// No description provided for @animeMetadata.
   ///
   /// In en, this message translates to:

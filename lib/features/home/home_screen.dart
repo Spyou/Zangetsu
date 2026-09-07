@@ -60,6 +60,7 @@ import '../../core/ui/content_row.dart';
 import '../../core/ui/featured_carousel.dart';
 import '../../core/ui/featured_hero.dart';
 import '../../core/metadata/title_logo_service.dart';
+import 'metadata_switch_sheet.dart';
 import '../../core/ui/list_status_sheet.dart';
 import '../../core/ui/media_info_sheet.dart';
 import '../../core/ui/poster_card.dart';
@@ -560,13 +561,28 @@ class _HomeViewState extends State<_HomeView>
         child: Row(
           children: [
             // Brand wordmark — the actual logo lettering (exact font).
+            // Tapping it swaps the metadata provider for wherever you are
+            // (AniList/MyAnimeList, or TMDB/Simkl on movies), which used to
+            // mean digging through Settings. Align sizes to the image, so
+            // the tap area is the wordmark itself and the rest of the row
+            // is untouched.
             Expanded(
               child: Align(
                 alignment: Alignment.centerLeft,
-                child: Image.asset(
-                  'assets/icon/wordmark.png',
-                  height: 22,
-                  fit: BoxFit.contain,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => showMetadataSwitchSheet(context),
+                  child: Padding(
+                    // Only the padding is new: 22px of artwork is under the
+                    // 48px minimum tap target, and vertical padding alone
+                    // cannot shift a left-aligned image.
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Image.asset(
+                      'assets/icon/wordmark.png',
+                      height: 22,
+                      fit: BoxFit.contain,
+                    ),
+                  ),
                 ),
               ),
             ),

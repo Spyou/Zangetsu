@@ -274,6 +274,12 @@ flutter:
     - assets/icon/preview_classic.png
     # New Zangetsu mark (black bg keyed out) — for the mode-switch transition.
     - assets/icon/logo_mark.png
+    # Metadata provider marks, from each service's own site, for the switcher
+    # sheet. The sheet falls back to initials if one ever fails to decode.
+    - assets/icon/providers/anilist.png
+    - assets/icon/providers/mal.png
+    - assets/icon/providers/tmdb.png
+    - assets/icon/providers/simkl.png
 
   fonts:
     - family: Inter

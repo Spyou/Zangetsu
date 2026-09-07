@@ -47,6 +47,7 @@ import '../../core/state/active_source_cubit.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/locale/app_language_picker.dart';
 import '../../l10n/l10n.dart';
+import '../home/metadata_switch_sheet.dart';
 import '../../l10n/ui_strings.dart';
 import '../../core/ui/source_switcher.dart';
 import '../../core/ui/subtitle_language_picker.dart';
@@ -100,9 +101,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
   // (_dnsChoice) and subtitle refreshes stay local setState.
   late final SettingsCubit _settingsCubit = SettingsCubit();
 
+  /// The metadata rows show the CURRENT provider, and it can now be changed
+  /// from outside this screen (the Home wordmark shortcut). Without this the
+  /// rows kept whatever they read when the screen was built and only caught
+  /// up when their own picker ran.
+  void _onProviderChanged() {
+    if (mounted) setState(() {});
+  }
+
   @override
   void initState() {
     super.initState();
+    MetadataProviderPrefs.revision.addListener(_onProviderChanged);
     if (Platform.isAndroid) {
       CsDns.get().then((c) {
         if (mounted) setState(() => _dnsChoice = c);
@@ -112,6 +122,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   void dispose() {
+    MetadataProviderPrefs.revision.removeListener(_onProviderChanged);
     _searchCtrl.dispose();
     _settingsCubit.close();
     dockHiddenBySection.value = false; // never leave the dock stuck hidden
@@ -155,51 +166,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
             (t) => t.displayName.toLowerCase().contains('myanimelist'),
           ));
 
-  /// Movie/TV twin of [_pickAnimeMetadataProvider]. No login nudge: Simkl's
-  /// catalogue is public, and the Simkl tracker is a separate concern the
-  /// Trackers screen already handles.
-  Future<void> _pickVideoMetadataProvider() async {
-    final prefs = _providerPrefs;
-    if (prefs == null) return;
-    final l10n = context.l10n;
-    final picked = await showModalBottomSheet<VideoProvider>(
-      context: context,
-      backgroundColor: AppColors.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (sheet) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(height: 14),
-            Text(l10n.videoMetadata, style: AppText.headline),
-            const SizedBox(height: 10),
-            for (final p in VideoProvider.values)
-              ListTile(
-                title: Text(
-                  p == VideoProvider.simkl ? 'Simkl' : 'TMDB',
-                  style: AppText.body,
-                ),
-                trailing: prefs.video == p
-                    ? Icon(Icons.check_rounded, color: AppColors.accent)
-                    : null,
-                onTap: () => Navigator.of(sheet).pop(p),
-              ),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
-    );
-    if (picked == null) return;
-    await prefs.setVideo(picked);
-  }
-
-  /// Choose who supplies anime/manga metadata.
-  ///
-  /// Both providers serve public data without a login, so this changes nothing
-  /// about signing in — but MAL can only show YOUR lists once the MAL tracker
-  /// is connected, which is easy to miss right after switching to it.
   /// Label for the title-language row. Romaji and Native are proper nouns for
   /// what they are, so only the third needs translating.
   String _titleLanguageLabel(AppLocalizations l10n) =>
@@ -250,50 +216,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
     if (picked == null) return;
     await prefs.setTitleLanguage(picked);
-  }
-
-  Future<void> _pickAnimeMetadataProvider() async {
-    final prefs = _providerPrefs;
-    if (prefs == null) return;
-    final l10n = context.l10n;
-    final picked = await showModalBottomSheet<AnimeProvider>(
-      context: context,
-      backgroundColor: AppColors.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (sheet) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(height: 14),
-            Text(l10n.animeMetadata, style: AppText.headline),
-            const SizedBox(height: 10),
-            for (final p in AnimeProvider.values)
-              ListTile(
-                title: Text(
-                  p == AnimeProvider.mal ? 'MyAnimeList' : 'AniList',
-                  style: AppText.body,
-                ),
-                trailing: prefs.anime == p
-                    ? Icon(Icons.check_rounded, color: AppColors.accent)
-                    : null,
-                onTap: () => Navigator.of(sheet).pop(p),
-              ),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
-    );
-    if (picked == null) return;
-    await prefs.setAnime(picked);
-    if (!mounted) return;
-    // prefs already holds the pick, so the row's own check answers this too.
-    if (_malNeedsLogin) {
-      ScaffoldMessenger.of(context)
-        ..clearSnackBars()
-        ..showSnackBar(SnackBar(content: Text(l10n.malLoginForLists)));
-    }
   }
 
   /// Bottom sheet to pick the in-app DNS-over-HTTPS provider for CS sources.
@@ -999,32 +921,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
           if (mounted) setState(() {});
         },
       ),
+      // One row, both settings. Two rows opening the same sheet would lie about
+      // what each opens, and the sheet is the Home wordmark's too — sharing it
+      // is what keeps the two entry points from drifting apart.
       _SettingsEntry(
         section: SettingsSection.interface,
         icon: Icons.hub_outlined,
-        title: l10n.animeMetadata,
-        subtitle:
-            _malNeedsLogin ? l10n.malLoginForLists : l10n.animeMetadataSubtitle,
-        keywords: 'anime metadata provider anilist mal myanimelist fallback '
-            'catalogue',
-        trailing: _value(_animeProviderLabel()),
-        onTap: () async {
-          await _pickAnimeMetadataProvider();
-          if (mounted) setState(() {});
-        },
-      ),
-      _SettingsEntry(
-        section: SettingsSection.interface,
-        icon: Icons.movie_filter_outlined,
-        title: l10n.videoMetadata,
-        subtitle: l10n.videoMetadataSubtitle,
-        keywords: 'movie tv series metadata provider tmdb simkl fallback '
-            'catalogue',
-        trailing: _value(_videoProviderLabel()),
-        onTap: () async {
-          await _pickVideoMetadataProvider();
-          if (mounted) setState(() {});
-        },
+        title: l10n.metadata,
+        subtitle: _malNeedsLogin
+            ? l10n.malLoginForLists
+            : l10n.metadataSubtitle,
+        // Every keyword both rows carried, so searching any one provider still
+        // finds this.
+        keywords: 'anime manga novel metadata provider anilist mal myanimelist '
+            'movie tv series tmdb simkl fallback catalogue',
+        trailing: _value(
+          '${_animeProviderLabel()} · ${_videoProviderLabel()}',
+        ),
+        onTap: () => showMetadataSwitchSheet(context),
       ),
       _SettingsEntry(
         section: SettingsSection.interface,

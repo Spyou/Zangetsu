@@ -2895,6 +2895,8 @@
 	"closeConfirmExitImmediatelyLabel": "Close directly — exit immediately",
 	"zMode": "Z Mode",
 	"zModeSubtitle": "Browse from AniList and TMDB, play from your sources",
+	"metadata": "Metadata",
+	"metadataSubtitle": "Covers, titles and descriptions",
 	"animeMetadata": "Anime metadata",
 	"animeMetadataSubtitle": "Where anime and manga info comes from",
 	"videoMetadata": "Movie & TV metadata",

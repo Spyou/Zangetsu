@@ -4998,6 +4998,12 @@ class AppLocalizationsDe extends AppLocalizations {
       'Browse from AniList and TMDB, play from your sources';
 
   @override
+  String get metadata => 'Metadata';
+
+  @override
+  String get metadataSubtitle => 'Covers, titles and descriptions';
+
+  @override
   String get animeMetadata => 'Anime metadata';
 
   @override
