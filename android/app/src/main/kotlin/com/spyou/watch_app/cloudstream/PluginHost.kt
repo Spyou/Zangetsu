@@ -62,46 +62,21 @@ class PluginHost(private val context: Context) {
     private val settingsDeferred =
         Collections.synchronizedSet(HashSet<String>())
 
-    init {
-        INSTANCE = this
-        // Plugins reach for the global app context via CloudStreamApp; set it
-        // before any plugin loads so requiresResources/settings plugins work.
-        com.lagradost.cloudstream3.CloudStreamApp.setContext(context)
-        // Also feed the library's ContextHelper (com.lagradost.api.getContext),
-        // which WebViewResolver reads. Without it, WebView-based extractors
-        // (FaselHD, …) throw "No base context in WebViewResolver" and resolve no
-        // links. Additive: it was unset (null) before, so this only enables a
-        // path that previously crashed — never changes a working one.
-        com.lagradost.api.setContext(java.lang.ref.WeakReference<Any>(context))
-
-        // Tell plugins what kind of device this actually is. They gate real work
-        // on it, not just cosmetics: CNC Verse's openInExternalBrowser (the
-        // net22.cc/verify2 session step its Netflix/Disney/Hotstar sources need)
-        // checks isLayout first, because a TV has nowhere to open a browser.
-        // While we claimed to be a TV that verification silently never ran, and
-        // the source served a placeholder video instead of the episode.
-        com.lagradost.cloudstream3.ui.settings.Globals.resolveFrom(context)
-
-        // NiceHttp's shared client (com.lagradost.cloudstream3.app) ships with NO
-        // cookie jar, so cookies never persist between requests. Give it a
-        // CookieManager-backed jar: the WebView CF solver writes cf_clearance to
-        // CookieManager, and this lets EVERY app.get() (incl. provider requests
-        // made without the CloudflareKiller interceptor, e.g. AnimePahe's episode
-        // fetch) send it. Additive + best-effort — never throws.
-        applyBaseClient()
-    }
-
     // The pristine NiceHttp client, captured ONCE before we touch it, so every
     // re-apply (cookie jar + CF interceptor + DoH) rebuilds from clean instead
     // of stacking interceptors again when the DNS choice changes.
+    //
+    // Has to stay ABOVE init. Kotlin runs initialisers in declaration order,
+    // and while this sat below, the delegate was still null when init called
+    // applyBaseClient(), so it threw an NPE straight into the runCatching
+    // below. Every launch came up with no cookie jar, no Cloudflare
+    // interceptors and no DNS, and nothing said so. Changing the DNS setting
+    // called the same function later, when the field existed, which is why
+    // that appeared to fix it until the next start.
     private val pristineClient by lazy { com.lagradost.cloudstream3.app.baseClient }
 
-    private fun csPrefs() =
-        context.getSharedPreferences("zangetsu_cs", Context.MODE_PRIVATE)
-
-    /** Current opt-in DNS-over-HTTPS choice (see [Doh]); [Doh.OFF] by default. */
-    fun dnsChoice(): Int = csPrefs().getInt("dns_choice", Doh.OFF)
-
+    // Both of these are read by applyBaseClient() below, which init calls, so
+    // they have to be declared before it — see the note on pristineClient.
     // The CS apiName whose call is in flight on the current thread — set by
     // [search] for the duration of its (synchronous, this-thread) network
     // work. Read by [cfChallengeInterceptor] to attribute a challenge to a
@@ -147,6 +122,41 @@ class PluginHost(private val context: Context) {
         response
     }
 
+    init {
+        INSTANCE = this
+        // Plugins reach for the global app context via CloudStreamApp; set it
+        // before any plugin loads so requiresResources/settings plugins work.
+        com.lagradost.cloudstream3.CloudStreamApp.setContext(context)
+        // Also feed the library's ContextHelper (com.lagradost.api.getContext),
+        // which WebViewResolver reads. Without it, WebView-based extractors
+        // (FaselHD, …) throw "No base context in WebViewResolver" and resolve no
+        // links. Additive: it was unset (null) before, so this only enables a
+        // path that previously crashed — never changes a working one.
+        com.lagradost.api.setContext(java.lang.ref.WeakReference<Any>(context))
+
+        // Tell plugins what kind of device this actually is. They gate real work
+        // on it, not just cosmetics: CNC Verse's openInExternalBrowser (the
+        // net22.cc/verify2 session step its Netflix/Disney/Hotstar sources need)
+        // checks isLayout first, because a TV has nowhere to open a browser.
+        // While we claimed to be a TV that verification silently never ran, and
+        // the source served a placeholder video instead of the episode.
+        com.lagradost.cloudstream3.ui.settings.Globals.resolveFrom(context)
+
+        // NiceHttp's shared client (com.lagradost.cloudstream3.app) ships with NO
+        // cookie jar, so cookies never persist between requests. Give it a
+        // CookieManager-backed jar: the WebView CF solver writes cf_clearance to
+        // CookieManager, and this lets EVERY app.get() (incl. provider requests
+        // made without the CloudflareKiller interceptor, e.g. AnimePahe's episode
+        // fetch) send it. Additive + best-effort — never throws.
+        applyBaseClient()
+    }
+
+    private fun csPrefs() =
+        context.getSharedPreferences("zangetsu_cs", Context.MODE_PRIVATE)
+
+    /** Current opt-in DNS-over-HTTPS choice (see [Doh]); [Doh.OFF] by default. */
+    fun dnsChoice(): Int = csPrefs().getInt("dns_choice", Doh.OFF)
+
     /** (Re)build the shared CS OkHttp client = cookie jar + CF interceptors +
      *  the selected DoH. Always rebuilds from [pristineClient] so it's
      *  idempotent. Additive + best-effort — never throws (OFF leaves DNS
@@ -163,6 +173,11 @@ class PluginHost(private val context: Context) {
                 // Flags a challenge so the UI can offer a solve — see above.
                 .addNetworkInterceptor(cfChallengeInterceptor)
             app.baseClient = Doh.apply(b, dnsChoice()).build()
+            android.util.Log.i("PluginHost", "cs client ready, dns=${dnsChoice()}")
+        }.onFailure {
+            // Never silently: when this throws, the client keeps NONE of the
+            // above, and that is invisible from the outside.
+            android.util.Log.w("PluginHost", "applyBaseClient failed", it)
         }
     }
 
