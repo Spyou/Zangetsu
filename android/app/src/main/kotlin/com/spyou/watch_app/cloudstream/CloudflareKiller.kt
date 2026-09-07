@@ -162,10 +162,30 @@ class CloudflareKiller : Interceptor {
 internal object CfWebViewSolver {
     data class Result(val cookie: String, val userAgent: String)
 
-    /** How long the branded cover stays up before the real challenge is shown.
-     *  Long enough that a self-clearing JS challenge is never seen by anyone,
-     *  short enough that an interactive one isn't a mystery wait. */
+    /** How long to let a self-clearing challenge finish before we start asking
+     *  the page whether it actually wants a person. Long enough that a plain JS
+     *  challenge is never seen by anyone. */
     private const val REVEAL_AFTER_MS = 4_000L
+
+    /** Is there something on this page for a HUMAN to tap?
+     *
+     *  The cover used to come off on this timer alone, which was right for a
+     *  captcha and wrong for everything else: a host that is merely slow or dead
+     *  never shows a checkbox, so all the reveal did was put the raw site over
+     *  the app for the rest of the wait — the user could tap through to it, and
+     *  tapping extended the wait. So ask the page first, and only uncover for a
+     *  challenge that is really waiting on someone. */
+    private const val CHALLENGE_PROBE_JS =
+        "(function(){try{" +
+            "if(document.querySelector('#challenge-stage,#challenge-form," +
+            "#challenge-stage input[type=checkbox],.cf-turnstile," +
+            "iframe[src*=\"challenges.cloudflare.com\"]" +
+            "'))return '1';" +
+            "var t=(document.body&&document.body.innerText||'').toLowerCase();" +
+            "return (t.indexOf('verify you are human')>-1" +
+            "||t.indexOf('are you a robot')>-1" +
+            "||t.indexOf('confirm you are human')>-1)?'1':'0';" +
+        "}catch(e){return '0'}})()"
 
     /** Total wait when nobody is interacting — unchanged from before, because a
      *  provider typically spreads work over SEVERAL hosts (CNC Verse alone uses
@@ -199,6 +219,12 @@ internal object CfWebViewSolver {
         val overlayRef = AtomicReference<android.view.View?>()
         // Set once the revealed challenge is touched — see the two timeouts.
         val touched = java.util.concurrent.atomic.AtomicBoolean(false)
+        // Whether the cover actually came off, i.e. there IS a challenge to work
+        // through. A touch only counts while this is true.
+        val revealed = java.util.concurrent.atomic.AtomicBoolean(false)
+        // Shown with the challenge so a full-screen third-party page is never
+        // mistaken for the app itself.
+        val bannerRef = AtomicReference<android.view.View?>()
 
         fun captureIfReady() {
             CookieManager.getInstance().flush()
@@ -231,9 +257,20 @@ internal object CfWebViewSolver {
                 // netmirror.gg (CNC Verse's Hotstar/Disney) is exactly this: it
                 // hands an unverified client a placeholder video rather than an
                 // error, so the blocked solve looked like anything but a captcha.
-                if (android.os.SystemClock.uptimeMillis() - startedAt > REVEAL_AFTER_MS) {
-                    overlayRef.getAndSet(null)?.let { ov ->
-                        (ov.parent as? android.view.ViewGroup)?.removeView(ov)
+                if (android.os.SystemClock.uptimeMillis() - startedAt > REVEAL_AFTER_MS &&
+                    overlayRef.get() != null
+                ) {
+                    webViewRef.get()?.evaluateJavascript(CHALLENGE_PROBE_JS) { r ->
+                        // Only a page that is genuinely waiting on a person earns
+                        // the reveal. Anything else keeps the cover, so a slow or
+                        // dead host is never handed the screen.
+                        if (r != null && r.contains("1")) {
+                            overlayRef.getAndSet(null)?.let { ov ->
+                                (ov.parent as? android.view.ViewGroup)?.removeView(ov)
+                                revealed.set(true)
+                                bannerRef.get()?.visibility = android.view.View.VISIBLE
+                            }
+                        }
                     }
                 }
                 main.postDelayed(this, 300)
@@ -262,7 +299,9 @@ internal object CfWebViewSolver {
                 // Touching the challenge means a person is working on it, so the
                 // wait may be extended past the unattended timeout.
                 wv.setOnTouchListener { v, _ ->
-                    touched.set(true)
+                    // Only while a real challenge is on show. Otherwise a stray
+                    // tap on a covered solve tripled the wait for nothing.
+                    if (revealed.get()) touched.set(true)
                     v.performClick()
                     false
                 }
@@ -292,6 +331,18 @@ internal object CfWebViewSolver {
                         container.addView(
                             overlay,
                             android.widget.FrameLayout.LayoutParams(mp, mp),
+                        )
+                        // Sits above the overlay so it survives the reveal, and
+                        // stays hidden until then.
+                        val banner = buildChallengeBanner(context)
+                        banner.visibility = android.view.View.GONE
+                        bannerRef.set(banner)
+                        container.addView(
+                            banner,
+                            android.widget.FrameLayout.LayoutParams(
+                                mp,
+                                android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+                            ),
                         )
                         containerRef.set(container)
                         activity.addContentView(
@@ -353,6 +404,43 @@ internal object CfWebViewSolver {
     /// user exactly what's happening (a protected source being verified) instead
     /// of a bare spinner that reads like a freeze/bug. The chip only appears if
     /// the solve is slow — a quick/cached path tears down before it shows.
+    /** Strip shown across the top once a challenge is revealed.
+     *
+     *  Without it the user is looking at a full-screen third-party page with no
+     *  explanation, which is how "the app opened a website" gets reported. */
+    private fun buildChallengeBanner(context: android.content.Context): android.view.View {
+        val d = context.resources.displayMetrics.density
+        fun dp(v: Int) = (v * d).toInt()
+
+        val bar = android.widget.LinearLayout(context)
+        bar.orientation = android.widget.LinearLayout.VERTICAL
+        bar.setBackgroundColor(0xF20B0B0F.toInt())
+        bar.setPadding(dp(16), dp(14), dp(16), dp(14))
+        // Swallow taps: the checkbox is lower down, and a tap up here would
+        // otherwise reach the page behind.
+        bar.isClickable = true
+
+        val title = android.widget.TextView(context)
+        title.text = "This source needs a quick check"
+        title.setTextColor(0xFFFFFFFF.toInt())
+        title.textSize = 15f
+        title.setTypeface(null, android.graphics.Typeface.BOLD)
+        bar.addView(title)
+
+        val body = android.widget.TextView(context)
+        body.text = "Tap the box below to prove you are not a robot. " +
+            "This is the source's own page, not Zangetsu."
+        body.setTextColor(0xFFA7A7B2.toInt())
+        body.textSize = 13f
+        val blp = android.widget.LinearLayout.LayoutParams(
+            android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+            android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+        )
+        blp.topMargin = dp(3)
+        bar.addView(body, blp)
+        return bar
+    }
+
     private fun buildVerifyingOverlay(context: android.content.Context): android.view.View {
         val d = context.resources.displayMetrics.density
         fun dp(v: Int) = (v * d).toInt()
