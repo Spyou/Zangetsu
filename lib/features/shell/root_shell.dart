@@ -297,7 +297,26 @@ class _RootShellState extends State<RootShell>
                   TweenAnimationBuilder<double>(
                     tween: Tween<double>(begin: 1, end: hide ? 0 : 1),
                     duration: const Duration(milliseconds: 240),
-                    curve: Curves.easeOutCubic,
+                    // Held at one end, then changed in a step — deliberately
+                    // NOT eased across the whole 240ms.
+                    //
+                    // This factor is the dock's height, the dock is the
+                    // Scaffold's bottomNavigationBar, and the shell sets
+                    // extendBody. So every distinct value here relays out the
+                    // Scaffold and rebuilds the body — and the body is an
+                    // IndexedStack, which builds EVERY tab, not just the one
+                    // on screen. Easing it smoothly meant ~14 rebuilds of
+                    // Home, My List and Sources for a dock animation, which
+                    // measured 13-36ms of build per frame while raster sat
+                    // at 3-5ms. It is why opening a Settings section stuttered
+                    // and opening Playback or History never did: only the
+                    // in-page sections hide the dock.
+                    //
+                    // Collapse late and expand early, so the slide below has
+                    // its space for the whole of its travel either way.
+                    curve: hide
+                        ? const Interval(0.88, 1, curve: Curves.easeOutCubic)
+                        : const Interval(0, 0.12, curve: Curves.easeOutCubic),
                     builder: (context, factor, child) => ClipRect(
                       child: Align(
                         alignment: Alignment.topCenter,
