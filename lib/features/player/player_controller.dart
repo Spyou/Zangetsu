@@ -2442,13 +2442,21 @@ class PlayerCubit extends Cubit<PlayerState> {
       preferQuality: _preferredQuality(),
     );
     if (next != null) {
+      // Say so, the same way a stall failover already does. Silence here
+      // looked identical to a frozen screen at the exact moment the player
+      // was working hardest.
+      _toast("That one didn't cut. Trying another source.");
       await _open(next, seekTo: _lastPos);
       _applyDefaultQuality(); // honor the quality pref on the fallback source too
     } else {
       emit(
         state.copyWith(
+          // Headline, then the plain fact on its own line — the screen styles
+          // them differently. The joke never replaces the information: a
+          // viewer has to be able to tell a dead host from no connection.
           error: () =>
-              'No source could be played on this device (tried ${_tried.length}).',
+              'Nothing left to cut.\n'
+              'Every source failed (tried ${_tried.length}).',
         ),
       );
     }
@@ -2486,7 +2494,11 @@ class PlayerCubit extends Cubit<PlayerState> {
         _episodeUrl(currentEpisode),
         sourceId: sourceId,
       );
-      emit(state.copyWith(error: () => 'All servers stalled — tap retry.'));
+      emit(
+        state.copyWith(
+          error: () => 'Nothing left to cut.\nEvery server stalled.',
+        ),
+      );
     }
     _recovering = false;
   }

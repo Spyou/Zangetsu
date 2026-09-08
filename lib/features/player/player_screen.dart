@@ -2348,11 +2348,25 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       color: AppColors.textTertiary,
                     ),
                     const SizedBox(height: 12),
+                    // First line is the headline, the rest is what actually
+                    // happened. Kept as one string in the state and split here
+                    // so the controller stays free of presentation — and so a
+                    // message with no second line still renders fine.
                     Text(
-                      state.error!,
-                      style: AppText.body,
+                      state.error!.split('\n').first,
+                      style: AppText.title.copyWith(fontSize: 17),
                       textAlign: TextAlign.center,
                     ),
+                    if (state.error!.contains('\n')) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        state.error!.split('\n').skip(1).join('\n'),
+                        style: AppText.body.copyWith(
+                          color: AppColors.textSecondary,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
                     const SizedBox(height: 16),
                     TextButton(
                       onPressed: () => _c.openEpisode(state.currentIndex),
