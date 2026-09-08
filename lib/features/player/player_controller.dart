@@ -1191,6 +1191,65 @@ class PlayerCubit extends Cubit<PlayerState> {
     ];
   }
 
+  /// The second line under an audio track: how many channels, and the codec.
+  ///
+  /// Two sources for it, because of the trade this player makes. mpv fills
+  /// [AudioTrack.channels] and [AudioTrack.codec] only for streams it has
+  /// actually opened, and we deliberately hand it one rendition and attach the
+  /// rest on demand — that is what took a start from 38s to 5s. So for a
+  /// rendition nobody has picked yet, fall back to the CHANNELS attribute the
+  /// master playlist already told us, which costs no fetch.
+  ///
+  /// Null when neither knows, so the row just shows its name.
+  String? audioDetail(AudioTrack t) {
+    final parts = <String>[
+      ?_channelLabel(
+        t.channelscount ?? _channelCount(t.channels) ?? _renditionCount(t.id),
+      ),
+      ?t.codec?.toUpperCase(),
+    ];
+    return parts.isEmpty ? null : parts.join(' · ');
+  }
+
+  /// The channel count the master playlist declared for [id], for a rendition
+  /// mpv has not opened and so knows nothing about.
+  int? _renditionCount(String id) {
+    for (final r in _audioRenditions) {
+      if (r.uri == id) return _channelCount(r.channels);
+    }
+    return null;
+  }
+
+  /// A channel count out of whatever text we were handed.
+  ///
+  /// mpv answers `demux-channels` with a layout name when it knows one and
+  /// with "unknown2" / "unknown6" when it only knows how many there are — so
+  /// the digits are the reliable part, and printing the raw value put
+  /// "unknown6" on screen. A playlist's CHANNELS is a bare count already.
+  static int? _channelCount(String? raw) {
+    final v = raw?.trim().toLowerCase();
+    if (v == null || v.isEmpty) return null;
+    if (v.startsWith('mono')) return 1;
+    if (v.startsWith('stereo')) return 2;
+    // "5.1" and "7.1" are counts written as a layout; take the leading number
+    // of full-range channels and add the low-frequency one.
+    final surround = RegExp(r'^(\d+)\.(\d+)').firstMatch(v);
+    if (surround != null) {
+      return int.parse(surround.group(1)!) + int.parse(surround.group(2)!);
+    }
+    final digits = RegExp(r'(\d+)').firstMatch(v);
+    return digits == null ? null : int.tryParse(digits.group(1)!);
+  }
+
+  static String? _channelLabel(int? count) => switch (count) {
+    null || 0 => null,
+    1 => 'Mono',
+    2 => 'Stereo',
+    6 => '5.1',
+    8 => '7.1',
+    _ => '$count ch',
+  };
+
   /// The video renditions mpv found inside the open media, best first.
   ///
   /// This is the fallback for streams our own HLS-master parsing can't read —

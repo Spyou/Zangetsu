@@ -164,9 +164,17 @@ class _AudioSubsSheetState extends State<_AudioSubsSheet> {
                       widget.onInteract();
                     },
                   ),
-              for (final t in tracks)
+              for (final (i, t) in tracks.indexed)
                 _SheetRow(
-                  label: t.language ?? t.title ?? t.id,
+                  label: _trackLabel(
+                    t.title,
+                    t.language,
+                    '${context.l10n.audio} ${i + 1}',
+                    titleSaysSomething: _titlesSaySomething(
+                      tracks.map((t) => t.title),
+                    ),
+                  ),
+                  subtitle: c.audioDetail(t),
                   active: audioId == t.id,
                   onTap: () {
                     c.setAudioTrack(t);
@@ -232,7 +240,14 @@ class _AudioSubsSheetState extends State<_AudioSubsSheet> {
               ),
               for (final t in embedded)
                 _SheetRow(
-                  label: t.title ?? t.language ?? t.id,
+                  label: _trackLabel(
+                    t.title,
+                    t.language,
+                    t.id,
+                    titleSaysSomething: _titlesSaySomething(
+                      embedded.map((t) => t.title),
+                    ),
+                  ),
                   active: subId == t.id,
                   onTap: () {
                     c.setSubtitle(t);
@@ -1987,4 +2002,45 @@ class _SheetSectionHeader extends StatelessWidget {
       ),
     );
   }
+}
+
+/// What to call a track in the picker: its own name when that name says
+/// something, otherwise the language it reports, otherwise [fallback].
+///
+/// The language is spelled out rather than shown as the code the stream
+/// carries, so this reads "English" and not "eng".
+///
+/// [titleSaysSomething] is [_titlesSaySomething] over the whole list, because
+/// whether a title is worth showing cannot be judged one track at a time.
+String _trackLabel(
+  String? title,
+  String? language,
+  String fallback, {
+  bool titleSaysSomething = true,
+}) {
+  final name = title?.trim();
+  if (titleSaysSomething && name != null && name.isNotEmpty) return name;
+  final lang = language?.trim();
+  if (lang != null && lang.isNotEmpty) {
+    return languageOfSource(lang)?.name ?? lang;
+  }
+  return fallback;
+}
+
+/// Whether a set of track titles is worth showing at all.
+///
+/// Two ways they are not. A release can stamp its own branding into every
+/// track — one source labels all of its audio AND its subtitles
+/// a site name plus a dot, which names nothing and makes two audio tracks look
+/// identical — so a title shared by every track is no title. And a title with
+/// no spaces but a dot in it is a domain or a filename, not a name, which
+/// catches the same thing when there is only one track to compare.
+bool _titlesSaySomething(Iterable<String?> titles) {
+  final named = titles
+      .map((t) => t?.trim() ?? '')
+      .where((t) => t.isNotEmpty)
+      .toList();
+  if (named.isEmpty) return false;
+  if (named.every((t) => !t.contains(' ') && t.contains('.'))) return false;
+  return named.length < 2 || named.toSet().length > 1;
 }

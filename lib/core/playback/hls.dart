@@ -81,11 +81,20 @@ class HlsAudioRendition {
     required this.lang,
     required this.name,
     required this.isDefault,
+    this.channels = '',
   });
   final String uri;
   final String lang;
   final String name;
   final bool isDefault;
+
+  /// The master's own CHANNELS attribute, a count as text ("2", "6"). Empty
+  /// when the playlist doesn't say.
+  ///
+  /// Worth carrying because it is the only way to tell a stereo track from a
+  /// 5.1 one WITHOUT opening it, and opening them all is exactly what this
+  /// file exists to avoid.
+  final String channels;
 }
 
 /// Value of [key] in an `#EXT-X-...` attribute list, quoted or bare.
@@ -118,6 +127,7 @@ List<HlsAudioRendition> parseHlsAudioRenditions(
         uri: _resolve(uri, masterUrl),
         lang: hlsAttr(line, 'LANGUAGE') ?? '',
         name: hlsAttr(line, 'NAME') ?? '',
+        channels: hlsAttr(line, 'CHANNELS') ?? '',
         isDefault: (hlsAttr(line, 'DEFAULT') ?? '').toUpperCase() == 'YES',
       ),
     );
