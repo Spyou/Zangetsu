@@ -2391,19 +2391,36 @@ class PlayerCubit extends Cubit<PlayerState> {
     // until the app force-closes. mpv recovers on its own once the pieces land.
     if (_activeTorrentId != null) return;
     final lower = e.toLowerCase();
-    // libmpv emits many non-fatal warnings (e.g. the iOS Simulator has no
-    // audio device). Only treat clear "this stream is unplayable" errors as a
-    // reason to switch sources — never the audio-device/no-sound warnings.
-    final fatal =
-        lower.contains('failed to open') ||
-        lower.contains('recognize file format') ||
-        lower.contains('ffurl') ||
-        lower.contains('connection');
     // If THIS source is already playing (position advanced), the error is a
     // transient/secondary one (HLS segment blip, failed sub track) — ignore it.
     // Only a source that NEVER started is worth cycling away from.
     if (_startedThisSource) return;
-    if (!fatal || _recovering) return;
+    if (_recovering) return;
+    // Anything else is fatal unless it is on the list below.
+    //
+    // This used to be the other way round: fail over only on four hardcoded
+    // English phrases from libmpv, ignore everything else. Any wording those
+    // four did not cover — a new mpv message, a codec complaint, an http error
+    // phrased differently — was read as harmless, so a source that had never
+    // played a single frame was never cycled away from and the screen simply
+    // sat there. An unknown error on a stream that never started is not a
+    // reason to do nothing; it is the definition of one worth leaving.
+    //
+    // The list is the genuinely harmless ones, and they are all about the
+    // things AROUND the video rather than the video: an output device that
+    // isn't there (the iOS Simulator has none), a subtitle track that failed
+    // on its own, libass not finding a font. None of those mean the stream is
+    // unplayable, and cycling sources would not fix any of them.
+    const harmless = [
+      'audio device',
+      'audio output',
+      'subtitle',
+      'sub file',
+      'fontconfig',
+      'libass',
+      'ffmpeg-fallback',
+    ];
+    if (harmless.any(lower.contains)) return;
     // A direct Aniyomi stream that failed on Cloudflare → swap to its hidden
     // proxy fallback (same quality) rather than cycling through other qualities.
     final act = state.active;
