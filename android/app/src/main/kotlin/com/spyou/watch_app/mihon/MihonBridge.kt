@@ -20,6 +20,9 @@ import android.content.Context
 import android.content.Intent
 import com.spyou.watch_app.SourcePrefsCodec
 import eu.kanade.tachiyomi.network.GET
+import eu.kanade.tachiyomi.network.NetworkHelper
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 import eu.kanade.tachiyomi.network.interceptor.CloudflareRequiredException
 import eu.kanade.tachiyomi.source.ConfigurableSource
 import eu.kanade.tachiyomi.source.model.FilterList
@@ -741,12 +744,34 @@ internal suspend fun ensureImageUrl(page: Page, resolve: suspend (Page) -> Strin
  *
  * [http] is null for a non-[HttpSource]; then there are no headers to send.
  */
+/** Whether this source's own client REWRITES the image bytes.
+ *
+ *  Some extensions serve their pages deliberately scrambled and put the
+ *  descrambler on their OkHttp client (Comix's `configureClient()` adds a
+ *  `Descrambler.interceptor`; ~56 extensions upstream do something of this
+ *  kind). Chapter pages otherwise leave here as url+headers and Flutter fetches
+ *  them itself, which never touches that client — so the reader drew the
+ *  scrambled image and the page looked torn into squares.
+ *
+ *  Detected rather than listed: a source that does not override `client` gets
+ *  the shared one plus a single UncaughtExceptionInterceptor, so anything
+ *  beyond that count is the extension's own doing. Cheap, and it needs no
+ *  per-source table to keep up to date.
+ */
+private fun rewritesImageBytes(http: HttpSource): Boolean = runCatching {
+    val base = Injekt.get<NetworkHelper>().client.interceptors.size + 1
+    http.client.interceptors.size > base
+}.getOrDefault(false)
+
 internal fun pageDeliveryJson(http: HttpSource?, page: Page): JSONObject {
     val json = MihonJson.pageToJson(page)
     if (http == null) {
         json.put("headers", JSONObject())
         return json
     }
+    // The reader keys off this exactly the way covers already do: the marker is
+    // internal, stripped before any request goes out.
+    val nativeImage = rewritesImageBytes(http)
     val request = imageRequestOf(http, page)
     if (request != null) {
         // Upstream's own doc says an override may "send different headers or
@@ -766,6 +791,9 @@ internal fun pageDeliveryJson(http: HttpSource?, page: Page): JSONObject {
         json.put("headers", MihonJson.headersToJsonObject(request.headers))
     } else {
         json.put("headers", headersJson(http))
+    }
+    if (nativeImage) {
+        json.optJSONObject("headers")?.put("x-mihon-src", http.id.toString())
     }
     return json
 }

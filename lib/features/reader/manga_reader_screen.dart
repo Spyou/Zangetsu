@@ -10,6 +10,7 @@ import 'package:share_plus/share_plus.dart';
 import '../../core/di/injector.dart';
 import '../../core/models/episode.dart';
 import '../../core/reading/chapter_nav.dart';
+import '../../core/ui/native_page_provider.dart';
 import '../../core/download/cbz_image.dart';
 import '../../core/models/page_content.dart';
 import '../../core/models/provider_info.dart';
@@ -1066,7 +1067,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
               maxScale: 4.0,
               child: Center(
                 child: _cropIfEnabled(
-                  _isLocal(page.url)
+                  _drawnLocally(page)
                       ? Image(
                           image: _pageProvider(page, width),
                           fit: _pageBoxFit(_effectiveFit(sl<ReaderPrefs>())),
@@ -1113,7 +1114,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
         onTapUp: (d) => _dispatchTap(d.globalPosition),
         onLongPress: () => _showPageActions(page),
         child: _cropIfEnabled(
-          _isLocal(page.url)
+          _drawnLocally(page)
               ? Image(
                   image: _pageProvider(page, width),
                   width: double.infinity,
@@ -1576,20 +1577,40 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
   /// The image for a page: inside a saved `.cbz`, a loose saved file, or the
   /// network. One place, so the two page builders and the webtoon probe can't
   /// disagree about what they're loading.
+  /// Whether [_pageProvider] should draw this page rather than
+  /// CachedNetworkImage.
+  ///
+  /// True for a downloaded/CBZ page, and for one the bridge marked as needing
+  /// its source's own client — see [nativePageProvider]. Both end up as a
+  /// plain [Image], so the network widget keeps its cache for every ordinary
+  /// page.
+  static bool _drawnLocally(PageImage page) =>
+      _isLocal(page.url) ||
+      CbzImage.tryParse(page.url) != null ||
+      nativePageProvider(page.url, page.headers) != null;
+
   static ImageProvider _pageProvider(PageImage page, int width) {
     final cbz = CbzImage.tryParse(page.url);
     if (cbz != null) return ResizeImage.resizeIfNeeded(width, null, cbz);
-    return _isLocal(page.url)
-      ? ResizeImage.resizeIfNeeded(width, null, FileImage(File(page.url)))
-      : ResizeImage.resizeIfNeeded(
-          width,
-          null,
-          CachedNetworkImageProvider(
-            page.url,
-            headers: page.headers,
-            maxWidth: width,
-          ),
-        );
+    if (_isLocal(page.url)) {
+      return ResizeImage.resizeIfNeeded(width, null, FileImage(File(page.url)));
+    }
+    // A source that serves its pages scrambled puts the descrambler on its own
+    // OkHttp client, and fetching the url ourselves never touches that client —
+    // the reader drew the raw scrambled bytes and the page looked torn into
+    // squares. The bridge marks those pages, and the fix is the one covers have
+    // used all along: go and get them natively instead.
+    final native = nativePageProvider(page.url, page.headers);
+    if (native != null) return ResizeImage.resizeIfNeeded(width, null, native);
+    return ResizeImage.resizeIfNeeded(
+      width,
+      null,
+      CachedNetworkImageProvider(
+        page.url,
+        headers: page.headers,
+        maxWidth: width,
+      ),
+    );
   }
 
   /// Direction/Fit/Background/Filter/Comfort, live-applied — mirrors the
