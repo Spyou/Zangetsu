@@ -47,6 +47,9 @@ class _SweepSrc implements SourceRepository {
   bool hasSource(String sourceId) => true;
 
   @override
+  Future<bool> ensureSourceLoaded(String sourceId) async => true;
+
+  @override
   Future<List<MediaItem>> search(String q, {String category = 'sub', String? sourceId}) async {
     log.add('search:$sourceId');
     if (sourceId == 'src-a') {

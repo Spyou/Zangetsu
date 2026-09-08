@@ -88,8 +88,13 @@ class _MatchLineState extends State<MatchLine> {
         context: context,
         builder: (ctx) => TvSourcePicker(
           currentId: state.selectedId ?? '',
+          autoSelected: state.auto,
+          onAutoResolve: () async {
+            await _cubit.selectAuto();
+            if (mounted) _refreshAfterMatchChange();
+          },
           onPick: (id) async {
-            if (id == state.selectedId) return;
+            if (!state.auto && id == state.selectedId) return;
             await _cubit.selectSource(id);
             if (mounted) _refreshAfterMatchChange();
           },
@@ -108,8 +113,13 @@ class _MatchLineState extends State<MatchLine> {
     ).showPicker(
       context,
       trailingBuilder: (id) => _rowActions(context, id),
+      autoSelected: state.auto,
+      onAutoResolve: () async {
+        await _cubit.selectAuto();
+        if (mounted) _refreshAfterMatchChange();
+      },
       onPick: (id) async {
-        if (id == state.selectedId) return;
+        if (!state.auto && id == state.selectedId) return;
         await _cubit.selectSource(id);
         if (mounted) _refreshAfterMatchChange();
       },
@@ -321,9 +331,12 @@ class _MatchLineState extends State<MatchLine> {
           // to correct until one is picked.
           final selectedId = state.selectedId;
           // Just the name inside the pill — the shape already reads as a
-          // control, so a "Source:" prefix only crowds it.
+          // control, so a "Source:" prefix only crowds it. Auto Resolve
+          // still names whichever source the last sweep actually matched, so
+          // the row reads the same either way; "Auto Resolve" only appears
+          // inside the picker sheet where the choice is made.
           final label = selectedId == null
-              ? l10n.sourceFallback
+              ? (state.auto ? 'Auto Resolve' : l10n.sourceFallback)
               : sl<SourceRepository>().displayName(selectedId);
           // Sized and filled like _DownloadButton directly above, so Play,
           // Download and Source read as one stack. The row body opens the
@@ -334,6 +347,14 @@ class _MatchLineState extends State<MatchLine> {
               : const EdgeInsets.fromLTRB(16, 10, 16, 0);
           final sourceRow = Row(
             children: [
+              // A dedicated glyph so the pill reads as "this picks your
+              // source" on sight, not just as an oddly-shaped label.
+              Icon(
+                state.auto ? Icons.auto_awesome_rounded : Icons.dns_rounded,
+                size: 16,
+                color: AppColors.textSecondary,
+              ),
+              const SizedBox(width: 6),
               Flexible(
                 child: Text(
                   label,

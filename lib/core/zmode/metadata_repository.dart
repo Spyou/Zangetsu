@@ -266,6 +266,17 @@ class MetadataRepository implements CatalogueRepository {
         ? 'MyAnimeList'
         : 'AniList';
   }
+  
+  String nameForKind(ZKind kind) {
+    if (_isTmdb(kind)) {
+      return _providerPrefs?.video == VideoProvider.simkl ? 'Simkl' : 'TMDB';
+    }
+    return _providerPrefs?.anime == AnimeProvider.mal
+        ? 'MyAnimeList'
+        : 'AniList';
+  }
+  
+  Future<MediaItem?> canonicalFor(MediaItem sourceItem) async => sourceItem;
 
   @override
   void syncSearchCache() {}

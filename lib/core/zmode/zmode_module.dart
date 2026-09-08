@@ -16,6 +16,7 @@ import 'package:flutter/material.dart';
 import '../ui/global_messenger.dart';
 import 'match_store.dart';
 import 'playback_resolver.dart';
+import 'source_order_prefs.dart';
 import 'zmode_source_prefs.dart';
 import 'metadata_repository.dart';
 import 'source_matcher.dart';
@@ -35,11 +36,23 @@ Future<void> registerZangetsuMode(GetIt sl) async {
   final sourcePrefs = await ZSourcePrefs.open();
   sl.registerSingleton<ZSourcePrefs>(sourcePrefs);
 
+  final sourceOrderPrefs = await SourceOrderPrefs.open();
+  sl.registerSingleton<SourceOrderPrefs>(sourceOrderPrefs);
+
+  // Shared by both the matcher (Detail's per-title resolve) and the playback
+  // resolver (via MetadataRepository below) so Auto Resolve sweeps — and
+  // playback's own health/pin tie-breaks — agree on the user's priority order.
+  List<({String id, String name})> orderedCandidates(ZKind kind) =>
+      applySourceOrder(
+        candidatesForKind(sl<SourceRepository>(), kind),
+        sourceOrderPrefs.get(kind),
+      );
+
   sl.registerSingleton<SourceMatcher>(SourceMatcher(
     sources: sl<SourceRepository>(),
     store: matchStore,
     prefs: sourcePrefs,
-    candidates: (kind) => candidatesForKind(sl<SourceRepository>(), kind),
+    candidates: orderedCandidates,
   ));
 
   final providerPrefs = await MetadataProviderPrefs.open();
@@ -51,15 +64,12 @@ Future<void> registerZangetsuMode(GetIt sl) async {
     mal: MalCatalogue(sl<Dio>()),
     simkl: SimklCatalogue(sl<Dio>()),
     providerPrefs: providerPrefs,
-    onProviderFallback: (name) => rootMessengerKey.currentState
-      ?..clearSnackBars()
-      ..showSnackBar(SnackBar(content: Text('Showing results from $name'))),
     sources: sl<SourceRepository>(),
     matcher: sl<SourceMatcher>(),
     matchStore: matchStore,
     sourcePrefs: sourcePrefs,
     health: sl<SourceHealthStore>(),
-    candidates: (kind) => candidatesForKind(sl<SourceRepository>(), kind),
+    candidates: orderedCandidates,
     browseKind: () => browseKindFor(
       sl<ContentModeCubit>().state,
       ZModePrefs.streamKind,

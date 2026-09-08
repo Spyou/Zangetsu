@@ -64,6 +64,7 @@ class SearchScreen extends StatefulWidget {
     this.focusSignal,
     this.forceSources = false,
     this.forceMode,
+    this.initialFilters,
   });
 
   final String? initialQuery;
@@ -92,6 +93,7 @@ class SearchScreen extends StatefulWidget {
   /// not whatever mode Home happens to be in. Null (every other call site)
   /// leaves behaviour unchanged.
   final ContentMode? forceMode;
+  final MetaFilters? initialFilters;
 
   @override
   State<SearchScreen> createState() => _SearchScreenState();
@@ -146,6 +148,7 @@ class _SearchScreenState extends State<SearchScreen> {
               showBack: widget.showBack,
               focusSignal: widget.focusSignal,
               scope: scope,
+              initialFilters: widget.initialFilters,
               forceMode: widget.forceMode,
             ),
     );
@@ -175,6 +178,7 @@ class _SearchView extends StatefulWidget {
     this.focusSignal,
     required this.scope,
     this.forceMode,
+    this.initialFilters,
   });
 
   final String? initialQuery;
@@ -182,6 +186,7 @@ class _SearchView extends StatefulWidget {
   final ValueListenable<int>? focusSignal;
   final SearchScope scope;
   final ContentMode? forceMode;
+  final MetaFilters? initialFilters;
 
   @override
   State<_SearchView> createState() => _SearchViewState();
@@ -247,6 +252,7 @@ class _SearchViewState extends State<_SearchView>
   void initState() {
     super.initState();
     _controller = TextEditingController(text: widget.initialQuery ?? '');
+    _metaFilters = widget.initialFilters ?? const MetaFilters();
     widget.focusSignal?.addListener(_onFocusSignal);
   }
 

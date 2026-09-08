@@ -182,9 +182,14 @@ class PlaybackResolver {
         }
 
         _winners[zmEpisodeUrl] = (episodeUrl: srcEp.url, sourceId: match.sourceId);
+        // Per-title only — remembered for THIS show's own re-ranking (see
+        // `_orderedCandidates`). This must never write the kind-wide
+        // `ZSourcePrefs` default: that's an explicit, rare user choice (the
+        // "source went quiet" recovery picker), and a single successful
+        // Auto Resolve play silently promoting itself to play EVERY title of
+        // the kind is exactly the bug this design fixes.
         if (!match.pinned) {
           await _store.rememberLastPlayed(p.show, match.sourceId);
-          await _prefs.set(p.show.kind, match.sourceId);
         }
         debugPrint(
           '[playback] $zmEpisodeUrl -> ${match.sourceId} (${streams.length} streams)',

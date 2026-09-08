@@ -780,14 +780,18 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
                                 ),
                               ),
                             ),
-                            const SizedBox(height: 10),
-                            // if (ZmodeIds.isZ(widget.item.url))
-                            //   MatchLine(
-                            //     canonical: ZmodeIds.parseShow(widget.item.url)!,
-                            //     title: detail.title,
-                            //     altTitle: detail.englishTitle,
-                            //     malId: detail.malId,
-                            //   ),
+                            // Z Mode: matched source + "Wrong title?" — lets
+                            // the user override the resolved source, same as
+                            // the phone view.
+                            if (ZmodeIds.isZ(widget.item.url))
+                              MatchLine(
+                                canonical: ZmodeIds.parseShow(
+                                  widget.item.url,
+                                )!,
+                                title: detail.title,
+                                altTitle: detail.englishTitle,
+                                malId: detail.malId,
+                              ),
                             const SizedBox(height: 10),
                             // Episode search — under Play/Download (tester
                             // request). Opens the type-dialog; the active

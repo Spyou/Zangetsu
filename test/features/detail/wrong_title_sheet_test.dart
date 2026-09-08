@@ -47,6 +47,8 @@ class _Src implements SourceRepository {
   @override
   bool hasSource(String sourceId) => bySource.containsKey(sourceId);
   @override
+  Future<bool> ensureSourceLoaded(String sourceId) async => true;
+  @override
   String displayName(String id) => _name(id);
   @override
   Future<List<MediaItem>> search(String q, {String category = 'sub', String? sourceId}) async =>
@@ -187,7 +189,10 @@ void main() {
     await t.pumpAndSettle();
 
     expect(find.textContaining('HiAnime'), findsOneWidget);
-    expect(prefs.get(fma.kind), 'ani:2');
+    // Pinned to THIS title only — the kind default is untouched, so no other
+    // title of this kind is silently re-pointed at HiAnime.
+    expect(prefs.get(fma.kind), isNull);
+    expect(sl<MatchStore>().pinnedFor(fma)?.sourceId, 'ani:2');
     // AllAnime's own match is untouched by switching to HiAnime.
     expect(sl<MatchStore>().get(fma, 'ani:1')?.sourceId, 'ani:1');
   });
@@ -400,7 +405,8 @@ void main() {
   });
 
   testWidgets(
-      'a source that has nothing is still named, and Wrong title? still offered',
+      'nothing matched shows Auto Resolve; picking a source names it even '
+      'when that source has nothing',
       (t) async {
     // Neither source has anything resembling this title.
     await sl.reset();
@@ -427,21 +433,34 @@ void main() {
         harness(const MatchLine(canonical: fma, title: 'nothing like it')));
     await t.pumpAndSettle();
 
+    // Auto Resolve is the true default until a source is chosen for THIS
+    // title — nothing matched, so nothing is named yet, and there is
+    // nothing for Wrong title? to correct until one is picked.
+    expect(find.textContaining('Auto Resolve'), findsOneWidget);
+    expect(find.text('Wrong title?'), findsNothing);
+
+    await t.tap(find.textContaining('Auto Resolve'));
+    await t.pumpAndSettle();
+    // The shared picker has no title row — its tabs identify it.
+    expect(find.text('Movies/Series'), findsOneWidget);
+    expect(find.textContaining('AllAnime'), findsOneWidget);
+    expect(find.textContaining('HiAnime'), findsOneWidget);
+
+    await t.runAsync(() async {
+      await t.tap(find.textContaining('AllAnime'));
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    });
+    await t.pumpAndSettle();
+
     // The source is a choice, not a search result, so the row names it even
     // though it turned out to have nothing — and says so underneath, with
-    // Wrong title? there to correct the match.
+    // Wrong title? there to correct the match. It is pinned to THIS title
+    // only — the kind default is untouched.
     expect(find.textContaining('AllAnime'), findsWidgets);
-    expect(find.text('No source has this yet'), findsNothing);
     expect(find.text('Wrong title?'), findsOneWidget);
     expect(find.text('No episodes available from this source'), findsOneWidget);
-
-    await t.tap(find.textContaining('AllAnime').first);
-    await t.pumpAndSettle();
-    // The shared picker has no title row — its tabs identify it. Both sources
-    // are offered; AllAnime appears twice now (the pill names it too).
-    expect(find.text('Movies/Series'), findsOneWidget);
-    expect(find.textContaining('AllAnime'), findsWidgets);
-    expect(find.textContaining('HiAnime'), findsOneWidget);
+    expect(prefs.get(fma.kind), isNull);
+    expect(sl<MatchStore>().pinnedFor(fma), isNull);
   });
 
   testWidgets('no installed source hides the match row', (t) async {

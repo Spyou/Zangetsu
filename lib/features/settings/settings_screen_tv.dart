@@ -37,6 +37,7 @@ import 'connections_screen_tv.dart';
 import 'discord_settings_screen.dart';
 import 'donate_screen.dart';
 import 'settings_screen.dart';
+import 'source_priority_screen.dart';
 // import '../shell/tv_source_picker.dart';
 
 /// TV Settings list: same sections as the phone [SettingsScreen]. Tappable
@@ -320,6 +321,12 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
                         title: l10n.sourceHealth,
                         subtitle: l10n.sourceHealthSubtitle,
                         onTap: () => _push(const SourceHealthScreen()),
+                      ),
+                      SettingsTile(
+                        icon: Icons.low_priority_rounded,
+                        title: 'Source Priority',
+                        subtitle: 'Order Auto Resolve tries sources in',
+                        onTap: () => _push(const SourcePriorityScreen()),
                       ),
                       if (Platform.isAndroid) ...[
                         SettingsTile(

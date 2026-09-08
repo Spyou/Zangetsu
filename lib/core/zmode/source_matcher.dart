@@ -47,10 +47,12 @@ class SourceMatcher {
   final ZSourcePrefs _prefs;
   final List<({String id, String name})> Function(ZKind) _candidates;
 
-  /// The remembered match for the currently selected source, without
-  /// searching. Null when no source is selected, or nothing is stored for it.
+  /// The remembered match for this title's own source (a pin, else the kind
+  /// default), without searching. Null when nothing is known yet — including
+  /// when Auto Resolve hasn't swept this title before, even if some installed
+  /// source would genuinely match it.
   SourceMatch? saved(ZCanonical c) {
-    final sel = selectedFor(c.kind);
+    final sel = sourceForTitle(c);
     return sel == null ? null : _store.get(c, sel);
   }
 
@@ -219,22 +221,46 @@ class SourceMatcher {
     String? altTitle,
     int? malId,
   }) async {
-    final selId = selectedFor(c.kind);
     final candidates = _candidates(c.kind);
+    // A per-title pin ("Wrong title?" or the picker) is a firm choice — it
+    // wins over everything else, including an explicit kind default.
+    final pinned = pinnedSource(c);
+    if (pinned != null) {
+      debugPrint(
+        '[source-matcher] _resolve · kind=${c.kind} title="$title" '
+        'pinned=$pinned',
+      );
+      return matchOn(c, pinned, title: title, altTitle: altTitle, malId: malId);
+    }
+    // An explicit kind-wide default (set via the "source went quiet" recovery
+    // picker) is honoured as-is — a genuine miss there is reported, not
+    // silently papered over by trying another source.
+    final selId = _prefs.get(c.kind);
+    if (selId != null && candidates.any((s) => s.id == selId)) {
+      debugPrint(
+        '[source-matcher] _resolve · kind=${c.kind} title="$title" '
+        'kind default=$selId',
+      );
+      return matchOn(c, selId, title: title, altTitle: altTitle, malId: malId);
+    }
+    // Auto Resolve — the true default until the user pins a title or sets a
+    // kind default by hand: sweep every candidate, in the user's saved
+    // priority order, and take the first genuine hit.
     debugPrint(
       '[source-matcher] _resolve · kind=${c.kind} title="$title" '
-      'selected=$selId candidates=${candidates.length} '
+      'AUTO — sweeping ${candidates.length} candidates '
       '(${candidates.map((s) => s.id).take(5).join(",")}'
       '${candidates.length > 5 ? "…" : ""})',
     );
-    if (selId == null) {
-      debugPrint(
-        '[source-matcher] _resolve → null (no source selected for '
-        'kind=${c.kind})',
-      );
-      return null; // nothing installed that can play this
+    for (final s in candidates) {
+      final m = await matchOn(c, s.id, title: title, altTitle: altTitle, malId: malId);
+      if (m != null) {
+        debugPrint('[source-matcher] _resolve · AUTO → ${s.id}');
+        return m;
+      }
     }
-    return matchOn(c, selId, title: title, altTitle: altTitle, malId: malId);
+    debugPrint('[source-matcher] _resolve · AUTO → null (no candidate matched)');
+    return null;
   }
 
   /// Which [sourceId] has a pinned match for [c], if any.
@@ -245,23 +271,13 @@ class SourceMatcher {
     return null;
   }
 
-  /// The source that plays [kind]: the user's remembered pick when it is still
-  /// installed, else the first candidate. Null only when nothing installed can
-  /// play this kind at all.
-  ///
-  /// Synchronous and never searches, which is the point — the Detail screen
-  /// reads this to name its source on the first frame. This used to be derived
-  /// by searching every installed source in turn and taking whichever had the
-  /// title, so the row could name nothing until that finished, and could then
-  /// change under the user. One declared source per kind means there is
-  /// nothing to wait for and nothing to disagree with; a source that turns out
-  /// not to have a title now says so instead of being silently replaced.
+  /// The explicit kind default, when one has been set and is still installed
+  /// — null otherwise (including when nothing has ever been chosen, which is
+  /// what makes Auto Resolve the true default). Synchronous and never
+  /// searches, so the Detail screen can name a fixed source on the first
+  /// frame; it says nothing about what Auto Resolve itself will land on.
   String? selectedFor(ZKind kind) {
     final list = _candidates(kind);
-    if (list.isEmpty) {
-      debugPrint('[source-matcher] selectedFor($kind) → null (no candidates)');
-      return null;
-    }
     final saved = _prefs.get(kind);
     if (saved != null && list.any((s) => s.id == saved)) {
       debugPrint(
@@ -269,16 +285,66 @@ class SourceMatcher {
       );
       return saved;
     }
-    debugPrint(
-      '[source-matcher] selectedFor($kind) → "${list.first.id}" '
-      '(first of ${list.length})',
-    );
-    return list.first.id;
+    debugPrint('[source-matcher] selectedFor($kind) → null (no kind default)');
+    return null;
   }
+  
+  /// This title's own source: a per-title pin first, else the explicit kind
+  /// default, else null — meaning Auto Resolve is in effect for it.
+  String? sourceForTitle(ZCanonical c) =>
+      pinnedSource(c) ?? selectedFor(c.kind);
 
-  /// Make [sourceId] the source for [kind], for every title of that kind.
+  /// Make [sourceId] the explicit default for [kind], for every title of that
+  /// kind that isn't itself pinned to something else.
   Future<void> selectSource(ZKind kind, String sourceId) =>
       _prefs.set(kind, sourceId);
+
+  /// The "source went quiet" recovery picker: clears this title's own pin (a
+  /// stale pin would otherwise keep pointing at the dead source) and sets
+  /// [sourceId] as the kind's new explicit default.
+  Future<void> chooseSource(ZCanonical c, String sourceId) async {
+    await clearTitlePin(c);
+    await selectSource(c.kind, sourceId);
+  }
+
+  /// The user picked [sourceId] for THIS title only, from the source picker —
+  /// searches it fresh (or reuses a cached match) and pins whatever it finds,
+  /// without touching any other title of this kind or the kind default. Null
+  /// when [sourceId] genuinely doesn't have this title — nothing is pinned,
+  /// so the next resolve falls back to the kind default / Auto Resolve.
+  Future<SourceMatch?> pinTitleToSource(
+    ZCanonical c,
+    String sourceId, {
+    required String title,
+    String? altTitle,
+    int? malId,
+  }) async {
+    final m = await matchOn(c, sourceId, title: title, altTitle: altTitle, malId: malId);
+    if (m == null) return null;
+    final pin = SourceMatch(
+      sourceId: m.sourceId,
+      showUrl: m.showUrl,
+      showId: m.showId,
+      showTitle: m.showTitle,
+      pinned: true,
+    );
+    await _store.pin(c, pin);
+    return pin;
+  }
+
+  /// Drop this title's own pin — it goes back to the kind default / Auto
+  /// Resolve, exactly like a title that was never pinned.
+  Future<void> clearTitlePin(ZCanonical c) => _store.unpinAll(c);
+
+  /// The picker's "Auto Resolve": drops this title's own pin AND the kind's
+  /// explicit default, so this title (and every other unpinned title of the
+  /// kind) genuinely sweeps again. A per-title pin alone isn't enough here —
+  /// a kind default set earlier (e.g. via [chooseSource]) would otherwise
+  /// keep outranking Auto Resolve and the picker would never actually show it.
+  Future<void> clearAuto(ZCanonical c) async {
+    await clearTitlePin(c);
+    await _prefs.clear(c.kind);
+  }
 
   /// The Cloudflare-challenge url for a [kind] candidate that got flagged
   /// mid-search (see [CfSolveNeeded]), or null. [resolve] returning null
@@ -288,8 +354,10 @@ class SourceMatcher {
   String? cfBlockedUrl(ZKind kind) =>
       CfSolveNeeded.urlForAny(_candidates(kind).map((s) => s.id));
 
-  /// The user picked [picked] by hand. Pinned for its source, and that
-  /// source becomes the selected one for this title.
+  /// The user picked [picked] by hand from "Wrong title?". Pinned for its
+  /// source (this title only), and that source ALSO becomes the kind's
+  /// explicit default — a correction this deliberate is trusted for titles
+  /// the user hasn't chosen anything for yet, not just this one.
   Future<SourceMatch> pinManual(ZCanonical c, MediaItem picked) async {
     final m = SourceMatch(
       sourceId: picked.sourceId,
@@ -303,6 +371,22 @@ class SourceMatcher {
     // concluded — drop any remembered miss so it is never skipped again.
     await _store.forgetMiss(c, picked.sourceId);
     await _prefs.set(c.kind, picked.sourceId);
+    return m;
+  }
+  
+  /// Browsing a source directly and opening a show there: a choice about
+  /// THIS show, so unlike [pinManual] the kind default is left alone — one
+  /// tap here must never silently re-point every other title of the kind.
+  Future<SourceMatch> pinForTitle(ZCanonical c, MediaItem picked) async {
+    final m = SourceMatch(
+      sourceId: picked.sourceId,
+      showUrl: picked.url,
+      showId: picked.id,
+      showTitle: picked.title,
+      pinned: true,
+    );
+    await _store.pin(c, m);
+    await _store.forgetMiss(c, picked.sourceId);
     return m;
   }
 }

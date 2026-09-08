@@ -70,6 +70,7 @@ import 'tracker_settings_screen.dart';
 import '../sources/source_health_screen.dart';
 import '../sources/sources_screen.dart';
 import '../sources/zangetsu_sources_screen.dart';
+import 'source_priority_screen.dart';
 import 'player_controls_screen.dart';
 import 'settings_screen_tv.dart';
 import 'settings_search_index.dart';
@@ -791,6 +792,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
         subtitle: l10n.sourceHealthSubtitle,
         keywords: 'source health test working dead status check',
         onTap: () => _push(const SourceHealthScreen()),
+      ),
+      _SettingsEntry(
+        section: SettingsSection.sources,
+        icon: Icons.low_priority_rounded,
+        title: 'Source Priority',
+        subtitle: 'Order Auto Resolve tries sources in',
+        keywords: 'source priority order auto resolve sweep anime movies tv',
+        onTap: () => _push(const SourcePriorityScreen()),
       ),
       if (Platform.isAndroid)
         _SettingsEntry(

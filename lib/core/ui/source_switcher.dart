@@ -485,6 +485,8 @@ class SourceSwitcher extends StatelessWidget {
     BuildContext context, {
     Widget? Function(String id)? trailingBuilder,
     void Function(String id)? onPick,
+    VoidCallback? onAutoResolve,
+    bool autoSelected = false,
   }) {
     final mode = sl<ContentModeCubit>().state;
     final b = filterBucketsForMode(_buckets(), mode);
@@ -504,8 +506,9 @@ class SourceSwitcher extends StatelessWidget {
     // Search only earns its space once there's a list worth filtering.
     final showSearch = total > 6;
     final searchH = showSearch ? 56 : 0;
+    final autoRowH = onAutoResolve != null ? 60 : 0;
     final sheetH =
-        (24 + 48 + searchH + (total + headers) * 52 + 24)
+        (24 + 48 + searchH + autoRowH + (total + headers) * 52 + 24)
             .clamp(240.0, screenH * 0.85);
 
     showModalBottomSheet<void>(
@@ -523,6 +526,13 @@ class SourceSwitcher extends StatelessWidget {
         showSearch: showSearch,
         mode: mode,
         onInstallSources: onInstallSources,
+        autoSelected: autoSelected,
+        onAutoResolve: onAutoResolve == null
+            ? null
+            : () {
+                Navigator.of(ctx).pop();
+                onAutoResolve();
+              },
         onChoose: (id) {
           Navigator.of(ctx).pop();
           // onPick lets a caller (Z Mode's per-title selector) consume the
@@ -556,6 +566,8 @@ class _SourcePickerSheet extends StatefulWidget {
     required this.onChoose,
     this.onInstallSources,
     this.trailingBuilder,
+    this.onAutoResolve,
+    this.autoSelected = false,
   });
 
   final SourceBuckets buckets;
@@ -566,6 +578,13 @@ class _SourcePickerSheet extends StatefulWidget {
   final void Function(String id) onChoose;
   final VoidCallback? onInstallSources;
   final Widget? Function(String id)? trailingBuilder;
+
+  /// When set, an "Auto Resolve" row is shown above the tabs — Z Mode's
+  /// per-title selector only.
+  final VoidCallback? onAutoResolve;
+
+  /// True when Auto Resolve is the active pick for this title.
+  final bool autoSelected;
 
   @override
   State<_SourcePickerSheet> createState() => _SourcePickerSheetState();
@@ -589,7 +608,7 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
   Widget _rowFor(({String id, String label, String? repo}) src) => _SourceRow(
         label: src.label,
         repo: src.repo,
-        isActive: src.id == widget.currentId,
+        isActive: !widget.autoSelected && src.id == widget.currentId,
         isPinned: PinnedSources.isPinned(src.id),
         trailing: widget.trailingBuilder?.call(src.id),
         onTap: () => widget.onChoose(src.id),
@@ -760,6 +779,40 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
+              if (widget.onAutoResolve != null) ...[
+                InkWell(
+                  onTap: widget.onAutoResolve,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
+                    child: Row(
+                      children: [
+                        Icon(Icons.auto_awesome_rounded,
+                            color: AppColors.accent, size: 20),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text('Auto Resolve', style: AppText.headline),
+                              Text(
+                                'Try every installed source until one matches',
+                                style: AppText.caption.copyWith(
+                                  color: AppColors.textTertiary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (widget.autoSelected)
+                          Icon(Icons.check,
+                              color: AppColors.accent, size: 20),
+                      ],
+                    ),
+                  ),
+                ),
+                const Divider(height: 1, color: AppColors.hairline),
+              ],
               if (widget.showSearch)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),

@@ -45,6 +45,8 @@ class _Src implements SourceRepository {
   @override
   bool hasSource(String sourceId) => bySource.containsKey(sourceId);
   @override
+  Future<bool> ensureSourceLoaded(String sourceId) async => true;
+  @override
   String displayName(String id) => _name(id);
   @override
   Future<List<MediaItem>> search(String q, {String category = 'sub', String? sourceId}) async =>

@@ -30,6 +30,8 @@ class _Src implements SourceRepository {
   @override
   bool hasSource(String sourceId) => bySource.containsKey(sourceId);
   @override
+  Future<bool> ensureSourceLoaded(String sourceId) async => true;
+  @override
   Future<List<MediaItem>> search(String q, {String category = 'sub', String? sourceId}) async =>
       bySource[sourceId] ?? const [];
 }
@@ -68,29 +70,29 @@ void main() {
         title: 'Fullmetal Alchemist: Brotherhood',
       );
 
-  test('the source is still named when it turns out not to have the title',
+  test('Auto Resolve reports no match when nothing installed has the title',
       () async {
     final c = build(_Src({'allanime': [], 'hianime': []}));
     await c.load();
-    // The source is a choice, not a search result, so it is named either way.
-    // Only the MATCH is absent, which is what drives the empty state.
-    expect(c.state.selectedId, 'allanime');
+    expect(c.state.auto, isTrue);
+    expect(c.state.selectedId, isNull);
     expect(c.state.match, isNull);
     expect(c.state.loading, isFalse);
   });
 
-  test('load matches against the selected source, not whoever has the title',
+  test('Auto Resolve sweeps every candidate and lands on whoever has it',
       () async {
-    // hianime has it, allanime does not — but allanime is the selection, so
-    // there is no match. It is not silently swapped for the source that has it.
+    // allanime doesn't have it, hianime does — Auto Resolve is not locked to
+    // the first candidate, it keeps trying until one genuinely matches.
     final c = build(_Src({'hianime': [_hit('hianime', 'Fullmetal Alchemist Brotherhood')]}));
     await c.load();
-    expect(c.state.selectedId, 'allanime');
-    expect(c.state.match, isNull);
+    expect(c.state.auto, isTrue);
+    expect(c.state.selectedId, 'hianime');
+    expect(c.state.match?.sourceId, 'hianime');
     expect(c.state.loading, isFalse);
   });
 
-  test('switching source updates the state to the new source, independently matched', () async {
+  test('switching source pins THIS TITLE only, independently matched', () async {
     final c = build(_Src({
       'allanime': [_hit('allanime', 'Fullmetal Alchemist Brotherhood')],
       'hianime': [_hit('hianime', 'Fullmetal Alchemist Brotherhood')],
@@ -100,7 +102,11 @@ void main() {
     await c.selectSource('hianime');
     expect(c.state.selectedId, 'hianime');
     expect(c.state.match?.sourceId, 'hianime');
-    expect(prefs.get(fma.kind), 'hianime');
+    expect(c.state.auto, isFalse);
+    // A per-title pin, not a kind-wide default — no other title of this kind
+    // is affected.
+    expect(prefs.get(fma.kind), isNull);
+    expect(store.pinnedFor(fma)?.sourceId, 'hianime');
     // Both sources kept their own match.
     expect(store.get(fma, 'allanime')?.sourceId, 'allanime');
     expect(store.get(fma, 'hianime')?.sourceId, 'hianime');
@@ -116,6 +122,21 @@ void main() {
     expect(c.state.selectedId, 'hianime');
     expect(c.state.match, isNull);
     expect(c.state.loading, isFalse);
+    // Nothing to pin — the title falls back to Auto Resolve again.
+    expect(store.pinnedFor(fma), isNull);
+  });
+
+  test('selectAuto clears a title pin and goes back to sweeping', () async {
+    final c = build(_Src({
+      'allanime': [_hit('allanime', 'Fullmetal Alchemist Brotherhood')],
+      'hianime': [_hit('hianime', 'Fullmetal Alchemist Brotherhood')],
+    }));
+    await c.load();
+    await c.selectSource('hianime');
+    expect(c.state.auto, isFalse);
+    await c.selectAuto();
+    expect(c.state.auto, isTrue);
+    expect(store.pinnedFor(fma), isNull);
   });
 
   test('applyPinned reflects a "Wrong title?" correction without a re-search', () async {
@@ -129,7 +150,7 @@ void main() {
     expect(c.state.loading, isFalse);
   });
 
-  test('a remembered title names its source before load() is even called',
+  test('a remembered kind default names its source before load() is even called',
       () async {
     // What the Detail screen sees on its first frame. Both reads are on disk
     // already, so holding the row blank until the sweep finished was
@@ -143,14 +164,16 @@ void main() {
     final c = build(_Src({}));
     expect(c.state.selectedId, 'hianime');
     expect(c.state.match?.showTitle, 'FMA');
+    expect(c.state.auto, isFalse);
   });
 
-  test('a title never opened before is still named on the first frame',
+  test('a title never opened before is Auto Resolve, not a fixed source',
       () async {
     // Nothing stored for this title OR this kind, and no load() yet — the
-    // first installed candidate is the source, so the row never blanks.
+    // true default is Auto Resolve, not silently pinning the first candidate.
     final c = build(_Src({}));
-    expect(c.state.selectedId, 'allanime');
+    expect(c.state.auto, isTrue);
+    expect(c.state.selectedId, isNull);
     expect(c.state.match, isNull);
   });
 

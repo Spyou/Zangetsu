@@ -15,6 +15,7 @@ import '../../../core/models/provider_info.dart';
 import '../../../core/playback/title_prefs.dart';
 import '../../../core/repository/catalogue_repository.dart';
 import '../../../core/zmode/zmode_ids.dart';
+import '../../../core/zmode/metadata_provider_prefs.dart';
 
 export '../../../core/models/episode_title.dart' show cleanTitle;
 
@@ -40,6 +41,7 @@ class DetailState extends Equatable {
     this.relations = const [],
     this.cloudflareUrl,
     this.episodesLoading = false,
+    this.extrasLoading = false,
   });
 
   final DetailStatus status;
@@ -49,6 +51,7 @@ class DetailState extends Equatable {
   /// loads (AniList for anime, TMDB for movie/TV). Empty until resolved.
   final List<CastMember> cast;
   final List<MediaRelation> relations;
+  final bool extrasLoading;
 
   /// 'sub' | 'dub'. Drives the Sub/Dub toggle and the player `category`.
   final String category;
@@ -80,6 +83,7 @@ class DetailState extends Equatable {
     String? cloudflareUrl,
     bool clearCloudflareUrl = false,
     bool? episodesLoading,
+    bool? extrasLoading,
   }) => DetailState(
     status: status ?? this.status,
     detail: detail ?? this.detail,
@@ -93,6 +97,7 @@ class DetailState extends Equatable {
         ? null
         : (cloudflareUrl ?? this.cloudflareUrl),
     episodesLoading: episodesLoading ?? this.episodesLoading,
+    extrasLoading: extrasLoading ?? this.extrasLoading,
   );
 
   @override
@@ -118,6 +123,7 @@ class DetailCubit extends Cubit<DetailState> {
     TitlePrefsStore? prefs,
     int? seedMalId,
     ProviderType? seedType,
+    PreferredProvider? prefer,
   }) : _repo = repo,
        _url = url,
        _sourceId = sourceId,

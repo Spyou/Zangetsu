@@ -113,6 +113,8 @@ class TvPlayerActivity : Activity() {
         const val EXTRA_AUTO_SKIP_RECAP = "autoSkipRecap"
         const val EXTRA_AUTO_SKIP_FILLER = "autoSkipFiller"
         const val EXTRA_FILLER_FLAGS = "fillerFlags"
+        const val ENABLE_SEEK_BUTTONS = "enableSeekButtons"
+        const val SEEK_BUTTON_DURATION = "seekButtonDuration"
         // Result extras read back in MainActivity.onActivityResult.
         const val RESULT_POSITION = "positionMs"
         const val RESULT_DURATION = "durationMs"
@@ -163,6 +165,8 @@ class TvPlayerActivity : Activity() {
     private var currentDrmKey: String? = null
     private val currentSubs = mutableListOf<MediaItem.SubtitleConfiguration>()
     private var subtitleApiKeySet = false
+    private var seekButtonsEnabled = true
+    private var seekButtonDurationMs = 10_000L
     private var switching = false // guards against overlapping episode switches
 
     private data class Skip(val start: Long, val end: Long, val type: String)
@@ -301,6 +305,9 @@ class TvPlayerActivity : Activity() {
         autoSkipRecap = intent.getBooleanExtra(EXTRA_AUTO_SKIP_RECAP, false)
         autoSkipFiller = intent.getBooleanExtra(EXTRA_AUTO_SKIP_FILLER, false)
         fillerFlags = intent.getBooleanArrayExtra(EXTRA_FILLER_FLAGS) ?: BooleanArray(0)
+        seekButtonsEnabled = intent.getBooleanExtra(ENABLE_SEEK_BUTTONS, true)
+        seekButtonDurationMs = intent.getLongExtra(SEEK_BUTTON_DURATION, 10L) * 1000L
+            .coerceAtLeast(1_000L)
         subScale = intent.getFloatExtra(EXTRA_SUB_SCALE, 1f)
         subFg = intent.getIntExtra(EXTRA_SUB_FG, android.graphics.Color.WHITE)
         subBgColor = intent.getIntExtra(EXTRA_SUB_BG_COLOR, android.graphics.Color.TRANSPARENT)
@@ -2296,12 +2303,13 @@ class TvPlayerActivity : Activity() {
     /** Accelerating step: single taps jump 10s; holding ◀▶ ramps to 30s then 60s
      *  so you can scrub across a long video quickly (repeatCount rises while held). */
     private fun seekStep(repeat: Int): Long = when {
-        repeat < 3 -> 10_000L
-        repeat < 10 -> 30_000L
-        else -> 60_000L
+        repeat < 3 -> seekButtonDurationMs
+        repeat < 10 -> seekButtonDurationMs * 3
+        else -> seekButtonDurationMs * 6
     }
 
     private fun seekBy(deltaMs: Long) {
+        if (!seekButtonsEnabled) return
         val p = player ?: return
         val dur = if (p.duration > 0) p.duration else Long.MAX_VALUE
         val base = if (seekTarget >= 0) seekTarget else p.currentPosition

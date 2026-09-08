@@ -13,13 +13,15 @@ class SourceSelectState {
     this.match,
     this.loading = false,
     this.resolved = false,
+    this.auto = false,
   });
 
   /// The installed sources valid for this title's kind.
   final List<({String id, String name})> sources;
 
   /// Which of [sources] is preferred for this kind. Set synchronously from
-  /// [ZSourcePrefs] — not from a live search.
+  /// [ZSourcePrefs] — not from a live search. While [auto] is true this is
+  /// whichever candidate the last sweep actually matched, not a fixed pick.
   final String? selectedId;
 
   /// The selected source's remembered match, when [resolved] is true.
@@ -33,12 +35,18 @@ class SourceSelectState {
   /// Playback still sweeps all sources at Play time regardless.
   final bool resolved;
 
+  /// True when this kind is set to Auto Resolve — [selectedId] names whichever
+  /// candidate last matched, not a fixed choice. A per-title pin still wins
+  /// over this (see [SourceMatcher]), in which case this is false.
+  final bool auto;
+
   SourceSelectState copyWith({
     List<({String id, String name})>? sources,
     String? selectedId,
     SourceMatch? match,
     bool? loading,
     bool? resolved,
+    bool? auto,
   }) =>
       SourceSelectState(
         sources: sources ?? this.sources,
@@ -46,12 +54,14 @@ class SourceSelectState {
         match: match ?? this.match,
         loading: loading ?? this.loading,
         resolved: resolved ?? this.resolved,
+        auto: auto ?? this.auto,
       );
 }
 
-/// Backs the Detail screen's preferred-playback-source row: shows the global
-/// per-kind pick and optional match status. Playback sweeps all sources at
-/// tap time; this row is for preference and "Wrong title?" corrections.
+/// Backs the Detail screen's per-title source row: names whichever source
+/// this title actually plays through — a pin on this title, else the kind
+/// default, else Auto Resolve — and its match status. Picking a source here
+/// pins it to THIS title only; it never changes any other title's source.
 class SourceSelectCubit extends Cubit<SourceSelectState> {
   SourceSelectCubit({
     required MatchStore store,
@@ -78,11 +88,27 @@ class SourceSelectCubit extends Cubit<SourceSelectState> {
     ZCanonical canonical,
     List<({String id, String name})> sources,
   ) {
-    final selected = matcher.selectedFor(canonical.kind);
-    final match =
-        selected == null ? null : store.get(canonical, selected);
-    final resolved = selected != null &&
-        (match != null || store.missedRecently(canonical, selected));
+    final selected = matcher.sourceForTitle(canonical);
+    if (selected == null) {
+      // Auto Resolve — read whichever candidate's cache already has this
+      // title, in priority order, without a network sweep on this frame.
+      for (final s in sources) {
+        final m = store.get(canonical, s.id);
+        if (m != null) {
+          return SourceSelectState(
+            sources: sources,
+            selectedId: s.id,
+            match: m,
+            loading: false,
+            resolved: true,
+            auto: true,
+          );
+        }
+      }
+      return SourceSelectState(sources: sources, loading: false, auto: true);
+    }
+    final match = store.get(canonical, selected);
+    final resolved = match != null || store.missedRecently(canonical, selected);
     return SourceSelectState(
       sources: sources,
       selectedId: selected,
@@ -107,7 +133,11 @@ class SourceSelectCubit extends Cubit<SourceSelectState> {
         sources.every((s) => state.sources.any((o) => o.id == s.id))) {
       return;
     }
-    final selected = _matcher.selectedFor(_canonical.kind);
+    final selectedFromMatcher = _matcher.sourceForTitle(_canonical);
+    final auto = selectedFromMatcher == null;
+    // Auto keeps whatever the last sweep found — this sync only refreshes
+    // the installed-sources list, it does not re-sweep.
+    final selected = auto ? state.selectedId : selectedFromMatcher;
     final match =
         selected == null ? null : _store.get(_canonical, selected);
     final resolved = state.resolved ||
@@ -119,11 +149,12 @@ class SourceSelectCubit extends Cubit<SourceSelectState> {
       match: match ?? state.match,
       loading: state.loading,
       resolved: resolved,
+      auto: auto,
     ));
   }
 
-  /// Re-search the preferred source (e.g. after Wrong title? closed without
-  /// pinning but changed the global pick). Not called on Detail open — Play
+  /// Re-search this title's source (e.g. after Wrong title? closed without
+  /// pinning but changed the kind default). Not called on Detail open — Play
   /// sweeps all sources; this row only reflects prefs + cached matches.
   Future<void> load() async {
     if (state.sources.isEmpty) return;
@@ -135,15 +166,19 @@ class SourceSelectCubit extends Cubit<SourceSelectState> {
       malId: malId,
     );
     if (isClosed) return;
+    final auto = _matcher.sourceForTitle(_canonical) == null;
     emit(SourceSelectState(
       sources: state.sources,
-      selectedId: _matcher.selectedFor(_canonical.kind),
+      selectedId: auto ? m?.sourceId : _matcher.sourceForTitle(_canonical),
       match: m,
       loading: false,
       resolved: true,
+      auto: auto,
     ));
   }
 
+  /// The user picked [id] for THIS title only — searches it fresh and pins
+  /// whatever it finds, without changing any other title of this kind.
   Future<void> selectSource(String id) async {
     emit(SourceSelectState(
       sources: state.sources,
@@ -151,9 +186,9 @@ class SourceSelectCubit extends Cubit<SourceSelectState> {
       loading: true,
       resolved: state.resolved,
     ));
-    await _matcher.selectSource(_canonical.kind, id);
-    final m = await _matcher.resolve(
+    final m = await _matcher.pinTitleToSource(
       _canonical,
+      id,
       title: _title,
       altTitle: altTitle,
       malId: malId,
@@ -165,6 +200,35 @@ class SourceSelectCubit extends Cubit<SourceSelectState> {
       match: m,
       loading: false,
       resolved: true,
+    ));
+  }
+
+  /// Drop this title's own pin AND the kind's explicit default — genuinely
+  /// back to sweeping, not just to whichever fixed source the kind default
+  /// names.
+  Future<void> selectAuto() async {
+    emit(SourceSelectState(
+      sources: state.sources,
+      selectedId: null,
+      loading: true,
+      resolved: state.resolved,
+      auto: true,
+    ));
+    await _matcher.clearAuto(_canonical);
+    final m = await _matcher.resolve(
+      _canonical,
+      title: _title,
+      altTitle: altTitle,
+      malId: malId,
+    );
+    if (isClosed) return;
+    emit(SourceSelectState(
+      sources: state.sources,
+      selectedId: m?.sourceId,
+      match: m,
+      loading: false,
+      resolved: true,
+      auto: true,
     ));
   }
 
