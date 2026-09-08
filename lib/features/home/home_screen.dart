@@ -927,18 +927,35 @@ class _HomeViewState extends State<_HomeView>
         // slabs that grew with every tracker and had to be filtered per mode
         // to stay a readable width. They live behind [ListsHubScreen] instead,
         // so this row no longer changes shape with what you have connected.
+        // A brand new install has watched nothing and read nothing, so every
+        // card below falls through to its flat fill and the row opens dead.
+        // The catalogue is already loaded underneath it, so borrow from that
+        // instead — one cover per card that has none of its own, handed out
+        // in the order the Row draws them so no two cards land on the same
+        // picture.
+        final spare = _catalogueArt();
+        var next = 0;
+        ({String? cover, Map<String, String>? headers}) orBorrow(
+          ({String? cover, Map<String, String>? headers}) own,
+        ) {
+          if (own.cover?.isNotEmpty ?? false) return own;
+          return next < spare.length ? spare[next++] : own;
+        }
+
         return Padding(
           padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
           child: Row(
             children: [
               for (final m in others) ...[
-                Expanded(child: _modeCard(m)),
+                Expanded(child: _modeCard(m, orBorrow(_modeArt(m)))),
                 const SizedBox(width: 12),
               ],
               // Even halves with Genres beside it. Alone it still fills the
               // row, so the old flex:2 (which existed to beat the switcher
               // cards to a readable width) no longer buys anything.
-              Expanded(child: _hubCard()),
+              Expanded(
+                child: _hubCard(orBorrow(_modeArt(ContentMode.anime))),
+              ),
               // Genres only means something on a catalogue that can actually
               // narrow itself. MAL and Simkl take the parameter and answer
               // with the same unfiltered list, so the card is not offered
@@ -951,7 +968,7 @@ class _HomeViewState extends State<_HomeView>
               if (sl.isRegistered<MetadataRepository>() &&
                   sl<MetadataRepository>().supportsFilters) ...[
                 const SizedBox(width: 12),
-                Expanded(child: _genresCard()),
+                Expanded(child: _genresCard(orBorrow(_genresArt()))),
               ],
             ],
           ),
@@ -960,8 +977,10 @@ class _HomeViewState extends State<_HomeView>
     );
   }
 
-  Widget _modeCard(ContentMode m) {
-    final cover = _modeArt(m);
+  Widget _modeCard(
+    ContentMode m,
+    ({String? cover, Map<String, String>? headers}) art,
+  ) {
     return GestureDetector(
       onTap: _slashing ? null : () => _enterMode(m),
       child: ClipRRect(
@@ -971,19 +990,10 @@ class _HomeViewState extends State<_HomeView>
           child: Stack(
             fit: StackFit.expand,
             children: [
-              // Background: a cover from the user's recent content for this
-              // mode, else a themed gradient when they've nothing there yet.
-              _modeArtBg(cover),
-              // Scrim so the white icon + label stay legible over any art.
-              const DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.centerLeft,
-                    end: Alignment.centerRight,
-                    colors: [Color(0xCC000000), Color(0x55000000)],
-                  ),
-                ),
-              ),
+              // A cover from the user's recent content for this mode, one
+              // borrowed from the catalogue when they have none, and a tint
+              // of the accent only when there is no catalogue either.
+              _cardBg(art, scrim: _neutralScrim, empty: _emptyTint(0.16, 0.09)),
               Center(
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -1020,7 +1030,7 @@ class _HomeViewState extends State<_HomeView>
   /// Same card shell as [_modeCard], but for [ListsHubScreen] — Schedule plus
   /// every connected tracker library. One door rather than a card each, so the
   /// row keeps its shape whether you have no trackers or four.
-  Widget _hubCard() {
+  Widget _hubCard(({String? cover, Map<String, String>? headers}) art) {
     return GestureDetector(
       key: const ValueKey('home_lists_hub_card'),
       onTap: _slashing
@@ -1039,16 +1049,7 @@ class _HomeViewState extends State<_HomeView>
               // movies share [WatchHistory], so this is a show cover whether
               // you are browsing manga or not — and on the flat fallback
               // gradient this card looked dead next to the switchers.
-              _modeArtBg(_modeArt(ContentMode.anime)),
-              const DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.centerLeft,
-                    end: Alignment.centerRight,
-                    colors: [Color(0xCC000000), Color(0x55000000)],
-                  ),
-                ),
-              ),
+              _cardBg(art, scrim: _neutralScrim, empty: _emptyTint(0.22, 0.11)),
               Center(
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -1085,6 +1086,50 @@ class _HomeViewState extends State<_HomeView>
     );
   }
 
+  /// Art for the cards to borrow when the user's own history has none — a
+  /// fresh install, or a mode they have not opened yet.
+  ///
+  /// Comes from the rows already loaded below the cards, so it costs no fetch
+  /// and is guaranteed to be something the active source can actually show.
+  /// Anything the carousel directly above could rotate onto is skipped, by
+  /// TITLE rather than by url. Both halves of that matter: the hero is not
+  /// simply the first section (it prefers a Trending row — see
+  /// [HomeState.heroItems]), and a popular show sits in several rows with
+  /// different art in each, so matching urls alone still put the card on a
+  /// second picture of whatever the banner was already showing.
+  List<({String? cover, Map<String, String>? headers})> _catalogueArt() {
+    final state = context.read<HomeCubit>().state;
+    final hero = {for (final it in state.heroItems) it.title.toLowerCase()};
+    final out = <({String? cover, Map<String, String>? headers})>[];
+    final seen = <String>{};
+    for (final s in state.sections ?? const <HomeSection>[]) {
+      for (final it in s.items) {
+        if (hero.contains(it.title.toLowerCase())) continue;
+        final art = _itemArt(it);
+        final url = art.cover;
+        if (url == null || url.isEmpty || !seen.add(url)) continue;
+        out.add(art);
+        // Two switchers, the hub and Genres is every card the row can hold.
+        if (out.length == 4) return out;
+      }
+    }
+    return out;
+  }
+
+  /// Wide art if the item has it, else the poster. These cards are a 3:1
+  /// strip and a poster cropped to that is a sliver of someone's forehead.
+  ///
+  /// An item from an installed extension keeps its cover and headers
+  /// together: [_art] routes those through that source's own client, and a
+  /// banner url would not survive the trip.
+  ({String? cover, Map<String, String>? headers}) _itemArt(MediaItem it) {
+    final native =
+        it.coverHeaders?['x-ani-src'] != null ||
+        it.coverHeaders?['x-mihon-src'] != null;
+    final wide = native ? null : it.banner;
+    return (cover: wide ?? it.cover, headers: it.coverHeaders);
+  }
+
   /// A cover for the Genres card that is NOT the one on the Lists card.
   ///
   /// The Lists card always shows the last thing watched, so feeding this the
@@ -1112,7 +1157,7 @@ class _HomeViewState extends State<_HomeView>
 
   /// Same card shell again, for [GenresScreen] — the genre list for whatever
   /// mode you are in, each one a way straight into a filtered Search.
-  Widget _genresCard() {
+  Widget _genresCard(({String? cover, Map<String, String>? headers}) art) {
     return GestureDetector(
       key: const ValueKey('home_genres_card'),
       onTap: _slashing
@@ -1127,21 +1172,20 @@ class _HomeViewState extends State<_HomeView>
           child: Stack(
             fit: StackFit.expand,
             children: [
-              _modeArtBg(_genresArt()),
               // Accent-tinted rather than the neutral black the Lists card
               // uses: side by side at equal width, two identically scrimmed
-              // cards read as one wide slab split by a gap.
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.centerLeft,
-                    end: Alignment.centerRight,
-                    colors: [
-                      AppColors.accent.withValues(alpha: 0.82),
-                      Colors.black.withValues(alpha: 0.42),
-                    ],
-                  ),
-                ),
+              // cards read as one wide slab split by a gap. Not at 0.82
+              // though — that buried the cover under a flat sheet of accent,
+              // so the tint now sits over the art rather than in place of it.
+              _cardBg(
+                art,
+                // Toned, not the raw accent: a light Material You accent
+                // washed the card out and took the white label with it.
+                scrim: [
+                  _toned(0.30).withValues(alpha: 0.78),
+                  Colors.black.withValues(alpha: 0.55),
+                ],
+                empty: _emptyTint(0.32, 0.15),
               ),
               Center(
                 child: Row(
@@ -1204,7 +1248,40 @@ class _HomeViewState extends State<_HomeView>
     return (cover: null, headers: null);
   }
 
-  Widget _modeArtBg(({String? cover, Map<String, String>? headers}) art) {
+  /// The neutral scrim the switcher and Lists cards lay over their art, so a
+  /// white icon and label stay legible whatever the cover looks like.
+  static const _neutralScrim = [Color(0xCC000000), Color(0x55000000)];
+
+  /// The accent's hue at a darkness we choose.
+  ///
+  /// The accent cannot be used raw here. With Material You on it is tone 80
+  /// of the wallpaper palette (see [ThemeController]) — a LIGHT colour, meant
+  /// for text and icons ON a dark ground. Tinting a card with it lightened
+  /// the card instead of colouring it, and took the white label with it.
+  /// Hue and saturation carry the theme; the lightness is this screen's.
+  Color _toned(double lightness) =>
+      HSLColor.fromColor(AppColors.accent).withLightness(lightness).toColor();
+
+  /// Gradient for a card with no art behind it, [from] darkness to [to].
+  ///
+  /// Flat grey is what an empty history used to get — the fallback was
+  /// surface2 to surface, and the scrim on top then knocked even that back,
+  /// so a fresh install opened onto a row of dead slabs. These sit in the
+  /// same dark range as the surfaces, just carrying the theme's colour.
+  List<Color> _emptyTint(double from, double to) => [
+    _toned(from),
+    _toned(to),
+  ];
+
+  /// Background for one of the 52dp cards: the art under [scrim], or the
+  /// [empty] gradient alone when there is no art. The scrim is skipped in
+  /// that case — it is there to tame a photograph, and over a flat fill it
+  /// only muddies it.
+  Widget _cardBg(
+    ({String? cover, Map<String, String>? headers}) art, {
+    required List<Color> scrim,
+    required List<Color> empty,
+  }) {
     final url = art.cover;
     if (url == null || url.isEmpty) {
       return DecoratedBox(
@@ -1212,18 +1289,35 @@ class _HomeViewState extends State<_HomeView>
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [AppColors.surface2, AppColors.surface],
+            colors: empty,
           ),
         ),
       );
     }
-    if (art.headers?['x-ani-src'] != null ||
-        art.headers?['x-mihon-src'] != null) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        _art(url, art.headers),
+        DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
+              colors: scrim,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _art(String url, Map<String, String>? headers) {
+    if (headers?['x-ani-src'] != null || headers?['x-mihon-src'] != null) {
       return Image(
         image: ResizeImage(
-          art.headers?['x-ani-src'] != null
-              ? AniyomiImage(int.parse(art.headers!['x-ani-src']!), url)
-              : MihonImage(int.parse(art.headers!['x-mihon-src']!), url),
+          headers?['x-ani-src'] != null
+              ? AniyomiImage(int.parse(headers!['x-ani-src']!), url)
+              : MihonImage(int.parse(headers!['x-mihon-src']!), url),
           width: 420,
         ),
         fit: BoxFit.cover,
@@ -1233,7 +1327,7 @@ class _HomeViewState extends State<_HomeView>
     }
     return CachedNetworkImage(
       imageUrl: url,
-      httpHeaders: art.headers,
+      httpHeaders: headers,
       memCacheWidth: 420,
       fit: BoxFit.cover,
       alignment: const Alignment(0, -0.2),

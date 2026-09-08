@@ -35,6 +35,7 @@ import 'package:watch_app/core/schedule/schedule_models.dart';
 import 'package:watch_app/core/search/title_suggestion_service.dart';
 import 'package:watch_app/core/state/active_source_cubit.dart';
 import 'package:watch_app/core/supabase/supabase_service.dart';
+import 'package:watch_app/core/theme/app_colors.dart';
 import 'package:watch_app/core/theme/theme_controller.dart';
 import 'package:watch_app/core/tracker/mal_service.dart';
 import 'package:watch_app/core/tracker/simkl_service.dart';
@@ -48,6 +49,17 @@ import 'package:watch_app/features/home/cubit/home_cubit.dart';
 import 'package:watch_app/features/home/home_screen.dart';
 import 'package:watch_app/features/shell/root_shell.dart';
 import 'package:watch_app/features/shell/root_shell_tv.dart';
+
+/// The gradient one of Home's cards is painting behind its label.
+List<Color> _cardFill(WidgetTester tester, String key) {
+  final box = tester.widget<DecoratedBox>(
+    find.descendant(
+      of: find.byKey(ValueKey(key)),
+      matching: find.byType(DecoratedBox),
+    ),
+  );
+  return ((box.decoration as BoxDecoration).gradient! as LinearGradient).colors;
+}
 
 MigrationBridge _fakeBridge() => MigrationBridge(
   invoke: (_, __) async => const {'ok': false},
@@ -489,6 +501,25 @@ void main() {
     // An overflow paints an exception rather than throwing, so this is what
     // catches the row getting too tight.
     expect(tester.takeException(), isNull);
+  });
+
+  // Nothing watched and nothing loaded: the last-resort fill. Pins that it is
+  // tinted rather than the old surface2 -> surface grey, and that the two
+  // cards do not land on the same tint (the "one wide slab" the accent was
+  // added to avoid in the first place).
+  testWidgets('with no art at all the cards are tinted, and differ', (
+    tester,
+  ) async {
+    sl.registerSingleton<AppMode>(const AppMode(isTv: false));
+    sl.registerSingleton<MetadataRepository>(_FiltersRepo());
+    await tester.pumpWidget(wrap(const RootShell()));
+    await tester.pumpAndSettle();
+
+    final hub = _cardFill(tester, 'home_lists_hub_card');
+    final genres = _cardFill(tester, 'home_genres_card');
+
+    expect(hub, isNot([AppColors.surface2, AppColors.surface]));
+    expect(hub, isNot(genres));
   });
 
   testWidgets('no Genres card when the catalogue cannot filter', (tester) async {
