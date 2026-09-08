@@ -433,8 +433,59 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _bumpControls();
   }
 
-  void _initInApp() {
+  /// Whether the opening rotation has been asked for. Two paths race to it
+  /// below, so the first one wins and the second is a no-op.
+  bool _turned = false;
+
+  void _turnLandscape() {
+    if (_turned || !mounted) return;
+    _turned = true;
     SystemChrome.setPreferredOrientations(_orientationLock);
+  }
+
+  /// Ask for landscape once the screen we opened over has faded out, rather
+  /// than the instant this screen is built.
+  ///
+  /// Android takes a snapshot of the window when a rotation is requested and
+  /// composites it into the rotation animation. Asking from initState means
+  /// that snapshot is the screen we came from, at full opacity, and it gets
+  /// drawn mixed into this player for as long as the animation runs. That is
+  /// about 17ms on Android 14, too fast to see; on Android 17 it is about
+  /// 350ms and reads as two screens at once.
+  ///
+  /// So wait for this player to be the only thing on screen. It fades in over
+  /// `Interval(0.0, 0.75)` of the transition (see
+  /// [FadeForwardsPageTransitionsBuilder]), and it is opaque black behind its
+  /// video, so past that point nothing underneath contributes to the frame.
+  ///
+  /// Measured on Android 17, not assumed: at 0.3 the screen behind was still
+  /// fully drawn with this player faint on top of it, which is the bug itself.
+  /// The outgoing page does not fade here — that only happens through a
+  /// delegated transition, which this route does not get.
+  void _turnLandscapeWhenCovered() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final opening = ModalRoute.of(context)?.animation;
+      if (opening == null || opening.status == AnimationStatus.completed) {
+        _turnLandscape();
+        return;
+      }
+      void turnOnceCovered() {
+        if (opening.value < 0.8) return;
+        opening.removeListener(turnOnceCovered);
+        _turnLandscape();
+      }
+
+      opening.addListener(turnOnceCovered);
+      // If that value never arrives — the transition is interrupted, the route
+      // is swapped underneath us — the player would sit in portrait for good,
+      // which is worse than the thing this avoids.
+      Future.delayed(const Duration(milliseconds: 600), _turnLandscape);
+    });
+  }
+
+  void _initInApp() {
+    _turnLandscapeWhenCovered();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     // Wake-lock is bound to playback in _startSession, once the player exists.
     // The volume swipe sets the real system volume; hide the OS volume bar so
