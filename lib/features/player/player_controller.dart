@@ -428,11 +428,18 @@ class PlayerCubit extends Cubit<PlayerState> {
           : null;
       HlsAudioRendition? pick;
       if (want != null && want.isNotEmpty) {
-        for (final a in auds) {
-          if (a.lang.toLowerCase() == want || a.name.toLowerCase() == want) {
-            pick = a;
-            break;
+        final w = _wantedAudio(want);
+        for (final byName in [true, false]) {
+          for (final a in auds) {
+            final hit = byName
+                ? w.title.isNotEmpty && a.name.toLowerCase() == w.title
+                : w.lang.isNotEmpty && a.lang.toLowerCase() == w.lang;
+            if (hit) {
+              pick = a;
+              break;
+            }
           }
+          if (pick != null) break;
         }
       }
       pick ??= auds.firstWhere((a) => a.isDefault, orElse: () => auds.first);
@@ -1330,10 +1337,41 @@ class PlayerCubit extends Cubit<PlayerState> {
   /// Currently-selected subtitle track (id == 'no' when subs are off).
   SubtitleTrack get activeSubtitleTrack => player.state.track.subtitle;
 
+  /// How a remembered audio track is written down: `language|title`.
+  ///
+  /// It used to be the language alone, which cannot tell two tracks apart
+  /// when they share one — a file with "English TrueHD Atmos 7.1" and
+  /// "English Dolby Digital 5.1" saved "en" for both, and reopening it
+  /// restored whichever came first rather than the one that was picked.
+  ///
+  /// Both halves are kept because each fails differently. The title
+  /// identifies the exact track but is a release's own wording, so the next
+  /// episode may not carry it; the language always matches something but not
+  /// necessarily the right thing. Written together, the reader can try the
+  /// precise one and fall back to the loose one.
+  ///
+  /// A key with no bar in it is one of the old language-only ones, and still
+  /// reads correctly — see [_wantedAudio].
+  static String audioPrefKey(String? language, String? title, String id) {
+    final lang = language?.trim() ?? '';
+    final name = title?.trim() ?? '';
+    return (lang.isEmpty && name.isEmpty) ? id : '$lang|$name';
+  }
+
+  /// The two halves of [audioPrefKey], lowercased, for matching.
+  static ({String lang, String title}) _wantedAudio(String stored) {
+    final bar = stored.indexOf('|');
+    if (bar < 0) return (lang: stored.toLowerCase(), title: '');
+    return (
+      lang: stored.substring(0, bar).trim().toLowerCase(),
+      title: stored.substring(bar + 1).trim().toLowerCase(),
+    );
+  }
+
   void setAudioTrack(AudioTrack t) {
     player.setAudioTrack(t);
     final url = showUrl;
-    final pref = t.language ?? t.title ?? t.id;
+    final pref = audioPrefKey(t.language, t.title, t.id);
     if (url != null && url.isNotEmpty && pref.isNotEmpty) {
       sl<TitlePrefsStore>().setAudioTrack(sourceId, url, pref);
     }
@@ -1352,13 +1390,21 @@ class PlayerCubit extends Cubit<PlayerState> {
       _audioApplied = true;
       return;
     }
-    final p = pref.toLowerCase();
-    for (final t in mediaAudioTracks) {
-      if ((t.language ?? '').toLowerCase() == p ||
-          (t.title ?? '').toLowerCase() == p) {
-        player.setAudioTrack(t);
-        _audioApplied = true;
-        return;
+    final want = _wantedAudio(pref);
+    // The exact track first. Only if this release does not carry that title
+    // does the language decide, which is all the old keys ever had.
+    for (final byTitle in [true, false]) {
+      for (final t in mediaAudioTracks) {
+        final hit = byTitle
+            ? want.title.isNotEmpty &&
+                  (t.title ?? '').trim().toLowerCase() == want.title
+            : want.lang.isNotEmpty &&
+                  (t.language ?? '').trim().toLowerCase() == want.lang;
+        if (hit) {
+          player.setAudioTrack(t);
+          _audioApplied = true;
+          return;
+        }
       }
     }
     // Not loaded yet — retry on the next tracks update.
