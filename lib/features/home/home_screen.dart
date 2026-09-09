@@ -13,12 +13,15 @@ import '../../core/mihon/mihon_extension_service.dart';
 import '../../core/mihon/mihon_image_provider.dart';
 import '../../core/mode/content_mode.dart';
 import '../../core/mode/content_mode_cubit.dart';
+import '../../core/models/watch_status.dart';
+import '../../core/tracker/tracker_hub.dart';
 import '../../core/notify/notification_service.dart';
 import '../../core/ui/global_messenger.dart';
 import '../../core/update/extension_auto_updater.dart';
 import '../../core/provider/cloudstream_provider.dart';
 import '../../core/provider/provider_manager.dart';
 import '../../core/models/episode.dart';
+import '../../core/models/home_row.dart';
 import '../../core/models/home_section.dart';
 import '../../core/models/media_detail.dart';
 import '../../core/models/media_item.dart';
@@ -33,6 +36,8 @@ import '../../core/repository/catalogue_repository.dart';
 import '../../core/repository/source_repository.dart';
 import '../../core/privacy/incognito_mode.dart';
 import '../../core/state/active_source_cubit.dart';
+import '../../core/tracker/tracker.dart';
+import '../../core/tracker/tracker_item_url.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/zmode/zmode_prefs.dart';
@@ -40,6 +45,7 @@ import '../../l10n/l10n.dart';
 import '../../core/announce/announcement.dart';
 import '../announce/announcement_sheet.dart';
 import '../community/community_sheet.dart';
+import '../downloads/downloads_screen.dart';
 import '../notify/subscriptions_screen.dart';
 import '../reader/manga_reader_screen.dart';
 import '../reader/novel_reader_screen.dart';
@@ -48,10 +54,13 @@ import '../sources/providers_hub_screen.dart';
 import '../sources/zangetsu_sources_screen.dart';
 import '../update/update_dialog.dart';
 import 'continue_section.dart';
+import 'my_list_screen.dart';
+import 'tracker_continue_section.dart';
 import '../../core/ui/content_row.dart';
 import '../../core/ui/featured_carousel.dart';
 import '../../core/ui/featured_hero.dart';
 import '../../core/metadata/title_logo_service.dart';
+import 'metadata_switch_sheet.dart';
 import '../../core/ui/list_status_sheet.dart';
 import '../../core/ui/media_info_sheet.dart';
 import '../../core/ui/poster_card.dart';
@@ -64,16 +73,16 @@ import '../detail/detail_screen.dart';
 import '../history/history_screen.dart';
 import '../player/player_screen.dart';
 import '../schedule/schedule_screen.dart';
-import '../search/browse_sources_screen.dart';
 import '../shell/dock_icons.dart';
 import '../../core/zmode/source_matcher.dart';
 import '../../core/zmode/metadata_repository.dart';
 import '../../core/zmode/zmode_ids.dart';
 import 'cubit/home_cubit.dart';
-import 'genres_screen.dart';
 import 'home_screen_tv.dart';
 import 'lists_hub_screen.dart';
+import 'genres_screen.dart';
 import 'search_screen.dart';
+import 'cubit/tracker_home_rows.dart' show releasedCount;
 import 'see_all_screen.dart';
 
 /// Provides the [HomeCubit] (which owns the three browse rows + the carousel's
@@ -243,12 +252,6 @@ class _HomeViewState extends State<_HomeView>
   /// Genres + episode count for the hero banner (lazily fetched, cached).
   Future<HeroMeta?> _heroMeta(MediaItem m) =>
       _metaCache.putIfAbsent('${m.sourceId}:${m.id}', () async {
-        if (ZmodeIds.isZ(m.url)) {
-          return HeroMeta(
-            genres: m.genres,
-            episodeCount: m.subCount ?? 0,
-          );
-        }
         final d = await _detailOf(m.url, m.sourceId);
         if (d == null) return null;
         return HeroMeta(
@@ -558,63 +561,35 @@ class _HomeViewState extends State<_HomeView>
         child: Row(
           children: [
             // Brand wordmark — the actual logo lettering (exact font).
+            // Tapping it swaps the metadata provider for wherever you are
+            // (AniList/MyAnimeList, or TMDB/Simkl on movies), which used to
+            // mean digging through Settings. Align sizes to the image, so
+            // the tap area is the wordmark itself and the rest of the row
+            // is untouched.
             Expanded(
               child: Align(
                 alignment: Alignment.centerLeft,
-                child: Image.asset(
-                  'assets/icon/wordmark.png',
-                  height: 22,
-                  fit: BoxFit.contain,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => showMetadataSwitchSheet(context),
+                  child: Padding(
+                    // Only the padding is new: 22px of artwork is under the
+                    // 48px minimum tap target, and vertical padding alone
+                    // cannot shift a left-aligned image.
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Image.asset(
+                      'assets/icon/wordmark.png',
+                      height: 22,
+                      fit: BoxFit.contain,
+                    ),
+                  ),
                 ),
               ),
             ),
-            // Incognito indicator — visible only while on; tap to exit.
-            ValueListenableBuilder<bool>(
-              valueListenable: IncognitoMode.notifier,
-              builder: (_, on, _) => on
-                  ? GestureDetector(
-                      onTap: () => IncognitoMode.set(false),
-                      behavior: HitTestBehavior.opaque,
-                      child: Container(
-                        margin: const EdgeInsets.only(right: 8),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 9,
-                          vertical: 5,
-                        ),
-                        decoration: BoxDecoration(
-                          color: AppColors.surface2,
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: AppColors.hairline),
-                        ),
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.visibility_off_rounded,
-                              size: 13,
-                              color: AppColors.textSecondary,
-                            ),
-                            SizedBox(width: 5),
-                            Text(
-                              'Incognito',
-                              style: TextStyle(
-                                fontFamily: 'Inter',
-                                fontFamilyFallback: AppText.fontFamilyFallback,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                                color: AppColors.textSecondary,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    )
-                  : const SizedBox.shrink(),
-            ),
-            // Header bell is parked for now (design TBD) — re-add
-            // `_notificationBell(context)` here once one is chosen.
+            const _IncognitoChip(),
+            _headerDownloadButton(),
+            _notificationBell(context),
             const HomeSearchAction(),
-            const HomeBrowseSourcesAction(),
             const HomeSourceSwitcherSlot(),
           ],
         ),
@@ -622,13 +597,27 @@ class _HomeViewState extends State<_HomeView>
     );
   }
 
+  /// Header download shortcut → [DownloadsScreen]. Same shape as
+  /// [HomeSearchAction]: flat icon, no badge — the screen itself is the
+  /// progress view, so there's nothing to surface here. Pushed as a normal
+  /// route (with back), unlike the dock tab which suppresses it.
+  Widget _headerDownloadButton() {
+    return IconButton(
+      icon: const DockIcon(
+        DockGlyph.download,
+        color: AppColors.textSecondary,
+        size: 22,
+      ),
+      tooltip: context.l10n.downloads,
+      onPressed: () => Navigator.of(
+        context,
+      ).push(MaterialPageRoute<void>(builder: (_) => const DownloadsScreen())),
+    );
+  }
+
   /// Flat bell → Notifications screen. The accent dot shows while any
   /// announcement is unseen and clears itself reactively (the screen calls
   /// markAllSeen, the Hive box updates, the listenable rebuilds).
-  ///
-  /// Currently unwired — the header bell is parked until a design is chosen
-  /// (mockups in docs/mockups/bell-options.html).
-  // ignore: unused_element
   Widget _notificationBell(BuildContext context) {
     // Built fresh inside the listenable's builder — a captured widget
     // instance would be canonical and the rebuild would be skipped.
@@ -642,10 +631,10 @@ class _HomeViewState extends State<_HomeView>
         child: Stack(
           clipBehavior: Clip.none,
           children: [
-            const Icon(
-              Icons.notifications_none_rounded,
-              size: 24,
-              color: Colors.white,
+            const DockIcon(
+              DockGlyph.bell,
+              color: AppColors.textSecondary,
+              size: 22,
             ),
             if (Hive.isBoxOpen(AnnouncementStore.boxName) &&
                 AnnouncementStore().unseenCount() > 0)
@@ -695,6 +684,131 @@ class _HomeViewState extends State<_HomeView>
           onTap: () => _openDetail(items[i]),
           onLongPress: () => _showInfo(items[i]),
         ),
+      ),
+    );
+  }
+
+  /// One row of the merged home arrangement, as a sliver. Every [HomeRow]
+  /// type maps to the widget that already renders that shape — the sealed
+  /// switch makes a future row type a compile error here instead of a silent
+  /// gap, and the local row reuses [ContinueSection] itself so its reactive
+  /// Hive/mode behaviour is identical wherever the user drags it.
+  Widget _homeRowSliver(HomeRow row, {required bool loggedIn}) => switch (row) {
+    LocalContinueHomeRow() => ContinueSection(
+      loggedIn: loggedIn,
+      onResume: _resume,
+      onLongPress: _showContinueInfo,
+      onSeeAll: _openHistory,
+      onResumeReading: _resumeReading,
+      onLongPressReading: _showContinueReadingInfo,
+    ),
+    ProviderHomeRow(:final section) => SliverToBoxAdapter(
+      child: _sectionRow(section),
+    ),
+    TrackerContinueHomeRow(:final items, :final trackerName) =>
+      SliverToBoxAdapter(
+        child: TrackerContinueSection(
+          items: items,
+          trackerName: trackerName,
+          onOpen: _openTrackerEntry,
+          onSeeAll: () => _openTrackerList(trackerName, WatchStatus.watching),
+          onLongPress: _showTrackerInfo,
+        ),
+      ),
+    NewEpisodesHomeRow(:final items, :final trackerName) => SliverToBoxAdapter(
+      child: NewEpisodesSection(
+        items: items,
+        trackerName: trackerName,
+        onOpen: _openTrackerEntry,
+        onSeeAll: () => _openNewEpisodes(items),
+        onLongPress: _showTrackerInfo,
+      ),
+    ),
+    TrackerListHomeRow(:final status, :final items, :final trackerName) =>
+      SliverToBoxAdapter(
+        child: TrackerListSection(
+          status: status,
+          items: items,
+          trackerName: trackerName,
+          onOpen: _openTrackerEntry,
+          onSeeAll: () => _openTrackerList(trackerName, status),
+          onLongPress: _showTrackerInfo,
+        ),
+      ),
+  };
+
+  /// "See all" on New Episodes: the same entries as a grid, keeping the count
+  /// badge so the reason each one is here survives the jump.
+  ///
+  /// A fixed list, not a paginated one — this row is computed from the library
+  /// already in hand, so there is no next page to ask anyone for.
+  void _openNewEpisodes(List<TrackerListItem> items) {
+    final waiting = {
+      for (final e in items) e.item.id: releasedCount(e) - (e.progress ?? 0),
+    };
+    Navigator.push(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) => SeeAllScreen(
+          title: context.l10n.homeRowNewEpisodes,
+          items: [for (final e in items) e.item],
+          onTap: _openTrackerItem,
+          tagsFor: (item) => ['+${waiting[item.id] ?? 0}'],
+        ),
+      ),
+    );
+  }
+
+  /// "See all" on a tracker row: that tracker's whole library, opened on the
+  /// tab the row came from.
+  ///
+  /// Reuses [MyListScreen] rather than a thinner grid, the same way the lists
+  /// hub does — statuses, custom lists, sort and filter all keep working, and
+  /// a purpose-built screen would have quietly lost them.
+  void _openTrackerList(String trackerName, WatchStatus status) {
+    if (!sl.isRegistered<TrackerHub>()) return;
+    Tracker? tracker;
+    for (final t in sl<TrackerHub>().trackers) {
+      if (t.displayName == trackerName) tracker = t;
+    }
+    if (tracker == null) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) => MyListScreen(
+          initialTracker: tracker,
+          // The row was built for the mode Home is in, so the library has to
+          // open on the same kind rather than following the app afterwards.
+          initialKind: sl<ContentModeCubit>().state,
+          initialStatus: status,
+        ),
+      ),
+    );
+  }
+
+  /// Open a tracker entry from the home rows. The stub carries no provider,
+  /// but it carries the id the metadata catalogue is keyed by, so a tap opens
+  /// its Detail page directly; an entry with no id falls back to a search for
+  /// its own title — the same open path My List uses.
+  void _openTrackerEntry(TrackerListItem entry) => _openTrackerItem(entry.item);
+
+  /// The info sheet for a tracker row, the same one every other poster on Home
+  /// opens on a long-press. Re-keyed first so the sheet can look the title up
+  /// in the catalogue — a raw stub carries no resolvable url.
+  void _showTrackerInfo(TrackerListItem entry) =>
+      _showInfo(playableTrackerItem(entry.item) ?? entry.item);
+
+  /// The same open, from a bare item — the See All grid hands back MediaItems.
+  void _openTrackerItem(MediaItem item) {
+    final playable = playableTrackerItem(item);
+    if (playable != null) {
+      _openDetail(playable);
+      return;
+    }
+    Navigator.push(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) => SearchScreen(initialQuery: item.title),
       ),
     );
   }
@@ -1386,33 +1500,20 @@ class _HomeViewState extends State<_HomeView>
               child: BlocBuilder<HomeCubit, HomeState>(
                 builder: (context, state) {
                   final sections = state.sections ?? const <HomeSection>[];
-                  // The first section feeds the hero carousel; the rest render as
-                  // browse rows (so the spotlight isn't duplicated right below it).
-                  // A source with only ONE section (e.g. SubsPlease's single "Latest"
-                  // feed) would otherwise show a hero and NO rows — keep that one
-                  // section as a row too so there's something to browse.
-                  //
-                  // Aniyomi AND Mihon sources expose exactly two sections
-                  // (Popular + Latest); dropping the first would hide Popular
-                  // entirely, so keep the full list as rows for them — the banner
-                  // still spotlights Popular, and the row repeats it (like the
-                  // Aniyomi/Mihon apps' Popular grid).
-                  final firstId = sections.isNotEmpty
-                      ? (sections.first.more?.sourceId ?? '')
-                      : '';
-                  final firstIsNativeCatalog =
-                      firstId.startsWith('ani:') ||
-                      firstId.startsWith('mihon:');
-                  final rowSections =
-                      (sections.length > 1 && !firstIsNativeCatalog)
-                      ? sections.sublist(1)
-                      : sections;
+                  // Which sections render as rows (the phone drops a
+                  // non-repeating first section so the hero isn't duplicated
+                  // right below itself) is decided by the cubit's merge now —
+                  // providerRowSections in home_rows_composer.dart, moved
+                  // verbatim from here. This build only branches on whether a
+                  // load finished at all.
                   final showSkeletons = state.loading && sections.isEmpty;
                   // The load finished but the source returned no rows — almost
                   // always a dead/blocked site (or a search-only source). Show a
                   // clear message instead of a blank screen.
                   final loadedEmpty =
-                      context.read<HomeCubit>().showsEmptyHome;
+                      !state.loading &&
+                      state.sections != null &&
+                      state.sections!.isEmpty;
                   // Manga/novel with nothing installed: the mode-switch fallback
                   // sets a matching source when one exists, so a reading mode
                   // still on a non-matching (usually stale anime) active id means
@@ -1493,26 +1594,33 @@ class _HomeViewState extends State<_HomeView>
                       if (needsReconnect)
                         SliverToBoxAdapter(child: _reconnectBanner()),
 
-                      // ── Continue Watching / Continue Reading ──────────────────
-                      // Driven by the watch/read history box's listenable, NOT a
-                      // one-shot read: the cloud pull writes history AFTER this
-                      // build runs (the login / boot-migration race), so reading
-                      // recent() once here would render blank until the next
-                      // navigation. Reacting to the box makes the row appear the
-                      // instant the pull lands. Swapped by ContentMode — see
-                      // ContinueSection.
-                      ContinueSection(
-                        loggedIn: loggedIn,
-                        onResume: _resume,
-                        onLongPress: _showContinueInfo,
-                        onSeeAll: _openHistory,
-                        onResumeReading: _resumeReading,
-                        onLongPressReading: _showContinueReadingInfo,
-                      ),
+                      // ── The arrangement ─────────────────────────────────────
+                      // state.rows is the merged view of this load: the local
+                      // Continue row, the tracker rows the user enabled, and the
+                      // provider sections, in the saved order (Settings →
+                      // Interface → Appearance → Home rows). ContinueSection renders wherever
+                      // the layout puts it — the same widgets as before, just
+                      // arranged. Before the first merge lands (rows null), the
+                      // ContinueSection keeps its old spot above the skeletons
+                      // so the loading screen is exactly today's.
+                      if (state.rows case final rows?)
+                        ...rows.map(
+                          (r) => _homeRowSliver(r, loggedIn: loggedIn),
+                        )
+                      else
+                        ContinueSection(
+                          loggedIn: loggedIn,
+                          onResume: _resume,
+                          onLongPress: _showContinueInfo,
+                          onSeeAll: _openHistory,
+                          onResumeReading: _resumeReading,
+                          onLongPressReading: _showContinueReadingInfo,
+                        ),
 
-                      // ── Provider-defined browse rows (CloudStream-style) ──────
-                      // The active provider decides the rows + their names; empty
-                      // ones are already dropped by SourceRepository.home.
+                      // ── Skeletons while the first load runs / empty states ───
+                      // The provider rows themselves are part of state.rows
+                      // above; this branch only owns the loading placeholders
+                      // and the "nothing came back" views.
                       if (showSkeletons && !noSourceForMode)
                         ...List.generate(
                           3,
@@ -1530,6 +1638,12 @@ class _HomeViewState extends State<_HomeView>
                             // pointing at the wrong thing. The router hands
                             // back the right name in either mode.
                             sourceName: _repo.displayName(_repo.sourceId),
+                            // A metadata catalogue, not an installed source —
+                            // the "switch source at the top" advice does not
+                            // apply to it.
+                            isMetadataProvider:
+                                _repo.sourceId == ZmodeIds.sourceId,
+                            rateLimitedSeconds: state.rateLimitedSeconds,
                             onRetry: () =>
                                 context.read<HomeCubit>().load(reset: true),
                             // No-source guide points at the Providers hub (all
@@ -1556,10 +1670,6 @@ class _HomeViewState extends State<_HomeView>
                                     }
                                   },
                           ),
-                        )
-                      else
-                        ...rowSections.map(
-                          (s) => SliverToBoxAdapter(child: _sectionRow(s)),
                         ),
 
                       // ── Bottom padding ────────────────────────────────────────
@@ -1593,9 +1703,6 @@ class HomeSearchAction extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return IconButton(
-      // Kept from main: the app's own dock glyph, not Material's search icon.
-      // His branch had reverted this, which put a stock icon back in the one
-      // header the custom set was drawn for.
       icon: const DockIcon(
         DockGlyph.search,
         color: AppColors.textSecondary,
@@ -1605,45 +1712,6 @@ class HomeSearchAction extends StatelessWidget {
       onPressed: () => Navigator.of(
         context,
       ).push(MaterialPageRoute<void>(builder: (_) => const SearchScreen())),
-    );
-  }
-}
-
-/// Opens [BrowseSourcesScreen] — pick any installed source, browse its
-/// catalogue, and search within it, WITHOUT touching the active source (it
-/// never calls [ActiveSourceCubit.setSource]). That's the header's own
-/// [HomeSourceSwitcherSlot] chip's job; this is for peeking at a different
-/// source without switching what Home itself is driven by.
-///
-/// Z Mode only: with Z Mode off, Home is already source-driven and the
-/// switcher below covers it — this is the ONLY way into the sources
-/// destination once Z Mode is on, so it shows whenever the toggle is on,
-/// full stop.
-///
-/// Reactive to [ZModePrefs.revision], same pattern as
-/// [HomeSourceSwitcherSlot].
-class HomeBrowseSourcesAction extends StatelessWidget {
-  const HomeBrowseSourcesAction({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return ValueListenableBuilder<int>(
-      valueListenable: ZModePrefs.revision,
-      builder: (context, _, _) => ZModePrefs.enabled
-          ? IconButton(
-              icon: const Icon(
-                Icons.extension_outlined,
-                color: AppColors.textSecondary,
-                size: 20,
-              ),
-              tooltip: context.l10n.sources,
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => const BrowseSourcesScreen(),
-                ),
-              ),
-            )
-          : const SizedBox.shrink(),
     );
   }
 }
@@ -1753,9 +1821,9 @@ class HomeLoadedEmptyView extends StatelessWidget {
       );
     }
     // Metadata catalogue (Z Mode) browses AniList/TMDB/MAL — installed
-    // streaming extensions are only needed at play time. An empty home here
-    // means the catalogue fetch failed, not "nothing installed". (His fix,
-    // kept on top of main's wording/l10n.)
+    // streaming extensions are only needed at play time, so an empty home
+    // here means the catalogue fetch failed, not "nothing installed". His
+    // guard, kept on top of this screen.
     if (!ZModePrefs.enabled && !hasSourcesFor(mode)) {
       return _NoSourcesGuide(mode: mode, onBrowse: onInstallSources);
     }
@@ -2027,5 +2095,75 @@ Widget readerFor(ReadEntry e, Episode chapter) {
     chapters: [chapter],
     startIndex: 0,
     resolveChapters: true,
+  );
+}
+
+/// The "nothing is being recorded" badge, shown only while incognito is on.
+///
+/// Accent-tinted, not grey. It marks an ACTIVE mode, and in this app's colour
+/// language grey-on-grey is what a disabled control looks like — the opposite
+/// of what this means. It also has to hold its own beside the wordmark and
+/// four actions, which a low-contrast pill wedged against the logo did not.
+///
+/// Tap anywhere on it to leave incognito.
+class _IncognitoChip extends StatelessWidget {
+  const _IncognitoChip();
+
+  @override
+  Widget build(BuildContext context) => ValueListenableBuilder<bool>(
+    valueListenable: IncognitoMode.notifier,
+    builder: (context, on, _) {
+      if (!on) return const SizedBox.shrink();
+      final l10n = context.l10n;
+      return Padding(
+        // Its own breathing room. The old chip carried a right margin only, so
+        // it sat flush against the wordmark.
+        padding: const EdgeInsets.only(left: 10, right: 6),
+        child: Tooltip(
+          message: l10n.incognitoMode,
+          child: GestureDetector(
+            onTap: () => IncognitoMode.set(false),
+            behavior: HitTestBehavior.opaque,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: AppColors.accentSoft,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: AppColors.accent.withValues(alpha: 0.35),
+                ),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.visibility_off_rounded,
+                      size: 14,
+                      color: AppColors.accent,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      l10n.incognito,
+                      style: TextStyle(
+                        fontFamily: 'Inter',
+                        fontFamilyFallback: AppText.fontFamilyFallback,
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.2,
+                        color: AppColors.accent,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    },
   );
 }
