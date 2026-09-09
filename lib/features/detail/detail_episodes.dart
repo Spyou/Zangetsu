@@ -585,6 +585,7 @@ class _EpisodesTabState extends State<_EpisodesTab> {
             isFiller: ep.filler,
             highlight: _highlightEpId == ep.id,
             fraction: st.fraction,
+            available: ep.available,
             onTap: () => widget.onOpen(fullIndex),
             onLongPress: widget.onPickPlayer == null
                 ? null
@@ -923,6 +924,7 @@ class _EpisodeGridTile extends StatelessWidget {
     required this.fraction,
     required this.onTap,
     this.onLongPress,
+    this.available = true,
   });
 
   final int number;
@@ -932,6 +934,9 @@ class _EpisodeGridTile extends StatelessWidget {
   final bool isFiller;
   final bool highlight;
   final double fraction;
+
+  /// False when no matched source has this episode — see [Episode.available].
+  final bool available;
   final VoidCallback onTap;
 
   /// Long-press opens the "play this episode with" sheet. Optional so the
@@ -944,7 +949,11 @@ class _EpisodeGridTile extends StatelessWidget {
     final bg = isResume
         ? AppColors.accent
         : (isWatched ? AppColors.surface : AppColors.surface2);
-    final fg = isResume
+    // Nothing has this one yet — same dimming the list row uses, so the two
+    // views agree about which numbers will actually open.
+    final fg = !available
+        ? AppColors.textTertiary
+        : isResume
         ? Colors.white
         : (isWatched ? AppColors.textTertiary : AppColors.textPrimary);
     final side = highlight
@@ -1271,7 +1280,14 @@ class _EpisodeRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final titleColor = isResume
+    // Listed by the catalogue, absent from every matched source. Kept in the
+    // list — an airing show's next episode genuinely exists — but dimmed and
+    // labelled, so it reads as "not yet" rather than as a row that silently
+    // does nothing.
+    final unavailable = !ep.available;
+    final titleColor = unavailable
+        ? AppColors.textTertiary
+        : isResume
         ? AppColors.accent
         : (isWatched ? AppColors.textSecondary : AppColors.textPrimary);
 
@@ -1287,10 +1303,16 @@ class _EpisodeRow extends StatelessWidget {
         : null;
     // Runtime · air date. The rating now rides as a chip on the thumbnail
     // (always fully visible) instead of getting clipped on this cramped line.
-    final metaLine = [
-      if (ep.runtimeMinutes != null) '${ep.runtimeMinutes} min',
-      if (ep.date != null && ep.date!.trim().isNotEmpty) ep.date!.trim(),
-    ].join('  ·  ');
+    final metaLine = unavailable
+        // Already worded by the catalogue layer — "Airs 12 Sep" when the
+        // tracker knows it isn't out, else the one source we actually asked.
+        // Anything stronger would be a claim nobody verified (see
+        // Episode.unavailable).
+        ? ep.unavailable!
+        : [
+            if (ep.runtimeMinutes != null) '${ep.runtimeMinutes} min',
+            if (ep.date != null && ep.date!.trim().isNotEmpty) ep.date!.trim(),
+          ].join('  ·  ');
 
     // Prefer the real AniZip/TMDB title when the source only gave a generic
     // "Episode N" (or nothing); keep the source's own title when it has a real
@@ -1348,17 +1370,21 @@ class _EpisodeRow extends StatelessWidget {
                               child: SizedBox.expand(),
                             ),
                           // Centered play-circle (white ring like the ref).
-                          const Center(
+                          Center(
                             child: DecoratedBox(
-                              decoration: BoxDecoration(
+                              decoration: const BoxDecoration(
                                 color: Color(0x59000000),
                                 shape: BoxShape.circle,
                               ),
                               child: Padding(
-                                padding: EdgeInsets.all(7),
+                                padding: const EdgeInsets.all(7),
                                 child: Icon(
-                                  Icons.play_arrow_rounded,
-                                  color: Colors.white,
+                                  unavailable
+                                      ? Icons.hourglass_empty_rounded
+                                      : Icons.play_arrow_rounded,
+                                  color: unavailable
+                                      ? Colors.white70
+                                      : Colors.white,
                                   size: 22,
                                 ),
                               ),

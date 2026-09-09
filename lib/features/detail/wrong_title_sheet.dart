@@ -300,7 +300,10 @@ class _MatchLineState extends State<MatchLine> {
                     color: AppColors.textTertiary,
                   ),
                   const SizedBox(width: 6),
-                  Text(l10n.noSourceHasThisYet, style: AppText.caption),
+                  // Nothing is INSTALLED — which is not the same as nothing
+                  // having the title, and saying the latter blames the show
+                  // for the app being empty.
+                  Text(l10n.noSourcesInstalled, style: AppText.caption),
                 ],
               ),
             );

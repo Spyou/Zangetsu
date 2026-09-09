@@ -73,25 +73,44 @@ void main() {
         title: 'Fullmetal Alchemist: Brotherhood',
       );
 
-  test('the source is still named when it turns out not to have the title',
+  test('Auto Resolve names no source when nothing anywhere has the title',
       () async {
     final c = build(_Src({'allanime': [], 'hianime': []}));
     await c.load();
-    // The source is a choice, not a search result, so it is named either way.
-    // Only the MATCH is absent, which is what drives the empty state.
+    // Under Auto Resolve the source IS the sweep's answer, not a choice made
+    // up front — so with no candidate holding the title there is honestly
+    // none to name. Naming the first one anyway would point the row's
+    // per-source actions (Cloudflare solve, sign in) at a site that never
+    // had it. Picking one from the row is how you override this.
+    expect(c.state.auto, isTrue);
+    expect(c.state.selectedId, isNull);
+    expect(c.state.match, isNull);
+    expect(c.state.loading, isFalse);
+  });
+
+  test('an explicit kind default matches on that source, not whoever has the title',
+      () async {
+    // hianime has it, allanime does not — but allanime is the firm choice for
+    // this kind, so there is no match. A deliberate pick is not silently
+    // swapped for the source that happens to have the title; only Auto
+    // Resolve sweeps, which is the test below.
+    await prefs.set(fma.kind, 'allanime');
+    final c = build(_Src({'hianime': [_hit('hianime', 'Fullmetal Alchemist Brotherhood')]}));
+    await c.load();
+    expect(c.state.auto, isFalse);
     expect(c.state.selectedId, 'allanime');
     expect(c.state.match, isNull);
     expect(c.state.loading, isFalse);
   });
 
-  test('load matches against the selected source, not whoever has the title',
-      () async {
-    // hianime has it, allanime does not — but allanime is the selection, so
-    // there is no match. It is not silently swapped for the source that has it.
+  test('Auto Resolve lands on whichever source actually has the title', () async {
+    // The same setup with no kind default: sweeping is the point, so the
+    // source that has it is the one named, even though it is second in order.
     final c = build(_Src({'hianime': [_hit('hianime', 'Fullmetal Alchemist Brotherhood')]}));
     await c.load();
-    expect(c.state.selectedId, 'allanime');
-    expect(c.state.match, isNull);
+    expect(c.state.auto, isTrue);
+    expect(c.state.selectedId, 'hianime');
+    expect(c.state.match?.sourceId, 'hianime');
     expect(c.state.loading, isFalse);
   });
 
@@ -105,7 +124,10 @@ void main() {
     await c.selectSource('hianime');
     expect(c.state.selectedId, 'hianime');
     expect(c.state.match?.sourceId, 'hianime');
-    expect(prefs.get(fma.kind), 'hianime');
+    // Picking pins THIS title to hianime and deliberately leaves the kind
+    // default alone — every other title of this kind still resolves on its own.
+    expect(store.get(fma, 'hianime')?.pinned, isTrue);
+    expect(prefs.get(fma.kind), isNull);
     // Both sources kept their own match.
     expect(store.get(fma, 'allanime')?.sourceId, 'allanime');
     expect(store.get(fma, 'hianime')?.sourceId, 'hianime');
@@ -150,12 +172,15 @@ void main() {
     expect(c.state.match?.showTitle, 'FMA');
   });
 
-  test('a title never opened before is still named on the first frame',
+  test('a title never opened before names nothing until the sweep lands',
       () async {
-    // Nothing stored for this title OR this kind, and no load() yet — the
-    // first installed candidate is the source, so the row never blanks.
+    // Nothing stored for this title OR this kind, and no load() yet. The row
+    // reads "Auto Resolve" rather than guessing the first candidate — the
+    // sweep may well settle on another one, and the row's per-source actions
+    // act on whatever id it shows.
     final c = build(_Src({}));
-    expect(c.state.selectedId, 'allanime');
+    expect(c.state.auto, isTrue);
+    expect(c.state.selectedId, isNull);
     expect(c.state.match, isNull);
   });
 
@@ -163,7 +188,6 @@ void main() {
     final c = build(_Src({}), sources: const []);
     expect(c.state.loading, isFalse);
     await c.load(); // no-op — nothing to resolve
-    // Nothing installed for this kind is the ONLY case with no source to name.
     expect(c.state.selectedId, isNull);
   });
 }

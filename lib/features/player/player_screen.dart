@@ -34,6 +34,7 @@ import '../../core/playback/subtitle_search_service.dart';
 import '../../core/playback/watch_history.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
+import '../../core/ui/episode_unavailable_dialog.dart';
 import '../../core/ui/badge.dart';
 import '../../core/ui/brand_loader.dart';
 import '../../core/ui/frosted_surface.dart';
@@ -391,6 +392,26 @@ class _PlayerScreenState extends State<PlayerScreen> {
   // Playing / video-size listeners that keep the PiP window's buttons and
   // aspect ratio current. PiP-only — they don't feed anything else.
   final List<StreamSubscription<dynamic>> _pipStateSubs = [];
+
+  /// Set while the dead-end dialog is up, so a stream of error states can't
+  /// stack a second copy of it.
+  bool _handlingDeadEnd = false;
+
+  Future<void> _handleDeadEnd(String message) async {
+    if (_handlingDeadEnd || !mounted) return;
+    _handlingDeadEnd = true;
+    final again = await showPlaybackDeadEnd(context, message);
+    if (!mounted) return;
+    _handlingDeadEnd = false;
+    if (again) {
+      _c.openEpisode(_c.state.currentIndex);
+      return;
+    }
+    // maybePop, not pop: the player is not always the top route (a sheet may
+    // still be closing), and popping the wrong one would take the whole screen
+    // out from under them.
+    await Navigator.of(context).maybePop();
+  }
 
   @override
   void initState() {
@@ -1537,8 +1558,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       if (_sleepCloseApp) SystemNavigator.pop(); // exit the app
       return;
     }
-    final hasNext = _c.state.currentIndex + 1 < _c.episodes.length;
-    if (!hasNext) return;
+    if (!_c.hasPlayableNext) return;
     if (!sl<PlaybackPrefs>().autoplayNext) return;
     _upNextTimer?.cancel();
     setState(() {
@@ -1866,8 +1886,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   // user can advance manually before the auto "Up next" card kicks in. This is a
   // manual action, so it ignores the autoplayNext pref.
   Widget _buildOutroNextButton() {
-    final hasNext = _c.state.currentIndex + 1 < _c.episodes.length;
-    if (!hasNext) return const SizedBox.shrink();
+    if (!_c.hasPlayableNext) return const SizedBox.shrink();
     return StreamBuilder<Duration>(
       stream: _positionBySecond,
       builder: (context, snap) {
@@ -2308,8 +2327,18 @@ class _PlayerScreenState extends State<PlayerScreen> {
       ),
       child: Scaffold(
       backgroundColor: Colors.black,
-      body: BlocBuilder<PlayerCubit, PlayerState>(
+      body: BlocConsumer<PlayerCubit, PlayerState>(
         bloc: _c,
+        // Nothing ever played: this episode is a dead end, so say so in a
+        // dialog and hand the viewer back where they came from rather than
+        // leaving them on a black screen they have to press Back on. A
+        // failure PARTWAY through keeps the in-place error below — they are
+        // already watching something, and yanking them out would lose it.
+        listener: (context, state) {
+          if (state.error != null && !_c.everStarted) {
+            _handleDeadEnd(state.error!);
+          }
+        },
         builder: (context, state) {
           // Inside the PiP window: render ONLY the video — no overlay, no
           // gestures, no controls. The same controller keeps the texture live.
@@ -2480,9 +2509,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                         _c.mediaVideoTracks.length > 1,
                     onSources: _openSourceSheet,
                     onFit: _cycleFit,
-                    onNext: state.currentIndex + 1 < _c.episodes.length
-                        ? () => _c.playNext()
-                        : null,
+                    onNext: _c.hasPlayableNext ? () => _c.playNext() : null,
                     onBack: () => Navigator.of(context).maybePop(),
                     playingStream: _c.player.stream.playing,
                     initialPlaying: _c.player.state.playing,

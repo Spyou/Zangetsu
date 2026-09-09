@@ -615,10 +615,145 @@ class MetadataRepository implements CatalogueRepository {
       );
     }
 
-    // Video: episode list is catalogue-owned; playback resolves at tap time.
-    AppLogger.instance.log('[metadata] detail video done ${sw.elapsedMilliseconds}ms');
-    return d;
+    // Video: the catalogue's list has already been painted (onPartial above),
+    // so the screen is up. Now let the matched source correct it.
+    //
+    // The catalogue's episode count is an ANNOUNCEMENT, not an inventory. An
+    // airing show's last listed episode is routinely one no source has yet —
+    // and tapping it cost a full 36-source sweep that could only ever fail:
+    // 23 seconds of frozen UI, measured on device. It also cuts the other way:
+    // MAL reports 0 episodes for open-ended shows (One Piece) and Simkl builds
+    // no episode list at all, so titles that play perfectly well showed
+    // "no episodes available". The source knows what can actually be played.
+    //
+    // Urls are rewritten back to canonical zm://…/ep/n, so PlaybackResolver
+    // still sweeps every source at tap time — the source that supplied the
+    // list is not locked in, and resume progress keeps following the title
+    // rather than whichever source served it.
+    final m = await _matcher.resolve(
+      c,
+      title: d.title,
+      altTitle: d.englishTitle,
+      malId: d.malId,
+    );
+    if (m == null) {
+      // Keep the catalogue's list rather than blanking it. Playback sweeps
+      // independently now (and with its own ordering, health and per-episode
+      // matching), so a Detail-time miss no longer means unplayable — and an
+      // empty screen tells the viewer less than a list plus an honest failure
+      // on the tap.
+      AppLogger.instance.log(
+        '[metadata] detail video no source match, keeping catalogue eps '
+        '${sw.elapsedMilliseconds}ms',
+      );
+      return d;
+    }
+    final srcEpisodes = await _src.episodes(m.showUrl, sourceId: m.sourceId);
+    AppLogger.instance.log(
+      '[metadata] detail video ${m.sourceId} eps=${srcEpisodes.length} '
+      '(catalogue said ${d.episodes.length}) ${sw.elapsedMilliseconds}ms',
+    );
+    // A source that matched the title but lists nothing (yet) must not wipe
+    // the catalogue's list out from under the screen.
+    if (srcEpisodes.isEmpty) {
+      return d;
+    }
+    // Union, longest wins: the SOURCE decides what plays, the CATALOGUE
+    // decides what exists. Where both have an episode the source's row is
+    // used (its titles, thumbnails and dates are real); past the end of the
+    // source's list the catalogue's row stays, marked unavailable, so an
+    // announced-but-unuploaded episode is still visible and still says why it
+    // won't open. Past the end of the CATALOGUE's list the source simply wins
+    // outright — which is how MAL's 0-episode long-runners and Simkl get a
+    // full list at all.
+    final count = d.episodes.length > srcEpisodes.length
+        ? d.episodes.length
+        : srcEpisodes.length;
+    // Resolved once, not per row: a long airing show can leave dozens of
+    // rows past the end of the source's list.
+    final checked = count > srcEpisodes.length
+        ? _src.displayName(m.sourceId)
+        : null;
+    // The tracker usually knows an episode simply isn't out yet — blaming the
+    // source for that would be both wrong and unhelpful. `nextEpisode` is the
+    // first one NOT yet aired (AniList reports it directly; MalCatalogue
+    // derives it from the broadcast day), so anything at or past it is a
+    // release-date matter, not a source gap.
+    final firstUnaired = d.nextEpisode;
+    final airsAt = d.airingAt;
+    return d.copyWith(
+      episodes: [
+        for (var i = 0; i < count; i++)
+          if (i < srcEpisodes.length)
+            _canonicalize(srcEpisodes[i], c, i + 1)
+          else
+            d.episodes[i].copyWith(
+              unavailable: _whyMissing(
+                i + 1,
+                firstUnaired: firstUnaired,
+                airsAt: airsAt,
+                checkedSource: checked,
+              ),
+            ),
+      ],
+    );
   }
+
+  /// Why episode [n] can't be played, in the words the row shows.
+  ///
+  /// Release date first: if the tracker says this one hasn't aired there is
+  /// nothing wrong with anyone's source, and naming a source would send the
+  /// viewer off to fix something that isn't broken. Only once it HAS aired is
+  /// a missing episode actually the source's gap — and even then we name only
+  /// the source we asked, because that's all we checked.
+  static String _whyMissing(
+    int n, {
+    required int? firstUnaired,
+    required DateTime? airsAt,
+    required String? checkedSource,
+  }) {
+    if (firstUnaired != null && n >= firstUnaired) {
+      // An exact date only for the very next one — anything beyond it would be
+      // us guessing at a schedule we were never told.
+      if (n == firstUnaired && airsAt != null) return 'Airs ${_shortDate(airsAt)}';
+      return 'Not out yet';
+    }
+    return checkedSource == null ? 'Not available' : 'Not on $checkedSource';
+  }
+
+  static const _months = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  ];
+
+  static String _shortDate(DateTime d) {
+    final t = d.toLocal();
+    return '${t.day} ${_months[t.month - 1]}';
+  }
+
+  /// [e] with its display kept but id/url/number replaced by the canonical,
+  /// position-numbered form — see the comment in [detail]. [number] in
+  /// particular is read as ground truth by trackers (AniList/MAL/Simkl
+  /// scrobbling), filler lookups and skip-time lookups — all keyed by the
+  /// canonical episode count, not whatever the source calls it (a source that
+  /// restarts numbering per season would otherwise scrobble the wrong
+  /// episode). The source's own number, if worth showing, belongs in the
+  /// title, never here.
+  static Episode _canonicalize(Episode e, ZCanonical c, int n) => Episode(
+    id: '$n',
+    title: e.title,
+    number: n.toDouble(),
+    url: ZmodeIds.episodeUrl(c, n),
+    date: e.date,
+    thumbnail: e.thumbnail,
+    filler: e.filler,
+    season: e.season,
+    scanlator: e.scanlator,
+    description: e.description,
+    metaTitle: e.metaTitle,
+    rating: e.rating,
+    runtimeMinutes: e.runtimeMinutes,
+  );
 
   @override
   Future<List<Episode>> episodes(

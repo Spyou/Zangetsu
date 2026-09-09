@@ -393,7 +393,10 @@ class _ControlsOverlay extends StatelessWidget {
         : (secondaryTitle == null
               ? qualityLabel
               : '$secondaryTitle · $qualityLabel');
-    final hasNext = state.currentIndex + 1 < c.episodes.length;
+    // Not just "is there another entry" — an episode nothing has yet is not a
+    // next episode. Shared with the outro pill, the Up-next card and autoplay
+    // so every Next affordance agrees.
+    final hasNext = c.hasPlayableNext;
     // Movies and one-off items have nowhere to step, so they get a lone play
     // button rather than two arrows that can never do anything.
     final multiEpisode = c.episodes.length > 1;

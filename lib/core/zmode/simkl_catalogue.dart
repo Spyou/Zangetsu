@@ -3,6 +3,7 @@ import 'package:dio/dio.dart';
 import '../environment.dart';
 import '../models/home_section.dart';
 import '../models/media_detail.dart';
+import '../models/episode.dart';
 import '../models/media_item.dart';
 import '../models/provider_info.dart';
 import 'video_catalogue.dart';
@@ -191,7 +192,13 @@ class SimklCatalogue implements VideoCatalogue {
         if (map['director'] is String && (map['director'] as String).isNotEmpty)
           map['director'] as String,
       ],
-      episodes: const [],
+      // Synthesised from the count Simkl already returned in this same
+      // payload — no extra request. This used to be a hard `const []`, so a
+      // Simkl user with no source installed saw an empty episode list on
+      // EVERY title. The matched source replaces this list when there is one
+      // (see MetadataRepository.detail); this is what shows when there isn't.
+      // Films keep the single synthetic episode the movie path uses.
+      episodes: _episodesFor(map, c, isTv: isTv),
       year: map['year']?.toString(),
       type: ProviderType.movie,
       sourceId: ZmodeIds.sourceId,
@@ -287,4 +294,36 @@ class SimklCatalogue implements VideoCatalogue {
     }
     return out;
   }
+  /// 1..total_episodes for a series, one entry for a film. Simkl exposes a
+  /// real per-episode endpoint (`/tv/episodes/{id}`) with titles and seasons,
+  /// but it costs a second round-trip for names the matched source overwrites
+  /// a moment later — the COUNT is what stops the list reading as empty.
+  static List<Episode> _episodesFor(
+    Map<String, dynamic> m,
+    ZCanonical c, {
+    required bool isTv,
+  }) {
+    if (!isTv) {
+      return [
+        Episode(
+          id: '1',
+          title: m['title'] as String? ?? 'Movie',
+          number: 1,
+          url: ZmodeIds.episodeUrl(c, 1),
+        ),
+      ];
+    }
+    final n = (m['total_episodes'] as num?)?.toInt() ?? 0;
+    if (n <= 0) return const [];
+    return [
+      for (var i = 1; i <= n; i++)
+        Episode(
+          id: '$i',
+          title: 'Episode $i',
+          number: i.toDouble(),
+          url: ZmodeIds.episodeUrl(c, i),
+        ),
+    ];
+  }
+
 }

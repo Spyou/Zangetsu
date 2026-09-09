@@ -20,13 +20,21 @@ int? nextAutoplayIndex({
 }) {
   final immediate = currentIndex + 1;
   if (immediate >= episodes.length) return null;
+  // Listed by the catalogue, but nothing has it yet — an episode that has not
+  // aired is not a next episode. Advancing to it hands the viewer a button
+  // that can only fail, and autoplay would roll into a dead end at the end of
+  // every season currently airing. See [Episode.unavailable].
+  if (!episodes[immediate].available) return null;
   if (!autoSkipFiller || fillerEps.isEmpty) return immediate;
   var target = immediate;
   while (target < episodes.length &&
       fillerEps.contains(episodes[target].number?.toInt())) {
     target++;
   }
-  if (target >= episodes.length) return immediate;
+  // Skipping filler must not skip INTO something unplayable either.
+  if (target >= episodes.length || !episodes[target].available) {
+    return immediate;
+  }
   return target;
 }
 

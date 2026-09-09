@@ -72,6 +72,10 @@ class _Src implements SourceRepository {
   @override
   Future<bool> ensureSourceLoaded(String sourceId) async => true;
 
+  // Named in the row when an episode is past the end of this source's list.
+  @override
+  String displayName(String sourceId) => sourceId;
+
   @override
   List<({String id, String name})> get loadedSources =>
       [(id: 'allanime', name: 'AllAnime')];
@@ -108,6 +112,10 @@ class _EpSrc implements SourceRepository {
   // provider is loaded before searching it. These fakes are already "loaded".
   @override
   Future<bool> ensureSourceLoaded(String sourceId) async => true;
+
+  // Named in the row when an episode is past the end of this source's list.
+  @override
+  String displayName(String sourceId) => sourceId;
 
   @override
   List<({String id, String name})> get loadedSources =>
@@ -258,15 +266,31 @@ void main() {
     expect(d.title, 'FMA');
   });
 
-  test('anime detail shows catalogue episodes without source matching', () async {
+  test('anime detail takes its episode list from the matched source', () async {
+    // The catalogue says 12, the source has 2 — and the source is the one that
+    // can actually be played. The catalogue count is an announcement: an
+    // airing show lists episodes nobody has yet, and offering one cost a full
+    // source sweep that could only fail. It cuts both ways too — MAL reports 0
+    // for open-ended shows and Simkl builds no list at all.
     kind = ZKind.anime;
     final d = await repo.detail('zm://anime/mal:100');
     expect(d.sourceId, ZmodeIds.sourceId);
     expect(d.id, 'mal:100');
+    // Both lists are kept: 12 rows, but only the 2 the source actually has
+    // can be played. Hiding the other 10 would pretend they don't exist;
+    // offering them cost a 36-source sweep that could only ever fail.
     expect(d.episodes.length, 12);
-    expect(d.episodes.first.title, 'Episode 1');
+    expect(d.episodes.take(2).every((e) => e.available), isTrue);
+    expect(d.episodes.skip(2).every((e) => !e.available), isTrue);
+    // And it says WHY, naming the one source that was actually asked rather
+    // than claiming nothing anywhere has it — only one source is ever checked.
+    // (This title is FINISHED, so it isn't a release-date case.)
+    expect(d.episodes.last.unavailable, 'Not on allanime');
+    // Numbering stays canonical (trackers, filler and skip lookups read it),
+    // and the urls stay zm://…/ep/n so playback still sweeps every source.
+    expect(d.episodes.first.number, 1);
     expect(d.episodes.first.url, 'zm://anime/mal:100/ep/1');
-    expect(src.log, isEmpty);
+    expect(src.log, isNotEmpty);
   });
 
   test('unmatched anime detail keeps the synthesised catalogue episode list', () async {
@@ -289,6 +313,66 @@ void main() {
     expect(d.episodes.length, 12);
     expect(d.episodes.first.url, 'zm://anime/mal:100/ep/1');
     expect(d.sourceId, ZmodeIds.sourceId);
+  });
+
+  test('with NO source installed at all, the catalogue list still shows', () async {
+    // The whole point of taking episodes from the source is that the source
+    // knows what can be played — but someone with nothing installed yet has no
+    // source to ask, and an empty Detail screen would tell them nothing. The
+    // catalogue's list stays; Play is what says there is no source.
+    final dead = _NoHits();
+    final r = _metaRepo(
+      sources: dead,
+      store: await MatchStore.open(),
+      prefs: await ZSourcePrefs.open(),
+      browseKind: () => ZKind.anime,
+      matcher: SourceMatcher(
+        sources: dead,
+        store: store,
+        prefs: prefs,
+        candidates: (_) => const [], // nothing installed
+      ),
+      anilist: AniListCatalogue((q, v) async =>
+          q.contains('Media(') ? {'Media': _al()} : {'Page': {'media': [_al()]}}),
+    );
+    final d = await r.detail('zm://anime/mal:100');
+    expect(d.episodes.length, 12);
+    expect(d.episodes.first.url, 'zm://anime/mal:100/ep/1');
+    // Nothing is marked unavailable: with no source to ask we don't KNOW that
+    // any of these can't play, and Play sweeps at tap time regardless.
+    expect(d.episodes.every((e) => e.available), isTrue);
+  });
+
+  test('a catalogue with NO episodes still gets the full list from the source',
+      () async {
+    // MAL reports 0 episodes for open-ended shows (One Piece) and Simkl used
+    // to build no list at all — the exact case that showed "no episodes
+    // available" on a title that plays perfectly well. The source fills it.
+    final es = _EpSrc(const [
+      Episode(id: 'a', title: 'Ep 1', number: 1, url: 'https://src/fma/1'),
+      Episode(id: 'b', title: 'Ep 2', number: 2, url: 'https://src/fma/2'),
+      Episode(id: 'c', title: 'Ep 3', number: 3, url: 'https://src/fma/3'),
+    ]);
+    final r = _metaRepo(
+      sources: es,
+      store: await MatchStore.open(),
+      prefs: await ZSourcePrefs.open(),
+      browseKind: () => ZKind.anime,
+      matcher: SourceMatcher(
+        sources: es,
+        store: store,
+        prefs: prefs,
+        candidates: (_) => [(id: 'allanime', name: 'AllAnime')],
+      ),
+      // episodes: null — the catalogue knows of none.
+      anilist: AniListCatalogue((q, v) async => q.contains('Media(')
+          ? {'Media': _al(episodes: null)}
+          : {'Page': {'media': [_al(episodes: null)]}}),
+    );
+    final d = await r.detail('zm://anime/mal:100');
+    expect(d.episodes.length, 3);
+    expect(d.episodes.every((e) => e.available), isTrue);
+    expect(d.episodes.last.url, 'zm://anime/mal:100/ep/3');
   });
 
   test('sources() plays the episode url that detail() displays', () async {
@@ -383,7 +467,11 @@ void main() {
       ),
     );
     final d = await r.detail('zm://anime/mal:100');
-    expect(d.episodes[0].title, 'Episode 1');
+    // Display comes from the source ("Ep 0" — its own numbering, kept in the
+    // title); id/url/number are rewritten to the canonical position so a
+    // source that starts at 0, or restarts per season, still scrobbles right.
+    expect(d.episodes[0].title, 'Ep 0');
+    expect(d.episodes[0].number, 1);
     expect(d.episodes[0].url, 'zm://anime/mal:100/ep/1');
     await r.sources(d.episodes[0].url, fast: true);
     expect(es.log, ['sources:https://src/fma/0:allanime']);
@@ -428,6 +516,10 @@ class _NoHits implements SourceRepository {
   // provider is loaded before searching it. These fakes are already "loaded".
   @override
   Future<bool> ensureSourceLoaded(String sourceId) async => true;
+
+  // Named in the row when an episode is past the end of this source's list.
+  @override
+  String displayName(String sourceId) => sourceId;
 
   @override
   List<({String id, String name})> get loadedSources => [(id: 'x', name: 'X')];

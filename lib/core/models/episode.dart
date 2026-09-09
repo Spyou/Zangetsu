@@ -72,6 +72,27 @@ class Episode extends Equatable {
   @JsonKey(includeFromJson: false, includeToJson: false)
   final int? runtimeMinutes;
 
+  /// A short, already-worded reason this can't be played yet — "Airs 12 Sep",
+  /// "Not out yet", "Not on HiAnime" — or null when there's nothing to say.
+  ///
+  /// One string rather than a flag plus a cause, because only the catalogue
+  /// layer can tell those cases apart and the UI has nothing to add. The
+  /// wording is deliberately precise about WHAT WE CHECKED: when the tracker
+  /// knows the episode hasn't aired we say so, and otherwise we name the one
+  /// source we asked rather than claiming that nothing anywhere has it —
+  /// [MetadataRepository.detail] only ever asks the matched source. Finding
+  /// out about the rest is the 23-second sweep this avoids; the viewer can
+  /// still ask for it from the row.
+  ///
+  /// Not serialized, like [season]: episode lists are always fetched fresh.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  final String? unavailable;
+
+  /// False only when something concrete is known to be in the way. True
+  /// whenever we don't know, which includes every source-supplied list and
+  /// every title with no source matched yet.
+  bool get available => unavailable == null;
+
   const Episode({
     required this.id,
     required this.title,
@@ -86,6 +107,7 @@ class Episode extends Equatable {
     this.metaTitle,
     this.rating,
     this.runtimeMinutes,
+    this.unavailable,
   });
 
   factory Episode.fromJson(Map<String, dynamic> json) =>
@@ -99,6 +121,7 @@ class Episode extends Equatable {
     String? date,
     double? rating,
     int? runtimeMinutes,
+    String? unavailable,
   }) => Episode(
         id: id,
         title: title,
@@ -113,6 +136,7 @@ class Episode extends Equatable {
         metaTitle: metaTitle ?? this.metaTitle,
         rating: rating ?? this.rating,
         runtimeMinutes: runtimeMinutes ?? this.runtimeMinutes,
+        unavailable: unavailable ?? this.unavailable,
       );
 
   @override
@@ -130,5 +154,6 @@ class Episode extends Equatable {
         metaTitle,
         rating,
         runtimeMinutes,
+        unavailable,
       ];
 }

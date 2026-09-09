@@ -388,6 +388,16 @@ class PlayerCubit extends Cubit<PlayerState> {
   // played" over working playback and broke the watch-progress scrobble).
   bool _startedThisSource = false;
 
+  /// True once ANY source has actually produced picture in this player
+  /// session, unlike [_startedThisSource] which resets on every source switch.
+  ///
+  /// Read by [PlayerScreen] to tell the two failures apart: nothing ever
+  /// played (the episode is a dead end — hand the viewer back to Detail with
+  /// an answer) versus playback died partway (they are watching something;
+  /// keep them here with the in-place error and Retry).
+  bool _everStarted = false;
+  bool get everStarted => _everStarted;
+
   // Stall watchdog: a STARTED source that dies/stalls mid-playback (dead host,
   // pulled segment) buffers forever — _onPlaybackError won't cycle it (it bails
   // once started). When buffering persists with no position progress we fail
@@ -952,6 +962,7 @@ class PlayerCubit extends Cubit<PlayerState> {
 
         if (p > Duration.zero) {
           _startedThisSource = true; // source is playing
+          _everStarted = true; // ...and something has played at least once
           _startTimer?.cancel();
           _startTimer = null;
           if (!_markedWatching) {
@@ -2596,6 +2607,21 @@ class PlayerCubit extends Cubit<PlayerState> {
   /// consecutive filler episodes — but never strands the user (if everything
   /// left is filler, it just plays the next one). Same rule for autoplay and
   /// the Next button; pick an episode from the list to still watch filler.
+  /// Whether there is a next episode worth offering.
+  ///
+  /// Not just "is there another entry": an episode the catalogue lists but no
+  /// source has yet (an airing show's next one) is not something Next should
+  /// point at. Every Next affordance in the player reads this, so the button,
+  /// the outro pill, the Up-next card and autoplay all agree.
+  bool get hasPlayableNext =>
+      nextAutoplayIndex(
+        currentIndex: state.currentIndex,
+        episodes: episodes,
+        fillerEps: _fillerEps,
+        autoSkipFiller: sl<PlaybackPrefs>().autoSkipFiller,
+      ) !=
+      null;
+
   Future<void> playNext({bool auto = false}) async {
     final target = nextAutoplayIndex(
       currentIndex: state.currentIndex,
