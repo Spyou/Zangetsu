@@ -263,6 +263,30 @@ ProviderType _typeOfFromMap(String id, Map<String, String> typeMap) {
   return ProviderType.values.asNameMap()[t] ?? ProviderType.anime;
 }
 
+/// Splits video rows by the ecosystem they came from — Zangetsu's own JS
+/// providers, CloudStream plugins, Aniyomi extensions — in that order, with
+/// empty ones dropped.
+///
+/// The id prefix is the truth here (`cs:`, `ani:`, `mihon:`, `lnr:`), the same
+/// routing every other part of the app uses, rather than the "CS · " label
+/// text which is only for reading.
+List<({String title, List<({String id, String label, String? repo})> rows})>
+ecosystemTabs(List<({String id, String label, String? repo})> rows) {
+  bool isCs(String id) => id.startsWith('cs:');
+  bool isAni(String id) => id.startsWith('ani:');
+  final zangetsu = [
+    for (final r in rows)
+      if (!isCs(r.id) && !isAni(r.id)) r,
+  ];
+  final cs = [for (final r in rows) if (isCs(r.id)) r];
+  final ani = [for (final r in rows) if (isAni(r.id)) r];
+  return [
+    if (zangetsu.isNotEmpty) (title: 'Zangetsu', rows: zangetsu),
+    if (cs.isNotEmpty) (title: 'CloudStream', rows: cs),
+    if (ani.isNotEmpty) (title: 'Aniyomi', rows: ani),
+  ];
+}
+
 /// Narrows a [SourceBuckets] to the rows visible in [mode]. A no-op in anime
 /// mode for today's real source sets (anime/movie are the only types in use),
 /// so the picker and search show exactly what they show today.
@@ -678,6 +702,15 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
     );
   }
 
+  /// Anime and Movies/Series as ONE list. They were split by the type a
+  /// source declares, which is not the question being asked here — plenty
+  /// carry both, the pool is shared, and hunting for a source under a heading
+  /// that guessed wrong is worse than one alphabetical list. NSFW stays
+  /// separate: that split is deliberate and gated on the Privacy toggle.
+  List<({String id, String label, String? repo})> get _video =>
+      [...widget.buckets.anime, ...widget.buckets.movies]
+        ..sort((x, y) => x.label.toLowerCase().compareTo(y.label.toLowerCase()));
+
   // The "All" tab: each (filtered) bucket under its own header. Anime mode
   // groups Anime/Movies & Series/NSFW exactly as before; a reading mode
   // groups its own single bucket (Manga or Novel) instead — never any of
@@ -692,11 +725,11 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
             style: AppText.overline.copyWith(color: AppColors.textTertiary),
           ),
         );
+    final video = _video;
     final categories = mode.isReading
         ? [(title: mode.label, rows: mode == ContentMode.manga ? b.manga : b.novel)]
         : [
-            (title: 'Anime', rows: b.anime),
-            (title: 'Movies & Series', rows: b.movies),
+            (title: 'Sources', rows: video),
             (title: 'NSFW', rows: b.nsfw),
           ];
     // Pinned first (in pin order, from any bucket); drop them from the category
@@ -751,8 +784,13 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
     final tabs = <({String title, Widget Function() body})>[
       if (!mode.isReading) ...[
         (title: 'All', body: _grouped),
-        (title: 'Anime', body: () => _flat(b.anime)),
-        (title: 'Movies/Series', body: () => _flat(b.movies)),
+        // By WHERE a source came from, not by the content type it declared.
+        // The old Anime / Movies-Series tabs cut the list by something the
+        // source claimed about itself, which is not how anyone looks for one;
+        // "it's one of my CloudStream ones" is. A tab only appears when it has
+        // something in it.
+        for (final eco in ecosystemTabs(_video))
+          (title: eco.title, body: () => _flat(eco.rows)),
         if (b.nsfw.isNotEmpty) (title: 'NSFW', body: () => _flat(b.nsfw)),
       ] else ...[
         (title: 'All', body: _grouped),

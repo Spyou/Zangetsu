@@ -144,7 +144,9 @@ void main() {
     await t.tap(find.textContaining('HiAnime'));
     await t.pumpAndSettle();
     // The shared picker has no title row — its tabs identify it.
-    expect(find.text('Movies/Series'), findsOneWidget);
+    // One merged group, so the picker is identified by its All tab rather
+    // than by an Anime/Movies split that no longer exists.
+    expect(find.text('All'), findsOneWidget);
 
     // allanime is a JS provider with no site and no settings, so it gets no
     // overflow at all rather than an empty menu — ani:1's is the only one.
@@ -178,7 +180,9 @@ void main() {
     // The sheet is still open (only a row's own body pops it) and the
     // selection is untouched.
     // The shared picker has no title row — its tabs identify it.
-    expect(find.text('Movies/Series'), findsOneWidget);
+    // One merged group, so the picker is identified by its All tab rather
+    // than by an Anime/Movies split that no longer exists.
+    expect(find.text('All'), findsOneWidget);
     expect(prefs.get(fma.kind), before);
     expect(aniCalls.any((c) => c.method == 'openSourceSettings'), isTrue);
   });

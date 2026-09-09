@@ -192,7 +192,9 @@ void main() {
     await t.tap(find.textContaining('AllAnime'));
     await t.pumpAndSettle();
     // The shared picker has no title row — its tabs identify it.
-    expect(find.text('Movies/Series'), findsOneWidget);
+    // One merged group, so the picker is identified by its All tab rather
+    // than by an Anime/Movies split that no longer exists.
+    expect(find.text('All'), findsOneWidget);
     expect(find.textContaining('HiAnime'), findsOneWidget);
 
     await t.runAsync(() async {
@@ -461,7 +463,9 @@ void main() {
     await t.pumpAndSettle();
     // The shared picker has no title row — its tabs identify it. Both sources
     // are offered, so a correction is still two taps away.
-    expect(find.text('Movies/Series'), findsOneWidget);
+    // One merged group, so the picker is identified by its All tab rather
+    // than by an Anime/Movies split that no longer exists.
+    expect(find.text('All'), findsOneWidget);
     expect(find.textContaining('AllAnime'), findsOneWidget);
     expect(find.textContaining('HiAnime'), findsOneWidget);
   });

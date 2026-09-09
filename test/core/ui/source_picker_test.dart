@@ -160,9 +160,12 @@ void main() {
 
       await pumpSwitcher(tester);
 
+      // Anime and Movies/Series are one group now: they share the same
+      // installed pool, plenty of sources carry both, and splitting by the
+      // type a source DECLARED sent people hunting under the wrong heading.
       expect(find.text('All'), findsOneWidget);
-      expect(find.text('Anime'), findsOneWidget);
-      expect(find.text('Movies/Series'), findsOneWidget);
+      expect(find.text('Anime'), findsNothing);
+      expect(find.text('Movies/Series'), findsNothing);
       expect(find.text('NSFW'), findsNothing);
       expect(find.text('Manga'), findsNothing);
       expect(find.text('Novel'), findsNothing);
