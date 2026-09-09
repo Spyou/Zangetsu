@@ -34,7 +34,10 @@ class MalCatalogue implements AnimeCatalogue {
       // media_type is what separates a light novel from a manga: MAL has no
       // novel endpoint, so /manga/ranking answers for both and only this
       // field says which one came back.
-      'start_season,mean,media_type';
+      // start_date, not just start_season: the seasonal rows below sort and
+      // filter on the actual date, and a season alone can't tell a show that
+      // began this season from one merely still running through it.
+      'start_season,start_date,mean,media_type';
   static const String _detailFields =
       '$_listFields,synopsis,studios,media_type,num_chapters,'
       'mean,num_list_users,average_episode_duration,source,'
@@ -88,8 +91,12 @@ class MalCatalogue implements AnimeCatalogue {
 
   static List<(String, String)> _rows(ZKind k) => k == ZKind.anime
       ? const [
+          // Both seasonal rows come from ONE request (see [home]) — MAL has no
+          // per-season ranking, so the season endpoint is fetched once and
+          // read two ways: newest first, and most-listed first.
+          ('Recently released', _recentRow),
           ('Trending', 'airing'),
-          ('Popular this season', 'airing'),
+          ('Popular this season', _seasonRow),
           ('Upcoming next season', 'upcoming'),
           ('All-time popular', 'bypopularity'),
           ('Top rated', 'all'),
@@ -101,23 +108,101 @@ class MalCatalogue implements AnimeCatalogue {
           ('Top rated', 'all'),
         ];
 
+  /// Row ids for the two rows served by the season endpoint rather than
+  /// `/ranking`. Not ranking types — [home] and [browseRow] both branch on
+  /// them before choosing an endpoint.
+  static const String _recentRow = 'season_recent';
+  static const String _seasonRow = 'season_popular';
+  static bool _isSeasonRow(String id) => id == _recentRow || id == _seasonRow;
+
+  static (int year, String season) _currentSeason([DateTime? now]) {
+    final n = now ?? DateTime.now();
+    return (n.year, switch (n.month) {
+      1 || 2 || 3 => 'winter',
+      4 || 5 || 6 => 'spring',
+      7 || 8 || 9 => 'summer',
+      _ => 'fall',
+    });
+  }
+
+  /// First day of the season [d] falls in — the cutoff that separates a show
+  /// which STARTED this season from one that merely still airs through it.
+  static DateTime _seasonStart(DateTime d) =>
+      DateTime(d.year, ((d.month - 1) ~/ 3) * 3 + 1);
+
+  /// The raw season page. Asked for generously because both rows are cut from
+  /// it: the popular one wants only what began this season, and the recent one
+  /// re-sorts by date, so a 30-row page would leave both short.
+  Future<List<dynamic>> _seasonRows() async {
+    final (year, season) = _currentSeason();
+    final r = await _get('/anime/season/$year/$season', {
+      'sort': 'anime_num_list_users',
+      'limit': 100,
+      'fields': _listFields,
+    });
+    final rows = (r.data is Map ? r.data['data'] : null);
+    return rows is List ? rows : const [];
+  }
+
+  static DateTime? _startOf(dynamic row) {
+    final node = (row is Map ? row['node'] : null);
+    return node is Map ? _date(node['start_date'] as String?) : null;
+  }
+
+  /// This season's rows, cut the way [rowId] wants them.
+  ///
+  /// `season_popular` keeps only shows that BEGAN this season — MAL's season
+  /// endpoint also returns everything still running through it, which is why
+  /// One Piece and Detective Conan sat at the top of a row titled "Popular
+  /// this season". `season_recent` sorts by start date, newest first, and
+  /// drops anything not out yet.
+  static List<dynamic> _cutSeason(List<dynamic> rows, String rowId) {
+    final now = DateTime.now();
+    if (rowId == _seasonRow) {
+      final from = _seasonStart(now);
+      return [
+        for (final r in rows)
+          if ((_startOf(r) ?? DateTime(1900)).isAfter(
+            from.subtract(const Duration(days: 1)),
+          ))
+            r,
+      ];
+    }
+    final started = [
+      for (final r in rows)
+        if (_startOf(r) != null && !_startOf(r)!.isAfter(now)) r,
+    ]..sort((a, b) => _startOf(b)!.compareTo(_startOf(a)!));
+    return started;
+  }
+
   /// One request per row — MAL has no aliasing, so this is N calls where
   /// AniList makes one. They run together; a row that fails is dropped rather
   /// than failing the screen.
   Future<List<HomeSection>> home(ZKind kind) async {
     final rows = _rows(kind);
+    // Fetched once and shared by both seasonal rows rather than per row — they
+    // read the same page two different ways, and asking MAL for it twice would
+    // be a second round-trip for data already in hand.
+    final season = rows.any((r) => _isSeasonRow(r.$2))
+        ? await _seasonRows().catchError((_) => const <dynamic>[])
+        : const <dynamic>[];
     final results = await Future.wait([
       for (final (_, rankingType) in rows)
-        _get('/${_path(kind)}/ranking', {
-              'ranking_type': rankingType,
-              // The reading kinds share one endpoint and are filtered after
-              // the fact: only about a third of a manga page is light novels,
-              // so asking for 30 left a novel row with roughly eight entries.
-              'limit': kind == ZKind.anime ? 30 : 100,
-              'fields': _listFields,
-            })
-            .then<List<MediaItem>>((r) => _items(r.data, kind))
-            .catchError((_) => <MediaItem>[]),
+        if (_isSeasonRow(rankingType))
+          Future.value(
+            _items({'data': _cutSeason(season, rankingType)}, kind),
+          )
+        else
+          _get('/${_path(kind)}/ranking', {
+                'ranking_type': rankingType,
+                // The reading kinds share one endpoint and are filtered after
+                // the fact: only about a third of a manga page is light novels,
+                // so asking for 30 left a novel row with roughly eight entries.
+                'limit': kind == ZKind.anime ? 30 : 100,
+                'fields': _listFields,
+              })
+              .then<List<MediaItem>>((r) => _items(r.data, kind))
+              .catchError((_) => <MediaItem>[]),
     ]);
     final out = <HomeSection>[];
     for (final (i, (title, rankingType)) in rows.indexed) {
@@ -144,6 +229,16 @@ class MalCatalogue implements AnimeCatalogue {
     // already showed.
     const limit = 30;
     try {
+      if (_isSeasonRow(rowId)) {
+        // The season is one page of 100 on MAL's side, so See-all pages
+        // through what we already cut rather than asking for more.
+        final cut = _cutSeason(await _seasonRows(), rowId);
+        final from = (page - 1) * limit;
+        if (from >= cut.length) return const [];
+        return _items({
+          'data': cut.sublist(from, (from + limit).clamp(0, cut.length)),
+        }, kind);
+      }
       final r = await _get('/${_path(kind)}/ranking', {
         'ranking_type': rowId,
         'limit': limit,
@@ -237,6 +332,13 @@ class MalCatalogue implements AnimeCatalogue {
       // Seconds per episode, not minutes.
       durationMins: _durationMins(map['average_episode_duration']),
       sourceMaterial: _prettyEnum(map['source'] as String?),
+      // MAL has no `nextAiringEpisode`, so this is derived: a weekly TV anime
+      // that started on a known date has aired one episode per week since.
+      // Rough by construction (it can't know a delayed week), and used only to
+      // label episodes nobody can play yet — "Not out yet" beats blaming a
+      // source for an episode that simply hasn't aired. AniList reports the
+      // real thing and doesn't come through here.
+      nextEpisode: _nextEpisode(map),
       startDate: _date(map['start_date'] as String?),
       endDate: _date(map['end_date'] as String?),
       // How many people have it listed. MAL's own `popularity` is a RANK
@@ -316,6 +418,21 @@ class MalCatalogue implements AnimeCatalogue {
     'finished_airing' || 'finished' => MediaStatus.completed,
     _ => MediaStatus.unknown,
   };
+
+  /// The first episode NOT yet aired, for a currently-airing show whose start
+  /// date we know. Null for anything finished, undated, or open-ended — in
+  /// those cases we genuinely don't know and say nothing.
+  static int? _nextEpisode(Map<String, dynamic> m) {
+    if (m['status'] != 'currently_airing') return null;
+    final total = m['num_episodes'] as int?;
+    if (total == null || total <= 0) return null;
+    final start = _date(m['start_date'] as String?);
+    if (start == null) return null;
+    final weeks = DateTime.now().difference(start).inDays ~/ 7;
+    if (weeks < 0) return 1; // announced, hasn't started
+    final aired = weeks + 1;
+    return aired >= total ? null : aired + 1;
+  }
 
   /// Same synthesis AniList uses: 1..count, because neither provider exposes a
   /// real episode list. A count of 0 means "unknown/still airing" on MAL, and
