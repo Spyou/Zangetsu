@@ -1,17 +1,19 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
 import '../../core/platform/apple_tv.dart';
-import '../../core/provider/cloudstream_provider.dart';
 import '../../core/provider/provider_manager.dart';
 import '../../core/provider/provider_registry.dart';
 import '../../core/state/active_source_cubit.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/tv/tv_focusable.dart';
+import '../../core/tv/tv_shell_tab_scope.dart';
 import '../../core/zmode/zmode_prefs.dart';
 import '../auth/auth_cubit.dart';
 import '../auth/auth_screens_tv.dart';
@@ -22,14 +24,14 @@ import '../home/cubit/home_cubit.dart';
 import '../schedule/schedule_screen.dart';
 import 'root_shell.dart';
 import 'tv_mode_page.dart';
-import 'tv_source_picker.dart';
 
 /// Collapsed (icon-only) and expanded (labelled) drawer widths.
 const double _kNavCollapsed = 74;
 const double _kNavExpanded = 312;
 
-/// Horizontal inset inside the rail column (room for pill focus chrome).
-const double _kRailHPad = 6;
+/// Horizontal inset inside the rail so pill focus chrome is not flush with
+/// the rounded drawer (collapsed + expanded).
+const double _kRailHPad = 18;
 
 /// Width of the icon/logo column. Sized so icons sit dead-centre in the
 /// *visible* collapsed rail: the column has [_kRailHPad] on each side, so
@@ -40,6 +42,10 @@ const double _kIconSlot = _kNavCollapsed - 2 * _kRailHPad;
 ///
 /// Rendered when [AppMode.isTv] is true (gated in [RootShell.build]). The phone
 /// [RootShell] and its [NavigationBar] are completely unchanged.
+///
+/// Metadata catalogue browse is always on in production ([ZModePrefs.enabled]
+/// defaults true). When on, an inline Anime / Movie·TV toggle sits in the rail
+/// under the profile row — no separate page.
 ///
 /// The drawer overlays the page area on the left. It shows a slim icon rail by
 /// default and pops open to a full labelled drawer whenever focus is in the
@@ -66,8 +72,7 @@ class _RailItem {
 }
 
 /// Nav item definitions (label + icons). Order matches [_RootShellTvState._pages].
-/// Six today; a seventh, Mode, when Z Mode is on.
-int get _kRailItemCount => ZModePrefs.enabled ? 7 : 6;
+const int _kRailItemCount = 6;
 
 List<_RailItem> _railItems(BuildContext context) {
   final l = context.l10n;
@@ -77,11 +82,7 @@ List<_RailItem> _railItems(BuildContext context) {
       icon: Icons.home_outlined,
       selectedIcon: Icons.home_filled,
     ),
-    _RailItem(
-      label: l.search,
-      icon: Icons.search,
-      selectedIcon: Icons.search,
-    ),
+    _RailItem(label: l.search, icon: Icons.search, selectedIcon: Icons.search),
     _RailItem(
       label: l.myList,
       icon: Icons.bookmark_outline,
@@ -102,12 +103,6 @@ List<_RailItem> _railItems(BuildContext context) {
       icon: Icons.settings_outlined,
       selectedIcon: Icons.settings,
     ),
-    if (ZModePrefs.enabled)
-      _RailItem(
-        label: l.zMode,
-        icon: Icons.auto_awesome_outlined,
-        selectedIcon: Icons.auto_awesome,
-      ),
   ];
 }
 
@@ -132,6 +127,7 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
   static const int _searchRailItem = 1;
 
   int _index = 0;
+
   /// tvOS: only mount tabs the user has opened — cloud-restore boots build a
   /// heavy shell; building every [IndexedStack] child on the first frame can
   /// delay the splash overlay from clearing.
@@ -143,32 +139,23 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
 
   // ── D-pad bridge: rail ↔ content (unchanged from the original) ────────────
   final FocusScopeNode _railScope = FocusScopeNode(debugLabel: 'tv-rail-scope');
-  final FocusScopeNode _contentScope =
-      FocusScopeNode(debugLabel: 'tv-content-scope');
+  final FocusScopeNode _contentScope = FocusScopeNode(
+    debugLabel: 'tv-content-scope',
+  );
 
   // One focus node per nav item so entering the rail can land straight on the
-  // CURRENT page's item (so you always see where you are). Always allocate
-  // for the max (7): _kRailItemCount can change at runtime (the Z Mode
-  // toggle), but this list is built once at field-initialisation — a hidden
-  // node past the current count is simply never drawn (see [_railColumn]).
-  final List<FocusNode> _navNodes = List.generate(7, (_) => FocusNode());
+  // CURRENT page's item (so you always see where you are).
+  final List<FocusNode> _navNodes = List.generate(
+    _kRailItemCount,
+    (_) => FocusNode(),
+  );
+  final FocusNode _streamKindNode = FocusNode(debugLabel: 'tv-stream-kind');
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    ZModePrefs.revision.addListener(_onZMode);
     _recoverFocusIfNeeded();
-  }
-
-  /// The rail redraws when the Z Mode toggle flips. If it just turned off
-  /// while the user was on the (now hidden) 7th page, clamp back to Home so
-  /// `_index` can't point past the end of `_pages`.
-  void _onZMode() {
-    if (!mounted) return;
-    setState(() {
-      if (_index >= _kRailItemCount) _index = 0;
-    });
   }
 
   @override
@@ -351,39 +338,27 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    ZModePrefs.revision.removeListener(_onZMode);
     _searchFocusSignal.dispose();
     _railScope.dispose();
     _contentScope.dispose();
     for (final n in _navNodes) {
       n.dispose();
     }
+    _streamKindNode.dispose();
     super.dispose();
   }
 
-  /// Display name for a source id (mirrors SourceSwitcher._label).
-  String _sourceLabel(String id) {
-    if (id.startsWith('cs:')) {
-      try {
-        final name = sl<CloudStreamManager>().get(id)?.displayName;
-        if (name != null && name.isNotEmpty) return 'CS · $name';
-      } catch (_) {}
-      return id;
-    }
-    if (id.startsWith('ani:')) {
-      try {
-        final name = sl<AniyomiManager>().get(id)?.displayName;
-        if (name != null && name.isNotEmpty) return 'Ani · $name';
-      } catch (_) {}
-      return id;
-    }
-    try {
-      final entry = sl<ProviderRegistry>().entryFor(id);
-      if (entry != null && entry.displayName.isNotEmpty) return entry.displayName;
-      return entry?.name ?? id;
-    } catch (_) {
-      return id;
-    }
+  Future<void> _pickStreamKind(StreamKind kind) async {
+    if (kind == ZModePrefs.streamKind) return;
+    await ZModePrefs.setStreamKind(kind);
+    if (!mounted) return;
+    // Keep focus on the toggle so a Home rebuild can't steal the KeyUp and
+    // accidentally resume Continue Watching.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _streamKindNode.canRequestFocus) {
+        _streamKindNode.requestFocus();
+      }
+    });
   }
 
   void _onItemSelected(int i) {
@@ -404,14 +379,20 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
   /// tvOS: load provider JS before [HomeCubit] hits QuickJS — a cloud-restore
   /// pick (e.g. AniKoto) can be enabled in the registry but not yet evaluated.
   Future<void> _reloadHomeForSource(String sourceId) async {
+    debugPrint('[tv-shell] _reloadHomeForSource · sourceId=$sourceId');
     if (isAppleTv) {
       final ok = await sl<ProviderRegistry>()
           .ensureRuntimeLoaded(sourceId)
           .catchError((_) => false);
       if (!ok || sl<ProviderManager>().get(sourceId) == null) {
+        debugPrint(
+          '[tv-shell] _reloadHomeForSource · '
+          'ensureRuntimeLoaded failed or provider not found',
+        );
         return;
       }
     }
+    debugPrint('[tv-shell] _reloadHomeForSource → loading HomeCubit');
     sl<HomeCubit>().load(reset: true);
   }
 
@@ -445,7 +426,6 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
       const DownloadsScreen(),
       const ScheduleScreen(),
       shared.last, // Settings
-      if (ZModePrefs.enabled) const TvModePage(),
     ];
   }
 
@@ -469,8 +449,12 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
           child: Center(
             child: ClipRRect(
               borderRadius: BorderRadius.circular(7),
-              child: Image.asset('assets/icon/app_icon.png',
-                  width: 30, height: 30, fit: BoxFit.cover),
+              child: Image.asset(
+                'assets/icon/app_icon.png',
+                width: 30,
+                height: 30,
+                fit: BoxFit.cover,
+              ),
             ),
           ),
         ),
@@ -490,77 +474,19 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
     );
   }
 
-  /// Source indicator — unchanged behaviour (opens [TvSourcePicker]); label
-  /// fades in when open.
-  Widget _sourceIndicator() {
-    return BlocBuilder<ActiveSourceCubit, String>(
-      builder: (context, sourceId) {
-        return TvFocusable(
-          key: const ValueKey('tv-source-indicator'),
-          variant: TvFocusVariant.pill,
-          onTap: () {
-            showDialog<void>(
-              context: context,
-              barrierColor: Colors.black54,
-              builder: (_) => BlocProvider<ActiveSourceCubit>.value(
-                value: context.read<ActiveSourceCubit>(),
-                child: TvSourcePicker(currentId: sourceId),
-              ),
-            );
-          },
-          builder: (focused) {
-            final label = _sourceLabel(sourceId);
-            final clean = label.replaceFirst(RegExp(r'^(CS|Ani) · '), '');
-            final nameColor = focused ? Colors.black : AppColors.textPrimary;
-            final lblColor =
-                focused ? const Color(0xFF5A5A5A) : AppColors.textTertiary;
-            final iconColor = focused ? Colors.black : AppColors.textSecondary;
-            return Padding(
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              child: Row(
-                children: [
-                  SizedBox(
-                    width: _kIconSlot,
-                    child: Center(
-                      child: Icon(Icons.swap_horiz_rounded,
-                          size: 26, color: iconColor),
-                    ),
-                  ),
-                  Expanded(
-                    child: _navOpen
-                        ? Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                context.l10n.sourceNavLabel,
-                                style: TextStyle(
-                                  color: lblColor,
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700,
-                                  letterSpacing: 0.6,
-                                ),
-                              ),
-                              const SizedBox(height: 1),
-                              Text(
-                                clean,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: nameColor,
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ],
-                          )
-                        : const SizedBox.shrink(),
-                  ),
-                  if (_navOpen) const SizedBox(width: 12),
-                ],
-              ),
-            );
-          },
+  Widget _streamKindToggle() {
+    // Listen here — not on the whole shell. setState on [ZModePrefs.revision]
+    // used to rebuild every tab (two 10-foot Homes + Search + Schedule) and
+    // freeze the UI for seconds even when HomeCubit already had a cache hit.
+    return ValueListenableBuilder<int>(
+      valueListenable: ZModePrefs.revision,
+      builder: (context, _, _) {
+        if (!ZModePrefs.enabled) return const SizedBox.shrink();
+        return TvStreamKindRailToggle(
+          navOpen: _navOpen,
+          iconSlotWidth: _kIconSlot,
+          focusNode: _streamKindNode,
+          onToggle: _pickStreamKind,
         );
       },
     );
@@ -590,7 +516,9 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
                         ? Colors.black
                         // Active tab reads from the filled glyph + bright white,
                         // not a red tint — keeps the rail premium and calm.
-                        : (selected ? AppColors.textPrimary : AppColors.textTertiary),
+                        : (selected
+                              ? AppColors.textPrimary
+                              : AppColors.textTertiary),
                     size: 26,
                   ),
                 ),
@@ -606,8 +534,9 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
                           style: TextStyle(
                             color: fg,
                             fontSize: 18,
-                            fontWeight:
-                                selected ? FontWeight.w700 : FontWeight.w500,
+                            fontWeight: selected
+                                ? FontWeight.w700
+                                : FontWeight.w500,
                           ),
                         ),
                       )
@@ -650,10 +579,13 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
       builder: (context, auth) {
         final loggedIn = auth.isLoggedIn;
         final name = loggedIn ? auth.displayName : context.l10n.signIn;
-        final sub = loggedIn ? context.l10n.signedIn : context.l10n.syncYourListNav;
+        final sub = loggedIn
+            ? context.l10n.signedIn
+            : context.l10n.syncYourListNav;
         final avatar = auth.avatarUrl;
-        final initial =
-            (loggedIn && name.isNotEmpty) ? name[0].toUpperCase() : null;
+        final initial = (loggedIn && name.isNotEmpty)
+            ? name[0].toUpperCase()
+            : null;
         return TvFocusable(
           key: const ValueKey('tv-nav-avatar'),
           variant: TvFocusVariant.pill,
@@ -681,13 +613,19 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
                           : null,
                       child: (avatar == null || avatar.isEmpty)
                           ? (initial != null
-                              ? Text(initial,
-                                  style: const TextStyle(
+                                ? Text(
+                                    initial,
+                                    style: const TextStyle(
                                       color: Colors.white,
                                       fontSize: 15,
-                                      fontWeight: FontWeight.w800))
-                              : const Icon(Icons.person_rounded,
-                                  color: AppColors.textSecondary, size: 24))
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  )
+                                : const Icon(
+                                    Icons.person_rounded,
+                                    color: AppColors.textSecondary,
+                                    size: 24,
+                                  ))
                           : null,
                     ),
                   ),
@@ -698,22 +636,28 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Text(name,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                    color: focused
-                                        ? Colors.black
-                                        : AppColors.textPrimary,
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w700)),
-                            Text(sub,
-                                maxLines: 1,
-                                style: TextStyle(
-                                    color: focused
-                                        ? const Color(0xFF555555)
-                                        : AppColors.textTertiary,
-                                    fontSize: 12)),
+                            Text(
+                              name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: focused
+                                    ? Colors.black
+                                    : AppColors.textPrimary,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            Text(
+                              sub,
+                              maxLines: 1,
+                              style: TextStyle(
+                                color: focused
+                                    ? const Color(0xFF555555)
+                                    : AppColors.textTertiary,
+                                fontSize: 12,
+                              ),
+                            ),
                           ],
                         )
                       : const SizedBox.shrink(),
@@ -740,7 +684,10 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
       // Inset so pill scale (~1.04) + shadow stay inside the drawer bounds when
       // the parent uses Clip.none (avoids cropped focus chrome).
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: _kRailHPad, vertical: 4),
+        padding: const EdgeInsets.symmetric(
+          horizontal: _kRailHPad,
+          vertical: 4,
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -748,11 +695,15 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
             _brand(), // Zangetsu wordmark, revealed when open
             const SizedBox(height: 8),
             _avatarBlock(), // profile
-            const SizedBox(height: 6),
-            _sourceIndicator(), // source switch right under the profile
+            const SizedBox(height: 4),
+            _streamKindToggle(),
             const SizedBox(height: 6),
             const Divider(
-                height: 1, color: AppColors.hairline, indent: 16, endIndent: 16),
+              height: 1,
+              color: AppColors.hairline,
+              indent: 16,
+              endIndent: 16,
+            ),
             const SizedBox(height: 6),
             // Spread nav items across the remaining height (Android-TV style) so
             // Settings stays visible at the bottom instead of clipping off.
@@ -784,7 +735,7 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
       child: BlocListener<ActiveSourceCubit, String>(
         listenWhen: (prev, curr) => prev != curr,
         listener: (context, sourceId) {
-          if (isAppleTv && !tvosProvidersReady) return;
+          if (sl<AppMode>().isTv && !tvosProvidersReady) return;
           unawaited(_reloadHomeForSource(sourceId));
         },
         child: Actions(
@@ -792,87 +743,96 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
             DirectionalFocusIntent: _TvRailDirectionalAction(this),
           },
           child: Scaffold(
-          backgroundColor: AppColors.bg,
-          body: Stack(
-            children: [
-              // ── Page area (fills the width; inset left by the collapsed rail
-              //    so content is never hidden behind it; the expanded drawer
-              //    overlays this inset — Apple-TV style). ────────────────────
-              Positioned.fill(
-                left: _kNavCollapsed,
-                child: Focus(
-                  focusNode: _contentScope,
-                  onKeyEvent: _onContentKey,
-                  child: Padding(
-                    // Overscan-safe inset. Extra left gap so page content
-                    // (esp. Settings cards) doesn't sit flush against the rail.
-                    padding: const EdgeInsets.fromLTRB(28, 24, 24, 16),
-                    child: IndexedStack(
-                      index: _index,
-                      children: [
-                        for (var i = 0; i < pages.length; i++)
-                          ExcludeFocus(
-                            excluding: i != _index,
-                            // IndexedStack exposes only its painted child.
-                            // Toggling ExcludeSemantics while tvOS dispatches a
-                            // scroll semantics action triggers Flutter's
-                            // _debugDoingSemantics assertion.
-                            child: _pageAt(i, pages),
-                          ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              // ── Drawer overlay (icon rail ⇄ full drawer) ──────────────────
-              Positioned(
-                top: 0,
-                bottom: 0,
-                left: 0,
-                child: Focus(
-                  focusNode: _railScope,
-                  onKeyEvent: _onRailKey,
-                  // Expand while focus is anywhere in the rail zone; collapse
-                  // when it leaves (i.e. content is focused).
-                  onFocusChange: (hasFocus) {
-                    if (hasFocus != _navOpen) setState(() => _navOpen = hasFocus);
-                  },
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 320),
-                    curve: Curves.easeOutCubic,
-                    width: _navOpen ? _kNavExpanded : _kNavCollapsed,
-                    margin: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [Color(0xFF23242B), Color(0xFF141519)],
-                      ),
-                      borderRadius: BorderRadius.circular(22),
-                      border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.55),
-                          blurRadius: 40,
-                          offset: const Offset(0, 20),
+            backgroundColor: AppColors.bg,
+            body: Stack(
+              children: [
+                // ── Page area (fills the width; inset left by the collapsed rail
+                //    so content is never hidden behind it; the expanded drawer
+                //    overlays this inset — Apple-TV style). ────────────────────
+                Positioned.fill(
+                  left: _kNavCollapsed,
+                  child: Focus(
+                    focusNode: _contentScope,
+                    onKeyEvent: _onContentKey,
+                    child: Padding(
+                      // Overscan-safe inset. Extra left gap so page content
+                      // (esp. Settings cards) doesn't sit flush against the rail.
+                      padding: const EdgeInsets.fromLTRB(28, 24, 24, 16),
+                      child: TvShellTabScope(
+                        activeIndex: _index,
+                        child: IndexedStack(
+                          index: _index,
+                          children: [
+                            for (var i = 0; i < pages.length; i++)
+                              ExcludeFocus(
+                                excluding: i != _index,
+                                // IndexedStack exposes only its painted child.
+                                // Toggling ExcludeSemantics while tvOS dispatches a
+                                // scroll semantics action triggers Flutter's
+                                // _debugDoingSemantics assertion.
+                                child: _pageAt(i, pages),
+                              ),
+                          ],
                         ),
-                      ],
-                    ),
-                    // Always clip to the rounded drawer. Nav focus chrome is kept
-                    // inside via [_railColumn] insets + scroll padding above.
-                    clipBehavior: Clip.antiAlias,
-                    child: OverflowBox(
-                      minWidth: _kNavExpanded,
-                      maxWidth: _kNavExpanded,
-                      alignment: Alignment.centerLeft,
-                      child: SizedBox(width: _kNavExpanded, child: _railColumn()),
+                      ),
                     ),
                   ),
                 ),
-              ),
-            ],
+                // ── Drawer overlay (icon rail ⇄ full drawer) ──────────────────
+                Positioned(
+                  top: 0,
+                  bottom: 0,
+                  left: 0,
+                  child: Focus(
+                    focusNode: _railScope,
+                    onKeyEvent: _onRailKey,
+                    // Expand while focus is anywhere in the rail zone; collapse
+                    // when it leaves (i.e. content is focused).
+                    onFocusChange: (hasFocus) {
+                      if (hasFocus != _navOpen)
+                        setState(() => _navOpen = hasFocus);
+                    },
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 320),
+                      curve: Curves.easeOutCubic,
+                      width: _navOpen ? _kNavExpanded : _kNavCollapsed,
+                      margin: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [Color(0xFF23242B), Color(0xFF141519)],
+                        ),
+                        borderRadius: BorderRadius.circular(22),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.06),
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.55),
+                            blurRadius: 40,
+                            offset: const Offset(0, 20),
+                          ),
+                        ],
+                      ),
+                      // Always clip to the rounded drawer. Nav focus chrome is kept
+                      // inside via [_railColumn] insets + scroll padding above.
+                      clipBehavior: Clip.antiAlias,
+                      child: OverflowBox(
+                        minWidth: _kNavExpanded,
+                        maxWidth: _kNavExpanded,
+                        alignment: Alignment.centerLeft,
+                        child: SizedBox(
+                          width: _kNavExpanded,
+                          child: _railColumn(),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
         ),
       ),
     );
@@ -908,16 +868,20 @@ class TvLogoutSheet extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 13),
               child: Row(
                 children: [
-                  Icon(Icons.logout_rounded,
-                      size: 20,
-                      color: focused ? Colors.black : const Color(0xFFFF5C5C)),
+                  Icon(
+                    Icons.logout_rounded,
+                    size: 20,
+                    color: focused ? Colors.black : const Color(0xFFFF5C5C),
+                  ),
                   const SizedBox(width: 12),
-                  Text(context.l10n.logOut,
-                      style: TextStyle(
-                        color: focused ? Colors.black : const Color(0xFFFF5C5C),
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                      )),
+                  Text(
+                    context.l10n.logOut,
+                    style: TextStyle(
+                      color: focused ? Colors.black : const Color(0xFFFF5C5C),
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -929,16 +893,20 @@ class TvLogoutSheet extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 13),
               child: Row(
                 children: [
-                  Icon(Icons.close_rounded,
-                      size: 20,
-                      color: focused ? Colors.black : AppColors.textSecondary),
+                  Icon(
+                    Icons.close_rounded,
+                    size: 20,
+                    color: focused ? Colors.black : AppColors.textSecondary,
+                  ),
                   const SizedBox(width: 12),
-                  Text(context.l10n.cancel,
-                      style: TextStyle(
-                        color: focused ? Colors.black : AppColors.textSecondary,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      )),
+                  Text(
+                    context.l10n.cancel,
+                    style: TextStyle(
+                      color: focused ? Colors.black : AppColors.textSecondary,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                 ],
               ),
             ),

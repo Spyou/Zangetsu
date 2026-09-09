@@ -10,6 +10,7 @@ import '../../core/provider/provider_registry.dart';
 import '../../core/repository/provider_settings_repository.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
+import '../../core/ui/settings_widgets.dart';
 import '../../core/ui/states.dart';
 import '../../l10n/l10n.dart';
 
@@ -60,8 +61,9 @@ class _SourceSettingsScreenState extends State<SourceSettingsScreen> {
     super.initState();
     _schemaFuture = _loadSchema();
     final api = _csApiName;
-    _nativeSettingsFuture =
-        api == null ? Future.value(false) : csPluginHasSettings(api);
+    _nativeSettingsFuture = api == null
+        ? Future.value(false)
+        : csPluginHasSettings(api);
   }
 
   @override
@@ -206,12 +208,7 @@ class _SourceSettingsScreenState extends State<SourceSettingsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.bg,
-      appBar: AppBar(
-        title: Text(
-          widget.displayName ?? widget.sourceId,
-          style: AppText.title,
-        ),
-      ),
+      appBar: settingsAppBar(widget.displayName ?? widget.sourceId),
       body: FutureBuilder<List<ProviderSettingSchema>?>(
         future: _schemaFuture,
         builder: (context, snapshot) {
@@ -227,8 +224,7 @@ class _SourceSettingsScreenState extends State<SourceSettingsScreen> {
             );
           }
           final data = snapshot.data;
-          final schema =
-              (data != null && data.isNotEmpty) ? data : null;
+          final schema = (data != null && data.isNotEmpty) ? data : null;
           return FutureBuilder<bool>(
             future: _nativeSettingsFuture,
             builder: (context, nativeSnap) {

@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text.dart';
 import 'tv_keys.dart';
+import 'tv_route_pop_guard.dart';
 
 /// Visual style of the D-pad focus highlight.
 enum TvFocusVariant {
@@ -37,7 +38,8 @@ enum TvFocusVariant {
 ///
 /// When [onLongPress] is set, OK is held to distinguish tap vs long-press
 /// (remote KeyDown is no longer treated as an instant tap). Buttons without
-/// a long-press handler stay immediate on KeyDown.
+/// a long-press handler stay immediate on KeyDown, unless [waitForKeyUp] is
+/// true (use that when onTap pushes a route whose first child is autofocused).
 class TvFocusable extends StatefulWidget {
   const TvFocusable({
     super.key,
@@ -45,6 +47,7 @@ class TvFocusable extends StatefulWidget {
     this.builder,
     required this.onTap,
     this.onLongPress,
+    this.waitForKeyUp = false,
     this.autofocus = false,
     this.scale = 1.08,
     this.focusLabel,
@@ -72,6 +75,11 @@ class TvFocusable extends StatefulWidget {
   /// Optional long-press. On the remote this is a held OK/Select (same
   /// timeout as a touch long-press). Null keeps the snappy KeyDown tap.
   final VoidCallback? onLongPress;
+
+  /// If true, OK activates on KeyUp even without [onLongPress]. Needed when
+  /// [onTap] pushes a screen that autofocuses another [TvFocusable] — otherwise
+  /// KeyDown opens the route and KeyUp activates the new first item.
+  final bool waitForKeyUp;
 
   final bool autofocus;
   final double scale;
@@ -124,6 +132,7 @@ class _TvFocusableState extends State<TvFocusable> {
   // "click" (Semantics.onTap), deduped within a short window so a press that
   // arrives on both channels only fires onTap once.
   void _activate() {
+    if (TvRoutePopGuard.suppressActivate) return;
     final now = DateTime.now().millisecondsSinceEpoch;
     if (now - _lastActivateMs < 250) return;
     _lastActivateMs = now;
@@ -145,9 +154,10 @@ class _TvFocusableState extends State<TvFocusable> {
     if (!okKeys.contains(event.logicalKey)) return KeyEventResult.ignored;
 
     final longPress = widget.onLongPress;
+    final waitForUp = longPress != null || widget.waitForKeyUp;
 
     if (event is KeyDownEvent) {
-      if (longPress == null) {
+      if (!waitForUp) {
         _activate();
         return KeyEventResult.handled;
       }
@@ -156,15 +166,17 @@ class _TvFocusableState extends State<TvFocusable> {
       _okHeld = true;
       _longPressFired = false;
       _cancelLongPressTimer();
-      _longPressTimer = Timer(kLongPressTimeout, () {
-        if (!mounted || !_okHeld) return;
-        _longPressFired = true;
-        _fireLongPress();
-      });
+      if (longPress != null) {
+        _longPressTimer = Timer(kLongPressTimeout, () {
+          if (!mounted || !_okHeld) return;
+          _longPressFired = true;
+          _fireLongPress();
+        });
+      }
       return KeyEventResult.handled;
     }
 
-    if (longPress == null) return KeyEventResult.ignored;
+    if (!waitForUp) return KeyEventResult.ignored;
 
     if (event is KeyRepeatEvent) {
       // Swallow repeats so they cannot be treated as extra taps.

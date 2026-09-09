@@ -7,6 +7,7 @@ import '../../core/theme/app_text.dart';
 import '../../core/tracker/mal_service.dart';
 import '../../core/tracker/simkl_service.dart';
 import '../../core/tracker/tracker.dart';
+import '../../core/tv/tv_back_button.dart';
 import '../../core/tv/tv_list_focusable.dart';
 import '../../l10n/l10n.dart';
 import '../auth/tv_tracker_connect_screen.dart';
@@ -29,7 +30,9 @@ class _ConnectionsScreenTvState extends State<ConnectionsScreenTv> {
 
   Future<void> _connect(String id) async {
     await Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => TvTrackerConnectScreen(trackerId: id)),
+      MaterialPageRoute<void>(
+        builder: (_) => TvTrackerConnectScreen(trackerId: id),
+      ),
     );
     if (mounted) setState(() {});
   }
@@ -46,7 +49,17 @@ class _ConnectionsScreenTvState extends State<ConnectionsScreenTv> {
       appBar: AppBar(
         backgroundColor: AppColors.bg,
         automaticallyImplyLeading: false,
-        title: Text(context.l10n.connections, style: AppText.headline),
+        toolbarHeight: 72,
+        titleSpacing: 8,
+        title: Row(
+          children: [
+            const TvBackButton(),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(context.l10n.connections, style: AppText.headline),
+            ),
+          ],
+        ),
       ),
       body: Column(
         children: [
@@ -61,15 +74,18 @@ class _ConnectionsScreenTvState extends State<ConnectionsScreenTv> {
                 final connected = r.t.isConnected;
                 final who = connected
                     ? (r.t.viewerName != null
-                        ? context.l10n.connectedAs(r.t.viewerName!)
-                        : context.l10n.connected)
+                          ? context.l10n.connectedAs(r.t.viewerName!)
+                          : context.l10n.connected)
                     : context.l10n.notConnected;
                 return TvListFocusable(
                   autofocus: i == 0,
                   semanticLabel: '${r.label}, $who',
                   onTap: () => connected ? _disconnect(r.t) : _connect(r.id),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 18,
+                    ),
                     decoration: BoxDecoration(
                       color: AppColors.surface,
                       borderRadius: BorderRadius.circular(12),
@@ -97,7 +113,9 @@ class _ConnectionsScreenTvState extends State<ConnectionsScreenTv> {
                           ),
                         ),
                         Text(
-                          connected ? context.l10n.disconnect : context.l10n.connect,
+                          connected
+                              ? context.l10n.disconnect
+                              : context.l10n.connect,
                           style: AppText.body.copyWith(
                             color: connected
                                 ? Colors.redAccent
@@ -115,7 +133,9 @@ class _ConnectionsScreenTvState extends State<ConnectionsScreenTv> {
           Padding(
             padding: const EdgeInsets.fromLTRB(40, 0, 40, 40),
             child: Text(
-              context.l10n.disconnectingHereOnlySignsThisTrackerOutOnTheTVYourPhoneStaysConnected,
+              context
+                  .l10n
+                  .disconnectingHereOnlySignsThisTrackerOutOnTheTVYourPhoneStaysConnected,
               style: AppText.caption.copyWith(color: AppColors.textTertiary),
               textAlign: TextAlign.center,
             ),

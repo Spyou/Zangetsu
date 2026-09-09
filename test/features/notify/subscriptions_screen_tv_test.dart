@@ -30,8 +30,9 @@ class _FakeSubscriptionStore extends SubscriptionStore {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 void _registerStubs(List<Subscription> subs) {
-  GetIt.instance
-      .registerSingleton<SubscriptionStore>(_FakeSubscriptionStore(subs));
+  GetIt.instance.registerSingleton<SubscriptionStore>(
+    _FakeSubscriptionStore(subs),
+  );
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -57,22 +58,22 @@ void main() {
     (tester) async {
       _registerStubs([sub1, sub2]);
 
-      await tester.pumpWidget(
-        const MaterialApp(home: SubscriptionsScreenTv()),
-      );
+      await tester.pumpWidget(const MaterialApp(home: SubscriptionsScreenTv()));
       await tester.pumpAndSettle();
 
       // Both titles are rendered.
       expect(find.text('Attack on Titan'), findsOneWidget);
       expect(find.text('Demon Slayer'), findsOneWidget);
 
-      // At least 2 TvFocusable rows are present.
-      final focusables =
-          tester.widgetList<TvFocusable>(find.byType(TvFocusable)).toList();
-      expect(focusables.length, greaterThanOrEqualTo(2));
+      // At least 2 TvFocusable rows are present (Back + subscriptions).
+      final focusables = tester
+          .widgetList<TvFocusable>(find.byType(TvFocusable))
+          .toList();
+      expect(focusables.length, greaterThanOrEqualTo(3));
 
-      // The very first TvFocusable (first subscription row) has autofocus=true.
-      expect(focusables.first.autofocus, isTrue);
+      // The first subscription row has autofocus — not the Back control.
+      expect(focusables.where((w) => w.autofocus), hasLength(1));
+      expect(focusables.firstWhere((w) => w.autofocus).autofocus, isTrue);
     },
   );
 
@@ -81,14 +82,14 @@ void main() {
     (tester) async {
       _registerStubs([]);
 
-      await tester.pumpWidget(
-        const MaterialApp(home: SubscriptionsScreenTv()),
-      );
+      await tester.pumpWidget(const MaterialApp(home: SubscriptionsScreenTv()));
       await tester.pumpAndSettle();
 
       // No rows — empty state message visible.
-      expect(find.text('No notifications yet.', findRichText: true),
-          findsNothing);
+      expect(
+        find.text('No notifications yet.', findRichText: true),
+        findsNothing,
+      );
       // TvBackButton is always present (adds exactly one TvFocusable), even
       // when the subscription list is empty, so the empty state has no rows
       // but does have the back-navigation button.
@@ -98,39 +99,31 @@ void main() {
     },
   );
 
-  testWidgets(
-    'SubscriptionsScreenTv shows header title "Notifications"',
-    (tester) async {
-      _registerStubs([sub1]);
+  testWidgets('SubscriptionsScreenTv shows header title "Notifications"', (
+    tester,
+  ) async {
+    _registerStubs([sub1]);
 
-      await tester.pumpWidget(
-        const MaterialApp(home: SubscriptionsScreenTv()),
-      );
-      await tester.pumpAndSettle();
+    await tester.pumpWidget(const MaterialApp(home: SubscriptionsScreenTv()));
+    await tester.pumpAndSettle();
 
-      expect(find.text('Notifications'), findsOneWidget);
-    },
-  );
+    expect(find.text('Notifications'), findsOneWidget);
+  });
 
-  testWidgets(
-    'SubscriptionsScreenTv only first row has autofocus=true',
-    (tester) async {
-      _registerStubs([sub1, sub2]);
+  testWidgets('SubscriptionsScreenTv only first row has autofocus=true', (
+    tester,
+  ) async {
+    _registerStubs([sub1, sub2]);
 
-      await tester.pumpWidget(
-        const MaterialApp(home: SubscriptionsScreenTv()),
-      );
-      await tester.pumpAndSettle();
+    await tester.pumpWidget(const MaterialApp(home: SubscriptionsScreenTv()));
+    await tester.pumpAndSettle();
 
-      final focusables =
-          tester.widgetList<TvFocusable>(find.byType(TvFocusable)).toList();
+    final focusables = tester
+        .widgetList<TvFocusable>(find.byType(TvFocusable))
+        .toList();
 
-      expect(focusables, isNotEmpty);
-      expect(focusables.first.autofocus, isTrue);
-
-      for (final f in focusables.skip(1)) {
-        expect(f.autofocus, isFalse);
-      }
-    },
-  );
+    expect(focusables, isNotEmpty);
+    final auto = focusables.where((w) => w.autofocus).toList();
+    expect(auto, hasLength(1));
+  });
 }

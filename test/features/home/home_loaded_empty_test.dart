@@ -27,6 +27,7 @@ import 'package:watch_app/core/provider/provider_downloader.dart';
 import 'package:watch_app/core/provider/provider_manager.dart';
 import 'package:watch_app/core/provider/provider_registry.dart';
 import 'package:watch_app/core/provider/provider_repo_registry.dart';
+import 'package:watch_app/core/zmode/zmode_prefs.dart';
 import 'package:watch_app/features/home/home_screen.dart';
 
 class _FakeManager implements ProviderRuntimeLoader {
@@ -138,6 +139,8 @@ void main() {
     setUp(() async {
       tempDir = await Directory.systemTemp.createTemp('home_loaded_empty_test');
       Hive.init(tempDir.path);
+      await ZModePrefs.init();
+      await ZModePrefs.setEnabled(false);
       await ProviderRegistry.init();
       await ProviderReposRegistry.init();
       await PlaybackPrefs.init();
@@ -164,6 +167,27 @@ void main() {
         await tempDir.delete(recursive: true);
       } catch (_) {}
     });
+
+    testWidgets(
+      'anime mode, Z Mode on, no sources: catalogue miss shows retry, not install',
+      (tester) async {
+        // runAsync: setEnabled is a real Hive write, and under FakeAsync it
+        // dangles — tearDown's Hive.close() then waits on it forever. Same
+        // reason mode_switcher_test wraps setMode.
+        await tester.runAsync(() async {
+          await ZModePrefs.setEnabled(true);
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+        });
+        await pumpEmptyView(tester, mode: ContentMode.anime);
+
+        // main's wording, which this branch keeps: it distinguishes a
+        // catalogue having a moment from a source that isn't answering, and
+        // it goes through l10n rather than a hardcoded English string.
+        expect(find.text("allanime isn't answering"), findsOneWidget);
+        expect(find.text('Retry'), findsOneWidget);
+        expect(find.text('No Streaming sources yet'), findsNothing);
+      },
+    );
 
     testWidgets(
       'anime mode, no anime source installed: shows the install guide, '

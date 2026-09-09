@@ -1,6 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
+import '../app_mode.dart';
 import '../cache/app_image_cache.dart';
 import '../di/injector.dart';
 import '../playback/playback_prefs.dart';
@@ -150,8 +151,8 @@ class _PosterCardState extends State<PosterCard> {
                           frameBuilder: imageFadeIn,
                           loadingBuilder: (_, child, progress) =>
                               progress == null
-                                  ? child
-                                  : ColoredBox(color: AppColors.surface2),
+                              ? child
+                              : ColoredBox(color: AppColors.surface2),
                           errorBuilder: (context, error, stackTrace) =>
                               ColoredBox(color: AppColors.surface2),
                         )
@@ -162,7 +163,10 @@ class _PosterCardState extends State<PosterCard> {
                           httpHeaders: widget.headers,
                           memCacheWidth: memW,
                           fit: BoxFit.cover,
-                          fadeInDuration: const Duration(milliseconds: 180),
+                          fadeInDuration:
+                              sl.isRegistered<AppMode>() && sl<AppMode>().isTv
+                              ? Duration.zero
+                              : const Duration(milliseconds: 180),
                           placeholder: (context, url) =>
                               ColoredBox(color: AppColors.surface2),
                           errorWidget: (context, url, err) =>

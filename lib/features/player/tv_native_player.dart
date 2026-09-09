@@ -16,10 +16,14 @@ import '../../core/playback/playback_prefs.dart';
 import '../../core/playback/title_prefs.dart';
 import '../../core/playback/resume_store.dart';
 import '../../core/playback/skip_service.dart';
+import '../../core/playback/source_health_store.dart';
 import '../../core/playback/source_selection.dart';
 import '../../core/playback/subtitle_font_stage.dart';
 import '../../core/playback/subtitle_search_service.dart';
-import '../../core/playback/tv_playback_tracker.dart';
+import '../../core/tv/tv_playback_failure.dart';
+import '../../core/zmode/playback_resolver.dart';
+import '../../core/zmode/source_matcher.dart';
+import '../../core/zmode/zmode_ids.dart';
 import '../../core/playback/tv_track_helpers.dart';
 import '../../core/playback/watch_history.dart';
 import '../../core/theme/app_colors.dart';
@@ -46,6 +50,17 @@ class TvNativePlayer {
   static const _ch = MethodChannel('zangetsu/tv_player');
   static bool _handlerBound = false;
 
+  /// Set when [play] fails during source resolution — surfaced by
+  /// [launchTvPlayback] instead of a generic error dialog.
+  static TvPlaybackLoadFailure? lastFailure;
+
+  /// Populated when the native ExoPlayer reports a fatal playback error
+  /// (e.g. PARSING_CONTAINER_NOT_SUPPORTED) — the source resolved fine, but
+  /// the stream couldn't play. [launchTvPlayback] reads this after [play]
+  /// returns and offers Try Next Source / Select Source. Null when play
+  /// succeeded or the user simply backed out.
+  static String? lastPlaybackErrorCode;
+
   // Current session context — set on [play], read by the native→Dart handlers.
   // Only one native player is on screen at a time, so a plain static context is
   // enough (a new play() overwrites it).
@@ -59,7 +74,6 @@ class TvNativePlayer {
   static Map<String, String>? _coverHeaders;
   static int? _malId;
   static String? _skipTitle; // anime title for AniSkip (null = no skips)
-  static TvPlaybackTracker? _tracker;
   static List<SubtitleSearchResult> _subResults = const []; // last online search
   static String _category = 'sub';
   static ResumeStore? _resume;
@@ -84,9 +98,10 @@ class TvNativePlayer {
     String? scrobbleTitle,
     int? tmdbId,
     bool tmdbIsTv = false,
-    String? imdbId,
   }) async {
     if (startIndex < 0 || startIndex >= episodes.length) return false;
+    lastFailure = null;
+    lastPlaybackErrorCode = null;
 
     _resolve = resolveSources;
     _episodes = await _enrichEpisodes(
@@ -106,22 +121,21 @@ class TvNativePlayer {
     _skipTitle = scrobbleTitle;
     _category = category;
     _resume = resume;
-    _tracker = TvPlaybackTracker(
-      malId: malId,
-      scrobbleTitle: scrobbleTitle,
-      tmdbId: tmdbId,
-      tmdbIsTv: tmdbIsTv,
-      imdbId: imdbId,
-    );
     if (!_handlerBound) {
       _ch.setMethodCallHandler(_onNativeCall);
       _handlerBound = true;
     }
 
     final ep = _episodes[startIndex];
-    var src = await _resolveSource(ep);
+    VideoSource? src;
+    try {
+      src = await _resolveSource(ep);
+    } catch (_) {
+      return false;
+    }
     if (src == null) return false;
     final playUrl = await _playableUrl(src.url);
+    debugPrint('[TvNativePlayer] playUrl=$playUrl (src.url=${src.url})');
     if (playUrl == null) return false; // torrent failed / Wi-Fi-only
     final mark = resume.get(sourceId, _showId, ep.id);
 
@@ -150,7 +164,6 @@ class TvNativePlayer {
       positionMs: mark?.position.inMilliseconds ?? 0,
       durationMs: mark?.duration.inMilliseconds ?? 0,
     );
-    _tracker?.maybeMarkWatching();
 
     // Filler flags: use warm cache immediately so launch isn't blocked; push an
     // update over the channel if the Jikan fetch lands after the player is up.
@@ -212,9 +225,9 @@ class TvNativePlayer {
       'autoSkipRecap': prefs.autoSkipRecap,
       'autoSkipFiller': prefs.autoSkipFiller,
       'fillerFlags': fillerFlags,
-      'enableSeekButtons': prefs.seekButtons,
-      'seekButtonDuration': prefs.tvSeekSeconds,
     });
+
+    debugPrint('[TvNativePlayer] launch returned: $res');
 
     // Player closed — stop any active torrent stream.
     _stopTorrent();
@@ -224,6 +237,12 @@ class TvNativePlayer {
     final posMs = (res?['positionMs'] as num?)?.toInt() ?? 0;
     final durMs = (res?['durationMs'] as num?)?.toInt() ?? 0;
     _saveProgress(index, posMs, durMs);
+    // A fatal ExoPlayer error (e.g. PARSING_CONTAINER_NOT_SUPPORTED) is
+    // reported on the channel BEFORE the activity finishes; the result flag
+    // confirms it so launchTvPlayback can offer Try Next Source / Select Source.
+    if ((res?['playbackError'] as bool?) ?? false) {
+      lastPlaybackErrorCode ??= 'PLAYBACK_FAILED';
+    }
     // Player closed → drop Watching, then restore browsing. The detail screen
     // stays mounted underneath and won't re-fire it.
     _announceBrowsing();
@@ -245,7 +264,6 @@ class TvNativePlayer {
         if (playUrl == null) return null;
         _category = category;
         final mark = _resume?.get(_sourceId, _showId, ep.id);
-        _tracker?.maybeMarkWatching();
         // Episode switch / Next Episode → advance the Discord "Watching" line.
         _announceWatching(
           ep,
@@ -262,8 +280,7 @@ class TvNativePlayer {
         final index = (args['index'] as num?)?.toInt() ?? -1;
         final posMs = (args['positionMs'] as num?)?.toInt() ?? 0;
         final durMs = (args['durationMs'] as num?)?.toInt() ?? 0;
-        final completed = args['completed'] as bool? ?? false;
-        _saveProgress(index, posMs, durMs, completed: completed);
+        _saveProgress(index, posMs, durMs);
         if (index >= 0 && index < _episodes.length) {
           _announceWatching(
             _episodes[index],
@@ -393,8 +410,58 @@ class TvNativePlayer {
         } catch (_) {
           return const <Map>[];
         }
+      case 'playbackError':
+        // Native ExoPlayer hit a playback error (e.g. PARSING_CONTAINER_NOT_SUPPORTED).
+        // Mark the source unhealthy so the resolver deprioritizes it next time,
+        // and invalidate the winner cache so the next resolve re-sweeps.
+        {
+          final args = (call.arguments as Map).cast<String, dynamic>();
+          final code = args['errorCode'] as String? ?? '';
+          final msg = args['message'] as String? ?? '';
+          final index = (args['index'] as num?)?.toInt() ?? -1;
+          debugPrint('[TvNativePlayer] playbackError · code=$code msg=$msg index=$index');
+          lastPlaybackErrorCode = code.isEmpty ? 'PLAYBACK_FAILED' : code;
+          unawaited(_handlePlaybackError(code, msg, index));
+          return null;
+        }
     }
     return null;
+  }
+
+  /// Handles a playback error reported by the native ExoPlayer — marks the
+  /// source unhealthy so the resolver deprioritizes it, and invalidates the
+  /// winner cache so the next attempt re-sweeps instead of reusing the failed
+  /// source.
+  static Future<void> _handlePlaybackError(
+    String code,
+    String message,
+    int index,
+  ) async {
+    if (_showUrl == null) return;
+    // The actual source that served the stream (fourkhdhub, etc.) — for metadata
+    // (zm) this differs from _sourceId (which is 'zm').
+    String failedSourceId = _sourceId;
+    if (ZmodeIds.isZ(_showUrl!) && index >= 0 && index < _episodes.length) {
+      final epUrl = tvEpisodeUrl(_episodes[index].url, _category);
+      if (sl.isRegistered<PlaybackResolver>()) {
+        final resolver = sl<PlaybackResolver>();
+        failedSourceId = resolver.resolvedSourceId(epUrl) ?? _sourceId;
+        resolver.invalidateWinner(epUrl);
+      }
+    }
+    // Mark the source as unhealthy — it will be skipped (skippable) for the
+    // next 30 min, after which it auto-recovers (never permanent).
+    try {
+      if (sl.isRegistered<SourceHealthStore>()) {
+        await sl<SourceHealthStore>().record(
+          failedSourceId,
+          SourceOutcome.error,
+        );
+        debugPrint(
+          '[TvNativePlayer] playbackError · marked $failedSourceId unhealthy',
+        );
+      }
+    } catch (_) {}
   }
 
   /// Human label for a mirror in the Server picker: the provider's own name,
@@ -430,9 +497,34 @@ class TvNativePlayer {
     final cat = category ?? _category;
     try {
       final sources = await _resolve!(tvEpisodeUrl(ep.url, cat));
-      return pickDefault(sources, prefer: cat == 'dub' ? AudioKind.dub : AudioKind.sub);
+      final picked = pickDefault(
+        sources,
+        prefer: cat == 'dub' ? AudioKind.dub : AudioKind.sub,
+      );
+      if (picked == null && sources.isEmpty) {
+        lastFailure ??= const TvPlaybackLoadFailure(
+          TvPlaybackLoadFailureKind.episodeNotAvailable,
+        );
+      }
+      return picked;
+    } on NoSourceMatch catch (e) {
+      lastFailure ??= classifyPlaybackError(
+        e,
+        mode: playbackContentMode(showUrl: _showUrl),
+      );
+      rethrow;
+    } on EpisodeNotAvailable catch (e) {
+      lastFailure ??= classifyPlaybackError(
+        e,
+        mode: playbackContentMode(showUrl: _showUrl),
+      );
+      rethrow;
     } catch (_) {
-      return null;
+      lastFailure ??= TvPlaybackLoadFailure(
+        TvPlaybackLoadFailureKind.generic,
+        mode: playbackContentMode(showUrl: _showUrl),
+      );
+      rethrow;
     }
   }
 
@@ -468,12 +560,7 @@ class TvNativePlayer {
         'positionMs': positionMs,
       };
 
-  static void _saveProgress(
-    int index,
-    int posMs,
-    int durMs, {
-    bool completed = false,
-  }) {
+  static void _saveProgress(int index, int posMs, int durMs) {
     if (index < 0 || index >= _episodes.length || durMs <= 0 || posMs <= 0) return;
     final ep = _episodes[index];
     _resume?.save(
@@ -501,13 +588,6 @@ class TvNativePlayer {
         malId: _malId,
       ),
       flush: true,
-    );
-    _tracker?.maybeScrobble(
-      index: index,
-      episode: ep,
-      positionMs: posMs,
-      durationMs: durMs,
-      force: completed,
     );
     debugPrint('[TvNativePlayer] saved ep=${ep.id} pos=$posMs');
   }

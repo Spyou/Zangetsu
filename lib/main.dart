@@ -21,14 +21,10 @@ import 'core/notify/cs_notify.dart';
 import 'core/notify/notification_service.dart';
 import 'core/notify/push_service.dart';
 import 'core/ui/route_observer.dart';
-import 'core/ui/home_rows_prefs.dart';
 import 'core/notify/subscription_checker.dart';
 import 'core/notify/subscription_store.dart';
 import 'core/playback/category_store.dart';
 import 'core/playback/my_list.dart';
-import 'core/playback/history_merge.dart';
-import 'core/playback/resume_store.dart';
-import 'core/zmode/match_store.dart';
 import 'core/playback/watch_history.dart';
 import 'core/reading/read_history.dart';
 import 'core/state/active_source_cubit.dart';
@@ -37,6 +33,7 @@ import 'core/zmode/metadata_provider_prefs.dart';
 import 'core/zmode/zmode_prefs.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/theme_controller.dart';
+import 'core/tv/tv_route_pop_guard.dart';
 import 'core/tv/tv_viewport.dart';
 import 'l10n/app_localizations.dart';
 import 'core/ui/global_messenger.dart';
@@ -52,86 +49,86 @@ Future<void> main() async {
   // in-app log (binding + runApp must share this zone — hence both inside).
   runZonedGuarded(
     () async {
-    WidgetsFlutterBinding.ensureInitialized();
-    await AppLogger.instance.init();
-    // Mirror debugPrint into the log (still prints to the console too).
-    final origDebugPrint = debugPrint;
-    debugPrint = (String? message, {int? wrapWidth}) {
-      if (message != null) AppLogger.instance.log(message);
-      origDebugPrint(message, wrapWidth: wrapWidth);
-    };
-    // Flutter framework errors → log + normal presentation.
-    final origOnError = FlutterError.onError;
-    FlutterError.onError = (details) {
-      AppLogger.instance.logError(details.exception, details.stack);
-      origOnError?.call(details);
-    };
-    // Cap the in-memory image cache so a heavy source's posters + heroes can't
-    // pile up and OOM-crash (default is 100 MB; libmpv adds a big native
-    // baseline). On-screen images stay full quality; far-off-screen ones reload
-    // from the disk cache.
-    PaintingBinding.instance.imageCache.maximumSizeBytes = 80 << 20; // 80 MB
-    // Cap the count too — the byte ceiling alone lets lots of small images
-    // (cast photos, credits) pile up. 300 is plenty for the visible screens.
-    PaintingBinding.instance.imageCache.maximumSize = 300;
-    // Fire the list-reveal animations promptly as items scroll in — the
-    // detector defaults to a 500ms batch interval, which would blank-flash each
-    // card before it reveals.
-    VisibilityDetectorController.instance.updateInterval = const Duration(
-      milliseconds: 80,
-    );
-    // Firebase Analytics. Guarded so a build without google-services.json (or a
-    // device without Play Services) still boots — analytics just stays off.
-    try {
-      await Firebase.initializeApp().timeout(const Duration(seconds: 8));
-      Analytics.enabled = true;
-    } catch (e, st) {
-      AppLogger.instance.logError(e, st);
-    }
-    // Resolve Apple TV before Supabase / media_kit — Dart reports tvOS as iOS,
-    // and the version string often has no "tvos" token, so we ask the native
-    // runner. Must run before Supabase: its default auth deep-link observer uses
-    // app_links, which has no tvOS plugin (MissingPluginException).
-    final appleTv = await resolveAppleTv();
-    // Bounded + guarded like Firebase/MediaKit: on a dead/slow network the
-    // session-restore inside initialize can HANG (a hang never throws, so a
-    // try/catch alone wouldn't save us), and this runs BEFORE runApp — an
-    // unbounded hang here traps the app on the splash forever. Time it out so
-    // boot always proceeds; cloud features degrade to local-only until the next
-    // launch on a live network (SupabaseService.currentUserId tolerates an
-    // uninitialized client).
-    var supabaseOk = false;
-    try {
-      await Supabase.initialize(
-        url: Environment.supabaseUrl,
-        anonKey: Environment.supabaseAnonKey,
-        // TV auth uses QR pairing, not OAuth redirect deep links.
-          authOptions: FlutterAuthClientOptions(detectSessionInUri: !appleTv),
-      ).timeout(const Duration(seconds: 8));
-      supabaseOk = true;
-    } catch (e, st) {
-      AppLogger.instance.logError(e, st);
-    }
-    // Boot init failed (dead/slow network) → keep retrying in the background so
-    // login + cloud sync self-heal when the network returns, no restart needed.
-    if (!supabaseOk) unawaited(_retrySupabaseInit());
-    // media_kit (libmpv) has no tvOS libs — Apple TV plays via AVPlayer instead.
-    // Calling ensureInitialized here prints + throws and used to derail boot.
-    // On old Android 8 / Fire TV the native libs can also fail to load; guard
-    // those so the UI still comes up (playback may be unavailable there).
-    if (!appleTv) {
+      WidgetsFlutterBinding.ensureInitialized();
+      await AppLogger.instance.init();
+      // Mirror debugPrint into the log (still prints to the console too).
+      final origDebugPrint = debugPrint;
+      debugPrint = (String? message, {int? wrapWidth}) {
+        if (message != null) AppLogger.instance.log(message);
+        origDebugPrint(message, wrapWidth: wrapWidth);
+      };
+      // Flutter framework errors → log + normal presentation.
+      final origOnError = FlutterError.onError;
+      FlutterError.onError = (details) {
+        AppLogger.instance.logError(details.exception, details.stack);
+        origOnError?.call(details);
+      };
+      // Cap the in-memory image cache so a heavy source's posters + heroes can't
+      // pile up and OOM-crash (default is 100 MB; libmpv adds a big native
+      // baseline). On-screen images stay full quality; far-off-screen ones reload
+      // from the disk cache.
+      PaintingBinding.instance.imageCache.maximumSizeBytes = 80 << 20; // 80 MB
+      // Cap the count too — the byte ceiling alone lets lots of small images
+      // (cast photos, credits) pile up. 300 is plenty for the visible screens.
+      PaintingBinding.instance.imageCache.maximumSize = 300;
+      // Fire the list-reveal animations promptly as items scroll in — the
+      // detector defaults to a 500ms batch interval, which would blank-flash each
+      // card before it reveals.
+      VisibilityDetectorController.instance.updateInterval = const Duration(
+        milliseconds: 80,
+      );
+      // Firebase Analytics. Guarded so a build without google-services.json (or a
+      // device without Play Services) still boots — analytics just stays off.
       try {
-        MediaKit.ensureInitialized();
+        await Firebase.initializeApp().timeout(const Duration(seconds: 8));
+        Analytics.enabled = true;
       } catch (e, st) {
         AppLogger.instance.logError(e, st);
       }
-    }
-    // Dependency init happens inside the boot gate so the splash shows
-    // immediately instead of a blank screen.
-    runApp(const WatchApp());
+      // Resolve Apple TV before Supabase / media_kit — Dart reports tvOS as iOS,
+      // and the version string often has no "tvos" token, so we ask the native
+      // runner. Must run before Supabase: its default auth deep-link observer uses
+      // app_links, which has no tvOS plugin (MissingPluginException).
+      final appleTv = await resolveAppleTv();
+      // Bounded + guarded like Firebase/MediaKit: on a dead/slow network the
+      // session-restore inside initialize can HANG (a hang never throws, so a
+      // try/catch alone wouldn't save us), and this runs BEFORE runApp — an
+      // unbounded hang here traps the app on the splash forever. Time it out so
+      // boot always proceeds; cloud features degrade to local-only until the next
+      // launch on a live network (SupabaseService.currentUserId tolerates an
+      // uninitialized client).
+      var supabaseOk = false;
+      try {
+        await Supabase.initialize(
+          url: Environment.supabaseUrl,
+          anonKey: Environment.supabaseAnonKey,
+          // TV auth uses QR pairing, not OAuth redirect deep links.
+          authOptions: FlutterAuthClientOptions(detectSessionInUri: !appleTv),
+        ).timeout(const Duration(seconds: 8));
+        supabaseOk = true;
+      } catch (e, st) {
+        AppLogger.instance.logError(e, st);
+      }
+      // Boot init failed (dead/slow network) → keep retrying in the background so
+      // login + cloud sync self-heal when the network returns, no restart needed.
+      if (!supabaseOk) unawaited(_retrySupabaseInit());
+      // media_kit (libmpv) has no tvOS libs — Apple TV plays via AVPlayer instead.
+      // Calling ensureInitialized here prints + throws and used to derail boot.
+      // On old Android 8 / Fire TV the native libs can also fail to load; guard
+      // those so the UI still comes up (playback may be unavailable there).
+      if (!appleTv) {
+        try {
+          MediaKit.ensureInitialized();
+        } catch (e, st) {
+          AppLogger.instance.logError(e, st);
+        }
+      }
+      // Dependency init happens inside the boot gate so the splash shows
+      // immediately instead of a blank screen.
+      runApp(const WatchApp());
     },
     (error, stack) {
-    AppLogger.instance.logError(error, stack);
+      AppLogger.instance.logError(error, stack);
     },
   );
 }
@@ -217,11 +214,14 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
             // splash frame stayed composited. Load provider JS first, then reveal
             // the already-mounted [_TvBootGate].
             WidgetsBinding.instance.addPostFrameCallback((_) {
-              unawaited(_finishAppleTvBoot());
+              unawaited(_finishTvProviderBoot());
             });
           } else {
             WidgetsBinding.instance.addPostFrameCallback((_) {
               _pushShellRouteIfNeeded();
+              if (sl.isRegistered<AppMode>() && sl<AppMode>().isTv) {
+                unawaited(_finishTvProviderBoot());
+              }
             });
           }
           if (!_handledLaunchTaps) {
@@ -242,17 +242,19 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
   }
 
   /// tvOS-only second boot phase: provider eval, then reveal the shell.
-  Future<void> _finishAppleTvBoot() async {
+  Future<void> _finishTvProviderBoot() async {
     await runDeferredAppleTvBootTasks();
     if (!mounted || !_bootReady || _bootFailed || !_depsReady) {
       debugPrint(
-        '[boot] tvOS shell reveal skipped · mounted=$mounted '
+        '[boot] TV provider boot skipped · mounted=$mounted '
         'boot=$_bootReady deps=$_depsReady failed=$_bootFailed',
       );
       return;
     }
-    _tvShellGate.value = true;
-    setState(() {});
+    if (isAppleTv) {
+      _tvShellGate.value = true;
+      setState(() {});
+    }
   }
 
   /// Re-runs startup after a failure. GetIt must be cleared first — every
@@ -264,7 +266,7 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
       await sl.reset();
     } catch (_) {
       /* nothing registered yet — fine */
-  }
+    }
     if (!mounted) return;
     if (!isAppleTv) {
       rootNavigatorKey.currentState?.pushReplacement(
@@ -300,24 +302,33 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
   }
 
   void _onLocaleChanged() {
-    if (mounted) setState(() {}); // language changed → rebuild MaterialApp.locale
+    if (mounted)
+      setState(() {}); // language changed → rebuild MaterialApp.locale
   }
 
-  /// The toggle, stream kind, or metadata provider changed: Home must refetch
-  /// from the other catalogue, and the shell must redraw its dock. The
-  /// provider case matters just as much — the rows themselves differ between
-  /// AniList and MAL, so leaving the old ones up shows the previous provider's
-  /// data under the new provider's name.
-  void _onZModeChanged() {
-    if (sl.isRegistered<HomeCubit>()) sl<HomeCubit>().load(reset: true);
-    if (mounted) setState(() {});
+  /// The streaming kind changed: swap Home rows without blanking the screen.
+  /// Cached rows for the target kind appear immediately; a fresh fetch runs in
+  /// the background.
+  void _onStreamKindChanged() {
+    // TV shell + HomeCubit listen to [ZModePrefs.revision] / bloc state — a
+    // full [MaterialApp] rebuild here (phone path) stalls the isolate on TV.
+    final tv = sl.isRegistered<AppMode>() && sl<AppMode>().isTv;
+    if (!tv && mounted) setState(() {});
+    if (!sl.isRegistered<HomeCubit>()) return;
+    final cubit = sl<HomeCubit>();
+    final cached = cubit.sectionsFor(ZModePrefs.streamKind);
+    // TV keeps both catalogues mounted — skip cubit work when rows are cached.
+    if (tv && cached != null) return;
+    sl<HomeCubit>().loadForStreamKindChange();
   }
 
-  /// A home-rows arrangement was saved or reset: re-merge the layout Home
-  /// already fetched (no refetch, no scroll reset — provider data is
-  /// unchanged, only its arrangement is).
-  void _onHomeRowsChanged() {
-    if (sl.isRegistered<HomeCubit>()) sl<HomeCubit>().relayout();
+  /// Metadata provider changed: rows differ between AniList/MAL/TMDB/Simkl, so
+  /// drop any cached streaming-kind rows and hard-reset Home.
+  void _onMetadataProviderChanged() {
+    if (sl.isRegistered<HomeCubit>()) {
+      sl<HomeCubit>().clearStreamKindCache();
+      sl<HomeCubit>().load(reset: true);
+    }
     if (mounted) setState(() {});
   }
 
@@ -327,9 +338,8 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     ThemeController.revision.addListener(_onThemeChanged);
     LocaleController.revision.addListener(_onLocaleChanged);
-    ZModePrefs.revision.addListener(_onZModeChanged);
-    MetadataProviderPrefs.revision.addListener(_onZModeChanged);
-    HomeRowsPrefs.revision.addListener(_onHomeRowsChanged);
+    ZModePrefs.revision.addListener(_onStreamKindChanged);
+    MetadataProviderPrefs.revision.addListener(_onMetadataProviderChanged);
     _watchBoot(_boot);
   }
 
@@ -337,9 +347,8 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
   void dispose() {
     ThemeController.revision.removeListener(_onThemeChanged);
     LocaleController.revision.removeListener(_onLocaleChanged);
-    ZModePrefs.revision.removeListener(_onZModeChanged);
-    MetadataProviderPrefs.revision.removeListener(_onZModeChanged);
-    HomeRowsPrefs.revision.removeListener(_onHomeRowsChanged);
+    ZModePrefs.revision.removeListener(_onStreamKindChanged);
+    MetadataProviderPrefs.revision.removeListener(_onMetadataProviderChanged);
     WidgetsBinding.instance.removeObserver(this);
     _tvShellGate.dispose();
     super.dispose();
@@ -409,19 +418,19 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
       await sl<AuthCubit>().restore().timeout(const Duration(seconds: 5));
       if (sl<AuthCubit>().state.isLoggedIn) {
         Future<void> cloudSync() async {
-        await Future.wait([
-          sl<MyListStore>().seedCloudIfNeeded(),
-          sl<WatchHistory>().seedCloudIfNeeded(),
-          sl<ReadHistory>().seedCloudIfNeeded(),
-        ]).timeout(const Duration(seconds: 8));
-        await Future.wait([
-          sl<MyListStore>().pullFromCloudIfStale(maxAge: _syncFreshness),
-          sl<WatchHistory>().pullFromCloudIfStale(maxAge: _syncFreshness),
-          sl<ReadHistory>().pullFromCloudIfStale(maxAge: _syncFreshness),
-          sl<CategoryStore>().pullFromCloud(),
-        ]).timeout(const Duration(seconds: 6));
-        unawaited(sl<MyListStore>().retryPending());
-      }
+          await Future.wait([
+            sl<MyListStore>().seedCloudIfNeeded(),
+            sl<WatchHistory>().seedCloudIfNeeded(),
+            sl<ReadHistory>().seedCloudIfNeeded(),
+          ]).timeout(const Duration(seconds: 8));
+          await Future.wait([
+            sl<MyListStore>().pullFromCloudIfStale(maxAge: _syncFreshness),
+            sl<WatchHistory>().pullFromCloudIfStale(maxAge: _syncFreshness),
+            sl<ReadHistory>().pullFromCloudIfStale(maxAge: _syncFreshness),
+            sl<CategoryStore>().pullFromCloud(),
+          ]).timeout(const Duration(seconds: 6));
+          unawaited(sl<MyListStore>().retryPending());
+        }
 
         // tvOS: never block the splash on cloud I/O — sync after the shell is up.
         if (isAppleTv) {
@@ -431,20 +440,6 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
         }
       }
     } catch (_) {}
-    // Rows saved under a source before the browse screen started resolving
-    // titles to the catalogue: move them onto the show they belong to so
-    // Continue Watching stops listing the same title twice. Once, after the
-    // cloud pull so rows from another device are covered, and unawaited so it
-    // never sits in front of the splash.
-    if (sl.isRegistered<MatchStore>()) {
-      unawaited(
-        HistoryCanonicalMerge.runOnce(
-          history: sl<WatchHistory>(),
-          resume: sl<ResumeStore>(),
-          matches: sl<MatchStore>(),
-        ),
-      );
-    }
     if (isOnboarded()) {
       // tvOS: Home fetch waits until provider JS is loaded (deferred boot task).
       if (!isAppleTv) sl<HomeCubit>().load();
@@ -480,14 +475,16 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
   Future<void> _onAuthChange(BuildContext context, AuthState state) async {
     if (state.status == AuthStatus.authenticated) {
       Future<void> sync() async {
-      await sl<MyListStore>().seedCloudIfNeeded();
-      await sl<WatchHistory>().seedCloudIfNeeded();
-      await sl<ReadHistory>().seedCloudIfNeeded();
-      await sl<MyListStore>().pullFromCloud();
-      await sl<WatchHistory>().pullFromCloud();
-      await sl<ReadHistory>().pullFromCloud();
+        await sl<MyListStore>().seedCloudIfNeeded();
+        await sl<WatchHistory>().seedCloudIfNeeded();
+        await sl<ReadHistory>().seedCloudIfNeeded();
+        await sl<MyListStore>().pullFromCloud();
+        await sl<WatchHistory>().pullFromCloud();
+        await sl<ReadHistory>().pullFromCloud();
         unawaited(sl<MyListStore>().retryPending());
-        if (!isAppleTv || tvosProvidersReady) {
+        if (!sl.isRegistered<AppMode>() ||
+            !sl<AppMode>().isTv ||
+            tvosProvidersReady) {
           sl<HomeCubit>().load();
         }
       }
@@ -523,11 +520,11 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
               } else {
                 rootNavigatorKey.currentState?.pushReplacement(
                   MaterialPageRoute<void>(builder: (_) => RootShell()),
-          );
+                );
               }
             },
           );
-        }
+  }
 
   /// Swaps the splash route for the real shell (phone / Android TV only).
   void _pushShellRouteIfNeeded() {
@@ -541,10 +538,10 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
         transitionDuration: Duration.zero,
         reverseTransitionDuration: Duration.zero,
       ),
-          );
+    );
     _shellRoutePushed = true;
     if (mounted) setState(() {});
-        }
+  }
 
   Widget _buildHome() {
     if (_bootFailed) {
@@ -552,7 +549,7 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
       return BootErrorScreen(
         details: '$_bootError\n\n${_bootStack ?? ''}'.trim(),
         onRetry: _retryBoot,
-              );
+      );
     }
     if (isAppleTv) {
       // Keep ONE widget as [MaterialApp.home] for the app lifetime — changing
@@ -561,25 +558,25 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
       return _TvBootGate(
         showShell: _tvShellGate,
         shellBuilder: _buildShellHome,
-          );
-        }
+      );
+    }
     return const SplashScreen();
   }
 
   Widget _buildMaterialApp({required bool shellFeatures}) {
     return MaterialApp(
-              title: kAppName,
-              theme: buildAppTheme(),
-              debugShowCheckedModeBanner: false,
+      title: kAppName,
+      theme: buildAppTheme(),
+      debugShowCheckedModeBanner: false,
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
       locale: LocaleController.locale,
       localeResolutionCallback: (locale, supported) =>
           resolveAppLocale(locale, supported),
       scaffoldMessengerKey: shellFeatures ? rootMessengerKey : null,
-              navigatorKey: rootNavigatorKey,
+      navigatorKey: rootNavigatorKey,
       navigatorObservers: shellFeatures
-          ? [Analytics.observer, appRouteObserver]
+          ? [Analytics.observer, appRouteObserver, TvRoutePopGuardObserver()]
           : const [],
       home: _buildHome(),
       builder: (_, child) {
@@ -625,8 +622,8 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
         listenWhen: (p, c) => p.status != c.status,
         listener: _onAuthChange,
         child: app,
-          ),
-        );
+      ),
+    );
   }
 }
 

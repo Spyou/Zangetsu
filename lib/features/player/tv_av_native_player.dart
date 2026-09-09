@@ -28,6 +28,9 @@ import '../../core/playback/tv_playback_tracker.dart';
 import '../../core/playback/tv_track_helpers.dart';
 import '../../core/playback/watch_history.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/tv/tv_playback_failure.dart';
+import '../../core/zmode/playback_resolver.dart';
+import '../../core/zmode/source_matcher.dart';
 import 'subtitle_font_service.dart';
 
 /// Launches the Apple TV native player over `zangetsu/tv_player`.
@@ -44,6 +47,8 @@ import 'subtitle_font_service.dart';
 class TvAvNativePlayer {
   static const _ch = MethodChannel('zangetsu/tv_player');
   static bool _handlerBound = false;
+
+  static TvPlaybackLoadFailure? lastFailure;
 
   static Future<List<VideoSource>> Function(String episodeUrl)? _resolve;
   static List<Episode> _episodes = const [];
@@ -94,6 +99,7 @@ class TvAvNativePlayer {
   }) async {
     if (!Platform.isIOS) return false;
     if (startIndex < 0 || startIndex >= episodes.length) return false;
+    lastFailure = null;
 
     _resolve = resolveSources;
     _episodes = await _enrichEpisodes(
@@ -126,7 +132,12 @@ class TvAvNativePlayer {
     }
 
     final ep = _episodes[startIndex];
-    final src = await _resolveSource(ep);
+    VideoSource? src;
+    try {
+      src = await _resolveSource(ep);
+    } catch (_) {
+      return false;
+    }
     if (src == null) return false;
     _rememberSkew(src);
     // Magnets / torrents are not streamed on Apple TV.
@@ -547,12 +558,34 @@ class TvAvNativePlayer {
     final cat = category ?? _category;
     try {
       final sources = await _resolve!(tvEpisodeUrl(ep.url, cat));
-      return pickDefault(
+      final picked = pickDefault(
         sources,
         prefer: cat == 'dub' ? AudioKind.dub : AudioKind.sub,
       );
+      if (picked == null && sources.isEmpty) {
+        lastFailure ??= const TvPlaybackLoadFailure(
+          TvPlaybackLoadFailureKind.episodeNotAvailable,
+        );
+      }
+      return picked;
+    } on NoSourceMatch catch (e) {
+      lastFailure ??= classifyPlaybackError(
+        e,
+        mode: playbackContentMode(showUrl: _showUrl),
+      );
+      rethrow;
+    } on EpisodeNotAvailable catch (e) {
+      lastFailure ??= classifyPlaybackError(
+        e,
+        mode: playbackContentMode(showUrl: _showUrl),
+      );
+      rethrow;
     } catch (_) {
-      return null;
+      lastFailure ??= TvPlaybackLoadFailure(
+        TvPlaybackLoadFailureKind.generic,
+        mode: playbackContentMode(showUrl: _showUrl),
+      );
+      rethrow;
     }
   }
 

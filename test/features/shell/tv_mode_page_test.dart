@@ -18,15 +18,32 @@ void main() {
     await dir.delete(recursive: true);
   });
 
-  testWidgets('offers Anime and Movie/TV and stores the pick', (t) async {
-    await t.pumpWidget(const MaterialApp(home: TvModePage(reloadHome: false)));
+  testWidgets('OK toggles Anime and Movie/TV in one rail row', (t) async {
+    await t.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: TvStreamKindRailToggle(
+            navOpen: true,
+            iconSlotWidth: 62,
+            onToggle: (next) async {
+              if (next != ZModePrefs.streamKind) {
+                await ZModePrefs.setStreamKind(next);
+              }
+            },
+          ),
+        ),
+      ),
+    );
     expect(find.text('Anime'), findsOneWidget);
     expect(find.text('Movie/TV'), findsOneWidget);
-    // The tap triggers a real (fire-and-forget) Hive write; FakeAsync never
-    // drains that on its own, so tearDown's Hive.close() hangs waiting on it
-    // without runAsync (same gotcha as mode_switcher_test.dart).
+    expect(find.byIcon(Icons.play_circle_rounded), findsOneWidget);
+
+    // runAsync around the TAP itself, not just after it: the toggle's onTap
+    // awaits ZModePrefs.setStreamKind, which is a real Hive write. Under
+    // FakeAsync it never settles, and tearDown's Hive.close() then waits on it
+    // forever — the test reported "did not complete" rather than failing.
     await t.runAsync(() async {
-      await t.tap(find.text('Movie/TV'));
+      await t.tap(find.byKey(const ValueKey('tv-stream-kind-toggle')));
       await Future<void>.delayed(const Duration(milliseconds: 100));
     });
     await t.pump();

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:watch_app/core/tv/tv_focusable.dart';
+import 'package:watch_app/core/tv/tv_route_pop_guard.dart';
 
 void main() {
   testWidgets('TvFocusable fires onTap on OK key when focused', (tester) async {
@@ -19,6 +20,30 @@ void main() {
     await tester.pumpAndSettle();
     expect(taps, 1);
   });
+
+  testWidgets(
+    'waitForKeyUp fires onTap on KeyUp, not KeyDown',
+    (tester) async {
+      var taps = 0;
+      await tester.pumpWidget(MaterialApp(
+        home: TvFocusable(
+          autofocus: true,
+          waitForKeyUp: true,
+          onTap: () => taps++,
+          child: const SizedBox(width: 100, height: 100),
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.select);
+      await tester.pump();
+      expect(taps, 0);
+
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.select);
+      await tester.pump();
+      expect(taps, 1);
+    },
+  );
 
   testWidgets(
     'with onLongPress, a short OK press still fires onTap (not long-press)',
@@ -126,6 +151,26 @@ void main() {
           Colors.transparent,
         ),
       );
+    },
+  );
+
+  testWidgets(
+    'TvFocusable ignores OK while TvRoutePopGuard is active',
+    (tester) async {
+      var taps = 0;
+      await tester.pumpWidget(MaterialApp(
+        home: TvFocusable(
+          autofocus: true,
+          onTap: () => taps++,
+          child: const SizedBox(width: 100, height: 100),
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      TvRoutePopGuard.markPopped();
+      await tester.sendKeyEvent(LogicalKeyboardKey.select);
+      await tester.pumpAndSettle();
+      expect(taps, 0);
     },
   );
 }

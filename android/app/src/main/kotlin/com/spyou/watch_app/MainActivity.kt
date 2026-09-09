@@ -1624,6 +1624,7 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
             val pos = if (data != null) longExtra(data, TvPlayerActivity.RESULT_POSITION) else -1L
             val dur = if (data != null) longExtra(data, TvPlayerActivity.RESULT_DURATION) else -1L
             val epIndex = data?.getIntExtra(TvPlayerActivity.RESULT_EP_INDEX, 0) ?: 0
+            val playbackError = data?.getBooleanExtra(TvPlayerActivity.RESULT_PLAYBACK_ERROR, false) ?: false
             pendingTvResult?.let {
                 try {
                     it.success(
@@ -1632,6 +1633,7 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
                             "positionMs" to (if (pos > 0) pos else 0L),
                             "durationMs" to (if (dur > 0) dur else 0L),
                             "episodeIndex" to epIndex,
+                            "playbackError" to playbackError,
                         ),
                     )
                 } catch (_: Exception) {}

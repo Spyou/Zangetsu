@@ -24,9 +24,28 @@ import '../../core/ui/source_switcher.dart';
 /// The list is grouped (Anime / Movies & Series / NSFW), mirrors the phone's
 /// "All" tab layout, with each source row wrapped in [TvListFocusable].
 class TvSourcePicker extends StatelessWidget {
-  const TvSourcePicker({super.key, required this.currentId});
+  const TvSourcePicker({
+    super.key,
+    required this.currentId,
+    this.onPick,
+    this.onAutoResolve,
+    this.autoSelected = false,
+  });
 
   final String currentId;
+
+  /// When set, choosing a row calls this and closes the dialog without
+  /// changing [ActiveSourceCubit] — used by Z Mode's per-title source selector.
+  final ValueChanged<String>? onPick;
+
+  /// When set, an "Auto Resolve" row is shown above the source list — Z
+  /// Mode's per-title selector only. Picking it sweeps every candidate for
+  /// this title instead of asking one fixed source.
+  final VoidCallback? onAutoResolve;
+
+  /// True when Auto Resolve is the active pick — highlights that row's check
+  /// mark instead of any source row's.
+  final bool autoSelected;
 
   @override
   Widget build(BuildContext context) {
@@ -74,6 +93,51 @@ class TvSourcePicker extends StatelessWidget {
               ),
             ),
             const Divider(height: 1, color: AppColors.hairline),
+            if (onAutoResolve != null) ...[
+              TvListFocusable(
+                autofocus: autoSelected,
+                semanticLabel: 'Auto Resolve',
+                onTap: () {
+                  onAutoResolve!();
+                  Navigator.of(context).pop();
+                },
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 24, vertical: 14),
+                  child: Row(
+                    children: [
+                      Icon(Icons.auto_awesome_rounded,
+                          color: AppColors.accent, size: 20),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text('Auto Resolve', style: AppText.headline),
+                            Padding(
+                              padding: const EdgeInsets.only(top: 2),
+                              child: Text(
+                                'Try every installed source until one matches',
+                                style: AppText.body.copyWith(
+                                  fontSize: 11.5,
+                                  height: 1.0,
+                                  color: AppColors.textTertiary,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (autoSelected)
+                        Icon(Icons.check,
+                            color: AppColors.accent, size: 20),
+                    ],
+                  ),
+                ),
+              ),
+              const Divider(height: 1, color: AppColors.hairline),
+            ],
             // ── Grouped source list ───────────────────────────────────────
             Flexible(
               child: ListView.builder(
@@ -94,15 +158,21 @@ class TvSourcePicker extends StatelessWidget {
                     );
                   }
 
-                  final isActive = row.sourceId == currentId;
+                  final isActive = !autoSelected && row.sourceId == currentId;
 
                   return TvListFocusable(
                     // The currently-active row gets autofocus so focus lands
                     // on it when the picker opens, not on the first item.
-                    autofocus: index == activeIndex,
+                    autofocus: !autoSelected && index == activeIndex,
                     semanticLabel: row.label,
                     onTap: () {
-                      unawaited(_selectSource(context, row.sourceId!));
+                      final id = row.sourceId!;
+                      if (onPick != null) {
+                        onPick!(id);
+                        Navigator.of(context).pop();
+                        return;
+                      }
+                      unawaited(_selectSource(context, id));
                     },
                     child: Padding(
                       padding: const EdgeInsets.symmetric(

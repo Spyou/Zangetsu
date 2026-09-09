@@ -1,12 +1,13 @@
 import 'dart:async';
 
 import 'package:equatable/equatable.dart';
-import 'package:flutter/foundation.dart' show debugPrint;
+import 'package:flutter/foundation.dart' show debugPrint, ValueNotifier;
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:get_it/get_it.dart';
 
 import '../../../core/anilist/anilist_network_policy.dart';
 import '../../../core/app_mode.dart';
+import '../../../core/di/injector.dart';
 import '../../../core/error/exceptions.dart';
 import '../../../core/error/network_failure.dart';
 import '../../../core/lnreader/novel_cloudflare.dart';
@@ -22,6 +23,7 @@ import '../../../core/tracker/tracker_hub.dart';
 import '../../../core/ui/home_rows_prefs.dart';
 import '../../../core/zmode/home_layouts.dart';
 import '../../../core/zmode/metadata_provider_prefs.dart';
+import '../../../core/zmode/metadata_repository.dart';
 import '../../../core/zmode/zmode_ids.dart';
 import '../../../core/zmode/zmode_module.dart' show browseKindFor;
 import '../../../core/zmode/zmode_prefs.dart';
@@ -378,5 +380,126 @@ class HomeCubit extends Cubit<HomeState> {
             )
           : const [],
     );
+  }
+
+  // ── Anime ↔ Movie/TV without a refetch ─────────────────────────────────
+  //
+  // From Nathen Brewer's TV work. The rail toggle rebuilt Home from scratch,
+  // so flipping kind meant waiting on AniList/TMDB again; TV mounts the
+  // inactive catalogue offstage and swaps, which needs the rows for the kind
+  // you are NOT looking at to already be in hand.
+  //
+  // Added to main's cubit rather than taking his wholesale: his version had
+  // dropped `rows`, `rateLimitedSeconds`, `relayout` and `trackerHub`, which
+  // are the home-row arrangement and rate-limit features the phone reads.
+  final Map<StreamKind, List<HomeSection>> _streamKindCache = {};
+
+  /// Bumped whenever the cache gains rows, so TV can mount the inactive
+  /// catalogue offstage before the user toggles.
+  final ValueNotifier<int> streamCatalogRevision = ValueNotifier(0);
+
+  /// Drop cached rows when the metadata provider changes — the rows differ
+  /// between AniList and MAL.
+  void clearStreamKindCache() {
+    _streamKindCache.clear();
+    if (sl.isRegistered<MetadataRepository>()) {
+      sl<MetadataRepository>().clearHomeCache();
+    }
+  }
+
+  /// Copies prefetched metadata rows into the per-kind cache.
+  void rememberStreamKindRows(StreamKind kind, List<HomeSection> sections) {
+    if (sections.isEmpty) return;
+    _streamKindCache[kind] = sections;
+    streamCatalogRevision.value++;
+    applyMetadataCacheIfEmpty();
+  }
+
+  /// Pull any rows [MetadataRepository] already cached (prefetch / warm).
+  void primeStreamKindCacheFromMetadata() {
+    if (!sl.isRegistered<MetadataRepository>()) return;
+    final meta = sl<MetadataRepository>();
+    var changed = false;
+    for (final kind in StreamKind.values) {
+      final rows = meta.peekHomeCache(browseKindFor(ContentMode.anime, kind));
+      if (rows != null && rows.isNotEmpty) {
+        _streamKindCache[kind] = rows;
+        changed = true;
+      }
+    }
+    if (changed) {
+      streamCatalogRevision.value++;
+      applyMetadataCacheIfEmpty();
+    }
+  }
+
+  /// When metadata home prefetch succeeds after an empty/failed first fetch,
+  /// paint the cached rows so Home doesn't stay on "Couldn't load AniList".
+  void applyMetadataCacheIfEmpty() {
+    if (!ZModePrefs.enabled || isClosed) return;
+    if (state.loading) return;
+    if (state.sections != null && state.sections!.isNotEmpty) return;
+    if (!sl.isRegistered<ContentModeCubit>() ||
+        sl<ContentModeCubit>().state != ContentMode.anime) {
+      return;
+    }
+    final rows = _cachedRowsForStreamKind(ZModePrefs.streamKind);
+    if (rows == null || rows.isEmpty) return;
+    // copyWith, not a fresh HomeState: this class carries `rows` and
+    // `rateLimitedSeconds` that the phone screen reads, and listing fields by
+    // hand here would drop them.
+    emit(state.copyWith(sections: rows, loading: false));
+  }
+
+  /// True when the cubit has no paintable rows — including the metadata
+  /// stream cache, which can fill while [HomeState.sections] is still empty.
+  bool get showsEmptyHome {
+    if (state.loading) return false;
+    if (state.sections != null && state.sections!.isNotEmpty) return false;
+    if (ZModePrefs.enabled &&
+        sl.isRegistered<ContentModeCubit>() &&
+        sl<ContentModeCubit>().state == ContentMode.anime) {
+      final cached = sectionsFor(ZModePrefs.streamKind);
+      if (cached != null && cached.isNotEmpty) return false;
+    }
+    return state.sections != null && state.sections!.isEmpty;
+  }
+
+  /// Anime ↔ Movie/TV flip. Shows cached rows immediately when revisiting a
+  /// kind, and only falls back to a real load when there is nothing cached.
+  ///
+  /// Adapted from his version to main's cubit: his called a private
+  /// `_fetchHome` this one doesn't have, so the miss path goes through
+  /// [load] — the same fetch, just the entry point this class actually has.
+  Future<void> loadForStreamKindChange() async {
+    if (!sl.isRegistered<ContentModeCubit>() ||
+        sl<ContentModeCubit>().state != ContentMode.anime) {
+      return load(reset: true);
+    }
+    final kind = ZModePrefs.streamKind;
+    final cached = _cachedRowsForStreamKind(kind);
+    if (cached != null) {
+      // Phone Home reads state.sections. TV keeps both catalogues mounted and
+      // swaps on ZModePrefs.revision — emitting there would rebuild the
+      // 10-foot hero and every poster, and freeze for seconds.
+      final tv = sl.isRegistered<AppMode>() && sl<AppMode>().isTv;
+      if (!tv) emit(state.copyWith(sections: cached, loading: false));
+      return;
+    }
+    return load(reset: true);
+  }
+
+  /// Cached rows for [kind], if a previous load/prefetch already has them.
+  List<HomeSection>? sectionsFor(StreamKind kind) =>
+      _cachedRowsForStreamKind(kind);
+
+  List<HomeSection>? _cachedRowsForStreamKind(StreamKind kind) {
+    final hit = _streamKindCache[kind];
+    if (hit != null) return hit;
+    if (!sl.isRegistered<MetadataRepository>()) return null;
+    final rows = sl<MetadataRepository>()
+        .peekHomeCache(browseKindFor(ContentMode.anime, kind));
+    if (rows != null && rows.isNotEmpty) _streamKindCache[kind] = rows;
+    return rows;
   }
 }

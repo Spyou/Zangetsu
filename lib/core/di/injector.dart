@@ -50,20 +50,19 @@ import '../repository/source_domain_overrides.dart';
 import '../repository/source_repository.dart';
 import '../state/active_source_cubit.dart';
 import '../locale/locale_controller.dart';
+import '../zmode/metadata_repository.dart';
 import '../zmode/zmode_module.dart';
-import '../zmode/genre_catalog.dart';
+import '../zmode/zmode_ids.dart';
 import '../zmode/zmode_prefs.dart';
-import '../ui/home_rows_prefs.dart';
 import '../theme/theme_controller.dart';
 import '../metadata/episode_metadata_service.dart';
 import '../metadata/metadata_enrichment.dart';
-import '../zmode/metadata_provider_prefs.dart';
 import '../metadata/people_service.dart';
 import '../metadata/tmdb.dart';
 import '../metadata/title_logo_service.dart';
 import '../mode/content_mode_cubit.dart';
 import '../trailer/trailer_service.dart';
-import '../anilist/anilist_network_policy.dart';
+import '../anilist/anilist_graphql.dart';
 import '../anilist/anilist_service.dart';
 import '../anilist/anilist_store.dart';
 import '../tracker/mal_service.dart';
@@ -111,13 +110,14 @@ import 'package:supabase_flutter/supabase_flutter.dart' show OtpType;
 
 final GetIt sl = GetIt.instance;
 
-/// tvOS-only deferred boot work (provider JS load). Must not run during
-/// [initDependencies] — evaluating provider scripts on the main isolate can
-/// wedge JavaScriptCore and trap the splash (Dart timers never fire).
+/// TV-only deferred boot work. Must not run during [initDependencies] on
+/// Apple TV (splash wedge). Android TV skips [loadAll] entirely — metadata
+/// Home does not need JS providers, and evaluating hanging sources blocked
+/// D-pad for seconds.
 Future<void> Function()? _deferredAppleTvBoot;
 
-/// Runs work queued by [initDependencies] on Apple TV. Call only after the
-/// splash gate ([WatchApp._boot]) has completed.
+/// Runs work queued by [initDependencies] on TV. Call only after the splash
+/// gate ([WatchApp._boot]) has completed.
 Future<void> runDeferredAppleTvBootTasks() async {
   final task = _deferredAppleTvBoot;
   _deferredAppleTvBoot = null;
@@ -135,7 +135,7 @@ Future<void> runDeferredAppleTvBootTasks() async {
 }
 
 /// True once [runDeferredAppleTvBootTasks] has finished (success or failure).
-/// Home must not call into provider JS before this on Apple TV.
+/// Home must not call into provider JS before this on TV.
 bool tvosProvidersReady = false;
 
 /// Browser-like default headers for LNReader plugin requests — a straight
@@ -187,7 +187,7 @@ Future<void> initDependencies() async {
     isTv = false;
   }
   if (!isTv && isAppleTv) isTv = true;
-  if (isAppleTv) tvosProvidersReady = false;
+  if (isTv) tvosProvidersReady = false;
   sl.registerSingleton<AppMode>(AppMode(isTv: isTv));
 
   await initHiveForApp();
@@ -216,18 +216,18 @@ Future<void> initDependencies() async {
   sl.registerSingleton<MigrationBridge>(
     MigrationBridge(
       invoke: (name, body) async {
-        final r = await sl<SupabaseService>().client.functions.invoke(
-          name,
-          body: body,
-        );
+        final r = await sl<SupabaseService>()
+            .client
+            .functions
+            .invoke(name, body: body);
         return (r.data as Map).cast<String, dynamic>();
       },
       signInPassword: (email, pw) async {
         try {
-          await sl<SupabaseService>().client.auth.signInWithPassword(
-            email: email,
-            password: pw,
-          );
+          await sl<SupabaseService>()
+              .client
+              .auth
+              .signInWithPassword(email: email, password: pw);
           return sl<SupabaseService>().client.auth.currentUser != null;
         } catch (_) {
           return false;
@@ -236,10 +236,10 @@ Future<void> initDependencies() async {
       verifyOtp: (email, token) async {
         try {
           await sl<SupabaseService>().client.auth.verifyOTP(
-            email: email,
-            token: token,
-            type: OtpType.email,
-          );
+                email: email,
+                token: token,
+                type: OtpType.email,
+              );
           return sl<SupabaseService>().client.auth.currentUser != null;
         } catch (_) {
           return false;
@@ -260,9 +260,7 @@ Future<void> initDependencies() async {
   sl.registerSingleton<ReadHistory>(
     ReadHistory(sl<SupabaseService>(), currentUserId),
   );
-  sl.registerSingleton<WatchRoomService>(
-    WatchRoomService(sl<SupabaseService>()),
-  );
+  sl.registerSingleton<WatchRoomService>(WatchRoomService(sl<SupabaseService>()));
   sl.registerSingleton<WatchTogetherController>(
     WatchTogetherController(sl<WatchRoomService>()),
   );
@@ -303,8 +301,6 @@ Future<void> initDependencies() async {
   await ThemeController.init();
   await LocaleController.init();
   await ZModePrefs.init();
-  await GenreCatalog.init();
-  await HomeRowsPrefs.init();
   await DownloadPrefs.init();
   sl.registerSingleton<DownloadPrefs>(DownloadPrefs());
   await TorrentPrefs.init();
@@ -359,6 +355,9 @@ Future<void> initDependencies() async {
   dio.interceptors.add(
     InterceptorsWrapper(
       onRequest: (options, handler) {
+        if (options.uri.host == AniListGraphql.host) {
+          options.headers.addAll(AniListGraphql.headers);
+        }
         if (options.uri.host == Tmdb.host) {
           options.queryParameters = {
             ...options.queryParameters,
@@ -369,11 +368,6 @@ Future<void> initDependencies() async {
       },
     ),
   );
-  // AniList gets a longer read than the 8s above and honours 429 — see
-  // AniListNetworkPolicy. Registered so the UI can ask how long the wait is.
-  final aniListPolicy = AniListNetworkPolicy();
-  dio.interceptors.add(aniListPolicy);
-  sl.registerSingleton<AniListNetworkPolicy>(aniListPolicy);
   sl.registerSingleton<Dio>(dio);
   sl.registerSingleton<AiringService>(AiringService(sl<Dio>()));
   sl.registerSingleton<ComingSoonService>(ComingSoonService(sl<Dio>()));
@@ -397,14 +391,7 @@ Future<void> initDependencies() async {
   // Pass the AniList token (lazily — AniListService is registered below) so the
   // enrichment's searches authenticate; AniList now 403s anonymous API calls.
   sl.registerSingleton<MetadataEnrichment>(
-    MetadataEnrichment(
-      dio,
-      () => sl<AniListService>().store.token,
-      () => sl.isRegistered<MetadataProviderPrefs>()
-          ? sl<MetadataProviderPrefs>()
-          : null,
-    ),
-  );
+      MetadataEnrichment(dio, () => sl<AniListService>().store.token));
 
   // Per-episode descriptions for the episode list (AniZip for anime, TMDB
   // season for movie-source TV series). Best-effort; shares the TMDB-keyed dio.
@@ -444,13 +431,11 @@ Future<void> initDependencies() async {
   await TrackerBindingStore.init();
   sl.registerSingleton<TrackerBindingStore>(TrackerBindingStore());
   // TV relay: packs/unpacks tracker sessions to move a login from phone to TV.
-  sl.registerLazySingleton<TrackerRelay>(
-    () => TrackerRelay({
-      'anilist': sl<AniListService>(),
-      'mal': sl<MalService>(),
-      'simkl': sl<SimklService>(),
-    }),
-  );
+  sl.registerLazySingleton<TrackerRelay>(() => TrackerRelay({
+        'anilist': sl<AniListService>(),
+        'mal': sl<MalService>(),
+        'simkl': sl<SimklService>(),
+      }));
 
   // Share deep links (zangetsu://open?…): opens a shared title's Detail, or
   // reports an uninstalled source. Eager so its AppLinks listener is live from
@@ -461,11 +446,7 @@ Future<void> initDependencies() async {
   // AppwriteService (mintJwt for migration) and MigrationBridge are already
   // registered above.
   sl.registerSingleton<AuthCubit>(
-    AuthCubit(
-      sl<SupabaseService>(),
-      sl<AppwriteService>(),
-      sl<MigrationBridge>(),
-    ),
+    AuthCubit(sl<SupabaseService>(), sl<AppwriteService>(), sl<MigrationBridge>()),
   );
 
   final manager = ProviderManager(dio: dio);
@@ -553,7 +534,9 @@ Future<void> initDependencies() async {
             {
               'url': url,
               'method': method,
-              'headers': mergedHeaders.map((k, v) => MapEntry(k, v.toString())),
+              'headers': mergedHeaders.map(
+                (k, v) => MapEntry(k, v.toString()),
+              ),
               'body': init['body'] is String
                   ? init['body'] as String
                   : init['body']?.toString(),
@@ -602,7 +585,9 @@ Future<void> initDependencies() async {
         url: res.realUri.toString(),
         // Dio hands back a list per header (a name may repeat); join them the
         // way HTTP does rather than keeping only the first.
-        headers: res.headers.map.map((k, v) => MapEntry(k, v.join(', '))),
+        headers: res.headers.map.map(
+          (k, v) => MapEntry(k, v.join(', ')),
+        ),
       );
     },
   );
@@ -632,20 +617,15 @@ Future<void> initDependencies() async {
   sl.registerSingleton<ProviderReposRegistry>(repos);
   sl.registerSingleton<ProviderSettingsRepository>(settings);
   sl.registerSingleton<ProviderRegistry>(registry);
-  sl.registerSingleton<BackupService>(
-    BackupService(
-      SourcesBackup(
-        sl<ProviderReposRegistry>(),
-        sl<ProviderRegistry>(),
+  sl.registerSingleton<BackupService>(BackupService(
+    SourcesBackup(sl<ProviderReposRegistry>(), sl<ProviderRegistry>(),
         sl.isRegistered<CloudStreamManager>() ? sl<CloudStreamManager>() : null,
         aniyomi: AniyomiExtensionService(),
         mihon: MihonExtensionService(),
-        lnreader: lnrService,
-      ),
-      LibraryBackup(),
-      SettingsBackup(),
-    ),
-  );
+        lnreader: lnrService),
+    LibraryBackup(),
+    SettingsBackup(),
+  ));
 
   // Load bundled extractor BEFORE the providers so getVideoSources can resolve.
   // Extractors are NOT providers — they stay loaded directly on the manager.
@@ -678,18 +658,18 @@ Future<void> initDependencies() async {
   void onProviderLoadFinished() {
     void apply() {
       if (sl.isRegistered<ActiveSourceCubit>()) {
-        sl<ActiveSourceCubit>().reapplySaved(
-          (id) => manager.installedIds.contains(id),
-        );
+        sl<ActiveSourceCubit>()
+            .reapplySaved((id) => manager.installedIds.contains(id));
       }
-      if (!isAppleTv &&
+      // Metadata home on TV loads from AniList/TMDB — no JS providers needed.
+      // Reloading here after a slow background loadAll only blocks toggles.
+      if (!isTv &&
           sl.isRegistered<HomeCubit>() &&
           sl.isRegistered<SourceRepository>() &&
           sl<SourceRepository>().hasSource(sl<ActiveSourceCubit>().state)) {
         sl<HomeCubit>().load();
       }
     }
-
     apply();
   }
 
@@ -701,24 +681,24 @@ Future<void> initDependencies() async {
     await providerLoad.timeout(
       const Duration(seconds: 8),
       onTimeout: () {
-        debugPrint(
-          '[boot] provider load exceeded 8s — booting now; '
-          'remaining providers finish in the background',
-        );
+        debugPrint('[boot] provider load exceeded 8s — booting now; '
+            'remaining providers finish in the background');
         return const <String>[];
       },
     );
   }
 
-  // Do not START provider load during init on tvOS — even unawaited, the first
-  // cached provider hits synchronous JavaScriptCore evaluate() and can wedge the
-  // isolate before ActiveSourceCubit / DownloadManager finish opening boxes.
-  if (isAppleTv) {
-    _deferredAppleTvBoot = () async {
-      await loadProviders();
-    };
-  } else {
+  // Phone: load every enabled provider during splash (same as always). TV:
+  // skip loadAll — metadata Home/search never touch JS, and hanging sources
+  // (miruro, uhdmovies, …) freeze the isolate for their timeout each.
+  // Playback still loads a source on demand via ensureRuntimeLoaded.
+  if (!isTv) {
     await loadProviders();
+  } else {
+    debugPrint(
+      '[boot] TV detected — skipping loadAll; '
+      'providers load on demand via ensureRuntimeLoaded',
+    );
   }
 
   // Push every saved per-provider settings row into the runtime so the
@@ -887,6 +867,15 @@ Future<void> initDependencies() async {
   // registering it costs nothing but makes the toggle instant.
   await registerZangetsuMode(sl);
 
+  // TV never started loadAll above. Reapply the saved active source once the
+  // shell is up (CloudStream/Aniyomi may still land later via their microtasks).
+  if (isTv) {
+    _deferredAppleTvBoot = () async {
+      onProviderLoadFinished();
+    };
+    tvosProvidersReady = true;
+  }
+
   // Now that SourceRepository can enumerate loaded sources, make sure the
   // restored content mode points at a source that belongs to it (e.g. a
   // novel-mode launch shouldn't show an anime source). No-op for anime mode
@@ -901,10 +890,7 @@ Future<void> initDependencies() async {
   await SubscriptionStore.init();
   sl.registerSingleton<SubscriptionStore>(SubscriptionStore());
   sl.registerSingleton<SubscriptionChecker>(
-    // The router: it sends `zm://` subscriptions to the metadata catalogue.
-    // Handing it SourceRepository meant every Z Mode subscription threw and was
-    // swallowed — the bell stored state and was never checked.
-    SubscriptionChecker(sl<CatalogueRepository>(), sl<SubscriptionStore>()),
+    SubscriptionChecker(sl<SourceRepository>(), sl<SubscriptionStore>()),
   );
 
   // Developer announcements: read a public JSON feed on launch and surface new
@@ -955,6 +941,13 @@ Future<void> initDependencies() async {
     () => HomeCubit(sl<CatalogueRepository>()),
   );
 
+  sl<MetadataRepository>().onStreamHomeCached = (kind, rows) {
+    if (!sl.isRegistered<HomeCubit>()) return;
+    final streamKind =
+        kind == ZKind.movie ? StreamKind.movie : StreamKind.anime;
+    sl<HomeCubit>().rememberStreamKindRows(streamKind, rows);
+  };
+
   // Guarded CloudStream boot step — load the installed .cs3 plugins OFF the
   // splash path (see the note where csManager is registered) so startup is
   // instant and a heavy/misbehaving plugin can't stall it. Scheduled here,
@@ -968,9 +961,8 @@ Future<void> initDependencies() async {
       // when the saved id is now valid — it never resets an already-restored
       // source — so this composes cleanly with the Aniyomi step above.
       if (sl.isRegistered<ActiveSourceCubit>()) {
-        final changed = sl<ActiveSourceCubit>().reapplySaved(
-          (id) => csManager.get(id) != null,
-        );
+        final changed = sl<ActiveSourceCubit>()
+            .reapplySaved((id) => csManager.get(id) != null);
         if (changed && sl.isRegistered<HomeCubit>()) {
           sl<HomeCubit>().load(); // reload Home for the restored source
         }
