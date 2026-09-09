@@ -1,6 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'dart:ui' show FramePhase;
+
+import 'package:flutter/scheduler.dart';
 
 import '../../core/di/injector.dart';
 import '../../core/models/episode.dart';
@@ -72,9 +75,47 @@ class _EpisodeSourcesBodyState extends State<_EpisodeSourcesBody> {
   /// not something to do per row.
   final _tags = <String, ({String label, String? repo})>{};
 
+  // ── Frame-stall measurement ─────────────────────────────────────────────
+  //
+  // A frame that never happens does not report itself, so the signal is the
+  // GAP between the frames that did: a scrape blocking this isolate for two
+  // seconds shows up as a two-second hole. Logged once per pass so a device
+  // log can say how bad it actually was rather than how bad it felt.
+  Duration? _lastFrame;
+  var _worstGapMs = 0;
+  var _stalls = 0;
+  void Function(List<FrameTiming>)? _timings;
+
+  void _watchFrames() {
+    _timings = (list) {
+      for (final t in list) {
+        final now = Duration(
+          microseconds: t.timestampInMicroseconds(FramePhase.rasterFinish),
+        );
+        final last = _lastFrame;
+        if (last != null) {
+          final gapMs = (now - last).inMilliseconds;
+          if (gapMs > _worstGapMs) _worstGapMs = gapMs;
+          // Past ~4 dropped frames at 60Hz is a stall a person sees.
+          if (gapMs > 64) _stalls++;
+        }
+        _lastFrame = now;
+      }
+    };
+    SchedulerBinding.instance.addTimingsCallback(_timings!);
+  }
+
+  void _reportFrames(String when) {
+    debugPrint(
+      '[probe-ui] $when · worst frame gap ${_worstGapMs}ms · '
+      '$_stalls stalls over 64ms',
+    );
+  }
+
   @override
   void initState() {
     super.initState();
+    _watchFrames();
     _total = sl<PlaybackResolver>()
         .candidatesForEpisode(widget.episode.url)
         .length;
@@ -109,8 +150,14 @@ class _EpisodeSourcesBodyState extends State<_EpisodeSourcesBody> {
               if (p.hasEpisode) _found.add(p);
             });
           },
-          onDone: () => mounted ? setState(() => _done = true) : null,
-          onError: (_) => mounted ? setState(() => _done = true) : null,
+          onDone: () {
+            _reportFrames('pass done');
+            if (mounted) setState(() => _done = true);
+          },
+          onError: (_) {
+            _reportFrames('pass errored');
+            if (mounted) setState(() => _done = true);
+          },
         );
   }
 
@@ -134,6 +181,10 @@ class _EpisodeSourcesBodyState extends State<_EpisodeSourcesBody> {
     // an episode nobody is waiting on would be pure cost, and on this isolate
     // it would keep stealing frames from whatever is on screen next.
     _sub?.cancel();
+    _reportFrames('closed');
+    if (_timings != null) {
+      SchedulerBinding.instance.removeTimingsCallback(_timings!);
+    }
     super.dispose();
   }
 
