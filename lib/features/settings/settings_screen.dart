@@ -755,14 +755,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       // Sources
       _SettingsEntry(
         section: SettingsSection.sources,
-        icon: Icons.low_priority_rounded,
-        title: 'Source Priority',
-        subtitle: 'Order Auto Resolve tries sources in',
-        keywords: 'source priority order auto resolve sweep anime movies tv',
-        onTap: () => _push(const SourcePriorityScreen()),
-      ),
-      _SettingsEntry(
-        section: SettingsSection.sources,
         icon: Icons.dns_rounded,
         title: l10n.providers,
         subtitle: l10n.providersEnabledCount(enabledCount),
@@ -792,6 +784,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ],
         ),
         onTap: _pickActiveSource,
+      ),
+      _SettingsEntry(
+        section: SettingsSection.sources,
+        icon: Icons.low_priority_rounded,
+        title: 'Source Priority',
+        subtitle: 'Order Auto Resolve tries sources in',
+        keywords: 'source priority order auto resolve sweep anime movies tv',
+        onTap: () => _push(const SourcePriorityScreen()),
       ),
       _SettingsEntry(
         section: SettingsSection.sources,

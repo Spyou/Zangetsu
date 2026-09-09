@@ -43,11 +43,19 @@ Future<void> registerZangetsuMode(GetIt sl) async {
   // Shared by both the matcher (Detail's per-title resolve) and the playback
   // resolver (via MetadataRepository below) so Auto Resolve sweeps — and
   // playback's own health/pin tie-breaks — agree on the user's priority order.
-  List<({String id, String name})> orderedCandidates(ZKind kind) =>
+  List<({String id, String name})> orderedCandidates(ZKind kind) {
+    // Switched-off sources are dropped HERE and nowhere else: this is the
+    // sweep's list. `candidatesForKind` stays whole, so the per-title picker
+    // still offers every installed source — turning one off means "stop
+    // trying it automatically", not "hide it from me".
+    return activeSources(
       applySourceOrder(
         candidatesForKind(sl<SourceRepository>(), kind),
         sourceOrderPrefs.get(kind),
-      );
+      ),
+      excluded: sourceOrderPrefs.excluded(kind),
+    );
+  }
 
   sl.registerSingleton<SourceMatcher>(SourceMatcher(
     sources: sl<SourceRepository>(),
