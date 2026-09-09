@@ -14,6 +14,7 @@ import 'metadata_provider_prefs.dart';
 import 'package:flutter/material.dart';
 
 import '../ui/global_messenger.dart';
+import '../ui/source_switcher.dart';
 import 'match_store.dart';
 import 'playback_resolver.dart';
 import 'source_order_prefs.dart';
@@ -105,11 +106,41 @@ List<({String id, String name})> candidatesForKind(
     // Anime and movie/TV share one streaming pool. Which of the two a title
     // is has already been decided by the metadata catalogue; the source only
     // has to be able to play it, and plenty carry both.
-    _ => [
+    _ => _byKindAffinity([
       for (final s in all)
         if (!s.id.startsWith('mihon:') && !s.id.startsWith('lnr:')) s,
-    ],
+    ], kind),
   };
+}
+
+/// The same pool, reordered so sources that DECLARE this kind are swept first.
+///
+/// Nothing is dropped — a source with both anime and films, or with no
+/// declared type at all, has to stay reachable. But order matters a lot now
+/// that playback sweeps: on a library of 174 sources an anime episode was
+/// trying cs:Netflix, cs:Hotstar, cs:Pixar and PublicSportsIPTV — paying a
+/// real search on each — before it reached an anime source.
+///
+/// Best-effort: [categorizedSources] reads several registries that early boot
+/// and most tests do not have, so any failure just leaves the order untouched.
+List<({String id, String name})> _byKindAffinity(
+  List<({String id, String name})> pool,
+  ZKind kind,
+) {
+  final Set<String> declared;
+  try {
+    final b = categorizedSources();
+    declared = {
+      for (final r in kind == ZKind.movie ? b.movies : b.anime) r.id,
+    };
+  } catch (_) {
+    return pool;
+  }
+  if (declared.isEmpty) return pool;
+  return [
+    ...pool.where((s) => declared.contains(s.id)),
+    ...pool.where((s) => !declared.contains(s.id)),
+  ];
 }
 
 /// The catalogue kind to browse: the content mode, with Movie/TV split out of

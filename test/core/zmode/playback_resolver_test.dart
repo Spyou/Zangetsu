@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -23,12 +24,16 @@ class _SweepSrc implements SourceRepository {
     required this.bEps,
     this.aStreams = const [VideoSource(url: 'https://a/stream')],
     this.bStreams = const [VideoSource(url: 'https://b/stream')],
+    this.hangs = const <String>{},
   });
 
   final List<Episode> aEps;
   final List<Episode> bEps;
   final List<VideoSource> aStreams;
   final List<VideoSource> bStreams;
+
+  /// Sources whose episode call never answers — a real one measured 38s.
+  final Set<String> hangs;
   final log = <String>[];
 
   @override
@@ -49,6 +54,10 @@ class _SweepSrc implements SourceRepository {
   @override
   Future<bool> ensureSourceLoaded(String sourceId) async => true;
 
+  // Shown per row by the "Where to watch" sheet.
+  @override
+  String displayName(String sourceId) => sourceId;
+
   @override
   Future<List<MediaItem>> search(String q, {String category = 'sub', String? sourceId}) async {
     log.add('search:$sourceId');
@@ -64,6 +73,7 @@ class _SweepSrc implements SourceRepository {
   @override
   Future<List<Episode>> episodes(String url, {String category = 'sub', String? sourceId}) async {
     log.add('episodes:$url:$sourceId');
+    if (hangs.contains(sourceId)) return Completer<List<Episode>>().future;
     if (sourceId == 'src-a') return aEps;
     if (sourceId == 'src-b') return bEps;
     return const [];
@@ -102,6 +112,7 @@ void main() {
     required SourceRepository sources,
     required SourceMatcher matcher,
     String? preferred,
+    Duration? budget,
   }) {
     if (preferred != null) prefs.set(_show.kind, preferred);
     final r = PlaybackResolver(
@@ -111,6 +122,7 @@ void main() {
       prefs: prefs,
       health: health,
       candidates: (_) => [(id: 'src-a', name: 'A'), (id: 'src-b', name: 'B')],
+      perSourceBudget: budget,
     );
     r.bindTitleLookup((_) async => (title: 'FMA', alt: null, malId: 100));
     return r;
@@ -205,5 +217,165 @@ void main() {
     final a = r.resolveForPlayback(_ep2);
     final b = r.resolveForPlayback(_ep2);
     expect(identical(await a, await b), isTrue);
+  });
+
+  test('a source that hangs is abandoned at the budget, and the sweep goes on',
+      () async {
+    // The freeze this budget exists for: on a real device one provider held
+    // the sweep 38 seconds and the whole tap took 100. src-a never answers.
+    final src = _SweepSrc(
+      aEps: const [],
+      bEps: const [
+        Episode(id: '1', title: 'Ep 1', number: 1, url: 'https://b/1'),
+        Episode(id: '2', title: 'Ep 2', number: 2, url: 'https://b/2'),
+      ],
+      hangs: const {'src-a'},
+    );
+    final matcher = SourceMatcher(
+      sources: src, store: store, prefs: prefs,
+      candidates: (_) => src.loadedSources,
+    );
+    final r = resolver(
+      sources: src,
+      matcher: matcher,
+      preferred: 'src-a',
+      budget: const Duration(milliseconds: 60),
+    );
+
+    final out = await r.resolveForPlayback(_ep2);
+    expect(out.match.sourceId, 'src-b');
+    expect(out.episodeUrl, 'https://b/2');
+  });
+
+  test('a source that blew the budget is skipped on the next sweep', () async {
+    // Without this the very next resolve pays the same wait again — which is
+    // exactly what the device log showed, the same source twice in a row.
+    final src = _SweepSrc(
+      aEps: const [],
+      bEps: const [
+        Episode(id: '1', title: 'Ep 1', number: 1, url: 'https://b/1'),
+        Episode(id: '2', title: 'Ep 2', number: 2, url: 'https://b/2'),
+        Episode(id: '3', title: 'Ep 3', number: 3, url: 'https://b/3'),
+      ],
+      hangs: const {'src-a'},
+    );
+    final matcher = SourceMatcher(
+      sources: src, store: store, prefs: prefs,
+      candidates: (_) => src.loadedSources,
+    );
+    final r = resolver(
+      sources: src,
+      matcher: matcher,
+      preferred: 'src-a',
+      budget: const Duration(milliseconds: 60),
+    );
+
+    await r.resolveForPlayback(_ep2);
+    src.log.clear();
+    await r.resolveForPlayback('zm://anime/mal:100/ep/3');
+
+    expect(src.log.where((l) => l.endsWith(':src-a')), isEmpty,
+        reason: 'src-a blew the budget once; it must not be asked again');
+    expect(src.log, contains('sources:https://b/3:src-b'));
+  });
+
+  test('a sweep that found nothing is remembered, not repeated', () async {
+    // The catalogue lists an episode no source has (an airing show's announced
+    // count). Rediscovering that cost a real episode-list fetch against every
+    // candidate — and ran again the moment Home re-asked after backing out of
+    // the player.
+    final src = _SweepSrc(
+      aEps: const [Episode(id: '1', title: 'Ep 1', number: 1, url: 'https://a/1')],
+      bEps: const [Episode(id: '1', title: 'Ep 1', number: 1, url: 'https://b/1')],
+    );
+    final matcher = SourceMatcher(
+      sources: src, store: store, prefs: prefs,
+      candidates: (_) => src.loadedSources,
+    );
+    final r = resolver(sources: src, matcher: matcher);
+
+    await expectLater(r.resolveForPlayback(_ep2), throwsA(isA<EpisodeNotAvailable>()));
+    expect(src.log.where((l) => l.startsWith('episodes:')), isNotEmpty);
+
+    src.log.clear();
+    await expectLater(r.resolveForPlayback(_ep2), throwsA(isA<EpisodeNotAvailable>()));
+    expect(src.log, isEmpty,
+        reason: 'the second ask must answer from memory, not 36 more fetches');
+
+    // Retry / a source switch has to get a real sweep back.
+    r.invalidateWinner(_ep2);
+    await expectLater(r.resolveForPlayback(_ep2), throwsA(isA<EpisodeNotAvailable>()));
+    expect(src.log.where((l) => l.startsWith('episodes:')), isNotEmpty);
+  });
+
+  test('probeEach is bounded by time, not by a count of sources', () async {
+    // Counting sources was the wrong dial: most answer in 0-1ms from a
+    // remembered miss, so a count cap spent itself on free questions and
+    // stopped before the slow ones that actually matter.
+    final src = _SweepSrc(
+      aEps: const [
+        Episode(id: '1', title: 'Ep 1', number: 1, url: 'https://a/1'),
+        Episode(id: '2', title: 'Ep 2', number: 2, url: 'https://a/2'),
+      ],
+      bEps: const [
+        Episode(id: '1', title: 'Ep 1', number: 1, url: 'https://b/1'),
+        Episode(id: '2', title: 'Ep 2', number: 2, url: 'https://b/2'),
+      ],
+    );
+    final matcher = SourceMatcher(
+      sources: src, store: store, prefs: prefs,
+      candidates: (_) => src.loadedSources,
+    );
+    final r = resolver(sources: src, matcher: matcher);
+
+    final asked = await r
+        .probeEach(_ep2, wallClock: Duration.zero)
+        .where((p) => !p.checking)
+        .toList();
+    expect(asked, isEmpty, reason: 'no time left, so nothing is asked');
+
+    final full = await r
+        .probeEach(_ep2)
+        .where((p) => !p.checking)
+        .toList();
+    expect(full.length, 2, reason: 'with time, every candidate is asked');
+    // The probe answers "has the episode" WITHOUT resolving streams — that is
+    // the expensive half, and it measured 3-13s per source on device.
+    expect(src.log.where((l) => l.startsWith('sources:')), isEmpty);
+    expect(full.every((p) => p.hasEpisode), isTrue);
+
+    // …and `skip` resumes past one rather than asking it again.
+    final rest = await r
+        .probeEach(_ep2, skip: {full.first.sourceId})
+        .where((p) => !p.checking)
+        .toList();
+    expect(rest.map((p) => p.sourceId), isNot(contains(full.first.sourceId)));
+    expect(rest, isNotEmpty);
+  });
+
+  test('cancelling probeEach stops it asking more sources', () async {
+    // The Stop button, and closing the dialog: this is real work on a shared
+    // isolate, so abandoning it has to actually abandon it.
+    final src = _SweepSrc(
+      aEps: const [
+        Episode(id: '1', title: 'Ep 1', number: 1, url: 'https://a/1'),
+        Episode(id: '2', title: 'Ep 2', number: 2, url: 'https://a/2'),
+      ],
+      bEps: const [
+        Episode(id: '1', title: 'Ep 1', number: 1, url: 'https://b/1'),
+        Episode(id: '2', title: 'Ep 2', number: 2, url: 'https://b/2'),
+      ],
+    );
+    final matcher = SourceMatcher(
+      sources: src, store: store, prefs: prefs,
+      candidates: (_) => src.loadedSources,
+    );
+    final r = resolver(sources: src, matcher: matcher);
+
+    final sub = r.probeEach(_ep2).listen(null);
+    await sub.cancel();
+    src.log.clear();
+    await Future<void>.delayed(const Duration(milliseconds: 80));
+    expect(src.log, isEmpty, reason: 'cancelled means cancelled');
   });
 }

@@ -137,6 +137,32 @@ class _JsHost {
   // just returns nothing for search. The solve happens later, when the user
   // actually opens/plays from that source.
   bool _suppressCfSolve = false;
+
+  /// Held above zero while a PASSIVE survey runs — the "where to watch" probe,
+  /// which asks every source whether it lists an episode.
+  ///
+  /// Same rule as `search`, for the same reason, but it cannot be inferred
+  /// from the method name: a probe calls `getEpisodes`, which on a normal play
+  /// absolutely should solve a challenge. Measured on device, a probe of one
+  /// Cloudflare-protected source launched the blocking WebView solver in the
+  /// background and stalled the app for twelve seconds — long after the probe
+  /// itself had been abandoned at its five-second budget.
+  ///
+  /// A counter, not a bool, so overlapping surveys can't clear each other's
+  /// suppression on the way out.
+  int _passiveDepth = 0;
+
+  /// Runs [body] with the blocking Cloudflare solver disabled. A challenged
+  /// source simply answers "nothing" and is recorded via [CfSolveNeeded], so
+  /// the UI can still offer a manual solve later.
+  Future<T> asPassiveSweep<T>(Future<T> Function() body) async {
+    _passiveDepth++;
+    try {
+      return await body();
+    } finally {
+      _passiveDepth--;
+    }
+  }
   final Map<String, _ProviderHealth> _health = {};
 
   ProviderHealthStatus healthFor(String sourceId) =>
@@ -228,7 +254,7 @@ class _JsHost {
     Duration timeout,
   ) async {
     final wasSuppress = _suppressCfSolve;
-    _suppressCfSolve = method == 'search';
+    _suppressCfSolve = _passiveDepth > 0 || method == 'search';
     try {
       final argsJson = jsonEncode(args);
       if (isAppleTv) {
@@ -995,6 +1021,11 @@ class ProviderManager implements ProviderRuntimeLoader {
   ProviderManager({required Dio dio}) : _host = _JsHost(dio: dio);
 
   final _JsHost _host;
+
+  /// Runs [body] with the blocking Cloudflare WebView solver disabled — see
+  /// [_JsHost.asPassiveSweep].
+  Future<T> asPassiveSweep<T>(Future<T> Function() body) =>
+      _host.asPassiveSweep(body);
 
   Iterable<String> get installedIds => _host.providers.keys;
   List<JsProvider> get all => _host.providers.values.toList();
