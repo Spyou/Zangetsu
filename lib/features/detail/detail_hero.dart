@@ -1,7 +1,6 @@
 // Hero header: backdrop, poster, trailer playback and the action buttons.
 part of 'detail_screen.dart';
 
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Hero — full-width backdrop with a portrait poster overlapping the bottom-right
 // and a back arrow over the top-left.
@@ -266,13 +265,18 @@ class _HeroTrailerState extends State<_HeroTrailer> with RouteAware {
           .timeout(const Duration(seconds: 7));
     } catch (_) {
       if (!mounted || player != _player) return;
-      final low = await sl<TrailerService>().streamUrl(widget.videoId, low: true);
+      final low = await sl<TrailerService>().streamUrl(
+        widget.videoId,
+        low: true,
+      );
       if (!mounted || player != _player || low == null || low.isEmpty) return;
       try {
         final autostart = !_paused && !widget.collapsed && !_covered;
         await player.open(Media(low), play: autostart);
         if (autostart) await player.play();
-      } catch (_) {/* leave the cover as the backdrop */}
+      } catch (_) {
+        /* leave the cover as the backdrop */
+      }
     }
   }
 
@@ -547,7 +551,10 @@ class _DownloadButton extends StatelessWidget {
                   size: 24,
                 ),
                 const SizedBox(width: 8),
-                Text(label, style: AppText.button.copyWith(color: Colors.white)),
+                Text(
+                  label,
+                  style: AppText.button.copyWith(color: Colors.white),
+                ),
               ],
             ),
           ),

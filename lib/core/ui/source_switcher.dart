@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter/material.dart';
 
 import '../aniyomi/aniyomi_provider.dart';
+import '../app_mode.dart';
 import '../di/injector.dart';
 import '../i18n/source_languages.dart';
 import '../lnreader/lnreader_manager.dart';
@@ -17,6 +18,8 @@ import '../provider/provider_manager.dart';
 import '../provider/provider_registry.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text.dart';
+import '../tv/tv_focusable.dart';
+import '../tv/tv_list_focusable.dart';
 import '../zmode/zmode_ids.dart';
 import '../zmode/zmode_module.dart';
 import '../zmode/zmode_prefs.dart';
@@ -456,49 +459,61 @@ class SourceSwitcher extends StatelessWidget {
     // colored ecosystem tag, then the source name. Hugs the text — but capped
     // at 150px so a long name ellipsizes inside instead of growing the
     // capsule and squeezing the wordmark on the left.
+    final chip = Container(
+      constraints: const BoxConstraints(maxWidth: 150),
+      padding: const EdgeInsets.fromLTRB(11, 4, 7, 4),
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.white.withValues(alpha: 0.16)),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            tag,
+            style: TextStyle(
+              fontSize: 9,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.4,
+              color: tagColor,
+            ),
+          ),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppText.body.copyWith(
+                fontSize: 12.5,
+                color: AppColors.textPrimary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          const SizedBox(width: 3),
+          const Icon(
+            Icons.keyboard_arrow_down,
+            size: 15,
+            color: AppColors.textSecondary,
+          ),
+        ],
+      ),
+    );
+    final isTv = sl.isRegistered<AppMode>() && sl<AppMode>().isTv;
+    if (isTv) {
+      return TvFocusable(
+        onTap: () => showPicker(context),
+        variant: TvFocusVariant.float,
+        scale: 1.02,
+        borderRadius: 14,
+        semanticLabel: name,
+        child: ExcludeSemantics(child: chip),
+      );
+    }
     return GestureDetector(
       onTap: () => showPicker(context),
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 150),
-        padding: const EdgeInsets.fromLTRB(11, 4, 7, 4),
-        decoration: BoxDecoration(
-          border: Border.all(color: Colors.white.withValues(alpha: 0.16)),
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              tag,
-              style: TextStyle(
-                fontSize: 9,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 0.4,
-                color: tagColor,
-              ),
-            ),
-            const SizedBox(width: 6),
-            Flexible(
-              child: Text(
-                name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: AppText.body.copyWith(
-                  fontSize: 12.5,
-                  color: AppColors.textPrimary,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-            const SizedBox(width: 3),
-            const Icon(
-              Icons.keyboard_arrow_down,
-              size: 15,
-              color: AppColors.textSecondary,
-            ),
-          ],
-        ),
-      ),
+      child: chip,
     );
   }
 
@@ -618,6 +633,8 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
   final _searchCtrl = TextEditingController();
   String _query = '';
 
+  bool get _isTv => sl.isRegistered<AppMode>() && sl<AppMode>().isTv;
+
   @override
   void dispose() {
     _searchCtrl.dispose();
@@ -629,18 +646,36 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
   ) =>
       [for (final s in rows) if (_sourcePickerMatches(_query, s.label, s.repo)) s];
 
-  Widget _rowFor(({String id, String label, String? repo}) src) => _SourceRow(
-        label: src.label,
-        repo: src.repo,
-        isActive: !widget.autoSelected && src.id == widget.currentId,
-        isPinned: PinnedSources.isPinned(src.id),
-        trailing: widget.trailingBuilder?.call(src.id),
-        onTap: () => widget.onChoose(src.id),
-        onLongPress: () async {
-          await PinnedSources.toggle(src.id);
-          if (mounted) setState(() {});
-        },
+  Widget _rowFor(
+    ({String id, String label, String? repo}) src, {
+    bool autofocus = false,
+  }) {
+    final trailing = widget.trailingBuilder?.call(src.id);
+    final row = _SourceRow(
+      label: src.label,
+      repo: src.repo,
+      isActive: !widget.autoSelected && src.id == widget.currentId,
+      isPinned: PinnedSources.isPinned(src.id),
+      // On TV trailing actions are siblings beside the row so D-pad can
+      // reach them without nesting focus inside the source TvListFocusable.
+      trailing: _isTv ? null : trailing,
+      autofocus: autofocus,
+      onTap: () => widget.onChoose(src.id),
+      onLongPress: () async {
+        await PinnedSources.toggle(src.id);
+        if (mounted) setState(() {});
+      },
+    );
+    if (_isTv && trailing != null) {
+      return Row(
+        children: [
+          Expanded(child: row),
+          trailing,
+        ],
       );
+    }
+    return row;
+  }
 
   Widget _empty(String message) =>
       EmptyState(icon: Icons.source_outlined, message: message);
@@ -651,16 +686,55 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
   /// here regardless of whether [onInstallSources] is wired.
   Widget _installCta() {
     final install = widget.onInstallSources;
+    void openInstall() {
+      Navigator.of(context).pop();
+      install!();
+    }
+
+    if (_isTv && install != null) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.source_outlined, size: 48, color: AppColors.textTertiary),
+            const SizedBox(height: 12),
+            Text(
+              'No ${widget.mode.label} sources yet',
+              textAlign: TextAlign.center,
+              style: AppText.body,
+            ),
+            const SizedBox(height: 16),
+            TvFocusable(
+              autofocus: true,
+              variant: TvFocusVariant.pill,
+              onTap: openInstall,
+              semanticLabel: 'Browse repositories',
+              builder: (focused) => DecoratedBox(
+                decoration: BoxDecoration(
+                  color: focused ? Colors.white : AppColors.accent,
+                  borderRadius: BorderRadius.circular(24),
+                ),
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 28, vertical: 12),
+                  child: Text(
+                    'Browse repositories',
+                    style: AppText.button.copyWith(
+                      color: focused ? Colors.black : Colors.white,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
     return EmptyState(
       icon: Icons.source_outlined,
       message: 'No ${widget.mode.label} sources yet',
       actionLabel: install == null ? null : 'Browse repositories',
-      onAction: install == null
-          ? null
-          : () {
-              Navigator.of(context).pop();
-              install();
-            },
+      onAction: install == null ? null : openInstall,
     );
   }
 
@@ -675,10 +749,21 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
       ...rows.where((s) => PinnedSources.isPinned(s.id)),
       ...rows.where((s) => !PinnedSources.isPinned(s.id)),
     ];
+    final focusId = _autofocusSourceId(sorted);
+    var focusGiven = false;
     return ListView(
-      shrinkWrap: true,
+      shrinkWrap: !_isTv,
       padding: EdgeInsets.zero,
-      children: [for (final s in sorted) _rowFor(s)],
+      children: [
+        for (final s in sorted)
+          _rowFor(s, autofocus: () {
+            if (focusGiven || focusId == null || s.id != focusId) {
+              return false;
+            }
+            focusGiven = true;
+            return true;
+          }()),
+      ],
     );
   }
 
@@ -695,10 +780,21 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
       ...rows.where((s) => PinnedSources.isPinned(s.id)),
       ...rows.where((s) => !PinnedSources.isPinned(s.id)),
     ];
+    final focusId = _autofocusSourceId(sorted);
+    var focusGiven = false;
     return ListView(
-      shrinkWrap: true,
+      shrinkWrap: !_isTv,
       padding: EdgeInsets.zero,
-      children: [for (final s in sorted) _rowFor(s)],
+      children: [
+        for (final s in sorted)
+          _rowFor(s, autofocus: () {
+            if (focusGiven || focusId == null || s.id != focusId) {
+              return false;
+            }
+            focusGiven = true;
+            return true;
+          }()),
+      ],
     );
   }
 
@@ -710,6 +806,17 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
   List<({String id, String label, String? repo})> get _video =>
       [...widget.buckets.anime, ...widget.buckets.movies]
         ..sort((x, y) => x.label.toLowerCase().compareTo(y.label.toLowerCase()));
+
+  /// Source id that should receive autofocus on TV — current selection if
+  /// present, else the first row. Null when Auto Resolve owns autofocus.
+  String? _autofocusSourceId(
+    List<({String id, String label, String? repo})> rows,
+  ) {
+    if (!_isTv || rows.isEmpty) return null;
+    if (widget.autoSelected && widget.onAutoResolve != null) return null;
+    if (rows.any((s) => s.id == widget.currentId)) return widget.currentId;
+    return rows.first.id;
+  }
 
   // The "All" tab: each (filtered) bucket under its own header. Anime mode
   // groups Anime/Movies & Series/NSFW exactly as before; a reading mode
@@ -741,23 +848,38 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
     ]);
     bool unpinned(({String id, String label, String? repo}) s) =>
         !pinnedIds.contains(s.id);
+    final focusCandidates = <({String id, String label, String? repo})>[
+      ...pinned,
+      for (final c in categories) ..._filter(c.rows.where(unpinned).toList()),
+    ];
+    final focusId = _autofocusSourceId(focusCandidates);
+    var focusGiven = false;
+    bool takeFocus(({String id, String label, String? repo}) s) {
+      if (focusGiven || focusId == null || s.id != focusId) return false;
+      focusGiven = true;
+      return true;
+    }
     final children = <Widget>[];
     if (pinned.isNotEmpty) {
       children.add(header('Pinned'));
-      children.addAll(pinned.map(_rowFor));
+      children.addAll(pinned.map((s) => _rowFor(s, autofocus: takeFocus(s))));
     }
     for (final c in categories) {
       final rows = _filter(c.rows.where(unpinned).toList());
       if (rows.isNotEmpty) {
         children.add(header(c.title));
-        children.addAll(rows.map(_rowFor));
+        children.addAll(rows.map((s) => _rowFor(s, autofocus: takeFocus(s))));
       }
     }
     if (children.isEmpty) {
       if (mode.isReading && _query.trim().isEmpty) return _installCta();
       return _empty(_query.trim().isEmpty ? 'No enabled sources' : 'No matches');
     }
-    return ListView(shrinkWrap: true, padding: EdgeInsets.zero, children: children);
+    return ListView(
+      shrinkWrap: !_isTv,
+      padding: EdgeInsets.zero,
+      children: children,
+    );
   }
 
   /// True if there's at least one source relevant to the current mode —
@@ -769,6 +891,44 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
       return (widget.mode == ContentMode.manga ? b.manga : b.novel).isNotEmpty;
     }
     return b.anime.isNotEmpty || b.movies.isNotEmpty || b.nsfw.isNotEmpty;
+  }
+
+  Widget _autoResolveRow() {
+    final body = Padding(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
+      child: Row(
+        children: [
+          Icon(Icons.auto_awesome_rounded, color: AppColors.accent, size: 20),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('Auto Resolve', style: AppText.headline),
+                Text(
+                  'Try every installed source until one matches',
+                  style: AppText.caption.copyWith(
+                    color: AppColors.textTertiary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (widget.autoSelected)
+            Icon(Icons.check, color: AppColors.accent, size: 20),
+        ],
+      ),
+    );
+    if (_isTv) {
+      return TvListFocusable(
+        autofocus: widget.autoSelected,
+        onTap: widget.onAutoResolve!,
+        semanticLabel: 'Auto Resolve',
+        child: ExcludeSemantics(child: body),
+      );
+    }
+    return InkWell(onTap: widget.onAutoResolve, child: body);
   }
 
   @override
@@ -801,6 +961,54 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
       ],
     ];
 
+    // TV: one grouped list (no TabBar / TextField). Tabs and search steal or
+    // eat D-pad focus; the phone sheet keeps both.
+    if (_isTv) {
+      return SafeArea(
+        child: SizedBox(
+          height: widget.height,
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Select Source',
+                    style: AppText.title.copyWith(color: AppColors.textPrimary),
+                  ),
+                ),
+              ),
+              if (widget.onAutoResolve != null) ...[
+                _autoResolveRow(),
+                const Divider(height: 1, color: AppColors.hairline),
+              ],
+              Expanded(child: _grouped()),
+              if (PinnedSources.notifier.value.isEmpty && _hasAnySources)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 6, 20, 10),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.push_pin_outlined,
+                        size: 13,
+                        color: AppColors.textTertiary,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Hold Select to pin a source to the top',
+                        style: AppText.caption,
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return SafeArea(
       child: SizedBox(
         height: widget.height,
@@ -818,37 +1026,7 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
                 ),
               ),
               if (widget.onAutoResolve != null) ...[
-                InkWell(
-                  onTap: widget.onAutoResolve,
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
-                    child: Row(
-                      children: [
-                        Icon(Icons.auto_awesome_rounded,
-                            color: AppColors.accent, size: 20),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text('Auto Resolve', style: AppText.headline),
-                              Text(
-                                'Try every installed source until one matches',
-                                style: AppText.caption.copyWith(
-                                  color: AppColors.textTertiary,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        if (widget.autoSelected)
-                          Icon(Icons.check,
-                              color: AppColors.accent, size: 20),
-                      ],
-                    ),
-                  ),
-                ),
+                _autoResolveRow(),
                 const Divider(height: 1, color: AppColors.hairline),
               ],
               if (widget.showSearch)
@@ -960,6 +1138,7 @@ class _SourceRow extends StatelessWidget {
     required this.onTap,
     this.repo,
     this.isPinned = false,
+    this.autofocus = false,
     this.onLongPress,
     this.trailing,
   });
@@ -970,6 +1149,7 @@ class _SourceRow extends StatelessWidget {
   final String? repo;
   final bool isActive;
   final bool isPinned;
+  final bool autofocus;
   final VoidCallback onTap;
   final VoidCallback? onLongPress;
 
@@ -989,26 +1169,21 @@ class _SourceRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hasRepo = repo != null && repo!.isNotEmpty;
-    return InkWell(
-      onTap: onTap,
-      onLongPress: onLongPress,
-      splashColor: AppColors.accent.withValues(alpha: 0.08),
-      highlightColor: AppColors.accent.withValues(alpha: 0.04),
-      child: DecoratedBox(
-        // Selected row: accent bar down the leading edge plus a wash, instead
-        // of a tick stranded on the far right of a wide row.
-        decoration: BoxDecoration(
-          color: isActive
-              ? AppColors.accent.withValues(alpha: 0.10)
-              : Colors.transparent,
-          border: Border(
-            left: BorderSide(
-              color: isActive ? AppColors.accent : Colors.transparent,
-              width: 3,
-            ),
+    final body = DecoratedBox(
+      // Selected row: accent bar down the leading edge plus a wash, instead
+      // of a tick stranded on the far right of a wide row.
+      decoration: BoxDecoration(
+        color: isActive
+            ? AppColors.accent.withValues(alpha: 0.10)
+            : Colors.transparent,
+        border: Border(
+          left: BorderSide(
+            color: isActive ? AppColors.accent : Colors.transparent,
+            width: 3,
           ),
         ),
-        child: Padding(
+      ),
+      child: Padding(
         padding: const EdgeInsets.fromLTRB(17, 11, 20, 11),
         child: Row(
           children: [
@@ -1049,7 +1224,7 @@ class _SourceRow extends StatelessWidget {
             ),
             if (isPinned)
               Padding(
-                padding: EdgeInsets.only(right: isActive ? 10 : 0),
+                padding: EdgeInsets.only(right: isActive || trailing != null ? 10 : 0),
                 child: Icon(
                   Icons.push_pin,
                   size: 15,
@@ -1059,8 +1234,25 @@ class _SourceRow extends StatelessWidget {
             ?trailing,
           ],
         ),
-        ),
       ),
+    );
+
+    final isTv = sl.isRegistered<AppMode>() && sl<AppMode>().isTv;
+    if (isTv) {
+      return TvListFocusable(
+        autofocus: autofocus,
+        onTap: onTap,
+        onLongPress: onLongPress,
+        semanticLabel: label,
+        child: ExcludeSemantics(child: body),
+      );
+    }
+    return InkWell(
+      onTap: onTap,
+      onLongPress: onLongPress,
+      splashColor: AppColors.accent.withValues(alpha: 0.08),
+      highlightColor: AppColors.accent.withValues(alpha: 0.04),
+      child: body,
     );
   }
 }

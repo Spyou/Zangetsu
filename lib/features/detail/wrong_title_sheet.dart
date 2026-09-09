@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
+import '../../core/tv/tv_focusable.dart';
 import '../../core/ui/app_toast.dart';
 import '../../core/mihon/mihon_extension_service.dart';
 import '../../core/provider/cf_solve_needed.dart';
@@ -282,6 +284,31 @@ class _MatchLineState extends State<MatchLine> {
     );
   }
 
+  bool get _isTv => sl.isRegistered<AppMode>() && sl<AppMode>().isTv;
+
+  /// Source dropdown and "Wrong title?" are separate D-pad targets on TV.
+  /// Phone keeps InkWell.
+  Widget _tappable({
+    required VoidCallback onTap,
+    required Widget child,
+    required String semanticLabel,
+    Key? key,
+    double borderRadius = 8,
+  }) {
+    if (_isTv) {
+      return TvFocusable(
+        key: key,
+        onTap: onTap,
+        variant: TvFocusVariant.float,
+        scale: 1.02,
+        borderRadius: borderRadius,
+        semanticLabel: semanticLabel,
+        child: ExcludeSemantics(child: child),
+      );
+    }
+    return InkWell(onTap: onTap, child: child);
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
@@ -291,7 +318,7 @@ class _MatchLineState extends State<MatchLine> {
         builder: (context, state) {
           if (state.sources.isEmpty) {
             return Padding(
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+              padding: const EdgeInsets.all(8),
               child: Row(
                 children: [
                   Icon(
@@ -343,34 +370,112 @@ class _MatchLineState extends State<MatchLine> {
           // Just the name inside the pill — the shape already reads as a
           // control, so a "Source:" prefix only crowds it.
           //
-          // "Auto" is its own answer, not a missing one. Under Auto Resolve no
-          // source is pinned until you pick one, so an unpinned title is the
-          // normal case now rather than the rare "nothing matched" it used to
-          // be — and reading "No source has this yet" on a title that plays
-          // perfectly well would be plainly wrong.
-          // Hardcoded like the picker's own row (source_switcher.dart) rather
-          // than an l10n key, so the two always read the same. Worth a proper
-          // key once the feature settles.
-          // Under Auto Resolve, name the source it settled on when there is
-          // one — "Auto" alone cannot be told apart from "still guessing", and
-          // the row's Cloudflare/sign-in actions act on that same source, so
-          // the viewer needs to know which site they are about to be sent to.
-          final label = state.auto
-              ? (selectedId == null
+          // Auto Resolve is the primary answer until the user pins a source.
+          // A settled candidate (from a prior sweep) may still be known —
+          // show it dimmer in parentheses so the pill doesn't read like a
+          // manual pick. Hardcoded like the picker's own row
+          // (source_switcher.dart) rather than an l10n key, so the two
+          // always read the same.
+          final autoHint = state.auto && selectedId != null
+              ? sl<SourceRepository>().displayName(selectedId)
+              : null;
+          final semanticLabel = state.auto
+              ? (autoHint == null
                     ? 'Auto Resolve'
-                    : 'Auto · ${sl<SourceRepository>().displayName(selectedId)}')
+                    : 'Auto Resolve ($autoHint)')
               : selectedId == null
               ? l10n.noSourceHasThisYet
               : sl<SourceRepository>().displayName(selectedId);
           // Sized and filled like _DownloadButton directly above, so Play,
           // Download and Source read as one stack. The row body opens the
           // picker; the trailing icons act on the SELECTED source and are
-          // outside that InkWell so they never double as a row tap.
-          return Padding(
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
+          // outside that tap target so they never double as a row tap.
+          // On TV the full gray dropdown pill is one TvFocusable; "Wrong
+          // title?" is a second — D-pad can land on each independently.
+          final labelRow = Row(
+            children: [
+              // Glyph so the pill reads as "this picks your source" on
+              // sight — sparkle for Auto Resolve, dns for a pinned pick.
+              Icon(
+                state.auto
+                    ? Icons.auto_awesome_rounded
+                    : Icons.dns_rounded,
+                size: 16,
+                color: AppColors.textSecondary,
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  state.auto
+                      ? 'Auto Resolve'
+                      : selectedId == null
+                      ? l10n.noSourceHasThisYet
+                      : sl<SourceRepository>().displayName(selectedId),
+                  style: AppText.button.copyWith(
+                    // Dimmed only when there is no source to name at all; a
+                    // source the user picked reads normally even when it
+                    // came up empty — the line below the pill says so
+                    // outright.
+                    color: !state.auto && selectedId == null
+                        ? AppColors.textTertiary
+                        : AppColors.textPrimary,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              // Dimmed candidate + chevron hug the trailing edge so the
+              // primary label stays left and the hint/arrow stay right.
+              if (autoHint != null) ...[
+                const SizedBox(width: 8),
+                Text(
+                  '($autoHint)',
+                  style: AppText.button.copyWith(
+                    fontSize: (AppText.button.fontSize ?? 14) - 2,
+                    color: AppColors.textTertiary,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+              const SizedBox(width: 4),
+              Icon(
+                Icons.keyboard_arrow_down_rounded,
+                size: 20,
+                color: AppColors.textSecondary,
+              ),
+            ],
+          );
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              if (_isTv)
+                Row(
+                  children: [
+                    Expanded(
+                      child: _tappable(
+                        key: const ValueKey('tv-match-source'),
+                        onTap: () => _pickSource(state),
+                        semanticLabel: semanticLabel,
+                        child: Material(
+                          color: AppColors.surface2,
+                          borderRadius: BorderRadius.circular(8),
+                          child: SizedBox(
+                            height: 52,
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                              ),
+                              child: labelRow,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    if (selectedId != null) _rowActions(context, selectedId),
+                  ],
+                )
+              else
                 Material(
                   color: AppColors.surface2,
                   borderRadius: BorderRadius.circular(8),
@@ -384,33 +489,7 @@ class _MatchLineState extends State<MatchLine> {
                             onTap: () => _pickSource(state),
                             child: Padding(
                               padding: const EdgeInsets.only(left: 14),
-                              child: Row(
-                                children: [
-                                  Flexible(
-                                    child: Text(
-                                      label,
-                                      style: AppText.button.copyWith(
-                                        // Dimmed only when there is no source
-                                        // to name at all; a source the user
-                                        // picked reads normally even when it
-                                        // came up empty — the line below the
-                                        // pill says so outright.
-                                        color: selectedId == null
-                                            ? AppColors.textTertiary
-                                            : AppColors.textPrimary,
-                                      ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Icon(
-                                    Icons.keyboard_arrow_down_rounded,
-                                    size: 20,
-                                    color: AppColors.textSecondary,
-                                  ),
-                                ],
-                              ),
+                              child: labelRow,
                             ),
                           ),
                         ),
@@ -421,53 +500,55 @@ class _MatchLineState extends State<MatchLine> {
                     ),
                   ),
                 ),
-                if (selectedId != null)
-                  Row(
-                    children: [
-                      // What the source actually matched, beside the button
-                      // that corrects it. Naming only the SOURCE hid the case
-                      // this whole control exists for: a confident match on
-                      // the wrong show looks identical to a right one — same
-                      // source name, a full episode list — until you play it
-                      // and get someone else's episodes. Showing the title
-                      // makes a bad match visible without opening anything.
-                      //
-                      // Silent while still resolving: the screen paints before
-                      // the match lands, and an unguarded line would claim
-                      // "nothing here" for every title during that window.
-                      Expanded(
-                        child: state.loading
-                            ? const SizedBox.shrink()
-                            : Text(
-                                state.match?.showTitle.isNotEmpty == true
-                                    ? state.match!.showTitle
-                                    : l10n.noEpisodesAvailableFromThisSource,
-                                style: AppText.caption.copyWith(
-                                  color: AppColors.textSecondary,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
+              if (selectedId != null)
+                Row(
+                  children: [
+                    // What the source actually matched, beside the button
+                    // that corrects it. Naming only the SOURCE hid the case
+                    // this whole control exists for: a confident match on
+                    // the wrong show looks identical to a right one — same
+                    // source name, a full episode list — until you play it
+                    // and get someone else's episodes. Showing the title
+                    // makes a bad match visible without opening anything.
+                    //
+                    // Silent while still resolving: the screen paints before
+                    // the match lands, and an unguarded line would claim
+                    // "nothing here" for every title during that window.
+                    Expanded(
+                      child: state.loading
+                          ? const SizedBox.shrink()
+                          : Text(
+                              state.match?.showTitle.isNotEmpty == true
+                                  ? state.match!.showTitle
+                                  : l10n.noEpisodesAvailableFromThisSource,
+                              style: AppText.caption.copyWith(
+                                color: AppColors.textSecondary,
                               ),
-                      ),
-                      InkWell(
-                        onTap: () => _fix(selectedId),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 4,
-                            vertical: 8,
-                          ),
-                          child: Text(
-                            l10n.wrongTitle,
-                            style: AppText.caption.copyWith(
-                              color: AppColors.accent,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
+                    ),
+                    _tappable(
+                      key: const ValueKey('tv-match-wrong-title'),
+                      onTap: () => _fix(selectedId),
+                      semanticLabel: l10n.wrongTitle,
+                      borderRadius: 6,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 4,
+                          vertical: 8,
+                        ),
+                        child: Text(
+                          l10n.wrongTitle,
+                          style: AppText.caption.copyWith(
+                            color: AppColors.accent,
                           ),
                         ),
                       ),
-                    ],
-                  ),
-              ],
-            ),
+                    ),
+                  ],
+                ),
+            ],
           );
         },
       ),

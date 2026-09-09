@@ -648,371 +648,388 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
         // Back sits in the left column (above the poster) so D-pad up from Play
         // can reach it. Overlaying it on the poster made it unreachable.
         body: SafeArea(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ── LEFT pane: poster + title + meta + action buttons ─────────
-            Focus(
-              focusNode: _leftScope,
-              onKeyEvent: _onLeftKey,
-              child: SizedBox(
-                width: 300,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Poster (2:3 aspect) with Back above it, inside this
-                    // flex so action buttons below keep their height.
-                    Expanded(
-                      flex: 5,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Padding(
-                            padding: EdgeInsets.fromLTRB(8, 4, 12, 0),
-                            child: Align(
-                              alignment: Alignment.centerLeft,
-                              child: TvBackButton(),
-                            ),
-                          ),
-                          Expanded(
-                            child: Padding(
-                              padding: const EdgeInsets.fromLTRB(20, 8, 12, 0),
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(12),
-                                child: coverUrl.isNotEmpty
-                                    ? CachedNetworkImage(
-                                        imageUrl: coverUrl,
-                                        cacheManager:
-                                            AppImageCache.cacheManagerOrDefault,
-                                        httpHeaders: coverHeaders,
-                                        fit: BoxFit.cover,
-                                        width: double.infinity,
-                                        memCacheWidth: 400,
-                                        placeholder: (_, _) => ColoredBox(
-                                          color: AppColors.surface2,
-                                        ),
-                                        errorWidget: (_, _, _) => ColoredBox(
-                                          color: AppColors.surface2,
-                                        ),
-                                      )
-                                    : ColoredBox(color: AppColors.surface2),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    // Title + meta + action buttons
-                    Expanded(
-                      flex: 4,
-                      child: SingleChildScrollView(
-                        padding: const EdgeInsets.fromLTRB(20, 14, 12, 16),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ── LEFT pane: poster + title + meta + action buttons ─────────
+              Focus(
+                focusNode: _leftScope,
+                onKeyEvent: _onLeftKey,
+                child: SizedBox(
+                  width: 300,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Poster (2:3 aspect) with Back above it, inside this
+                      // flex so action buttons below keep their height.
+                      Expanded(
+                        flex: 5,
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              detail.title,
-                              style: AppText.headline.copyWith(fontSize: 18),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            if (metaLine.isNotEmpty) ...[
-                              const SizedBox(height: 6),
-                              Text(
-                                metaLine,
-                                style: AppText.caption.copyWith(
-                                  color: AppColors.textSecondary,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
+                            const Padding(
+                              padding: EdgeInsets.fromLTRB(8, 4, 12, 0),
+                              child: Align(
+                                alignment: Alignment.centerLeft,
+                                child: TvBackButton(),
                               ),
-                            ],
-                            const SizedBox(height: 16),
-                            // Play button — autofocus: always the first focused
-                            // element when the detail screen opens on TV.
-                            TvFocusable(
-                              key: const ValueKey('tv-detail-play'),
-                              autofocus: true,
-                              variant: TvFocusVariant.pill,
-                              onTap: eps.isNotEmpty
-                                  ? () => _openPlayer(
-                                      eps,
-                                      resumeIdx,
-                                      detail,
-                                      category,
-                                    )
-                                  : () {},
-                              semanticLabel: buttonLabel,
-                              // _PlayButton is shared with the phone view —
-                              // exclude its own label Text here instead of
-                              // touching the widget, so semanticLabel above
-                              // is the only thing TalkBack hears.
-                              child: ExcludeSemantics(
-                                child: _PlayButton(
-                                  label: buttonLabel,
-                                  onPressed: eps.isNotEmpty
-                                      ? () => _openPlayer(
-                                          eps,
-                                          resumeIdx,
-                                          detail,
-                                          category,
+                            ),
+                            Expanded(
+                              child: Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  20,
+                                  8,
+                                  12,
+                                  0,
+                                ),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: coverUrl.isNotEmpty
+                                      ? CachedNetworkImage(
+                                          imageUrl: coverUrl,
+                                          cacheManager: AppImageCache
+                                              .cacheManagerOrDefault,
+                                          httpHeaders: coverHeaders,
+                                          fit: BoxFit.cover,
+                                          width: double.infinity,
+                                          memCacheWidth: 400,
+                                          placeholder: (_, _) => ColoredBox(
+                                            color: AppColors.surface2,
+                                          ),
+                                          errorWidget: (_, _, _) => ColoredBox(
+                                            color: AppColors.surface2,
+                                          ),
                                         )
-                                      : null,
+                                      : ColoredBox(color: AppColors.surface2),
                                 ),
                               ),
                             ),
-                            const SizedBox(height: 10),
-                            // Download button
-                            TvFocusable(
-                              key: const ValueKey('tv-detail-download'),
-                              variant: TvFocusVariant.pill,
-                              onTap: () => _openDownloadSheet(
-                                detail: detail,
-                                category: category,
-                                episodesBySeason: episodesBySeason,
-                                initialSeason: currentSeason,
-                              ),
-                              semanticLabel: context.l10n.download,
-                              // _DownloadButton is shared with the phone
-                              // view — exclude its Text, same as Play above.
-                              child: ExcludeSemantics(
-                                child: _DownloadButton(
-                                  label: context.l10n.download,
-                                  onPressed: () => _openDownloadSheet(
-                                    detail: detail,
-                                    category: category,
-                                    episodesBySeason: episodesBySeason,
-                                    initialSeason: currentSeason,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            // Z Mode: matched source + "Wrong title?" — lets
-                            // the user override the resolved source, same as
-                            // the phone view.
-                            if (ZmodeIds.isZ(widget.item.url))
-                              MatchLine(
-                                canonical: ZmodeIds.parseShow(
-                                  widget.item.url,
-                                )!,
-                                title: detail.title,
-                                altTitle: detail.englishTitle,
-                                malId: detail.malId,
-                              ),
-                            const SizedBox(height: 10),
-                            // Episode search — under Play/Download (tester
-                            // request). Opens the type-dialog; the active
-                            // query shows on the label so it's obvious a
-                            // filter is applied.
-                            TvFocusable(
-                              key: const ValueKey('tv-detail-ep-search'),
-                              variant: TvFocusVariant.pill,
-                              onTap: _openEpisodeSearch,
-                              semanticLabel: _epQuery.isEmpty
-                                  ? context.l10n.searchEpisodes
-                                  : context.l10n.searchColon(_epQuery),
-                              // _IconAction is shared with the phone view —
-                              // exclude its own label, same as Play above.
-                              child: ExcludeSemantics(
-                                child: _IconAction(
-                                  icon: _epQuery.isEmpty
-                                      ? Icons.search_rounded
-                                      : Icons.filter_alt_rounded,
-                                  active: _epQuery.isNotEmpty,
-                                  label: _epQuery.isEmpty
-                                      ? context.l10n.searchEpisodes
-                                      : context.l10n.searchColon(_epQuery),
-                                  tooltip: context.l10n.searchEpisodes,
-                                  onTap: _openEpisodeSearch,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 10),
-                            // My List button (same icon-over-label as phone)
-                            TvFocusable(
-                              key: const ValueKey('tv-detail-mylist'),
-                              variant: TvFocusVariant.pill,
-                              onTap: () => _openListSheet(detail),
-                              semanticLabel:
-                                  _status?.shortLabel ?? context.l10n.myList,
-                              // _IconAction is shared with the phone view —
-                              // exclude its own label, same as Play above.
-                              child: ExcludeSemantics(
-                                child: _IconAction(
-                                  icon: _inMyList
-                                      ? Icons.check_rounded
-                                      : Icons.add_rounded,
-                                  active: _inMyList,
-                                  label:
-                                      _status?.shortLabel ??
-                                      context.l10n.myList,
-                                  tooltip: _inMyList
-                                      ? context.l10n.changeStatus
-                                      : context.l10n.addToMyList,
-                                  onTap: () => _openListSheet(detail),
-                                ),
-                              ),
-                            ),
-                            if (_trackingAvailable(detail)) ...[
-                              const SizedBox(height: 10),
-                              // Tracker sync — status / score / progress
-                              // pushed to every connected tracker.
-                              TvFocusable(
-                                key: const ValueKey('tv-detail-tracking'),
-                                variant: TvFocusVariant.pill,
-                                onTap: () => _openTrackingSheet(detail),
-                                semanticLabel: context.l10n.tracking,
-                                child: ExcludeSemantics(
-                                  child: _IconAction(
-                                    icon: _tracked
-                                        ? Icons.published_with_changes_rounded
-                                        : Icons.sync_rounded,
-                                    active: _tracked,
-                                    label: context.l10n.tracking,
-                                    tooltip: _tracked
-                                        ? context
-                                              .l10n
-                                              .trackedEditStatusScoreProgress
-                                        : context.l10n.syncStatusScoreProgress,
-                                    onTap: () => _openTrackingSheet(detail),
-                                  ),
-                                ),
-                              ),
-                            ],
                           ],
                         ),
                       ),
-                    ),
-                  ],
+                      // Title + meta + action buttons
+                      Expanded(
+                        flex: 4,
+                        child: SingleChildScrollView(
+                          padding: const EdgeInsets.fromLTRB(20, 14, 12, 16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                detail.title,
+                                style: AppText.headline.copyWith(fontSize: 18),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              if (metaLine.isNotEmpty) ...[
+                                const SizedBox(height: 6),
+                                Text(
+                                  metaLine,
+                                  style: AppText.caption.copyWith(
+                                    color: AppColors.textSecondary,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                              const SizedBox(height: 16),
+                              // Play button — autofocus: always the first focused
+                              // element when the detail screen opens on TV.
+                              TvFocusable(
+                                key: const ValueKey('tv-detail-play'),
+                                autofocus: true,
+                                variant: TvFocusVariant.float,
+                                scale: 1.0,
+                                onTap: eps.isNotEmpty
+                                    ? () => _openPlayer(
+                                        eps,
+                                        resumeIdx,
+                                        detail,
+                                        category,
+                                      )
+                                    : () {},
+                                semanticLabel: buttonLabel,
+                                // _PlayButton is shared with the phone view —
+                                // exclude its own label Text here instead of
+                                // touching the widget, so semanticLabel above
+                                // is the only thing TalkBack hears.
+                                child: ExcludeSemantics(
+                                  child: _PlayButton(
+                                    label: buttonLabel,
+                                    onPressed: eps.isNotEmpty
+                                        ? () => _openPlayer(
+                                            eps,
+                                            resumeIdx,
+                                            detail,
+                                            category,
+                                          )
+                                        : null,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              // Download button
+                              TvFocusable(
+                                key: const ValueKey('tv-detail-download'),
+                                variant: TvFocusVariant.float,
+                                scale: 1.0,
+                                onTap: () => _openDownloadSheet(
+                                  detail: detail,
+                                  category: category,
+                                  episodesBySeason: episodesBySeason,
+                                  initialSeason: currentSeason,
+                                ),
+                                semanticLabel: context.l10n.download,
+                                // _DownloadButton is shared with the phone
+                                // view — exclude its Text, same as Play above.
+                                builder: (focused) => ExcludeSemantics(
+                                  child: _DownloadButton(
+                                    label: context.l10n.download,
+                                    onPressed: () => _openDownloadSheet(
+                                      detail: detail,
+                                      category: category,
+                                      episodesBySeason: episodesBySeason,
+                                      initialSeason: currentSeason,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              // Z Mode: matched source + "Wrong title?" — lets
+                              // the user override the resolved source, same as
+                              // the phone view.
+                              if (ZmodeIds.isZ(widget.item.url)) ...[
+                                const SizedBox(height: 10),
+                                MatchLine(
+                                  canonical: ZmodeIds.parseShow(
+                                    widget.item.url,
+                                  )!,
+                                  title: detail.title,
+                                  altTitle: detail.englishTitle,
+                                  malId: detail.malId,
+                                ),
+                                const SizedBox(height: 10),
+                              ],
+                              const SizedBox(height: 10),
+                              // Episode search — under Play/Download (tester
+                              // request). Opens the type-dialog; the active
+                              // query shows on the label so it's obvious a
+                              // filter is applied.
+                              TvFocusable(
+                                key: const ValueKey('tv-detail-ep-search'),
+                                variant: TvFocusVariant.pill,
+                                onTap: _openEpisodeSearch,
+                                semanticLabel: _epQuery.isEmpty
+                                    ? context.l10n.searchEpisodes
+                                    : context.l10n.searchColon(_epQuery),
+                                // _IconAction is shared with the phone view —
+                                // exclude its own label, same as Play above.
+                                child: ExcludeSemantics(
+                                  child: _IconAction(
+                                    icon: _epQuery.isEmpty
+                                        ? Icons.search_rounded
+                                        : Icons.filter_alt_rounded,
+                                    active: _epQuery.isNotEmpty,
+                                    label: _epQuery.isEmpty
+                                        ? context.l10n.searchEpisodes
+                                        : context.l10n.searchColon(_epQuery),
+                                    tooltip: context.l10n.searchEpisodes,
+                                    onTap: _openEpisodeSearch,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              // My List button (same icon-over-label as phone)
+                              TvFocusable(
+                                key: const ValueKey('tv-detail-mylist'),
+                                variant: TvFocusVariant.pill,
+                                onTap: () => _openListSheet(detail),
+                                semanticLabel:
+                                    _status?.shortLabel ?? context.l10n.myList,
+                                // _IconAction is shared with the phone view —
+                                // exclude its own label, same as Play above.
+                                child: ExcludeSemantics(
+                                  child: _IconAction(
+                                    icon: _inMyList
+                                        ? Icons.check_rounded
+                                        : Icons.add_rounded,
+                                    active: _inMyList,
+                                    label:
+                                        _status?.shortLabel ??
+                                        context.l10n.myList,
+                                    tooltip: _inMyList
+                                        ? context.l10n.changeStatus
+                                        : context.l10n.addToMyList,
+                                    onTap: () => _openListSheet(detail),
+                                  ),
+                                ),
+                              ),
+                              if (_trackingAvailable(detail)) ...[
+                                const SizedBox(height: 10),
+                                // Tracker sync — status / score / progress
+                                // pushed to every connected tracker.
+                                TvFocusable(
+                                  key: const ValueKey('tv-detail-tracking'),
+                                  variant: TvFocusVariant.pill,
+                                  onTap: () => _openTrackingSheet(detail),
+                                  semanticLabel: context.l10n.tracking,
+                                  child: ExcludeSemantics(
+                                    child: _IconAction(
+                                      icon: _tracked
+                                          ? Icons.published_with_changes_rounded
+                                          : Icons.sync_rounded,
+                                      active: _tracked,
+                                      label: context.l10n.tracking,
+                                      tooltip: _tracked
+                                          ? context
+                                                .l10n
+                                                .trackedEditStatusScoreProgress
+                                          : context
+                                                .l10n
+                                                .syncStatusScoreProgress,
+                                      onTap: () => _openTrackingSheet(detail),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
-            const VerticalDivider(width: 1, color: AppColors.hairline),
-            // ── RIGHT pane: focusable tab bar + content ────────────────────
-            Expanded(
-              child: Focus(
-                focusNode: _rightScope,
-                onKeyEvent: _onRightKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Tab bar — each label is a TvFocusable. Wrapped in a
-                    // horizontal scroll so it never overflows on narrow screens.
-                    SizedBox(
-                      height: 56,
-                      child: SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
-                        child: Row(
-                          children: [
-                            for (int i = 0; i < _tabLabels(context).length; i++)
-                              Padding(
-                                padding: const EdgeInsets.only(right: 4),
-                                child: TvFocusable(
-                                  key: ValueKey('tv-detail-tab-$i'),
-                                  variant: TvFocusVariant.pill,
-                                  onTap: () => setState(() => _tab = i),
-                                  semanticLabel: _tabLabels(context)[i],
-                                  builder: (focused) => Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 14,
-                                      vertical: 8,
-                                    ),
-                                    // Excluded — semanticLabel above
-                                    // already announces the tab name.
-                                    child: ExcludeSemantics(
-                                      child: Text(
-                                        _tabLabels(context)[i],
-                                        style: AppText.headline.copyWith(
-                                          fontSize: 15,
-                                          // Active tab reads from bright
-                                          // white + bold, not a red tint.
-                                          color: focused
-                                              ? Colors.black
-                                              : (_tab == i
-                                                    ? AppColors.textPrimary
-                                                    : AppColors.textSecondary),
-                                          fontWeight: _tab == i
-                                              ? FontWeight.w700
-                                              : FontWeight.w500,
+              const VerticalDivider(width: 1, color: AppColors.hairline),
+              // ── RIGHT pane: focusable tab bar + content ────────────────────
+              Expanded(
+                child: Focus(
+                  focusNode: _rightScope,
+                  onKeyEvent: _onRightKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Tab bar — each label is a TvFocusable. Wrapped in a
+                      // horizontal scroll so it never overflows on narrow screens.
+                      SizedBox(
+                        height: 56,
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
+                          child: Row(
+                            children: [
+                              for (
+                                int i = 0;
+                                i < _tabLabels(context).length;
+                                i++
+                              )
+                                Padding(
+                                  padding: const EdgeInsets.only(right: 4),
+                                  child: TvFocusable(
+                                    key: ValueKey('tv-detail-tab-$i'),
+                                    variant: TvFocusVariant.pill,
+                                    onTap: () => setState(() => _tab = i),
+                                    semanticLabel: _tabLabels(context)[i],
+                                    builder: (focused) => Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 14,
+                                        vertical: 8,
+                                      ),
+                                      // Excluded — semanticLabel above
+                                      // already announces the tab name.
+                                      child: ExcludeSemantics(
+                                        child: Text(
+                                          _tabLabels(context)[i],
+                                          style: AppText.headline.copyWith(
+                                            fontSize: 15,
+                                            // Active tab reads from bright
+                                            // white + bold, not a red tint.
+                                            color: focused
+                                                ? Colors.black
+                                                : (_tab == i
+                                                      ? AppColors.textPrimary
+                                                      : AppColors
+                                                            .textSecondary),
+                                            fontWeight: _tab == i
+                                                ? FontWeight.w700
+                                                : FontWeight.w500,
+                                          ),
                                         ),
                                       ),
                                     ),
                                   ),
                                 ),
-                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const Divider(height: 1, color: AppColors.hairline),
+                      // Tab content
+                      Expanded(
+                        child: IndexedStack(
+                          index: _tab,
+                          children: [
+                            // ── Episodes ──────────────────────────────────────
+                            _TvEpisodeList(
+                              key: const ValueKey('tv-detail-episodes'),
+                              eps: eps,
+                              seasonEps: seasonEps,
+                              fillerEps: _fillerEps,
+                              query: _epQuery,
+                              hasMultipleSeasons: hasMultipleSeasons,
+                              seasonSet: seasonSet,
+                              currentSeason: currentSeason,
+                              onSelectSeason: context
+                                  .read<DetailCubit>()
+                                  .selectSeason,
+                              sourceId: item.sourceId,
+                              showId: item.id,
+                              showUrl: item.url,
+                              coverUrl: coverUrl,
+                              coverHeaders: coverHeaders,
+                              hasAnyMark: hasAnyMark,
+                              resumeIndex: _resumeIndex,
+                              trackerProgress: _trackerProgress,
+                              onOpen: (i) =>
+                                  _openPlayer(eps, i, detail, category),
+                              onDownload: (ep) =>
+                                  _pickSourceAndDownload(ep, detail, category),
+                            ),
+                            // ── Cast ─────────────────────────────────────────
+                            _CastTab(
+                              cast: state.cast.isNotEmpty
+                                  ? state.cast
+                                  : [
+                                      for (final n in detail.cast)
+                                        CastMember(name: n),
+                                    ],
+                            ),
+                            // ── Relations ──────────────────────────────────
+                            _RelationsTab(
+                              relations: state.relations,
+                              onOpen: _openRelation,
+                              tvFocus: true,
+                            ),
+                            // ── Details ────────────────────────────────────
+                            _DetailsTab(
+                              sourceName: sourceName,
+                              statusStr: statusStr,
+                              genres: detail.genres,
+                              studios: detail.studios,
+                              episodeCount: eps.length,
+                              year: detail.year,
+                              description: detail.description,
+                            ),
                           ],
                         ),
                       ),
-                    ),
-                    const Divider(height: 1, color: AppColors.hairline),
-                    // Tab content
-                    Expanded(
-                      child: IndexedStack(
-                        index: _tab,
-                        children: [
-                          // ── Episodes ──────────────────────────────────────
-                          _TvEpisodeList(
-                            key: const ValueKey('tv-detail-episodes'),
-                            eps: eps,
-                            seasonEps: seasonEps,
-                            fillerEps: _fillerEps,
-                            query: _epQuery,
-                            hasMultipleSeasons: hasMultipleSeasons,
-                            seasonSet: seasonSet,
-                            currentSeason: currentSeason,
-                            onSelectSeason: context
-                                .read<DetailCubit>()
-                                .selectSeason,
-                            sourceId: item.sourceId,
-                            showId: item.id,
-                            showUrl: item.url,
-                            coverUrl: coverUrl,
-                            coverHeaders: coverHeaders,
-                            hasAnyMark: hasAnyMark,
-                            resumeIndex: _resumeIndex,
-                            trackerProgress: _trackerProgress,
-                            onOpen: (i) =>
-                                _openPlayer(eps, i, detail, category),
-                            onDownload: (ep) =>
-                                _pickSourceAndDownload(ep, detail, category),
-                          ),
-                          // ── Cast ─────────────────────────────────────────
-                          _CastTab(
-                            cast: state.cast.isNotEmpty
-                                ? state.cast
-                                : [
-                                    for (final n in detail.cast)
-                                      CastMember(name: n),
-                                  ],
-                          ),
-                          // ── Relations ──────────────────────────────────
-                          _RelationsTab(
-                            relations: state.relations,
-                            onOpen: _openRelation,
-                            tvFocus: true,
-                          ),
-                          // ── Details ────────────────────────────────────
-                          _DetailsTab(
-                            sourceName: sourceName,
-                            statusStr: statusStr,
-                            genres: detail.genres,
-                            studios: detail.studios,
-                            episodeCount: eps.length,
-                            year: detail.year,
-                            description: detail.description,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
-    ),
     );
   }
 }
@@ -1325,10 +1342,8 @@ Future<void> showTvEpisodeDescriptionDialog(
   return showDialog<void>(
     context: context,
     barrierColor: Colors.black54,
-    builder: (ctx) => _TvEpisodeDescriptionDialog(
-      title: heading,
-      description: desc,
-    ),
+    builder: (ctx) =>
+        _TvEpisodeDescriptionDialog(title: heading, description: desc),
   );
 }
 
@@ -1346,7 +1361,8 @@ class _TvEpisodeDescriptionDialog extends StatefulWidget {
       _TvEpisodeDescriptionDialogState();
 }
 
-class _TvEpisodeDescriptionDialogState extends State<_TvEpisodeDescriptionDialog> {
+class _TvEpisodeDescriptionDialogState
+    extends State<_TvEpisodeDescriptionDialog> {
   final _closeFocus = FocusNode();
 
   @override
