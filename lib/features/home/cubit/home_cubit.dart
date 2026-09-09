@@ -449,6 +449,11 @@ class HomeCubit extends Cubit<HomeState> {
     // `rateLimitedSeconds` that the phone screen reads, and listing fields by
     // hand here would drop them.
     emit(state.copyWith(sections: rows, loading: false));
+    // …and re-merge the ARRANGEMENT over the sections we just swapped in.
+    // Without this, `sections` changed while `state.rows` kept pointing at the
+    // old set — so Home fell back to raw sections and the arrangement's own
+    // rows (Continue on AniList, new episodes) simply stopped appearing.
+    relayout();
   }
 
   /// True when the cubit has no paintable rows — including the metadata
@@ -483,7 +488,13 @@ class HomeCubit extends Cubit<HomeState> {
       // swaps on ZModePrefs.revision — emitting there would rebuild the
       // 10-foot hero and every poster, and freeze for seconds.
       final tv = sl.isRegistered<AppMode>() && sl<AppMode>().isTv;
-      if (!tv) emit(state.copyWith(sections: cached, loading: false));
+      if (!tv) {
+        emit(state.copyWith(sections: cached, loading: false));
+        // Same reason as applyMetadataCacheIfEmpty: swapping sections without
+        // re-merging leaves state.rows describing the previous set, and the
+        // arrangement's own rows vanish.
+        relayout();
+      }
       return;
     }
     return load(reset: true);

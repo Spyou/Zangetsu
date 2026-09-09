@@ -74,7 +74,6 @@ import 'source_priority_screen.dart';
 import 'player_controls_screen.dart';
 import 'settings_screen_tv.dart';
 import 'settings_search_index.dart';
-import 'source_priority_screen.dart';
 import 'cubit/settings_cubit.dart';
 
 part 'settings_playback.dart';

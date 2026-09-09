@@ -56,17 +56,22 @@ import '../search/bloc/search_event.dart';
 import '../search/bloc/search_state.dart';
 
 /// Dedicated search screen pushed from the Home header search icon.
-/// The filters a fresh search starts with. Kept from main — his search
-/// rework dropped it, and it is the only thing saying that arriving from a
-/// genre tile brings that tile's filters rather than the screen's defaults.
+/// What a freshly opened Search starts filtered by.
 ///
-/// [provided] wins outright. Otherwise the adult flag follows the Privacy
-/// switch, and [MetadataRepository] re-checks that on every request — so this
-/// can only widen what is OFFERED, never what Settings has already refused.
-MetaFilters initialSearchFilters(
-  MetaFilters? provided,
-  bool privacyAllowsAdult,
-) => provided ?? MetaFilters(adult: privacyAllowsAdult);
+/// [MetaFilters.adult] follows Settings → Privacy rather than starting false.
+/// Nothing on this screen is persisted, so defaulting it off meant someone who
+/// had deliberately turned 18+ on in Settings still had to tap NSFW again on
+/// every single search — the switch they had already set said nothing at all.
+///
+/// The chip stays visible either way, so one search can still be narrowed back
+/// down, and [MetadataRepository] re-checks the same Privacy switch on every
+/// request — so this can only widen what is OFFERED, never what Settings has
+/// already refused.
+///
+/// [provided] wins outright: arriving from a genre tile means that tile's
+/// filters, not the screen's defaults.
+MetaFilters initialSearchFilters(MetaFilters? provided, bool privacyAllowsAdult) =>
+    provided ?? MetaFilters(adult: privacyAllowsAdult);
 
 class SearchScreen extends StatefulWidget {
   const SearchScreen({
@@ -105,6 +110,10 @@ class SearchScreen extends StatefulWidget {
   /// not whatever mode Home happens to be in. Null (every other call site)
   /// leaves behaviour unchanged.
   final ContentMode? forceMode;
+
+  /// Filters to open with, already applied. Set when this is pushed from a
+  /// genre or tag chip on a detail page: the point of that tap is to land on
+  /// the results, not on an empty filter sheet.
   final MetaFilters? initialFilters;
 
   @override
@@ -136,7 +145,15 @@ class _SearchScreenState extends State<SearchScreen> {
           repo: _repoForScope(scope),
           history: sl<SearchHistory>(),
           forceMode: widget.forceMode,
-        )..add(const SearchStarted());
+        );
+        // SearchStarted only fetches the idle "Top picks" strip, which the
+        // metadata search no longer shows — Home already carries Trending,
+        // Popular and Recently released, and repeating them here cost a
+        // request per visit and showed the wrong mode's picks anyway (it
+        // was fetched once and cached for the life of the bloc).
+        if (scope != SearchScope.library) {
+          bloc.add(const SearchStarted());
+        }
         final q = widget.initialQuery?.trim();
         // An initial query (e.g. "see all results" from Home) runs the
         // full search straight away rather than waiting for the user to
@@ -160,8 +177,8 @@ class _SearchScreenState extends State<SearchScreen> {
               showBack: widget.showBack,
               focusSignal: widget.focusSignal,
               scope: scope,
-              initialFilters: widget.initialFilters,
               forceMode: widget.forceMode,
+              initialFilters: widget.initialFilters,
             ),
     );
   }
@@ -264,8 +281,13 @@ class _SearchViewState extends State<_SearchView>
   void initState() {
     super.initState();
     _controller = TextEditingController(text: widget.initialQuery ?? '');
-    _metaFilters = widget.initialFilters ?? const MetaFilters();
     widget.focusSignal?.addListener(_onFocusSignal);
+    // Arrived from a genre or tag chip: run that filtered browse straight
+    // away, not a frame later. context.read is safe here, it subscribes to
+    // nothing.
+    if (!(widget.initialFilters ?? const MetaFilters()).isEmpty) {
+      _applyMetaFilters();
+    }
   }
 
   /// Focus the field when the Search tab is (re)selected so the keyboard is
@@ -388,7 +410,11 @@ class _SearchViewState extends State<_SearchView>
 
   /// What the metadata filter sheet last returned. View state: it belongs to
   /// this screen, not the bloc, because only this screen can open the sheet.
-  MetaFilters _metaFilters = const MetaFilters();
+  ///
+  late MetaFilters _metaFilters = initialSearchFilters(
+    widget.initialFilters,
+    sl.isRegistered<PlaybackPrefs>() && sl<PlaybackPrefs>().adultMetadata,
+  );
 
   /// What this search will actually look through.
   ///
@@ -461,12 +487,22 @@ class _SearchViewState extends State<_SearchView>
 
   /// Re-runs with whatever is set. Same event the extension sheets fire, so an
   /// empty query with filters becomes a browse rather than a no-op.
-  void _applyMetaFilters() {
+  /// Push the current selection to the bloc.
+  ///
+  /// [browseDefaults] is what Apply passes. Without it a default-only
+  /// selection serialises to nothing — `MetaFilters.isEmpty` counts
+  /// sort-by-Popular as no filter at all — so the bloc read it as "clear" and
+  /// the screen sat blank. Sorting by Popular IS a request; Apply now runs it
+  /// and you get the paged Popular browse.
+  ///
+  /// Removing the last chip still clears, because a chip only exists for a
+  /// non-default value and taking it away means you want it gone.
+  void _applyMetaFilters({bool browseDefaults = false}) {
+    final json = (_metaFilters.isEmpty && !browseDefaults)
+        ? ''
+        : _metaFilters.toJson();
     context.read<SearchBloc>().add(
-      SearchSourceFiltersApplied(
-        ZmodeIds.sourceId,
-        _metaFilters.isEmpty ? '' : _metaFilters.toJson(),
-      ),
+      SearchSourceFiltersApplied(ZmodeIds.sourceId, json),
     );
   }
 
@@ -489,7 +525,7 @@ class _SearchViewState extends State<_SearchView>
     final picked = await showMetaFilterSheet(context, kind, _metaFilters);
     if (picked == null || !mounted) return;
     setState(() => _metaFilters = picked);
-    _applyMetaFilters();
+    _applyMetaFilters(browseDefaults: true);
   }
 
   /// Mihon twin of [_openAniFilters] — same flow, [MihonFilter] types and
@@ -629,6 +665,11 @@ class _SearchViewState extends State<_SearchView>
             // Control row — ecosystem tabs (or a result count once scoped to a
             // single source) on the left, sort + filter actions on the right.
             _controlRow(modeSources),
+            // What the catalogue is currently narrowed to, spelled out.
+            // Arriving here from a genre or tag chip, the results are already
+            // filtered before you have typed anything — without this the
+            // screen just looks like a browse that picked those titles.
+            if (widget.scope == SearchScope.library) _activeFilterChips(),
             // Per-source result pills — direct jump to one source's results.
             // Only meaningful once the scope is Sources.
             if (widget.scope == SearchScope.sources) _sourcePillsRow(),
@@ -652,6 +693,15 @@ class _SearchViewState extends State<_SearchView>
                   }
                   switch (state.status) {
                     case SearchStatus.idle:
+                      // A filters-only browse never leaves `idle` — the query
+                      // box is empty, so the bloc does not consider it a
+                      // search. Its own flag is what says results are coming.
+                      if (state.filteredBrowseLoading) {
+                        return const Padding(
+                          padding: EdgeInsets.all(20),
+                          child: SkeletonGrid(),
+                        );
+                      }
                       return _idleView(state);
                     case SearchStatus.loading:
                       return const Padding(
@@ -674,16 +724,27 @@ class _SearchViewState extends State<_SearchView>
 
   // ── Search bar ────────────────────────────────────────────────────────────
   Widget _searchBar() {
+    // The redesign is the METADATA search's own. Sources search keeps the bar
+    // it had — it carries ecosystem tabs, source scope and per-source filters,
+    // and restyling around those is a separate question.
+    final meta = widget.scope == SearchScope.library;
     return Padding(
-      padding: EdgeInsets.fromLTRB(widget.showBack ? 4 : 16, 12, 16, 0),
+      padding: EdgeInsets.fromLTRB(
+        widget.showBack ? (meta ? 8 : 4) : 16,
+        12,
+        16,
+        0,
+      ),
       child: Row(
         children: [
           if (widget.showBack)
             IconButton(
-              icon: const Icon(
-                Icons.arrow_back_ios_new,
+              // A plain back arrow, not the thin chevron — it reads as
+              // navigation next to a rounded field rather than as chrome.
+              icon: Icon(
+                meta ? Icons.arrow_back_rounded : Icons.arrow_back_ios_new,
                 color: Colors.white,
-                size: 20,
+                size: meta ? 24 : 20,
               ),
               onPressed: () => Navigator.pop(context),
               tooltip: context.l10n.back,
@@ -692,32 +753,35 @@ class _SearchViewState extends State<_SearchView>
             child: DecoratedBox(
               decoration: BoxDecoration(
                 color: AppColors.surface2,
-                borderRadius: BorderRadius.circular(12),
+                // Fully rounded: the field is the one thing on this row that
+                // invites typing, and a pill says so more plainly than a
+                // slightly-rounded box shared with every other control.
+                borderRadius: BorderRadius.circular(meta ? 26 : 12),
               ),
               child: Row(
                 children: [
-                  const SizedBox(width: 4),
-                  // Tappable magnifier — runs the full search (same as Enter).
-                  IconButton(
-                    icon: const Icon(
-                      Icons.search,
-                      size: 20,
-                      color: AppColors.textTertiary,
-                    ),
-                    tooltip: context.l10n.search,
-                    onPressed: () {
+                  SizedBox(width: meta ? 14 : 8),
+                  // Kept as a tap target — it runs the search the same as
+                  // Enter. Without the IconButton's chrome it sits in the
+                  // field rather than looking bolted to it.
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () {
                       FocusScope.of(context).unfocus();
                       context.read<SearchBloc>().add(
                         SearchRunRequested(_controller.text),
                       );
                     },
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(
-                      minWidth: 36,
-                      minHeight: 36,
+                    child: Padding(
+                      padding: EdgeInsets.all(meta ? 0 : 8),
+                      child: const Icon(
+                        Icons.search_rounded,
+                        size: 20,
+                        color: AppColors.textTertiary,
+                      ),
                     ),
                   ),
-                  const SizedBox(width: 4),
+                  SizedBox(width: meta ? 10 : 4),
                   Expanded(
                     child: TextField(
                       controller: _controller,
@@ -745,7 +809,11 @@ class _SearchViewState extends State<_SearchView>
                         hintStyle: AppText.body,
                         border: InputBorder.none,
                         isDense: true,
-                        contentPadding: EdgeInsets.symmetric(vertical: 14),
+                        // A little shorter than the Sources bar: the pill
+                        // reads taller than a rounded box at the same height.
+                        contentPadding: EdgeInsets.symmetric(
+                          vertical: meta ? 11 : 14,
+                        ),
                       ),
                     ),
                   ),
@@ -769,11 +837,24 @@ class _SearchViewState extends State<_SearchView>
                             ),
                           ),
                   ),
-                  const SizedBox(width: 4),
+                  const SizedBox(width: 8),
                 ],
               ),
             ),
           ),
+          // Filters, beside the field rather than buried in the row below —
+          // it is the only other thing you reach for while searching. Metadata
+          // scope only; Sources keeps its filters in the control row.
+          if (meta) ...[
+            const SizedBox(width: 10),
+            DecoratedBox(
+              decoration: BoxDecoration(
+                color: AppColors.surface2,
+                shape: BoxShape.circle,
+              ),
+              child: _filterAction(),
+            ),
+          ],
         ],
       ),
     );
@@ -1011,10 +1092,68 @@ class _SearchViewState extends State<_SearchView>
             Expanded(child: _controlRowLeft(modeSources)),
             // Per-source filter sheet — Library scope has no per-source
             // filters to apply, they'd be silently dropped.
-            if (widget.scope == SearchScope.sources) _sourceFilterAction(),
-            _filterAction(),
+            if (widget.scope == SearchScope.sources) ...[
+              _sourceFilterAction(),
+              // Metadata scope moved this beside the search field; keeping it
+              // here as well put the same tune icon on screen twice.
+              _filterAction(),
+            ],
           ],
         ),
+      ),
+    );
+  }
+
+  /// One removable chip per narrowing the catalogue is under, plus a Clear
+  /// when there is more than one. Tapping a chip drops that one term and
+  /// re-runs, so a filtered browse can be widened without opening the sheet.
+  Widget _activeFilterChips() {
+    final f = _metaFilters;
+    final chips = <(String, MetaFilters)>[
+      for (final g in f.genres)
+        (g, f.copyWith(genres: [...f.genres]..remove(g))),
+      for (final t in f.tags) (t, f.copyWith(tags: [...f.tags]..remove(t))),
+      if (f.year != null) ('${f.year}', f.copyWith(clearYear: true)),
+      if (f.season != null) (f.season!.name, f.copyWith(clearSeason: true)),
+      if (f.format != null) (f.format!.name, f.copyWith(clearFormat: true)),
+      if (f.status != null) (f.status!.name, f.copyWith(clearStatus: true)),
+      if (f.minScore != null) ('${f.minScore}+', f.copyWith(clearScore: true)),
+    ];
+    if (chips.isEmpty) return const SizedBox.shrink();
+    return SizedBox(
+      height: 40,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+        children: [
+          for (final (label, without) in chips)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: _ActiveFilterChip(
+                label: label,
+                onRemove: () {
+                  setState(() => _metaFilters = without);
+                  _applyMetaFilters();
+                },
+              ),
+            ),
+          if (chips.length > 1)
+            Center(
+              child: GestureDetector(
+                onTap: () {
+                  setState(() => _metaFilters = const MetaFilters());
+                  _applyMetaFilters();
+                },
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: Text(
+                    context.l10n.clearAll,
+                    style: AppText.caption.copyWith(color: AppColors.accent),
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -1996,6 +2135,9 @@ class _SearchViewState extends State<_SearchView>
     );
   }
 
+  /// Idle-screen section heading — the app's usual quiet label.
+  static const TextStyle _idleSectionTitle = AppText.overline;
+
   // ── Idle view: recent searches + trending ─────────────────────────────────
   Widget _idleView(SearchState state) {
     // Recent searches are hidden during a filtered browse — the screen is
@@ -2008,7 +2150,13 @@ class _SearchViewState extends State<_SearchView>
     // replaces "Top picks" — those results ARE what the filters asked for.
     // Falls back to trending the moment the filters are cleared.
     final browsing = state.hasFilteredBrowse;
-    final trending = browsing ? state.filteredBrowse : state.trending;
+    // Filter results still render here — those ARE what the filters asked for,
+    // not filler. Only the unasked-for picks strip is gone.
+    final trending = browsing
+        ? state.filteredBrowse
+        : widget.scope == SearchScope.library
+        ? const <MediaItem>[]
+        : state.trending;
 
     if (recent.isEmpty && trending.isEmpty) {
       return Center(
@@ -2060,7 +2208,7 @@ class _SearchViewState extends State<_SearchView>
                 Expanded(
                   child: Text(
                     context.l10n.recentSearches,
-                    style: AppText.overline,
+                    style: _idleSectionTitle,
                   ),
                 ),
                 GestureDetector(
@@ -2068,9 +2216,18 @@ class _SearchViewState extends State<_SearchView>
                     await _history.clear();
                     if (mounted) setState(() {});
                   },
-                  child: Text(
-                    context.l10n.clear,
-                    style: AppText.caption.copyWith(color: AppColors.accent),
+                  behavior: HitTestBehavior.opaque,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 4,
+                      vertical: 4,
+                    ),
+                    child: Text(
+                      widget.scope == SearchScope.library
+                          ? context.l10n.clearAll
+                          : context.l10n.clear,
+                      style: AppText.caption.copyWith(color: AppColors.accent),
+                    ),
                   ),
                 ),
               ],
@@ -2081,7 +2238,14 @@ class _SearchViewState extends State<_SearchView>
               runSpacing: 8,
               children: [for (final q in recent) _recentChip(q)],
             ),
-            const SizedBox(height: 24),
+            // The rule between recents and what follows is part of the
+            // metadata search's own look; Sources search is left as it was.
+            if (widget.scope == SearchScope.library) ...[
+              const SizedBox(height: 20),
+              const Divider(height: 1, thickness: 1, color: AppColors.hairline),
+              const SizedBox(height: 20),
+            ] else
+              const SizedBox(height: 24),
           ],
           if (trending.isNotEmpty) ...[
             if (browsing)
@@ -2121,7 +2285,7 @@ class _SearchViewState extends State<_SearchView>
                 ],
               )
             else
-              Text(context.l10n.topPicks, style: AppText.overline),
+              Text(context.l10n.topPicks, style: _idleSectionTitle),
             const SizedBox(height: 12),
             GridView.builder(
               shrinkWrap: true,
@@ -2135,16 +2299,22 @@ class _SearchViewState extends State<_SearchView>
               itemCount: trending.length,
               itemBuilder: (context, i) {
                 final item = trending[i];
-                return PosterCard(
-                  title: item.title,
-                  imageUrl: item.cover,
-                  headers: item.coverHeaders,
-                  tags: _tagsFor(item),
-                  qualityBadge: item.quality,
-                  dubBadge: item.dubBadge,
-                  cellWidth: cellW,
-                  onTap: () => _openDetail(item),
-                  onLongPress: () => _showInfo(item),
+                // The result grids already fade their cards in; this one was
+                // the odd grid out, so a filtered browse appeared without the
+                // animation the rest of the app uses.
+                return RevealItem(
+                  index: i,
+                  child: PosterCard(
+                    title: item.title,
+                    imageUrl: item.cover,
+                    headers: item.coverHeaders,
+                    tags: _tagsFor(item),
+                    qualityBadge: item.quality,
+                    dubBadge: item.dubBadge,
+                    cellWidth: cellW,
+                    onTap: () => _openDetail(item),
+                    onLongPress: () => _showInfo(item),
+                  ),
                 );
               },
             ),
@@ -2232,7 +2402,9 @@ class _SearchViewState extends State<_SearchView>
     return GestureDetector(
       onTap: () => _runQuery(q),
       child: Container(
-        padding: const EdgeInsets.fromLTRB(12, 7, 8, 7),
+        padding: widget.scope == SearchScope.library
+            ? const EdgeInsets.fromLTRB(12, 7, 6, 7)
+            : const EdgeInsets.fromLTRB(12, 7, 12, 7),
         decoration: BoxDecoration(
           color: AppColors.surface2,
           borderRadius: BorderRadius.circular(20),
@@ -2246,25 +2418,36 @@ class _SearchViewState extends State<_SearchView>
               color: AppColors.textTertiary,
             ),
             const SizedBox(width: 6),
-            Text(
-              q,
-              style: AppText.caption.copyWith(color: AppColors.textSecondary),
-            ),
-            const SizedBox(width: 4),
-            GestureDetector(
-              onTap: () async {
-                await _history.remove(q);
-                if (mounted) setState(() {});
-              },
-              child: const Padding(
-                padding: EdgeInsets.all(2),
-                child: Icon(
-                  Icons.close_rounded,
-                  size: 14,
-                  color: AppColors.textTertiary,
+            Flexible(
+              child: Text(
+                q,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppText.body.copyWith(
+                  fontSize: 13,
+                  color: AppColors.textPrimary,
                 ),
               ),
             ),
+            // Drop one term without clearing the lot. The store has always
+            // had `remove`; nothing on screen ever called it, so a single bad
+            // search stuck until you wiped the whole history.
+            if (widget.scope == SearchScope.library)
+              GestureDetector(
+                onTap: () async {
+                  await _history.remove(q);
+                  if (mounted) setState(() {});
+                },
+                behavior: HitTestBehavior.opaque,
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  child: Icon(
+                    Icons.close_rounded,
+                    size: 14,
+                    color: AppColors.textTertiary,
+                  ),
+                ),
+              ),
           ],
         ),
       ),
@@ -3069,6 +3252,44 @@ class _SearchFilterSheet extends StatelessWidget {
               onChanged: (v) => prefs.setIncluded(r.id, v),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// An active catalogue filter, with an × that removes just that one.
+class _ActiveFilterChip extends StatelessWidget {
+  const _ActiveFilterChip({required this.label, required this.onRemove});
+
+  final String label;
+  final VoidCallback onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: GestureDetector(
+        onTap: onRemove,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(12, 6, 8, 6),
+          decoration: BoxDecoration(
+            color: AppColors.accent.withValues(alpha: 0.16),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                label,
+                style: AppText.caption.copyWith(
+                  color: AppColors.accent,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(width: 4),
+              Icon(Icons.close_rounded, size: 14, color: AppColors.accent),
+            ],
+          ),
         ),
       ),
     );

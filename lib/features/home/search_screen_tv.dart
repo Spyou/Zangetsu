@@ -17,8 +17,10 @@ import '../../core/tv/tv_poster_tile.dart';
 import '../../core/tv/tv_shell_tab_scope.dart';
 import '../../core/ui/states.dart';
 import '../../core/zmode/metadata_filters.dart';
+import '../../core/zmode/metadata_repository.dart';
 import '../../core/zmode/zmode_prefs.dart';
 import '../detail/detail_screen.dart';
+import 'genres_screen_tv.dart';
 import '../search/bloc/search_bloc.dart';
 import '../search/bloc/search_event.dart';
 import '../search/bloc/search_state.dart';
@@ -509,18 +511,78 @@ class _SearchScreenTvState extends State<SearchScreenTv> {
   /// Idle body: recent terms with a D-pad-focusable Clear, matching the phone
   /// landing page. Falls back to the empty prompt when there's nothing stored
   /// (tests that omit [SearchScreenTv.history] hit this path too).
+  /// Browse by genre, from Search's idle body.
+  ///
+  /// The rail cannot take a seventh item — at 960x540 a seventh pushes
+  /// Settings off the drawer entirely. Search's idle body is the honest home
+  /// for it: browsing by genre IS a search, and this is the screen you are
+  /// already on when you have nothing typed.
+  ///
+  /// Hidden when the catalogue cannot filter, exactly as the phone card is.
+  Widget _genresEntry() {
+    final canFilter =
+        sl.isRegistered<MetadataRepository>() &&
+        sl<MetadataRepository>().supportsFilters;
+    if (!canFilter) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(48, 12, 48, 4),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: TvFocusable(
+          key: const ValueKey('tv-search-genres'),
+          variant: TvFocusVariant.pill,
+          semanticLabel: context.l10n.genres,
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(builder: (_) => const GenresScreenTv()),
+          ),
+          builder: (focused) {
+            final fg = focused ? Colors.black : AppColors.accent;
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.local_offer_outlined, size: 16, color: fg),
+                  const SizedBox(width: 8),
+                  Text(
+                    context.l10n.genres,
+                    style: TextStyle(
+                      color: fg,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
   Widget _idleView() {
     final history = widget.history;
     final recent = history?.recent() ?? const <String>[];
     if (history == null || recent.isEmpty) {
-      return EmptyState(
-        icon: Icons.search_rounded,
-        message: context.l10n.searchForSomethingToWatch,
+      return Column(
+        children: [
+          _genresEntry(),
+          Expanded(
+            child: EmptyState(
+              icon: Icons.search_rounded,
+              message: context.l10n.searchForSomethingToWatch,
+            ),
+          ),
+        ],
       );
     }
     return ListView(
       padding: const EdgeInsets.symmetric(vertical: 4),
       children: [
+        // Also above the recents. main only put it on the empty branch, which
+        // made Genres unreachable the moment you had searched once.
+        _genresEntry(),
         Padding(
           padding: const EdgeInsets.fromLTRB(48, 8, 48, 12),
           child: Row(

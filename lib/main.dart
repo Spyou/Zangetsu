@@ -20,15 +20,19 @@ import 'core/platform/apple_tv.dart';
 import 'core/notify/cs_notify.dart';
 import 'core/notify/notification_service.dart';
 import 'core/notify/push_service.dart';
+import 'core/ui/home_rows_prefs.dart';
 import 'core/ui/route_observer.dart';
 import 'core/notify/subscription_checker.dart';
 import 'core/notify/subscription_store.dart';
 import 'core/playback/category_store.dart';
 import 'core/playback/my_list.dart';
+import 'core/playback/history_merge.dart';
+import 'core/playback/resume_store.dart';
 import 'core/playback/watch_history.dart';
 import 'core/reading/read_history.dart';
 import 'core/state/active_source_cubit.dart';
 import 'core/locale/locale_controller.dart';
+import 'core/zmode/match_store.dart';
 import 'core/zmode/metadata_provider_prefs.dart';
 import 'core/zmode/zmode_prefs.dart';
 import 'core/theme/app_theme.dart';
@@ -332,6 +336,14 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
     if (mounted) setState(() {});
   }
 
+  /// A home-rows arrangement was saved or reset: re-merge the layout Home
+  /// already fetched (no refetch, no scroll reset — provider data is
+  /// unchanged, only its arrangement is).
+  void _onHomeRowsChanged() {
+    if (sl.isRegistered<HomeCubit>()) sl<HomeCubit>().relayout();
+    if (mounted) setState(() {});
+  }
+
   @override
   void initState() {
     super.initState();
@@ -340,6 +352,7 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
     LocaleController.revision.addListener(_onLocaleChanged);
     ZModePrefs.revision.addListener(_onStreamKindChanged);
     MetadataProviderPrefs.revision.addListener(_onMetadataProviderChanged);
+    HomeRowsPrefs.revision.addListener(_onHomeRowsChanged);
     _watchBoot(_boot);
   }
 
@@ -349,6 +362,7 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
     LocaleController.revision.removeListener(_onLocaleChanged);
     ZModePrefs.revision.removeListener(_onStreamKindChanged);
     MetadataProviderPrefs.revision.removeListener(_onMetadataProviderChanged);
+    HomeRowsPrefs.revision.removeListener(_onHomeRowsChanged);
     WidgetsBinding.instance.removeObserver(this);
     _tvShellGate.dispose();
     super.dispose();
@@ -440,6 +454,20 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
         }
       }
     } catch (_) {}
+    // Rows saved under a source before the browse screen started resolving
+    // titles to the catalogue: move them onto the show they belong to so
+    // Continue Watching stops listing the same title twice. Once, after the
+    // cloud pull so rows from another device are covered, and unawaited so it
+    // never sits in front of the splash.
+    if (sl.isRegistered<MatchStore>()) {
+      unawaited(
+        HistoryCanonicalMerge.runOnce(
+          history: sl<WatchHistory>(),
+          resume: sl<ResumeStore>(),
+          matches: sl<MatchStore>(),
+        ),
+      );
+    }
     if (isOnboarded()) {
       // tvOS: Home fetch waits until provider JS is loaded (deferred boot task).
       if (!isAppleTv) sl<HomeCubit>().load();

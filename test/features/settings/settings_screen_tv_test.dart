@@ -1,3 +1,36 @@
+// TV FEATURES DROPPED BY 097192ba — status.
+//
+// Nathen Brewer's 097192ba ("feat(tv): align z-mode Home, search, and browse
+// with mobile") rewrote the TV screens against the z-mode catalogue and did
+// not carry six features forward. Our merge took his versions, so they went
+// with it. Five are now back:
+//
+//   settings_screen_tv.dart   Sync library to cloud — boot sync only seeds
+//                             and PULLS, so a TV had no way to push a backlog
+//   settings_screen_tv.dart   Watch History — HistoryScreen had no other
+//                             entry point on TV at all
+//   settings_screen_tv.dart   Auto-update extensions, inside the existing
+//                             Platform.isAndroid block beside the CloudStream
+//                             update toggle (main had it ungated; extensions
+//                             are Android-only, so gating is the honest place)
+//   search_screen_tv.dart     the Genres entry — and now on the recents
+//                             branch too, which main never did, so it stays
+//                             reachable after your first search
+//
+// STILL OWED:
+//
+//   root_shell_tv.dart        the active-source pill in the nav rail
+//                             (_sourceIndicator). Left deliberately: his rail
+//                             is a redesign and the source is still
+//                             switchable from Settings.
+//   home_screen_tv.dart       the tracker rails, in the deleted
+//                             home_screen_tv_tracker.dart
+//
+// To restore either: `git show 097192ba^:<path>` is the last version with it.
+// The deleted rails and their tests are at
+// `git show 097192ba^:lib/features/home/home_screen_tv_tracker.dart` and
+// `…:test/features/home/home_screen_tv_tracker_test.dart`.
+
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -147,6 +180,73 @@ void main() {
       expect(find.text('Sign in'), findsOneWidget);
       // Profile-specific text must not appear in the guest state.
       expect(find.text('Profile'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'SettingsScreenTv restores the Watch History tile',
+    (tester) async {
+      _mockPathProvider(tester);
+      final authCubit = AuthCubit(
+        SupabaseService(),
+        AppwriteService(),
+        _fakeBridge(),
+      );
+      addTearDown(authCubit.close);
+
+      await tester.pumpWidget(
+        _buildUnderTest(authCubit: authCubit, activeCubit: activeCubit),
+      );
+      await tester.pumpAndSettle();
+
+      // Dropped by 097192ba — see the note at the top of this file.
+      // HistoryScreen had no other entry point on TV at all.
+      expect(find.text('History'), findsOneWidget);
+      // Painted is not enough on TV; it must be D-pad reachable.
+      expect(
+        find.ancestor(
+          of: find.text('History'),
+          matching: find.byType(TvListFocusable),
+        ),
+        findsOneWidget,
+      );
+      // The Auto-update extensions tile is restored too, but it lives inside
+      // this screen's existing `Platform.isAndroid` block (extensions are
+      // Android-only, and it belongs beside the CloudStream update toggle).
+      // The test host is macOS, so that whole block never builds here — hence
+      // no assertion for it rather than a hollow one.
+      expect(Platform.isAndroid, isFalse, reason: 'guard for the note above');
+    },
+  );
+
+  testWidgets(
+    'SettingsScreenTv offers the manual cloud push beside Backup',
+    (tester) async {
+      _mockPathProvider(tester);
+      final authCubit = AuthCubit(
+        SupabaseService(),
+        AppwriteService(),
+        _fakeBridge(),
+      );
+      addTearDown(authCubit.close);
+
+      await tester.pumpWidget(
+        _buildUnderTest(authCubit: authCubit, activeCubit: activeCubit),
+      );
+      await tester.pumpAndSettle();
+
+      // Boot-time sync only seeds and PULLS. Without this tile a TV that
+      // watched anything while signed out or offline has no way to push it up,
+      // which is exactly what 097192ba dropped — see the note at the top.
+      expect(find.text('Sync library to cloud'), findsOneWidget);
+      // It must be D-pad reachable, not just painted.
+      expect(
+        find.ancestor(
+          of: find.text('Sync library to cloud'),
+          matching: find.byType(TvListFocusable),
+        ),
+        findsOneWidget,
+      );
     },
   );
 

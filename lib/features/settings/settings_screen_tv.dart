@@ -7,7 +7,10 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../core/app_config.dart';
 import '../../core/di/injector.dart';
 import '../../core/platform/apple_tv.dart';
+import '../../core/playback/my_list.dart';
+import '../../core/playback/playback_prefs.dart';
 import '../../core/playback/search_prefs.dart';
+import '../../core/playback/watch_history.dart';
 import '../../core/provider/cloudstream_provider.dart';
 import '../../core/provider/cs_dns.dart';
 import '../../core/provider/provider_registry.dart';
@@ -25,8 +28,10 @@ import '../../core/ui/settings_widgets.dart';
 import '../../core/update/update_service.dart';
 import '../auth/auth_cubit.dart';
 import '../auth/auth_screens.dart';
+import '../auth/reconnect.dart';
 import '../backup/backup_screen.dart';
 import '../downloads/downloads_screen.dart';
+import '../history/history_screen.dart';
 import '../notify/subscriptions_screen.dart';
 import '../onboarding/how_it_works.dart';
 import '../player/tv_exo_spike_screen.dart';
@@ -195,6 +200,49 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
   //   );
   // }
 
+  /// Force every local history / My List row up to the cloud.
+  ///
+  /// Boot-time sync seeds and PULLS; nothing pushes a backlog. Anything
+  /// watched on the TV while signed out or offline has no other way up.
+  Future<void> _syncLibraryToCloud() async {
+    final l10n = context.l10n;
+    if (sl<AuthCubit>().state.user == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(l10n.signInFirst)));
+      return;
+    }
+    // The session may have lapsed (logged-in from cache only). Get a live one
+    // first — otherwise every upsert silently no-ops ("Synced 0").
+    final live = await ensureLiveSession(context);
+    // State.mounted, not context.mounted: every use below is State.context.
+    if (!mounted) return;
+    if (!live) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(l10n.reconnectToSyncLibrary)));
+      return;
+    }
+    final messenger = ScaffoldMessenger.of(context);
+    messenger
+      ..clearSnackBars()
+      ..showSnackBar(SnackBar(content: Text(l10n.syncingLibraryToCloud)));
+    final h = (await sl<WatchHistory>().pushAllLocalToCloud()).pushed;
+    final l = (await sl<MyListStore>().pushAllLocalToCloud()).pushed;
+    if (!mounted) return;
+    messenger
+      ..clearSnackBars()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(
+            h == 0 && l == 0
+                ? l10n.syncLibraryAlreadySynced
+                : l10n.syncLibraryPushed(h, l),
+          ),
+        ),
+      );
+  }
+
   Future<void> _addCloudStreamRepo() async {
     final url = await showDialog<String>(context: context, builder: (_) => const _TvAddRepoDialog());
     if (url == null || url.isEmpty || !mounted) return;
@@ -295,6 +343,26 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
                         title: l10n.backupAndRestore,
                         subtitle: l10n.backupAndRestoreSubtitle,
                         onTap: () => _push(const BackupScreen()),
+                      ),
+                      SettingsTile(
+                        icon: Icons.cloud_upload_outlined,
+                        title: l10n.syncLibraryToCloud,
+                        subtitle: l10n.syncLibraryToCloudSubtitle,
+                        onTap: _syncLibraryToCloud,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  SettingsCard(
+                    children: [
+                      SettingsTile(
+                        icon: Icons.history_rounded,
+                        title: l10n.history,
+                        subtitle: l10n.historySubtitle,
+                        onTap: () async {
+                          await _push(const HistoryScreen());
+                          if (mounted) setState(() {});
+                        },
                       ),
                     ],
                   ),
@@ -417,6 +485,28 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
                             activeThumbColor: AppColors.accent,
                             onChanged: (v) async {
                               await sl<CloudStreamManager>().setNotifyUpdates(v);
+                              if (mounted) setState(() {});
+                            },
+                          ),
+                        ),
+                        SettingsTile(
+                          icon: Icons.autorenew_rounded,
+                          title: l10n.autoUpdateExtensions,
+                          subtitle: l10n.autoUpdateExtensionsSubtitle,
+                          onTap: () async {
+                            final prefs = sl<PlaybackPrefs>();
+                            await prefs.setAutoUpdateExtensions(
+                              !prefs.autoUpdateExtensions,
+                            );
+                            if (mounted) setState(() {});
+                          },
+                          trailing: Switch.adaptive(
+                            value: sl<PlaybackPrefs>().autoUpdateExtensions,
+                            activeThumbColor: AppColors.accent,
+                            onChanged: (v) async {
+                              await sl<PlaybackPrefs>().setAutoUpdateExtensions(
+                                v,
+                              );
                               if (mounted) setState(() {});
                             },
                           ),

@@ -21,6 +21,7 @@ import '../playback/playback_prefs.dart';
 import '../playback/pinned_sources.dart';
 import '../playback/search_history.dart';
 import '../playback/search_prefs.dart';
+import '../ui/home_rows_prefs.dart';
 import '../ui/nav_prefs.dart';
 import '../playback/search_source_prefs.dart';
 import '../playback/source_health_store.dart';
@@ -50,6 +51,7 @@ import '../repository/source_domain_overrides.dart';
 import '../repository/source_repository.dart';
 import '../state/active_source_cubit.dart';
 import '../locale/locale_controller.dart';
+import '../zmode/genre_catalog.dart';
 import '../zmode/metadata_repository.dart';
 import '../zmode/zmode_module.dart';
 import '../zmode/zmode_ids.dart';
@@ -63,6 +65,7 @@ import '../metadata/title_logo_service.dart';
 import '../mode/content_mode_cubit.dart';
 import '../trailer/trailer_service.dart';
 import '../anilist/anilist_graphql.dart';
+import '../anilist/anilist_network_policy.dart';
 import '../anilist/anilist_service.dart';
 import '../anilist/anilist_store.dart';
 import '../tracker/mal_service.dart';
@@ -301,6 +304,8 @@ Future<void> initDependencies() async {
   await ThemeController.init();
   await LocaleController.init();
   await ZModePrefs.init();
+  await GenreCatalog.init();
+  await HomeRowsPrefs.init();
   await DownloadPrefs.init();
   sl.registerSingleton<DownloadPrefs>(DownloadPrefs());
   await TorrentPrefs.init();
@@ -368,6 +373,11 @@ Future<void> initDependencies() async {
       },
     ),
   );
+  // AniList gets a longer read than the 8s above and honours 429 — see
+  // AniListNetworkPolicy. Registered so the UI can ask how long the wait is.
+  final aniListPolicy = AniListNetworkPolicy();
+  dio.interceptors.add(aniListPolicy);
+  sl.registerSingleton<AniListNetworkPolicy>(aniListPolicy);
   sl.registerSingleton<Dio>(dio);
   sl.registerSingleton<AiringService>(AiringService(sl<Dio>()));
   sl.registerSingleton<ComingSoonService>(ComingSoonService(sl<Dio>()));

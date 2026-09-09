@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../core/di/injector.dart';
 import '../../../core/error/exceptions.dart';
+import '../../../core/anilist/anilist_network_policy.dart';
 import '../../../core/error/network_failure.dart';
 import '../../../core/logging/app_logger.dart';
 import '../../../core/lnreader/novel_cloudflare.dart';
@@ -14,6 +15,7 @@ import '../../../core/models/media_extras.dart';
 import '../../../core/models/provider_info.dart';
 import '../../../core/playback/title_prefs.dart';
 import '../../../core/repository/catalogue_repository.dart';
+import '../../../core/zmode/metadata_repository.dart';
 import '../../../core/zmode/zmode_ids.dart';
 import '../../../core/zmode/metadata_provider_prefs.dart';
 
@@ -123,7 +125,7 @@ class DetailCubit extends Cubit<DetailState> {
     TitlePrefsStore? prefs,
     int? seedMalId,
     ProviderType? seedType,
-    PreferredProvider? prefer,
+    this.prefer,
   }) : _repo = repo,
        _url = url,
        _sourceId = sourceId,
@@ -149,6 +151,36 @@ class DetailCubit extends Cubit<DetailState> {
   }
 
   final CatalogueRepository _repo;
+
+  /// Read this title from a specific metadata catalogue — set when it was
+  /// opened from a tracker that has one, so an AniList library entry opens
+  /// AniList's page even if MyAnimeList is the app-wide pick.
+  final PreferredProvider? prefer;
+
+  /// The metadata fetch, honouring [prefer] when there is one. The router has
+  /// no opinion about providers, so a preference goes straight to the
+  /// repository that does.
+  Future<MediaDetail> _fetchDetail({
+    required String category,
+    void Function(MediaDetail partial)? onPartial,
+  }) {
+    final p = prefer;
+    if (p != null && sl.isRegistered<MetadataRepository>()) {
+      return sl<MetadataRepository>().detail(
+        _url,
+        category: category,
+        sourceId: _sourceId,
+        onPartial: onPartial,
+        prefer: p,
+      );
+    }
+    return _repo.detail(
+      _url,
+      category: category,
+      sourceId: _sourceId,
+      onPartial: onPartial,
+    );
+  }
   final String _url;
   final TitlePrefsStore _prefs;
 
@@ -190,10 +222,8 @@ class DetailCubit extends Cubit<DetailState> {
       state.copyWith(status: DetailStatus.loading, clearCloudflareUrl: true),
     );
     try {
-      final detail = await _repo.detail(
-        _url,
+      final detail = await _fetchDetail(
         category: state.category,
-        sourceId: _sourceId,
         // Metadata titles paint catalogue episodes immediately; source matching
         // is deferred to Play / download / the source row on the Detail screen.
         onPartial: (partial) {
@@ -245,16 +275,22 @@ class DetailCubit extends Cubit<DetailState> {
       ));
     } catch (e, st) {
       // Same distinction Home makes: a request that never left the device is
-      // not the title failing to load.
-      final offline = await isOfflineErrorConfirmed(e);
+      // not the title failing to load. A rate limit is a third thing again —
+      // it passes on its own, and saying how long is the whole difference
+      // between waiting and hunting a fault.
+      final limited = aniListRateLimitOf(e);
+      final offline = limited == null && await isOfflineErrorConfirmed(e);
       _log(
-        'load failed offline=$offline ${sw.elapsedMilliseconds}ms: $e',
+        'load failed offline=$offline limited=${limited?.seconds} '
+        '${sw.elapsedMilliseconds}ms: $e',
         level: 'E',
       );
       AppLogger.instance.logError(e, st);
       emit(state.copyWith(
         status: DetailStatus.error,
-        error: offline ? 'offline' : 'load_failed',
+        error: limited != null
+            ? 'rate_limited:${limited.seconds}'
+            : (offline ? 'offline' : 'load_failed'),
         episodesLoading: false,
       ));
     }
@@ -282,10 +318,8 @@ class DetailCubit extends Cubit<DetailState> {
     if (dropCache) await _repo.clearHttpCache();
     final previous = state.detail;
     try {
-      final fresh = await _repo.detail(
-        _url,
+      final fresh = await _fetchDetail(
         category: state.category,
-        sourceId: _sourceId,
         // Same early paint load() gets. It matters more here: without it the
         // PREVIOUS source's episodes sit on screen, looking like this
         // source's, until the new list lands.
@@ -341,7 +375,23 @@ class DetailCubit extends Cubit<DetailState> {
       // Keep what's on screen — a failed pull shouldn't blank the page. The
       // skeleton must still come down though: onPartial may have armed it,
       // and nothing else would ever turn it off.
-      if (!isClosed) emit(state.copyWith(episodesLoading: false));
+      if (isClosed) return;
+      if (state.status != DetailStatus.error) {
+        emit(state.copyWith(episodesLoading: false));
+        return;
+      }
+      // Retrying from the failure banner: re-derive why it failed, or the
+      // banner keeps a countdown that expired minutes ago and a reason that
+      // may no longer be the reason.
+      final limited = aniListRateLimitOf(e);
+      final offline = limited == null && await isOfflineErrorConfirmed(e);
+      if (isClosed) return;
+      emit(state.copyWith(
+        error: limited != null
+            ? 'rate_limited:${limited.seconds}'
+            : (offline ? 'offline' : 'load_failed'),
+        episodesLoading: false,
+      ));
     }
   }
 
@@ -353,6 +403,15 @@ class DetailCubit extends Cubit<DetailState> {
   /// out from under the metadata fetched for the previous one.
   Future<void> _enrich(MediaDetail detail, {bool force = false}) async {
     if (!force && (state.cast.isNotEmpty || state.relations.isNotEmpty)) return;
+    emit(state.copyWith(extrasLoading: true));
+    try {
+      await _enrichInner(detail, force: force);
+    } finally {
+      if (!isClosed) emit(state.copyWith(extrasLoading: false));
+    }
+  }
+
+  Future<void> _enrichInner(MediaDetail detail, {bool force = false}) async {
     final sw = Stopwatch()..start();
     _log(
       'enrich start title="${detail.title}" type=${detail.type} '
@@ -478,11 +537,7 @@ class DetailCubit extends Cubit<DetailState> {
     if (cat == state.category) return;
     emit(state.copyWith(category: cat, status: DetailStatus.loading));
     try {
-      final detail = await _repo.detail(
-        _url,
-        category: cat,
-        sourceId: _sourceId,
-      );
+      final detail = await _fetchDetail(category: cat);
       emit(
         state.copyWith(
           status: DetailStatus.success,

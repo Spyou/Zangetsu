@@ -11,8 +11,8 @@ import 'anilist_catalogue.dart';
 import 'mal_catalogue.dart';
 import 'simkl_catalogue.dart';
 import 'metadata_provider_prefs.dart';
-import 'package:flutter/material.dart';
 
+import '../ui/app_toast.dart';
 import '../ui/global_messenger.dart';
 import '../ui/source_switcher.dart';
 import 'match_store.dart';
@@ -73,6 +73,14 @@ Future<void> registerZangetsuMode(GetIt sl) async {
     mal: MalCatalogue(sl<Dio>()),
     simkl: SimklCatalogue(sl<Dio>()),
     providerPrefs: providerPrefs,
+    // Say it out loud when the chosen provider was unreachable — silently
+    // serving different data is how "why do my rows look wrong" starts.
+    onProviderFallback: (name) {
+      // A toast, not a SnackBar: the app uses toasts everywhere else, and a
+      // SnackBar shoves the layout up and sits under the floating dock.
+      final ctx = rootNavigatorKey.currentContext;
+      if (ctx != null) showAppToast(ctx, 'Showing results from $name');
+    },
     sources: sl<SourceRepository>(),
     matcher: sl<SourceMatcher>(),
     matchStore: matchStore,
