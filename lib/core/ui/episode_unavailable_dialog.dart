@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 
+import '../app_mode.dart';
+import '../di/injector.dart';
 import '../models/episode.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text.dart';
+import '../tv/tv_focusable.dart';
 
 /// Shown when the catalogue lists an episode that the ONE matched source does
 /// not have. Returns true when the viewer wants every other installed source
@@ -164,29 +167,40 @@ class _DeadEndButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final fg = filled ? Colors.black : AppColors.accent;
+    final body = Padding(
+      padding: const EdgeInsets.symmetric(vertical: 15),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, color: fg, size: 20),
+          const SizedBox(width: 10),
+          Text(label, style: AppText.headline.copyWith(color: fg, fontSize: 16)),
+        ],
+      ),
+    );
+    // On TV a plain InkWell IS reachable by D-pad but draws no highlight, so
+    // you cannot see which button you are on. TvFocusable is the app's own
+    // focus treatment; on a phone `isTv` is always false and this stays the
+    // InkWell it was.
+    final isTv = sl.isRegistered<AppMode>() && sl<AppMode>().isTv;
     return SizedBox(
       width: double.infinity,
       child: Material(
         color: filled ? AppColors.accent : AppColors.accentSoft,
         borderRadius: BorderRadius.circular(30),
         clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 15),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(icon, color: fg, size: 20),
-                const SizedBox(width: 10),
-                Text(
-                  label,
-                  style: AppText.headline.copyWith(color: fg, fontSize: 16),
-                ),
-              ],
-            ),
-          ),
-        ),
+        child: isTv
+            ? TvFocusable(
+                variant: TvFocusVariant.pill,
+                scale: 1.0,
+                // The primary action takes focus, so a remote can act on the
+                // dialog without hunting for where it landed.
+                autofocus: filled,
+                semanticLabel: label,
+                onTap: onTap,
+                child: body,
+              )
+            : InkWell(onTap: onTap, child: body),
       ),
     );
   }

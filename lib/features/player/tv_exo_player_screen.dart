@@ -1614,6 +1614,18 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
     _rootFocus.requestFocus(); // hand D-pad back to the player
   }
 
+  /// Whether there is a next episode worth offering — the same question
+  /// [_next] answers, asked without doing it. An episode the catalogue lists
+  /// but no source has yet (an airing show's next one) is not one.
+  bool get _hasPlayableNext =>
+      nextAutoplayIndex(
+        currentIndex: _index,
+        episodes: _episodes,
+        fillerEps: _fillerEps.value,
+        autoSkipFiller: sl<PlaybackPrefs>().autoSkipFiller,
+      ) !=
+      null;
+
   /// Advance to the next episode. When auto-skip filler is on, jumps past
   /// consecutive fillers for both up-next and the Next button.
   void _next({bool auto = false}) {
@@ -2121,7 +2133,10 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
         onTap: _openEpisodes,
       ),
       (icon: Icons.subtitles_outlined, label: context.l10n.audioSubs, onTap: _openMenu),
-      if (_index < _episodes.length - 1)
+      // _hasPlayableNext, not "is there another entry": _next() already
+      // refuses an episode nothing has yet, so without this the button
+      // appeared and then did nothing when pressed — worse than no button.
+      if (_hasPlayableNext)
         (icon: Icons.skip_next_rounded, label: context.l10n.nextEpisode, onTap: _next),
     ];
     return Positioned.fill(

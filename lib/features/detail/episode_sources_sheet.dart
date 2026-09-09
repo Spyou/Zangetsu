@@ -5,10 +5,12 @@ import 'dart:ui' show FramePhase;
 
 import 'package:flutter/scheduler.dart';
 
+import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
 import '../../core/models/episode.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
+import '../../core/tv/tv_focusable.dart';
 import '../../core/ui/source_switcher.dart';
 import '../../core/zmode/playback_resolver.dart';
 
@@ -230,9 +232,9 @@ class _EpisodeSourcesBodyState extends State<_EpisodeSourcesBody> {
                   ),
                   // A dialog with a running job in it needs a way out that
                   // isn't guessing whether tapping outside will work.
-                  InkWell(
+                  _tvAware(
                     onTap: () => Navigator.pop(context),
-                    borderRadius: BorderRadius.circular(20),
+                    semanticLabel: 'Close',
                     child: Padding(
                       padding: const EdgeInsets.all(4),
                       child: Icon(
@@ -321,9 +323,9 @@ class _FoundRow extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) => InkWell(
+  Widget build(BuildContext context) => _tvAware(
     onTap: onTap,
-    borderRadius: BorderRadius.circular(10),
+    semanticLabel: probe.name,
     child: Padding(
       padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 2),
       child: Row(
@@ -367,6 +369,32 @@ class _FoundRow extends StatelessWidget {
   );
 }
 
+
+/// D-pad focus with the app's own highlight on TV, a plain InkWell on a
+/// phone. A bare InkWell is reachable by remote but draws nothing, so on TV
+/// you cannot see which row you are on.
+Widget _tvAware({
+  required VoidCallback onTap,
+  required String semanticLabel,
+  required Widget child,
+}) {
+  final isTv = sl.isRegistered<AppMode>() && sl<AppMode>().isTv;
+  if (!isTv) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: child,
+    );
+  }
+  return TvFocusable(
+    variant: TvFocusVariant.box,
+    scale: 1.0,
+    semanticLabel: semanticLabel,
+    onTap: onTap,
+    child: child,
+  );
+}
+
 class _WideButton extends StatelessWidget {
   const _WideButton({required this.label, required this.onTap});
   final String label;
@@ -379,8 +407,9 @@ class _WideButton extends StatelessWidget {
       color: AppColors.accentSoft,
       borderRadius: BorderRadius.circular(30),
       clipBehavior: Clip.antiAlias,
-      child: InkWell(
+      child: _tvAware(
         onTap: onTap,
+        semanticLabel: label,
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 13),
           child: Text(
