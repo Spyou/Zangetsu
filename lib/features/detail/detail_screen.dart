@@ -20,6 +20,9 @@ import '../../core/zmode/zmode_module.dart';
 import '../../core/zmode/zmode_prefs.dart';
 import '../../core/ui/app_toast.dart';
 import 'open_related.dart';
+import '../../core/ui/episode_unavailable_dialog.dart';
+import '../../core/zmode/playback_resolver.dart';
+import 'episode_sources_sheet.dart';
 import '../../core/ui/jump_prompt.dart';
 import '../../core/app_mode.dart';
 import '../../core/cache/app_image_cache.dart';
@@ -910,6 +913,12 @@ class _DetailViewState extends State<_DetailView>
           resume.get(widget.item.sourceId, widget.item.url, ep.id)?.finished ??
           false,
       tracksToServices: hub.anyConnected,
+      // Metadata titles only, and only when there is something to survey: a
+      // source-backed title already IS one source, and a row that opens an
+      // empty dialog is worse than no row.
+      canSurveySources:
+          ZmodeIds.isZ(ep.url) &&
+          sl<PlaybackResolver>().candidatesForEpisode(ep.url).isNotEmpty,
     );
     if (action == null || !mounted) return;
 
@@ -980,6 +989,14 @@ class _DetailViewState extends State<_DetailView>
           initialSource: picked,
         );
 
+      case EpisodeAction.whereToWatch:
+        // Same sheet the "not on <source>" row opens, reachable for ANY
+        // episode: knowing which of your sources carries an episode is useful
+        // long before one of them comes up short.
+        if (!await _sweepForEpisode(ep)) return;
+        if (!mounted) return;
+        await _openPlayer(episodes, index, detail, category);
+
       case EpisodeAction.toggleWatched:
         final nowWatched =
             !(resume
@@ -1041,6 +1058,33 @@ class _DetailViewState extends State<_DetailView>
     /// adaptive default. One-shot — the cubit clears it after this episode.
     VideoSource? initialSource,
   }) async {
+    // The catalogue lists this episode but the one source we checked stops
+    // short of it (see [Episode.unavailable]). Say which source, and let the
+    // viewer decide whether to spend the sweep — asking every installed
+    // source in turn is what measured 23 seconds of frozen UI, so it is
+    // offered rather than imposed. Falling through means they asked for it.
+    //
+    // Every play path funnels through this method, so this one check covers
+    // the row tap, the grid tile, the Play button and resume.
+    if (index >= 0 &&
+        index < episodes.length &&
+        !episodes[index].available) {
+      final sweep = await showEpisodeUnavailable(
+        context,
+        episodes[index],
+        reading:
+            detail.type == ProviderType.novel ||
+            detail.type == ProviderType.manga,
+      );
+      if (!sweep || !mounted) return;
+      // They asked for it, so do it HERE rather than by dropping them into
+      // the player and letting it find out. Falling through only happens once
+      // something playable is known to exist — and the resolver caches that
+      // winner, so the player then opens straight onto it.
+      if (!await _sweepForEpisode(episodes[index])) return;
+      if (!mounted) return;
+    }
+
     // Opening something other than where they left off? Offer to look at it
     // without moving their place. Asked here, before the reading/video split,
     // so all three kinds behave the same. Dismissing means "never mind" —
@@ -1177,6 +1221,22 @@ class _DetailViewState extends State<_DetailView>
         ),
       ),
     );
+  }
+
+  /// Asks every installed source for this episode and shows them answering.
+  /// True once the viewer has picked one that can play it.
+  ///
+  /// A sheet rather than a spinner: the sweep takes seconds on a real library,
+  /// and if someone is going to wait they should see who is being asked, which
+  /// sources have it, and get to take one — rather than watch a spinner and be
+  /// handed whichever source happened to answer first.
+  Future<bool> _sweepForEpisode(Episode ep) async {
+    final picked = await showEpisodeSourcesSheet(context, episode: ep);
+    if (picked == null || !mounted) return false;
+    // Hand the resolver the result the sheet already has, so opening the
+    // player doesn't repeat the work the viewer just watched happen.
+    await sl<PlaybackResolver>().useProbed(ep.url, picked);
+    return mounted;
   }
 
   /// Routes a reading-type title (manga/novel) to its reader instead of the

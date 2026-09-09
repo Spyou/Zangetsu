@@ -32,6 +32,11 @@ enum EpisodeAction {
   /// Resolve the episode's mirrors and pick one before anything plays, rather
   /// than starting on whichever the app chose and switching afterwards.
   playMirror,
+
+  /// Ask every installed source whether it has THIS episode, and watch them
+  /// answer. Different from [playMirror]: that picks between mirrors within
+  /// the one source already matched, this is about which SOURCE to use at all.
+  whereToWatch,
 }
 
 /// The long-press menu itself. Kept separate from the player sheet so the
@@ -41,6 +46,11 @@ Future<EpisodeAction?> showEpisodeActionSheet(
   BuildContext context, {
   required String episodeLabel,
   required String currentPlayerLabel,
+
+  /// Offers the "Where to watch" row. Only true for metadata titles: a
+  /// source-backed one already IS a single source, so there is nothing to
+  /// survey.
+  bool canSurveySources = false,
 
   /// Drives the watched row's wording — the same row unmarks when the episode
   /// is already watched, so a mis-tap isn't a one-way door.
@@ -94,6 +104,14 @@ Future<EpisodeAction?> showEpisodeActionSheet(
             subtitle: 'Choose the source before it starts',
             onTap: () => Navigator.pop(sheetContext, EpisodeAction.playMirror),
           ),
+          if (canSurveySources)
+            _PlayerRow(
+              icon: Icons.travel_explore_rounded,
+              label: 'Where to watch',
+              subtitle: 'See which of your sources has this episode',
+              onTap: () =>
+                  Navigator.pop(sheetContext, EpisodeAction.whereToWatch),
+            ),
           _PlayerRow(
             icon: Icons.refresh_rounded,
             label: 'Reload links',

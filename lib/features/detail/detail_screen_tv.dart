@@ -181,6 +181,13 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
 
   // ── Player launch (mirrors _DetailViewState._openPlayer exactly) ──────────
   Future<void> _openPlayer(List<Episode> episodes, int index, MediaDetail detail, String category) async {
+    // Same as the phone screen: name the source that stops short of this
+    // episode and let the viewer choose the sweep rather than imposing it
+    // (see [Episode.unavailable]).
+    if (index >= 0 && index < episodes.length && !episodes[index].available) {
+      final sweep = await showEpisodeUnavailable(context, episodes[index]);
+      if (!sweep || !mounted) return;
+    }
     final available = <String>[if ((detail.subCount ?? 0) > 0) 'sub', if ((detail.dubCount ?? 0) > 0) 'dub'];
     final availableCategories = available.isEmpty ? [category] : available;
     final preferred =
