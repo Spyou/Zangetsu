@@ -596,22 +596,17 @@ class MetadataRepository implements CatalogueRepository {
         '[metadata] detail matched ${m.sourceId} chapters=${chapters.length} '
         '${sw.elapsedMilliseconds}ms',
       );
-      return MediaDetail(
+      // copyWith, not a fresh MediaDetail: listing the fields by hand meant
+      // every one added later was silently dropped on the way through here,
+      // and the page showed a thinner record than the catalogue returned.
+      // Restored from main — the hand-written version had come back with the
+      // resolver and was quietly losing 24 fields on every manga and novel:
+      // score, tags, cast, relations, synonyms, dates, and coverHeaders, which
+      // header-locked cover hosts need to render at all.
+      return d.copyWith(
         id: m.showId,
-        title: d.title,
-        englishTitle: d.englishTitle,
-        cover: d.cover,
-        banner: d.banner,
-        url: d.url,
-        description: d.description,
-        status: d.status,
-        genres: d.genres,
-        studios: d.studios,
         episodes: chapters,
-        year: d.year,
-        type: d.type,
         sourceId: m.sourceId,
-        malId: d.malId,
       );
     }
 

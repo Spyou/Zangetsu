@@ -25,6 +25,10 @@ Map<String, dynamic> _al({int? chapters, int? episodes = 12}) => {
   'coverImage': {'large': 'c'}, 'episodes': episodes, 'chapters': chapters,
   'status': 'FINISHED', 'genres': [], 'description': null, 'seasonYear': 2009,
   'studios': {'nodes': []}, 'nextAiringEpisode': null,
+  // Fields the reading path used to drop on the floor — see the copyWith
+  // test below.
+  'averageScore': 88, 'synonyms': ['Hagane no Renkinjutsushi'],
+  'countryOfOrigin': 'JP', 'format': 'MANGA',
 };
 
 const _stream = [VideoSource(url: 'https://stream/1')];
@@ -264,6 +268,14 @@ void main() {
     expect(d.episodes.length, 2);
     expect(d.episodes.first.url, 'https://src/fma/1');
     expect(d.title, 'FMA');
+    // Everything the CATALOGUE knew survives the swap to source chapters.
+    // Building a fresh MediaDetail by hand here silently dropped 24 fields —
+    // score, tags, cast, relations, synonyms, dates, and coverHeaders, which
+    // header-locked cover hosts need to render at all.
+    expect(d.score, isNotNull, reason: 'score must survive the chapter swap');
+    expect(d.synonyms, isNotEmpty);
+    expect(d.country, 'JP');
+    expect(d.format, isNotNull);
   });
 
   test('anime detail takes its episode list from the matched source', () async {
