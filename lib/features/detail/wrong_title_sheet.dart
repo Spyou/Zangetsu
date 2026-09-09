@@ -90,8 +90,17 @@ class _MatchLineState extends State<MatchLine> {
     ).showPicker(
       context,
       trailingBuilder: (id) => _rowActions(context, id),
+      // Auto Resolve sits above the sources rather than among them, because
+      // it is not one: it is the absence of a pinned choice, which lets the
+      // resolver sweep every source at play time. Picking a source here pins
+      // that title to it; this is how you undo that.
+      autoSelected: state.auto,
+      onAutoResolve: () async {
+        await _cubit.selectAuto();
+        if (mounted) _refreshAfterMatchChange();
+      },
       onPick: (id) async {
-        if (id == state.selectedId) return;
+        if (!state.auto && id == state.selectedId) return;
         await _cubit.selectSource(id);
         if (mounted) _refreshAfterMatchChange();
       },
@@ -330,7 +339,24 @@ class _MatchLineState extends State<MatchLine> {
           final selectedId = state.selectedId;
           // Just the name inside the pill — the shape already reads as a
           // control, so a "Source:" prefix only crowds it.
-          final label = selectedId == null
+          //
+          // "Auto" is its own answer, not a missing one. Under Auto Resolve no
+          // source is pinned until you pick one, so an unpinned title is the
+          // normal case now rather than the rare "nothing matched" it used to
+          // be — and reading "No source has this yet" on a title that plays
+          // perfectly well would be plainly wrong.
+          // Hardcoded like the picker's own row (source_switcher.dart) rather
+          // than an l10n key, so the two always read the same. Worth a proper
+          // key once the feature settles.
+          // Under Auto Resolve, name the source it settled on when there is
+          // one — "Auto" alone cannot be told apart from "still guessing", and
+          // the row's Cloudflare/sign-in actions act on that same source, so
+          // the viewer needs to know which site they are about to be sent to.
+          final label = state.auto
+              ? (selectedId == null
+                    ? 'Auto Resolve'
+                    : 'Auto · ${sl<SourceRepository>().displayName(selectedId)}')
+              : selectedId == null
               ? l10n.noSourceHasThisYet
               : sl<SourceRepository>().displayName(selectedId);
           // Sized and filled like _DownloadButton directly above, so Play,

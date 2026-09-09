@@ -39,6 +39,11 @@ Map<String, dynamic> _al({String romaji = 'Fullmetal Alchemist'}) => {
 class _Src implements SourceRepository {
   @override
   noSuchMethod(Invocation i) => super.noSuchMethod(i);
+  // Added with the on-demand resolver: SourceMatcher now asks whether a JS
+  // provider is loaded before searching it. These fakes are already "loaded".
+  @override
+  Future<bool> ensureSourceLoaded(String sourceId) async => true;
+
   @override
   List<({String id, String name})> get pickableSources => loadedSources;
   @override
@@ -82,6 +87,8 @@ void main() {
         tmdb: TmdbCatalogue((p, q) async => {'results': []}),
         sources: src,
         matcher: matcher,
+      matchStore: await MatchStore.open(),
+      sourcePrefs: await ZSourcePrefs.open(),
         browseKind: () => ZKind.anime,
       ),
     );

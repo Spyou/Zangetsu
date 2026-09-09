@@ -20,6 +20,11 @@ import 'package:watch_app/features/search/browse_source_screen.dart';
 class _FakeRepo implements SourceRepository {
   @override
   noSuchMethod(Invocation i) => super.noSuchMethod(i);
+  // Added with the on-demand resolver: SourceMatcher now asks whether a JS
+  // provider is loaded before searching it. These fakes are already "loaded".
+  @override
+  Future<bool> ensureSourceLoaded(String sourceId) async => true;
+
 
   @override
   Future<List<HomeSection>> home({String category = 'sub', String? sourceId}) async =>
@@ -39,6 +44,11 @@ class _FakeCloudStreamManager extends ChangeNotifier
     implements CloudStreamManager {
   @override
   noSuchMethod(Invocation i) => super.noSuchMethod(i);
+  // Added with the on-demand resolver: SourceMatcher now asks whether a JS
+  // provider is loaded before searching it. These fakes are already "loaded".
+  @override
+  Future<bool> ensureSourceLoaded(String sourceId) async => true;
+
 
   @override
   BaseProvider? get(String sourceId) => null;

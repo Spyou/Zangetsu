@@ -6,6 +6,7 @@ import '../models/episode.dart';
 import '../models/home_section.dart';
 import '../models/media_detail.dart';
 import '../models/media_item.dart';
+import '../models/provider_info.dart';
 import '../playback/source_health_store.dart';
 import '../models/video_source.dart';
 import '../repository/catalogue_repository.dart';
@@ -170,12 +171,31 @@ class MetadataRepository implements CatalogueRepository {
   Future<T> _viaAnime<T>(
     Future<T> Function(AnimeCatalogue c) op, {
     bool Function(T)? treatAsFailure,
+    PreferredProvider? prefer,
   }) async {
-    final (primary, backup) = _animeChain;
+    var (primary, backup) = _animeChain;
+    // A caller that knows which catalogue this title came from wins over the
+    // saved choice — the fallback still applies if that one fails. Carried
+    // over from main: the branch this resolver came from had dropped it,
+    // which would have silently removed the metadata-provider switch.
+    final forced = switch (prefer) {
+      PreferredProvider.anilist => _al,
+      PreferredProvider.mal => _mal,
+      _ => null,
+    };
+    if (forced != null && forced != primary) {
+      backup = primary;
+      primary = forced;
+    }
+    // Copied into finals: `primary`/`backup` are reassignable now (the
+    // `prefer` swap above), and Dart will not promote a mutable local inside
+    // a closure.
+    final chosen = primary;
+    final standIn = backup;
     return _withProviderFallback(
-      primary: () => op(primary),
-      backup: backup == null ? null : () => op(backup),
-      fallbackLabel: backup == null ? '' : _fallbackName(backup),
+      primary: () => op(chosen),
+      backup: standIn == null ? null : () => op(standIn),
+      fallbackLabel: standIn == null ? '' : _fallbackName(standIn),
       treatAsFailure: treatAsFailure,
     );
   }
@@ -233,12 +253,24 @@ class MetadataRepository implements CatalogueRepository {
   Future<T> _viaVideo<T>(
     Future<T> Function(VideoCatalogue c) op, {
     bool Function(T)? treatAsFailure,
+    PreferredProvider? prefer,
   }) async {
-    final (primary, backup) = _videoChain;
+    var (primary, backup) = _videoChain;
+    final forced = switch (prefer) {
+      PreferredProvider.tmdb => _tmdb,
+      PreferredProvider.simkl => _simkl,
+      _ => null,
+    };
+    if (forced != null && forced != primary) {
+      backup = primary;
+      primary = forced;
+    }
+    final chosen = primary;
+    final standIn = backup;
     return _withProviderFallback(
-      primary: () => op(primary),
-      backup: backup == null ? null : () => op(backup),
-      fallbackLabel: backup is SimklCatalogue ? 'Simkl' : 'TMDB',
+      primary: () => op(chosen),
+      backup: standIn == null ? null : () => op(standIn),
+      fallbackLabel: standIn is SimklCatalogue ? 'Simkl' : 'TMDB',
       treatAsFailure: treatAsFailure,
     );
   }
@@ -276,7 +308,44 @@ class MetadataRepository implements CatalogueRepository {
         : 'AniList';
   }
   
-  Future<MediaItem?> canonicalFor(MediaItem sourceItem) async => sourceItem;
+  Future<MediaItem?> canonicalFor(MediaItem sourceItem) async {
+    if (ZmodeIds.isZ(sourceItem.url)) return sourceItem; // already canonical
+    final title = sourceItem.title.trim();
+    if (title.isEmpty) return null;
+    final k = switch (sourceItem.type) {
+      ProviderType.anime => ZKind.anime,
+      ProviderType.movie => ZKind.movie,
+      ProviderType.manga => ZKind.manga,
+      ProviderType.novel => ZKind.novel,
+    };
+    try {
+      final results = _isTmdb(k)
+          ? await _viaVideo((c) => c.search(title))
+          : await _viaAnime((c) => c.search(title, k));
+      // A MAL id anywhere in the results wins over a title match on an
+      // earlier one, the same order [bestTitleMatch] uses — but the title rule
+      // is [titleIdentityMatches], not the looser one, and there is no
+      // fall-back-to-first-result here at all.
+      MediaItem? hit;
+      if (sourceItem.malId != null) {
+        for (final m in results) {
+          if (m.malId != null && m.malId == sourceItem.malId) {
+            hit = m;
+            break;
+          }
+        }
+      }
+      for (final m in results) {
+        if (hit != null) break;
+        if (titleIdentityMatches(m, title)) hit = m;
+      }
+      if (hit == null) return null;
+      _remember(hit);
+      return hit;
+    } catch (_) {
+      return null;
+    }
+  }
 
   @override
   void syncSearchCache() {}
@@ -457,6 +526,12 @@ class MetadataRepository implements CatalogueRepository {
     String category = 'sub',
     String? sourceId,
     void Function(MediaDetail partial)? onPartial,
+
+    /// Read this title from a specific catalogue — the tracker you opened it
+    /// from — rather than the app-wide choice. Kept from main: the branch this
+    /// resolver came from had dropped it, which would have quietly removed the
+    /// metadata-provider switch.
+    PreferredProvider? prefer,
   }) async {
     final c = ZmodeIds.parseShow(url);
     if (c == null) throw ArgumentError('not a metadata url: $url');
@@ -466,8 +541,8 @@ class MetadataRepository implements CatalogueRepository {
       '[metadata] detail start kind=${c.kind} via=$via key=${c.key}',
     );
     final d = _isTmdb(c.kind)
-        ? await _viaVideo((x) => x.detail(c))
-        : await _viaAnime((x) => x.detail(c));
+        ? await _viaVideo((x) => x.detail(c), prefer: prefer)
+        : await _viaAnime((x) => x.detail(c), prefer: prefer);
     _titles[c.key] = (title: d.title, alt: d.englishTitle, malId: d.malId);
     AppLogger.instance.log(
       '[metadata] detail catalogue title="${d.title}" eps=${d.episodes.length} '

@@ -39,6 +39,7 @@ import '../../core/playback/subtitle_translate_service.dart';
 import '../../core/repository/catalogue_repository.dart';
 import '../../core/repository/source_repository.dart';
 import '../../core/zmode/source_matcher.dart';
+import '../../core/zmode/playback_resolver.dart';
 import '../../core/zmode/zmode_ids.dart';
 import '../watch_together/model/room_state.dart';
 import 'color_profiles.dart';
@@ -1842,6 +1843,20 @@ class PlayerCubit extends Cubit<PlayerState> {
       if (gen != _gen) return;
       emit(
         state.copyWith(loadingSources: false, error: () => 'No source has this yet'),
+      );
+    } on EpisodeNotAvailable catch (e) {
+      // Auto Resolve swept every installed source and none could serve this
+      // episode. Worth saying which of the two it was: nothing has the show at
+      // all, or something has it but not this episode — those send the viewer
+      // somewhere different.
+      if (gen != _gen) return;
+      emit(
+        state.copyWith(
+          loadingSources: false,
+          error: () => e.hadTitleMatch
+              ? "Episode ${e.episode} isn't available on any source yet"
+              : 'No source has this yet',
+        ),
       );
     } on EpisodeNotOnSource catch (e) {
       // The show matched fine — this one episode just isn't on that source.

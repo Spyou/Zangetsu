@@ -31,6 +31,11 @@ class _Src implements SourceRepository {
   final Map<String, List<MediaItem>> bySource;
   @override
   noSuchMethod(Invocation i) => super.noSuchMethod(i);
+  // Added with the on-demand resolver: SourceMatcher now asks whether a JS
+  // provider is loaded before searching it. These fakes are already "loaded".
+  @override
+  Future<bool> ensureSourceLoaded(String sourceId) async => true;
+
   @override
   List<({String id, String name})> get pickableSources => loadedSources;
   @override
@@ -258,6 +263,11 @@ void main() {
 class _NoopRepo implements CatalogueRepository {
   @override
   noSuchMethod(Invocation i) => super.noSuchMethod(i);
+  // Added with the on-demand resolver: SourceMatcher now asks whether a JS
+  // provider is loaded before searching it. These fakes are already "loaded".
+  @override
+  Future<bool> ensureSourceLoaded(String sourceId) async => true;
+
   @override
   Future<void> clearHttpCache() async {}
   @override

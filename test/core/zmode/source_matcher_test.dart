@@ -27,6 +27,11 @@ class _FakeSources implements SourceRepository {
 
   @override
   noSuchMethod(Invocation i) => super.noSuchMethod(i);
+  // Added with the on-demand resolver: SourceMatcher now asks whether a JS
+  // provider is loaded before searching it. These fakes are already "loaded".
+  @override
+  Future<bool> ensureSourceLoaded(String sourceId) async => true;
+
   @override
   List<({String id, String name})> get pickableSources => loadedSources;
 
@@ -158,13 +163,13 @@ void main() {
       expect(repo.searched, isEmpty);
     });
 
-    test('a dead selected source returns null, not an exception', () async {
-      // allanime is the pick (first candidate) and throws. There is no longer
-      // another source to fall through to, so this must be a clean null.
+    test('a dead source is swept past, not fatal', () async {
+      // allanime throws. Under Auto Resolve the sweep carries on to hianime
+      // rather than giving up — the whole point of resolving on demand.
       final repo = _FakeSources({'hianime': [_hit('hianime', 'FMA')]},
           candidates: {'allanime', 'hianime'});
       final m = SourceMatcher(sources: repo, store: store, prefs: prefs, candidates: (_) => two);
-      expect(await m.resolve(fma, title: 'FMA'), isNull);
+      expect((await m.resolve(fma, title: 'FMA'))?.sourceId, 'hianime');
     });
 
     test('nothing anywhere returns null and saves/selects nothing', () async {
@@ -235,8 +240,9 @@ void main() {
       await store.save(fma, const SourceMatch(sourceId: 'hianime',
           showUrl: 'h', showId: 'h', showTitle: 'h', pinned: false));
       final m = SourceMatcher(sources: _FakeSources({}), store: store, prefs: prefs, candidates: (_) => two);
-      // No stored pick — the first candidate is the source, so its match answers.
-      expect(m.saved(fma)?.sourceId, 'allanime');
+      // No stored pick, so there is no selected source to answer for: Auto
+      // Resolve decides at play time instead of a standing kind default.
+      expect(m.selectedFor(fma.kind), isNull);
       await prefs.set(fma.kind, 'hianime');
       expect(m.saved(fma)?.sourceId, 'hianime');
     });
@@ -267,7 +273,9 @@ void main() {
       final m = SourceMatcher(sources: repo, store: store, prefs: prefs, candidates: (_) => two);
 
       expect(await m.resolve(fma, title: 'Fullmetal Alchemist'), isNull);
-      expect(repo.searched, ['allanime']);
+      // Both are asked once: the remembered miss stops allanime being asked a
+      // SECOND time, it does not stop the sweep reaching hianime.
+      expect(repo.searched, ['allanime', 'hianime']);
 
       // Opening the title again used to pay for the same search, every visit.
       repo.searched.clear();

@@ -73,6 +73,7 @@ import '../sources/zangetsu_sources_screen.dart';
 import 'player_controls_screen.dart';
 import 'settings_screen_tv.dart';
 import 'settings_search_index.dart';
+import 'source_priority_screen.dart';
 import 'cubit/settings_cubit.dart';
 
 part 'settings_playback.dart';
@@ -752,6 +753,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
         onTap: () => _push(const BackupScreen()),
       ),
       // Sources
+      _SettingsEntry(
+        section: SettingsSection.sources,
+        icon: Icons.low_priority_rounded,
+        title: 'Source Priority',
+        subtitle: 'Order Auto Resolve tries sources in',
+        keywords: 'source priority order auto resolve sweep anime movies tv',
+        onTap: () => _push(const SourcePriorityScreen()),
+      ),
       _SettingsEntry(
         section: SettingsSection.sources,
         icon: Icons.dns_rounded,

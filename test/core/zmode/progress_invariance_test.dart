@@ -27,6 +27,11 @@ class _Src implements SourceRepository {
   final Map<String, List<MediaItem>> bySource;
   @override
   noSuchMethod(Invocation i) => super.noSuchMethod(i);
+  // Added with the on-demand resolver: SourceMatcher now asks whether a JS
+  // provider is loaded before searching it. These fakes are already "loaded".
+  @override
+  Future<bool> ensureSourceLoaded(String sourceId) async => true;
+
   @override
   List<({String id, String name})> get pickableSources => loadedSources;
   @override
@@ -80,7 +85,9 @@ void main() {
     // Nothing was CHOSEN yet, so nothing is stored — the effective source is
     // just the first candidate. Only an explicit pick is persisted.
     expect(prefs.get(c.kind), isNull);
-    expect(matcher.selectedFor(c.kind), 'allanime');
+    // Auto Resolve: nothing chosen means nothing selected, rather than the
+    // first candidate standing in as a default.
+    expect(matcher.selectedFor(c.kind), isNull);
 
     await prefs.set(c.kind, 'hianime');
     await matcher.resolve(c, title: 'Fullmetal Alchemist: Brotherhood');

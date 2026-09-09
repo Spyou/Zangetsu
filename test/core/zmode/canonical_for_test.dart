@@ -52,6 +52,11 @@ Map<String, dynamic> _al({
 class _Src implements SourceRepository {
   @override
   noSuchMethod(Invocation i) => super.noSuchMethod(i);
+  // Added with the on-demand resolver: SourceMatcher now asks whether a JS
+  // provider is loaded before searching it. These fakes are already "loaded".
+  @override
+  Future<bool> ensureSourceLoaded(String sourceId) async => true;
+
   @override
   List<({String id, String name})> get pickableSources => loadedSources;
   @override
@@ -107,6 +112,8 @@ void main() {
   late List<String> tmdbPaths;
 
   late SourceMatcher matcher;
+  late MatchStore store;
+  late ZSourcePrefs zPrefs;
 
   MetadataRepository build({
     List<Map<String, dynamic>> anilistResults = const [],
@@ -125,6 +132,8 @@ void main() {
       }),
       sources: src,
       matcher: matcher,
+      matchStore: store,
+      sourcePrefs: zPrefs,
       browseKind: () => ZKind.anime,
     );
   }
@@ -135,10 +144,12 @@ void main() {
     src = _Src();
     anilistQueries = [];
     tmdbPaths = [];
+    store = await MatchStore.open();
+    zPrefs = await ZSourcePrefs.open();
     matcher = SourceMatcher(
       sources: src,
-      store: await MatchStore.open(),
-      prefs: await ZSourcePrefs.open(),
+      store: store,
+      prefs: zPrefs,
       candidates: (_) => [(id: 'hianime', name: 'HiAnime')],
     );
   });
@@ -274,6 +285,8 @@ void main() {
       providerPrefs: prefs,
       sources: src,
       matcher: matcher,
+      matchStore: store,
+      sourcePrefs: zPrefs,
       browseKind: () => ZKind.anime,
     );
 

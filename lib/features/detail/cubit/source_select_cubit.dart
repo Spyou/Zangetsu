@@ -92,7 +92,18 @@ class SourceSelectCubit extends Cubit<SourceSelectState> {
     if (selected == null) {
       // Auto Resolve — read whichever candidate's cache already has this
       // title, in priority order, without a network sweep on this frame.
-      for (final s in sources) {
+      // Name the source Auto Resolve would actually use, not merely the first
+      // one holding a cached match. The one that last PLAYED this title is the
+      // resolver's own first choice (see PlaybackResolver._orderedCandidates),
+      // so anything else here would name a source the viewer never gets — and
+      // the row's per-source actions, Cloudflare solve included, act on this
+      // id, so naming the wrong one points them at the wrong site.
+      final played = store.lastPlayed(canonical);
+      final order = [
+        ...sources.where((s) => s.id == played),
+        ...sources.where((s) => s.id != played),
+      ];
+      for (final s in order) {
         final m = store.get(canonical, s.id);
         if (m != null) {
           return SourceSelectState(
