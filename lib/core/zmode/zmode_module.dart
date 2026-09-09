@@ -3,6 +3,7 @@ import 'package:get_it/get_it.dart';
 
 import '../mode/content_mode.dart';
 import '../mode/content_mode_cubit.dart';
+import '../playback/source_health_store.dart';
 import '../repository/catalogue_repository.dart';
 import '../repository/catalogue_router.dart';
 import '../repository/source_repository.dart';
@@ -10,10 +11,12 @@ import 'anilist_catalogue.dart';
 import 'mal_catalogue.dart';
 import 'simkl_catalogue.dart';
 import 'metadata_provider_prefs.dart';
+import 'package:flutter/material.dart';
 
-import '../ui/app_toast.dart';
 import '../ui/global_messenger.dart';
 import 'match_store.dart';
+import 'playback_resolver.dart';
+import 'source_order_prefs.dart';
 import 'zmode_source_prefs.dart';
 import 'metadata_repository.dart';
 import 'source_matcher.dart';
@@ -33,47 +36,55 @@ Future<void> registerZangetsuMode(GetIt sl) async {
   final sourcePrefs = await ZSourcePrefs.open();
   sl.registerSingleton<ZSourcePrefs>(sourcePrefs);
 
-  sl.registerSingleton<SourceMatcher>(
-    SourceMatcher(
-      sources: sl<SourceRepository>(),
-      store: matchStore,
-      prefs: sourcePrefs,
-      candidates: (kind) => candidatesForKind(sl<SourceRepository>(), kind),
-    ),
-  );
+  final sourceOrderPrefs = await SourceOrderPrefs.open();
+  sl.registerSingleton<SourceOrderPrefs>(sourceOrderPrefs);
+
+  // Shared by both the matcher (Detail's per-title resolve) and the playback
+  // resolver (via MetadataRepository below) so Auto Resolve sweeps — and
+  // playback's own health/pin tie-breaks — agree on the user's priority order.
+  List<({String id, String name})> orderedCandidates(ZKind kind) =>
+      applySourceOrder(
+        candidatesForKind(sl<SourceRepository>(), kind),
+        sourceOrderPrefs.get(kind),
+      );
+
+  sl.registerSingleton<SourceMatcher>(SourceMatcher(
+    sources: sl<SourceRepository>(),
+    store: matchStore,
+    prefs: sourcePrefs,
+    candidates: orderedCandidates,
+  ));
 
   final providerPrefs = await MetadataProviderPrefs.open();
   sl.registerSingleton<MetadataProviderPrefs>(providerPrefs);
 
-  sl.registerSingleton<MetadataRepository>(
-    MetadataRepository(
-      anilist: AniListCatalogue(AniListCatalogue.dioGql(sl<Dio>())),
-      tmdb: TmdbCatalogue(TmdbCatalogue.dioGet(sl<Dio>())),
-      mal: MalCatalogue(sl<Dio>()),
-      simkl: SimklCatalogue(sl<Dio>()),
-      providerPrefs: providerPrefs,
-      // Say it out loud when the chosen provider was unreachable — silently
-      // serving different data is how "why do my rows look wrong" starts.
-      onProviderFallback: (name) {
-        // A toast, not a SnackBar: the app uses toasts everywhere else, and a
-        // SnackBar shoves the layout up and sits under the floating dock.
-        final ctx = rootNavigatorKey.currentContext;
-        if (ctx != null) showAppToast(ctx, 'Showing results from $name');
-      },
-      sources: sl<SourceRepository>(),
-      matcher: sl<SourceMatcher>(),
-      browseKind: () =>
-          browseKindFor(sl<ContentModeCubit>().state, ZModePrefs.streamKind),
+  sl.registerSingleton<MetadataRepository>(MetadataRepository(
+    anilist: AniListCatalogue(AniListCatalogue.dioGql(sl<Dio>())),
+    tmdb: TmdbCatalogue(TmdbCatalogue.dioGet(sl<Dio>())),
+    mal: MalCatalogue(sl<Dio>()),
+    simkl: SimklCatalogue(sl<Dio>()),
+    providerPrefs: providerPrefs,
+    sources: sl<SourceRepository>(),
+    matcher: sl<SourceMatcher>(),
+    matchStore: matchStore,
+    sourcePrefs: sourcePrefs,
+    health: sl<SourceHealthStore>(),
+    candidates: orderedCandidates,
+    browseKind: () => browseKindFor(
+      sl<ContentModeCubit>().state,
+      ZModePrefs.streamKind,
     ),
-  );
+  ));
 
-  sl.registerSingleton<CatalogueRepository>(
-    CatalogueRouter(
-      source: sl<SourceRepository>(),
-      metadata: sl<MetadataRepository>(),
-      enabled: () => ZModePrefs.enabled,
-    ),
-  );
+  sl.registerSingleton<CatalogueRepository>(CatalogueRouter(
+    source: sl<SourceRepository>(),
+    metadata: sl<MetadataRepository>(),
+    enabled: () => ZModePrefs.enabled,
+  ));
+
+  // Expose PlaybackResolver directly so TvNativePlayer can invalidate the
+  // winner cache when the native player reports a playback error.
+  sl.registerSingleton<PlaybackResolver>(sl<MetadataRepository>().playbackResolver);
 }
 
 /// Which installed sources may play a title of [kind]. Prefix rules match
@@ -89,14 +100,8 @@ List<({String id, String name})> candidatesForKind(
   // showed Aniyomi sources this picker did not.
   final all = repo.pickableSources;
   return switch (kind) {
-    ZKind.manga => [
-      for (final s in all)
-        if (s.id.startsWith('mihon:')) s,
-    ],
-    ZKind.novel => [
-      for (final s in all)
-        if (s.id.startsWith('lnr:')) s,
-    ],
+    ZKind.manga => [for (final s in all) if (s.id.startsWith('mihon:')) s],
+    ZKind.novel => [for (final s in all) if (s.id.startsWith('lnr:')) s],
     // Anime and movie/TV share one streaming pool. Which of the two a title
     // is has already been decided by the metadata catalogue; the source only
     // has to be able to play it, and plenty carry both.
@@ -112,5 +117,6 @@ List<({String id, String name})> candidatesForKind(
 ZKind browseKindFor(ContentMode mode, StreamKind stream) => switch (mode) {
   ContentMode.manga => ZKind.manga,
   ContentMode.novel => ZKind.novel,
-  ContentMode.anime => stream == StreamKind.movie ? ZKind.movie : ZKind.anime,
+  ContentMode.anime =>
+    stream == StreamKind.movie ? ZKind.movie : ZKind.anime,
 };

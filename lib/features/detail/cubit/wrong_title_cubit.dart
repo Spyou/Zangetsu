@@ -57,12 +57,14 @@ class WrongTitleCubit extends Cubit<WrongTitleState> {
   String get sourceId => _sourceId;
 
   /// Correct against a different source, re-running the same query against it.
-  /// Choosing a source is global for the kind (see [ZSourcePrefs]), so this is
-  /// the same choice the Detail pill makes, made from here instead.
+  /// This only changes which source THIS correction searches — nothing is
+  /// persisted until [choose] actually pins a result (see [pinManual]).
+  /// Writing a kind-wide default just from browsing the dropdown was the bug
+  /// this design fixes: every title started naming whichever source was last
+  /// glanced at here.
   Future<void> setSource(String id) async {
     if (id == _sourceId) return;
     _sourceId = id;
-    await _matcher.selectSource(_canonical.kind, id);
     await search(state.query);
   }
 

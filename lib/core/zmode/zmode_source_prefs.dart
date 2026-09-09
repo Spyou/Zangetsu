@@ -3,18 +3,17 @@ import 'package:hive/hive.dart';
 import '../hive/safe_box.dart';
 import 'zmode_ids.dart';
 
-/// Which source plays Z Mode titles, remembered GLOBALLY per kind.
+/// An explicit, GLOBAL per-kind override of which source plays Z Mode titles.
 ///
-/// Not per title: choosing a source is a statement about how you want to
-/// watch, not about one show. Picking one on a title's Detail screen changes
-/// it everywhere for that kind, and the next title of that kind opens already
-/// pointing at it.
+/// This is deliberately rare: the true default is Auto Resolve (every
+/// installed source is swept, per title, in the user's priority order — see
+/// `SourceOrderPrefs` and `SourceMatcher`). This override only exists for the
+/// "source went quiet" recovery picker (`SourceMatcher.chooseSource`), and a
+/// per-title pin (`MatchStore.pin`) always wins over it.
 ///
 /// The reason this exists as a stored preference rather than something
 /// derived: a remembered id is a synchronous read, so a Detail screen knows
-/// its source on the first frame. Deriving the selection by searching sources
-/// (what this replaced) meant the row could not name anything until a network
-/// sweep finished, on every title.
+/// its source on the first frame, with no sweep to wait for.
 class ZSourcePrefs {
   ZSourcePrefs._(this._box);
   final Box<String> _box;
@@ -33,6 +32,8 @@ class ZSourcePrefs {
     _ => 'video',
   };
 
+  /// The explicit kind default, or null when none has ever been set — in
+  /// which case Auto Resolve is what actually plays every title of this kind.
   String? get(ZKind kind) {
     final v = _box.get(bucketOf(kind))?.trim();
     return (v == null || v.isEmpty) ? null : v;
