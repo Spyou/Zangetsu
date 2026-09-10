@@ -377,13 +377,13 @@ class _MatchLineState extends State<MatchLine> {
           // (source_switcher.dart) rather than an l10n key, so the two
           // always read the same.
           final autoHint = state.auto && selectedId != null
-              ? sl<SourceRepository>().displayName(selectedId)
+              ? sl<SourceRepository>().taggedName(selectedId)
               : null;
           final semanticLabel = state.auto
               ? (autoHint == null ? 'Auto Resolve' : 'Auto Resolve ($autoHint)')
               : selectedId == null
               ? l10n.noSourceHasThisYet
-              : sl<SourceRepository>().displayName(selectedId);
+              : sl<SourceRepository>().taggedName(selectedId);
           // Sized and filled like _DownloadButton directly above, so Play,
           // Download and Source read as one stack. The row body opens the
           // picker; the trailing icons act on the SELECTED source and are
@@ -406,7 +406,7 @@ class _MatchLineState extends State<MatchLine> {
                       ? 'Auto Resolve'
                       : selectedId == null
                       ? l10n.noSourceHasThisYet
-                      : sl<SourceRepository>().displayName(selectedId),
+                      : sl<SourceRepository>().taggedName(selectedId),
                   style: AppText.button.copyWith(
                     // Dimmed only when there is no source to name at all; a
                     // source the user picked reads normally even when it

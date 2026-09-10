@@ -43,6 +43,7 @@ import 'discord_settings_screen.dart';
 import 'torrent_settings_screen.dart';
 import '../../core/provider/provider_downloader.dart';
 import '../../core/provider/provider_registry.dart';
+import '../../core/repository/source_repository.dart';
 import '../../core/state/active_source_cubit.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/locale/app_language_picker.dart';
@@ -147,8 +148,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// it is built first. Same guard `SourceRepository._domainOverride` uses.
   static MetadataProviderPrefs? get _providerPrefs =>
       sl.isRegistered<MetadataProviderPrefs>()
-          ? sl<MetadataProviderPrefs>()
-          : null;
+      ? sl<MetadataProviderPrefs>()
+      : null;
 
   static String _animeProviderLabel() =>
       _providerPrefs?.anime == AnimeProvider.mal ? 'MyAnimeList' : 'AniList';
@@ -197,14 +198,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const SizedBox(height: 10),
             for (final t in TitleLanguage.values)
               ListTile(
-                title: Text(
-                  switch (t) {
-                    TitleLanguage.romaji => 'Romaji',
-                    TitleLanguage.english => 'English',
-                    TitleLanguage.native => l10n.titleLanguageNative,
-                  },
-                  style: AppText.body,
-                ),
+                title: Text(switch (t) {
+                  TitleLanguage.romaji => 'Romaji',
+                  TitleLanguage.english => 'English',
+                  TitleLanguage.native => l10n.titleLanguageNative,
+                }, style: AppText.body),
                 trailing: prefs.titleLanguage == t
                     ? Icon(Icons.check_rounded, color: AppColors.accent)
                     : null,
@@ -246,48 +244,45 @@ class _SettingsScreenState extends State<SettingsScreen> {
       builder: (ctx) {
         final sheetL10n = ctx.l10n;
         return SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              margin: const EdgeInsets.only(top: 12, bottom: 8),
-              width: 36,
-              height: 4,
-              decoration: BoxDecoration(
-                color: AppColors.textTertiary.withValues(alpha: 0.5),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text(sheetL10n.dns, style: AppText.headline),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  sheetL10n.dnsBlurb,
-                  style: AppText.caption,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                margin: const EdgeInsets.only(top: 12, bottom: 8),
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.textTertiary.withValues(alpha: 0.5),
+                  borderRadius: BorderRadius.circular(2),
                 ),
               ),
-            ),
-            const Divider(color: AppColors.hairline, height: 1),
-            for (final e in CsDns.labels.entries)
-              ListTile(
-                title: Text(e.value, style: AppText.body),
-                trailing: e.key == _dnsChoice
-                    ? Icon(Icons.check_rounded, color: AppColors.accent)
-                    : null,
-                onTap: () => Navigator.pop(ctx, e.key),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(sheetL10n.dns, style: AppText.headline),
+                ),
               ),
-            const SizedBox(height: 8),
-          ],
-        ),
-      );
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(sheetL10n.dnsBlurb, style: AppText.caption),
+                ),
+              ),
+              const Divider(color: AppColors.hairline, height: 1),
+              for (final e in CsDns.labels.entries)
+                ListTile(
+                  title: Text(e.value, style: AppText.body),
+                  trailing: e.key == _dnsChoice
+                      ? Icon(Icons.check_rounded, color: AppColors.accent)
+                      : null,
+                  onTap: () => Navigator.pop(ctx, e.key),
+                ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        );
       },
     );
     if (picked == null || picked == _dnsChoice) return;
@@ -308,48 +303,48 @@ class _SettingsScreenState extends State<SettingsScreen> {
       builder: (ctx) {
         final sheetL10n = ctx.l10n;
         return SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              margin: const EdgeInsets.only(top: 12, bottom: 8),
-              width: 36,
-              height: 4,
-              decoration: BoxDecoration(
-                color: AppColors.textTertiary.withValues(alpha: 0.5),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text(sheetL10n.searchLayout, style: AppText.headline),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  sheetL10n.searchLayoutBlurb,
-                  style: AppText.caption,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                margin: const EdgeInsets.only(top: 12, bottom: 8),
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.textTertiary.withValues(alpha: 0.5),
+                  borderRadius: BorderRadius.circular(2),
                 ),
               ),
-            ),
-            const Divider(color: AppColors.hairline, height: 1),
-            for (final l in SearchLayout.values)
-              ListTile(
-                title: Text(l.localizedLabel(ctx), style: AppText.body),
-                trailing: l == prefs.layout
-                    ? Icon(Icons.check_rounded, color: AppColors.accent)
-                    : null,
-                onTap: () => Navigator.pop(ctx, l),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(sheetL10n.searchLayout, style: AppText.headline),
+                ),
               ),
-            const SizedBox(height: 8),
-          ],
-        ),
-      );
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    sheetL10n.searchLayoutBlurb,
+                    style: AppText.caption,
+                  ),
+                ),
+              ),
+              const Divider(color: AppColors.hairline, height: 1),
+              for (final l in SearchLayout.values)
+                ListTile(
+                  title: Text(l.localizedLabel(ctx), style: AppText.body),
+                  trailing: l == prefs.layout
+                      ? Icon(Icons.check_rounded, color: AppColors.accent)
+                      : null,
+                  onTap: () => Navigator.pop(ctx, l),
+                ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        );
       },
     );
     if (picked == null) return;
@@ -368,53 +363,64 @@ class _SettingsScreenState extends State<SettingsScreen> {
       builder: (ctx) {
         final sheetL10n = ctx.l10n;
         final options = <(String, String, String)>[
-          ('classic', sheetL10n.batchDownloadClassic, sheetL10n.batchDownloadClassicBlurb),
-          ('minimal', sheetL10n.batchDownloadMinimal, sheetL10n.batchDownloadMinimalBlurb),
+          (
+            'classic',
+            sheetL10n.batchDownloadClassic,
+            sheetL10n.batchDownloadClassicBlurb,
+          ),
+          (
+            'minimal',
+            sheetL10n.batchDownloadMinimal,
+            sheetL10n.batchDownloadMinimalBlurb,
+          ),
         ];
         return SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              margin: const EdgeInsets.only(top: 12, bottom: 8),
-              width: 36,
-              height: 4,
-              decoration: BoxDecoration(
-                color: AppColors.textTertiary.withValues(alpha: 0.5),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text(sheetL10n.batchDownloadStyle, style: AppText.headline),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  sheetL10n.batchDownloadStyleBlurb,
-                  style: AppText.caption,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                margin: const EdgeInsets.only(top: 12, bottom: 8),
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.textTertiary.withValues(alpha: 0.5),
+                  borderRadius: BorderRadius.circular(2),
                 ),
               ),
-            ),
-            const Divider(color: AppColors.hairline, height: 1),
-            for (final o in options)
-              ListTile(
-                title: Text(o.$2, style: AppText.body),
-                subtitle: Text(o.$3, style: AppText.caption),
-                trailing: o.$1 == prefs.batchDownloadStyle
-                    ? Icon(Icons.check_rounded, color: AppColors.accent)
-                    : null,
-                onTap: () => Navigator.pop(ctx, o.$1),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    sheetL10n.batchDownloadStyle,
+                    style: AppText.headline,
+                  ),
+                ),
               ),
-            const SizedBox(height: 8),
-          ],
-        ),
-      );
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    sheetL10n.batchDownloadStyleBlurb,
+                    style: AppText.caption,
+                  ),
+                ),
+              ),
+              const Divider(color: AppColors.hairline, height: 1),
+              for (final o in options)
+                ListTile(
+                  title: Text(o.$2, style: AppText.body),
+                  subtitle: Text(o.$3, style: AppText.caption),
+                  trailing: o.$1 == prefs.batchDownloadStyle
+                      ? Icon(Icons.check_rounded, color: AppColors.accent)
+                      : null,
+                  onTap: () => Navigator.pop(ctx, o.$1),
+                ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        );
       },
     );
     if (picked == null) return;
@@ -423,14 +429,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   String _activeLabel(String activeId) {
+    // Tagged, because this line names a source with nothing around it: two
+    // ecosystems ship an AniKoto, and "Active source — AniKoto" cannot say
+    // which of them you are actually on.
+    final tag = SourceRepository.ecosystemTag(activeId);
+    String tagged(String name) => tag == null ? name : '$tag · $name';
     if (activeId.startsWith('cs:')) {
-      return _csManager.get(activeId)?.displayName ?? activeId;
+      return tagged(_csManager.get(activeId)?.displayName ?? activeId);
     }
     if (activeId.startsWith('ani:')) {
-      return sl<AniyomiManager>().get(activeId)?.displayName ?? activeId;
+      return tagged(
+        sl<AniyomiManager>().get(activeId)?.displayName ?? activeId,
+      );
     }
     if (activeId.startsWith('mihon:')) {
-      return sl<MihonManager>().get(activeId)?.displayName ?? activeId;
+      return tagged(sl<MihonManager>().get(activeId)?.displayName ?? activeId);
     }
     final entry = _registry.entryFor(activeId);
     if (entry == null) return activeId;
@@ -480,7 +493,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ? CachedNetworkImageProvider(auth.avatarUrl!)
                   : null,
               child: auth.avatarUrl == null
-                  ? Text(initial, style: AppText.headline.copyWith(fontSize: 18))
+                  ? Text(
+                      initial,
+                      style: AppText.headline.copyWith(fontSize: 18),
+                    )
                   : null,
             ),
             title: auth.displayName,
@@ -577,7 +593,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget _value(String text) => Row(
     mainAxisSize: MainAxisSize.min,
     children: [
-      Text(text, style: AppText.caption.copyWith(color: AppColors.textSecondary)),
+      Text(
+        text,
+        style: AppText.caption.copyWith(color: AppColors.textSecondary),
+      ),
       const SizedBox(width: 6),
       const Icon(
         Icons.chevron_right_rounded,
@@ -600,7 +619,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
       padding: const EdgeInsets.only(left: 14, right: 4),
       child: Row(
         children: [
-          const Icon(Icons.search_rounded, color: AppColors.textTertiary, size: 20),
+          const Icon(
+            Icons.search_rounded,
+            color: AppColors.textTertiary,
+            size: 20,
+          ),
           const SizedBox(width: 11),
           Expanded(
             child: TextField(
@@ -687,9 +710,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
         keywords: 'watch party together',
         onTap: () {
           if (sl<AuthCubit>().state.user == null) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text(l10n.signInToWatchTogether)),
-            );
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(SnackBar(content: Text(l10n.signInToWatchTogether)));
             return;
           }
           Navigator.of(context).push(
@@ -707,9 +730,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             'cross-device re-sync fix restore',
         onTap: () async {
           if (sl<AuthCubit>().state.user == null) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text(l10n.signInFirst)),
-            );
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(SnackBar(content: Text(l10n.signInFirst)));
             return;
           }
           // The session may have lapsed (logged-in from cache only). Get a live
@@ -725,9 +748,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           final messenger = ScaffoldMessenger.of(context);
           messenger
             ..clearSnackBars()
-            ..showSnackBar(
-              SnackBar(content: Text(l10n.syncingLibraryToCloud)),
-            );
+            ..showSnackBar(SnackBar(content: Text(l10n.syncingLibraryToCloud)));
           final h = (await sl<WatchHistory>().pushAllLocalToCloud()).pushed;
           final l = (await sl<MyListStore>().pushAllLocalToCloud()).pushed;
           if (!context.mounted) return;
@@ -758,7 +779,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         icon: Icons.dns_rounded,
         title: l10n.providers,
         subtitle: l10n.providersEnabledCount(enabledCount),
-        keywords: 'providers sources extensions plugins cloudstream aniyomi repository',
+        keywords:
+            'providers sources extensions plugins cloudstream aniyomi repository',
         onTap: () async {
           await _push(const SourcesScreen());
           if (mounted) setState(() {});
@@ -801,14 +823,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
         keywords: 'source health test working dead status check',
         onTap: () => _push(const SourceHealthScreen()),
       ),
-      _SettingsEntry(
-        section: SettingsSection.sources,
-        icon: Icons.low_priority_rounded,
-        title: 'Source Priority',
-        subtitle: 'Order Auto Resolve tries sources in',
-        keywords: 'source priority order auto resolve sweep anime movies tv',
-        onTap: () => _push(const SourcePriorityScreen()),
-      ),
       if (Platform.isAndroid)
         _SettingsEntry(
           section: SettingsSection.sources,
@@ -848,7 +862,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         icon: Icons.play_circle_outline,
         title: l10n.playback,
         subtitle: l10n.playbackSubtitle,
-        keywords: 'playback quality autoplay speed player decoder audio subtitle resume gesture',
+        keywords:
+            'playback quality autoplay speed player decoder audio subtitle resume gesture',
         onTap: () => _push(const PlaybackSettingsScreen()),
       ),
       _SettingsEntry(
@@ -950,11 +965,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
             : l10n.metadataSubtitle,
         // Every keyword both rows carried, so searching any one provider still
         // finds this.
-        keywords: 'anime manga novel metadata provider anilist mal myanimelist '
+        keywords:
+            'anime manga novel metadata provider anilist mal myanimelist '
             'movie tv series tmdb simkl fallback catalogue',
-        trailing: _value(
-          '${_animeProviderLabel()} · ${_videoProviderLabel()}',
-        ),
+        trailing: _value('${_animeProviderLabel()} · ${_videoProviderLabel()}'),
         onTap: () => showMetadataSwitchSheet(context),
       ),
       _SettingsEntry(
@@ -974,7 +988,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         icon: Icons.dashboard_customize_outlined,
         title: l10n.navigationBar,
         subtitle: l10n.navigationBarSubtitle,
-        keywords: 'navigation bar tabs dock bottom reorder hide downloads '
+        keywords:
+            'navigation bar tabs dock bottom reorder hide downloads '
             'history customise customize interface',
         onTap: () => _push(const NavTabsScreen()),
       ),
@@ -1017,7 +1032,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
           icon: Icons.vpn_lock_outlined,
           title: l10n.dns,
           subtitle: l10n.dnsSubtitle,
-          keywords: 'dns cloudflare google adguard quad9 isp block bypass private',
+          keywords:
+              'dns cloudflare google adguard quad9 isp block bypass private',
           trailing: _value(
             _dnsChoice == CsDns.off ? l10n.off : CsDns.labelFor(_dnsChoice),
           ),
@@ -1051,7 +1067,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         icon: Icons.info_outline_rounded,
         title: l10n.about,
         subtitle: 'v$kAppVersion',
-        keywords: 'about version app info license developers credits team '
+        keywords:
+            'about version app info license developers credits team '
             'contributors social discord telegram how it works guide '
             'check updates upgrade latest beta prerelease support donate coffee',
         onTap: () => _push(const AboutSettingsScreen()),
@@ -1083,8 +1100,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             if (section != null) {
               // Drill-down: a back header, then just this section's rows
               // (lead row accent-tinted).
-              final items =
-                  entries.where((e) => e.section == section).toList();
+              final items = entries.where((e) => e.section == section).toList();
               children
                 ..add(_sectionHeader(section))
                 ..add(
@@ -1332,7 +1348,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
         children: [
           TextSpan(text: context.l10n.settingsTitle),
-          TextSpan(text: '.', style: TextStyle(color: AppColors.accent)),
+          TextSpan(
+            text: '.',
+            style: TextStyle(color: AppColors.accent),
+          ),
         ],
       ),
     );
@@ -1347,10 +1366,7 @@ class _AccentDot extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     width: 6,
     height: 6,
-    decoration: BoxDecoration(
-      color: AppColors.accent,
-      shape: BoxShape.circle,
-    ),
+    decoration: BoxDecoration(color: AppColors.accent, shape: BoxShape.circle),
   );
 }
 

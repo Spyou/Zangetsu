@@ -415,6 +415,16 @@ class SourceRepository implements CatalogueRepository {
     return null;
   }
 
+  /// The ecosystem a source id belongs to, in the same words the picker uses.
+  /// Null for the app's own JS providers — they are the unmarked default.
+  static String? ecosystemTag(String id) {
+    if (_isCloudStream(id)) return 'CS';
+    if (_isAniyomi(id)) return 'Ani';
+    if (_isMihon(id)) return 'Mihon';
+    if (_isLnReader(id)) return 'LNReader';
+    return null;
+  }
+
   /// Human-friendly name for a source id (falls back to the id itself).
   @override
   String displayName(String sourceId) {
@@ -1001,5 +1011,25 @@ class SourceRepository implements CatalogueRepository {
         .getVideoSources(episodeUrl, fast: true)
         .catchError((_) => <VideoSource>[]);
     _prefetch[key] = (at: DateTime.now(), future: future);
+  }
+}
+
+/// [SourceRepository.displayName] with its ecosystem in front —
+/// "Ani · AniKoto".
+///
+/// For anywhere a source is named ON ITS OWN, with no list around it to give
+/// context: the active-source line, the detail page's source pill. Two
+/// ecosystems can ship the same name — the app's own AniKoto and Aniyomi's —
+/// and a bare name can't say which one you are actually on.
+///
+/// An extension rather than a method on the class, deliberately: the fakes in
+/// the tests `implement SourceRepository` and answer everything else through
+/// noSuchMethod, so a new instance method would throw in each of them for a
+/// name they only ever wanted composed from displayName.
+extension SourceNameTag on SourceRepository {
+  String taggedName(String sourceId) {
+    final name = displayName(sourceId);
+    final tag = SourceRepository.ecosystemTag(sourceId);
+    return tag == null ? name : '$tag · $name';
   }
 }

@@ -183,6 +183,22 @@ void main() {
       expect(aniRow.first.repo, 'Aniyomi');
     });
 
+    test('sourceRowName strips every ecosystem tag', () {
+      // What the bucket sort orders on. Sorting the tagged label instead put
+      // every CloudStream row under "C" and would have put the app's own under
+      // "Z" the moment they were tagged — this is what keeps a bucket ordered
+      // by what a source is CALLED.
+      expect(sourceRowName('Z · AniKoto'), 'AniKoto');
+      expect(sourceRowName('Ani · AniKoto'), 'AniKoto');
+      expect(sourceRowName('CS · MovieBox'), 'MovieBox');
+      expect(sourceRowName('Mihon · MangaDex'), 'MangaDex');
+      expect(sourceRowName('LNReader · Plugin A'), 'Plugin A');
+      // An untagged name is returned as-is, not mangled.
+      expect(sourceRowName('AniKoto'), 'AniKoto');
+      // Only the FIRST tag goes — a source with a dot in its own name keeps it.
+      expect(sourceRowName('Z · Anime· Land'), 'Anime· Land');
+    });
+
     test('Aniyomi source does NOT appear in movies or nsfw buckets', () {
       final buckets = categorizedSources();
       expect(buckets.movies.any((r) => r.id == 'ani:42'), isFalse);
