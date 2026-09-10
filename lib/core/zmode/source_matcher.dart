@@ -355,9 +355,14 @@ class SourceMatcher {
       CfSolveNeeded.urlForAny(_candidates(kind).map((s) => s.id));
 
   /// The user picked [picked] by hand from "Wrong title?". Pinned for its
-  /// source (this title only), and that source ALSO becomes the kind's
-  /// explicit default — a correction this deliberate is trusted for titles
-  /// the user hasn't chosen anything for yet, not just this one.
+  /// source, this title only — like [pinForTitle], the kind default is left
+  /// alone.
+  ///
+  /// It used to set that default too, so correcting one show's match silently
+  /// re-pointed every other anime and movie at that source and, because a kind
+  /// default is honoured as-is, switched Auto Resolve off for all of them.
+  /// Saying "this show is really X on this source" is a statement about one
+  /// title, not about the library.
   Future<SourceMatch> pinManual(ZCanonical c, MediaItem picked) async {
     final m = SourceMatch(
       sourceId: picked.sourceId,
@@ -370,7 +375,6 @@ class SourceMatcher {
     // The user just proved this source has it, whatever an earlier search
     // concluded — drop any remembered miss so it is never skipped again.
     await _store.forgetMiss(c, picked.sourceId);
-    await _prefs.set(c.kind, picked.sourceId);
     return m;
   }
   

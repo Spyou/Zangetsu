@@ -94,7 +94,10 @@ void main() {
     expect(prefs.get(c.kind), 'hianime');
 
     await matcher.pinManual(c, _hit('allanime', 'Fullmetal Alchemist Brotherhood (2003)'));
-    expect(prefs.get(c.kind), 'allanime');
+    // The correction pins THIS title to allanime and leaves the kind default
+    // where it was — one show's fix is not a choice about the whole library.
+    expect(matcher.sourceForTitle(c), 'allanime');
+    expect(prefs.get(c.kind), 'hianime');
 
     // None of that touched the identity progress is keyed on.
     expect(ZmodeIds.sourceId, sourceIdBefore);

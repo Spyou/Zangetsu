@@ -249,13 +249,16 @@ void main() {
   });
 
   group('pinManual', () {
-    test('pins the pick and selects its source', () async {
+    test('pins the pick without touching the kind default', () async {
       final repo = _FakeSources({});
       final m = SourceMatcher(sources: repo, store: store, prefs: prefs, candidates: (_) => two);
       final r = await m.pinManual(fma, _hit('hianime', 'FMA'));
       expect(r.pinned, isTrue);
       expect(store.get(fma, 'hianime')?.pinned, isTrue);
-      expect(prefs.get(fma.kind), 'hianime');
+      // The pin alone is what makes this title play on hianime.
+      expect(m.sourceForTitle(fma), 'hianime');
+      // ...and every OTHER title is untouched, so Auto Resolve still runs.
+      expect(prefs.get(fma.kind), isNull);
     });
   });
 

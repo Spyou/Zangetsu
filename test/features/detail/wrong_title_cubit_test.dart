@@ -94,6 +94,8 @@ void main() {
     final m = await c.choose(c.state.results.single);
     expect(m.pinned, isTrue);
     expect(store.get(fma, 'hianime')?.showId, 'fmab');
-    expect(prefs.get(fma.kind), 'hianime');
+    // For this title only — the kind default is not a place to record one
+    // show's correction.
+    expect(prefs.get(fma.kind), isNull);
   });
 }

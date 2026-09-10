@@ -181,12 +181,14 @@ void main() {
       expect(prefs.get(ZKind.anime), 'allanime');
     });
 
-    test('pinManual still moves the kind default', () async {
-      // The detail picker is an explicit "use this source" — it keeps setting
-      // the default for titles the user has never chosen.
+    test('pinManual leaves the kind default alone too', () async {
+      // Correcting one show's match used to re-point every other anime and
+      // movie at that source — and since a kind default is honoured as-is,
+      // that switched Auto Resolve off for all of them.
       await prefs.set(ZKind.anime, 'allanime');
       await matcher.pinManual(fma, _hit('hianime', 'FMA'));
-      expect(prefs.get(ZKind.anime), 'hianime');
+      expect(prefs.get(ZKind.anime), 'allanime');
+      // This title still follows the correction, via its own pin.
       expect(matcher.sourceForTitle(fma), 'hianime');
     });
   });
