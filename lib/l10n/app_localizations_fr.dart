@@ -5058,6 +5058,37 @@ class AppLocalizationsFr extends AppLocalizations {
   String get chooseSource => 'Choose a source';
 
   @override
+  String get whichOneIsIt => 'Which one is it?';
+
+  @override
+  String searchingSourceShort(String name) {
+    return 'Searching $name';
+  }
+
+  @override
+  String matchResultCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count results',
+      one: '1 result',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String nothingOnSource(String name) {
+    return 'Nothing on $name';
+  }
+
+  @override
+  String get sourceMayNotCarryIt =>
+      'This source may not carry it. Try another.';
+
+  @override
+  String get currentMatchBadge => 'CURRENT';
+
+  @override
   String get scheduleAndLists => 'Schedule & lists';
 
   @override

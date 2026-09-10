@@ -52,6 +52,11 @@ class WrongTitleCubit extends Cubit<WrongTitleState> {
   final SourceMatcher _matcher;
   final ZCanonical _canonical;
 
+  /// The title being corrected — the sheet needs it to ask the store which
+  /// result is already pinned, so that one can be marked rather than offered
+  /// again as if it were a different show.
+  ZCanonical get canonical => _canonical;
+
   /// The source this correction currently applies to.
   String _sourceId;
   String get sourceId => _sourceId;

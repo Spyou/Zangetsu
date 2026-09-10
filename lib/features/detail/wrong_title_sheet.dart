@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../core/app_mode.dart';
@@ -6,11 +7,15 @@ import '../../core/di/injector.dart';
 import '../../core/tv/tv_focusable.dart';
 import '../../core/ui/app_toast.dart';
 import '../../core/mihon/mihon_extension_service.dart';
+import '../../core/models/media_item.dart';
 import '../../core/provider/cf_solve_needed.dart';
 import '../../core/provider/provider_manager.dart';
 import '../../core/repository/source_actions.dart' as source_actions;
 import '../../core/repository/source_repository.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/ui/poster_card.dart';
+import '../../core/ui/reveal_item.dart';
+import '../../core/ui/states.dart';
 import '../../core/ui/source_switcher.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/zmode/match_store.dart';
@@ -625,10 +630,32 @@ class _WrongTitleViewState extends State<_WrongTitleView> {
     super.dispose();
   }
 
+  /// The result this title is pinned to on the source being searched, so the
+  /// poster the user already chose is marked instead of offered again as if
+  /// it were new. Read per build rather than held: picking a result rebuilds
+  /// this sheet, and the store is the only thing that knows.
+  String? _currentUrl(String sourceId) => sl<MatchStore>()
+      .get(context.read<WrongTitleCubit>().canonical, sourceId)
+      ?.showUrl;
+
+  void _openSourcePicker(WrongTitleCubit cubit) => SourceSwitcher(
+    currentId: cubit.sourceId,
+    onChanged: (_) {},
+    onInstallSources: () => Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => const ZangetsuSourcesScreen(openToRepos: true),
+      ),
+    ),
+  ).showPicker(context, onPick: (id) => cubit.setSource(id));
+
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
     final cubit = context.read<WrongTitleCubit>();
+    // Matches the Search screen's grid exactly: 3 up, 12 across, 16 down, and
+    // the same aspect helper — so a result here is the same object a search
+    // result is, at the same size, with the same press animation.
+    final cellWidth = (MediaQuery.sizeOf(context).width - 32 - 24) / 3;
     return SafeArea(
       child: Padding(
         padding: EdgeInsets.only(
@@ -637,114 +664,314 @@ class _WrongTitleViewState extends State<_WrongTitleView> {
         child: SizedBox(
           height: MediaQuery.sizeOf(context).height * 0.75,
           child: BlocBuilder<WrongTitleCubit, WrongTitleState>(
-            builder: (context, state) => Column(
-              children: [
-                const SizedBox(height: 12),
-                Text(l10n.pickTheRightTitle, style: AppText.headline),
-                const SizedBox(height: 2),
-                // Tappable: the moment you discover a source doesn't have a
-                // title is the moment you want a different one, and backing
-                // out of this sheet to change it is the long way round.
-                InkWell(
-                  onTap: () => SourceSwitcher(
-                    currentId: cubit.sourceId,
-                    onChanged: (_) {},
-                    onInstallSources: () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) =>
-                            const ZangetsuSourcesScreen(openToRepos: true),
-                      ),
-                    ),
-                  ).showPicker(context, onPick: (id) => cubit.setSource(id)),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
+            builder: (context, state) {
+              final currentUrl = _currentUrl(cubit.sourceId);
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const SizedBox(height: 12),
+                  // Title left, source right, one line. The source used to sit
+                  // centred underneath as grey text with a caret, which read as
+                  // a label rather than the button it is.
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
                     child: Row(
-                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text(
-                          l10n.sourceLabel(
-                            sl<SourceRepository>().displayName(cubit.sourceId),
-                          ),
-                          style: AppText.caption.copyWith(
-                            color: AppColors.textSecondary,
+                        Expanded(
+                          child: Text(
+                            l10n.whichOneIsIt,
+                            style: AppText.headline,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        Icon(
-                          Icons.keyboard_arrow_down_rounded,
-                          size: 16,
-                          color: AppColors.textSecondary,
+                        const SizedBox(width: 10),
+                        _SourcePill(
+                          sourceId: cubit.sourceId,
+                          onTap: () => _openSourcePicker(cubit),
                         ),
                       ],
                     ),
                   ),
-                ),
-                const SizedBox(height: 10),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
-                  child: TextField(
-                    controller: _ctrl,
-                    onSubmitted: cubit.search,
-                    textInputAction: TextInputAction.search,
-                    style: AppText.body,
-                    decoration: InputDecoration(
-                      hintText: l10n.searchThisSource,
-                      prefixIcon: const Icon(Icons.search_rounded),
-                    ),
-                  ),
-                ),
-                if (state.loading) ...[
-                  const LinearProgressIndicator(minHeight: 2),
+                  const SizedBox(height: 10),
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      // Which query is running, not just that one is: a source
-                      // can take seconds, and after switching source it is the
-                      // only thing saying what is being re-searched.
-                      child: Text(
-                        '${l10n.searching}: ${state.query}',
-                        style: AppText.caption.copyWith(
-                          color: AppColors.textSecondary,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+                    // The metadata Search bar, same shape: a fully rounded
+                    // surface2 pill with the icon INSIDE it, not an
+                    // InputDecoration prefix on a boxed field. This sheet is
+                    // reached from a catalogue title, so it should look like
+                    // catalogue search rather than like a settings input.
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: AppColors.surface2,
+                        borderRadius: BorderRadius.circular(26),
+                      ),
+                      child: Row(
+                        children: [
+                          const SizedBox(width: 14),
+                          // A tap target, like the Search screen's: it runs the
+                          // query the same as Enter does.
+                          GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: () {
+                              FocusScope.of(context).unfocus();
+                              cubit.search(_ctrl.text);
+                            },
+                            child: const Icon(
+                              Icons.search_rounded,
+                              size: 20,
+                              color: AppColors.textTertiary,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: TextField(
+                              controller: _ctrl,
+                              onSubmitted: cubit.search,
+                              textInputAction: TextInputAction.search,
+                              style: AppText.body.copyWith(
+                                color: AppColors.textPrimary,
+                              ),
+                              cursorColor: AppColors.accent,
+                              decoration: InputDecoration(
+                                hintText: l10n.searchThisSource,
+                                hintStyle: AppText.body,
+                                border: InputBorder.none,
+                                isDense: true,
+                                contentPadding: const EdgeInsets.symmetric(
+                                  vertical: 11,
+                                ),
+                              ),
+                            ),
+                          ),
+                          // The field opens pre-filled with the title, so
+                          // searching for something else means clearing it
+                          // first. Keeps the pill's right inset when hidden.
+                          ValueListenableBuilder<TextEditingValue>(
+                            valueListenable: _ctrl,
+                            builder: (context, value, _) => value.text.isEmpty
+                                ? const SizedBox(width: 14)
+                                : IconButton(
+                                    icon: const Icon(
+                                      Icons.close_rounded,
+                                      size: 18,
+                                      color: AppColors.textTertiary,
+                                    ),
+                                    tooltip: context.l10n.clear,
+                                    onPressed: () => _ctrl.clear(),
+                                  ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
-                ],
-                Expanded(
-                  child: ListView.builder(
-                    itemCount: state.results.length,
-                    itemBuilder: (_, i) {
-                      final r = state.results[i];
-                      return ListTile(
-                        leading: r.cover == null
-                            ? null
-                            : Image.network(
-                                r.cover!,
-                                width: 40,
-                                fit: BoxFit.cover,
-                              ),
-                        title: Text(r.title, style: AppText.body),
-                        subtitle: r.englishTitle == null
-                            ? null
-                            : Text(r.englishTitle!, style: AppText.caption),
-                        onTap: () async {
-                          final m = await cubit.choose(r);
-                          if (context.mounted) Navigator.of(context).pop(m);
-                        },
-                      );
-                    },
+                  // Says which query is running, not merely that one is: a
+                  // source can take seconds, and after switching source this is
+                  // the only thing naming what is being re-searched.
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 2, 16, 8),
+                    child: Text(
+                      state.loading
+                          ? '${l10n.searching}: ${state.query}'
+                          : l10n.matchResultCount(state.results.length),
+                      style: AppText.caption.copyWith(
+                        color: AppColors.textTertiary,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
-                ),
-              ],
-            ),
+                  Expanded(
+                    child: _Results(
+                      state: state,
+                      cellWidth: cellWidth,
+                      currentUrl: currentUrl,
+                      onPick: (r) async {
+                        final m = await cubit.choose(r);
+                        if (context.mounted) Navigator.of(context).pop(m);
+                      },
+                      onChangeSource: () => _openSourcePicker(cubit),
+                    ),
+                  ),
+                ],
+              );
+            },
           ),
         ),
       ),
+    );
+  }
+}
+
+/// The source being searched, as a button. Named "Searching X" rather than
+/// "Source: X" because that is what it is doing — the results below came from
+/// it, and changing it re-runs the query.
+class _SourcePill extends StatelessWidget {
+  const _SourcePill({required this.sourceId, required this.onTap});
+  final String sourceId;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(999),
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 170),
+        padding: const EdgeInsets.fromLTRB(10, 5, 6, 5),
+        decoration: BoxDecoration(
+          color: AppColors.surface2,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: AppColors.hairline),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // The source NAME carries the meaning here — "Searching" is the
+            // same on every source — so it gets the readable colour and the
+            // verb stays quiet.
+            Flexible(
+              child: Builder(
+                builder: (context) {
+                  final name = sl<SourceRepository>().displayName(sourceId);
+                  final full = context.l10n.searchingSourceShort(name);
+                  final at = full.lastIndexOf(name);
+                  // Fall back to one flat span if a translation drops or
+                  // reorders the placeholder rather than guessing at a split.
+                  if (at < 0) {
+                    return Text(
+                      full,
+                      style: AppText.caption,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    );
+                  }
+                  return Text.rich(
+                    TextSpan(
+                      style: AppText.caption.copyWith(
+                        color: AppColors.textTertiary,
+                      ),
+                      children: [
+                        TextSpan(text: full.substring(0, at)),
+                        TextSpan(
+                          text: name,
+                          style: AppText.caption.copyWith(
+                            color: AppColors.textPrimary,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        TextSpan(text: full.substring(at + name.length)),
+                      ],
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  );
+                },
+              ),
+            ),
+            Icon(
+              Icons.keyboard_arrow_down_rounded,
+              size: 16,
+              color: AppColors.textSecondary,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Results, loading and empty — one widget so the three states can never be
+/// shown at once, which is how "no results" used to look identical to "still
+/// searching": both drew an empty list.
+class _Results extends StatelessWidget {
+  const _Results({
+    required this.state,
+    required this.cellWidth,
+    required this.currentUrl,
+    required this.onPick,
+    required this.onChangeSource,
+  });
+
+  final WrongTitleState state;
+  final double cellWidth;
+  final String? currentUrl;
+  final ValueChanged<MediaItem> onPick;
+  final VoidCallback onChangeSource;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    final aspect = posterCellAspect(cellWidth);
+    final isTv = sl<AppMode>().isTv;
+    if (state.results.isEmpty) {
+      if (state.loading) {
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          child: SkeletonGrid(crossAxisCount: 3, childAspectRatio: aspect),
+        );
+      }
+      return EmptyState(
+        icon: Icons.search_off_rounded,
+        message: l10n.sourceMayNotCarryIt,
+        actionLabel: l10n.chooseSource,
+        onAction: onChangeSource,
+      );
+    }
+    return GridView.builder(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+      // Both copied from the metadata results grid, and both are why scrolling
+      // felt different here: without the cache extent a row is built as it
+      // enters the viewport and its cover pops in mid-scroll, and without the
+      // dismiss behaviour the keyboard stays up over the results you are
+      // scrolling to — this sheet always opens with a focusable field.
+      scrollCacheExtent: const ScrollCacheExtent.pixels(800),
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3,
+        childAspectRatio: aspect,
+        crossAxisSpacing: 12,
+        mainAxisSpacing: 16,
+      ),
+      itemCount: state.results.length,
+      itemBuilder: (_, i) {
+        final r = state.results[i];
+        // A source can answer with five results all titled the same — the
+        // cover is the only thing that separates them, so it is the whole
+        // cell. Marking the one already pinned stops it being re-picked as
+        // though it were a different show.
+        final isCurrent = currentUrl != null && r.url == currentUrl;
+        Widget cell = PosterCard(
+          title: r.title,
+          imageUrl: r.cover,
+          headers: r.coverHeaders,
+          cellWidth: cellWidth,
+          qualityBadge: r.quality,
+          dubBadge: r.dubBadge,
+          tags: isCurrent ? [l10n.currentMatchBadge] : const [],
+          // On TV the TvFocusable below owns OK, so the card must not also
+          // claim the tap — see the TV rails for the same pairing.
+          onTap: isTv ? null : () => onPick(r),
+        );
+        if (isTv) {
+          // PosterCard is a bare GestureDetector, which the D-pad cannot
+          // reach. The ListTile this replaced was focusable for free, so
+          // without this the sheet is unusable on TV — and TV's Detail
+          // screen does show "Wrong title?".
+          cell = TvFocusable(
+            autofocus: i == 0,
+            variant: TvFocusVariant.float,
+            scale: 1.06,
+            onTap: () => onPick(r),
+            semanticLabel: r.title,
+            child: cell,
+          );
+        }
+        // The same staggered entrance My List uses, so a sheetful of posters
+        // cascades in instead of appearing as one block. Self-gating: returns
+        // the child untouched on TV or with list animations off.
+        return RevealItem(index: i, child: cell);
+      },
     );
   }
 }

@@ -8648,6 +8648,42 @@ abstract class AppLocalizations {
   /// **'Choose a source'**
   String get chooseSource;
 
+  /// No description provided for @whichOneIsIt.
+  ///
+  /// In en, this message translates to:
+  /// **'Which one is it?'**
+  String get whichOneIsIt;
+
+  /// No description provided for @searchingSourceShort.
+  ///
+  /// In en, this message translates to:
+  /// **'Searching {name}'**
+  String searchingSourceShort(String name);
+
+  /// No description provided for @matchResultCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 result} other{{count} results}}'**
+  String matchResultCount(int count);
+
+  /// No description provided for @nothingOnSource.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing on {name}'**
+  String nothingOnSource(String name);
+
+  /// No description provided for @sourceMayNotCarryIt.
+  ///
+  /// In en, this message translates to:
+  /// **'This source may not carry it. Try another.'**
+  String get sourceMayNotCarryIt;
+
+  /// No description provided for @currentMatchBadge.
+  ///
+  /// In en, this message translates to:
+  /// **'CURRENT'**
+  String get currentMatchBadge;
+
   /// No description provided for @scheduleAndLists.
   ///
   /// In en, this message translates to:
