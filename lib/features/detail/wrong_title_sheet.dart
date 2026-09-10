@@ -380,9 +380,7 @@ class _MatchLineState extends State<MatchLine> {
               ? sl<SourceRepository>().displayName(selectedId)
               : null;
           final semanticLabel = state.auto
-              ? (autoHint == null
-                    ? 'Auto Resolve'
-                    : 'Auto Resolve ($autoHint)')
+              ? (autoHint == null ? 'Auto Resolve' : 'Auto Resolve ($autoHint)')
               : selectedId == null
               ? l10n.noSourceHasThisYet
               : sl<SourceRepository>().displayName(selectedId);
@@ -397,9 +395,7 @@ class _MatchLineState extends State<MatchLine> {
               // Glyph so the pill reads as "this picks your source" on
               // sight — sparkle for Auto Resolve, dns for a pinned pick.
               Icon(
-                state.auto
-                    ? Icons.auto_awesome_rounded
-                    : Icons.dns_rounded,
+                state.auto ? Icons.auto_awesome_rounded : Icons.dns_rounded,
                 size: 16,
                 color: AppColors.textSecondary,
               ),
@@ -446,109 +442,119 @@ class _MatchLineState extends State<MatchLine> {
               ),
             ],
           );
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              if (_isTv)
-                Row(
-                  children: [
-                    Expanded(
-                      child: _tappable(
-                        key: const ValueKey('tv-match-source'),
-                        onTap: () => _pickSource(state),
-                        semanticLabel: semanticLabel,
-                        child: Material(
-                          color: AppColors.surface2,
-                          borderRadius: BorderRadius.circular(8),
-                          child: SizedBox(
-                            height: 52,
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 14,
+          // Its own side padding, because detail_screen.dart pads each button
+          // individually rather than wrapping the Column — this line sits as a
+          // plain last child and has to bring its own, or it runs to the edge
+          // while Play and Download above it stay inset. TV lays the row out
+          // itself and wants the full width.
+          return Padding(
+            padding: _isTv
+                ? EdgeInsets.zero
+                : const EdgeInsets.fromLTRB(16, 10, 16, 0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                if (_isTv)
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _tappable(
+                          key: const ValueKey('tv-match-source'),
+                          onTap: () => _pickSource(state),
+                          semanticLabel: semanticLabel,
+                          child: Material(
+                            color: AppColors.surface2,
+                            borderRadius: BorderRadius.circular(8),
+                            child: SizedBox(
+                              height: 52,
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                ),
+                                child: labelRow,
                               ),
-                              child: labelRow,
                             ),
                           ),
                         ),
                       ),
-                    ),
-                    if (selectedId != null) _rowActions(context, selectedId),
-                  ],
-                )
-              else
-                Material(
-                  color: AppColors.surface2,
-                  borderRadius: BorderRadius.circular(8),
-                  clipBehavior: Clip.antiAlias,
-                  child: SizedBox(
-                    height: 52,
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: InkWell(
-                            onTap: () => _pickSource(state),
-                            child: Padding(
-                              padding: const EdgeInsets.only(left: 14),
-                              child: labelRow,
+                      if (selectedId != null) _rowActions(context, selectedId),
+                    ],
+                  )
+                else
+                  Material(
+                    color: AppColors.surface2,
+                    borderRadius: BorderRadius.circular(8),
+                    clipBehavior: Clip.antiAlias,
+                    child: SizedBox(
+                      height: 52,
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: InkWell(
+                              onTap: () => _pickSource(state),
+                              child: Padding(
+                                padding: const EdgeInsets.only(left: 14),
+                                child: labelRow,
+                              ),
                             ),
                           ),
-                        ),
-                        if (selectedId != null)
-                          _rowActions(context, selectedId),
-                        const SizedBox(width: 4),
-                      ],
+                          if (selectedId != null)
+                            _rowActions(context, selectedId),
+                          const SizedBox(width: 4),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-              if (selectedId != null)
-                Row(
-                  children: [
-                    // What the source actually matched, beside the button
-                    // that corrects it. Naming only the SOURCE hid the case
-                    // this whole control exists for: a confident match on
-                    // the wrong show looks identical to a right one — same
-                    // source name, a full episode list — until you play it
-                    // and get someone else's episodes. Showing the title
-                    // makes a bad match visible without opening anything.
-                    //
-                    // Silent while still resolving: the screen paints before
-                    // the match lands, and an unguarded line would claim
-                    // "nothing here" for every title during that window.
-                    Expanded(
-                      child: state.loading
-                          ? const SizedBox.shrink()
-                          : Text(
-                              state.match?.showTitle.isNotEmpty == true
-                                  ? state.match!.showTitle
-                                  : l10n.noEpisodesAvailableFromThisSource,
-                              style: AppText.caption.copyWith(
-                                color: AppColors.textSecondary,
+                if (selectedId != null)
+                  Row(
+                    children: [
+                      // What the source actually matched, beside the button
+                      // that corrects it. Naming only the SOURCE hid the case
+                      // this whole control exists for: a confident match on
+                      // the wrong show looks identical to a right one — same
+                      // source name, a full episode list — until you play it
+                      // and get someone else's episodes. Showing the title
+                      // makes a bad match visible without opening anything.
+                      //
+                      // Silent while still resolving: the screen paints before
+                      // the match lands, and an unguarded line would claim
+                      // "nothing here" for every title during that window.
+                      Expanded(
+                        child: state.loading
+                            ? const SizedBox.shrink()
+                            : Text(
+                                state.match?.showTitle.isNotEmpty == true
+                                    ? state.match!.showTitle
+                                    : l10n.noEpisodesAvailableFromThisSource,
+                                style: AppText.caption.copyWith(
+                                  color: AppColors.textSecondary,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                               ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                      ),
+                      _tappable(
+                        key: const ValueKey('tv-match-wrong-title'),
+                        onTap: () => _fix(selectedId),
+                        semanticLabel: l10n.wrongTitle,
+                        borderRadius: 6,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 4,
+                            vertical: 8,
+                          ),
+                          child: Text(
+                            l10n.wrongTitle,
+                            style: AppText.caption.copyWith(
+                              color: AppColors.accent,
                             ),
-                    ),
-                    _tappable(
-                      key: const ValueKey('tv-match-wrong-title'),
-                      onTap: () => _fix(selectedId),
-                      semanticLabel: l10n.wrongTitle,
-                      borderRadius: 6,
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 4,
-                          vertical: 8,
-                        ),
-                        child: Text(
-                          l10n.wrongTitle,
-                          style: AppText.caption.copyWith(
-                            color: AppColors.accent,
                           ),
                         ),
                       ),
-                    ),
-                  ],
-                ),
-            ],
+                    ],
+                  ),
+              ],
+            ),
           );
         },
       ),
