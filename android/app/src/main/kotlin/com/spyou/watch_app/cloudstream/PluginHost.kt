@@ -639,7 +639,7 @@ class PluginHost(private val context: Context) {
         return removed
     }
 
-    /** The source's home rows (its `mainPage` categories), capped for latency. */
+    /** Every one of the source's home rows (its `mainPage` categories). */
     fun getHome(apiName: String): List<Map<String, Any?>> {
         val api = apiByName(apiName) ?: return emptyList()
         if (!api.hasMainPage) return emptyList()
@@ -649,7 +649,13 @@ class PluginHost(private val context: Context) {
             // call) instead of sequentially, with a per-row deadline so one
             // stuck/dead category can't hold up the whole home — awaitAll waits
             // for the slowest row.
-            val responses = api.mainPage.take(6).map { mp ->
+            //
+            // ALL of them, not the first six. The old take(6) was there for
+            // latency, but the fetch is already concurrent and already deadline
+            // bounded, so six rows and twelve cost the same wall clock — the cap
+            // only ever hid categories. A source declaring seven showed six and
+            // said nothing about the seventh.
+            val responses = api.mainPage.map { mp ->
                 async(Dispatchers.IO) {
                     withTimeoutOrNull(HOME_ROW_TIMEOUT_MS) {
                         runCatching {
@@ -666,8 +672,8 @@ class PluginHost(private val context: Context) {
             }.awaitAll()
             // Zip each response back to the mainPage entry it came from so every
             // row can carry the category identifiers (name + data) needed to
-            // re-fetch further pages. take(6) keeps them index-aligned.
-            val cats = api.mainPage.take(6)
+            // re-fetch further pages. Same list, so the indices line up.
+            val cats = api.mainPage
             for ((idx, resp) in responses.withIndex()) {
                 if (resp == null) continue
                 val mp = cats.getOrNull(idx)
