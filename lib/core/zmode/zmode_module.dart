@@ -49,8 +49,9 @@ Future<void> registerZangetsuMode(GetIt sl) async {
     // still offers every installed source — turning one off means "stop
     // trying it automatically", not "hide it from me".
     return activeSources(
-      applySourceOrder(
+      sweepOrder(
         candidatesForKind(sl<SourceRepository>(), kind),
+        kind,
         sourceOrderPrefs.get(kind),
       ),
       excluded: sourceOrderPrefs.excluded(kind),
@@ -121,15 +122,39 @@ List<({String id, String name})> candidatesForKind(
     ZKind.novel => [for (final s in all) if (s.id.startsWith('lnr:')) s],
     // Anime and movie/TV share one streaming pool. Which of the two a title
     // is has already been decided by the metadata catalogue; the source only
-    // has to be able to play it, and plenty carry both.
-    _ => _byKindAffinity([
+    // has to be able to play it, and plenty carry both. Kind affinity is NOT
+    // applied here — this list also feeds the per-title picker, where the user
+    // is choosing by hand. The sweep gets it in [sweepOrder].
+    _ => [
       for (final s in all)
         if (!s.id.startsWith('mihon:') && !s.id.startsWith('lnr:')) s,
-    ], kind),
+    ],
   };
 }
 
+/// The order a sweep actually walks: the user's saved priority, then kind
+/// affinity applied WITHIN it.
+///
+/// The two used to run the other way round — affinity inside
+/// [candidatesForKind], then [applySourceOrder] rebuilding the list from the
+/// saved order — so the moment anyone set a priority the affinity pass was
+/// thrown away wholesale, and an anime source ranked first was asked about
+/// every live-action film before anything that could carry one.
+///
+/// Order within a group is still entirely the user's; only the two groups
+/// swap. One saved list, read differently depending on what is being opened.
+List<({String id, String name})> sweepOrder(
+  List<({String id, String name})> pool,
+  ZKind kind,
+  List<String> savedOrder,
+) => byKindAffinity(applySourceOrder(pool, savedOrder), kind);
+
 /// The same pool, reordered so sources that DECLARE this kind are swept first.
+///
+/// A STABLE partition: `where` keeps the incoming order inside each half, so
+/// running this over the user's saved priority list moves their movie sources
+/// above their anime ones for a film without disturbing the order they chose
+/// among either group.
 ///
 /// Nothing is dropped — a source with both anime and films, or with no
 /// declared type at all, has to stay reachable. But order matters a lot now
@@ -139,15 +164,22 @@ List<({String id, String name})> candidatesForKind(
 ///
 /// Best-effort: [categorizedSources] reads several registries that early boot
 /// and most tests do not have, so any failure just leaves the order untouched.
-List<({String id, String name})> _byKindAffinity(
+List<({String id, String name})> byKindAffinity(
   List<({String id, String name})> pool,
   ZKind kind,
 ) {
   final Set<String> declared;
   try {
     final b = categorizedSources();
+    // A TV series belongs with movies, not anime. This asked "is it a movie?"
+    // and sent everything else to the anime bucket — so opening a live-action
+    // series put anime sources at the front of both sweeps and paid a real
+    // search on each before reaching one that could have it. Everywhere else
+    // in the app already pairs them (`_isTmdb`, the Movies & TV tab); this was
+    // the one place that didn't.
+    final wantsVideoPool = kind == ZKind.movie || kind == ZKind.tv;
     declared = {
-      for (final r in kind == ZKind.movie ? b.movies : b.anime) r.id,
+      for (final r in wantsVideoPool ? b.movies : b.anime) r.id,
     };
   } catch (_) {
     return pool;
