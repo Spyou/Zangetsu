@@ -146,9 +146,14 @@ class PlaybackResolver {
   Future<ResolvedPlayback> resolveForPlayback(
     String zmEpisodeUrl, {
     bool fast = false,
+    bool Function(List<VideoSource> streams)? accept,
   }) {
-    final running = _inFlight[zmEpisodeUrl];
-    if (running != null) return running;
+    // A filtered sweep asks a narrower question; it must neither be answered
+    // by, nor become, the shared in-flight future.
+    if (accept == null) {
+      final running = _inFlight[zmEpisodeUrl];
+      if (running != null) return running;
+    }
     final miss = _noSource[zmEpisodeUrl];
     if (miss != null) {
       if (DateTime.now().difference(miss.at) < noSourceCooldown) {
@@ -165,6 +170,7 @@ class PlaybackResolver {
       }
       _noSource.remove(zmEpisodeUrl);
     }
+    if (accept != null) return _resolve(zmEpisodeUrl, fast: fast, accept: accept);
     final f = _resolve(zmEpisodeUrl, fast: fast).whenComplete(() {
       _inFlight.remove(zmEpisodeUrl);
     });
@@ -172,7 +178,11 @@ class PlaybackResolver {
     return f;
   }
 
-  Future<ResolvedPlayback> _resolve(String zmEpisodeUrl, {required bool fast}) async {
+  Future<ResolvedPlayback> _resolve(
+    String zmEpisodeUrl, {
+    required bool fast,
+    bool Function(List<VideoSource> streams)? accept,
+  }) async {
     final p = ZmodeIds.parseEpisode(zmEpisodeUrl);
     if (p == null) {
       debugPrint('[playback] _resolve → ArgumentError: not a zm episode url');
@@ -243,6 +253,32 @@ class PlaybackResolver {
         );
       }
       if (attempt == null) continue;
+
+      // The caller can require more than "has streams". Downloading does: a
+      // source can play perfectly and still hand back only DASH manifests,
+      // which never become a file. Asking here keeps it to ONE sweep that
+      // walks every candidate — the alternative was re-running the whole
+      // sweep per rejected source, which is quadratic and froze the app.
+      if (accept != null && !accept(attempt.streams)) {
+        debugPrint(
+          '[playback] _resolve · ${attempt.match.sourceId} answered but the '
+          'caller rejected its streams — next candidate',
+        );
+        continue;
+      }
+
+      // A filtered sweep answers a narrower question, so it must not become
+      // the remembered winner: playback would inherit a source picked for
+      // being downloadable rather than for playing well.
+      if (accept != null) {
+        return ResolvedPlayback(
+          match: attempt.match,
+          episodeUrl: attempt.episodeUrl,
+          streams: attempt.streams,
+          show: p.show,
+          episode: p.episode,
+        );
+      }
 
       // Written here rather than inside _tryCandidate so an abandoned
       // (timed-out) candidate that finishes later can never overwrite the

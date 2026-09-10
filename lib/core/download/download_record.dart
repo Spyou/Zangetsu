@@ -3,6 +3,10 @@ enum DownloadStatus {
   queued, // accepted, waiting to resolve a source
   resolving, // calling the provider to find a direct-file stream
   downloading,
+  // Bytes are all fetched; the file is still being joined, remuxed and moved.
+  // Its own state because that work rewrites the whole file — a minute or more
+  // on a big episode — and showing 100% through it reads as a stuck download.
+  finalizing,
   paused,
   done,
   failed,

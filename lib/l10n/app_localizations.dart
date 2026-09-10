@@ -7748,6 +7748,12 @@ abstract class AppLocalizations {
   /// **'Preparing…'**
   String get downloadPreparing;
 
+  /// No description provided for @downloadFinalizing.
+  ///
+  /// In en, this message translates to:
+  /// **'Processing…'**
+  String get downloadFinalizing;
+
   /// No description provided for @downloadPausedProgress.
   ///
   /// In en, this message translates to:

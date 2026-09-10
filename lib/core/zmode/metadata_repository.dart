@@ -767,6 +767,21 @@ class MetadataRepository implements CatalogueRepository {
     bool fast = false,
   }) async => _playback.sources(episodeUrl, fast: fast);
 
+  /// Streams for [episodeUrl] from the first source whose streams satisfy
+  /// [accept] — one sweep, every candidate, in the usual order.
+  ///
+  /// Deliberately not on [CatalogueRepository]: only downloading needs it, and
+  /// widening that interface would mean touching every implementation and
+  /// every test fake for one caller. A source can play perfectly and still be
+  /// undownloadable (all-DASH), which is a thing only the caller can judge.
+  Future<({List<VideoSource> streams, String sourceId})> sourcesWhere(
+    String episodeUrl,
+    bool Function(List<VideoSource> streams) accept,
+  ) async {
+    final r = await _playback.resolveForPlayback(episodeUrl, accept: accept);
+    return (streams: r.streams, sourceId: r.match.sourceId);
+  }
+
   @override
   Future<({List<VideoSource> sources, bool done})> polledSources(
     String episodeUrl, {

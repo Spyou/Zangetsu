@@ -919,7 +919,7 @@ Future<void> initDependencies() async {
   await DownloadManager.init();
   await DownloadService.initialize(); // configure the foreground-service host
   sl.registerSingleton<DownloadManager>(
-    DownloadManager(sl<SourceRepository>(), sl<DownloadPrefs>())..setup(),
+    DownloadManager(sl<CatalogueRepository>(), sl<DownloadPrefs>())..setup(),
   );
 
   // Offline manga/novel chapters. Foreground-only, so no service to start —

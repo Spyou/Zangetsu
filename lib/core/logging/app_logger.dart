@@ -38,6 +38,11 @@ class AppLogger {
   void log(String message, {String level = 'I'}) {
     for (final raw in redact(message).split('\n')) {
       _buffer.add('${_stamp()} $level $raw');
+      // Errors also go to the console. Until now they went ONLY here, so a
+      // failure like "download resolve failed" was invisible to logcat and
+      // could only be read by exporting the log from inside the app — which
+      // is no help when the app is the thing misbehaving. Already redacted.
+      if (level == 'E') debugPrint('[app] $raw');
     }
     if (_buffer.length > _maxLines) {
       _buffer.removeRange(0, _buffer.length - _maxLines);

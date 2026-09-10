@@ -780,6 +780,7 @@ class DownloadTile extends StatelessWidget {
             ) + _torrentSuffix(l10n)
           : l10n.downloadProgressPercent(pct) + _torrentSuffix(l10n),
       DownloadStatus.paused => l10n.downloadPausedProgress(pct),
+      DownloadStatus.finalizing => l10n.downloadFinalizing,
       DownloadStatus.queued => l10n.downloadQueued,
       DownloadStatus.resolving => l10n.downloadPreparing,
       DownloadStatus.unsupported =>
@@ -866,6 +867,16 @@ class _StatusGlyph extends StatelessWidget {
           strokeWidth: 2.4,
           color: AppColors.accent,
           backgroundColor: AppColors.surface2,
+        ),
+      ),
+      // Indeterminate on purpose: joining and remuxing report nothing, so a
+      // bar frozen at 100% is exactly the lie this state exists to stop.
+      DownloadStatus.finalizing => SizedBox(
+        width: 26,
+        height: 26,
+        child: CircularProgressIndicator(
+          strokeWidth: 2.4,
+          color: AppColors.accent,
         ),
       ),
       DownloadStatus.paused => const Icon(

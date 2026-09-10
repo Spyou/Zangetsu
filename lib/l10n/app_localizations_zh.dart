@@ -4275,6 +4275,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get downloadPreparing => '正在准备…';
 
   @override
+  String get downloadFinalizing => 'Processing…';
+
+  @override
   String downloadPausedProgress(int percent) {
     return '已暂停 · $percent%';
   }

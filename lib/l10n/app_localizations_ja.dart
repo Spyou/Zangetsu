@@ -4314,6 +4314,9 @@ class AppLocalizationsJa extends AppLocalizations {
   String get downloadPreparing => '準備中…';
 
   @override
+  String get downloadFinalizing => 'Processing…';
+
+  @override
   String downloadPausedProgress(int percent) {
     return '一時停止中 · $percent%';
   }

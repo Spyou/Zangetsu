@@ -4432,6 +4432,9 @@ class AppLocalizationsEs extends AppLocalizations {
   String get downloadPreparing => 'Preparante…';
 
   @override
+  String get downloadFinalizing => 'Processing…';
+
+  @override
   String downloadPausedProgress(int percent) {
     return 'En pausa · $percent%';
   }

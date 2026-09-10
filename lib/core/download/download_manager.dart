@@ -7,6 +7,7 @@ import 'package:background_downloader/background_downloader.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:get_it/get_it.dart';
 import 'package:hive/hive.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -15,9 +16,11 @@ import '../logging/app_logger.dart';
 import '../models/episode.dart';
 import '../models/video_source.dart';
 import '../platform/apple_tv.dart';
-import '../repository/source_repository.dart';
+import '../repository/catalogue_repository.dart';
 import '../torrent/torrent_download_service.dart';
 import '../torrent/torrent_prefs.dart';
+import '../zmode/metadata_repository.dart';
+import '../zmode/zmode_ids.dart';
 import 'download_prefs.dart';
 import 'download_record.dart';
 import 'download_service.dart';
@@ -34,7 +37,14 @@ class DownloadManager extends ChangeNotifier {
       : _downloadPrefs = downloadPrefs ?? DownloadPrefs(),
         _torrentSvc = torrentSvc ?? TorrentDownloadService();
 
-  final SourceRepository _repo;
+  /// The ROUTER, not the source repository.
+  ///
+  /// It dispatches on the url, so a `zm://` episode reaches the metadata
+  /// catalogue, which resolves the matched source itself. Asking
+  /// [SourceRepository] directly threw `Provider not loaded: zm` for every
+  /// metadata title — caught below and shown as "Resolve failed", so no Z Mode
+  /// title could be downloaded at all. Same mistake [SubscriptionChecker] had.
+  final CatalogueRepository _repo;
   final DownloadPrefs _downloadPrefs;
   final TorrentDownloadService _torrentSvc;
 
@@ -166,6 +176,11 @@ class DownloadManager extends ChangeNotifier {
         // The isolate handed back the local .ts temp; remux it to a real .mp4
         // (Android) and move it into shared storage / the user's SAF folder here.
         if (path != null && d?['needsFinalize'] == true) {
+          // Say so. Joining, remuxing and moving rewrite the whole file, and
+          // the progress bar only ever measured the fetch — so it has been
+          // sitting at 100% through all of it, looking hung.
+          _put(rec.copyWith(status: DownloadStatus.finalizing));
+          notifyListeners();
           final finalized = await _finalizeHls(
             path,
             customUri: d?['customUri'] as String?,
@@ -248,6 +263,8 @@ class DownloadManager extends ChangeNotifier {
               var path = m['filePath'] as String?;
               // App was killed before the live finalize ran — remux + move now.
               if (path != null && m['needsFinalize'] == true) {
+                _put(rec.copyWith(status: DownloadStatus.finalizing));
+                notifyListeners();
                 final finalized = await _finalizeHls(
                   path,
                   customUri: m['customUri'] as String?,
@@ -427,9 +444,12 @@ class DownloadManager extends ChangeNotifier {
       if (_isCanceled(rec.id)) return; // canceled while resolving
       final ranked = _ranked(sources, rec.quality);
       if (ranked.isEmpty) {
+        // Everything this source offers is a manifest. Another source may
+        // serve real files — that is worth trying before saying no.
+        if (await _tryAnotherSource(rec)) return;
         AppLogger.instance.log(
           '[download] no downloadable source — ${rec.showTitle} · '
-          '${rec.episodeTitle} (${sources.length} source(s), all HLS/unusable)',
+          '${rec.episodeTitle} (${sources.length} source(s), all DASH/unusable)',
           level: 'E',
         );
         _put(
@@ -457,13 +477,62 @@ class DownloadManager extends ChangeNotifier {
   /// enqueued, false when mirrors are exhausted.
   Future<bool> _tryNext(DownloadRecord rec) async {
     final cands = _candidates[rec.id];
-    if (cands == null || cands.length <= 1) return false;
-    cands.removeAt(0); // drop the one that just failed
-    if (cands.isEmpty) return false;
-    _put(rec.copyWith(status: DownloadStatus.resolving, progress: 0));
-    notifyListeners();
-    await _enqueueTaskFor(rec, cands.first);
-    return true;
+    if (cands != null && cands.length > 1) {
+      cands.removeAt(0); // drop the one that just failed
+      if (cands.isNotEmpty) {
+        _put(rec.copyWith(status: DownloadStatus.resolving, progress: 0));
+        notifyListeners();
+        await _enqueueTaskFor(rec, cands.first);
+        return true;
+      }
+    }
+    // Mirrors exhausted. They all came from ONE source, so a source that is
+    // undownloadable is undownloadable on every server it offers — AnimePahe
+    // serves DASH from all of them. Ask the catalogue for another source
+    // before giving up.
+    return _tryAnotherSource(rec);
+  }
+
+  /// Records currently mid-sweep, so a record can't start a second one for
+  /// itself while the first is still running.
+  final Set<String> _sweeping = {};
+
+  /// Find a source that can actually produce a file, in ONE sweep.
+  ///
+  /// Auto Resolve already walks every candidate in priority order; this hands
+  /// it the extra condition downloading needs, so it keeps going past a source
+  /// whose streams are all manifests instead of settling on it. One sweep, not
+  /// one sweep per rejected source — that was quadratic and froze the app.
+  Future<bool> _tryAnotherSource(DownloadRecord rec) async {
+    if (!ZmodeIds.isZ(rec.episodeUrl)) return false; // only the catalogue sweeps
+    if (!GetIt.I.isRegistered<MetadataRepository>()) return false;
+    if (_sweeping.contains(rec.id)) return false; // already looking for this one
+    _sweeping.add(rec.id);
+    try {
+      final next = await GetIt.I<MetadataRepository>().sourcesWhere(
+        rec.episodeUrl,
+        (streams) => streams.any((s) => !isDash(s)),
+      );
+      final ranked = _ranked(next.streams, rec.quality);
+      if (ranked.isEmpty) return false;
+      AppLogger.instance.log(
+        '[download] ${rec.showTitle} · ${rec.episodeTitle}: swept past the '
+        'undownloadable sources to ${next.sourceId}',
+      );
+      _candidates[rec.id] = ranked;
+      _put(rec.copyWith(status: DownloadStatus.resolving, progress: 0));
+      notifyListeners();
+      await _enqueueTaskFor(rec, ranked.first);
+      return true;
+    } catch (e) {
+      AppLogger.instance.log(
+        'download: no downloadable source for ${rec.showTitle}: $e',
+        level: 'E',
+      );
+      return false;
+    } finally {
+      _sweeping.remove(rec.id);
+    }
   }
 
   /// Start [rec] from a concrete [source] — HLS via the in-app segment
@@ -598,15 +667,26 @@ class DownloadManager extends ChangeNotifier {
   Future<bool> _remuxToMp4(String input, String output) async {
     if (!Platform.isAndroid) return false;
     try {
-      final ok = await _downloadChannel.invokeMethod<bool>(
-        'remuxTsToMp4',
-        {'input': input, 'output': output},
-      );
+      final ok = await _downloadChannel
+          .invokeMethod<bool>(
+            'remuxTsToMp4',
+            {'input': input, 'output': output},
+          )
+          // MediaMuxer can sit forever on a stream it cannot parse, and a
+          // native call that never returns is not an error — nothing throws,
+          // the await simply never completes and the download is stuck at
+          // 100% until the app is force-stopped. Falling back to the .ts
+          // costs seeking; hanging costs the download.
+          .timeout(_remuxTimeout, onTimeout: () => false);
       return ok ?? false;
     } catch (_) {
       return false;
     }
   }
+
+  /// Long enough for a slow phone to stream-copy a 1080p episode, short
+  /// enough that a wedged muxer doesn't hold the download all day.
+  static const Duration _remuxTimeout = Duration(minutes: 5);
 
   /// Storage volumes downloads can target WITHOUT the SAF picker (internal +
   /// any USB/SSD/SD drive), for the TV location picker. Each is a plain
@@ -1309,6 +1389,17 @@ class DownloadManager extends ChangeNotifier {
     return (Uri.tryParse(s.url)?.path ?? s.url).toLowerCase().endsWith('.m3u8');
   }
 
+  /// A DASH manifest — a few KB of XML listing where the video lives, not the
+  /// video. There is no DASH segment downloader here (HLS has one), so these
+  /// can never produce a file.
+  ///
+  /// Worth spotting BEFORE downloading: without this the manifest is fetched
+  /// as if it were the episode, and only the "under 512KB isn't a video" guard
+  /// catches it — after a request, a write and a delete, per server, on a
+  /// source where every server is DASH.
+  static bool isDash(VideoSource s) =>
+      (Uri.tryParse(s.url)?.path ?? s.url).toLowerCase().endsWith('.mpd');
+
   /// Torrent (magnet/.torrent) sources route through the native torrent
   /// download engine — a distinct branch that never touches the HTTP/HLS paths.
   @visibleForTesting
@@ -1353,7 +1444,9 @@ class DownloadManager extends ChangeNotifier {
   /// height (so 360p gets the smallest file) — ties go to the higher quality.
   /// The full ordered list doubles as the try-next fallback.
   static List<VideoSource> _ranked(List<VideoSource> sources, String quality) {
-    final list = List<VideoSource>.from(sources);
+    // Drop what cannot become a file at all, rather than finding out by
+    // downloading it.
+    final list = List<VideoSource>.from(sources.where((s) => !isDash(s)));
     if (list.isEmpty) return const [];
     if (quality == 'best') {
       list.sort((a, b) => _height(b).compareTo(_height(a)));
