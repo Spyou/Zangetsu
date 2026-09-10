@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
+import 'package:watch_app/core/ui/dock_visibility.dart';
 import 'package:watch_app/core/appwrite/appwrite_service.dart';
 import 'package:watch_app/core/anilist/anilist_service.dart';
 import 'package:watch_app/core/announce/announcement.dart';
@@ -452,6 +453,47 @@ void main() {
 
     expect(dockLabel('Schedule'), findsNothing);
     expect(dockLabel('Sources'), findsOneWidget);
+  });
+
+  // The dock collapses to icons on scroll (DockScrollCollapse). Two things a
+  // purely visual change quietly broke, and would break again:
+  testWidgets('every dock tab keeps a tappable box and a name', (tester) async {
+    sl.registerSingleton<AppMode>(const AppMode(isTv: false));
+    await tester.pumpWidget(wrap(const RootShell()));
+    await tester.pumpAndSettle();
+
+    // Scope to the dock — it is the only blurred pill in the tree.
+    final dock = find.byType(BackdropFilter);
+    expect(dock, findsOneWidget);
+
+    // A box worth aiming at — checked COLLAPSED, which is the state that
+    // regressed. Open, the item is 44 on its own (icon + label) and proves
+    // nothing; collapsed the label folds away and, without a minimum, the
+    // target fell to ~27 sitting right over the gesture bar.
+    final taps = find.descendant(of: dock, matching: find.byType(InkWell));
+    expect(taps, findsWidgets);
+    addTearDown(DockScrollCollapse.reset);
+    dockCollapsedByScroll.value = true;
+    await tester.pumpAndSettle();
+
+    for (var i = 0; i < taps.evaluate().length; i++) {
+      expect(
+        tester.getSize(taps.at(i)).height,
+        greaterThanOrEqualTo(48),
+        reason: 'collapsed dock tab $i must stay at least 48 tall to hit',
+      );
+    }
+
+    // A name a screen reader can read. The visible Text is excluded from
+    // semantics and folds to zero height when the dock collapses, so the name
+    // has to come from the item itself.
+    for (final name in const ['Home', 'My List', 'Sources', 'Profile']) {
+      expect(
+        find.descendant(of: dock, matching: find.bySemanticsLabel(name)),
+        findsWidgets,
+        reason: '"$name" must be announced by the dock',
+      );
+    }
   });
 
   // Task 17: Search moved from the dock to the Home header (HomeSearchAction

@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui' show ImageFilter;
 
 import 'package:cached_network_image/cached_network_image.dart';
@@ -146,6 +147,7 @@ class _RootShellState extends State<RootShell>
 
   void _onTabSelected(DockTab tab) {
     if (tab == _tab) return; // Re-tapping the current tab: no transition.
+    DockScrollCollapse.reset();
     setState(() => _tab = tab);
     _switchCtrl.forward(from: 0);
   }
@@ -235,35 +237,40 @@ class _RootShellState extends State<RootShell>
           // Content runs under the floating dock (screens keep their own bottom
           // padding so the last row scrolls clear of it).
           extendBody: true,
-          body: Builder(
-            builder: (context) {
-              final visible = _visibleTabs();
-              final active = visible.indexOf(_tab);
-              return AnimatedBuilder(
-                animation: _switch,
-                builder: (context, child) {
-                  final v = _switch.value;
-                  // Incoming tab fades in from 0.4 and slides up 20px. Never blanks.
-                  return Opacity(
-                    opacity: 0.4 + 0.6 * v,
-                    child: Transform.translate(
-                      offset: Offset(0, (1 - v) * 20),
-                      child: child,
+          body: NotificationListener<ScrollNotification>(
+            // One place, so no screen has to know the dock exists. Returns
+            // false throughout — it reads the scroll, never eats it.
+            onNotification: DockScrollCollapse.onNotification,
+            child: Builder(
+              builder: (context) {
+                final visible = _visibleTabs();
+                final active = visible.indexOf(_tab);
+                return AnimatedBuilder(
+                  animation: _switch,
+                  builder: (context, child) {
+                    final v = _switch.value;
+                    // Incoming tab fades in from 0.4 and slides up 20px. Never blanks.
+                    return Opacity(
+                      opacity: 0.4 + 0.6 * v,
+                      child: Transform.translate(
+                        offset: Offset(0, (1 - v) * 20),
+                        child: child,
+                      ),
+                    );
+                  },
+                  // RepaintBoundary → the page is a single cached layer the transition
+                  // just composites (opacity + translate), so no repaint per frame.
+                  child: RepaintBoundary(
+                    child: IndexedStack(
+                      // indexOf can be -1 for one frame if the mode flipped before
+                      // the listener ran; clamp rather than throw.
+                      index: active < 0 ? 0 : active,
+                      children: _pagesFor(visible),
                     ),
-                  );
-                },
-                // RepaintBoundary → the page is a single cached layer the transition
-                // just composites (opacity + translate), so no repaint per frame.
-                child: RepaintBoundary(
-                  child: IndexedStack(
-                    // indexOf can be -1 for one frame if the mode flipped before
-                    // the listener ran; clamp rather than throw.
-                    index: active < 0 ? 0 : active,
-                    children: _pagesFor(visible),
                   ),
-                ),
-              );
-            },
+                );
+              },
+            ),
           ),
           bottomNavigationBar: ValueListenableBuilder<bool>(
             valueListenable: dockHiddenBySection,
@@ -336,25 +343,33 @@ class _RootShellState extends State<RootShell>
                       curve: Curves.easeOutCubic,
                       child: IgnorePointer(
                         ignoring: hide,
-                        child: _FloatingDock(
-                          tabs: _visibleTabs(),
-                          active: _tab,
-                          onSelected: _onTabSelected,
-                          centre: ZModePrefs.enabled
-                              ? BlocBuilder<ContentModeCubit, ContentMode>(
-                                  bloc: sl<ContentModeCubit>(),
-                                  builder: (_, mode) => ModeFab(
-                                    open: _modeBarOpen,
-                                    icon: iconForMode(
-                                      mode,
-                                      ZModePrefs.streamKind,
+                        // Scoped to the dock subtree on purpose. The dock's
+                        // HEIGHT never changes below, so the Scaffold keeps its
+                        // bottom inset and the body — an IndexedStack that
+                        // builds every tab — is never rebuilt by this.
+                        child: ValueListenableBuilder<bool>(
+                          valueListenable: dockCollapsedByScroll,
+                          builder: (context, collapsed, child) => _FloatingDock(
+                            collapsed: collapsed,
+                            tabs: _visibleTabs(),
+                            active: _tab,
+                            onSelected: _onTabSelected,
+                            centre: ZModePrefs.enabled
+                                ? BlocBuilder<ContentModeCubit, ContentMode>(
+                                    bloc: sl<ContentModeCubit>(),
+                                    builder: (_, mode) => ModeFab(
+                                      open: _modeBarOpen,
+                                      icon: iconForMode(
+                                        mode,
+                                        ZModePrefs.streamKind,
+                                      ),
+                                      onTap: () => setState(
+                                        () => _modeBarOpen = !_modeBarOpen,
+                                      ),
                                     ),
-                                    onTap: () => setState(
-                                      () => _modeBarOpen = !_modeBarOpen,
-                                    ),
-                                  ),
-                                )
-                              : null,
+                                  )
+                                : null,
+                          ),
                         ),
                       ),
                     ),
@@ -378,8 +393,14 @@ class _FloatingDock extends StatelessWidget {
     required this.tabs,
     required this.active,
     required this.onSelected,
+    this.collapsed = false,
     this.centre,
   });
+
+  /// Scrolled down far enough that the dock gives way: labels fade out and the
+  /// pill draws in. The tabs stay put and stay tappable — see
+  /// [dockCollapsedByScroll].
+  final bool collapsed;
 
   /// Exactly what to draw, already ordered and already filtered for the
   /// content mode — the dock does no picking of its own any more.
@@ -391,9 +412,15 @@ class _FloatingDock extends StatelessWidget {
   /// hideable, or counted toward the tab limit. Null when Z Mode is off.
   final Widget? centre;
 
-  Widget _item(BuildContext context, DockTab t) => t == DockTab.profile
-      ? _ProfileDockItem(selected: active == t, onTap: () => onSelected(t))
+  Widget _item(BuildContext context, DockTab t, double labels) =>
+      t == DockTab.profile
+      ? _ProfileDockItem(
+          selected: active == t,
+          onTap: () => onSelected(t),
+          labelOpacity: labels,
+        )
       : _DockItem(
+          labelOpacity: labels,
           label: t.localizedLabel(context),
           glyph: dockGlyphFor(t),
           icon: _iconFor(t),
@@ -401,20 +428,131 @@ class _FloatingDock extends StatelessWidget {
           onTap: () => onSelected(t),
         );
 
+  // Pieces of the dock's height, so the slot reserved below is measured rather
+  // than guessed — a guess breaks the moment the system font scale moves.
+  static const double _iconRow = 25;
+  static const double _labelGap = 3;
+  static const double _labelSize = 10;
+  static const double _labelLeading = 1.2;
+  static const double _itemVPad = 4;
+  static const double _pillVPad = 18;
+  static const double _fabOpen = 50;
+  static const double _fabShut = 38;
+
+  /// Width one tab gets in the collapsed pill. The items are [Expanded], so
+  /// they always divide whatever width the pill has — narrowing it by a fixed
+  /// amount just leaves the icons floating in wide cells. So the collapsed
+  /// width is built up from this instead, and the pill ends up roughly the
+  /// size of its icons.
+  ///
+  /// Width one tab gets collapsed. 48 is the guideline, and the pill's clip
+  /// trims a few off it, so the real target lands near 44 — Apple's floor.
+  ///
+  /// Measured on device rather than assumed: at 40 this budget produced a
+  /// 36-wide target. Inside the pill's ClipRRect the hit area and the painted
+  /// width are the same thing, so this cannot be shrunk without shrinking the
+  /// target with it.
+  static const double _tabShut = 48;
+
+  /// Minimum HEIGHT of a tab's tap area. The painted icon is 25 and the pill
+  /// collapses to 56 — but a 27-tall target sitting just above the gesture bar
+  /// is a miss waiting to happen, so the touchable box is held at 44 (Apple's
+  /// floor) even when nothing is drawn in most of it.
+  ///
+  /// 48 is Android's floor. Free: the open row is 50 anyway (the centre
+  /// button), and the collapsed row is paid for by dropping the pill's own
+  /// padding 9 → 4 as it closes. Both states keep the exact height they had —
+  /// 68 open, 56 closed — the space just moves from padding into the box you
+  /// can actually hit.
+  static const double _tapMin = 48;
+
+  /// iOS-ish: almost all of the travel happens early, then it eases into place
+  /// instead of stopping. Slower than a Material fling on purpose — this is a
+  /// shape settling, not a thing arriving.
+  static const Curve _ease = Cubic(0.32, 0.72, 0, 1);
+
   @override
   Widget build(BuildContext context) {
     final bottomInset = MediaQuery.paddingOf(context).bottom;
     final half = tabs.length ~/ 2;
     final first = tabs.sublist(0, half);
     final rest = tabs.sublist(half);
+
+    // The SLOT stays the size of the open dock, always. The pill shrinks
+    // inside it and hangs from the bottom, so the Scaffold's bottom inset
+    // never moves — and the body, an IndexedStack that builds every tab, is
+    // never relaid out while you scroll.
+    //
+    // Taken through the text scaler, not from a constant: at a larger system
+    // font the label is taller, and a slot that assumed 10px would clip the
+    // labels off the dock for exactly the people who need them most.
+    final labelRow =
+        _labelGap +
+        MediaQuery.textScalerOf(context).scale(_labelSize) * _labelLeading;
+    final openInner = math.max(
+      math.max(_itemVPad + _iconRow + labelRow, _tapMin),
+      centre != null ? _fabOpen : 0.0,
+    );
+    // Slack, because predicting a text line to the pixel is a losing game —
+    // font, locale and platform metrics all move it. The constraint below is a
+    // MINIMUM, not a fixed height, so being wrong costs a pixel of dead space
+    // instead of a RenderFlex overflow.
+    final slot = openInner + _pillVPad + bottomInset + 12 + 4;
+
+    return ConstrainedBox(
+      // minHeight, deliberately: the slot holds the open dock's size so the
+      // Scaffold's inset never moves while the pill shrinks inside it — but if
+      // the open dock ever needs MORE (a big system font), it gets it rather
+      // than clipping the labels off.
+      constraints: BoxConstraints(minHeight: slot),
+      child: TweenAnimationBuilder<double>(
+        tween: Tween<double>(begin: 0, end: collapsed ? 1 : 0),
+        duration: const Duration(milliseconds: 340),
+        curve: _ease,
+        builder: (context, t, _) => Align(
+          alignment: Alignment.bottomCenter,
+          child: _pill(context, bottomInset, t, first, rest),
+        ),
+      ),
+    );
+  }
+
+  /// The dock at collapse fraction [t] — 0 open, 1 icons-only.
+  ///
+  /// Nothing here is given a fixed height: the label row folds away inside
+  /// each item and the centre button scales down, so the pill takes whatever
+  /// height its contents actually need and can't be made to overflow.
+  Widget _pill(
+    BuildContext context,
+    double bottomInset,
+    double t,
+    List<DockTab> first,
+    List<DockTab> rest,
+  ) {
+    // Collapsed width is derived, not a fixed inset: it is what the icons
+    // actually need, so three tabs draw in further than four and a narrow
+    // phone doesn't end up with a pill wider than its contents.
+    final width = MediaQuery.sizeOf(context).width;
+    final shutWidth =
+        tabs.length * _tabShut +
+        (centre != null ? _fabShut + 12 : 0) +
+        12; // the pill's own horizontal padding
+    // Never past the open inset — on a screen too narrow to shrink into, the
+    // dock simply stays where it is rather than growing.
+    final shutSide = math.max(16.0, (width - shutWidth) / 2);
+    final side = 16 + (shutSide - 16) * t;
+    final labels = 1 - t;
+    final fab = _fabOpen - (_fabOpen - _fabShut) * t;
+    // 9 open, 4 closed — the room the taller tap box needs, given back.
+    final pillPad = 9 - 5 * t;
     return Padding(
-      padding: EdgeInsets.fromLTRB(16, 0, 16, bottomInset + 12),
+      padding: EdgeInsets.fromLTRB(side, 0, side, bottomInset + 12),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(26),
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 9),
+            padding: EdgeInsets.symmetric(horizontal: 6, vertical: pillPad),
             decoration: BoxDecoration(
               // Light enough that content ghosts through even on dark
               // screens (My List / Settings) — 0.75 read as a solid slab
@@ -425,13 +563,20 @@ class _FloatingDock extends StatelessWidget {
             ),
             child: Row(
               children: [
-                for (final t in first) _item(context, t),
+                for (final tab in first) _item(context, tab, labels),
                 if (centre != null)
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 6),
-                    child: centre!,
+                    // Sized down rather than scaled in place: it is the tallest
+                    // thing in the row, so leaving it at 50 would hold the
+                    // whole dock open no matter what the tabs did.
+                    child: SizedBox(
+                      width: fab,
+                      height: fab,
+                      child: FittedBox(fit: BoxFit.contain, child: centre!),
+                    ),
                   ),
-                for (final t in rest) _item(context, t),
+                for (final tab in rest) _item(context, tab, labels),
               ],
             ),
           ),
@@ -478,7 +623,12 @@ class _DockItem extends StatelessWidget {
     required this.icon,
     required this.selected,
     required this.onTap,
+    this.labelOpacity = 1,
   });
+
+  /// 1 whole, 0 collapsed. Drives both the fade AND the row's height, so the
+  /// label takes its space with it when it goes.
+  final double labelOpacity;
 
   final String label;
 
@@ -494,40 +644,75 @@ class _DockItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = selected ? AppColors.accent : AppColors.textSecondary;
     return Expanded(
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(18),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 2),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              SizedBox(
-                height: 25,
-                child: Center(
-                  child: _DockPop(
-                    selected: selected,
-                    child: glyph != null
-                        ? DockIcon(glyph!, color: color, filled: selected)
-                        : Icon(
-                            selected ? icon!.$2 : icon!.$1,
-                            color: color,
-                            size: 23,
+      // The name lives here, not on the Text below: collapsed, that Text has
+      // zero height and drops out of the tree, and a screen reader was left
+      // with four unlabelled buttons.
+      child: Semantics(
+        label: label,
+        button: true,
+        selected: selected,
+        container: true,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(18),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: _FloatingDock._tapMin),
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SizedBox(
+                      height: 25,
+                      child: Center(
+                        child: _DockPop(
+                          selected: selected,
+                          child: glyph != null
+                              ? DockIcon(glyph!, color: color, filled: selected)
+                              : Icon(
+                                  selected ? icon!.$2 : icon!.$1,
+                                  color: color,
+                                  size: 23,
+                                ),
+                        ),
+                      ),
+                    ),
+                    // Folded away, not just faded: heightFactor takes the row's
+                    // height with it, which is what lets the pill actually shrink.
+                    ClipRect(
+                      child: Align(
+                        alignment: Alignment.topCenter,
+                        heightFactor: labelOpacity,
+                        child: Padding(
+                          padding: const EdgeInsets.only(top: 3),
+                          child: ExcludeSemantics(
+                            child: Opacity(
+                              opacity: labelOpacity,
+                              child: Text(
+                                label,
+                                maxLines: 1,
+                                overflow: TextOverflow.clip,
+                                softWrap: false,
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  height: 1.2,
+                                  letterSpacing: 0.1,
+                                  color: color,
+                                  fontWeight: selected
+                                      ? FontWeight.w600
+                                      : FontWeight.w400,
+                                ),
+                              ),
+                            ),
                           ),
-                  ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 3),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 10,
-                  letterSpacing: 0.1,
-                  color: color,
-                  fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-                ),
-              ),
-            ],
+            ),
           ),
         ),
       ),
@@ -539,7 +724,14 @@ class _DockItem extends StatelessWidget {
 /// active), a plain person glyph otherwise. Opens the same Settings screen
 /// the gear used to.
 class _ProfileDockItem extends StatelessWidget {
-  const _ProfileDockItem({required this.selected, required this.onTap});
+  const _ProfileDockItem({
+    required this.selected,
+    required this.onTap,
+    this.labelOpacity = 1,
+  });
+
+  /// See [_DockItem.labelOpacity].
+  final double labelOpacity;
 
   final bool selected;
   final VoidCallback onTap;
@@ -548,90 +740,127 @@ class _ProfileDockItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = selected ? AppColors.accent : AppColors.textSecondary;
     return Expanded(
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(18),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 2),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              SizedBox(
-                height: 25,
-                child: Center(
-                  child: _DockPop(
-                    selected: selected,
-                    child: BlocBuilder<AuthCubit, AuthState>(
-                      builder: (context, auth) {
-                        final ring = selected
-                            ? Border.all(color: AppColors.accent, width: 1.8)
-                            : null;
-                        if (auth.isLoggedIn) {
-                          final initial = auth.displayName.isNotEmpty
-                              ? auth.displayName[0].toUpperCase()
-                              : '?';
-                          return Container(
-                            width: 24,
-                            height: 24,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              border: ring,
-                              color: AppColors.surface2,
-                              image: auth.avatarUrl != null
-                                  ? DecorationImage(
-                                      image: CachedNetworkImageProvider(
-                                        auth.avatarUrl!,
-                                      ),
-                                      fit: BoxFit.cover,
+      // See [_DockItem]: the name has to survive the label folding away.
+      child: Semantics(
+        label: 'Profile',
+        button: true,
+        selected: selected,
+        container: true,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(18),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: _FloatingDock._tapMin),
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SizedBox(
+                      height: 25,
+                      child: Center(
+                        child: _DockPop(
+                          selected: selected,
+                          child: BlocBuilder<AuthCubit, AuthState>(
+                            builder: (context, auth) {
+                              final ring = selected
+                                  ? Border.all(
+                                      color: AppColors.accent,
+                                      width: 1.8,
                                     )
-                                  : null,
-                            ),
-                            alignment: Alignment.center,
-                            child: auth.avatarUrl == null
-                                ? Text(
-                                    initial,
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w800,
-                                      color: selected
-                                          ? AppColors.accent
-                                          : AppColors.textPrimary,
-                                    ),
-                                  )
-                                : null,
-                          );
-                        }
-                        // Signed out — quiet person glyph in a hairline circle.
-                        return Container(
-                          width: 24,
-                          height: 24,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            border:
-                                ring ?? Border.all(color: color, width: 1.4),
+                                  : null;
+                              if (auth.isLoggedIn) {
+                                final initial = auth.displayName.isNotEmpty
+                                    ? auth.displayName[0].toUpperCase()
+                                    : '?';
+                                return Container(
+                                  width: 24,
+                                  height: 24,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    border: ring,
+                                    color: AppColors.surface2,
+                                    image: auth.avatarUrl != null
+                                        ? DecorationImage(
+                                            image: CachedNetworkImageProvider(
+                                              auth.avatarUrl!,
+                                            ),
+                                            fit: BoxFit.cover,
+                                          )
+                                        : null,
+                                  ),
+                                  alignment: Alignment.center,
+                                  child: auth.avatarUrl == null
+                                      ? Text(
+                                          initial,
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w800,
+                                            color: selected
+                                                ? AppColors.accent
+                                                : AppColors.textPrimary,
+                                          ),
+                                        )
+                                      : null,
+                                );
+                              }
+                              // Signed out — quiet person glyph in a hairline circle.
+                              return Container(
+                                width: 24,
+                                height: 24,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  border:
+                                      ring ??
+                                      Border.all(color: color, width: 1.4),
+                                ),
+                                child: Icon(
+                                  Icons.person_outline,
+                                  size: 15,
+                                  color: color,
+                                ),
+                              );
+                            },
                           ),
-                          child: Icon(
-                            Icons.person_outline,
-                            size: 15,
-                            color: color,
-                          ),
-                        );
-                      },
+                        ),
+                      ),
                     ),
-                  ),
+                    // Folded away, not just faded: heightFactor takes the row's
+                    // height with it, which is what lets the pill actually shrink.
+                    ClipRect(
+                      child: Align(
+                        alignment: Alignment.topCenter,
+                        heightFactor: labelOpacity,
+                        child: Padding(
+                          padding: const EdgeInsets.only(top: 3),
+                          child: ExcludeSemantics(
+                            child: Opacity(
+                              opacity: labelOpacity,
+                              child: Text(
+                                'Profile',
+                                maxLines: 1,
+                                overflow: TextOverflow.clip,
+                                softWrap: false,
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  height: 1.2,
+                                  letterSpacing: 0.1,
+                                  color: color,
+                                  fontWeight: selected
+                                      ? FontWeight.w600
+                                      : FontWeight.w400,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 3),
-              Text(
-                'Profile',
-                style: TextStyle(
-                  fontSize: 10,
-                  letterSpacing: 0.1,
-                  color: color,
-                  fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-                ),
-              ),
-            ],
+            ),
           ),
         ),
       ),
