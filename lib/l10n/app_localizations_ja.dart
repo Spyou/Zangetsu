@@ -4459,12 +4459,6 @@ class AppLocalizationsJa extends AppLocalizations {
   String get relativeTomorrow => '明日';
 
   @override
-  String get weekView => '週';
-
-  @override
-  String get monthView => '月';
-
-  @override
   String get scheduleSlotMorning => '朝';
 
   @override

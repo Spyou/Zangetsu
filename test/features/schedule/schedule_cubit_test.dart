@@ -11,15 +11,12 @@ class _FakeAiring implements AiringService {
   @override
   bool lastFailureOffline = false;
 
-  _FakeAiring(this._out, {List<AiringEntry>? month}) : _month = month ?? _out;
+  _FakeAiring(this._out);
   final List<AiringEntry> _out;
-  final List<AiringEntry> _month;
   @override
   noSuchMethod(Invocation i) => super.noSuchMethod(i);
   @override
   Future<List<AiringEntry>> weekAiring({DateTime? now}) async => _out;
-  @override
-  Future<List<AiringEntry>> monthAiring(DateTime anchor) async => _month;
 }
 
 /// Returns empty for the first [emptyFirst] calls, then [_out] — models a
@@ -111,63 +108,6 @@ void main() {
     await c.load();
     expect(c.state.airingAll.length, 2); // recovered after 2 empty tries
     expect(c.state.errorAiring, isFalse);
-  });
-
-  test('setView(month) lazily loads month airing into monthAiringByDay',
-      () async {
-    final monthEntry = AiringEntry(
-        malId: 5, title: 'M', coverUrl: null, episode: 1,
-        airsAtLocal: DateTime(2026, 7, 20, 20), format: 'TV');
-    final c = ScheduleCubit(
-      _FakeAiring([_entry(1)], month: [monthEntry]),
-      _FakeSoon([
-        const ComingSoonEntry(tmdbId: 9, isTv: false, title: 'm', posterUrl: null, releaseDate: null)
-      ]),
-      _FakeMyList(const []),
-      retryDelays: const [],
-    );
-    await c.load();
-    expect(c.state.monthAiringByDay, isEmpty); // not loaded until month view
-    await c.setView(ScheduleView.month);
-    expect(c.state.view, ScheduleView.month);
-    expect(c.state.monthAiringByDay.values.expand((x) => x).length, 1);
-  });
-
-  test('setView(week) snaps an out-of-week selectedDay back to today', () async {
-    final c = ScheduleCubit(
-      _FakeAiring([_entry(1)]),
-      _FakeSoon(const []),
-      _FakeMyList(const []),
-      retryDelays: const [],
-    );
-    await c.load(); // selectedDay defaults to today
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    // Browse the month grid and pick a day well outside this week.
-    final farDay = today.subtract(const Duration(days: 21));
-    await c.setView(ScheduleView.month);
-    c.selectDay(farDay);
-    expect(c.state.selectedDay, farDay);
-    // Back to Week → selection snaps to today so the week isn't left empty.
-    await c.setView(ScheduleView.week);
-    expect(c.state.selectedDay, today);
-  });
-
-  test('setView(week) keeps an in-week selectedDay', () async {
-    final c = ScheduleCubit(
-      _FakeAiring([_entry(1)]),
-      _FakeSoon(const []),
-      _FakeMyList(const []),
-      retryDelays: const [],
-    );
-    await c.load();
-    final now = DateTime.now();
-    final tomorrow =
-        DateTime(now.year, now.month, now.day).add(const Duration(days: 1));
-    await c.setView(ScheduleView.month);
-    c.selectDay(tomorrow);
-    await c.setView(ScheduleView.week);
-    expect(c.state.selectedDay, tomorrow); // in-week selection preserved
   });
 
   test('gives up after exhausting retries → errorAiring', () async {

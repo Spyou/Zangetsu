@@ -112,9 +112,6 @@ DateTime _dayOf(DateTime d) => DateTime(d.year, d.month, d.day);
   return (hm: '$h:$m', ap: ap);
 }
 
-String _monthYear(DateTime d, String locale) =>
-    DateFormat.yMMMM(locale).format(d);
-
 String _monthDay(DateTime d, String locale) =>
     DateFormat.yMMMd(locale).format(d);
 
@@ -319,35 +316,12 @@ class _ScheduleBodyState extends State<ScheduleBody>
     );
   }
 
-  // ── Anime/Movies TabBar (animated sliding underline) + Week/Month pill ──
+  // ── Anime/Movies TabBar (animated sliding underline) ──
   Widget _tabRow(
     BuildContext context,
     ScheduleState state,
     ScheduleCubit cubit,
   ) {
-    final l10n = context.l10n;
-    Widget wm(String label, ScheduleView v) {
-      final on = state.view == v;
-      return GestureDetector(
-        onTap: () => cubit.setView(v),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-          decoration: BoxDecoration(
-            color: on ? AppColors.accent : Colors.transparent,
-            borderRadius: BorderRadius.circular(7),
-          ),
-          child: Text(
-            label,
-            style: AppText.caption.copyWith(
-              fontWeight: FontWeight.w700,
-              color: on ? Colors.white : AppColors.textSecondary,
-            ),
-          ),
-        ),
-      );
-    }
-
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
       child: Row(
@@ -381,20 +355,6 @@ class _ScheduleBodyState extends State<ScheduleBody>
               ],
             ),
           ),
-          const SizedBox(width: 8),
-          Container(
-            padding: const EdgeInsets.all(2),
-            decoration: BoxDecoration(
-              color: AppColors.surface2,
-              borderRadius: BorderRadius.circular(9),
-            ),
-            child: Row(
-              children: [
-                wm(l10n.weekView, ScheduleView.week),
-                wm(l10n.monthView, ScheduleView.month),
-              ],
-            ),
-          ),
         ],
       ),
     );
@@ -409,45 +369,23 @@ class _ScheduleBodyState extends State<ScheduleBody>
     DateTime selected, {
     required bool forMovies,
   }) {
-    final isMonth = state.view == ScheduleView.month;
-    final counts = forMovies
-        ? _soonDayCounts(state)
-        : _animeByDay(state, month: isMonth);
-    return RefreshIndicator(
-      color: AppColors.accent,
-      backgroundColor: AppColors.surface,
-      onRefresh: cubit.refresh,
-      child: ListView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: EdgeInsets.only(bottom: MediaQuery.paddingOf(context).bottom),
-        children: [
-          // Day selector: cross-fade between week tabs and month grid.
-          AnimatedSize(
-            duration: const Duration(milliseconds: 240),
-            curve: Curves.easeOut,
-            alignment: Alignment.topCenter,
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 220),
-              child: KeyedSubtree(
-                key: ValueKey('sel-$isMonth-${state.monthAnchor}'),
-                child: isMonth
-                    ? _monthSelector(
-                        context,
-                        state,
-                        cubit,
-                        today,
-                        selected,
-                        counts,
-                      )
-                    : _weekTabs(context, cubit, today, selected, counts),
-              ),
-            ),
-          ),
-          // Day content: fade + vertical slide on day / view / filter change.
-          AnimatedSize(
-            duration: const Duration(milliseconds: 260),
-            curve: Curves.easeOut,
-            alignment: Alignment.topCenter,
+    final counts = forMovies ? _soonDayCounts(state) : _animeByDay(state);
+    // The day strip is pinned and only the CONTENT scrolls. It used to be the
+    // first child of one big ListView whose second child was a Column holding
+    // every row for the day — and a Movies day is ~330 rows (see
+    // groupSoonByLocalDay), so all 330 cards and their images were built,
+    // laid out and measured by AnimatedSize before a single frame, then again
+    // on every 30s countdown tick. Pinning the strip lets the rows live in a
+    // lazy builder, and keeps the day picker on screen through a long day.
+    return Column(
+      children: [
+        _weekTabs(context, cubit, today, selected, counts),
+        Expanded(
+          child: RefreshIndicator(
+            color: AppColors.accent,
+            backgroundColor: AppColors.surface,
+            onRefresh: cubit.refresh,
+            // Day content: fade + vertical slide on day / filter change.
             child: AnimatedSwitcher(
               duration: const Duration(milliseconds: 260),
               switchInCurve: Curves.easeOut,
@@ -468,7 +406,7 @@ class _ScheduleBodyState extends State<ScheduleBody>
               ),
               child: KeyedSubtree(
                 key: ValueKey(
-                  'day-$forMovies-${state.view}-'
+                  'day-$forMovies-'
                   '${selected.millisecondsSinceEpoch}-${state.myListOnly}-'
                   '${_loadingFor(state, forMovies)}',
                 ),
@@ -476,17 +414,17 @@ class _ScheduleBodyState extends State<ScheduleBody>
               ),
             ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
-  bool _loadingFor(ScheduleState state, bool forMovies) => forMovies
-      ? state.loadingSoon
-      : (state.view == ScheduleView.month
-            ? state.loadingMonth
-            : state.loadingAiring);
+  bool _loadingFor(ScheduleState state, bool forMovies) =>
+      forMovies ? state.loadingSoon : state.loadingAiring;
 
+  /// The scrollable half of a tab. Returns a scroll view rather than a Column
+  /// so RefreshIndicator still has something to pull, and — for Movies —
+  /// so the day's rows are built as they are reached instead of all at once.
   Widget _dayContent(
     BuildContext context,
     ScheduleState state,
@@ -496,18 +434,25 @@ class _ScheduleBodyState extends State<ScheduleBody>
   ) {
     final l10n = context.l10n;
     final locale = Localizations.localeOf(context).toString();
-    if (_loadingFor(state, forMovies)) return const _SkeletonTimeline();
+    final bottom = MediaQuery.paddingOf(context).bottom;
+    if (_loadingFor(state, forMovies)) {
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: EdgeInsets.only(bottom: bottom),
+        children: const [_SkeletonTimeline()],
+      );
+    }
 
     if (!forMovies) {
-      final byDay = state.view == ScheduleView.month
-          ? state.monthAiringByDay
-          : state.airingByDay;
-      var list = byDay[selected] ?? const <AiringEntry>[];
+      var list = state.airingByDay[selected] ?? const <AiringEntry>[];
       if (state.myListOnly) {
         list = list.where(state.followed.matches).toList();
       }
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      // Anime is a handful of rows a day and the timeline draws its own
+      // time-bucket headers across the whole list, so it stays one piece.
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: EdgeInsets.only(bottom: bottom),
         children: [
           _dayHead(
             context,
@@ -532,49 +477,68 @@ class _ScheduleBodyState extends State<ScheduleBody>
     }
 
     final list = state.soonByDay[selected] ?? const <ComingSoonEntry>[];
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _dayHead(
-          context,
-          _selectedHeader(l10n, locale, selected, today),
-          list.length,
-          l10n.scheduleNounReleasing,
-        ),
-        if (list.isEmpty)
+    if (list.isEmpty) {
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: EdgeInsets.only(bottom: bottom),
+        children: [
+          _dayHead(
+            context,
+            _selectedHeader(l10n, locale, selected, today),
+            0,
+            l10n.scheduleNounReleasing,
+          ),
           _empty(
             state.offline
                 ? '${l10n.offlineTitle}\n${l10n.offlineBody}'
                 : l10n.nothingReleasingOnThisDay,
-          )
-        else
-          for (final e in list)
-            _ReleaseCard(
-              title: e.title,
-              imageUrl: e.posterUrl,
-              // The TV calendar is per-episode, so one series appears on many
-              // days — without its S/E the rows read as the same title over
-              // and over. Prefixed onto the existing line rather than adding
-              // a third, which would make every movie row taller for nothing.
-              subtitle: [
-                if (e.episodeLabel != null) e.episodeLabel!,
-                e.isTv
-                    ? l10n.seriesWithDate(
-                        _monthDay(e.releaseDate ?? selected, locale),
-                      )
-                    : l10n.movieWithDate(
-                        _monthDay(e.releaseDate ?? selected, locale),
-                      ),
-              ].join('  ·  '),
-              onTap: () => openCanonical(
-                context,
-                kind: e.isTv ? ZKind.tv : ZKind.movie,
-                id: 'tmdb:${e.tmdbId}',
-                title: e.title,
-                coverUrl: e.posterUrl,
-              ),
-            ),
-      ],
+          ),
+        ],
+      );
+    }
+    // Index 0 is the day header, so the whole tab is ONE lazy list — a
+    // separate header above it would need its own non-scrolling slot and
+    // put the count out of sync with what is actually being scrolled.
+    return ListView.builder(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: EdgeInsets.only(bottom: bottom),
+      itemCount: list.length + 1,
+      itemBuilder: (context, i) {
+        if (i == 0) {
+          return _dayHead(
+            context,
+            _selectedHeader(l10n, locale, selected, today),
+            list.length,
+            l10n.scheduleNounReleasing,
+          );
+        }
+        final e = list[i - 1];
+        return _ReleaseCard(
+          title: e.title,
+          imageUrl: e.posterUrl,
+          // The TV calendar is per-episode, so one series appears on many
+          // days — without its S/E the rows read as the same title over
+          // and over. Prefixed onto the existing line rather than adding
+          // a third, which would make every movie row taller for nothing.
+          subtitle: [
+            if (e.episodeLabel != null) e.episodeLabel!,
+            e.isTv
+                ? l10n.seriesWithDate(
+                    _monthDay(e.releaseDate ?? selected, locale),
+                  )
+                : l10n.movieWithDate(
+                    _monthDay(e.releaseDate ?? selected, locale),
+                  ),
+          ].join('  ·  '),
+          onTap: () => openCanonical(
+            context,
+            kind: e.isTv ? ZKind.tv : ZKind.movie,
+            id: 'tmdb:${e.tmdbId}',
+            title: e.title,
+            coverUrl: e.posterUrl,
+          ),
+        );
+      },
     );
   }
 
@@ -666,69 +630,6 @@ class _ScheduleBodyState extends State<ScheduleBody>
       ),
     );
   }
-
-  // ── month nav + calendar grid ──
-  Widget _monthSelector(
-    BuildContext context,
-    ScheduleState state,
-    ScheduleCubit cubit,
-    DateTime today,
-    DateTime selected,
-    Map<DateTime, ({int count, bool followed})> byDay,
-  ) {
-    final locale = Localizations.localeOf(context).toString();
-    final anchor = state.monthAnchor ?? DateTime(today.year, today.month, 1);
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(18, 2, 18, 8),
-          child: Row(
-            children: [
-              _navArrow(
-                Icons.chevron_left,
-                () =>
-                    cubit.goToMonth(DateTime(anchor.year, anchor.month - 1, 1)),
-              ),
-              Expanded(
-                child: Text(
-                  _monthYear(anchor, locale),
-                  textAlign: TextAlign.center,
-                  style: AppText.headline.copyWith(fontWeight: FontWeight.w800),
-                ),
-              ),
-              _navArrow(
-                Icons.chevron_right,
-                () =>
-                    cubit.goToMonth(DateTime(anchor.year, anchor.month + 1, 1)),
-              ),
-            ],
-          ),
-        ),
-        _CalendarGrid(
-          anchor: anchor,
-          today: today,
-          selected: selected,
-          count: (d) => byDay[d]?.count ?? 0,
-          followed: (d) => byDay[d]?.followed ?? false,
-          onSelect: cubit.selectDay,
-        ),
-      ],
-    );
-  }
-
-  Widget _navArrow(IconData icon, VoidCallback onTap) => GestureDetector(
-    onTap: onTap,
-    child: Container(
-      width: 32,
-      height: 32,
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        shape: BoxShape.circle,
-      ),
-      child: Icon(icon, size: 18, color: AppColors.textSecondary),
-    ),
-  );
-
   Widget _dayHead(BuildContext context, String label, int count, String noun) =>
       Padding(
         padding: const EdgeInsets.fromLTRB(18, 14, 18, 2),
@@ -809,12 +710,9 @@ class _ScheduleBodyState extends State<ScheduleBody>
     ),
   );
 
-  // ── per-day count/followed for grid + week dots ──
-  Map<DateTime, ({int count, bool followed})> _animeByDay(
-    ScheduleState state, {
-    required bool month,
-  }) {
-    final src = month ? state.monthAiringByDay : state.airingByDay;
+  // ── per-day count/followed for the week strip ──
+  Map<DateTime, ({int count, bool followed})> _animeByDay(ScheduleState state) {
+    final src = state.airingByDay;
     final out = <DateTime, ({int count, bool followed})>{};
     src.forEach((day, entries) {
       final filtered = state.myListOnly
@@ -840,159 +738,6 @@ class _ScheduleBodyState extends State<ScheduleBody>
 
 // ── calendar grid ─────────────────────────────────────────────────────────────
 
-class _CalendarGrid extends StatelessWidget {
-  const _CalendarGrid({
-    required this.anchor,
-    required this.today,
-    required this.selected,
-    required this.count,
-    required this.followed,
-    required this.onSelect,
-  });
-
-  final DateTime anchor; // first of displayed month
-  final DateTime today;
-  final DateTime selected;
-  final int Function(DateTime) count;
-  final bool Function(DateTime) followed;
-  final ValueChanged<DateTime> onSelect;
-
-  @override
-  Widget build(BuildContext context) {
-    final locale = Localizations.localeOf(context).toString();
-    final weekdayLabels = List.generate(
-      7,
-      (i) => DateFormat('EEEEE', locale).format(DateTime(2024, 1, 1 + i)),
-    );
-    final first = DateTime(anchor.year, anchor.month, 1);
-    final daysInMonth = DateTime(anchor.year, anchor.month + 1, 0).day;
-    final leading = first.weekday - 1; // Mon-first
-    final weeks = ((leading + daysInMonth + 6) ~/ 7);
-    final start = first.subtract(Duration(days: leading));
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              for (final w in weekdayLabels)
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.only(bottom: 6),
-                    child: Text(
-                      w,
-                      textAlign: TextAlign.center,
-                      style: AppText.caption.copyWith(
-                        fontSize: 9.5,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.textTertiary,
-                      ),
-                    ),
-                  ),
-                ),
-            ],
-          ),
-          for (var week = 0; week < weeks; week++)
-            Row(
-              children: [
-                for (var col = 0; col < 7; col++)
-                  Expanded(
-                    child: _cell(start.add(Duration(days: week * 7 + col))),
-                  ),
-              ],
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _cell(DateTime date) {
-    final inMonth = date.month == anchor.month;
-    final isToday = date == today;
-    final isSel = date == selected;
-    final n = inMonth ? count(date) : 0;
-    final hasFollowed = inMonth && followed(date);
-    return GestureDetector(
-      onTap: inMonth ? () => onSelect(date) : null,
-      behavior: HitTestBehavior.opaque,
-      child: AspectRatio(
-        aspectRatio: 1,
-        child: Container(
-          margin: const EdgeInsets.all(2),
-          decoration: BoxDecoration(
-            color: isSel ? AppColors.accent : Colors.transparent,
-            borderRadius: BorderRadius.circular(11),
-            border: (isToday && !isSel)
-                ? Border.all(
-                    color: AppColors.accent.withValues(alpha: 0.55),
-                    width: 1.5,
-                  )
-                : null,
-          ),
-          child: Stack(
-            children: [
-              if (n > 0)
-                Positioned(
-                  top: 4,
-                  right: 6,
-                  child: Text(
-                    '$n',
-                    style: AppText.caption.copyWith(
-                      fontSize: 8,
-                      fontWeight: FontWeight.w800,
-                      color: isSel ? Colors.white : AppColors.textTertiary,
-                    ),
-                  ),
-                ),
-              Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      '${date.day}',
-                      style: AppText.headline.copyWith(
-                        fontSize: 12.5,
-                        color: isSel
-                            ? Colors.white
-                            : !inMonth
-                            ? AppColors.textTertiary.withValues(alpha: 0.4)
-                            : isToday
-                            ? AppColors.accent
-                            : AppColors.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    SizedBox(
-                      height: 4,
-                      child: (n > 0)
-                          ? Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                _dot(isSel ? Colors.white : AppColors.accent),
-                                if (hasFollowed) ...[
-                                  const SizedBox(width: 2),
-                                  _dot(isSel ? Colors.white : _live),
-                                ],
-                              ],
-                            )
-                          : null,
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _dot(Color c) => Container(
-    width: 4,
-    height: 4,
-    decoration: BoxDecoration(color: c, shape: BoxShape.circle),
-  );
-}
 
 // ── timeline row (anime) ──────────────────────────────────────────────────────
 

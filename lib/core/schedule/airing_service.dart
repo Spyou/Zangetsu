@@ -17,17 +17,6 @@ const String _kAniListEndpoint = AniListGraphql.endpoint;
   );
 }
 
-/// UTC-epoch-seconds window covering the whole calendar month that [anchorLocal]
-/// falls in (its 1st .. the 1st of the next month, exclusive).
-({int startSec, int endSec}) monthWindowUtc(DateTime anchorLocal) {
-  final start = DateTime(anchorLocal.year, anchorLocal.month, 1);
-  final end = DateTime(anchorLocal.year, anchorLocal.month + 1, 1);
-  return (
-    startSec: start.toUtc().millisecondsSinceEpoch ~/ 1000,
-    endSec: end.toUtc().millisecondsSinceEpoch ~/ 1000,
-  );
-}
-
 /// Maps `data['Page']['airingSchedules']` → entries (SFW, valid media only).
 List<AiringEntry> parseAiringSchedules(Map<String, dynamic> data) {
   final page = data['Page'];
@@ -175,14 +164,6 @@ query ($start: Int, $end: Int, $page: Int) {
     lastFailureOffline = false;
     final win = weekWindowUtc(now ?? DateTime.now());
     return _fetchRange(win.startSec, win.endSec, maxPages: 10);
-  }
-
-  /// Every SFW airing event in the calendar month [anchor] falls in, or `[]`
-  /// on error. AniList only has confirmed slots ~2 weeks out, so later days are
-  /// sparse; cap pages so the fetch stays quick (skeleton covers the wait).
-  Future<List<AiringEntry>> monthAiring(DateTime anchor) {
-    final win = monthWindowUtc(anchor);
-    return _fetchRange(win.startSec, win.endSec, maxPages: 12);
   }
 
   /// Paginated AniList airingSchedules fetch for a UTC-epoch-seconds window.

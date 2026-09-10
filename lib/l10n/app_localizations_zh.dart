@@ -4420,12 +4420,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get relativeTomorrow => '明天';
 
   @override
-  String get weekView => '星期';
-
-  @override
-  String get monthView => '月';
-
-  @override
   String get scheduleSlotMorning => '早晨';
 
   @override
@@ -9336,12 +9330,6 @@ class AppLocalizationsZhTw extends AppLocalizationsZh {
 
   @override
   String get relativeTomorrow => '明天';
-
-  @override
-  String get weekView => '星期';
-
-  @override
-  String get monthView => '月';
 
   @override
   String get scheduleSlotMorning => '早晨';

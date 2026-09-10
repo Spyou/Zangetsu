@@ -4584,12 +4584,6 @@ class AppLocalizationsDe extends AppLocalizations {
   String get relativeTomorrow => 'Morgen';
 
   @override
-  String get weekView => 'Woche';
-
-  @override
-  String get monthView => 'Monat';
-
-  @override
   String get scheduleSlotMorning => 'Morgen';
 
   @override

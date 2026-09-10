@@ -7922,18 +7922,6 @@ abstract class AppLocalizations {
   /// **'Tomorrow'**
   String get relativeTomorrow;
 
-  /// No description provided for @weekView.
-  ///
-  /// In en, this message translates to:
-  /// **'Week'**
-  String get weekView;
-
-  /// No description provided for @monthView.
-  ///
-  /// In en, this message translates to:
-  /// **'Month'**
-  String get monthView;
-
   /// No description provided for @scheduleSlotMorning.
   ///
   /// In en, this message translates to:

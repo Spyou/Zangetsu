@@ -8,10 +8,6 @@ import '../../core/schedule/airing_service.dart';
 import '../../core/schedule/coming_soon_service.dart';
 import '../../core/schedule/schedule_models.dart';
 
-/// Whether the redesigned phone Schedule shows a 7-day header or a full-month
-/// calendar grid. (The TV screen ignores this and stays week-only.)
-enum ScheduleView { week, month }
-
 class ScheduleState extends Equatable {
   const ScheduleState({
     this.airingAll = const [],
@@ -24,15 +20,10 @@ class ScheduleState extends Equatable {
     this.offline = false,
     this.errorSoon = false,
     // ── redesign additions (phone) ──
-    this.view = ScheduleView.week,
-    this.monthAnchor,
     this.selectedDay,
     this.myListOnly = false,
-    this.monthAiringByDay = const {},
     this.followed = const FollowedShows(),
     this.soonByDay = const {},
-    this.loadingMonth = false,
-    this.errorMonth = false,
   });
 
   final List<AiringEntry> airingAll;
@@ -57,11 +48,6 @@ class ScheduleState extends Equatable {
   final bool errorSoon;
 
   // ── redesign additions ──
-  final ScheduleView view;
-
-  /// First-of-month for the displayed month (month view). Null until first load.
-  final DateTime? monthAnchor;
-
   /// The day whose episode list is shown. Null until first load (→ today).
   final DateTime? selectedDay;
 
@@ -69,18 +55,12 @@ class ScheduleState extends Equatable {
   /// user follows.
   final bool myListOnly;
 
-  /// Month airing grouped by local day (month view). Loaded on demand.
-  final Map<DateTime, List<AiringEntry>> monthAiringByDay;
-
   /// MAL ids of anime in My List — drives the green "you follow this" dot and
   /// the [myListOnly] filter. Matches on MAL id OR title — see [FollowedShows].
   final FollowedShows followed;
 
   /// Coming-soon movies/TV grouped by local release day (both views).
   final Map<DateTime, List<ComingSoonEntry>> soonByDay;
-
-  final bool loadingMonth;
-  final bool errorMonth;
 
   ScheduleState copyWith({
     List<AiringEntry>? airingAll,
@@ -92,15 +72,10 @@ class ScheduleState extends Equatable {
     bool? errorAiring,
     bool? offline,
     bool? errorSoon,
-    ScheduleView? view,
-    DateTime? monthAnchor,
     DateTime? selectedDay,
     bool? myListOnly,
-    Map<DateTime, List<AiringEntry>>? monthAiringByDay,
     FollowedShows? followed,
     Map<DateTime, List<ComingSoonEntry>>? soonByDay,
-    bool? loadingMonth,
-    bool? errorMonth,
   }) =>
       ScheduleState(
         airingAll: airingAll ?? this.airingAll,
@@ -112,23 +87,17 @@ class ScheduleState extends Equatable {
         errorAiring: errorAiring ?? this.errorAiring,
         offline: offline ?? this.offline,
         errorSoon: errorSoon ?? this.errorSoon,
-        view: view ?? this.view,
-        monthAnchor: monthAnchor ?? this.monthAnchor,
         selectedDay: selectedDay ?? this.selectedDay,
         myListOnly: myListOnly ?? this.myListOnly,
-        monthAiringByDay: monthAiringByDay ?? this.monthAiringByDay,
         followed: followed ?? this.followed,
         soonByDay: soonByDay ?? this.soonByDay,
-        loadingMonth: loadingMonth ?? this.loadingMonth,
-        errorMonth: errorMonth ?? this.errorMonth,
       );
 
   @override
   List<Object?> get props => [
         airingAll, airingByDay, myListByDay, comingSoon, loadingAiring,
-        loadingSoon, errorAiring, errorSoon, offline, view, monthAnchor, selectedDay,
-        myListOnly, monthAiringByDay, followed, soonByDay, loadingMonth,
-        errorMonth,
+        loadingSoon, errorAiring, errorSoon, offline, selectedDay,
+        myListOnly, followed, soonByDay,
       ];
 }
 
@@ -162,18 +131,14 @@ class ScheduleCubit extends Cubit<ScheduleState> {
   bool _inFlight = false;
 
   static DateTime _dayOf(DateTime d) => DateTime(d.year, d.month, d.day);
-  static DateTime _firstOfMonth(DateTime d) => DateTime(d.year, d.month, 1);
 
   Future<void> load() async {
     if (_inFlight) return; // don't stack retry loops (e.g. refresh mid-retry)
     _inFlight = true;
-    // Seed today/this-month on the first load so the grid + selection resolve.
+    // Seed today on the first load so the day strip has a selection.
     final now = DateTime.now();
     if (state.selectedDay == null) {
-      emit(state.copyWith(
-        selectedDay: _dayOf(now),
-        monthAnchor: _firstOfMonth(now),
-      ));
+      emit(state.copyWith(selectedDay: _dayOf(now)));
     }
     try {
       await Future.wait([_loadAiring(), _loadSoon()]);
@@ -182,48 +147,7 @@ class ScheduleCubit extends Cubit<ScheduleState> {
     }
   }
 
-  Future<void> refresh() async {
-    await load();
-    // Also refresh the month if the user is currently viewing one.
-    if (state.view == ScheduleView.month && state.monthAnchor != null) {
-      await _loadMonth(state.monthAnchor!);
-    }
-  }
-
-  /// Switch the week/month toggle. Entering month lazily loads its data.
-  Future<void> setView(ScheduleView view) async {
-    if (view == state.view) return;
-    var next = state.copyWith(view: view);
-    if (view == ScheduleView.week) {
-      // The week strip only covers today..+6 days, but the month grid lets the
-      // user pick any day. If the current selection is outside this week, snap
-      // it back to today — otherwise the week view would look up an out-of-week
-      // day and render an empty "Nothing airing on this day".
-      final today = _dayOf(DateTime.now());
-      final sel = state.selectedDay;
-      final inWeek = sel != null &&
-          !sel.isBefore(today) &&
-          sel.isBefore(today.add(const Duration(days: 7)));
-      if (!inWeek) next = next.copyWith(selectedDay: today);
-    }
-    emit(next);
-    if (view == ScheduleView.month) {
-      final anchor = state.monthAnchor ?? _firstOfMonth(DateTime.now());
-      if (state.monthAiringByDay.isEmpty) await _loadMonth(anchor);
-    }
-  }
-
-  /// Move to another month (month view) and load it.
-  Future<void> goToMonth(DateTime anchorLocal) async {
-    final anchor = _firstOfMonth(anchorLocal);
-    // Selecting a new month: land on today if it's this month, else the 1st.
-    final now = DateTime.now();
-    final sel = (anchor.year == now.year && anchor.month == now.month)
-        ? _dayOf(now)
-        : anchor;
-    emit(state.copyWith(monthAnchor: anchor, selectedDay: sel));
-    await _loadMonth(anchor);
-  }
+  Future<void> refresh() => load();
 
   void selectDay(DateTime day) =>
       emit(state.copyWith(selectedDay: _dayOf(day)));
@@ -267,22 +191,6 @@ class ScheduleCubit extends Cubit<ScheduleState> {
       loadingSoon: false,
       errorSoon: soon.isEmpty,
       offline: soon.isEmpty && _soon.lastFailureOffline,
-    ));
-  }
-
-  Future<void> _loadMonth(DateTime anchor) async {
-    emit(state.copyWith(loadingMonth: true, errorMonth: false));
-    var entries = await _airing.monthAiring(anchor);
-    for (var i = 0; entries.isEmpty && i < _retryDelays.length; i++) {
-      await Future<void>.delayed(_retryDelays[i]);
-      if (isClosed) return;
-      entries = await _airing.monthAiring(anchor);
-    }
-    if (isClosed) return;
-    emit(state.copyWith(
-      monthAiringByDay: groupByLocalDay(entries),
-      loadingMonth: false,
-      errorMonth: entries.isEmpty,
     ));
   }
 

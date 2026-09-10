@@ -4545,12 +4545,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get relativeTomorrow => 'Tomorrow';
 
   @override
-  String get weekView => 'Week';
-
-  @override
-  String get monthView => 'Month';
-
-  @override
   String get scheduleSlotMorning => 'MORNING';
 
   @override

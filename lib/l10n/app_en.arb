@@ -2628,8 +2628,6 @@
 	"removeDownloadTooltip": "Remove",
 	"positionLabel": "Position",
 	"relativeTomorrow": "Tomorrow",
-	"weekView": "Week",
-	"monthView": "Month",
 	"scheduleSlotMorning": "MORNING",
 	"scheduleSlotAfternoon": "AFTERNOON",
 	"scheduleSlotEvening": "EVENING",
