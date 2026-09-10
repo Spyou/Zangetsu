@@ -65,8 +65,9 @@ Future<MetaFilters?> pickMetaFilters(
     ZModePrefs.streamKind,
   );
   if (!sl<MetadataRepository>().supportsFilters) {
-    final needed =
-        (kind == ZKind.movie || kind == ZKind.tv) ? 'TMDB' : 'AniList';
+    final needed = (kind == ZKind.movie || kind == ZKind.tv)
+        ? 'TMDB'
+        : 'AniList';
     showAppToast(context, context.l10n.filtersNeedProvider(needed));
     return null;
   }

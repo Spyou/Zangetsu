@@ -8,12 +8,15 @@ import '../../../core/playback/my_list.dart';
 /// One My List row: the title plus its library status (null = saved without a
 /// status, e.g. a legacy bookmark).
 class MyListEntry {
-  const MyListEntry(this.item, this.status,
-      {this.progress,
-      this.score,
-      this.tmdbIsTv = false,
-      this.updatedAt,
-      this.customLists = const []});
+  const MyListEntry(
+    this.item,
+    this.status, {
+    this.progress,
+    this.score,
+    this.tmdbIsTv = false,
+    this.updatedAt,
+    this.customLists = const [],
+  });
   final MediaItem item;
   final WatchStatus? status;
 

@@ -2572,7 +2572,7 @@ abstract class AppLocalizations {
   /// No description provided for @qualityAndSubDubBadges.
   ///
   /// In en, this message translates to:
-  /// **'Quality and Sub/Dub badges'**
+  /// **'Score, quality and Sub/Dub badges'**
   String get qualityAndSubDubBadges;
 
   /// No description provided for @animateLists.

@@ -143,8 +143,9 @@ class _BrowseSourceScreenTvViewState extends State<_BrowseSourceScreenTvView> {
                   ),
                   TvFocusable(
                     variant: TvFocusVariant.float,
-                    semanticLabel:
-                        _searching ? l10n.clear : l10n.searchThisSource,
+                    semanticLabel: _searching
+                        ? l10n.clear
+                        : l10n.searchThisSource,
                     onTap: _searching ? _stopSearch : _startSearch,
                     child: Padding(
                       padding: const EdgeInsets.all(10),

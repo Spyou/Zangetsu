@@ -154,6 +154,7 @@ class _SeeAllScreenState extends State<SeeAllScreen> {
               headers: item.coverHeaders,
               tags: widget.tagsFor?.call(item) ?? const [],
               qualityBadge: item.quality,
+              scoreBadge: item.score,
               dubBadge: item.dubBadge,
               cellWidth: cellW,
               onTap: () => widget.onTap(item),

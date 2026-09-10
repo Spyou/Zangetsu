@@ -268,7 +268,6 @@ class _ProviderRow extends StatelessWidget {
   }
 }
 
-
 /// Drawn only when a provider's own mark cannot be decoded.
 class _InitialsMark extends StatelessWidget {
   const _InitialsMark({required this.brand});

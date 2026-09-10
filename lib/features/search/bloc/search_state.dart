@@ -748,8 +748,7 @@ class SearchState extends Equatable {
     filteredBrowsePage: filteredBrowsePage ?? this.filteredBrowsePage,
     filteredBrowseLoadingMore:
         filteredBrowseLoadingMore ?? this.filteredBrowseLoadingMore,
-    filteredBrowseLoading:
-        filteredBrowseLoading ?? this.filteredBrowseLoading,
+    filteredBrowseLoading: filteredBrowseLoading ?? this.filteredBrowseLoading,
     filteredBrowseAtEnd: filteredBrowseAtEnd ?? this.filteredBrowseAtEnd,
   );
 

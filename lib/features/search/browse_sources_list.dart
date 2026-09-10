@@ -41,7 +41,13 @@ List<(String, List<SourceRow>)> groupWithPinned(
   return [
     if (pinned.isNotEmpty) (pinnedLabel, pinned),
     for (final (title, rows) in groups)
-      (title, [for (final s in rows) if (!pinnedSet.contains(s.id)) s]),
+      (
+        title,
+        [
+          for (final s in rows)
+            if (!pinnedSet.contains(s.id)) s,
+        ],
+      ),
   ].where((g) => g.$2.isNotEmpty).toList();
 }
 
@@ -108,7 +114,8 @@ class BrowseSourcesList extends StatelessWidget {
 
     var groups = <(String, List<({String id, String label, String? repo})>)>[
       if (showStreaming) (context.l10n.anime, b.anime.where(matches).toList()),
-      if (showStreaming) (context.l10n.moviesSeries, b.movies.where(matches).toList()),
+      if (showStreaming)
+        (context.l10n.moviesSeries, b.movies.where(matches).toList()),
       if (showManga) (context.l10n.modeManga, b.manga.where(matches).toList()),
       if (showNovel) (context.l10n.modeNovel, b.novel.where(matches).toList()),
     ].toList();

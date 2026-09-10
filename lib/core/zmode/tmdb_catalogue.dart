@@ -302,6 +302,7 @@ class TmdbCatalogue implements VideoCatalogue {
             (m['genre_ids'] as List?) ?? const [],
             isTv: isTv,
           ),
+          score: _score(m['vote_average']),
         ),
       );
     }

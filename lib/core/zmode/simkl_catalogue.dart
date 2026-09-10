@@ -289,6 +289,7 @@ class SimklCatalogue implements VideoCatalogue {
           sourceId: ZmodeIds.sourceId,
           tmdbId: tmdbId,
           tmdbIsTv: isTv,
+          score: _score(row['ratings']),
         ),
       );
     }

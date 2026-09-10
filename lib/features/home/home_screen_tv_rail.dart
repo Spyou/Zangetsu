@@ -1,7 +1,6 @@
 // The TV poster rail — one labelled row of D-pad cards.
 part of 'home_screen_tv.dart';
 
-
 // ── Poster Rail ───────────────────────────────────────────────────────────────
 
 /// One labelled horizontal row of D-pad-focusable poster cards for a [HomeSection].

@@ -231,7 +231,11 @@ class HomeCubit extends Cubit<HomeState> {
     Future<List<TrackerListItem>>? libraryFuture;
     if (hub != null && kind != null) {
       _watchTrackersOnce(hub);
-      tracker = pickHomeTracker(hub, kind, preferred: layoutTrackerName(_layoutKey));
+      tracker = pickHomeTracker(
+        hub,
+        kind,
+        preferred: layoutTrackerName(_layoutKey),
+      );
       if (tracker != null) {
         final cached = _trackerCache;
         libraryFuture = cached != null && cached.$1 == tracker.displayName
@@ -328,11 +332,16 @@ class HomeCubit extends Cubit<HomeState> {
     if (kind != null) {
       final hub = _hubOrNull;
       if (hub != null) {
-        tracker = pickHomeTracker(hub, kind, preferred: layoutTrackerName(_layoutKey));
+        tracker = pickHomeTracker(
+          hub,
+          kind,
+          preferred: layoutTrackerName(_layoutKey),
+        );
         final cached = _trackerCache;
         // Only the cached library, never a fetch. A miss means the tracker
         // rows sit this one out, the same as a load whose read timed out.
-        if (tracker != null && cached != null &&
+        if (tracker != null &&
+            cached != null &&
             cached.$1 == tracker.displayName) {
           library = cached.$2;
         }
@@ -508,8 +517,9 @@ class HomeCubit extends Cubit<HomeState> {
     final hit = _streamKindCache[kind];
     if (hit != null) return hit;
     if (!sl.isRegistered<MetadataRepository>()) return null;
-    final rows = sl<MetadataRepository>()
-        .peekHomeCache(browseKindFor(ContentMode.anime, kind));
+    final rows = sl<MetadataRepository>().peekHomeCache(
+      browseKindFor(ContentMode.anime, kind),
+    );
     if (rows != null && rows.isNotEmpty) _streamKindCache[kind] = rows;
     return rows;
   }

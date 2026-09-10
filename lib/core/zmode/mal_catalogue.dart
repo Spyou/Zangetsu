@@ -484,6 +484,7 @@ class MalCatalogue implements AnimeCatalogue {
             for (final g in (m['genres'] as List? ?? const []))
               if (g is Map && g['name'] is String) g['name'] as String,
           ],
+          score: _score(m['mean']),
         ),
       );
     }

@@ -680,6 +680,7 @@ class _HomeViewState extends State<_HomeView>
           headers: items[i].coverHeaders,
           cellWidth: 116,
           qualityBadge: items[i].quality,
+          scoreBadge: items[i].score,
           dubBadge: items[i].dubBadge,
           onTap: () => _openDetail(items[i]),
           onLongPress: () => _showInfo(items[i]),
@@ -953,9 +954,7 @@ class _HomeViewState extends State<_HomeView>
               // Even halves with Genres beside it. Alone it still fills the
               // row, so the old flex:2 (which existed to beat the switcher
               // cards to a readable width) no longer buys anything.
-              Expanded(
-                child: _hubCard(orBorrow(_modeArt(ContentMode.anime))),
-              ),
+              Expanded(child: _hubCard(orBorrow(_modeArt(ContentMode.anime)))),
               // Genres only means something on a catalogue that can actually
               // narrow itself. MAL and Simkl take the parameter and answer
               // with the same unfiltered list, so the card is not offered
@@ -1268,10 +1267,7 @@ class _HomeViewState extends State<_HomeView>
   /// surface2 to surface, and the scrim on top then knocked even that back,
   /// so a fresh install opened onto a row of dead slabs. These sit in the
   /// same dark range as the surfaces, just carrying the theme's colour.
-  List<Color> _emptyTint(double from, double to) => [
-    _toned(from),
-    _toned(to),
-  ];
+  List<Color> _emptyTint(double from, double to) => [_toned(from), _toned(to)];
 
   /// Background for one of the 52dp cards: the art under [scrim], or the
   /// [empty] gradient alone when there is no art. The scrim is skipped in

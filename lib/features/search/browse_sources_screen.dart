@@ -33,6 +33,7 @@ class _BrowseSourcesScreenState extends State<BrowseSourcesScreen>
     with SingleTickerProviderStateMixin {
   final _controller = TextEditingController();
   String _query = '';
+
   /// Phone-only. On TV this build hands off to [BrowseSourcesScreenTv], which
   /// has its own tabs — creating a second controller here just to dispose it
   /// tore down a ticker whose ancestors were already gone.
@@ -119,26 +120,38 @@ class _BrowseSourcesScreenState extends State<BrowseSourcesScreen>
               child: Row(
                 children: [
                   const SizedBox(width: 12),
-                  const Icon(Icons.search, size: 20, color: AppColors.textTertiary),
+                  const Icon(
+                    Icons.search,
+                    size: 20,
+                    color: AppColors.textTertiary,
+                  ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: TextField(
                       controller: _controller,
                       onChanged: (v) => setState(() => _query = v),
-                      style: AppText.body.copyWith(color: AppColors.textPrimary),
+                      style: AppText.body.copyWith(
+                        color: AppColors.textPrimary,
+                      ),
                       cursorColor: AppColors.accent,
                       decoration: InputDecoration(
                         hintText: context.l10n.searchSources,
                         hintStyle: AppText.body,
                         border: InputBorder.none,
                         isDense: true,
-                        contentPadding: const EdgeInsets.symmetric(vertical: 14),
+                        contentPadding: const EdgeInsets.symmetric(
+                          vertical: 14,
+                        ),
                       ),
                     ),
                   ),
                   if (_query.isNotEmpty)
                     IconButton(
-                      icon: const Icon(Icons.close_rounded, size: 18, color: AppColors.textTertiary),
+                      icon: const Icon(
+                        Icons.close_rounded,
+                        size: 18,
+                        color: AppColors.textTertiary,
+                      ),
                       tooltip: context.l10n.clear,
                       onPressed: () => setState(() {
                         _controller.clear();
@@ -161,7 +174,8 @@ class _BrowseSourcesScreenState extends State<BrowseSourcesScreen>
                     query: _query,
                     onBrowse: (id, name) => Navigator.of(context).push(
                       MaterialPageRoute<void>(
-                        builder: (_) => BrowseSourceScreen(sourceId: id, title: name),
+                        builder: (_) =>
+                            BrowseSourceScreen(sourceId: id, title: name),
                       ),
                     ),
                   ),

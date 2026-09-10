@@ -53,11 +53,7 @@ class _BrowseSourcesScreenTvState extends State<BrowseSourcesScreenTv> {
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
-    final tabLabels = [
-      l10n.modeStreaming,
-      l10n.modeManga,
-      l10n.modeNovel,
-    ];
+    final tabLabels = [l10n.modeStreaming, l10n.modeManga, l10n.modeNovel];
 
     return Scaffold(
       backgroundColor: AppColors.bg,

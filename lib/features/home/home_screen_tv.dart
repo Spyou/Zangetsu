@@ -227,9 +227,7 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
           .ensureRuntimeLoaded(e.sourceId)
           .catchError((_) => false);
       if (!ok || sl<ProviderManager>().get(e.sourceId) == null) {
-        debugPrint(
-          '[tv-home] _resume · RUNTIME LOAD FAILED for ${e.sourceId}',
-        );
+        debugPrint('[tv-home] _resume · RUNTIME LOAD FAILED for ${e.sourceId}');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -253,9 +251,7 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
         '[tv-home] _resume · episodes fetched · count=${episodes.length}',
       );
     } catch (err, st) {
-      debugPrint(
-        '[tv-home] _resume · episodes FETCH FAILED · $err\n$st',
-      );
+      debugPrint('[tv-home] _resume · episodes FETCH FAILED · $err\n$st');
       episodes = const [];
     }
     if (!mounted || episodes.isEmpty) {
@@ -603,11 +599,11 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
               final filteredHistory = registry == null
                   ? history
                   : history.where((e) {
-                final type = registry.typeOf(e.sourceId);
-                return kind == StreamKind.anime
-                    ? type != 'movie'
-                    : type == 'movie';
-              }).toList();
+                      final type = registry.typeOf(e.sourceId);
+                      return kind == StreamKind.anime
+                          ? type != 'movie'
+                          : type == 'movie';
+                    }).toList();
               return _catalogScroll(
                 rows,
                 filteredHistory,

@@ -73,7 +73,10 @@ class AniListCatalogue implements AnimeCatalogue {
   /// detail-only half of [_fields] (description, studios, airing schedule)
   /// through it more than doubled the response for data no list cell shows.
   static const _listFields =
-      'id idMal title{romaji english native} coverImage{large} bannerImage genres';
+      'id idMal title{romaji english native} coverImage{large} bannerImage '
+      // One int, for the poster's score badge. The rest of the detail fields
+      // stay out for the reason above; this one is a number, not a payload.
+      'averageScore genres';
 
   static String _type(ZKind k) => k == ZKind.anime ? 'ANIME' : 'MANGA';
   static String _format(ZKind k) => switch (k) {
@@ -460,6 +463,8 @@ class AniListCatalogue implements AnimeCatalogue {
       sourceId: ZmodeIds.sourceId,
       malId: m['idMal'] as int?,
       genres: [for (final g in (m['genres'] as List? ?? const [])) '$g'],
+      // Already 0-100 here; the other three scale theirs to match.
+      score: m['averageScore'] as int?,
     );
   }
 

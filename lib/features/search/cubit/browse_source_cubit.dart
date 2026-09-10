@@ -202,12 +202,14 @@ class BrowseSourceCubit extends Cubit<BrowseSourceState> {
         for (final i in res.items)
           if (seen.add(i.url)) i,
       ];
-      emit(_copy(
-        searchResults: [...current, ...fresh],
-        page: state.page + 1,
-        loadingMore: false,
-        atEnd: fresh.isEmpty,
-      ));
+      emit(
+        _copy(
+          searchResults: [...current, ...fresh],
+          page: state.page + 1,
+          loadingMore: false,
+          atEnd: fresh.isEmpty,
+        ),
+      );
     } catch (_) {
       if (isClosed) return;
       // A failed page is not the end — the next scroll may work.

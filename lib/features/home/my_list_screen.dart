@@ -99,11 +99,7 @@ class MyListScreen extends StatelessWidget {
 }
 
 class _MyListView extends StatefulWidget {
-  const _MyListView({
-    this.pinnedTracker,
-    this.pinnedKind,
-    this.initialStatus,
-  });
+  const _MyListView({this.pinnedTracker, this.pinnedKind, this.initialStatus});
 
   /// Non-null when this screen was opened FOR one tracker — the switcher is
   /// hidden and there is nothing to switch to.

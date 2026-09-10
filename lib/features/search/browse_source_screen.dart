@@ -559,6 +559,7 @@ class _BrowseSourceViewState extends State<_BrowseSourceView> {
                       headers: items[j].coverHeaders,
                       cellWidth: 116,
                       qualityBadge: items[j].quality,
+                      scoreBadge: items[j].score,
                       dubBadge: items[j].dubBadge,
                       onTap: () => _openDetail(context, items[j]),
                     ),
@@ -645,6 +646,7 @@ class _BrowseSourceViewState extends State<_BrowseSourceView> {
             imageUrl: item.cover,
             headers: item.coverHeaders,
             qualityBadge: item.quality,
+            scoreBadge: item.score,
             dubBadge: item.dubBadge,
             onTap: () => _openDetail(context, item),
           );

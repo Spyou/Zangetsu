@@ -70,8 +70,10 @@ import '../search/bloc/search_state.dart';
 ///
 /// [provided] wins outright: arriving from a genre tile means that tile's
 /// filters, not the screen's defaults.
-MetaFilters initialSearchFilters(MetaFilters? provided, bool privacyAllowsAdult) =>
-    provided ?? MetaFilters(adult: privacyAllowsAdult);
+MetaFilters initialSearchFilters(
+  MetaFilters? provided,
+  bool privacyAllowsAdult,
+) => provided ?? MetaFilters(adult: privacyAllowsAdult);
 
 class SearchScreen extends StatefulWidget {
   const SearchScreen({
@@ -1830,6 +1832,7 @@ class _SearchViewState extends State<_SearchView>
                         headers: item.coverHeaders,
                         tags: _tagsFor(item),
                         qualityBadge: item.quality,
+                        scoreBadge: item.score,
                         dubBadge: item.dubBadge,
                         cellWidth: itemW,
                         onTap: () => _openDetail(item),
@@ -1889,6 +1892,7 @@ class _SearchViewState extends State<_SearchView>
                 headers: item.coverHeaders,
                 tags: _tagsFor(item),
                 qualityBadge: item.quality,
+                scoreBadge: item.score,
                 dubBadge: item.dubBadge,
                 cellWidth: cellW,
                 onTap: () => _openDetail(item),
@@ -2126,6 +2130,7 @@ class _SearchViewState extends State<_SearchView>
           headers: item.coverHeaders,
           tags: _tagsFor(item),
           qualityBadge: item.quality,
+          scoreBadge: item.score,
           dubBadge: item.dubBadge,
           cellWidth: cellW,
           onTap: () => _openDetail(item),
@@ -2311,6 +2316,7 @@ class _SearchViewState extends State<_SearchView>
                     headers: item.coverHeaders,
                     tags: _tagsFor(item),
                     qualityBadge: item.quality,
+                    scoreBadge: item.score,
                     dubBadge: item.dubBadge,
                     cellWidth: cellW,
                     onTap: () => _openDetail(item),

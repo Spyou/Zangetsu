@@ -80,9 +80,7 @@ class ContinueSection extends StatelessWidget {
           final registry = sl<ProviderRegistry>();
           history = history.where((e) {
             final type = registry.typeOf(e.sourceId);
-            return kind == StreamKind.anime
-                ? type != 'movie'
-                : type == 'movie';
+            return kind == StreamKind.anime ? type != 'movie' : type == 'movie';
           }).toList();
         }
         return ContinueWatchingRow(
@@ -102,8 +100,9 @@ class ContinueSection extends StatelessWidget {
       return const SliverToBoxAdapter(child: SizedBox.shrink());
     }
     // Only this mode's kind — the ReadHistory box mixes manga and novel.
-    final type =
-        mode == ContentMode.manga ? ProviderType.manga : ProviderType.novel;
+    final type = mode == ContentMode.manga
+        ? ProviderType.manga
+        : ProviderType.novel;
     return ValueListenableBuilder(
       valueListenable: Hive.box<Map>(ReadHistory.boxName).listenable(),
       builder: (context, _, _) => ContinueReadingRow(
@@ -200,8 +199,9 @@ class ContinueReadingRow extends StatelessWidget {
         itemCount: history.length,
         itemBuilder: (c, i) {
           final e = history[i];
-          final progress =
-              e.total > 0 ? (e.pos / e.total).clamp(0.0, 1.0) : 0.0;
+          final progress = e.total > 0
+              ? (e.pos / e.total).clamp(0.0, 1.0)
+              : 0.0;
           return ContinueReadingCard(
             title: e.title,
             imageUrl: e.cover,

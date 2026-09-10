@@ -96,6 +96,18 @@ class MediaItem extends Equatable {
   /// current results carries one.
   final MediaStatus? status;
 
+  /// Community score, 0-100, from the metadata catalogue.
+  ///
+  /// All four providers report one and each catalogue already normalises it
+  /// for [MediaDetail.score] — AniList is natively 0-100, MAL/TMDB/Simkl are
+  /// x10 — so this is that same number carried on the list item, letting a
+  /// poster show it without opening the title.
+  ///
+  /// Null on source rows: an extension knows what it can stream, not what the
+  /// internet makes of it. That is what keeps the badge off source posters
+  /// without any caller having to ask which kind of row it is holding.
+  final int? score;
+
   const MediaItem({
     required this.id,
     required this.title,
@@ -119,6 +131,7 @@ class MediaItem extends Equatable {
     this.imdbId,
     this.genres = const [],
     this.status,
+    this.score,
   });
 
   factory MediaItem.fromJson(Map<String, dynamic> json) =>
@@ -156,6 +169,13 @@ class MediaItem extends Equatable {
     imdbId: imdbId ?? this.imdbId,
     savedFrom: savedFrom ?? this.savedFrom,
     savedAtMs: savedAtMs ?? this.savedAtMs,
+    // Carried, not re-derived. These three were being dropped: copyWith lists
+    // fields by hand, so anything added to the constructor and forgotten here
+    // is silently lost by every caller — and copyWith is how a row gets
+    // re-pointed at another source.
+    genres: genres,
+    status: status,
+    score: score,
   );
 
   @override
@@ -180,6 +200,7 @@ class MediaItem extends Equatable {
     imdbId,
     genres,
     status,
+    score,
   ];
 }
 

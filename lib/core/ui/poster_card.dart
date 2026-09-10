@@ -25,6 +25,7 @@ class PosterCard extends StatefulWidget {
     this.showTitle = true,
     this.qualityBadge,
     this.dubBadge,
+    this.scoreBadge,
   });
   final String title;
   final String? imageUrl;
@@ -50,6 +51,16 @@ class PosterCard extends StatefulWidget {
   /// the quality badge and rides the SAME setting — one switch for poster
   /// badges, not one per kind.
   final String? dubBadge;
+
+  /// Community score, 0-100, from the metadata catalogue — see
+  /// [MediaItem.score]. Rides the same "Poster badges" setting as the two
+  /// above; a third switch for it would never be set independently.
+  ///
+  /// Only catalogue rows carry one, so this is null on source posters and the
+  /// badge simply never appears there. It shares the top-right corner with the
+  /// quality badge for that reason: a poster has a score or a resolution,
+  /// never both.
+  final int? scoreBadge;
   final double cellWidth;
 
   /// When false, render only the poster art (no title below). Used on TV so the
@@ -186,6 +197,18 @@ class _PosterCardState extends State<PosterCard> {
                                 : const SizedBox.shrink(),
                           ),
                         ),
+                      if (widget.scoreBadge != null &&
+                          widget.qualityBadge == null)
+                        Positioned(
+                          top: 6,
+                          right: 6,
+                          child: ValueListenableBuilder<int>(
+                            valueListenable: PlaybackPrefs.badgeRevision,
+                            builder: (_, _, _) => _showBadges
+                                ? _ScoreTag(widget.scoreBadge!)
+                                : const SizedBox.shrink(),
+                          ),
+                        ),
                       if (widget.dubBadge != null)
                         Positioned(
                           top: 6,
@@ -265,6 +288,50 @@ double posterGridAspect(BuildContext context) =>
     posterCellAspect((MediaQuery.sizeOf(context).width - 32 - 24) / 3);
 
 /// Small frosted badge drawn over poster art (e.g. "SUB", "DUB", "MOVIE").
+/// The score chip. A star rather than a bare number: "8.6" alone on a poster
+/// reads as an episode count or a year just as easily as a rating.
+///
+/// Carried as 0-100 because that is what the catalogues agree on, shown out of
+/// 10 because that is what people read a rating as.
+class _ScoreTag extends StatelessWidget {
+  const _ScoreTag(this.score);
+
+  /// 0-100, as [MediaItem.score].
+  final int score;
+
+  String get _outOfTen => (score / 10).toStringAsFixed(1);
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(4, 2, 5, 2),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.star_rounded, size: 10, color: Color(0xFFFFC53D)),
+          const SizedBox(width: 2),
+          Text(
+            _outOfTen,
+            style: TextStyle(
+              fontFamily: AppText.fontFamily,
+              fontFamilyFallback: AppText.fontFamilyFallback,
+              fontSize: 9,
+              height: 1.1,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.3,
+              color: Colors.white,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _PosterTag extends StatelessWidget {
   const _PosterTag(this.text);
   final String text;

@@ -213,8 +213,9 @@ class _SourceChips extends StatelessWidget {
     return AnimatedBuilder(
       animation: Listenable.merge(hub.trackers),
       builder: (context, _) {
-        final connected =
-            hub.connectedForMode(sl<ContentModeCubit>().state).toList();
+        final connected = hub
+            .connectedForMode(sl<ContentModeCubit>().state)
+            .toList();
         if (connected.isEmpty) return const SizedBox.shrink();
 
         final cubit = context.read<TrackerListCubit>();
@@ -271,23 +272,23 @@ class _Chip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-        decoration: BoxDecoration(
-          color: selected
-              ? AppColors.accent.withValues(alpha: 0.18)
-              : AppColors.surface2,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: selected ? AppColors.accent : Colors.transparent,
-            width: 2,
-          ),
-        ),
-        child: Text(
-          label,
-          style: AppText.headline.copyWith(
-            color: selected ? AppColors.accent : AppColors.textSecondary,
-            fontSize: 15,
-          ),
-        ),
-      );
+    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+    decoration: BoxDecoration(
+      color: selected
+          ? AppColors.accent.withValues(alpha: 0.18)
+          : AppColors.surface2,
+      borderRadius: BorderRadius.circular(20),
+      border: Border.all(
+        color: selected ? AppColors.accent : Colors.transparent,
+        width: 2,
+      ),
+    ),
+    child: Text(
+      label,
+      style: AppText.headline.copyWith(
+        color: selected ? AppColors.accent : AppColors.textSecondary,
+        fontSize: 15,
+      ),
+    ),
+  );
 }

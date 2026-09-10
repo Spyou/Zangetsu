@@ -1336,7 +1336,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get posterBadges => 'Poster badges';
 
   @override
-  String get qualityAndSubDubBadges => 'Quality and Sub/Dub badges';
+  String get qualityAndSubDubBadges => 'Score, quality and Sub/Dub badges';
 
   @override
   String get animateLists => 'Animate lists';
