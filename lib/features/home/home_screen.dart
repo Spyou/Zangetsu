@@ -2149,7 +2149,7 @@ class _IncognitoChip extends StatelessWidget {
                     Text(
                       l10n.incognito,
                       style: TextStyle(
-                        fontFamily: 'Inter',
+                        fontFamily: AppText.fontFamily,
                         fontFamilyFallback: AppText.fontFamilyFallback,
                         fontSize: 11.5,
                         fontWeight: FontWeight.w700,

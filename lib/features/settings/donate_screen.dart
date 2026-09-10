@@ -224,7 +224,7 @@ class _DonateButton extends StatelessWidget {
             Text(
               label,
               style: TextStyle(
-                fontFamily: 'Inter',
+                fontFamily: AppText.fontFamily,
           fontFamilyFallback: AppText.fontFamilyFallback,
                 fontWeight: FontWeight.w700,
                 fontSize: 16,

@@ -285,6 +285,16 @@ flutter:
     - family: Inter
       fonts:
         - asset: assets/fonts/Inter.ttf
+    # The default UI font, and the ONLY one added to the APK for it: a default
+    # has to paint on the first frame, with no network. Every other choice in
+    # Settings → Interface → Appearance → Font is fetched on demand by
+    # SubtitleFontService and registered with FontLoader, which is app-wide —
+    # so they cost download, not install size. Variable, so one file covers
+    # w400 through w800 and headings are really bold rather than smeared.
+    - family: Nunito
+      fonts:
+        - asset: assets/fonts/Nunito-Regular.ttf
+
     # Noto Sans stays bundled — the libass Android fallback + an offline-safe
     # default subtitle font. The other subtitle fonts are download-on-demand
     # (SubtitleFontService), so they don't add ~6MB to the APK.

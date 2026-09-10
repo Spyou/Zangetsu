@@ -9,6 +9,8 @@ import '../../core/di/injector.dart';
 import '../../core/playback/playback_prefs.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
+import '../../core/ui/app_toast.dart';
+import '../../core/theme/app_font_prefs.dart';
 import '../../core/theme/theme_controller.dart';
 import '../../l10n/l10n.dart';
 import '../../core/ui/animation_prefs.dart';
@@ -70,7 +72,10 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, temp),
-            child: Text(context.l10n.apply, style: TextStyle(color: AppColors.accent)),
+            child: Text(
+              context.l10n.apply,
+              style: TextStyle(color: AppColors.accent),
+            ),
           ),
         ],
       ),
@@ -160,6 +165,20 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
             ],
           ),
 
+          // ── Font ──────────────────────────────────────────────────────────
+          SettingsSectionLabel('Font'),
+          SettingsCard(
+            children: [
+              SettingsTile(
+                icon: Icons.text_fields_rounded,
+                title: 'App font',
+                subtitle: 'Everything in the app is drawn in this',
+                trailing: Text(AppFontPrefs.label, style: AppText.caption),
+                onTap: _pickFont,
+              ),
+            ],
+          ),
+
           // ── Display ───────────────────────────────────────────────────────
           SettingsSectionLabel(context.l10n.display),
           SettingsCard(
@@ -184,7 +203,10 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
                   icon: Icons.animation_outlined,
                   title: context.l10n.animationStyle,
                   subtitle: _animStyleBlurb(context),
-                  trailing: Text(_animStyleName(context), style: AppText.caption),
+                  trailing: Text(
+                    _animStyleName(context),
+                    style: AppText.caption,
+                  ),
                   onTap: _pickAnimStyle,
                 ),
               // Phone-only: TV mirrors the saved arrangement but has no
@@ -194,9 +216,11 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
                   icon: Icons.view_agenda_outlined,
                   title: context.l10n.homeRows,
                   subtitle: context.l10n.homeRowsSubtitle,
-                  onTap: () => Navigator.of(
-                    context,
-                  ).push(MaterialPageRoute<void>(builder: (_) => const HomeRowsScreen())),
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const HomeRowsScreen(),
+                    ),
+                  ),
                 ),
             ],
           ),
@@ -239,6 +263,82 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
     return true;
   }
 
+  /// Every choice previewed in its OWN face — a list of names all set in the
+  /// current font tells you nothing about what you are picking.
+  Future<void> _pickFont() async {
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                child: Row(
+                  children: [Text('App font', style: AppText.headline)],
+                ),
+              ),
+              const Divider(color: AppColors.hairline, height: 1),
+              for (final f in AppFontPrefs.fonts)
+                ListTile(
+                  onTap: () => Navigator.pop(ctx, f.family),
+                  // Previewed in its OWN face — but only once it is on the
+                  // device. Naming an unfetched font in a family Flutter has
+                  // never loaded just draws the platform default, so the row
+                  // would advertise a face you aren't going to get.
+                  title: Text(
+                    f.label,
+                    style: AppText.body.copyWith(
+                      fontFamily: f.bundled ? f.family : null,
+                      color: AppColors.textPrimary,
+                      fontSize: 16,
+                    ),
+                  ),
+                  subtitle: Text(
+                    f.bundled
+                        ? 'Watch anime, movies and series'
+                        : 'Downloads on first use',
+                    style: AppText.caption.copyWith(
+                      fontFamily: f.bundled ? f.family : null,
+                    ),
+                  ),
+                  trailing: f.family == AppFontPrefs.family
+                      ? Icon(Icons.check, color: AppColors.accent)
+                      : (f.bundled
+                            ? null
+                            : Icon(
+                                Icons.download_outlined,
+                                size: 18,
+                                color: AppColors.textTertiary,
+                              )),
+                ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (picked == null || !mounted || picked == AppFontPrefs.family) return;
+    // Fetch BEFORE saving. Saving first would restart the app into a family
+    // Flutter has never loaded, which draws the platform default and reads as
+    // the setting having been ignored.
+    if (!AppFontPrefs.isBundled(picked)) {
+      final ok = await AppFontPrefs.ensure(picked);
+      if (!mounted) return;
+      if (!ok) {
+        showAppToast(context, "Couldn't download that font — still online?");
+        return;
+      }
+    }
+    await AppFontPrefs.setFamily(picked);
+    if (mounted) setState(() {});
+  }
+
   /// Section description under a [SettingsSectionLabel], indented to match it.
   Widget _blurb(String text) => Padding(
     padding: const EdgeInsets.fromLTRB(28, 0, 22, 10),
@@ -272,16 +372,19 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
     );
   }
 
-  static List<(ListAnimStyle, String, String)> _animStyles(BuildContext context) => [
+  static List<(ListAnimStyle, String, String)> _animStyles(
+    BuildContext context,
+  ) => [
     (ListAnimStyle.rise, context.l10n.animRise, context.l10n.animRiseDesc),
     (ListAnimStyle.fade, context.l10n.animFade, context.l10n.animFadeDesc),
     (ListAnimStyle.zoom, context.l10n.animZoom, context.l10n.animZoomDesc),
   ];
 
-  (ListAnimStyle, String, String) _animStyle(BuildContext context) => _animStyles(context).firstWhere(
-    (o) => o.$1 == AnimationPrefs.style,
-    orElse: () => _animStyles(context).first,
-  );
+  (ListAnimStyle, String, String) _animStyle(BuildContext context) =>
+      _animStyles(context).firstWhere(
+        (o) => o.$1 == AnimationPrefs.style,
+        orElse: () => _animStyles(context).first,
+      );
   String _animStyleName(BuildContext context) => _animStyle(context).$2;
   String _animStyleBlurb(BuildContext context) => _animStyle(context).$3;
 
@@ -301,7 +404,9 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
               child: Row(
-                children: [Text(context.l10n.animationStyle, style: AppText.headline)],
+                children: [
+                  Text(context.l10n.animationStyle, style: AppText.headline),
+                ],
               ),
             ),
             const Divider(color: AppColors.hairline, height: 1),
@@ -361,10 +466,7 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.surface,
         title: Text(context.l10n.useTheIcon(o.label), style: AppText.title),
-        content: Text(
-          context.l10n.useTheIconBody,
-          style: AppText.body,
-        ),
+        content: Text(context.l10n.useTheIconBody, style: AppText.body),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -372,7 +474,10 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text(context.l10n.change, style: TextStyle(color: AppColors.accent)),
+            child: Text(
+              context.l10n.change,
+              style: TextStyle(color: AppColors.accent),
+            ),
           ),
         ],
       ),

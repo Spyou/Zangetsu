@@ -349,14 +349,14 @@ class _HistoryScreenState extends State<HistoryScreen>
           ),
           labelColor: AppColors.accent,
           unselectedLabelColor: AppColors.textSecondary,
-          labelStyle: const TextStyle(
-            fontFamily: 'Inter',
+          labelStyle: TextStyle(
+            fontFamily: AppText.fontFamily,
           fontFamilyFallback: AppText.fontFamilyFallback,
             fontSize: 14.5,
             fontWeight: FontWeight.w700,
           ),
-          unselectedLabelStyle: const TextStyle(
-            fontFamily: 'Inter',
+          unselectedLabelStyle: TextStyle(
+            fontFamily: AppText.fontFamily,
           fontFamilyFallback: AppText.fontFamilyFallback,
             fontSize: 14.5,
             fontWeight: FontWeight.w600,
@@ -449,7 +449,7 @@ class _HistoryScreenState extends State<HistoryScreen>
               child: Text(
                 g.label,
                 style: TextStyle(
-                  fontFamily: 'Inter',
+                  fontFamily: AppText.fontFamily,
           fontFamilyFallback: AppText.fontFamilyFallback,
                   fontSize: 13,
                   fontWeight: FontWeight.w600,

@@ -147,7 +147,7 @@ class TeamAvatar extends StatelessWidget {
       child: Text(
         name.isEmpty ? '?' : name[0].toUpperCase(),
         style: TextStyle(
-          fontFamily: 'Inter',
+          fontFamily: AppText.fontFamily,
           fontFamilyFallback: AppText.fontFamilyFallback,
           color: AppColors.textSecondary,
           fontWeight: FontWeight.w700,

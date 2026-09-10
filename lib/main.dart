@@ -36,6 +36,7 @@ import 'core/zmode/match_store.dart';
 import 'core/zmode/metadata_provider_prefs.dart';
 import 'core/zmode/zmode_prefs.dart';
 import 'core/theme/app_theme.dart';
+import 'core/theme/app_font_prefs.dart';
 import 'core/theme/theme_controller.dart';
 import 'core/tv/tv_route_pop_guard.dart';
 import 'core/tv/tv_viewport.dart';
@@ -349,6 +350,9 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     ThemeController.revision.addListener(_onThemeChanged);
+    // The UI font is baked into every AppText getter and into ThemeData, so a
+    // change has to rebuild MaterialApp — same as an accent change.
+    AppFontPrefs.revision.addListener(_onThemeChanged);
     LocaleController.revision.addListener(_onLocaleChanged);
     ZModePrefs.revision.addListener(_onStreamKindChanged);
     MetadataProviderPrefs.revision.addListener(_onMetadataProviderChanged);
@@ -359,6 +363,7 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
   @override
   void dispose() {
     ThemeController.revision.removeListener(_onThemeChanged);
+    AppFontPrefs.revision.removeListener(_onThemeChanged);
     LocaleController.revision.removeListener(_onLocaleChanged);
     ZModePrefs.revision.removeListener(_onStreamKindChanged);
     MetadataProviderPrefs.revision.removeListener(_onMetadataProviderChanged);

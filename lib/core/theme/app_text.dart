@@ -1,13 +1,23 @@
 import 'package:flutter/material.dart';
 import 'app_colors.dart';
 
-/// Apple-like type scale on bundled Inter, with platform CJK fallbacks so
-/// Japanese/Chinese copy isn't tofu when the UI language isn't Latin.
+/// Apple-like type scale, with platform CJK fallbacks so Japanese/Chinese
+/// copy isn't tofu when the UI language isn't Latin.
+///
+/// The styles are GETTERS, not constants: [fontFamily] is chosen by the user
+/// (Settings → Interface → Appearance → Font) and changes while the app runs,
+/// so a style baked at compile time would keep whatever font it was built
+/// with. Nothing in the app const-constructs these, so this costs nothing.
 abstract class AppText {
-  static const fontFamily = 'Inter';
+  /// The family every style below is drawn in. Set from [AppFontPrefs] at
+  /// boot and on every change — same shape as [AppColors.accent].
+  static String fontFamily = defaultFontFamily;
 
-  /// Platform CJK fonts. Inter has no CJK glyphs; missing characters fall
-  /// through to these (iOS Hiragino/PingFang, Android Noto / sans-serif).
+  /// What a fresh install uses.
+  static const String defaultFontFamily = 'Nunito';
+
+  /// Platform CJK fonts. None of the UI families carry CJK glyphs; missing
+  /// characters fall through to these (iOS Hiragino/PingFang, Android Noto).
   static const fontFamilyFallback = <String>[
     'Hiragino Sans',
     'Hiragino Kaku Gothic ProN',
@@ -19,10 +29,10 @@ abstract class AppText {
     'sans-serif',
   ];
 
-  static const _f = fontFamily;
+  static String get _f => fontFamily;
   static const _fb = fontFamilyFallback;
 
-  static const largeTitle = TextStyle(
+  static TextStyle get largeTitle => TextStyle(
     fontFamily: _f,
     fontFamilyFallback: _fb,
     fontSize: 32,
@@ -31,7 +41,7 @@ abstract class AppText {
     letterSpacing: -0.5,
     color: AppColors.textPrimary,
   );
-  static const title = TextStyle(
+  static TextStyle get title => TextStyle(
     fontFamily: _f,
     fontFamilyFallback: _fb,
     fontSize: 22,
@@ -40,7 +50,7 @@ abstract class AppText {
     letterSpacing: -0.3,
     color: AppColors.textPrimary,
   );
-  static const headline = TextStyle(
+  static TextStyle get headline => TextStyle(
     fontFamily: _f,
     fontFamilyFallback: _fb,
     fontSize: 17,
@@ -53,7 +63,7 @@ abstract class AppText {
   /// section header so drilling deeper keeps one header size.
   static final barTitle =
       headline.copyWith(fontSize: 18, fontWeight: FontWeight.w700);
-  static const body = TextStyle(
+  static TextStyle get body => TextStyle(
     fontFamily: _f,
     fontFamilyFallback: _fb,
     fontSize: 15,
@@ -61,7 +71,7 @@ abstract class AppText {
     fontWeight: FontWeight.w400,
     color: AppColors.textSecondary,
   );
-  static const caption = TextStyle(
+  static TextStyle get caption => TextStyle(
     fontFamily: _f,
     fontFamilyFallback: _fb,
     fontSize: 13,
@@ -69,14 +79,14 @@ abstract class AppText {
     fontWeight: FontWeight.w500,
     color: AppColors.textTertiary,
   );
-  static const button = TextStyle(
+  static TextStyle get button => TextStyle(
     fontFamily: _f,
     fontFamilyFallback: _fb,
     fontSize: 16,
     fontWeight: FontWeight.w600,
     letterSpacing: -0.2,
   );
-  static const overline = TextStyle(
+  static TextStyle get overline => TextStyle(
     fontFamily: _f,
     fontFamilyFallback: _fb,
     fontSize: 12,

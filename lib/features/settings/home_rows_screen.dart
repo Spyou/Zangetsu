@@ -410,7 +410,7 @@ class _HomeRowsScreenState extends State<HomeRowsScreen> {
         (tag.isYours ? l10n.homeRowsFromYourLists : l10n.homeRowsDiscover)
             .toUpperCase(),
         style: TextStyle(
-          fontFamily: 'Inter',
+          fontFamily: AppText.fontFamily,
           fontFamilyFallback: AppText.fontFamilyFallback,
           fontSize: 11.5,
           fontWeight: FontWeight.w700,

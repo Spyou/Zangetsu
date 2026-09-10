@@ -347,7 +347,7 @@ class _TvHeroState extends State<_TvHero> {
         Text(
           'Play',
           style: TextStyle(
-            fontFamily: 'Inter',
+            fontFamily: AppText.fontFamily,
             fontFamilyFallback: AppText.fontFamilyFallback,
             color: AppColors.bg,
             fontWeight: FontWeight.w700,
@@ -378,8 +378,8 @@ class _TvHeroState extends State<_TvHero> {
             const SizedBox(width: 8),
             Text(
               label,
-              style: const TextStyle(
-                fontFamily: 'Inter',
+              style: TextStyle(
+                fontFamily: AppText.fontFamily,
                 fontFamilyFallback: AppText.fontFamilyFallback,
                 color: Colors.white,
                 fontWeight: FontWeight.w600,

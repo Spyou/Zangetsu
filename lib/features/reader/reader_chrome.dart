@@ -469,8 +469,8 @@ class ReaderSegmentedControl extends StatelessWidget {
   final String selected;
   final ValueChanged<String> onSelect;
 
-  static const _labelStyle = TextStyle(
-    fontFamily: 'Inter',
+  static final _labelStyle = TextStyle(
+    fontFamily: AppText.fontFamily,
           fontFamilyFallback: AppText.fontFamilyFallback,
     fontSize: 12.5,
     fontWeight: FontWeight.w600,

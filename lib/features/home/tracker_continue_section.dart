@@ -313,8 +313,8 @@ class _WaitingBadge extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       child: Text(
         '+$count',
-        style: const TextStyle(
-          fontFamily: 'Inter',
+        style: TextStyle(
+          fontFamily: AppText.fontFamily,
           fontFamilyFallback: AppText.fontFamilyFallback,
           fontSize: 10,
           height: 1.2,

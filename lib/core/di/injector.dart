@@ -56,6 +56,7 @@ import '../zmode/metadata_repository.dart';
 import '../zmode/zmode_module.dart';
 import '../zmode/zmode_ids.dart';
 import '../zmode/zmode_prefs.dart';
+import '../theme/app_font_prefs.dart';
 import '../theme/theme_controller.dart';
 import '../metadata/episode_metadata_service.dart';
 import '../metadata/metadata_enrichment.dart';
@@ -302,6 +303,8 @@ Future<void> initDependencies() async {
   sl.registerSingleton<ReaderOverrideStore>(ReaderOverrideStore());
   // Apply the saved accent colour before the first frame (default = coral).
   await ThemeController.init();
+  // Before the first frame: applying it later would paint one font and swap.
+  await AppFontPrefs.init();
   await LocaleController.init();
   await ZModePrefs.init();
   await GenreCatalog.init();

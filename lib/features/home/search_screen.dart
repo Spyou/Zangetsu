@@ -1404,14 +1404,14 @@ class _SearchViewState extends State<_SearchView>
       unselectedLabelColor: AppColors.textSecondary,
       // History uses 14.5 — sized down here since this row also hosts the
       // sort/filter icons and has less height to spend.
-      labelStyle: const TextStyle(
-        fontFamily: 'Inter',
+      labelStyle: TextStyle(
+        fontFamily: AppText.fontFamily,
         fontFamilyFallback: AppText.fontFamilyFallback,
         fontSize: 13,
         fontWeight: FontWeight.w700,
       ),
-      unselectedLabelStyle: const TextStyle(
-        fontFamily: 'Inter',
+      unselectedLabelStyle: TextStyle(
+        fontFamily: AppText.fontFamily,
         fontFamilyFallback: AppText.fontFamilyFallback,
         fontSize: 13,
         fontWeight: FontWeight.w600,
@@ -2136,7 +2136,8 @@ class _SearchViewState extends State<_SearchView>
   }
 
   /// Idle-screen section heading — the app's usual quiet label.
-  static const TextStyle _idleSectionTitle = AppText.overline;
+  // Not const: AppText's styles follow the user's font choice now.
+  static TextStyle get _idleSectionTitle => AppText.overline;
 
   // ── Idle view: recent searches + trending ─────────────────────────────────
   Widget _idleView(SearchState state) {
