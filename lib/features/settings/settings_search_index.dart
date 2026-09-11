@@ -333,6 +333,11 @@ final settingsLeaves = <SettingsLeaf>[
   ),
   SettingsLeaf(
     LeafParent.reader,
+    (l) => l.readerFullscreen,
+    keywords: 'immersive hide status navigation bars',
+  ),
+  SettingsLeaf(
+    LeafParent.reader,
     (l) => l.background,
     keywords: 'colour theme page',
   ),

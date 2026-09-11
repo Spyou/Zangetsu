@@ -1957,6 +1957,12 @@ abstract class AppLocalizations {
   /// **'Keep screen on'**
   String get keepScreenOn;
 
+  /// No description provided for @readerFullscreen.
+  ///
+  /// In en, this message translates to:
+  /// **'Fullscreen'**
+  String get readerFullscreen;
+
   /// No description provided for @tapZones.
   ///
   /// In en, this message translates to:

@@ -60,6 +60,16 @@ class ReaderPrefs {
       _box.get('keepScreenOn', defaultValue: true) as bool;
   Future<void> setKeepScreenOn(bool value) => _box.put('keepScreenOn', value);
 
+  /// Hide the status and navigation bars while reading. Shared by both
+  /// readers via `ReaderComfortMixin`.
+  ///
+  /// ON by default, matching every other reader: a page is the content, and
+  /// a clock and three nav buttons sitting over it are not. `immersiveSticky`
+  /// rather than plain `immersive`, so a swipe from either edge brings the
+  /// bars back for a moment without leaving the page.
+  bool get fullscreen => _box.get('fullscreen', defaultValue: true) as bool;
+  Future<void> setFullscreen(bool value) => _box.put('fullscreen', value);
+
   /// Turn manga pages with the hardware volume keys.
   ///
   /// OFF by default, and deliberately so: this SWALLOWS the volume keys while

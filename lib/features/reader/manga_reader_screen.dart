@@ -1872,6 +1872,18 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                             ),
                           ),
                           readerSheetRow(
+                            icon: Icons.fullscreen_rounded,
+                            label: context.l10n.readerFullscreen,
+                            trailing: Switch(
+                              value: prefs.fullscreen,
+                              activeThumbColor: AppColors.accent,
+                              onChanged: (v) => apply(() {
+                                prefs.setFullscreen(v);
+                                applyReaderComfort();
+                              }),
+                            ),
+                          ),
+                          readerSheetRow(
                             icon: Icons.brightness_6_rounded,
                             label: context.l10n.brightness,
                             trailing: _systemBrightnessTag(

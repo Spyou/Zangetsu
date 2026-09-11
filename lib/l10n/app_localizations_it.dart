@@ -1021,6 +1021,9 @@ class AppLocalizationsIt extends AppLocalizations {
   String get keepScreenOn => 'Tieni lo schermo acceso';
 
   @override
+  String get readerFullscreen => 'Fullscreen';
+
+  @override
   String get tapZones => 'Zone tap';
 
   @override

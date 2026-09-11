@@ -7,7 +7,7 @@ import '../../core/di/injector.dart';
 import '../../core/reading/reader_prefs.dart';
 
 /// Shared "reading comfort" side effects for both readers — keep-awake,
-/// brightness override, and orientation lock. All three are global OS
+/// brightness override, orientation lock, and fullscreen. All four are global OS
 /// state, so every knob [applyReaderComfort] can set MUST be undone by
 /// [restoreReaderComfort] (call from `dispose`), the same way
 /// player_screen.dart resets brightness/wakelock/orientation on the way out
@@ -44,6 +44,13 @@ mixin ReaderComfortMixin<T extends StatefulWidget> on State<T> {
     }
 
     SystemChrome.setPreferredOrientations(_orientationsFor(prefs.orientation));
+
+    // Bars off while reading. `immersiveSticky`, not `immersive`: a swipe from
+    // an edge brings them back briefly and they hide again on their own, so a
+    // reader never has to leave the page to check the time.
+    SystemChrome.setEnabledSystemUIMode(
+      prefs.fullscreen ? SystemUiMode.immersiveSticky : SystemUiMode.edgeToEdge,
+    );
   }
 
   /// Undoes every side effect [applyReaderComfort] can set — call from
@@ -54,6 +61,10 @@ mixin ReaderComfortMixin<T extends StatefulWidget> on State<T> {
       (_) {},
     );
     SystemChrome.setPreferredOrientations(_allOrientations);
+    // Unconditionally, even when fullscreen was off: the toggle can be flipped
+    // from the settings sheet mid-session, so restoring only when the CURRENT
+    // pref says so would leave the bars hidden over the rest of the app.
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   }
 
   List<DeviceOrientation> _orientationsFor(String orientation) {

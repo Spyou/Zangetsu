@@ -1021,6 +1021,9 @@ class AppLocalizationsEs extends AppLocalizations {
   String get keepScreenOn => 'Mantener pantalla encendida';
 
   @override
+  String get readerFullscreen => 'Fullscreen';
+
+  @override
   String get tapZones => 'Zonas táctiles';
 
   @override

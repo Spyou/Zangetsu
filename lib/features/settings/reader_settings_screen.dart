@@ -343,6 +343,15 @@ class _ReaderSettingsScreenState extends State<ReaderSettingsScreen> {
                   if (mounted) setState(() {});
                 },
               ),
+              _toggleRow(
+                icon: Icons.fullscreen_rounded,
+                title: context.l10n.readerFullscreen,
+                value: prefs.fullscreen,
+                onChanged: (v) async {
+                  await prefs.setFullscreen(v);
+                  if (mounted) setState(() {});
+                },
+              ),
             ],
           ),
           SettingsSectionLabel(context.l10n.gestures),
@@ -445,6 +454,15 @@ class _ReaderSettingsScreenState extends State<ReaderSettingsScreen> {
                 value: prefs.keepScreenOn,
                 onChanged: (v) async {
                   await prefs.setKeepScreenOn(v);
+                  if (mounted) setState(() {});
+                },
+              ),
+              _toggleRow(
+                icon: Icons.fullscreen_rounded,
+                title: context.l10n.readerFullscreen,
+                value: prefs.fullscreen,
+                onChanged: (v) async {
+                  await prefs.setFullscreen(v);
                   if (mounted) setState(() {});
                 },
               ),

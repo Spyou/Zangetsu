@@ -399,6 +399,7 @@
 	"trimNearUniformEdgeMarginsFromAPage": "Trim near-uniform edge margins from a page",
 	"preloadPages": "Preload pages",
 	"keepScreenOn": "Keep screen on",
+	"readerFullscreen": "Fullscreen",
 	"tapZones": "Tap zones",
 	"whatTappingEachPartOfThePageDoes": "What tapping each part of the page does",
 	"font": "Font",

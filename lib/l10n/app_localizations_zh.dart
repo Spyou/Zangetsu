@@ -986,6 +986,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get keepScreenOn => '保持屏幕常亮';
 
   @override
+  String get readerFullscreen => 'Fullscreen';
+
+  @override
   String get tapZones => '点按区域';
 
   @override

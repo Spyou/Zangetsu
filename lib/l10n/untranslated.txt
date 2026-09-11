@@ -1,5 +1,6 @@
 {
   "de": [
+    "readerFullscreen",
     "offlineTitle",
     "offlineBody",
     "signInToSource",
@@ -75,6 +76,7 @@
   ],
 
   "es": [
+    "readerFullscreen",
     "offlineTitle",
     "offlineBody",
     "signInToSource",
@@ -150,6 +152,7 @@
   ],
 
   "fr": [
+    "readerFullscreen",
     "offlineTitle",
     "offlineBody",
     "signInToSource",
@@ -225,6 +228,7 @@
   ],
 
   "it": [
+    "readerFullscreen",
     "offlineTitle",
     "offlineBody",
     "signInToSource",
@@ -300,6 +304,7 @@
   ],
 
   "ja": [
+    "readerFullscreen",
     "offlineTitle",
     "offlineBody",
     "signInToSource",
@@ -375,6 +380,7 @@
   ],
 
   "zh": [
+    "readerFullscreen",
     "offlineTitle",
     "offlineBody",
     "signInToSource",
@@ -450,6 +456,7 @@
   ],
 
   "zh_TW": [
+    "readerFullscreen",
     "offlineTitle",
     "offlineBody",
     "signInToSource",

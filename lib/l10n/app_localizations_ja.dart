@@ -993,6 +993,9 @@ class AppLocalizationsJa extends AppLocalizations {
   String get keepScreenOn => '画面を消灯しない';
 
   @override
+  String get readerFullscreen => 'Fullscreen';
+
+  @override
   String get tapZones => 'タップ領域';
 
   @override
