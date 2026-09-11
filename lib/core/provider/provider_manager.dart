@@ -421,15 +421,24 @@ class _JsHost {
       final host = Uri.parse(url).host;
       final hdr = headers.map((k, v) => MapEntry(k, v.toString()));
       _ensureCfRestored(); // reuse a clearance solved in a previous session
-      // Opt-in Cloudflare clearance: solve once per host, then attach cookie+UA.
-      // Skip if a recent solve failed (negative cache) so a dead/parked host
-      // doesn't re-run the 30s solver on every request.
-      if (wantCf &&
-          !_suppressCfSolve &&
-          !_cfCookie.containsKey(host) &&
-          !_cfRecentlyFailed(host)) {
-        await _solveCf(url, host);
-      }
+      // A cached clearance is attached; one is NOT solved for up front, even
+      // when the provider asks via { browser: true }.
+      //
+      // That opt-in used to run the native solver BEFORE the first request to
+      // a cold host, and the solver waits on a real WebView — up to
+      // [solveTimeout]. JS providers run on the UI isolate, so that wait is an
+      // app nobody can touch. AnimeKai set the flag, anikai.cc wasn't actually
+      // challenging, and a tester's recording showed the UI unusable for the
+      // whole stretch; on a device with the clearance already cached the same
+      // build looked perfectly fine, which is what made it so easy to doubt.
+      //
+      // Nothing is given up. The challenge path below already solves and
+      // replays when a response really is challenged — that is how every
+      // provider WITHOUT the flag has always coped. The flag now only means
+      // "this host may challenge", which the response answers better.
+      //
+      // [wantCf] is still read: it labels the request in the log, so a source
+      // that expects Cloudflare is still identifiable when one misbehaves.
       _applyCf(host, hdr);
       // Did the original request carry a clearance? If so and it STILL gets
       // challenged below, that clearance is stale (e.g. a persisted cookie that
