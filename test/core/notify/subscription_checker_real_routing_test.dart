@@ -54,6 +54,24 @@ class _Src implements SourceRepository {
     ];
   }
 
+  /// Z Mode asks for the DETAIL now, not just the episode list — same request
+  /// either way (a provider's getEpisodes IS getDetail), and it carries the
+  /// sub/dub counts the Sub/Dub toggle needs.
+  @override
+  Future<MediaDetail> detail(
+    String url, {
+    String category = 'sub',
+    String? sourceId,
+    void Function(MediaDetail)? onPartial,
+  }) async => MediaDetail(
+    id: 'x',
+    title: 'x',
+    url: url,
+    type: ProviderType.anime,
+    sourceId: sourceId ?? '',
+    episodes: await episodes(url, category: category, sourceId: sourceId),
+  );
+
   @override
   bool hasSource(String sourceId) => sourceId == 'ani:1';
 

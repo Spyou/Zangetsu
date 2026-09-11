@@ -143,6 +143,25 @@ class MetadataRepository implements CatalogueRepository {
   /// second metadata round-trip.
   final _titles = <String, ({String title, String? alt, int? malId})>{};
 
+  /// The sub/dub cut each show was last opened as, by canonical key.
+  ///
+  /// Playback is reached with a `zm://…/ep/n` url, which deliberately carries
+  /// no category — it is the identity progress is keyed on and must stay
+  /// byte-identical whatever plays it. But the resolver has to fetch the right
+  /// episode list, and [CatalogueRepository.sources] has no category argument
+  /// to pass one through: widening it would mean every implementation and
+  /// every test fake, for one caller. So the cut is remembered here when
+  /// Detail fetches it, which is the same screen Play is pressed from.
+  final _cuts = <String, String>{};
+
+  /// The cut to resolve [zmEpisodeUrl] with — what Detail last showed, else
+  /// sub, which is what every source defaults to anyway.
+  String _cutFor(String zmEpisodeUrl) {
+    final p = ZmodeIds.parseEpisode(zmEpisodeUrl);
+    if (p == null) return 'sub';
+    return _cuts[p.show.key] ?? 'sub';
+  }
+
   static bool _isTmdb(ZKind k) => k == ZKind.movie || k == ZKind.tv;
 
   /// The chosen anime/manga provider, and the one that stands in for it.
@@ -643,7 +662,25 @@ class MetadataRepository implements CatalogueRepository {
       );
       return d;
     }
-    final srcEpisodes = await _src.episodes(m.showUrl, sourceId: m.sourceId);
+    // The source's DETAIL, not just its episode list — same request either
+    // way (a provider's getEpisodes is getDetail with the rest discarded), and
+    // it carries the sub/dub counts the Sub/Dub toggle is built from. The
+    // catalogue cannot supply those: sub vs dub is a source's business and
+    // AniList has never heard of it, so both were null, the toggle had no
+    // options to offer and Settings › Default audio was checked against a list
+    // that only ever contained 'sub' and therefore always lost.
+    //
+    // [category] matters for the same reason. Zangetsu JS and CloudStream
+    // sources both key the episode list on it and quietly answer with the sub
+    // list when it is missing — which is exactly why Dub never played, since
+    // this argument was never sent. Aniyomi ignores it; it has no such split.
+    _cuts[c.key] = category;
+    final srcDetail = await _src.detail(
+      m.showUrl,
+      sourceId: m.sourceId,
+      category: category,
+    );
+    final srcEpisodes = srcDetail.episodes;
     AppLogger.instance.log(
       '[metadata] detail video ${m.sourceId} eps=${srcEpisodes.length} '
       '(catalogue said ${d.episodes.length}) ${sw.elapsedMilliseconds}ms',
@@ -677,6 +714,10 @@ class MetadataRepository implements CatalogueRepository {
     final firstUnaired = d.nextEpisode;
     final airsAt = d.airingAt;
     return d.copyWith(
+      // From the SOURCE — see above. Null-safe: a source that reports neither
+      // leaves the toggle hidden, exactly as before.
+      subCount: srcDetail.subCount,
+      dubCount: srcDetail.dubCount,
       episodes: [
         for (var i = 0; i < count; i++)
           if (i < srcEpisodes.length)
@@ -750,22 +791,55 @@ class MetadataRepository implements CatalogueRepository {
     runtimeMinutes: e.runtimeMinutes,
   );
 
+  /// The episode list for [url] in [category].
+  ///
+  /// The category MUST be forwarded. This is the call the player's Sub/Dub
+  /// switch makes for sources that keep separate lists per cut, and it used to
+  /// drop the argument and re-ask for `detail(url)` — which defaults to sub.
+  /// So the switch fetched the sub list again, found the same episode, and
+  /// replayed Japanese under a Dub badge.
   @override
   Future<List<Episode>> episodes(
     String url, {
     String category = 'sub',
     String? sourceId,
-  }) async => (await detail(url)).episodes;
+  }) async => (await detail(url, category: category)).episodes;
 
   // ── playback ─────────────────────────────────────────────────────────────
 
+  /// Streams for [episodeUrl], from [sourceId] when one is named.
+  ///
+  /// The name used to be dropped here, so downloading — which stores the
+  /// source the user was looking at and asks for it by name — got whichever
+  /// source last PLAYED the episode. That is how a HiAnime download came back
+  /// with AniKoto's links.
+  ///
+  /// `zm` itself is not a real source (it is this router's own id), so it
+  /// means "no preference" and takes the normal sweep.
   @override
   Future<List<VideoSource>> sources(
     String episodeUrl,
     {
     String? sourceId,
     bool fast = false,
-  }) async => _playback.sources(episodeUrl, fast: fast);
+  }) async {
+    final cut = _cutFor(episodeUrl);
+    if (sourceId != null &&
+        sourceId.isNotEmpty &&
+        sourceId != ZmodeIds.sourceId) {
+      final named = await _playback.sourcesFrom(
+        episodeUrl,
+        sourceId,
+        fast: fast,
+        category: cut,
+      );
+      if (named.isNotEmpty) return named;
+      // That source doesn't have it. Sweeping is better than nothing here —
+      // the caller gets SOMETHING playable and the download code says which
+      // source it settled on — but the named one had to be asked first.
+    }
+    return _playback.sources(episodeUrl, fast: fast, category: cut);
+  }
 
   /// Streams for [episodeUrl] from the first source whose streams satisfy
   /// [accept] — one sweep, every candidate, in the usual order.
@@ -778,7 +852,11 @@ class MetadataRepository implements CatalogueRepository {
     String episodeUrl,
     bool Function(List<VideoSource> streams) accept,
   ) async {
-    final r = await _playback.resolveForPlayback(episodeUrl, accept: accept);
+    final r = await _playback.resolveForPlayback(
+      episodeUrl,
+      accept: accept,
+      category: _cutFor(episodeUrl),
+    );
     return (streams: r.streams, sourceId: r.match.sourceId);
   }
 
@@ -786,7 +864,8 @@ class MetadataRepository implements CatalogueRepository {
   Future<({List<VideoSource> sources, bool done})> polledSources(
     String episodeUrl, {
     String? sourceId,
-  }) async => _playback.polledSources(episodeUrl);
+  }) async =>
+      _playback.polledSources(episodeUrl, category: _cutFor(episodeUrl));
 
   /// Title metadata for play-time resolution — cached from detail/browse.
   Future<({String title, String? alt, int? malId})> titleFor(

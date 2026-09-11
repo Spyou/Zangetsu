@@ -88,7 +88,15 @@ class PlaybackResolver {
   }
 
   /// Cached winning source episode url per `zm://…/ep/n` for poll/prefetch.
+  ///
+  /// Keyed by url AND category: sub and dub are different episode lists for
+  /// the same metadata url, so a single key would hand a dub request whatever
+  /// sub resolved earlier — the same stale-cache shape that made a switched
+  /// source keep playing the old one.
   final Map<String, ({String episodeUrl, String sourceId})> _winners = {};
+
+  static String _winKey(String zmEpisodeUrl, String category) =>
+      '$zmEpisodeUrl|$category';
 
   /// In-flight resolves keyed by metadata episode url.
   final Map<String, Future<ResolvedPlayback>> _inFlight = {};
@@ -146,15 +154,19 @@ class PlaybackResolver {
   Future<ResolvedPlayback> resolveForPlayback(
     String zmEpisodeUrl, {
     bool fast = false,
+    String category = 'sub',
     bool Function(List<VideoSource> streams)? accept,
   }) {
     // A filtered sweep asks a narrower question; it must neither be answered
     // by, nor become, the shared in-flight future.
+    // In-flight dedupe is per category too — a dub request must not be
+    // answered by a sub resolve already running for the same url.
+    final flightKey = _winKey(zmEpisodeUrl, category);
     if (accept == null) {
-      final running = _inFlight[zmEpisodeUrl];
+      final running = _inFlight[flightKey];
       if (running != null) return running;
     }
-    final miss = _noSource[zmEpisodeUrl];
+    final miss = _noSource[flightKey];
     if (miss != null) {
       if (DateTime.now().difference(miss.at) < noSourceCooldown) {
         debugPrint(
@@ -168,19 +180,23 @@ class PlaybackResolver {
               : EpisodeNotAvailable(p.show, p.episode, hadTitleMatch: true),
         );
       }
-      _noSource.remove(zmEpisodeUrl);
+      _noSource.remove(flightKey);
     }
-    if (accept != null) return _resolve(zmEpisodeUrl, fast: fast, accept: accept);
-    final f = _resolve(zmEpisodeUrl, fast: fast).whenComplete(() {
-      _inFlight.remove(zmEpisodeUrl);
+    if (accept != null) {
+      return _resolve(zmEpisodeUrl, fast: fast, category: category, accept: accept);
+    }
+    final f = _resolve(zmEpisodeUrl, fast: fast, category: category)
+        .whenComplete(() {
+      _inFlight.remove(flightKey);
     });
-    _inFlight[zmEpisodeUrl] = f;
+    _inFlight[flightKey] = f;
     return f;
   }
 
   Future<ResolvedPlayback> _resolve(
     String zmEpisodeUrl, {
     required bool fast,
+    String category = 'sub',
     bool Function(List<VideoSource> streams)? accept,
   }) async {
     final p = ZmodeIds.parseEpisode(zmEpisodeUrl);
@@ -239,6 +255,7 @@ class PlaybackResolver {
           sourceId,
           t,
           fast: fast,
+          category: category,
           onTitleMatch: () => hadTitleMatch = true,
         ).timeout(_budget);
       } on TimeoutException {
@@ -283,7 +300,7 @@ class PlaybackResolver {
       // Written here rather than inside _tryCandidate so an abandoned
       // (timed-out) candidate that finishes later can never overwrite the
       // winner of the source we actually settled on.
-      _winners[zmEpisodeUrl] =
+      _winners[_winKey(zmEpisodeUrl, category)] =
           (episodeUrl: attempt.episodeUrl, sourceId: attempt.match.sourceId);
       // Per-title only — remembered for THIS show's own re-ranking (see
       // `_orderedCandidates`). This must never write the kind-wide
@@ -317,7 +334,7 @@ class PlaybackResolver {
       // cfBlockedUrl covers suppressed searches.
     }
 
-    _noSource[zmEpisodeUrl] =
+    _noSource[_winKey(zmEpisodeUrl, category)] =
         (at: DateTime.now(), hadTitleMatch: hadTitleMatch);
     if (hadTitleMatch) {
       debugPrint(
@@ -338,21 +355,31 @@ class PlaybackResolver {
   /// Server picker calls back for its mirror list. [fast] is still forwarded
   /// to [SourceRepository.sources] so stream URLs are resolved with the fast
   /// path (first usable link) and served from the TTL cache when fresh.
-  Future<List<VideoSource>> sources(String zmEpisodeUrl, {bool fast = false}) async {
-    final hit = _winners[zmEpisodeUrl];
+  Future<List<VideoSource>> sources(
+    String zmEpisodeUrl, {
+    bool fast = false,
+    String category = 'sub',
+  }) async {
+    final hit = _winners[_winKey(zmEpisodeUrl, category)];
     if (hit != null) {
       return _sources.sources(hit.episodeUrl, sourceId: hit.sourceId, fast: fast);
     }
-    return (await resolveForPlayback(zmEpisodeUrl, fast: fast)).streams;
+    return (await resolveForPlayback(
+      zmEpisodeUrl,
+      fast: fast,
+      category: category,
+    )).streams;
   }
 
   Future<({List<VideoSource> sources, bool done})> polledSources(
-    String zmEpisodeUrl,
-  ) async {
-    var winner = _winners[zmEpisodeUrl];
+    String zmEpisodeUrl, {
+    String category = 'sub',
+  }) async {
+    final key = _winKey(zmEpisodeUrl, category);
+    var winner = _winners[key];
     if (winner == null) {
-      await resolveForPlayback(zmEpisodeUrl);
-      winner = _winners[zmEpisodeUrl];
+      await resolveForPlayback(zmEpisodeUrl, category: category);
+      winner = _winners[key];
     }
     if (winner == null) {
       return (sources: const <VideoSource>[], done: true);
@@ -361,8 +388,8 @@ class PlaybackResolver {
   }
 
   /// The source that last resolved [zmEpisodeUrl], if any this session.
-  String? resolvedSourceId(String zmEpisodeUrl) =>
-      _winners[zmEpisodeUrl]?.sourceId;
+  String? resolvedSourceId(String zmEpisodeUrl, {String category = 'sub'}) =>
+      _winners[_winKey(zmEpisodeUrl, category)]?.sourceId;
 
   /// Drop the cached winner for [zmEpisodeUrl] so the next
   /// [resolveForPlayback] re-sweeps sources instead of reusing the failed one.
@@ -370,10 +397,27 @@ class PlaybackResolver {
     // Also drops a remembered "nothing has this episode": Retry and the
     // player's own source-switch both come through here, and they must get a
     // real sweep rather than the cached no.
-    _noSource.remove(zmEpisodeUrl);
-    final removed = _winners.remove(zmEpisodeUrl);
-    if (removed != null) {
-      debugPrint('[playback] invalidateWinner · $zmEpisodeUrl (was ${removed.sourceId})');
+    //
+    // EVERY category: the keys carry one now, and a caller retrying an episode
+    // means "forget what you know about it", not "forget the sub cut".
+    bool mine(String k) =>
+        k == zmEpisodeUrl || k.startsWith('$zmEpisodeUrl|');
+    // BOTH maps, independently. A sweep that found nothing leaves a _noSource
+    // entry and no winner at all, so walking _winners alone would clear
+    // nothing and Retry would keep answering from the remembered no.
+    final winners = _winners.keys.where(mine).toList();
+    final misses = _noSource.keys.where(mine).toList();
+    for (final k in winners) {
+      _winners.remove(k);
+    }
+    for (final k in misses) {
+      _noSource.remove(k);
+    }
+    if (winners.isNotEmpty || misses.isNotEmpty) {
+      debugPrint(
+        '[playback] invalidateWinner · $zmEpisodeUrl '
+        '(${winners.length} winner(s), ${misses.length} miss(es))',
+      );
     }
   }
 
@@ -387,16 +431,29 @@ class PlaybackResolver {
   /// intermittent rather than broken.
   void invalidateShow(ZCanonical c) {
     final prefix = '${ZmodeIds.showUrl(c)}/ep/';
-    final gone = _winners.keys.where((k) => k.startsWith(prefix)).toList();
-    for (final k in gone) {
+    // Each map walked on its own. A show whose sweep found nothing has a
+    // _noSource entry and no winner, so keying the loop off _winners would
+    // leave the remembered "no source" in place and the new source would
+    // never get asked.
+    final winners = _winners.keys.where((k) => k.startsWith(prefix)).toList();
+    final misses = _noSource.keys.where((k) => k.startsWith(prefix)).toList();
+    // An in-flight resolve was started for the OLD source; letting it settle
+    // would write that source straight back into _winners.
+    final flights = _inFlight.keys.where((k) => k.startsWith(prefix)).toList();
+    for (final k in winners) {
       _winners.remove(k);
+    }
+    for (final k in misses) {
       _noSource.remove(k);
-      // An in-flight resolve was started for the OLD source; letting it
-      // settle would write that source straight back into _winners.
+    }
+    for (final k in flights) {
       _inFlight.remove(k);
     }
-    if (gone.isNotEmpty) {
-      debugPrint('[playback] invalidateShow · ${gone.length} episode(s) of $prefix');
+    if (winners.isNotEmpty || misses.isNotEmpty || flights.isNotEmpty) {
+      debugPrint(
+        '[playback] invalidateShow · $prefix '
+        '(${winners.length} winner(s), ${misses.length} miss(es))',
+      );
     }
   }
 
@@ -605,6 +662,33 @@ class PlaybackResolver {
     return out.stream;
   }
 
+  /// Streams for [zmEpisodeUrl] from EXACTLY [sourceId] — no sweep, no
+  /// remembered winner.
+  ///
+  /// For callers that already know which source they mean. Downloading is the
+  /// one that matters: the record stores the source the user was looking at,
+  /// asked for it by name, and got whichever source last PLAYED the episode
+  /// instead, because the name was dropped on the way through. Returns an
+  /// empty list when that source doesn't have it, rather than quietly
+  /// substituting another — a download from a source you didn't choose is the
+  /// bug, not the fallback.
+  Future<List<VideoSource>> sourcesFrom(
+    String zmEpisodeUrl,
+    String sourceId, {
+    bool fast = false,
+    String category = 'sub',
+  }) async {
+    final p = ZmodeIds.parseEpisode(zmEpisodeUrl);
+    if (p == null) return const [];
+    final t = await _titleLookup(p.show);
+    final (match, ep) = await _hasEpisode(p, sourceId, t, category: category);
+    if (match == null || ep == null) {
+      debugPrint('[playback] sourcesFrom · $sourceId has no ep ${p.episode}');
+      return const [];
+    }
+    return _sources.sources(ep.url, sourceId: match.sourceId, fast: fast);
+  }
+
   /// [body] with the blocking Cloudflare solver disabled, when the JS provider
   /// manager is available to disable it. A no-op otherwise (tests, TV boot)
   /// rather than a hard dependency — suppression is an optimisation, never a
@@ -629,8 +713,9 @@ class PlaybackResolver {
   Future<(SourceMatch?, Episode?)> _hasEpisode(
     ({ZCanonical show, int episode}) p,
     String sourceId,
-    ({String title, String? alt, int? malId}) t,
-  ) async {
+    ({String title, String? alt, int? malId}) t, {
+    String category = 'sub',
+  }) async {
     final match = await _matcher.matchOn(
       p.show,
       sourceId,
@@ -642,6 +727,7 @@ class PlaybackResolver {
     final eps = await _sources.episodes(
       match.showUrl,
       sourceId: match.sourceId,
+      category: category,
     );
     return (match, _episodeAtIndex(eps, p.episode));
   }
@@ -673,6 +759,7 @@ class PlaybackResolver {
     ({String title, String? alt, int? malId}) t, {
     required bool fast,
     required void Function() onTitleMatch,
+    String category = 'sub',
   }) async {
     final match = await _matcher.matchOn(
       p.show,
@@ -688,7 +775,11 @@ class PlaybackResolver {
     onTitleMatch();
 
     final srcEp = _episodeAtIndex(
-      await _sources.episodes(match.showUrl, sourceId: match.sourceId),
+      await _sources.episodes(
+        match.showUrl,
+        sourceId: match.sourceId,
+        category: category,
+      ),
       p.episode,
     );
     if (srcEp == null) {
