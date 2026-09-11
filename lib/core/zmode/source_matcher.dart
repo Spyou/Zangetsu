@@ -47,6 +47,23 @@ class SourceMatcher {
   final ZSourcePrefs _prefs;
   final List<({String id, String name})> Function(ZKind) _candidates;
 
+  /// Called whenever a title's source changes, by any route — a pin, a
+  /// correction, the recovery picker, or going back to Auto Resolve.
+  ///
+  /// Wired to [PlaybackResolver.invalidateShow], which is built later (the
+  /// resolver needs this matcher), so it is bound after construction the same
+  /// way `bindTitleLookup` is. The resolver caches which source won per
+  /// EPISODE and serves playback straight from that cache — without this a
+  /// switched title kept playing the old source until the app was restarted.
+  /// Notified here rather than at each call site so a new way to change a
+  /// source can't forget it.
+  void Function(ZCanonical)? _onSourceChanged;
+
+  void bindSourceChanged(void Function(ZCanonical) fn) =>
+      _onSourceChanged = fn;
+
+  void _sourceChanged(ZCanonical c) => _onSourceChanged?.call(c);
+
   /// The remembered match for this title's own source (a pin, else the kind
   /// default), without searching. Null when nothing is known yet — including
   /// when Auto Resolve hasn't swept this title before, even if some installed
@@ -329,12 +346,17 @@ class SourceMatcher {
       pinned: true,
     );
     await _store.pin(c, pin);
+    _sourceChanged(c);
     return pin;
   }
 
   /// Drop this title's own pin — it goes back to the kind default / Auto
   /// Resolve, exactly like a title that was never pinned.
-  Future<void> clearTitlePin(ZCanonical c) => _store.unpinAll(c);
+  Future<void> clearTitlePin(ZCanonical c) async {
+    await _store.unpinAll(c);
+    // Covers chooseSource and clearAuto too: both come through here.
+    _sourceChanged(c);
+  }
 
   /// The picker's "Auto Resolve": drops this title's own pin AND the kind's
   /// explicit default, so this title (and every other unpinned title of the
@@ -375,6 +397,7 @@ class SourceMatcher {
     // The user just proved this source has it, whatever an earlier search
     // concluded — drop any remembered miss so it is never skipped again.
     await _store.forgetMiss(c, picked.sourceId);
+    _sourceChanged(c);
     return m;
   }
   

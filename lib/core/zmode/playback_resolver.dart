@@ -377,6 +377,29 @@ class PlaybackResolver {
     }
   }
 
+  /// Drop every cached winner for [c] — the whole show, not one episode.
+  ///
+  /// Changing a title's source has to come through here. [_winners] is keyed
+  /// per EPISODE and [sources] short-circuits on it without consulting the
+  /// pin, so switching source left every episode still resolving through the
+  /// source that played last: press play and you got the old source's stream.
+  /// It cleared itself on restart, which is the only reason it looked
+  /// intermittent rather than broken.
+  void invalidateShow(ZCanonical c) {
+    final prefix = '${ZmodeIds.showUrl(c)}/ep/';
+    final gone = _winners.keys.where((k) => k.startsWith(prefix)).toList();
+    for (final k in gone) {
+      _winners.remove(k);
+      _noSource.remove(k);
+      // An in-flight resolve was started for the OLD source; letting it
+      // settle would write that source straight back into _winners.
+      _inFlight.remove(k);
+    }
+    if (gone.isNotEmpty) {
+      debugPrint('[playback] invalidateShow · ${gone.length} episode(s) of $prefix');
+    }
+  }
+
   /// n-th entry in [eps] (1-based), same positional rule as detail playback.
   static Episode? _episodeAtIndex(List<Episode> eps, int n) {
     final i = n - 1;

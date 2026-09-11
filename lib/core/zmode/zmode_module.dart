@@ -94,6 +94,13 @@ Future<void> registerZangetsuMode(GetIt sl) async {
     ),
   ));
 
+  // Changing a title's source has to drop the resolver's cached winners for
+  // it, or playback keeps serving the source that played last. Bound here
+  // rather than injected because the resolver is built FROM the matcher.
+  sl<SourceMatcher>().bindSourceChanged(
+    sl<MetadataRepository>().playbackResolver.invalidateShow,
+  );
+
   sl.registerSingleton<CatalogueRepository>(CatalogueRouter(
     source: sl<SourceRepository>(),
     metadata: sl<MetadataRepository>(),
