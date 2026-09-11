@@ -3,6 +3,7 @@ import 'package:dio/dio.dart';
 import '../metadata/tmdb.dart';
 import '../error/network_failure.dart';
 import 'schedule_models.dart';
+import '../zmode/simkl_catalogue.dart';
 
 /// Maps a TMDB results array to entries; drops title-less or poster-and-date-less rows.
 List<ComingSoonEntry> parseTmdbResults(List<dynamic> results,
@@ -65,6 +66,13 @@ List<ComingSoonEntry> parseSimklCalendar(List<dynamic> rows,
     final tmdbRaw = ids is Map ? ids['tmdb'] : null;
     final tmdbId = tmdbRaw is int ? tmdbRaw : int.tryParse('${tmdbRaw ?? ''}');
     if (tmdbId == null) continue;
+    // The calendar carries every id too, and it's a few hundred rows of
+    // things about to air — exactly what people open. Costs nothing to keep,
+    // saves a lookup when one of them is tapped.
+    SimklCatalogue.rememberSimklId(
+      tmdbId,
+      ids is Map ? (ids['simkl_id'] ?? ids['simkl']) : null,
+    );
 
     final title = (raw['title'] as String? ?? '').trim();
     if (title.isEmpty) continue;

@@ -13,6 +13,7 @@ import 'package:watch_app/core/metadata/metadata_enrichment.dart';
 import 'package:watch_app/core/models/media_detail.dart';
 import 'package:watch_app/core/models/provider_info.dart';
 import 'package:watch_app/core/zmode/metadata_provider_prefs.dart';
+import 'package:watch_app/core/zmode/simkl_catalogue.dart';
 
 class _Adapter implements HttpClientAdapter {
   _Adapter(this.respond);
@@ -22,7 +23,18 @@ class _Adapter implements HttpClientAdapter {
   @override
   Future<ResponseBody> fetch(RequestOptions o, _, __) async {
     seen.add(o.uri);
+    // Simkl translates an external id with a 301 whose Location carries it —
+    // `redirect:<simkl id>` from [respond] stands in for that.
     final body = respond(o.uri);
+    if (body is String && body.startsWith('redirect:')) {
+      return ResponseBody.fromString(
+        '',
+        301,
+        headers: {
+          'location': ['//simkl.com/movies/${body.substring(9)}/x'],
+        },
+      );
+    }
     return ResponseBody.fromString(
       jsonEncode(body ?? const <String, dynamic>{}),
       200,
@@ -168,14 +180,9 @@ void main() {
   });
 
   test('Simkl answers for a movie, resolving its own id first', () async {
+    SimklCatalogue.resetIdCache();
     final a = _Adapter((uri) {
-      if (uri.path == '/search/id') {
-        return [
-          {
-            'ids': {'simkl': 472214},
-          },
-        ];
-      }
+      if (uri.path == '/redirect') return 'redirect:472214';
       if (uri.path == '/movies/472214') return _simklFull;
       return null;
     });
@@ -187,6 +194,34 @@ void main() {
     expect(a.seen.map((u) => u.path), contains('/movies/472214'));
     expect(out.relations.single.title, 'Interstellar');
     expect(out.relations.single.cover, contains('simkl.in/posters/'));
+  });
+
+  test('Simkl does not re-resolve an id the detail fetch already had', () async {
+    SimklCatalogue.resetIdCache();
+    // Cast/Relations runs on the same screen as the detail fetch, and both
+    // used to spend a /search/id on the same title — two requests for an
+    // answer the trending row handed us outright. Simkl's daily app limit is
+    // shared by every install, so a doubled call per detail open is not free.
+    await SimklCatalogue(
+      Dio()
+        ..httpClientAdapter = _Adapter(
+          (_) => [
+            {
+              'title': 'Interstellar',
+              'ids': {'simkl_id': 472214, 'tmdb': '27205'},
+            },
+          ],
+        ),
+    ).home();
+
+    final a = _Adapter((uri) => uri.path == '/movies/472214' ? _simklFull : null);
+    final out = await build(
+      a,
+      await prefsWith(video: VideoProvider.simkl),
+    ).fetch(_detail(type: ProviderType.movie, tmdbId: 27205));
+
+    expect(a.seen.map((u) => u.path), isNot(contains('/redirect')));
+    expect(out.relations.single.title, 'Interstellar');
   });
 
   // The two TMDB calls go out together now. The whole reason that is safe is

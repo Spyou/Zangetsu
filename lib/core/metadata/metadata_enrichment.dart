@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 
 import '../anilist/anilist_api.dart';
 import '../environment.dart';
+import '../zmode/simkl_catalogue.dart';
 import '../models/media_detail.dart';
 import '../models/media_extras.dart';
 import '../models/person.dart';
@@ -253,19 +254,12 @@ class MetadataEnrichment {
     required bool isTv,
   }) async {
     const key = {'simkl-api-key': Environment.simklClientId};
-    final found = await _dio.get<dynamic>(
-      'https://api.simkl.com/search/id',
-      queryParameters: {'tmdb': '$tmdbId', 'type': isTv ? 'show' : 'movie'},
-      options: Options(
-        headers: key,
-        validateStatus: (s) => s != null && s < 500,
-      ),
-    );
-    final list = found.data;
-    if (list is! List || list.isEmpty) return const [];
-    final ids = (list.first as Map?)?['ids'];
-    // `simkl_id` on search results, `simkl` on sync payloads — both appear.
-    final simklId = ids is Map ? (ids['simkl'] ?? ids['simkl_id']) : null;
+    // The detail fetch that opened this screen already resolved this title's
+    // Simkl id (trending rows and search results carry it outright), and the
+    // resolver caches either way — so this is usually free. It used to be a
+    // second /search/id for an answer we were already holding, which made one
+    // detail open cost four requests where two would do.
+    final simklId = await SimklCatalogue.simklIdFor(_dio, tmdbId, isTv: isTv);
     if (simklId == null) return const [];
 
     final full = await _get(

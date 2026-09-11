@@ -11,6 +11,7 @@ import '../environment.dart';
 import '../models/media_item.dart';
 import '../models/provider_info.dart';
 import '../models/watch_status.dart';
+import '../zmode/simkl_catalogue.dart';
 import '../platform/apple_tv.dart';
 import 'tracker.dart';
 
@@ -387,6 +388,12 @@ class SimklService extends ChangeNotifier implements Tracker {
           final simklId = _asInt(ids['simkl'] ?? ids['simkl_id']);
           final malId = anime ? _asInt(ids['mal']) : null;
           final tmdbId = anime ? null : _asInt(ids['tmdb']);
+          // The user's own list is the best id map we get: these are the
+          // titles they actually open, and every entry carries both ids. Free
+          // here, saves a lookup later.
+          if (tmdbId != null && simklId != null) {
+            SimklCatalogue.rememberSimklId(tmdbId, simklId);
+          }
           final title = (media['title'] as String?) ??
               (e['title'] as String?) ??
               'Unknown';

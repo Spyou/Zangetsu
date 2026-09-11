@@ -1,8 +1,29 @@
+import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:watch_app/core/schedule/coming_soon_service.dart';
 import 'package:watch_app/core/schedule/schedule_models.dart';
+import 'package:watch_app/core/zmode/simkl_catalogue.dart';
 
 void main() {
+  setUp(SimklCatalogue.resetIdCache);
+
+  test('the calendar teaches us ids for things about to air', () {
+    // A few hundred rows of exactly what people are about to open, each one
+    // carrying both ids. Keeping them means tapping one costs no id lookup.
+    parseSimklCalendar([
+      {
+        'title': 'Something Airing',
+        'ids': {'simkl_id': 2732099, 'tmdb': '12345'},
+        'date': '2026-09-20T01:00:00Z',
+      },
+    ], isTv: true);
+
+    expect(
+      SimklCatalogue.simklIdFor(Dio(), 12345, isTv: true),
+      completion(2732099),
+    );
+  });
+
   test('parseTmdbResults maps movie rows + drops invalid', () {
     final rows = [
       {'id': 1, 'title': 'Movie A', 'poster_path': '/a.jpg', 'release_date': '2026-08-01'},

@@ -1,7 +1,7 @@
-// Simkl spells its own id two ways depending on the endpoint: /search/id
-// answers with `simkl`, while /search/* elsewhere uses `simkl_id`. Reading
-// only the latter made every detail lookup null, so the provider threw for
-// every title and quietly fell back to TMDB.
+// Simkl's records are keyed by its own id and we hold a TMDB one, so opening
+// a detail needs a translation first. It used to be /search/id, which returns
+// a whole record we throw away; Simkl asked us onto /redirect, which answers
+// 301 with the id in the Location header and no body at all.
 
 import 'dart:convert';
 
@@ -10,16 +10,31 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:watch_app/core/zmode/simkl_catalogue.dart';
 import 'package:watch_app/core/zmode/zmode_ids.dart';
 
+/// Answers `/redirect` the way Simkl does — a 301 whose Location carries the
+/// id — and serves the record for everything else.
 class _Adapter implements HttpClientAdapter {
-  _Adapter(this.respond);
-  final Object? Function(String path) respond;
-  final paths = <String>[];
+  _Adapter({required this.location, this.record = const {'title': 'A Title'}});
+
+  /// The Location header for /redirect. `null` = the bare `//simkl.com` Simkl
+  /// sends when it has no record.
+  final String? location;
+  final Map<String, dynamic> record;
+  final asked = <Uri>[];
 
   @override
   Future<ResponseBody> fetch(RequestOptions o, _, __) async {
-    paths.add(o.uri.path);
+    asked.add(o.uri);
+    if (o.uri.path == '/redirect') {
+      return ResponseBody.fromString(
+        '',
+        301,
+        headers: {
+          'location': [location ?? '//simkl.com?client_id=x'],
+        },
+      );
+    }
     return ResponseBody.fromString(
-      jsonEncode(respond(o.uri.path)),
+      jsonEncode(record),
       200,
       headers: {
         Headers.contentTypeHeader: [Headers.jsonContentType],
@@ -32,117 +47,90 @@ class _Adapter implements HttpClientAdapter {
 }
 
 void main() {
-  const c = ZCanonical(ZKind.movie, 'tmdb:969681');
+  setUp(SimklCatalogue.resetIdCache);
 
-  test('resolves a title whose lookup uses the `simkl` key', () async {
-    final adapter = _Adapter((path) {
-      if (path.contains('/search/id')) {
-        // Exactly what the live endpoint returns.
-        return [
-          {
-            'type': 'movie',
-            'title': 'Spider-Man: Brand New Day',
-            'ids': {'simkl': 1902343, 'slug': 'spider-man-brand-new-day'},
-          },
-        ];
-      }
-      return {'title': 'Spider-Man: Brand New Day', 'ids': {'simkl': 1902343}};
-    });
+  const movie = ZCanonical(ZKind.movie, 'tmdb:550');
+  const series = ZCanonical(ZKind.tv, 'tmdb:1399');
+
+  test('reads the id out of the Location header', () async {
+    final adapter = _Adapter(
+      location: '//simkl.com/movies/53894/fight-club?client_id=x',
+      record: const {'title': 'Fight Club'},
+    );
     final cat = SimklCatalogue(Dio()..httpClientAdapter = adapter);
 
-    final d = await cat.detail(c);
+    final d = await cat.detail(movie);
 
-    expect(d.title, 'Spider-Man: Brand New Day');
-    expect(adapter.paths.any((p) => p.contains('1902343')), isTrue,
-        reason: 'the second hop must use the id from the first');
+    expect(d.title, 'Fight Club');
+    expect(
+      adapter.asked.last.path,
+      '/movies/53894',
+      reason: 'the record fetch must use the id the redirect gave',
+    );
   });
 
-  test('still resolves the other spelling', () async {
-    final cat = SimklCatalogue(
-      Dio()
-        ..httpClientAdapter = _Adapter((path) {
-          if (path.contains('/search/id')) {
-            return [
-              {'ids': {'simkl_id': 55}, 'title': 'Other'},
-            ];
-          }
-          return {'title': 'Other'};
-        }),
-    );
+  test('does not follow the 301', () async {
+    // Following it would fetch a Simkl *web page* — HTML, not a record — and
+    // spend a request doing it. The header is the whole answer.
+    late bool followed;
+    final dio = Dio()
+      ..httpClientAdapter = _Adapter(
+        location: '//simkl.com/tv/17465/game-of-thrones',
+      )
+      ..interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (o, h) {
+            if (o.uri.path == '/redirect') followed = o.followRedirects;
+            h.next(o);
+          },
+        ),
+      );
 
-    final d = await cat.detail(c);
-    expect(d.title, 'Other');
+    await SimklCatalogue(dio).detail(series);
+
+    expect(followed, isFalse);
+  });
+
+  test('a series says so, or it gets searched as a film', () async {
+    // Without `type` a series id resolves against MOVIES and comes back with
+    // no id at all — every show failed to open while films were fine.
+    final adapter = _Adapter(location: '//simkl.com/tv/17465/game-of-thrones');
+    await SimklCatalogue(Dio()..httpClientAdapter = adapter).detail(series);
+
+    expect(adapter.asked.first.queryParameters['type'], 'tv');
+  });
+
+  test('a movie asks for movies', () async {
+    final adapter = _Adapter(location: '//simkl.com/movies/53894/fight-club');
+    await SimklCatalogue(Dio()..httpClientAdapter = adapter).detail(movie);
+
+    expect(adapter.asked.first.queryParameters['type'], 'movie');
   });
 
   test('a genuinely unknown title still fails loudly', () async {
+    // Simkl answers a bare `//simkl.com` with no id. Falling back to TMDB is
+    // right HERE — the bug this guards was doing it for everything.
     final cat = SimklCatalogue(
-      Dio()..httpClientAdapter = _Adapter((_) => const []),
+      Dio()..httpClientAdapter = _Adapter(location: null),
     );
 
-    // Falling back to TMDB is right HERE — the bug was doing it for
-    // everything.
-    expect(() => cat.detail(c), throwsA(isA<StateError>()));
-  });
-
-  test('a series lookup says which catalogue to search', () async {
-    // /search/id searches MOVIES unless told otherwise, so without this every
-    // show came back empty while films worked — "some titles fail to load".
-    late Uri asked;
-    final cat = SimklCatalogue(
-      Dio()
-        ..httpClientAdapter = _Capture((uri) {
-          // Only the lookup: hop 2 carries no type and would overwrite this.
-          if (uri.path.contains('/search/id')) {
-            asked = uri;
-            return [
-              {'ids': {'simkl': 1648964}, 'title': 'Silo'},
-            ];
-          }
-          return {'title': 'Silo'};
-        }),
+    expect(
+      () => cat.detail(const ZCanonical(ZKind.movie, 'tmdb:99999999')),
+      throwsA(isA<StateError>()),
     );
-
-    await cat.detail(const ZCanonical(ZKind.tv, 'tmdb:125988'));
-
-    expect(asked.queryParameters['type'], 'show');
   });
 
-  test('a movie lookup asks for movies', () async {
-    late Uri asked;
-    final cat = SimklCatalogue(
-      Dio()
-        ..httpClientAdapter = _Capture((uri) {
-          if (uri.path.contains('/search/id')) {
-            asked = uri;
-            return [
-              {'ids': {'simkl': 1}, 'title': 'A Film'},
-            ];
-          }
-          return {'title': 'A Film'};
-        }),
+  test('resolving twice only asks once', () async {
+    final adapter = _Adapter(location: '//simkl.com/movies/53894/fight-club');
+    final cat = SimklCatalogue(Dio()..httpClientAdapter = adapter);
+
+    await cat.detail(movie);
+    await cat.detail(movie);
+
+    expect(
+      adapter.asked.where((u) => u.path == '/redirect'),
+      hasLength(1),
+      reason: 'the id was already known the second time',
     );
-
-    await cat.detail(const ZCanonical(ZKind.movie, 'tmdb:550'));
-
-    expect(asked.queryParameters['type'], 'movie');
   });
-}
-
-/// Captures the URI so a test can assert on the query, not just the path.
-class _Capture implements HttpClientAdapter {
-  _Capture(this.respond);
-  final Object? Function(Uri uri) respond;
-
-  @override
-  Future<ResponseBody> fetch(RequestOptions o, _, __) async =>
-      ResponseBody.fromString(
-        jsonEncode(respond(o.uri)),
-        200,
-        headers: {
-          Headers.contentTypeHeader: [Headers.jsonContentType],
-        },
-      );
-
-  @override
-  void close({bool force = false}) {}
 }

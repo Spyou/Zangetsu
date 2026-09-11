@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 
 import '../environment.dart';
 import '../models/home_section.dart';
@@ -42,23 +43,53 @@ class SimklCatalogue implements VideoCatalogue {
         ),
       );
 
-  /// Verified endpoints only, and verified to return USABLE rows — a 200 is
-  /// not enough on its own:
-  ///  - `/movies/best` does not exist (404).
-  ///  - `/tv/best/month` answers 200 with 60 titles and ZERO tmdb ids, so
-  ///    every row is dropped by [_items] and the section renders empty. It is
-  ///    left out rather than shipped as a row that can never appear.
+  /// Pre-built trending lists, served off Cloudflare. Simkl asked us to read
+  /// these instead of `/movies/trending/week` and friends: they carry the same
+  /// titles, 100 at a time instead of 30, and they do NOT count against the
+  /// app's request limit. No api key on these — just the standard params the
+  /// Dio interceptor adds.
+  static const String _files = 'https://data.simkl.in/discover/trending';
+
+  /// One file is ~300 KB, so re-fetching all four on every Home build would
+  /// cost a megabyte of somebody's mobile data. They regenerate daily, so an
+  /// hour in memory is conservative and still spares the repeat loads within a
+  /// session (mode switches, pull-to-refresh, coming back from a detail).
+  static const Duration _fileTtl = Duration(hours: 1);
+  final Map<String, (DateTime, List<dynamic>)> _fileCache = {};
+
+  Future<List<dynamic>> _trending(String row) async {
+    final hit = _fileCache[row];
+    if (hit != null && DateTime.now().difference(hit.$1) < _fileTtl) {
+      return hit.$2;
+    }
+    final res = await _dio.get<dynamic>(
+      '$_files/$row.json',
+      options: Options(validateStatus: (s) => s != null && s < 500),
+    );
+    final data = res.data;
+    if (data is! List) return const [];
+    _fileCache[row] = (DateTime.now(), data);
+    return data;
+  }
+
+  /// The four files Simkl publishes for these, `<type>/<window>_100`. The old
+  /// `/movies/trending/week` API calls these replace were the bulk of our
+  /// daily quota — four of them on every Home build, from every install.
   ///
   /// The first row also feeds Home's hero banner rather than showing as a
   /// row, which is why this list is one longer than what you see.
   /// Row titles without a fetch — see [AniListCatalogue.rowTitles].
   static List<String> rowTitles() => [for (final r in _rows) r.$1];
 
+  /// Posters in a Home rail. Not the file's length — that's 100, and a rail
+  /// nobody scrolls to the end of doesn't need them.
+  static const int _rowLength = 30;
+
   static const List<(String, String, bool)> _rows = [
-    ('Trending movies', '/movies/trending/week', false),
-    ('Trending series', '/tv/trending/week', true),
-    ('Popular movies', '/movies/trending/month', false),
-    ('Popular series', '/tv/trending/month', true),
+    ('Trending movies', 'movies/week_100', false),
+    ('Trending series', 'tv/week_100', true),
+    ('Popular movies', 'movies/month_100', false),
+    ('Popular series', 'tv/month_100', true),
   ];
 
   @override
@@ -67,11 +98,12 @@ class SimklCatalogue implements VideoCatalogue {
       _rows.map((row) async {
         final (title, path, isTv) = row;
         try {
-          final res = await _get(path, {
-            'extended': _listExtended,
-            'limit': 30,
-          });
-          final items = _items(res.data, isTv: isTv);
+          // The file holds 100; a Home rail shows the same 30 it always has.
+          // The rest is See All's business, and it reads the deeper file.
+          final items = _items(
+            await _trending(path),
+            isTv: isTv,
+          ).take(_rowLength).toList();
           return items.isEmpty
               ? null
               : HomeSection(
@@ -94,19 +126,25 @@ class SimklCatalogue implements VideoCatalogue {
     ];
   }
 
-  /// Their docs do not commit to `page` on the trending endpoints, but it works
-  /// — verified on device. The safety net stays anyway: the browse grid stops
-  /// on an empty page OR on one whose items it already has, so if this ever
-  /// starts being ignored the list ends instead of repeating forever.
+  /// The file holds the whole list, so paging is a local slice — no second
+  /// request, and no reliance on `page` being honoured (it never was
+  /// documented). Running off the end returns empty, which is what the browse
+  /// grid already treats as "that's all".
   @override
   Future<List<MediaItem>> browseRow(String rowId, int page) async {
+    const perPage = 30;
     try {
-      final res = await _get(rowId, {
-        'extended': _listExtended,
-        'limit': 30,
-        'page': page,
-      });
-      return _items(res.data, isTv: rowId.startsWith('/tv/'));
+      // See All swaps to the 500-item file. It's ~1.5 MB against the 300 KB
+      // one Home uses, which is why Home doesn't load it — but someone who
+      // opened the row is going to scroll, and this way the whole thing pages
+      // locally instead of asking for more.
+      final all = _items(
+        await _trending(rowId.replaceFirst('_100', '_500')),
+        isTv: rowId.startsWith('tv/'),
+      );
+      final from = (page - 1) * perPage;
+      if (from >= all.length) return const [];
+      return all.sublist(from, (from + perPage).clamp(0, all.length));
     } catch (_) {
       return const [];
     }
@@ -148,25 +186,13 @@ class SimklCatalogue implements VideoCatalogue {
     final isTv = c.kind == ZKind.tv;
 
     // Hop 1: Simkl's records are keyed by its own id, and all we hold is a
-    // TMDB one.
-    // `type` is required, not optional: /search/id searches MOVIES by default,
-    // so a series id came back empty and every show failed to open while
-    // films were fine. Simkl keeps movies and shows in separate catalogues —
-    // the same split that makes search two calls.
-    final lookup = await _get('/search/id', {
-      'tmdb': tmdbId,
-      'type': isTv ? 'show' : 'movie',
-    });
-    final first = (lookup.data is List && (lookup.data as List).isNotEmpty)
-        ? (lookup.data as List).first
-        : null;
-    // `simkl` here, NOT `simkl_id`: Simkl spells this key both ways depending
-    // on the endpoint, and /search/id answers with `simkl`. Reading the wrong
-    // one made every lookup null, so detail threw for every title and the
-    // provider looked broken while quietly falling back to TMDB. Accept both,
-    // since the other spelling is what /search/* returns elsewhere.
-    final ids = first is Map ? first['ids'] : null;
-    final simklId = ids is Map ? (ids['simkl'] ?? ids['simkl_id']) : null;
+    // TMDB one. Free when the row or search result this was opened from
+    // already handed us the Simkl id — which is the usual case.
+    final simklId = await simklIdFor(
+      _dio,
+      int.tryParse(tmdbId) ?? -1,
+      isTv: isTv,
+    );
     if (simklId == null) {
       throw StateError('Simkl has no record for ${c.id}');
     }
@@ -244,6 +270,74 @@ class SimklCatalogue implements VideoCatalogue {
 
   // ── helpers ──────────────────────────────────────────────────────────────
 
+  /// TMDB id -> Simkl id, filled in from whatever we've already fetched.
+  /// Rows and search results hand us both ids for free; [detail] would
+  /// otherwise spend a `/search/id` call re-asking for one we were given a
+  /// moment ago. Session-scoped — a cold start on a title from the user's own
+  /// library still pays the lookup once.
+  static final Map<int, int> _simklByTmdb = {};
+
+  /// The Simkl id for a TMDB id — from whatever we've already fetched, or off
+  /// the redirect endpoint when we haven't seen this one.
+  ///
+  /// `/redirect` is what Simkl points at for translating an external id: it
+  /// answers 301 with the id in the `Location` header and no body at all,
+  /// where `/search/id` returns a whole record we throw away. Don't follow the
+  /// redirect — the header IS the answer.
+  ///
+  /// Static, and shared: the Cast/Relations enrichment runs on the same screen
+  /// as the detail fetch, and both used to resolve the same title separately.
+  static Future<int?> simklIdFor(
+    Dio dio,
+    int tmdbId, {
+    required bool isTv,
+  }) async {
+    final known = _simklByTmdb[tmdbId];
+    if (known != null) return known;
+    try {
+      final res = await dio.get<dynamic>(
+        '$_api/redirect',
+        queryParameters: {
+          'to': 'simkl',
+          'tmdb': '$tmdbId',
+          // Without `type` a series id is searched against MOVIES and comes
+          // back as a bare `//simkl.com` with no id — every show would fail
+          // to open while films worked.
+          'type': isTv ? 'tv' : 'movie',
+        },
+        options: Options(
+          followRedirects: false,
+          validateStatus: (s) => s != null && s < 500,
+        ),
+      );
+      // `//simkl.com/movies/53894/fight-club` when found, bare `//simkl.com`
+      // when not.
+      final loc = res.headers.value('location') ?? '';
+      final id = int.tryParse(
+        RegExp(r'/(?:movies|tv|anime)/(\d+)').firstMatch(loc)?.group(1) ?? '',
+      );
+      if (id != null) _simklByTmdb[tmdbId] = id;
+      return id;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// The map outlives any one catalogue instance on purpose — the enrichment
+  /// shares it. That also means it survives between tests, where one test's
+  /// id would silently satisfy the next one's lookup.
+  @visibleForTesting
+  static void resetIdCache() => _simklByTmdb.clear();
+
+  /// Feed the map from anywhere that already holds both ids — the user's own
+  /// synced lists carry them, and a title they track is exactly the one they
+  /// are most likely to open. Accepts the raw value because Simkl hands these
+  /// back as an int on some endpoints and a string on others.
+  static void rememberSimklId(int tmdbId, Object? raw) {
+    final id = raw is int ? raw : int.tryParse('${raw ?? ''}');
+    if (id != null && id > 0) _simklByTmdb[tmdbId] = id;
+  }
+
   static String _tmdbIdOf(ZCanonical c) {
     if (!c.id.startsWith('tmdb:')) {
       throw StateError('Simkl cannot resolve ${c.id}');
@@ -274,6 +368,11 @@ class SimklCatalogue implements VideoCatalogue {
           ? tmdbRaw
           : int.tryParse('${tmdbRaw ?? ''}');
       if (tmdbId == null) continue;
+      // Every row already carries its Simkl id, so remember it — opening this
+      // title later costs one call instead of two. `simkl_id` in the data
+      // files and /search/*, `simkl` on the sync payloads; both spellings
+      // appear, so read either.
+      rememberSimklId(tmdbId, ids is Map ? (ids['simkl_id'] ?? ids['simkl']) : null);
       final title = (row['title'] as String? ?? '').trim();
       if (title.isEmpty) continue;
       final c = ZCanonical(isTv ? ZKind.tv : ZKind.movie, 'tmdb:$tmdbId');

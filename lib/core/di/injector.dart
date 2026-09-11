@@ -61,6 +61,8 @@ import '../theme/theme_controller.dart';
 import '../metadata/episode_metadata_service.dart';
 import '../metadata/metadata_enrichment.dart';
 import '../metadata/people_service.dart';
+import '../app_config.dart';
+import '../environment.dart';
 import '../metadata/tmdb.dart';
 import '../metadata/title_logo_service.dart';
 import '../mode/content_mode_cubit.dart';
@@ -179,6 +181,26 @@ const MethodChannel _novelHttp = MethodChannel('zangetsu/novel_http');
 /// the provider registry (built-in providers seeded from assets + any
 /// repo-installed providers), and the bundled extractors.
 const _deviceChannel = MethodChannel('com.spyou.watch_app/device');
+
+
+/// Simkl requires these on every request — the API and the static data files
+/// alike. Without them our traffic doesn't appear in their debug log at all,
+/// so when something breaks on their side they have nothing to look at. The
+/// `simkl-api-key` header is separate and stays at the call sites.
+/// See https://api.simkl.org/conventions/headers.
+void applySimklConventions(RequestOptions options) {
+  final host = options.uri.host;
+  if (host != Environment.simklApiHost && host != Environment.simklDataHost) {
+    return;
+  }
+  options.queryParameters = {
+    ...options.queryParameters,
+    'client_id': Environment.simklClientId,
+    'app-name': Environment.simklAppName,
+    'app-version': kAppVersion,
+  };
+  options.headers['User-Agent'] = '$kAppName/$kAppVersion';
+}
 
 Future<void> initDependencies() async {
   // Detect device class first so every subsequent registration can gate on it.
@@ -372,6 +394,7 @@ Future<void> initDependencies() async {
             'api_key': Tmdb.apiKey,
           };
         }
+        applySimklConventions(options);
         handler.next(options);
       },
     ),

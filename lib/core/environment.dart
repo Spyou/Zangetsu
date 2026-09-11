@@ -71,6 +71,13 @@ class Environment {
   static const String malRedirectHost = 'mal-auth';
   static String get malRedirectUri => '$trackerRedirectScheme://$malRedirectHost';
 
+  // Simkl wants these on EVERY request (url params + a real User-Agent), or
+  // the call is invisible in their debug log and they can't help when
+  // something breaks. See https://api.simkl.org/conventions/headers.
+  static const String simklAppName = 'zangetsu';
+  static const String simklApiHost = 'api.simkl.com';
+  static const String simklDataHost = 'data.simkl.in';
+
   // Simkl — OAuth2 authorization-code (needs the secret to exchange the code).
   static const String simklClientId = '8b847b09206ccdb0b3de4cc1293d6dd7d355821f5c179c57315da8ba9030eb53';
   static const String simklClientSecret = '34ba8e5ac7c8a5c27926dfdf78205e5b913de9928361cb5a243558239298c96d';
