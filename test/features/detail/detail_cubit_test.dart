@@ -1,3 +1,4 @@
+import 'dart:async';
 // Final whole-branch review, Finding 3: `_enrich`'s TMDB-fallback gate used
 // `d.type != ProviderType.anime`, which — once Task 1 added manga/novel to
 // ProviderType — silently let id-less manga/novel details through into
@@ -13,6 +14,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:watch_app/core/di/injector.dart';
+import 'package:watch_app/core/metadata/episode_metadata_service.dart';
 import 'package:watch_app/core/metadata/metadata_enrichment.dart';
 import 'package:watch_app/core/models/episode.dart';
 import 'package:watch_app/core/models/media_detail.dart';
@@ -99,6 +101,9 @@ class _FakeMetadataEnrichment extends MetadataEnrichment {
   int resolveTmdbIdCalls = 0;
   int resolveMalIdCalls = 0;
 
+  /// Non-null to exercise the id-patch path.
+  int? malIdToReturn;
+
   /// The details `fetch()` was asked to enrich, so a test can assert both THAT
   /// it ran and what type it ran for.
   final List<ProviderType> fetchedTypes = [];
@@ -112,7 +117,7 @@ class _FakeMetadataEnrichment extends MetadataEnrichment {
   @override
   Future<int?> resolveMalId(MediaDetail d) async {
     resolveMalIdCalls++;
-    return null;
+    return malIdToReturn;
   }
 
   @override
@@ -134,6 +139,89 @@ MediaDetail _idLessDetail(ProviderType type) => MediaDetail(
   type: type,
   sourceId: 'test',
 );
+
+/// Emits a catalogue partial immediately, then waits on [gate] before handing
+/// back the source's detail — the real shape of a Z Mode load, where the
+/// source match and its episode list arrive well after the metadata.
+class _PartialThenSourceRepository implements SourceRepository {
+  _PartialThenSourceRepository({required this.partial, required this.finalDetail});
+  final MediaDetail partial;
+  final MediaDetail finalDetail;
+  final gate = Completer<void>();
+
+  @override
+  noSuchMethod(Invocation i) => super.noSuchMethod(i);
+  @override
+  Future<bool> ensureSourceLoaded(String sourceId) async => true;
+  @override
+  List<({String id, String name})> get pickableSources => loadedSources;
+
+  @override
+  Future<MediaDetail> detail(
+    String url, {
+    String category = 'sub',
+    String? sourceId,
+    void Function(MediaDetail partial)? onPartial,
+  }) async {
+    onPartial?.call(partial);
+    await gate.future;
+    return finalDetail;
+  }
+}
+
+/// Records when `fetch()` ran, and can be held open so a test can look at the
+/// world while enrichment is mid-flight.
+class _GatedEnrichment extends MetadataEnrichment {
+  _GatedEnrichment() : super(Dio());
+
+  int fetchCalls = 0;
+  final started = Completer<void>();
+  final release = Completer<void>();
+
+  @override
+  Future<int?> resolveTmdbId(String t, String? y, bool isTv) async => null;
+  @override
+  Future<int?> resolveMalId(MediaDetail d) async => null;
+  @override
+  Future<int?> promoteMovieToAnimeMalId(MediaDetail d) async => null;
+
+  @override
+  Future<({List<CastMember> cast, List<MediaRelation> relations})> fetch(
+    MediaDetail d,
+  ) async {
+    fetchCalls++;
+    if (!started.isCompleted) started.complete();
+    await release.future;
+    return (
+      cast: const <CastMember>[CastMember(name: 'Someone')],
+      relations: const <MediaRelation>[],
+    );
+  }
+}
+
+Episode _ep(String id) => Episode(id: id, title: id, url: 'http://x/$id');
+
+/// Returns the same episodes with a description added — a new list, so the
+/// cubit sees it as changed, which is what makes it try to write it back.
+class _FakeEpisodeMeta extends EpisodeMetadataService {
+  _FakeEpisodeMeta() : super(Dio());
+
+  final started = Completer<void>();
+  final release = Completer<void>();
+
+  @override
+  Future<List<Episode>> enrich({
+    required List<Episode> episodes,
+    required ProviderType type,
+    int? malId,
+    int? tmdbId,
+    bool tmdbIsTv = false,
+  }) async {
+    if (!started.isCompleted) started.complete();
+    await release.future;
+    return [for (final e in episodes) e.copyWith(description: 'desc ${e.id}')];
+  }
+}
 
 void main() {
   late _FakeMetadataEnrichment fakeEnrichment;
@@ -159,6 +247,117 @@ void main() {
     await Future<void>.delayed(const Duration(milliseconds: 20));
     return cubit;
   }
+
+  group('Cast and Relations do not queue behind the episode list', () {
+    // They run off malId/tmdbId/title, all of which arrive with the catalogue
+    // partial. Waiting for the source match meant they landed a beat after the
+    // episodes every time, for no reason.
+    late _GatedEnrichment gated;
+    late _FakeEpisodeMeta epMeta;
+    late _PartialThenSourceRepository repo;
+    late DetailCubit cubit;
+
+    setUp(() async {
+      await sl.reset();
+      gated = _GatedEnrichment();
+      sl.registerSingleton<MetadataEnrichment>(gated);
+      // Registered so the per-episode description step actually runs — that is
+      // the one enrichment result tied to a SPECIFIC episode list, and so the
+      // one that can push the catalogue's list back over the source's.
+      epMeta = _FakeEpisodeMeta();
+      sl.registerSingleton<EpisodeMetadataService>(epMeta);
+      const base = MediaDetail(
+        id: 't1',
+        title: 'Some Title',
+        url: 'http://test/t1',
+        type: ProviderType.anime,
+        sourceId: 'test',
+        malId: 5114,
+      );
+      repo = _PartialThenSourceRepository(
+        partial: base.copyWith(episodes: [_ep('cat1'), _ep('cat2')]),
+        finalDetail: base.copyWith(episodes: [_ep('src1')]),
+      );
+      cubit = DetailCubit(
+        repo: repo,
+        url: base.url,
+        prefs: _FakeTitlePrefs(),
+      );
+    });
+
+    tearDown(() async => cubit.close());
+
+    test('enrichment starts before the source episodes arrive', () async {
+      final loading = cubit.load();
+      await epMeta.started.future; // would hang if it waited for the gate below
+
+      expect(repo.gate.isCompleted, isFalse, reason: 'source still fetching');
+
+      epMeta.release.complete();
+      repo.gate.complete();
+      gated.release.complete();
+      await loading;
+      expect(gated.fetchCalls, 1);
+    });
+
+    test('it runs once, not once per entry point', () async {
+      final loading = cubit.load();
+      await epMeta.started.future;
+      epMeta.release.complete();
+      repo.gate.complete();
+      gated.release.complete();
+      await loading;
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      // load() still calls _enrich after the await, for the paths that emit no
+      // partial at all. That call has to JOIN this one, not start a second.
+      expect(gated.fetchCalls, 1);
+    });
+
+    test('an id resolved by enrichment reaches the screen', () async {
+      // The other half of patching current state: it must still APPLY the
+      // change. The player and scrobbler key off this id, so losing it here
+      // is silent until something fails to track.
+      await sl.reset();
+      final resolving = _FakeMetadataEnrichment()..malIdToReturn = 1735;
+      sl.registerSingleton<MetadataEnrichment>(resolving);
+      final c = DetailCubit(
+        repo: _StubSourceRepository(_idLessDetail(ProviderType.anime)),
+        url: 'http://test/t1',
+        prefs: _FakeTitlePrefs(),
+      );
+      await c.load();
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      expect(c.state.detail!.malId, 1735);
+      await c.close();
+    });
+
+    test('a late enrichment does not put the catalogue episodes back',
+        () async {
+      // Enrichment holds the detail it started from — the partial, whose
+      // episodes are the catalogue's. Emitting that copy after the source list
+      // landed would make the list fill in and then visibly revert.
+      // Hold the per-episode step open until AFTER the source list has landed,
+      // so what it finishes with belongs to the list it no longer has.
+      final loading = cubit.load();
+      await epMeta.started.future;
+      repo.gate.complete();
+      await loading;
+      expect(cubit.state.detail!.episodes.map((e) => e.id), ['src1']);
+
+      epMeta.release.complete();
+      gated.release.complete();
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      expect(
+        cubit.state.detail!.episodes.map((e) => e.id),
+        ['src1'],
+        reason: 'the catalogue list came back after the source list',
+      );
+      expect(cubit.state.cast, isNotEmpty, reason: 'and it still enriched');
+    });
+  });
 
   test(
     'an id-less MANGA detail never triggers TMDB resolution',

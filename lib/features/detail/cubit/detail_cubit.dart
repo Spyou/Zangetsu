@@ -237,6 +237,14 @@ class DetailCubit extends Cubit<DetailState> {
             detail: partial,
             episodesLoading: !_zmVideoDetail,
           ));
+          // Cast and Relations run off malId/tmdbId/title, all of which are
+          // here already — they were waiting on the source match and episode
+          // fetch below, which they never use, so they landed a beat after the
+          // episodes. Started here they resolve alongside it instead.
+          //
+          // The call after the await stays: it joins this one when it is still
+          // running, and covers the paths that never emit a partial at all.
+          _enrich(partial);
         },
       );
       // A novel (LNReader) plugin swallows its own fetch failure and returns
@@ -401,14 +409,44 @@ class DetailCubit extends Cubit<DetailState> {
   /// [force] re-runs enrichment for a detail that has already been enriched
   /// once. Only [refresh] sets it, after a match change swaps the episode list
   /// out from under the metadata fetched for the previous one.
+  /// In flight, so the post-fetch call joins the early one instead of starting
+  /// a second. Without it both would run: the guard below only sees a FINISHED
+  /// enrichment, and the early one is usually still going when the source
+  /// match lands.
+  Future<void>? _enriching;
+
   Future<void> _enrich(MediaDetail detail, {bool force = false}) async {
     if (!force && (state.cast.isNotEmpty || state.relations.isNotEmpty)) return;
+    if (!force && _enriching != null) return _enriching;
+    final run = _enrichOnce(detail, force: force);
+    _enriching = run;
+    try {
+      await run;
+    } finally {
+      if (identical(_enriching, run)) _enriching = null;
+    }
+  }
+
+  Future<void> _enrichOnce(MediaDetail detail, {required bool force}) async {
     emit(state.copyWith(extrasLoading: true));
     try {
       await _enrichInner(detail, force: force);
     } finally {
       if (!isClosed) emit(state.copyWith(extrasLoading: false));
     }
+  }
+
+  /// Applies one enrichment result to whatever detail is on screen RIGHT NOW.
+  ///
+  /// Enrichment holds its own copy of the detail it started from, and that
+  /// copy goes stale: it runs alongside the source match, which replaces the
+  /// catalogue's episode list with the source's. Emitting the captured copy
+  /// would put the catalogue's episodes back — the list would fill in and then
+  /// visibly revert. So each result is applied to `state.detail` instead.
+  void _patchDetail(MediaDetail Function(MediaDetail) apply) {
+    final current = state.detail;
+    if (current == null) return;
+    emit(state.copyWith(detail: apply(current)));
   }
 
   Future<void> _enrichInner(MediaDetail detail, {bool force = false}) async {
@@ -442,7 +480,7 @@ class DetailCubit extends Cubit<DetailState> {
         if (isClosed) return;
         if (id != null) {
           d = d.copyWith(tmdbId: id);
-          emit(state.copyWith(detail: d));
+          _patchDetail((cur) => cur.copyWith(tmdbId: id));
         }
       } catch (_) {/* keep going with what we have */}
     }
@@ -456,7 +494,7 @@ class DetailCubit extends Cubit<DetailState> {
         if (isClosed) return;
         if (resolved != null) {
           d = d.copyWith(malId: resolved);
-          emit(state.copyWith(detail: d));
+          _patchDetail((cur) => cur.copyWith(malId: resolved));
         }
       } catch (_) {/* keep going without it */}
     }
@@ -473,7 +511,9 @@ class DetailCubit extends Cubit<DetailState> {
         if (isClosed) return;
         if (mal != null) {
           d = d.copyWith(malId: mal, type: ProviderType.anime);
-          emit(state.copyWith(detail: d));
+          _patchDetail(
+            (cur) => cur.copyWith(malId: mal, type: ProviderType.anime),
+          );
         }
       } catch (_) {/* stays a movie */}
     }
@@ -490,9 +530,15 @@ class DetailCubit extends Cubit<DetailState> {
           tmdbIsTv: d.tmdbIsTv,
         );
         if (isClosed) return;
-        if (!identical(enriched, d.episodes)) {
+        // Episode descriptions are the one result tied to a SPECIFIC list.
+        // If the source has since replaced it, these belong to the old one —
+        // drop them rather than reinstating the list they came from.
+        final onScreen = state.detail?.episodes;
+        if (!identical(enriched, d.episodes) &&
+            onScreen != null &&
+            identical(onScreen, d.episodes)) {
           d = d.copyWith(episodes: enriched);
-          emit(state.copyWith(detail: d));
+          _patchDetail((cur) => cur.copyWith(episodes: enriched));
         }
       } catch (_) {/* keep episodes as-is */}
     }
