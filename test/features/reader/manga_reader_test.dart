@@ -75,6 +75,132 @@ void _pureLogicTests() {
     });
   });
 
+  group('mostVisiblePage', () {
+    // What the page counter reads in webtoon mode now. It used to come off
+    // scroll position, which assumes uniform page heights — webtoon pages vary
+    // enormously, so the number stuck, jumped and skipped, and a reader could
+    // not tell whether they were in sequence.
+    test('nothing on screen yet reads as unknown, not page 0', () {
+      // Null lets the caller keep its old estimate for that frame; 0 would
+      // yank the counter back to the top of the chapter.
+      expect(mostVisiblePage({}), isNull);
+    });
+
+    test('the page with most of itself showing wins', () {
+      expect(mostVisiblePage({3: 0.2, 4: 0.75, 5: 0.05}), 4);
+    });
+
+    test('a half-and-half scroll picks one, and not the later one', () {
+      // Mid-scroll both pages report the same fraction. Taking the later one
+      // would tick the counter forward before the page arrived.
+      expect(mostVisiblePage({6: 0.5, 7: 0.5}), 6);
+    });
+
+    test('a single fully visible page is that page', () {
+      expect(mostVisiblePage({9: 1.0}), 9);
+    });
+
+    test('pages scrolled past are gone, not zero-weighted', () {
+      // The caller removes them at 0; if any slipped through they must not win.
+      expect(mostVisiblePage({1: 0.0, 2: 0.0, 8: 0.3}), 8);
+    });
+  });
+
+  group('verticalPageIndex', () {
+    // The bug this guards: pages that have not loaded reserve a guessed
+    // height, so a chapter of tall webtoon strips can lay out at half its real
+    // length. Scroll fast and you hit a "bottom" that is nowhere near the end
+    // — and reaching the bottom marks the chapter read AND scrobbles it to
+    // AniList/MAL, for a chapter nobody looked at.
+    test('the bottom of a fully loaded chapter is the last page', () {
+      expect(
+        verticalPageIndex(
+          atBottom: true,
+          lastPageLoaded: true,
+          pageCount: 40,
+          visible: {38: 0.9},
+        ),
+        39,
+      );
+    });
+
+    test('a bottom reached before the last page loaded is not the end', () {
+      // The list is short because the pages below are still placeholders.
+      // Report where the reader actually is, not "finished".
+      expect(
+        verticalPageIndex(
+          atBottom: true,
+          lastPageLoaded: false,
+          pageCount: 40,
+          visible: {5: 0.8},
+        ),
+        5,
+      );
+    });
+
+    test('mid-chapter reads as the visible page either way', () {
+      for (final loaded in [true, false]) {
+        expect(
+          verticalPageIndex(
+            atBottom: false,
+            lastPageLoaded: loaded,
+            pageCount: 40,
+            visible: {12: 0.6, 13: 0.4},
+          ),
+          12,
+        );
+      }
+    });
+
+    test('nothing visible yet is unknown, so the caller can fall back', () {
+      expect(
+        verticalPageIndex(
+          atBottom: false,
+          lastPageLoaded: false,
+          pageCount: 40,
+          visible: const {},
+        ),
+        isNull,
+      );
+    });
+
+    test('an empty chapter is page 0, never a negative index', () {
+      expect(
+        verticalPageIndex(
+          atBottom: true,
+          lastPageLoaded: true,
+          pageCount: 0,
+          visible: const {},
+        ),
+        0,
+      );
+    });
+  });
+
+  group('reservedPageHeight', () {
+    test("uses the page's own measured shape when it has one", () {
+      expect(reservedPageHeight(400, measured: 2.0, chapter: 1.2), 800);
+    });
+
+    test("falls back to the chapter's shape for a page not yet seen", () {
+      // Webtoon pages within a chapter are near enough the same shape, so the
+      // first measured page is a good stand-in for the rest.
+      expect(reservedPageHeight(400, chapter: 3.0), 1200);
+    });
+
+    test('knows nothing yet — still reserves a portrait page, not 200px', () {
+      // The flat 200px placeholder is what made the list jump by most of a
+      // screen on every load.
+      expect(reservedPageHeight(400), 400 * kDefaultPageAspect);
+      expect(reservedPageHeight(400), greaterThan(400));
+    });
+
+    test('a nonsense aspect does not collapse the page to nothing', () {
+      expect(reservedPageHeight(400, measured: 0), 400 * kDefaultPageAspect);
+      expect(reservedPageHeight(400, measured: -1), 400 * kDefaultPageAspect);
+    });
+  });
+
   group('estimateIndexFromScroll', () {
     test('top of scroll is page 0, bottom is the last page', () {
       expect(estimateIndexFromScroll(0, 1000, 5), 0);

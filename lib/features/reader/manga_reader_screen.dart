@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:visibility_detector/visibility_detector.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:gal/gal.dart';
 import 'package:share_plus/share_plus.dart';
@@ -299,8 +300,13 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
   void _detectWebtoon() {
     final pages = _pages;
     if (pages == null || pages.isEmpty) return;
-    if (_looksLikeWebtoon != null) return; // one resolve per chapter
-    if (!sl<ReaderPrefs>().autoWebtoon) return;
+    if (_measuredFirstPage) return; // one resolve per chapter
+    // The measurement is taken even with auto-webtoon off. It is the only
+    // honest page shape available before anything renders, and the whole list
+    // is sized from it — a chapter of unloaded pages reserving a guess is how
+    // the list ends up half its real length. Only the DIRECTION decision below
+    // is gated on the pref.
+    _measuredFirstPage = true;
     final first = pages.first;
     final width = _decodeWidth(context);
     final stream = _pageProvider(
@@ -310,9 +316,17 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
     late ImageStreamListener listener;
     listener = ImageStreamListener((info, _) {
       stream.removeListener(listener);
-      final tall = info.image.height / info.image.width >= _webtoonAspect;
+      final aspect = info.image.height / info.image.width;
+      final tall = aspect >= _webtoonAspect;
       info.dispose(); // only the size was wanted, not a retained decode
-      if (!mounted || _looksLikeWebtoon == tall) return;
+      if (!mounted) return;
+      // Every page not yet seen reserves this. A webtoon slice runs 3x its
+      // width or more, against the 1.45 a print page sits at — reserving the
+      // wrong one shortens the list by half, and a fast scroll then reaches a
+      // "bottom" that is nowhere near the end of the chapter.
+      setState(() => _chapterAspect = aspect);
+      if (!sl<ReaderPrefs>().autoWebtoon) return;
+      if (_looksLikeWebtoon == tall) return;
       setState(() => _looksLikeWebtoon = tall);
       // Vertical and paged run off different controllers, so flipping here
       // would otherwise drop the reader back at the top of the chapter.
@@ -413,20 +427,56 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
     return 0;
   }
 
+  /// index -> how much of that page is on screen, for the pages currently
+  /// built. The webtoon page number used to be `pixels / maxExtent`, which
+  /// assumes every page is the same height; they are not, so the counter
+  /// stuck, jumped and skipped numbers and you could not tell whether you
+  /// were reading in order. This is what is actually in front of you.
+  final Map<int, double> _visible = {};
+
+  /// Height/width of pages we've laid out, so a page that has been seen once
+  /// reserves its real height on the way back. Keyed by index rather than url
+  /// because the same url can legitimately repeat within a chapter.
+  final Map<int, double> _aspect = {};
+
+  /// The first page's real decoded aspect, used for every page not yet seen.
+  /// Measured in [_detectWebtoon] from the decoded image — NOT from the laid
+  /// out widget, which before an image arrives is the placeholder, whose
+  /// height came from this value in the first place.
+  double? _chapterAspect;
+
+  /// One first-page resolve per chapter, whatever the auto-webtoon pref says.
+  bool _measuredFirstPage = false;
+
+  /// Pages whose image has actually drawn. A page still showing its
+  /// placeholder has NOT been read, however far past it the list has scrolled.
+  final Set<int> _loaded = {};
+
   void _onVerticalScroll() {
     final pages = _pages;
     if (pages == null || pages.isEmpty || !_verticalController.hasClients) {
       return;
     }
     final pos = _verticalController.position;
-    final estimated = estimateIndexFromScroll(
-      pos.pixels,
-      pos.maxScrollExtent,
-      pages.length,
-    );
-    if (estimated != _pageIndex) {
-      _pageIndex = estimated; // notifier only — see _onPageChanged
-      if (!_seeking) _preload(estimated, pages);
+    // Bottom of the list is the last page, whatever the visibility says: the
+    // end-of-chapter footer rides inside the last item, so the page above it
+    // can still be the most visible one there — and a chapter that never
+    // reaches its last index is never marked read, so it never scrobbles.
+    final current =
+        verticalPageIndex(
+          atBottom: pos.pixels >= pos.maxScrollExtent - 8,
+          lastPageLoaded: _loaded.contains(pages.length - 1),
+          pageCount: pages.length,
+          visible: _visible,
+        ) ??
+        estimateIndexFromScroll(
+          pos.pixels,
+          pos.maxScrollExtent,
+          pages.length,
+        );
+    if (current != _pageIndex) {
+      _pageIndex = current; // notifier only — see _onPageChanged
+      if (!_seeking) _preload(current, pages);
     }
     // Same reasoning as _onPageChanged: a slider drag also drives this via
     // ScrollController.jumpTo, and _commitSeek is the single source of
@@ -451,11 +501,18 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
       return;
     }
     final pos = _verticalController.position;
-    _pageIndex = estimateIndexFromScroll(
-      pos.pixels,
-      pos.maxScrollExtent,
-      pages.length,
-    );
+    _pageIndex =
+        verticalPageIndex(
+          atBottom: pos.pixels >= pos.maxScrollExtent - 8,
+          lastPageLoaded: _loaded.contains(pages.length - 1),
+          pageCount: pages.length,
+          visible: _visible,
+        ) ??
+        estimateIndexFromScroll(
+          pos.pixels,
+          pos.maxScrollExtent,
+          pages.length,
+        );
   }
 
   /// Persists the current chapter's position. `ReadStore.save`/
@@ -539,6 +596,12 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
     setState(() {
       _index = newIndex;
       _pages = null;
+      // Shapes and visibility belong to the chapter that was open.
+      _visible.clear();
+      _aspect.clear();
+      _loaded.clear();
+      _chapterAspect = null;
+      _measuredFirstPage = false;
       _error = null;
       _looksLikeWebtoon = null;
       _pageIndex = 0;
@@ -980,11 +1043,42 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
               // so `estimateIndexFromScroll`'s scroll-to-page mapping (and the
               // slider that shares it) needs no adjustment for a phantom page.
               itemBuilder: (context, index) {
-                final page = _verticalItem(context, pages[index]);
-                if (index != pages.length - 1) return page;
-                return Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [page, _chapterEndFooter()],
+                final page = _verticalItem(context, pages[index], index);
+                final body = index != pages.length - 1
+                    ? page
+                    : Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [page, _chapterEndFooter()],
+                      );
+                // What the page counter reads. Cheap — the detector only
+                // fires when a page's visible fraction actually changes.
+                return VisibilityDetector(
+                  key: ValueKey('manga-page-$index'),
+                  onVisibilityChanged: (info) {
+                    if (!mounted) return;
+                    if (info.visibleFraction <= 0) {
+                      _visible.remove(index);
+                    } else {
+                      _visible[index] = info.visibleFraction;
+                    }
+                    // Learn the page's real shape from the same callback, so
+                    // scrolling back reserves what it actually takes.
+                    //
+                    // Only once the image has DRAWN. Before that the item is
+                    // the placeholder, whose height was computed from the
+                    // aspect — measuring it reads back our own guess and locks
+                    // it in. The chapter-wide aspect comes from the decoded
+                    // first page instead (see _detectWebtoon).
+                    //
+                    // The last item carries the end-of-chapter footer inside
+                    // it, so its height is not a page's — skip it.
+                    if (index == pages.length - 1) return;
+                    if (!_loaded.contains(index)) return;
+                    final size = info.size;
+                    if (size.width <= 0 || size.height <= 0) return;
+                    _aspect[index] = size.height / size.width;
+                  },
+                  child: body,
                 );
               },
             ),
@@ -1105,7 +1199,20 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
   /// Webtoon mode has its own zones: top and bottom scroll a screenful, the
   /// middle opens the controls. There are no pages to turn in a continuous
   /// strip, so tapping used to do nothing here but toggle chrome.
-  Widget _verticalItem(BuildContext context, PageImage page) {
+  /// Height to hold for a page that hasn't drawn yet.
+  ///
+  /// It used to be a flat 200px against a page that renders at fifteen hundred
+  /// or more, so every load grew the list by most of a screen: the page you
+  /// were reading slid away under you, and `maxScrollExtent` moved so much
+  /// that anything derived from it was noise. Reserving the real shape is what
+  /// makes the list stop moving.
+  double _reservedHeight(BuildContext context, int index) => reservedPageHeight(
+    MediaQuery.sizeOf(context).width,
+    measured: _aspect[index],
+    chapter: _chapterAspect,
+  );
+
+  Widget _verticalItem(BuildContext context, PageImage page, int index) {
     final width = _decodeWidth(context);
     // See the comment on _pagedItem's RepaintBoundary — same reasoning here.
     return RepaintBoundary(
@@ -1119,6 +1226,11 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                   image: _pageProvider(page, width),
                   width: double.infinity,
                   fit: _verticalBoxFit(_effectiveFit(sl<ReaderPrefs>())),
+                  // A downloaded/CBZ page needs no fetch — it is there.
+                  frameBuilder: (context, child, frame, _) {
+                    if (frame != null) _loaded.add(index);
+                    return child;
+                  },
                   errorBuilder: (_, _, _) => const SizedBox(
                     height: 200,
                     child: Icon(
@@ -1134,11 +1246,22 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                   memCacheWidth: width,
                   maxWidthDiskCache: width,
                   fit: _verticalBoxFit(_effectiveFit(sl<ReaderPrefs>())),
+                  // The page is on screen for real from here. Scrolling PAST a
+                  // placeholder is not reading it, and that distinction is what
+                  // keeps a fast scroll from marking the chapter read.
+                  imageBuilder: (context, imageProvider) {
+                    _loaded.add(index);
+                    return Image(
+                      image: imageProvider,
+                      width: double.infinity,
+                      fit: _verticalBoxFit(_effectiveFit(sl<ReaderPrefs>())),
+                    );
+                  },
                   // Fixed-height static placeholder (not a spinner) — avoids a
                   // zero-height flash in the list while still not perpetually
                   // animating; same ColoredBox convention as poster_card.dart.
                   placeholder: (_, _) => SizedBox(
-                    height: 200,
+                    height: _reservedHeight(context, index),
                     width: double.infinity,
                     child: ColoredBox(color: AppColors.surface2),
                   ),
@@ -2148,6 +2271,61 @@ class _TwoFingerScaleRecognizer extends ScaleGestureRecognizer {
 /// [count] pages (default 3, matching the reader's original hardcoded
 /// window), clamped to the chapter's bounds. Pure so the "preload the next N"
 /// contract is unit-testable without a real image loader.
+/// Where the reader is, for a vertical chapter.
+///
+/// [atBottom] alone used to mean "the last page", and that is what let a fast
+/// scroll finish a chapter nobody read: pages that have not loaded reserve a
+/// guess, so the list can be half its real length and its "bottom" nowhere
+/// near the end. Reaching the bottom only counts when the last page has
+/// actually drawn.
+int? verticalPageIndex({
+  required bool atBottom,
+  required bool lastPageLoaded,
+  required int pageCount,
+  required Map<int, double> visible,
+}) {
+  if (pageCount <= 0) return 0;
+  if (atBottom && lastPageLoaded) return pageCount - 1;
+  return mostVisiblePage(visible);
+}
+
+/// The page with most of itself on screen, from each built page's reported
+/// visible fraction — null when nothing has reported yet.
+///
+/// This replaces reading the page number off scroll position, which assumed
+/// every page was the same height. Webtoon pages are not, so the counter
+/// stuck, jumped and skipped numbers, and you could not tell whether you were
+/// reading in sequence.
+int? mostVisiblePage(Map<int, double> visible) {
+  int? best;
+  var bestFraction = 0.0;
+  for (final e in visible.entries) {
+    // Ties go to the earlier page: scrolling forward, the page you are
+    // leaving should not win back the counter from the one arriving.
+    if (e.value > bestFraction) {
+      bestFraction = e.value;
+      best = e.key;
+    }
+  }
+  return best;
+}
+
+/// A page taller than it is wide, which manga and webtoon pages both are.
+/// Only used until the chapter's own first page has been measured.
+const double kDefaultPageAspect = 1.45;
+
+/// Height to hold for a page that hasn't drawn yet: its own measured shape,
+/// else this chapter's, else a sensible portrait guess.
+///
+/// The placeholder used to be a flat 200px against a page that renders at
+/// fifteen hundred or more, so every load grew the list by most of a screen —
+/// the page being read slid away underneath, and maxScrollExtent moved enough
+/// that anything derived from it was noise.
+double reservedPageHeight(double width, {double? measured, double? chapter}) {
+  final aspect = measured ?? chapter ?? kDefaultPageAspect;
+  return width * (aspect <= 0 ? kDefaultPageAspect : aspect);
+}
+
 List<int> preloadWindow(int current, int pageCount, {int count = 3}) {
   final result = <int>[];
   for (var i = current + 1; i <= current + count && i < pageCount; i++) {
