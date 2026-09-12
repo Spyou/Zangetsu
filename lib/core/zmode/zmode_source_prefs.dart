@@ -43,4 +43,28 @@ class ZSourcePrefs {
       _box.put(bucketOf(kind), sourceId);
 
   Future<void> clear(ZKind kind) => _box.delete(bucketOf(kind));
+
+  // ── The soft one ────────────────────────────────────────────────────────
+  // Separate key, and deliberately NOT [get]: this is a hint, not a choice.
+  // The explicit default above is honoured as-is, misses included; this one
+  // is only "start here", and a miss falls through to the sweep.
+
+  String _lastGoodKey(ZKind kind) => 'lastGood:${bucketOf(kind)}';
+
+  /// The source that last produced a real match for this kind.
+  ///
+  /// Reading leans on this because a sweep there is expensive AND risky: the
+  /// matched source owns the chapter list outright, where video re-resolves
+  /// per episode at play time. Someone reading manga is almost always reading
+  /// from the same source as last time, so trying it first turns 22 searches
+  /// into one.
+  String? lastGood(ZKind kind) {
+    final v = _box.get(_lastGoodKey(kind))?.trim();
+    return (v == null || v.isEmpty) ? null : v;
+  }
+
+  Future<void> rememberLastGood(ZKind kind, String sourceId) =>
+      _box.put(_lastGoodKey(kind), sourceId);
+
+  Future<void> clearLastGood(ZKind kind) => _box.delete(_lastGoodKey(kind));
 }

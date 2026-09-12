@@ -2,6 +2,7 @@ import '../error/exceptions.dart';
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'dart:async' show unawaited;
 import '../logging/app_logger.dart';
+import '../provider/cf_solve_needed.dart';
 import '../models/episode.dart';
 import '../models/home_section.dart';
 import '../models/media_detail.dart';
@@ -593,11 +594,20 @@ class MetadataRepository implements CatalogueRepository {
         malId: d.malId,
       );
       if (m == null) {
-        // A candidate genuinely had this title but a Cloudflare challenge
-        // suppressed its search (see SourceMatcher.cfBlockedUrl) — surface
-        // it the same way a Mihon/Aniyomi source does, instead of the flat
-        // "no source has this yet".
-        final blocked = _matcher.cfBlockedUrl(c.kind);
+        // A Cloudflare challenge on the source reading actually uses — surface
+        // it instead of the flat "no source has this yet", so the solve is
+        // one tap away rather than a mystery.
+        //
+        // Scoped to THAT source, not to any flagged source of this kind, which
+        // is what it used to be. Reading tries one source now, so a flag on
+        // some other installed extension says nothing about this title — and
+        // throwing on it put a Cloudflare wall over the whole page naming a
+        // source the reader has never opened. Video never did this: it keeps
+        // the page and raises Cloudflare at playback, where the user acted.
+        final reading = _matcher.sourceForTitle(c);
+        final blocked = reading == null
+            ? null
+            : CfSolveNeeded.urlFor(reading);
         if (blocked != null) throw CloudflareRequiredException(blocked);
         AppLogger.instance.log(
           '[metadata] detail no source match ${sw.elapsedMilliseconds}ms',

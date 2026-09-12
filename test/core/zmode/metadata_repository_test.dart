@@ -13,6 +13,7 @@ import 'package:watch_app/core/playback/source_health_store.dart';
 import 'package:watch_app/core/repository/source_repository.dart';
 import 'package:watch_app/core/zmode/anilist_catalogue.dart';
 import 'package:watch_app/core/zmode/mal_catalogue.dart';
+import 'package:watch_app/core/provider/cf_solve_needed.dart';
 import 'package:watch_app/core/zmode/match_store.dart';
 import 'package:watch_app/core/zmode/zmode_source_prefs.dart';
 import 'package:watch_app/core/zmode/metadata_repository.dart';
@@ -338,6 +339,47 @@ void main() {
       anilist: AniListCatalogue((q, v) async => {'Media': _al()}),
     );
     expect(() => r.sources('zm://anime/mal:100/ep/1'), throwsA(isA<NoSourceMatch>()));
+  });
+
+  group('a Cloudflare wall belongs to the source reading uses', () {
+    tearDown(() => CfSolveNeeded.clear('blocked.test'));
+
+    Future<MetadataRepository> readingRepoWith(String flaggedSourceId) async {
+      CfSolveNeeded.needsSolve(
+        'blocked.test',
+        'https://blocked.test/x',
+        sourceId: flaggedSourceId,
+      );
+      final dead = _NoHits();
+      return _metaRepo(
+        sources: dead,
+        store: await MatchStore.open(),
+        prefs: await ZSourcePrefs.open(),
+        browseKind: () => ZKind.manga,
+        candidates: (_) => [(id: 'mine', name: 'Mine'), (id: 'other', name: 'Other')],
+        matcher: SourceMatcher(
+          sources: dead,
+          store: store,
+          prefs: prefs,
+          candidates: (_) => [(id: 'mine', name: 'Mine'), (id: 'other', name: 'Other')],
+        ),
+        anilist: AniListCatalogue((q, v) async => {'Media': _al()}),
+      );
+    }
+
+    test('a flag on a source this title never touched does not wall the page',
+        () async {
+      // The old check asked "is ANY source of this kind flagged", so one
+      // Cloudflare-gated extension anywhere in the library turned every
+      // unmatched manga into a Cloudflare screen naming a source the reader
+      // has never opened. Video never behaved this way.
+      final r = await readingRepoWith('other');
+
+      final d = await r.detail('zm://manga/mal:100');
+
+      expect(d.episodes, isEmpty, reason: 'no match is still no chapters');
+      expect(d.title, isNotEmpty, reason: 'but the page renders');
+    });
   });
 
   test('manga detail carries the matched source chapters and ids', () async {

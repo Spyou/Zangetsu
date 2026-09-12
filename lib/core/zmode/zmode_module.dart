@@ -58,11 +58,27 @@ Future<void> registerZangetsuMode(GetIt sl) async {
     );
   }
 
+  // What Auto Resolve actually searches. `orderedCandidates` is every
+  // installed source, because the per-title picker and pin lookups need to see
+  // all of them — but a sweep nobody asked for shouldn't be searching
+  // languages the user turned off. A library with the usual multi-language
+  // Mihon extensions installed hits 123 candidates that way, at up to 3s each,
+  // and the chapter list sits on a skeleton the whole time.
+  //
+  // Narrowed against `loadedSources`, which is where the language preference
+  // already lives — no second copy of that rule to drift.
+  List<({String id, String name})> sweepList(ZKind kind) =>
+      languageNarrowedCandidates(
+        orderedCandidates(kind),
+        {for (final s in sl<SourceRepository>().loadedSources) s.id},
+      );
+
   sl.registerSingleton<SourceMatcher>(SourceMatcher(
     sources: sl<SourceRepository>(),
     store: matchStore,
     prefs: sourcePrefs,
     candidates: orderedCandidates,
+    sweepCandidates: sweepList,
   ));
 
   final providerPrefs = await MetadataProviderPrefs.open();
@@ -115,6 +131,24 @@ Future<void> registerZangetsuMode(GetIt sl) async {
 /// Which installed sources may play a title of [kind]. Prefix rules match
 /// `ContentModeCubit._sourceInMode`: `mihon:` is manga, `lnr:` is novel,
 /// everything else plays video.
+/// [ordered] narrowed to the sources whose language the user has enabled —
+/// [allowedIds] being `loadedSources`, where that preference already lives, so
+/// there is no second copy of the rule to drift.
+///
+/// Falls back to [ordered] when the filter empties it: a language preference
+/// that happens to exclude every installed source would otherwise turn "slow"
+/// into "nothing ever resolves".
+List<({String id, String name})> languageNarrowedCandidates(
+  List<({String id, String name})> ordered,
+  Set<String> allowedIds,
+) {
+  final narrowed = [
+    for (final s in ordered)
+      if (allowedIds.contains(s.id)) s,
+  ];
+  return narrowed.isEmpty ? ordered : narrowed;
+}
+
 List<({String id, String name})> candidatesForKind(
   SourceRepository repo,
   ZKind kind,

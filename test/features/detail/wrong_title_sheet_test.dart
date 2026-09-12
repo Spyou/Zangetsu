@@ -368,7 +368,14 @@ void main() {
     final name = t.widget<Text>(find.textContaining('HiAnime'));
     expect(name.style?.color, AppColors.textPrimary);
     expect(find.text('No episodes available from this source'), findsOneWidget);
-    expect(sl<MatchStore>().get(fma, 'ani:2'), isNull);
+    // The choice is recorded even though there's nothing behind it. It used
+    // to write nothing at all, which left the PREVIOUS source pinned — so the
+    // picker named HiAnime while AllAnime went on serving the episode list,
+    // the reader and the downloads.
+    final picked = sl<MatchStore>().get(fma, 'ani:2');
+    expect(picked?.pinned, isTrue);
+    expect(picked?.showUrl, isEmpty, reason: 'a choice, not a match');
+    expect(sl<MatchStore>().get(fma, 'ani:1')?.pinned, isNot(true));
   });
 
   testWidgets('switching source on a manga title refreshes the Detail screen chapters', (t) async {

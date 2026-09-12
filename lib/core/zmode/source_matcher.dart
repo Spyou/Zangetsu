@@ -37,15 +37,29 @@ class SourceMatcher {
     required MatchStore store,
     required ZSourcePrefs prefs,
     required List<({String id, String name})> Function(ZKind) candidates,
+    List<({String id, String name})> Function(ZKind)? sweepCandidates,
   }) : _sources = sources,
        _store = store,
        _prefs = prefs,
-       _candidates = candidates;
+       _candidates = candidates,
+       _sweepCandidates = sweepCandidates ?? candidates;
 
   final SourceRepository _sources;
   final MatchStore _store;
   final ZSourcePrefs _prefs;
   final List<({String id, String name})> Function(ZKind) _candidates;
+
+  /// What Auto Resolve actually searches — narrowed to the languages the user
+  /// enabled, where [_candidates] is every installed source.
+  ///
+  /// The two differ because they answer different questions. Reading back a
+  /// pin, or checking a kind default, has to see EVERY source: the user chose
+  /// that one by hand and hiding it would silently move them somewhere else.
+  /// A sweep is the opposite — nobody asked for these, so searching a
+  /// language the user turned off is pure cost. It was searching all of them:
+  /// 123 sources on a library with the usual multi-language extensions
+  /// installed, at up to 3s each.
+  final List<({String id, String name})> Function(ZKind) _sweepCandidates;
 
   /// Called whenever a title's source changes, by any route — a pin, a
   /// correction, the recovery picker, or going back to Auto Resolve.
@@ -165,7 +179,12 @@ class SourceMatcher {
     int? malId,
   }) async {
     final saved = _store.get(c, sourceId);
-    if (saved != null && (saved.pinned || _sources.hasSource(sourceId))) {
+    // An empty showUrl is a pin with no match behind it — the user picked a
+    // source that didn't have the title. It is a real choice, so it keeps
+    // outranking every other source, but it is not a result: fall through and
+    // ask again rather than handing back a match with nowhere to point.
+    final savedIsMatch = saved != null && saved.showUrl.isNotEmpty;
+    if (savedIsMatch && (saved.pinned || _sources.hasSource(sourceId))) {
       // Even with a cached match, the runtime may be empty on TV — ensure
       // the provider is loaded so episodes()/sources() can resolve.
       final loaded = await _sources.ensureSourceLoaded(sourceId);
@@ -260,19 +279,55 @@ class SourceMatcher {
       );
       return matchOn(c, selId, title: title, altTitle: altTitle, malId: malId);
     }
+    final sweep = _sweepCandidates(c.kind);
+
+    // Reading uses its remembered source, and does not sweep.
+    //
+    // A sweep is only safe where something can recover from a bad pick. Video
+    // has that — PlaybackResolver re-resolves per episode at tap time, so an
+    // unlucky source costs nothing. Reading has no second chance: the matched
+    // source OWNS the chapter list, so landing on one carrying 3 of 200
+    // chapters is worse than not sweeping, and the reader cannot tell why.
+    //
+    // A miss here is reported as a miss — the screen says "no episodes
+    // available from this source" and offers the picker, which is what a
+    // reader expects and can act on. Silently reaching for a different source
+    // is how you end up reading someone else's numbering.
+    //
+    // The sweep below is a one-time bootstrap for reading: it runs when
+    // nothing is remembered yet, and whatever matches is kept. "Auto Resolve"
+    // in the per-title picker clears that memory (see [clearAuto]), so
+    // sweeping stays reachable on purpose.
+    final isReading = c.kind == ZKind.manga || c.kind == ZKind.novel;
+    final remembered = isReading ? _prefs.lastGood(c.kind) : null;
+    if (remembered != null && sweep.any((s) => s.id == remembered)) {
+      debugPrint(
+        '[source-matcher] _resolve · kind=${c.kind} title="$title" '
+        'reading source=$remembered',
+      );
+      return matchOn(
+        c,
+        remembered,
+        title: title,
+        altTitle: altTitle,
+        malId: malId,
+      );
+    }
+
     // Auto Resolve — the true default until the user pins a title or sets a
     // kind default by hand: sweep every candidate, in the user's saved
     // priority order, and take the first genuine hit.
     debugPrint(
       '[source-matcher] _resolve · kind=${c.kind} title="$title" '
-      'AUTO — sweeping ${candidates.length} candidates '
-      '(${candidates.map((s) => s.id).take(5).join(",")}'
-      '${candidates.length > 5 ? "…" : ""})',
+      'AUTO — sweeping ${sweep.length} candidates '
+      '(${sweep.map((s) => s.id).take(5).join(",")}'
+      '${sweep.length > 5 ? "…" : ""})',
     );
-    for (final s in candidates) {
+    for (final s in sweep) {
       final m = await matchOn(c, s.id, title: title, altTitle: altTitle, malId: malId);
       if (m != null) {
         debugPrint('[source-matcher] _resolve · AUTO → ${s.id}');
+        if (isReading) await _prefs.rememberLastGood(c.kind, s.id);
         return m;
       }
     }
@@ -307,9 +362,27 @@ class SourceMatcher {
   }
   
   /// This title's own source: a per-title pin first, else the explicit kind
-  /// default, else null — meaning Auto Resolve is in effect for it.
-  String? sourceForTitle(ZCanonical c) =>
-      pinnedSource(c) ?? selectedFor(c.kind);
+  /// default, else — for reading — the source reading settled on, else null,
+  /// meaning Auto Resolve is in effect for it.
+  ///
+  /// The order mirrors [_resolve] exactly, and has to: this is what the Detail
+  /// screen NAMES on the row, what the Cloudflare shield acts on, and what
+  /// "Wrong title?" compares against. Reading stopped sweeping, so leaving it
+  /// out here labelled every manga "Auto Resolve" while a fixed source was
+  /// quietly serving it — the row saying one thing and the chapters coming
+  /// from another is the exact confusion this whole area keeps producing.
+  String? sourceForTitle(ZCanonical c) {
+    final chosen = pinnedSource(c) ?? selectedFor(c.kind);
+    if (chosen != null) return chosen;
+    if (c.kind != ZKind.manga && c.kind != ZKind.novel) return null;
+    final remembered = _prefs.lastGood(c.kind);
+    // Uninstalled or switched off since: fall back to Auto Resolve rather than
+    // naming a source that cannot answer.
+    if (remembered == null) return null;
+    return _sweepCandidates(c.kind).any((s) => s.id == remembered)
+        ? remembered
+        : null;
+  }
 
   /// Make [sourceId] the explicit default for [kind], for every title of that
   /// kind that isn't itself pinned to something else.
@@ -337,7 +410,26 @@ class SourceMatcher {
     int? malId,
   }) async {
     final m = await matchOn(c, sourceId, title: title, altTitle: altTitle, malId: malId);
-    if (m == null) return null;
+    if (m == null) {
+      // The source has nothing for this title — but the user still CHOSE it,
+      // and that has to stick. Returning here without writing anything left
+      // the previous source pinned, so the picker named the new source while
+      // the old one went on serving the chapter list, the reader and the
+      // downloads. Pin it with no match instead: the screen already says "no
+      // episodes available from this source", which is the truth.
+      await _store.pin(
+        c,
+        SourceMatch(
+          sourceId: sourceId,
+          showUrl: '',
+          showId: '',
+          showTitle: '',
+          pinned: true,
+        ),
+      );
+      _sourceChanged(c);
+      return null;
+    }
     final pin = SourceMatch(
       sourceId: m.sourceId,
       showUrl: m.showUrl,
@@ -366,6 +458,10 @@ class SourceMatcher {
   Future<void> clearAuto(ZCanonical c) async {
     await clearTitlePin(c);
     await _prefs.clear(c.kind);
+    // Reading remembers the source that last matched and starts there instead
+    // of sweeping. Picking "Auto Resolve" has to forget that too, or the very
+    // next resolve snaps straight back to it and the choice does nothing.
+    await _prefs.clearLastGood(c.kind);
   }
 
   /// The Cloudflare-challenge url for a [kind] candidate that got flagged
