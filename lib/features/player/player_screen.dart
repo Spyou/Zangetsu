@@ -118,6 +118,18 @@ bool isLocalStreamUrl(String url) {
 @visibleForTesting
 bool isDashUrl(String url) => url.toLowerCase().split('?').first.endsWith('.mpd');
 
+/// The speed a hold-to-speed gesture goes back to when the finger lifts:
+/// whatever was playing when the hold began.
+///
+/// It used to be a hard-coded 1.0, so holding for a second threw away a speed
+/// the viewer had chosen by hand — pick 2x, hold, let go, and you were at 1x
+/// with nothing saying why.
+///
+/// [current] is guarded because mpv reports a rate of 0 in the moment a track
+/// is still opening. Restoring that would leave the video stopped with no
+/// obvious way back, so anything not positive falls back to normal speed.
+double rateToRestoreAfterHold(double current) => current > 0 ? current : 1.0;
+
 class PlayerScreen extends StatefulWidget {
   const PlayerScreen({
     super.key,
@@ -263,6 +275,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   bool _controlsVisible = true;
   bool _holding = false; // long-press 2x active
+
+  /// The speed to go back to when a hold ends. Captured at the start of the
+  /// hold, because the release used to pass a literal 1.0 — so holding for a
+  /// second silently threw away a speed the viewer had picked by hand.
+  double _rateBeforeHold = 1.0;
   Timer? _hideTimer;
 
   // Double-tap seek indicator (accumulates on rapid taps, shows a running total).
@@ -2594,13 +2611,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           behavior: HitTestBehavior.opaque,
                           onLongPressStart: _holdSpeedEnabled
                               ? (_) {
+                                  _rateBeforeHold = rateToRestoreAfterHold(
+                                    _c.player.state.rate,
+                                  );
                                   _c.setRate(2.0);
                                   setState(() => _holding = true);
                                 }
                               : null,
                           onLongPressEnd: _holdSpeedEnabled
                               ? (_) {
-                                  _c.setRate(1.0);
+                                  _c.setRate(_rateBeforeHold);
                                   setState(() => _holding = false);
                                 }
                               : null,
