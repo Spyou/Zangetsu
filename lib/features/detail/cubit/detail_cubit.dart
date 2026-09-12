@@ -646,15 +646,34 @@ int? parseSeason(String title) {
 int? seasonOf(Episode ep) => ep.season ?? parseSeason(ep.title);
 
 /// Derive the set of seasons present in the episode list.
-/// Returns an empty set when no episode reports a season (single-season).
+///
+/// An episode that reports no season counts as season 1 — the same `?? 1` the
+/// download sheet and the player's episode panel already apply. Skipping it
+/// was fine while a list was all-or-nothing, and wrong once the two got mixed:
+/// a TMDB series merges the source's rows (only CloudStream reports a season)
+/// with the catalogue's tail rows (always seasoned), so the set came back
+/// {2, 3} and season 1 — every episode that could actually be played — wasn't
+/// in the picker at all.
+///
+/// A list where nothing reports a season now gives {1} rather than {}. Every
+/// caller reads it the same way: they all ask whether there is MORE than one.
 Set<int> seasonsOf(List<Episode> eps) {
   final result = <int>{};
   for (final ep in eps) {
-    final s = seasonOf(ep);
-    if (s != null) result.add(s);
+    result.add(seasonOf(ep) ?? 1);
   }
   return result;
 }
+
+/// The episodes in [season], counting a missing season as 1 — see [seasonsOf].
+///
+/// Shared by the phone and TV episode lists. They each had their own copy of
+/// this line and both were missing the `?? 1`, which is how a season-less
+/// episode ended up in no season at all instead of the first one.
+List<Episode> episodesInSeason(List<Episode> eps, int season) => [
+  for (final e in eps)
+    if ((seasonOf(e) ?? 1) == season) e,
+];
 
 /// Whether to show the Sub/Dub toggle:
 /// - Only for anime (ProviderType.anime)

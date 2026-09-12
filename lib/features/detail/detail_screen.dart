@@ -1794,7 +1794,7 @@ class _DetailViewState extends State<_DetailView>
               : seasonSet.first)
         : 1;
     final seasonEps = hasMultipleSeasons
-        ? eps.where((e) => seasonOf(e) == currentSeason).toList()
+        ? episodesInSeason(eps, currentSeason)
         : eps;
 
     // Episodes grouped by season for the download sheet's season chips.
