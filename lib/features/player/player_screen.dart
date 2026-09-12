@@ -17,6 +17,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import '../../core/cache/app_image_cache.dart';
 import '../../core/di/injector.dart';
 import '../../core/repository/source_repository.dart';
+import '../../core/zmode/playback_resolver.dart';
 import '../../core/tracker/tracker_hub.dart';
 import '../../core/playback/external_player.dart';
 import '../../core/playback/playback_prefs.dart';
@@ -1084,6 +1085,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   @override
   void dispose() {
+    // Leaving before a source answered: stop the sweep instead of letting it
+    // ask the rest of the list. Those calls run on the UI isolate, so they
+    // went on blocking a screen that no longer exists — see
+    // [PlaybackResolver.abortSweeps]. A no-op when nothing is sweeping, which
+    // is every normal exit.
+    if (sl.isRegistered<PlaybackResolver>()) {
+      sl<PlaybackResolver>().abortSweeps();
+    }
     _hideTimer?.cancel();
     _showTimer?.cancel();
     _seekLabelTimer?.cancel();

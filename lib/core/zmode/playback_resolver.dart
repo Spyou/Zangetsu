@@ -32,6 +32,19 @@ class EpisodeNotAvailable implements Exception {
       : 'No installed source has $canonical';
 }
 
+/// Thrown when a sweep is abandoned because the viewer left playback.
+///
+/// Its own type on purpose. It is NOT a verdict about the episode: most of the
+/// candidates were never asked, so it must not be recorded as a miss and must
+/// not be shown to anyone — by the time it is thrown the screen that asked for
+/// it is already gone.
+class PlaybackAborted implements Exception {
+  const PlaybackAborted();
+
+  @override
+  String toString() => 'Playback sweep abandoned — the viewer left';
+}
+
 /// Result of a successful play-time resolve for `zm://…/ep/n`.
 class ResolvedPlayback {
   const ResolvedPlayback({
@@ -127,6 +140,27 @@ class PlaybackResolver {
   final Map<String, DateTime> _overBudget = {};
   static const Duration overBudgetCooldown = Duration(minutes: 10);
 
+  /// Bumped by [abortSweeps]. A sweep captures this before its loop and stops
+  /// as soon as it no longer matches.
+  int _sweepGen = 0;
+
+  /// Stop the playback sweeps that are running right now, at their next
+  /// candidate. Called when the viewer leaves the player.
+  ///
+  /// A sweep walks every installed source at up to [defaultPerSourceBudget]
+  /// each, and nothing used to end it early. `.timeout` only stops WAITING:
+  /// the JS call underneath keeps the single provider queue — and with it the
+  /// UI isolate — busy until its own 15s limit. So backing out while the sweep
+  /// was still going left every remaining candidate queueing up behind a
+  /// screen nobody could touch, which is what "the app froze" was.
+  ///
+  /// The candidate already in flight cannot be called back; it finishes either
+  /// way. This stops the ones after it, which is where the time went.
+  ///
+  /// Playback sweeps only. A filtered sweep (downloading) is nobody's
+  /// foreground wait — closing the player must not cancel a download.
+  void abortSweeps() => _sweepGen++;
+
   /// Sweeps that ended with nothing able to serve the episode, and when.
   ///
   /// The catalogue routinely lists more episodes than any source has — an
@@ -199,6 +233,10 @@ class PlaybackResolver {
     String category = 'sub',
     bool Function(List<VideoSource> streams)? accept,
   }) async {
+    // Read FIRST, before any await. Taken after one and it reads whatever the
+    // abort already set, so the sweep it was meant to stop never sees a change
+    // and runs to the end — which is the bug, silently reintroduced.
+    final gen = _sweepGen;
     final p = ZmodeIds.parseEpisode(zmEpisodeUrl);
     if (p == null) {
       debugPrint('[playback] _resolve → ArgumentError: not a zm episode url');
@@ -225,6 +263,17 @@ class PlaybackResolver {
 
     var hadTitleMatch = false;
     for (final sourceId in ordered) {
+      // First thing in the loop, so leaving stops the very next candidate
+      // rather than one more source's worth of blocked UI. Throws instead of
+      // breaking: falling through to the bottom would record a miss, and a
+      // sweep that stopped after two of twenty candidates has no business
+      // telling the next tap that nothing has this episode.
+      if (accept == null && gen != _sweepGen) {
+        debugPrint(
+          '[playback] _resolve · abandoned at $sourceId — the viewer left',
+        );
+        throw const PlaybackAborted();
+      }
       if (CfSolveNeeded.sourceFlagged(sourceId)) {
         debugPrint(
           '[playback] _resolve · skip $sourceId (CF blocked)',
