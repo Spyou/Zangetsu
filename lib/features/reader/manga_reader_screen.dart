@@ -9,6 +9,7 @@ import 'package:gal/gal.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../core/di/injector.dart';
+import '../../core/error/exceptions.dart';
 import '../../core/models/episode.dart';
 import '../../core/reading/chapter_nav.dart';
 import '../../core/ui/native_page_provider.dart';
@@ -236,10 +237,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
       _error = null;
     });
     try {
-      final pages = await sl<SourceRepository>().pages(
-        _chapter.url,
-        sourceId: widget.sourceId,
-      );
+      final pages = await _fetchPages();
       if (!mounted) return;
       final saved = sl<ReadStore>().get(
         widget.sourceId,
@@ -258,10 +256,46 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
     } catch (_) {
       if (!mounted) return;
       setState(() {
-        _error = "Couldn't load this chapter.";
+        _error = kChapterLoadFailedMessage;
         _loading = false;
       });
     }
+  }
+
+  /// The chapter's pages, retrying once before giving up.
+  ///
+  /// The failure this recovers from is transient — a source hiccup, a dropped
+  /// request — and opening the same chapter a second time is what worked every
+  /// time this was hit by hand. Showing a Retry button for something the app
+  /// can do itself just moves the problem onto the reader.
+  ///
+  /// Deliberately different from Mihon and the other readers, which show the
+  /// button and leave it there. The cost is one extra request against a source
+  /// that is genuinely down; the gain is that the common case fixes itself.
+  ///
+  /// A Cloudflare challenge is NOT retried: it needs a person to solve it, and
+  /// asking again immediately only wastes their time.
+  Future<List<PageImage>> _fetchPages() async {
+    for (var attempt = 1; attempt <= _loadAttempts; attempt++) {
+      try {
+        final pages = await sl<SourceRepository>().pages(
+          _chapter.url,
+          sourceId: widget.sourceId,
+        );
+        if (pages.isNotEmpty || attempt == _loadAttempts) return pages;
+        // An empty list from a chapter that plainly has pages is the same
+        // transient failure wearing a different hat — worth one more go.
+      } on CloudflareRequiredException {
+        rethrow;
+      } catch (_) {
+        if (attempt == _loadAttempts) rethrow;
+      }
+      if (!mounted) return const [];
+      await Future<void>.delayed(_retryDelay);
+      if (!mounted) return const [];
+    }
+    // Unreachable: the last attempt either returns or rethrows.
+    return const [];
   }
 
   /// Jumps whichever controller is actually mounted (paged xor vertical) to
@@ -884,10 +918,14 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
     }
     final pages = _pages;
     if (pages == null || pages.isEmpty) {
+      // A source answering with an EMPTY list isn't an exception, so this
+      // never set _error and the reader drew an empty box: a black screen with
+      // no message and no way out. Opening the same chapter again often works,
+      // which is exactly what the retry button does.
       return GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: _toggleChrome,
-        child: const SizedBox.expand(),
+        child: _buildMessage(kChapterLoadFailedMessage),
       );
     }
     final direction = _effectiveDirection(prefs);
@@ -1348,7 +1386,12 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
     );
   }
 
-  Widget _buildError() {
+  Widget _buildError() => _buildMessage(_error!);
+
+  /// Icon, message, and a Retry that re-runs [_load]. Shared by the failure
+  /// and the empty-chapter cases — both leave the reader with nothing to show
+  /// and both are worth another attempt.
+  Widget _buildMessage(String text) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 32),
@@ -1362,7 +1405,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
             ),
             const SizedBox(height: 12),
             Text(
-              _error!,
+              text,
               style: AppText.body.copyWith(color: Colors.white),
               textAlign: TextAlign.center,
             ),
@@ -2312,6 +2355,23 @@ int? mostVisiblePage(Map<int, double> visible) {
 
 /// A page taller than it is wide, which manga and webtoon pages both are.
 /// Only used until the chapter's own first page has been measured.
+/// Shown whenever the reader has nothing to display — the fetch threw, or it
+/// came back with no pages at all.
+///
+/// One message for both on purpose. "No pages" reads as "this chapter is
+/// empty", which sends people away; the usual cause is the source failing and
+/// the usual fix is the Retry underneath it.
+/// How many times the reader asks the source for a chapter before showing an
+/// error. Two, not more: a source that fails twice in a row is not having a
+/// blip, and a reader staring at a spinner wants to be told.
+const int _loadAttempts = 2;
+
+/// Long enough for a dropped request to not simply fail again, short enough
+/// that nobody reads it as the app being stuck.
+const Duration _retryDelay = Duration(milliseconds: 600);
+
+const String kChapterLoadFailedMessage = "Couldn't load this chapter.";
+
 const double kDefaultPageAspect = 1.45;
 
 /// Height to hold for a page that hasn't drawn yet: its own measured shape,

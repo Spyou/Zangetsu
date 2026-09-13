@@ -291,10 +291,13 @@ class _FakeReadingProvider implements BaseProvider, ReadingProvider {
   Future<ChapterText> getText(String chapterUrl) => throw UnimplementedError();
 }
 
-/// A reading source whose `getPages` throws on the first call and succeeds
-/// on every call after — for the error/retry path.
+/// A reading source whose `getPages` throws for the first [failures] calls and
+/// succeeds after — for the retry paths. One failure is recovered from
+/// automatically; more than the reader's attempt budget is not.
 class _FlakyReadingProvider implements BaseProvider, ReadingProvider {
-  _FlakyReadingProvider(this.sourceId, this.pages);
+  _FlakyReadingProvider(this.sourceId, this.pages, {this.failures = 1});
+
+  final int failures;
 
   @override
   final String sourceId;
@@ -342,7 +345,7 @@ class _FlakyReadingProvider implements BaseProvider, ReadingProvider {
   @override
   Future<List<PageImage>> getPages(String chapterUrl) async {
     calls++;
-    if (calls == 1) throw Exception('network blip');
+    if (calls <= failures) throw Exception('network blip');
     return pages;
   }
 
@@ -514,6 +517,14 @@ Future<void> settle(WidgetTester tester) async {
   for (var i = 0; i < 5; i++) {
     await tester.pump(const Duration(milliseconds: 100));
   }
+}
+
+/// [settle], but past the reader's automatic retry wait as well — otherwise a
+/// test sees the moment between the two attempts and reads it as a failure.
+Future<void> settleThroughRetry(WidgetTester tester) async {
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 700));
+  await settle(tester);
 }
 
 /// Whether [url] is registered (pending/live/keepAlive) in Flutter's global
@@ -700,7 +711,11 @@ void main() {
 
       ani = AniyomiManager();
       ani.register(
-        _FakeReadingProvider('ani:m', {'u1': pages(3), 'u2': pages(2)}),
+        // 'u3' returns NOTHING — the case that used to render a blank screen.
+        _FakeReadingProvider(
+          'ani:m',
+          {'u1': pages(3), 'u2': pages(2), 'u3': pages(0)},
+        ),
       );
       sl.registerSingleton<SourceRepository>(
         SourceRepository(
@@ -735,6 +750,18 @@ void main() {
       ),
     );
 
+    /// A chapter whose source hands back an empty page list.
+    Widget emptyChapterHarness() => MaterialApp(
+      home: MangaReaderScreen(
+        sourceId: 'ani:m',
+        showId: 'm1',
+        showTitle: 'Some Manga',
+        cover: null,
+        chapters: [chapter('c3', 'u3')],
+        startIndex: 0,
+      ),
+    );
+
     Future<void> disposeHarness(WidgetTester tester) async {
       // Real Hive I/O happens fire-and-forget on dispose (flushed
       // ReadHistory write) — run under runAsync so it actually resolves
@@ -745,6 +772,30 @@ void main() {
         await Future<void>.delayed(const Duration(milliseconds: 50));
       });
     }
+
+    testWidgets('a chapter with no pages says so instead of going black', (
+      tester,
+    ) async {
+      // The reported bug: open a chapter, get a black screen. A source
+      // returning [] is not an exception, so _error stayed null and the reader
+      // drew an empty box — no message, no retry, no way to tell whether it
+      // was loading, broken or empty.
+      //
+      // Same wording as a thrown failure on purpose: "no pages" reads as "this
+      // chapter is empty", and the real cause is almost always the source
+      // failing, which the Retry fixes.
+      await tester.pumpWidget(emptyChapterHarness());
+      // Past the retry: an empty list is asked again before it is believed.
+      await settleThroughRetry(tester);
+
+      expect(find.text(kChapterLoadFailedMessage), findsOneWidget);
+      // The way out matters as much as the message: opening the same chapter
+      // again is what actually worked when this was hit by hand.
+      expect(find.text('Retry'), findsOneWidget);
+      expect(find.byIcon(Icons.error_outline), findsOneWidget);
+
+      await disposeHarness(tester);
+    });
 
     testWidgets('ltr direction renders a non-reversed PageView', (
       tester,
@@ -975,19 +1026,43 @@ void main() {
     );
 
     testWidgets(
-      'a pages() failure shows the error state (not a crash, not a stuck '
-      'spinner), and Retry re-fetches successfully',
+      'a single pages() failure recovers on its own, without a Retry tap',
       (tester) async {
-        ani.register(_FlakyReadingProvider('ani:m', pages(3)));
+        // This used to stop at the error state and wait for a tap. The failure
+        // is transient and the app already knows the fix is "ask again", so
+        // making someone press a button to do that was our problem, not theirs.
+        final flaky = _FlakyReadingProvider('ani:m', pages(3));
+        ani.register(flaky);
 
         await tester.pumpWidget(harness());
-        await settle(tester);
+        await settleThroughRetry(tester);
 
+        expect(find.text('Retry'), findsNothing);
+        expect(find.byType(PageView), findsOneWidget);
+        expect(flaky.calls, 2, reason: 'should have asked a second time');
+
+        await disposeHarness(tester);
+      },
+    );
+
+    testWidgets(
+      'a source that keeps failing still shows the error, and Retry works',
+      (tester) async {
+        // Retrying forever would leave someone watching a spinner with no idea
+        // anything is wrong. Two attempts, then say so.
+        final flaky = _FlakyReadingProvider('ani:m', pages(3), failures: 3);
+        ani.register(flaky);
+
+        await tester.pumpWidget(harness());
+        await settleThroughRetry(tester);
+
+        expect(find.text(kChapterLoadFailedMessage), findsOneWidget);
         expect(find.text('Retry'), findsOneWidget);
         expect(find.byType(PageView), findsNothing);
+        expect(flaky.calls, 2, reason: 'two attempts, not an endless loop');
 
         await tester.tap(find.text('Retry'));
-        await settle(tester);
+        await settleThroughRetry(tester);
 
         expect(find.text('Retry'), findsNothing);
         expect(find.byType(PageView), findsOneWidget);
