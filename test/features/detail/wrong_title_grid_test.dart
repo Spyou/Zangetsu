@@ -173,6 +173,53 @@ void main() {
     }
   });
 
+  testWidgets(
+    'TV: OK to open does not instantly pick the autofocused first poster',
+    (t) async {
+      // MatchLine opens this sheet from a TvFocusable that waits for KeyUp.
+      // Without that, KeyDown opens the sheet, the first result autofocuses,
+      // and the same press's KeyUp activates it — sheet flashes and closes.
+      sl.unregister<AppMode>();
+      sl.registerSingleton<AppMode>(const AppMode(isTv: true));
+      src.results = [_hit('a'), _hit('b')];
+
+      await t.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (ctx) => TvFocusable(
+                autofocus: true,
+                waitForKeyUp: true,
+                onTap: () => showWrongTitleSheet(
+                  ctx,
+                  canonical: c,
+                  title: 'Paradise Hotel',
+                  sourceId: 'ani:1',
+                ),
+                child: const Text('Wrong title?'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await t.pumpAndSettle();
+
+      await t.sendKeyDownEvent(LogicalKeyboardKey.select);
+      await t.pump();
+      expect(find.byType(PosterCard), findsNothing,
+          reason: 'sheet must open on KeyUp, not KeyDown');
+
+      await t.sendKeyUpEvent(LogicalKeyboardKey.select);
+      for (var i = 0; i < 6; i++) {
+        await t.pump(const Duration(milliseconds: 100));
+      }
+
+      expect(find.byType(PosterCard), findsNWidgets(2),
+          reason: 'sheet must stay open after the opening OK is released');
+      expect(find.byType(GridView), findsOneWidget);
+    },
+  );
+
   testWidgets('on phone the poster keeps its own tap', (t) async {
     src.results = [_hit('a')];
     await open(t);

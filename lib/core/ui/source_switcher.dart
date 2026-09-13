@@ -537,6 +537,9 @@ class SourceSwitcher extends StatelessWidget {
     if (isTv) {
       return TvFocusable(
         onTap: () => showPicker(context),
+        // Picker autofocuses a source row; KeyDown open + KeyUp would
+        // activate that row and close the sheet immediately.
+        waitForKeyUp: true,
         variant: TvFocusVariant.float,
         scale: 1.02,
         borderRadius: 14,
