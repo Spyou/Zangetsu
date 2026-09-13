@@ -285,7 +285,7 @@ class _TvShowGroup extends StatelessWidget {
 
 /// TV action dialog for a single download row: lists only the actions valid
 /// for the record's current status, each D-pad focusable. Mirrors the
-/// `_TvOptionPicker` pattern in settings_screen_tv.dart.
+/// `_TvOptionPicker` pattern in settings_tv_pickers.dart.
 class _TvDownloadActions extends StatelessWidget {
   const _TvDownloadActions({required this.record, required this.manager});
 

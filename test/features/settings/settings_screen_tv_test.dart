@@ -1,35 +1,15 @@
-// TV FEATURES DROPPED BY 097192ba — status.
+// TV settings hub shares [SettingsScreen] with mobile (AppMode.isTv).
 //
-// Nathen Brewer's 097192ba ("feat(tv): align z-mode Home, search, and browse
-// with mobile") rewrote the TV screens against the z-mode catalogue and did
-// not carry six features forward. Our merge took his versions, so they went
-// with it. Five are now back:
+// Features restored after the z-mode merge (097192ba) that dropped them from
+// the old flat TV list — now reachable via the unified section drill-down:
 //
-//   settings_screen_tv.dart   Sync library to cloud — boot sync only seeds
-//                             and PULLS, so a TV had no way to push a backlog
-//   settings_screen_tv.dart   Watch History — HistoryScreen had no other
-//                             entry point on TV at all
-//   settings_screen_tv.dart   Auto-update extensions, inside the existing
-//                             Platform.isAndroid block beside the CloudStream
-//                             update toggle (main had it ungated; extensions
-//                             are Android-only, so gating is the honest place)
-//   search_screen_tv.dart     the Genres entry — and now on the recents
-//                             branch too, which main never did, so it stays
-//                             reachable after your first search
+//   Sync library to cloud — boot sync only seeds and PULLS
+//   Watch History — History category opens HistoryScreen directly
+//   Auto-update extensions — Android-only, gated with CloudStream toggles
 //
-// STILL OWED:
-//
-//   root_shell_tv.dart        the active-source pill in the nav rail
-//                             (_sourceIndicator). Left deliberately: his rail
-//                             is a redesign and the source is still
-//                             switchable from Settings.
-//   home_screen_tv.dart       the tracker rails, in the deleted
-//                             home_screen_tv_tracker.dart
-//
-// To restore either: `git show 097192ba^:<path>` is the last version with it.
-// The deleted rails and their tests are at
-// `git show 097192ba^:lib/features/home/home_screen_tv_tracker.dart` and
-// `…:test/features/home/home_screen_tv_tracker_test.dart`.
+// STILL OWED elsewhere:
+//   root_shell_tv.dart  active-source pill in the nav rail
+//   home_screen_tv.dart tracker rails (deleted home_screen_tv_tracker.dart)
 
 import 'dart:io';
 
@@ -39,19 +19,26 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_it/get_it.dart';
 import 'package:hive/hive.dart';
+import 'package:watch_app/core/anilist/anilist_service.dart';
 import 'package:watch_app/core/app_mode.dart';
 import 'package:watch_app/core/appwrite/appwrite_service.dart';
+import 'package:watch_app/core/download/download_prefs.dart';
 import 'package:watch_app/core/locale/locale_controller.dart';
 import 'package:watch_app/core/playback/playback_prefs.dart';
 import 'package:watch_app/core/playback/search_prefs.dart';
 import 'package:watch_app/core/provider/provider_registry.dart';
+import 'package:watch_app/core/reading/reader_prefs.dart';
 import 'package:watch_app/core/state/active_source_cubit.dart';
 import 'package:watch_app/core/supabase/supabase_service.dart';
+import 'package:watch_app/core/theme/theme_controller.dart';
+import 'package:watch_app/core/torrent/torrent_prefs.dart';
+import 'package:watch_app/core/tracker/mal_service.dart';
+import 'package:watch_app/core/tracker/simkl_service.dart';
 import 'package:watch_app/core/tv/tv_focusable.dart';
 import 'package:watch_app/core/tv/tv_list_focusable.dart';
 import 'package:watch_app/features/auth/auth_cubit.dart';
 import 'package:watch_app/features/auth/migration_bridge.dart';
-import 'package:watch_app/features/settings/settings_screen_tv.dart';
+import 'package:watch_app/features/settings/settings_screen.dart';
 import 'package:watch_app/l10n/app_localizations.dart';
 
 MigrationBridge _fakeBridge() => MigrationBridge(
@@ -62,13 +49,11 @@ MigrationBridge _fakeBridge() => MigrationBridge(
 
 // ── Minimal stubs ─────────────────────────────────────────────────────────────
 
-/// [SearchPrefs] stub: overrides [layout] so no Hive box is accessed.
 class _StubSearchPrefs extends SearchPrefs {
   @override
   SearchLayout get layout => SearchLayout.vertical;
 }
 
-/// [ProviderRegistry] stub: returns empty entries; no Hive dependency.
 class _StubProviderRegistry implements ProviderRegistry {
   @override
   noSuchMethod(Invocation i) => super.noSuchMethod(i);
@@ -83,30 +68,50 @@ class _StubProviderRegistry implements ProviderRegistry {
   Set<String> nsfwSourceIds() => const {};
 }
 
+class _StubAniList implements AniListService {
+  @override
+  bool get isConnected => false;
+  @override
+  noSuchMethod(Invocation i) => super.noSuchMethod(i);
+}
+
+class _StubMal implements MalService {
+  @override
+  bool get isConnected => false;
+  @override
+  noSuchMethod(Invocation i) => super.noSuchMethod(i);
+}
+
+class _StubSimkl implements SimklService {
+  @override
+  bool get isConnected => false;
+  @override
+  noSuchMethod(Invocation i) => super.noSuchMethod(i);
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/// Registers the minimal GetIt singletons needed for [SettingsScreenTv.build].
-///
-/// On a non-Android host (macOS test runner) only [ProviderRegistry] and
-/// [PlaybackPrefs] are accessed at build time. Android-only tiles that touch
-/// [CloudStreamManager] are guarded by [Platform.isAndroid] and are never
-/// rendered in tests.
+/// Registers the GetIt singletons needed for [SettingsScreen] with [AppMode.isTv].
 Future<void> _registerStubs() async {
   await Hive.openBox(PlaybackPrefs.boxName);
+  await Hive.openBox(DownloadPrefs.boxName);
+  await Hive.openBox(TorrentPrefs.boxName);
+  await Hive.openBox(ThemeController.boxName);
+  await ReaderPrefs.init();
   final sl = GetIt.instance;
-  // SettingsTile / SettingsCard gate TV focus chrome on AppMode.isTv.
   sl
     ..registerSingleton<AppMode>(const AppMode(isTv: true))
     ..registerSingleton<SearchPrefs>(_StubSearchPrefs())
     ..registerSingleton<ProviderRegistry>(_StubProviderRegistry())
-    ..registerSingleton<PlaybackPrefs>(PlaybackPrefs());
+    ..registerSingleton<AniListService>(_StubAniList())
+    ..registerSingleton<MalService>(_StubMal())
+    ..registerSingleton<SimklService>(_StubSimkl())
+    ..registerSingleton<PlaybackPrefs>(PlaybackPrefs())
+    ..registerSingleton<DownloadPrefs>(DownloadPrefs())
+    ..registerSingleton<TorrentPrefs>(TorrentPrefs())
+    ..registerSingleton<ReaderPrefs>(ReaderPrefs());
 }
 
-/// Mocks the path_provider platform channel so that [AppwriteService] —
-/// which internally creates an Appwrite [Client] that asynchronously requests
-/// the app documents directory — does not throw [MissingPluginException]
-/// during tests. Called inside each [testWidgets] body after the binding is
-/// initialized (it cannot be called in [setUp] before the binding exists).
 void _mockPathProvider(WidgetTester tester) {
   const channel = MethodChannel('plugins.flutter.io/path_provider');
   tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
@@ -127,7 +132,7 @@ Widget _buildUnderTest({
       child: MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
-        home: const SettingsScreenTv(),
+        home: const SettingsScreen(),
       ),
     );
 
@@ -143,7 +148,6 @@ void main() {
     await Hive.openBox(LocaleController.boxName);
     await LocaleController.init();
     await _registerStubs();
-    // ActiveSourceCubit with box=null falls back to 'allanime' — no Hive.
     activeCubit = ActiveSourceCubit();
   });
 
@@ -154,21 +158,12 @@ void main() {
     await hiveDir.delete(recursive: true);
   });
 
-  // PARKED — the TV settings rewrite that came with the z-mode merge dropped
-  // main's section structure entirely (ACCOUNT & SYNC, SOURCES, PLAYBACK,
-  // DOWNLOADS, NOTIFICATIONS, INTERFACE, ADVANCED, HISTORY, ABOUT). Two tests
-  // covering that were removed here rather than left failing.
-  //
-  // The sections are a feature to put BACK on the TV settings screen; this
-  // comment is the record of what is owed. Whoever does it should restore the
-  // two tests from git history: they assert the section labels and that the
-  // tiles carry semantics labels with no duplicate-text nodes.
-
   testWidgets(
-    'SettingsScreenTv shows Sign-in tile when unauthenticated',
+    'TV SettingsScreen shows Sign-in tile when unauthenticated',
     (tester) async {
       _mockPathProvider(tester);
-      final authCubit = AuthCubit(SupabaseService(), AppwriteService(), _fakeBridge());
+      final authCubit =
+          AuthCubit(SupabaseService(), AppwriteService(), _fakeBridge());
       addTearDown(authCubit.close);
 
       await tester.pumpWidget(
@@ -176,22 +171,20 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // In the unauthenticated state the Sign-in tile is the first item.
       expect(find.text('Sign in'), findsOneWidget);
-      // Profile-specific text must not appear in the guest state.
       expect(find.text('Profile'), findsNothing);
     },
   );
 
   testWidgets(
-    'SettingsScreenTv restores the Watch History tile',
+    'TV SettingsScreen shows section categories like mobile',
     (tester) async {
       _mockPathProvider(tester);
-      final authCubit = AuthCubit(
-        SupabaseService(),
-        AppwriteService(),
-        _fakeBridge(),
-      );
+      await tester.binding.setSurfaceSize(const Size(1280, 2200));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final authCubit =
+          AuthCubit(SupabaseService(), AppwriteService(), _fakeBridge());
       addTearDown(authCubit.close);
 
       await tester.pumpWidget(
@@ -199,10 +192,43 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Dropped by 097192ba — see the note at the top of this file.
-      // HistoryScreen had no other entry point on TV at all.
+      for (final section in const [
+        'Account & sync',
+        'Sources',
+        'Playback',
+        'Downloads',
+        'Interface',
+        'Advanced',
+        'About',
+      ]) {
+        expect(find.text(section), findsOneWidget, reason: 'category: $section');
+      }
+      // History is a single-destination section — category title is History.
       expect(find.text('History'), findsOneWidget);
-      // Painted is not enough on TV; it must be D-pad reachable.
+      // Manga/novel reader and search are phone-only.
+      expect(find.text('Reading'), findsNothing);
+      expect(find.text('Reader'), findsNothing);
+      expect(find.text('Search settings'), findsNothing);
+      // Leaf tiles live inside sections, not on the root.
+      expect(find.text('Providers'), findsNothing);
+      expect(find.text('Backup & Restore'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'TV SettingsScreen History category is D-pad reachable',
+    (tester) async {
+      _mockPathProvider(tester);
+      final authCubit =
+          AuthCubit(SupabaseService(), AppwriteService(), _fakeBridge());
+      addTearDown(authCubit.close);
+
+      await tester.pumpWidget(
+        _buildUnderTest(authCubit: authCubit, activeCubit: activeCubit),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('History'), findsOneWidget);
       expect(
         find.ancestor(
           of: find.text('History'),
@@ -210,24 +236,19 @@ void main() {
         ),
         findsOneWidget,
       );
-      // The Auto-update extensions tile is restored too, but it lives inside
-      // this screen's existing `Platform.isAndroid` block (extensions are
-      // Android-only, and it belongs beside the CloudStream update toggle).
-      // The test host is macOS, so that whole block never builds here — hence
-      // no assertion for it rather than a hollow one.
-      expect(Platform.isAndroid, isFalse, reason: 'guard for the note above');
+      expect(Platform.isAndroid, isFalse, reason: 'Android-only tiles gated');
     },
   );
 
   testWidgets(
-    'SettingsScreenTv offers the manual cloud push beside Backup',
+    'TV SettingsScreen offers sync library inside Account & sync',
     (tester) async {
       _mockPathProvider(tester);
-      final authCubit = AuthCubit(
-        SupabaseService(),
-        AppwriteService(),
-        _fakeBridge(),
-      );
+      await tester.binding.setSurfaceSize(const Size(1280, 2200));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final authCubit =
+          AuthCubit(SupabaseService(), AppwriteService(), _fakeBridge());
       addTearDown(authCubit.close);
 
       await tester.pumpWidget(
@@ -235,11 +256,10 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Boot-time sync only seeds and PULLS. Without this tile a TV that
-      // watched anything while signed out or offline has no way to push it up,
-      // which is exactly what 097192ba dropped — see the note at the top.
+      await tester.tap(find.text('Account & sync'));
+      await tester.pumpAndSettle();
+
       expect(find.text('Sync library to cloud'), findsOneWidget);
-      // It must be D-pad reachable, not just painted.
       expect(
         find.ancestor(
           of: find.text('Sync library to cloud'),
@@ -247,14 +267,16 @@ void main() {
         ),
         findsOneWidget,
       );
+      expect(find.text('Backup & Restore'), findsOneWidget);
     },
   );
 
   testWidgets(
-    'SettingsScreenTv only the first TvFocusable has autofocus=true',
+    'TV SettingsScreen only the first TvFocusable has autofocus=true',
     (tester) async {
       _mockPathProvider(tester);
-      final authCubit = AuthCubit(SupabaseService(), AppwriteService(), _fakeBridge());
+      final authCubit =
+          AuthCubit(SupabaseService(), AppwriteService(), _fakeBridge());
       addTearDown(authCubit.close);
 
       await tester.pumpWidget(
@@ -265,18 +287,39 @@ void main() {
       final focusables =
           tester.widgetList<TvFocusable>(find.byType(TvFocusable)).toList();
 
-      // Guard: at least one focusable must be built.
       expect(focusables, isNotEmpty);
-
-      // The first TvFocusable (account card) always carries autofocus=true.
       expect(focusables.first.autofocus, isTrue);
-
-      // All subsequent TvFocusable tiles have autofocus=false (D-pad navigates
-      // between them; only the initial landing tile needs autofocus).
       for (final f in focusables.skip(1)) {
         expect(f.autofocus, isFalse);
       }
     },
   );
 
+  testWidgets(
+    'TV SettingsScreen category tiles carry a semanticLabel for TalkBack',
+    (tester) async {
+      _mockPathProvider(tester);
+      await tester.binding.setSurfaceSize(const Size(1280, 2200));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final authCubit =
+          AuthCubit(SupabaseService(), AppwriteService(), _fakeBridge());
+      addTearDown(authCubit.close);
+
+      await tester.pumpWidget(
+        _buildUnderTest(authCubit: authCubit, activeCubit: activeCubit),
+      );
+      await tester.pumpAndSettle();
+
+      // SettingsTile wraps TV rows in TvListFocusable(semanticLabel: title) with
+      // ExcludeSemantics on the visual child — one labeled node per row.
+      final historyFocusable = tester.widget<TvListFocusable>(
+        find.ancestor(
+          of: find.text('History'),
+          matching: find.byType(TvListFocusable),
+        ),
+      );
+      expect(historyFocusable.semanticLabel, 'History');
+    },
+  );
 }

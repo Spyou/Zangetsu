@@ -138,6 +138,15 @@ class _AboutSettingsScreenState extends State<AboutSettingsScreen> {
                 subtitle: context.l10n.buyMeACoffee,
                 onTap: () => _push(const DonateScreen()),
               ),
+              if (sl.isRegistered<AppMode>() &&
+                  sl<AppMode>().isTv &&
+                  kExoSpikeEnabled)
+                SettingsTile(
+                  icon: Icons.speed_rounded,
+                  title: context.l10n.exoplayerSpikeDev,
+                  subtitle: context.l10n.sp0TestSurfaceViewPlaybackSmoothness,
+                  onTap: () => _push(const TvExoSpikeScreen()),
+                ),
             ],
           ),
           const SizedBox(height: 24),

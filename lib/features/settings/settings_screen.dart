@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:cached_network_image/cached_network_image.dart';
@@ -21,6 +22,7 @@ import '../../core/tracker/simkl_service.dart';
 import '../../core/tracker/tracker.dart';
 import '../player/player_screen.dart' show openSubtitleStyleSheet;
 import '../player/shader_presets.dart';
+import '../player/tv_exo_spike_screen.dart';
 import '../../core/di/injector.dart';
 import '../../core/platform/apple_tv.dart';
 import '../../core/playback/external_player.dart';
@@ -75,15 +77,17 @@ import '../sources/sources_screen.dart';
 import '../sources/zangetsu_sources_screen.dart';
 import 'source_priority_screen.dart';
 import 'player_controls_screen.dart';
-import 'settings_screen_tv.dart';
+import 'connections_screen_tv.dart';
 import 'settings_search_index.dart';
 import 'cubit/settings_cubit.dart';
+import '../../core/tv/tv_focusable.dart';
 
 part 'settings_playback.dart';
 part 'settings_storage.dart';
 part 'settings_about.dart';
 part 'settings_connections.dart';
 part 'settings_privacy.dart';
+part 'settings_tv_pickers.dart';
 
 /// Top-level Settings screen — a grouped list of cards mirroring the
 /// iOS Settings look in our dark/coral language.
@@ -104,6 +108,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
   // drill-down/search state is testable; the async prefs mirror below
   // (_dnsChoice) and subtitle refreshes stay local setState.
   late final SettingsCubit _settingsCubit = SettingsCubit();
+
+  /// Nested navigator for TV leaf screens (Playback, Downloads, …) so they
+  /// stay in the content pane beside the left rail instead of covering it.
+  final List<_TvSettingsLeaf> _tvLeaves = [];
+
+  bool get _isTv => sl.isRegistered<AppMode>() && sl<AppMode>().isTv;
 
   /// The metadata rows show the CURRENT provider, and it can now be changed
   /// from outside this screen (the Home wordmark shortcut). Without this the
@@ -129,6 +139,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     MetadataProviderPrefs.revision.removeListener(_onProviderChanged);
     _searchCtrl.dispose();
     _settingsCubit.close();
+    for (final leaf in _tvLeaves) {
+      if (!leaf.done.isCompleted) leaf.done.complete();
+    }
+    _tvLeaves.clear();
     dockHiddenBySection.value = false; // never leave the dock stuck hidden
     shellBackIntercepted.value = false;
     super.dispose();
@@ -140,9 +154,82 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   CloudStreamManager get _csManager => sl<CloudStreamManager>();
 
-  Future<void> _push(Widget screen) => Navigator.of(
-    context,
-  ).push(MaterialPageRoute<void>(builder: (_) => screen));
+  Future<void> _push(Widget screen) => _pushBuilder((_) => screen);
+
+  /// Pushes onto the TV nested navigator (or the root navigator on phone).
+  /// [builder] is re-invoked when Settings rebuilds so section pages stay fresh.
+  Future<void> _pushBuilder(Widget Function(BuildContext context) builder) {
+    if (_isTv) {
+      final done = Completer<void>();
+      final key = UniqueKey();
+      setState(() {
+        _tvLeaves.add(
+          _TvSettingsLeaf(key: key, builder: builder, done: done),
+        );
+      });
+      _syncShellBackIntercept();
+      return done.future;
+    }
+    return Navigator.of(
+      context,
+    ).push(MaterialPageRoute<void>(builder: builder));
+  }
+
+  void _removeTvLeaf(Page<dynamic> page) {
+    final i = _tvLeaves.indexWhere((l) => l.key == page.key);
+    if (i < 0) return;
+    final leaf = _tvLeaves.removeAt(i);
+    if (!leaf.done.isCompleted) leaf.done.complete();
+  }
+
+  /// Tell the TV/phone shell when Settings owns Back (section, search, or a
+  /// nested leaf route on TV).
+  void _syncShellBackIntercept({SettingsState? state}) {
+    final s = state ?? _settingsCubit.state;
+    final nestedCanPop = _isTv && _tvLeaves.isNotEmpty;
+    shellBackIntercepted.value =
+        s.openSection != null || s.query.isNotEmpty || nestedCanPop;
+    if (!_isTv) {
+      dockHiddenBySection.value = s.openSection != null;
+    }
+  }
+
+  /// TV multi-item section list — same Material page push/pop as Playback.
+  Widget _tvSectionPage(BuildContext context, String section) {
+    final enabledCount = _registry.getAll().where((e) => e.enabled).length;
+    final activeId = context.watch<ActiveSourceCubit>().state;
+    final connectedCount = <Tracker>[
+      sl<AniListService>(),
+      sl<MalService>(),
+      sl<SimklService>(),
+    ].where((t) => t.isConnected).length;
+    final items = _buildSettingsEntries(
+      l10n: context.l10n,
+      enabledCount: enabledCount,
+      activeId: activeId,
+      connectedCount: connectedCount,
+    ).where((e) => e.section == section).toList();
+
+    return Scaffold(
+      backgroundColor: AppColors.bg,
+      appBar: settingsAppBar(settingsSectionTitle(context.l10n, section)),
+      body: ListView(
+        clipBehavior: Clip.none,
+        padding: const EdgeInsets.only(top: 8, bottom: 24),
+        children: [
+          SettingsCard(
+            children: [
+              for (var i = 0; i < items.length; i++)
+                items[i].toTile(
+                  iconAccent: i == 0,
+                  autofocus: i == 0,
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
 
   /// The metadata provider store is registered by `registerZangetsuMode`,
   /// which runs late in boot — and this screen is built eagerly as the dock's
@@ -185,36 +272,62 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final prefs = _providerPrefs;
     if (prefs == null) return;
     final l10n = context.l10n;
-    final picked = await showModalBottomSheet<TitleLanguage>(
-      context: context,
-      backgroundColor: AppColors.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (sheet) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(height: 14),
-            Text(l10n.titleLanguage, style: AppText.headline),
-            const SizedBox(height: 10),
-            for (final t in TitleLanguage.values)
-              ListTile(
-                title: Text(switch (t) {
-                  TitleLanguage.romaji => 'Romaji',
-                  TitleLanguage.english => 'English',
-                  TitleLanguage.native => l10n.titleLanguageNative,
-                }, style: AppText.body),
-                trailing: prefs.titleLanguage == t
-                    ? Icon(Icons.check_rounded, color: AppColors.accent)
-                    : null,
-                onTap: () => Navigator.of(sheet).pop(t),
-              ),
-            const SizedBox(height: 8),
-          ],
+    final options = TitleLanguage.values
+        .map(
+          (t) => (
+            t,
+            switch (t) {
+              TitleLanguage.romaji => 'Romaji',
+              TitleLanguage.english => 'English',
+              TitleLanguage.native => l10n.titleLanguageNative,
+            },
+          ),
+        )
+        .toList();
+
+    final TitleLanguage? picked;
+    if (_isTv) {
+      picked = await showDialog<TitleLanguage>(
+        context: context,
+        barrierColor: Colors.black54,
+        builder: (ctx) => _TvOptionPicker<TitleLanguage>(
+          title: l10n.titleLanguage,
+          options: options,
+          current: prefs.titleLanguage,
         ),
-      ),
-    );
+      );
+    } else {
+      picked = await showModalBottomSheet<TitleLanguage>(
+        context: context,
+        backgroundColor: AppColors.surface,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        builder: (sheet) => SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 14),
+              Text(l10n.titleLanguage, style: AppText.headline),
+              const SizedBox(height: 10),
+              for (final t in TitleLanguage.values)
+                ListTile(
+                  title: Text(switch (t) {
+                    TitleLanguage.romaji => 'Romaji',
+                    TitleLanguage.english => 'English',
+                    TitleLanguage.native => l10n.titleLanguageNative,
+                  }, style: AppText.body),
+                  trailing: prefs.titleLanguage == t
+                      ? Icon(Icons.check_rounded, color: AppColors.accent)
+                      : null,
+                  onTap: () => Navigator.of(sheet).pop(t),
+                ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      );
+    }
     if (picked == null) return;
     await prefs.setTitleLanguage(picked);
   }
@@ -282,118 +395,147 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _pickDns() async {
-    final picked = await showModalBottomSheet<int>(
-      context: context,
-      backgroundColor: AppColors.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) {
-        final sheetL10n = ctx.l10n;
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                margin: const EdgeInsets.only(top: 12, bottom: 8),
-                width: 36,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: AppColors.textTertiary.withValues(alpha: 0.5),
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(sheetL10n.dns, style: AppText.headline),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(sheetL10n.dnsBlurb, style: AppText.caption),
-                ),
-              ),
-              const Divider(color: AppColors.hairline, height: 1),
-              for (final e in CsDns.labels.entries)
-                ListTile(
-                  title: Text(e.value, style: AppText.body),
-                  trailing: e.key == _dnsChoice
-                      ? Icon(Icons.check_rounded, color: AppColors.accent)
-                      : null,
-                  onTap: () => Navigator.pop(ctx, e.key),
-                ),
-              const SizedBox(height: 8),
-            ],
-          ),
-        );
-      },
-    );
-    if (picked == null || picked == _dnsChoice) return;
-    await CsDns.set(picked);
-    if (mounted) setState(() => _dnsChoice = picked);
-  }
-
-  /// Bottom sheet to pick the search results layout (grid vs CloudStream-style
-  /// rows). Persisted via [SearchPrefs]; the search screen reads it live.
-  Future<void> _pickSearchLayout() async {
-    final prefs = sl<SearchPrefs>();
-    final picked = await showModalBottomSheet<SearchLayout>(
-      context: context,
-      backgroundColor: AppColors.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) {
-        final sheetL10n = ctx.l10n;
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                margin: const EdgeInsets.only(top: 12, bottom: 8),
-                width: 36,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: AppColors.textTertiary.withValues(alpha: 0.5),
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(sheetL10n.searchLayout, style: AppText.headline),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    sheetL10n.searchLayoutBlurb,
-                    style: AppText.caption,
+    final int? picked;
+    if (_isTv) {
+      picked = await showDialog<int>(
+        context: context,
+        barrierColor: Colors.black54,
+        builder: (ctx) => _TvOptionPicker<int>(
+          title: ctx.l10n.dns,
+          options: CsDns.labels.entries.map((e) => (e.key, e.value)).toList(),
+          current: _dnsChoice,
+        ),
+      );
+    } else {
+      picked = await showModalBottomSheet<int>(
+        context: context,
+        backgroundColor: AppColors.surface,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        builder: (ctx) {
+          final sheetL10n = ctx.l10n;
+          return SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  margin: const EdgeInsets.only(top: 12, bottom: 8),
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AppColors.textTertiary.withValues(alpha: 0.5),
+                    borderRadius: BorderRadius.circular(2),
                   ),
                 ),
-              ),
-              const Divider(color: AppColors.hairline, height: 1),
-              for (final l in SearchLayout.values)
-                ListTile(
-                  title: Text(l.localizedLabel(ctx), style: AppText.body),
-                  trailing: l == prefs.layout
-                      ? Icon(Icons.check_rounded, color: AppColors.accent)
-                      : null,
-                  onTap: () => Navigator.pop(ctx, l),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(sheetL10n.dns, style: AppText.headline),
+                  ),
                 ),
-              const SizedBox(height: 8),
-            ],
-          ),
-        );
-      },
-    );
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(sheetL10n.dnsBlurb, style: AppText.caption),
+                  ),
+                ),
+                const Divider(color: AppColors.hairline, height: 1),
+                for (final e in CsDns.labels.entries)
+                  ListTile(
+                    title: Text(e.value, style: AppText.body),
+                    trailing: e.key == _dnsChoice
+                        ? Icon(Icons.check_rounded, color: AppColors.accent)
+                        : null,
+                    onTap: () => Navigator.pop(ctx, e.key),
+                  ),
+                const SizedBox(height: 8),
+              ],
+            ),
+          );
+        },
+      );
+    }
+    if (picked == null || picked == _dnsChoice) return;
+    await CsDns.set(picked);
+    if (mounted) setState(() => _dnsChoice = picked!);
+  }
+
+  /// Bottom sheet / TV dialog to pick the search results layout (grid vs
+  /// CloudStream-style rows). Persisted via [SearchPrefs]; the search screen
+  /// reads it live.
+  Future<void> _pickSearchLayout() async {
+    final prefs = sl<SearchPrefs>();
+    final SearchLayout? picked;
+    if (_isTv) {
+      picked = await showDialog<SearchLayout>(
+        context: context,
+        barrierColor: Colors.black54,
+        builder: (ctx) => _TvOptionPicker<SearchLayout>(
+          title: ctx.l10n.searchLayout,
+          options: SearchLayout.values
+              .map((l) => (l, l.localizedLabel(ctx)))
+              .toList(),
+          current: prefs.layout,
+        ),
+      );
+    } else {
+      picked = await showModalBottomSheet<SearchLayout>(
+        context: context,
+        backgroundColor: AppColors.surface,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        builder: (ctx) {
+          final sheetL10n = ctx.l10n;
+          return SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  margin: const EdgeInsets.only(top: 12, bottom: 8),
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AppColors.textTertiary.withValues(alpha: 0.5),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(sheetL10n.searchLayout, style: AppText.headline),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      sheetL10n.searchLayoutBlurb,
+                      style: AppText.caption,
+                    ),
+                  ),
+                ),
+                const Divider(color: AppColors.hairline, height: 1),
+                for (final l in SearchLayout.values)
+                  ListTile(
+                    title: Text(l.localizedLabel(ctx), style: AppText.body),
+                    trailing: l == prefs.layout
+                        ? Icon(Icons.check_rounded, color: AppColors.accent)
+                        : null,
+                    onTap: () => Navigator.pop(ctx, l),
+                  ),
+                const SizedBox(height: 8),
+              ],
+            ),
+          );
+        },
+      );
+    }
     if (picked == null) return;
     await prefs.setLayout(picked);
     if (mounted) setState(() {});
@@ -401,75 +543,93 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _pickBatchDownloadStyle() async {
     final prefs = sl<PlaybackPrefs>();
-    final picked = await showModalBottomSheet<String>(
-      context: context,
-      backgroundColor: AppColors.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) {
-        final sheetL10n = ctx.l10n;
-        final options = <(String, String, String)>[
-          (
-            'classic',
-            sheetL10n.batchDownloadClassic,
-            sheetL10n.batchDownloadClassicBlurb,
-          ),
-          (
-            'minimal',
-            sheetL10n.batchDownloadMinimal,
-            sheetL10n.batchDownloadMinimalBlurb,
-          ),
-        ];
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                margin: const EdgeInsets.only(top: 12, bottom: 8),
-                width: 36,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: AppColors.textTertiary.withValues(alpha: 0.5),
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    sheetL10n.batchDownloadStyle,
-                    style: AppText.headline,
+    final l10n = context.l10n;
+    final options = <(String, String)>[
+      ('classic', l10n.batchDownloadClassic),
+      ('minimal', l10n.batchDownloadMinimal),
+    ];
+    final String? picked;
+    if (_isTv) {
+      picked = await showDialog<String>(
+        context: context,
+        barrierColor: Colors.black54,
+        builder: (ctx) => _TvOptionPicker<String>(
+          title: ctx.l10n.batchDownloadStyle,
+          options: options,
+          current: prefs.batchDownloadStyle,
+        ),
+      );
+    } else {
+      picked = await showModalBottomSheet<String>(
+        context: context,
+        backgroundColor: AppColors.surface,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        builder: (ctx) {
+          final sheetL10n = ctx.l10n;
+          final sheetOptions = <(String, String, String)>[
+            (
+              'classic',
+              sheetL10n.batchDownloadClassic,
+              sheetL10n.batchDownloadClassicBlurb,
+            ),
+            (
+              'minimal',
+              sheetL10n.batchDownloadMinimal,
+              sheetL10n.batchDownloadMinimalBlurb,
+            ),
+          ];
+          return SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  margin: const EdgeInsets.only(top: 12, bottom: 8),
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AppColors.textTertiary.withValues(alpha: 0.5),
+                    borderRadius: BorderRadius.circular(2),
                   ),
                 ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    sheetL10n.batchDownloadStyleBlurb,
-                    style: AppText.caption,
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      sheetL10n.batchDownloadStyle,
+                      style: AppText.headline,
+                    ),
                   ),
                 ),
-              ),
-              const Divider(color: AppColors.hairline, height: 1),
-              for (final o in options)
-                ListTile(
-                  title: Text(o.$2, style: AppText.body),
-                  subtitle: Text(o.$3, style: AppText.caption),
-                  trailing: o.$1 == prefs.batchDownloadStyle
-                      ? Icon(Icons.check_rounded, color: AppColors.accent)
-                      : null,
-                  onTap: () => Navigator.pop(ctx, o.$1),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      sheetL10n.batchDownloadStyleBlurb,
+                      style: AppText.caption,
+                    ),
+                  ),
                 ),
-              const SizedBox(height: 8),
-            ],
-          ),
-        );
-      },
-    );
+                const Divider(color: AppColors.hairline, height: 1),
+                for (final o in sheetOptions)
+                  ListTile(
+                    title: Text(o.$2, style: AppText.body),
+                    subtitle: Text(o.$3, style: AppText.caption),
+                    trailing: o.$1 == prefs.batchDownloadStyle
+                        ? Icon(Icons.check_rounded, color: AppColors.accent)
+                        : null,
+                    onTap: () => Navigator.pop(ctx, o.$1),
+                  ),
+                const SizedBox(height: 8),
+              ],
+            ),
+          );
+        },
+      );
+    }
     if (picked == null) return;
     await prefs.setBatchDownloadStyle(picked);
     if (mounted) setState(() {});
@@ -519,6 +679,66 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   /// Prompts for a CloudStream repo URL, installs it via the native channel,
   /// and reports how many sources are now available. Android-only.
+  Future<void> _addCloudStreamRepo() async {
+    final String? url;
+    if (_isTv) {
+      url = await showDialog<String>(
+        context: context,
+        builder: (_) => const _TvAddRepoDialog(),
+      );
+    } else {
+      final controller = TextEditingController();
+      url = await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: AppColors.surface,
+          title: Text(
+            ctx.l10n.addCloudStreamRepository,
+            style: AppText.headline,
+          ),
+          content: TextField(
+            controller: controller,
+            keyboardType: TextInputType.url,
+            cursorColor: AppColors.accent,
+            style: AppText.body.copyWith(color: AppColors.textPrimary),
+            decoration: InputDecoration(
+              labelText: ctx.l10n.repositoryUrlLabel,
+              hintText: 'https://.../repo.json',
+            ),
+            onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text(ctx.l10n.cancel),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+              child: Text(ctx.l10n.add),
+            ),
+          ],
+        ),
+      );
+      controller.dispose();
+    }
+    if (url == null || url.isEmpty || !mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    final l10n = context.l10n;
+    try {
+      final count = await _csManager.addRepo(url);
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(content: Text(l10n.addedCloudStreamSourcesCount(count))),
+      );
+      setState(() {});
+    } catch (e) {
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(content: Text(l10n.failedToAddRepository('$e'))),
+      );
+    }
+  }
+
   /// Account header — a single profile card at the top of Settings. Signed in:
   /// avatar + name + email → Profile. Signed out: an avatar placeholder + a
   /// clear "Sign in" call-to-action → Login (its own card, so it no longer
@@ -533,6 +753,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
               : '?';
           row = _accountRow(
             onTap: () => _push(const ProfileScreen()),
+            autofocus: _isTv,
+            semanticLabel: auth.displayName,
             avatar: CircleAvatar(
               radius: 24,
               backgroundColor: AppColors.surface2,
@@ -557,6 +779,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         } else {
           row = _accountRow(
             onTap: () => _push(const LoginScreen()),
+            autofocus: _isTv,
+            semanticLabel: context.l10n.signIn,
             avatar: CircleAvatar(
               radius: 24,
               backgroundColor: AppColors.accentSoft,
@@ -567,21 +791,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
             title: context.l10n.signIn,
-            subtitle: context.l10n.signInSubtitle,
-            trailing: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-              decoration: BoxDecoration(
-                color: AppColors.accent,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Text(
-                context.l10n.signIn,
-                style: AppText.caption.copyWith(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
+            subtitle: _isTv
+                ? context.l10n.signInSubtitleTv
+                : context.l10n.signInSubtitle,
+            trailing: _isTv
+                ? const Icon(
+                    Icons.chevron_right_rounded,
+                    color: AppColors.textTertiary,
+                    size: 22,
+                  )
+                : Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 7,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.accent,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      context.l10n.signIn,
+                      style: AppText.caption.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
           );
         }
         return Padding(
@@ -598,41 +833,49 @@ class _SettingsScreenState extends State<SettingsScreen> {
     required String title,
     required String subtitle,
     required Widget trailing,
+    bool autofocus = false,
+    String? semanticLabel,
   }) {
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-        child: Row(
-          children: [
-            avatar,
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: AppText.headline.copyWith(fontSize: 16),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    subtitle,
-                    style: AppText.caption,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
+    final content = Padding(
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+      child: Row(
+        children: [
+          avatar,
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: AppText.headline.copyWith(fontSize: 16),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: AppText.caption,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
             ),
-            const SizedBox(width: 10),
-            trailing,
-          ],
-        ),
+          ),
+          const SizedBox(width: 10),
+          trailing,
+        ],
       ),
     );
+    if (_isTv) {
+      return TvListFocusable(
+        autofocus: autofocus,
+        semanticLabel: semanticLabel ?? title,
+        onTap: onTap,
+        child: ExcludeSemantics(child: content),
+      );
+    }
+    return InkWell(onTap: onTap, child: content);
   }
 
   /// A plain grey value shown at the row's trailing edge (before the chevron).
@@ -710,20 +953,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
     ),
   );
 
-  @override
-  Widget build(BuildContext context) {
-    if (sl<AppMode>().isTv) return const SettingsScreenTv();
-    final enabledCount = _registry.getAll().where((e) => e.enabled).length;
-    final activeId = context.watch<ActiveSourceCubit>().state;
-    final l10n = context.l10n;
-    final connectedCount = <Tracker>[
-      sl<AniListService>(),
-      sl<MalService>(),
-      sl<SimklService>(),
-    ].where((t) => t.isConnected).length;
-
-    // Single source of truth for both the grouped list and the search filter.
-    final entries = <_SettingsEntry>[
+  /// Shared entry list for phone and TV. Visibility gates use [_isTv],
+  /// [Platform.isAndroid], and [isAppleTv] so one catalog drives both hubs.
+  List<_SettingsEntry> _buildSettingsEntries({
+    required AppLocalizations l10n,
+    required int enabledCount,
+    required String activeId,
+    required int connectedCount,
+  }) => [
       // Account & sync
       _SettingsEntry(
         section: SettingsSection.account,
@@ -734,21 +971,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
             : l10n.connectionsTvSubtitle,
         keywords: l10n.connectionsTvSubtitle.toLowerCase(),
         onTap: () async {
-          await _push(const ConnectionsScreen());
+          await _push(
+            _isTv ? const ConnectionsScreenTv() : const ConnectionsScreen(),
+          );
           if (mounted) setState(() {});
         },
       ),
-      _SettingsEntry(
-        section: SettingsSection.account,
-        icon: Icons.gamepad_outlined,
-        title: l10n.discord,
-        subtitle: l10n.discordSubtitle,
-        keywords: 'discord rich presence',
-        onTap: () async {
-          await _push(const DiscordSettingsScreen());
-          if (mounted) setState(() {});
-        },
-      ),
+      if (!_isTv || !isAppleTv)
+        _SettingsEntry(
+          section: SettingsSection.account,
+          icon: Icons.gamepad_outlined,
+          title: l10n.discord,
+          subtitle: l10n.discordSubtitle,
+          keywords: 'discord rich presence',
+          onTap: () async {
+            await _push(const DiscordSettingsScreen());
+            if (mounted) setState(() {});
+          },
+        ),
       _SettingsEntry(
         section: SettingsSection.account,
         icon: Icons.groups_2_outlined,
@@ -762,9 +1002,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ).showSnackBar(SnackBar(content: Text(l10n.signInToWatchTogether)));
             return;
           }
-          Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const WatchPartyLobbyScreen()),
-          );
+          _push(const WatchPartyLobbyScreen());
         },
       ),
       _SettingsEntry(
@@ -870,7 +1108,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
         keywords: 'source health test working dead status check',
         onTap: () => _push(const SourceHealthScreen()),
       ),
-      if (Platform.isAndroid)
+      if (Platform.isAndroid) ...[
+        _SettingsEntry(
+          section: SettingsSection.sources,
+          icon: Icons.extension_outlined,
+          title: l10n.addCloudStreamRepository,
+          subtitle: l10n.installCloudStreamSources,
+          keywords: 'cloudstream repository repo install sources extensions',
+          onTap: _addCloudStreamRepo,
+        ),
         _SettingsEntry(
           section: SettingsSection.sources,
           icon: Icons.update_rounded,
@@ -886,22 +1132,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
             },
           ),
         ),
-      _SettingsEntry(
-        section: SettingsSection.sources,
-        icon: Icons.autorenew_rounded,
-        title: l10n.autoUpdateExtensions,
-        subtitle: l10n.autoUpdateExtensionsSubtitle,
-        keywords:
-            'auto update extensions sources plugins automatic upgrade cloudstream aniyomi',
-        trailing: Switch.adaptive(
-          value: sl<PlaybackPrefs>().autoUpdateExtensions,
-          activeThumbColor: AppColors.accent,
-          onChanged: (v) async {
-            await sl<PlaybackPrefs>().setAutoUpdateExtensions(v);
-            if (mounted) setState(() {});
-          },
+        _SettingsEntry(
+          section: SettingsSection.sources,
+          icon: Icons.autorenew_rounded,
+          title: l10n.autoUpdateExtensions,
+          subtitle: l10n.autoUpdateExtensionsSubtitle,
+          keywords:
+              'auto update extensions sources plugins automatic upgrade cloudstream aniyomi',
+          trailing: Switch.adaptive(
+            value: sl<PlaybackPrefs>().autoUpdateExtensions,
+            activeThumbColor: AppColors.accent,
+            onChanged: (v) async {
+              await sl<PlaybackPrefs>().setAutoUpdateExtensions(v);
+              if (mounted) setState(() {});
+            },
+          ),
         ),
-      ),
+      ],
       // Playback & downloads
       _SettingsEntry(
         section: SettingsSection.playback,
@@ -913,16 +1160,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
             'playback quality autoplay speed player decoder audio subtitle resume gesture',
         onTap: () => _push(const PlaybackSettingsScreen()),
       ),
-      _SettingsEntry(
-        section: SettingsSection.reading,
-        id: LeafParent.reader,
-        icon: Icons.menu_book_outlined,
-        title: l10n.reader,
-        subtitle: l10n.readerSubtitle,
-        keywords:
-            'reader manga novel reading defaults fit direction fontsize theme orientation preload',
-        onTap: () => _push(const ReaderSettingsScreen()),
-      ),
+      // Manga/novel reader — phone only. TV has no reading surface.
+      if (!_isTv)
+        _SettingsEntry(
+          section: SettingsSection.reading,
+          id: LeafParent.reader,
+          icon: Icons.menu_book_outlined,
+          title: l10n.reader,
+          subtitle: l10n.readerSubtitle,
+          keywords:
+              'reader manga novel reading defaults fit direction fontsize theme orientation preload',
+          onTap: () => _push(const ReaderSettingsScreen()),
+        ),
       _SettingsEntry(
         section: SettingsSection.history,
         icon: Icons.history_rounded,
@@ -939,7 +1188,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         id: LeafParent.downloads,
         icon: Icons.download_outlined,
         title: l10n.downloads,
-        subtitle: l10n.downloadsSubtitle,
+        subtitle: _isTv ? l10n.downloadsSubtitleTv : l10n.downloadsSubtitle,
         keywords: 'downloads offline episodes save manage',
         onTap: () => _push(const DownloadsScreen()),
       ),
@@ -1026,20 +1275,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
         keywords: l10n.appLanguageKeywords,
         trailing: _value(appLanguageValueLabel(context)),
         onTap: () async {
-          await pickAppLanguagePhone(context);
+          if (_isTv) {
+            await pickAppLanguageTv(context);
+          } else {
+            await pickAppLanguagePhone(context);
+          }
           if (mounted) setState(() {});
         },
       ),
-      _SettingsEntry(
-        section: SettingsSection.interface,
-        icon: Icons.dashboard_customize_outlined,
-        title: l10n.navigationBar,
-        subtitle: l10n.navigationBarSubtitle,
-        keywords:
-            'navigation bar tabs dock bottom reorder hide downloads '
-            'history customise customize interface',
-        onTap: () => _push(const NavTabsScreen()),
-      ),
+      if (!_isTv)
+        _SettingsEntry(
+          section: SettingsSection.interface,
+          icon: Icons.dashboard_customize_outlined,
+          title: l10n.navigationBar,
+          subtitle: l10n.navigationBarSubtitle,
+          keywords:
+              'navigation bar tabs dock bottom reorder hide downloads '
+              'history customise customize interface',
+          onTap: () => _push(const NavTabsScreen()),
+        ),
       _SettingsEntry(
         section: SettingsSection.interface,
         icon: Icons.grid_view_rounded,
@@ -1078,7 +1332,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
           section: SettingsSection.advanced,
           icon: Icons.vpn_lock_outlined,
           title: l10n.dns,
-          subtitle: l10n.dnsSubtitle,
+          subtitle: _isTv
+              ? (_dnsChoice == CsDns.off
+                    ? l10n.dnsOffTvSubtitle
+                    : CsDns.labelFor(_dnsChoice))
+              : l10n.dnsSubtitle,
           keywords:
               'dns cloudflare google adguard quad9 isp block bypass private',
           trailing: _value(
@@ -1122,6 +1380,76 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     ];
 
+  @override
+  Widget build(BuildContext context) {
+    final enabledCount = _registry.getAll().where((e) => e.enabled).length;
+    final activeId = context.watch<ActiveSourceCubit>().state;
+    final l10n = context.l10n;
+    final connectedCount = <Tracker>[
+      sl<AniListService>(),
+      sl<MalService>(),
+      sl<SimklService>(),
+    ].where((t) => t.isConnected).length;
+
+    // Single source of truth for both the grouped list and the search filter.
+    final entries = _buildSettingsEntries(
+      l10n: l10n,
+      enabledCount: enabledCount,
+      activeId: activeId,
+      connectedCount: connectedCount,
+    );
+
+    final hub = _buildHub(entries);
+    if (!_isTv) return hub;
+
+    // Nested navigator keeps leaf settings beside the left rail. An outer
+    // PopScope owns system/TV Back (NavigatorPopHandler alone was unreliable
+    // once the shell stood down on [shellBackIntercepted]).
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        if (_tvLeaves.isNotEmpty) {
+          setState(() {
+            final leaf = _tvLeaves.removeLast();
+            if (!leaf.done.isCompleted) leaf.done.complete();
+          });
+          _syncShellBackIntercept();
+          return;
+        }
+        // Phone-style in-hub section/search (TV sections are nested pages).
+        final s = _settingsCubit.state;
+        if (s.openSection != null) {
+          _settingsCubit.back();
+          return;
+        }
+        if (s.query.isNotEmpty) {
+          _searchCtrl.clear();
+          _settingsCubit.setQuery('');
+        }
+      },
+      child: Navigator(
+        pages: [
+          MaterialPage<void>(
+            key: const ValueKey('settings-hub'),
+            child: hub,
+          ),
+          for (final leaf in _tvLeaves)
+            MaterialPage<void>(
+              key: leaf.key,
+              name: leaf.key.toString(),
+              child: Builder(builder: leaf.builder),
+            ),
+        ],
+        onDidRemovePage: (page) {
+          setState(() => _removeTvLeaf(page));
+          _syncShellBackIntercept();
+        },
+      ),
+    );
+  }
+
+  Widget _buildHub(List<_SettingsEntry> entries) {
     return Scaffold(
       backgroundColor: AppColors.bg,
       // bottom: false — the shell's floating dock overlays the content
@@ -1134,11 +1462,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           // Hide the shell's floating dock while a section sub-page is open, so
           // it reads as a full page. The shell also gates on the active tab.
           listener: (context, s) {
-            dockHiddenBySection.value = s.openSection != null;
-            // When a section or search is open our PopScope owns Back — tell the
-            // shell to stand down so it doesn't also fire the exit toast.
-            shellBackIntercepted.value =
-                s.openSection != null || s.query.isNotEmpty;
+            _syncShellBackIntercept(state: s);
           },
           builder: (context, s) {
             final section = s.openSection;
@@ -1154,19 +1478,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   SettingsCard(
                     children: [
                       for (var i = 0; i < items.length; i++)
-                        items[i].toTile(iconAccent: i == 0),
+                        items[i].toTile(
+                          iconAccent: i == 0,
+                          autofocus: _isTv && i == 0,
+                        ),
                     ],
                   ),
                 );
             } else {
-              children
-                ..add(
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 14),
-                    child: _settingsWordmark(size: 30),
+              children.add(
+                Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    _isTv ? 56 : 20,
+                    _isTv ? 24 : 12,
+                    _isTv ? 48 : 20,
+                    _isTv ? 16 : 14,
                   ),
-                )
-                ..add(_searchField(query));
+                  child: _settingsWordmark(size: _isTv ? 34 : 30),
+                ),
+              );
+              if (!_isTv) children.add(_searchField(query));
               if (query.isEmpty) {
                 // Browse view: account row + one tappable row per section.
                 children
@@ -1178,12 +1509,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
               }
             }
             return PopScope(
-              // Top level with no search → back leaves Settings. Otherwise
-              // intercept: a section backs out to the categories, a search
-              // clears first.
-              canPop: section == null && query.isEmpty,
+              // Phone: top level with no search → back leaves Settings.
+              // TV: the outer PopScope around the nested Navigator owns Back
+              // (leaves + sections); this one must not also fire cubit.back().
+              canPop: !_isTv && section == null && query.isEmpty,
               onPopInvokedWithResult: (didPop, _) {
-                if (didPop) return;
+                if (didPop || _isTv) return;
                 if (section != null) {
                   _settingsCubit.back();
                 } else if (query.isNotEmpty) {
@@ -1336,9 +1667,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
           iconAccent: tiles.isEmpty, // accent the lead row
           // A section with a single destination (Playback, History,
           // Notifications) opens it directly — no redundant one-row sub-page.
+          // Multi-item sections: phone uses in-hub drill-down; TV pushes a
+          // section page so the transition matches Playback.
           onTap: items.length == 1
               ? items.first.onTap
-              : () => _settingsCubit.open(section),
+              : () {
+                  if (_isTv) {
+                    final id = section;
+                    _pushBuilder((ctx) => _tvSectionPage(ctx, id));
+                  } else {
+                    _settingsCubit.open(section);
+                  }
+                },
         ),
       );
     }
@@ -1347,28 +1687,62 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   /// Compact app-bar-style header for a section sub-page: a small back chevron
   /// + an 18px title with a hairline underneath (replaces the oversized title).
+  /// On TV, a D-pad Back control pops the section via [SettingsCubit.back].
   Widget _sectionHeader(String section) => Padding(
-    padding: const EdgeInsets.fromLTRB(6, 4, 16, 0),
+    padding: EdgeInsets.fromLTRB(_isTv ? 16 : 6, _isTv ? 8 : 4, 16, 0),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Row(
           children: [
-            IconButton(
-              visualDensity: VisualDensity.compact,
-              icon: const Icon(
-                Icons.arrow_back_ios_new_rounded,
-                color: AppColors.textPrimary,
-                size: 18,
+            if (_isTv)
+              // Pop the section via cubit — don't Navigator.pop (that used to
+              // bubble to the TV shell and leave the Settings tab entirely).
+              TvFocusable(
+                semanticLabel: 'Back',
+                onTap: _settingsCubit.back,
+                child: ExcludeSemantics(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 10,
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.arrow_back_rounded,
+                          color: AppColors.textPrimary,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Back',
+                          style: AppText.body.copyWith(
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              )
+            else
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(
+                  Icons.arrow_back_ios_new_rounded,
+                  color: AppColors.textPrimary,
+                  size: 18,
+                ),
+                onPressed: _settingsCubit.back,
               ),
-              onPressed: _settingsCubit.back,
-            ),
-            const SizedBox(width: 2),
+            SizedBox(width: _isTv ? 12 : 2),
             Expanded(
               child: Text(
                 settingsSectionTitle(context.l10n, section),
                 style: AppText.headline.copyWith(
-                  fontSize: 18,
+                  fontSize: _isTv ? 22 : 18,
                   fontWeight: FontWeight.w700,
                 ),
                 maxLines: 1,
@@ -1417,6 +1791,20 @@ class _AccentDot extends StatelessWidget {
   );
 }
 
+/// A TV leaf route stacked on the nested Settings navigator, with a [done]
+/// future completed when the page is popped (so `await _push(...)` still works).
+class _TvSettingsLeaf {
+  _TvSettingsLeaf({
+    required this.key,
+    required this.builder,
+    required this.done,
+  });
+
+  final LocalKey key;
+  final Widget Function(BuildContext context) builder;
+  final Completer<void> done;
+}
+
 /// One searchable settings row — the single source of truth for both the
 /// grouped list and the "Search settings" filter.
 class _SettingsEntry {
@@ -1450,12 +1838,14 @@ class _SettingsEntry {
   bool matches(String q) =>
       '$title ${subtitle ?? ''} $keywords $section'.toLowerCase().contains(q);
 
-  SettingsTile toTile({bool iconAccent = false}) => SettingsTile(
-    icon: icon,
-    title: title,
-    subtitle: subtitle,
-    trailing: trailing,
-    onTap: onTap,
-    iconAccent: iconAccent,
-  );
+  SettingsTile toTile({bool iconAccent = false, bool autofocus = false}) =>
+      SettingsTile(
+        icon: icon,
+        title: title,
+        subtitle: subtitle,
+        trailing: trailing,
+        onTap: onTap,
+        iconAccent: iconAccent,
+        autofocus: autofocus,
+      );
 }

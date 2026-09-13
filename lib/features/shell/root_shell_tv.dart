@@ -14,6 +14,7 @@ import '../../core/state/active_source_cubit.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/tv/tv_focusable.dart';
 import '../../core/tv/tv_shell_tab_scope.dart';
+import '../../core/ui/dock_visibility.dart';
 import '../../core/zmode/zmode_prefs.dart';
 import '../auth/auth_cubit.dart';
 import '../auth/auth_screens_tv.dart';
@@ -398,6 +399,9 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
 
   void _handlePopInvoked(bool didPop, dynamic result) {
     if (didPop) return;
+    // Settings (section drill-down / nested leaf) owns this Back — same route
+    // as this PopScope, so Flutter fires us too. Stand down like the phone shell.
+    if (shellBackIntercepted.value) return;
     if (_index != 0) {
       setState(() => _index = 0);
       return;

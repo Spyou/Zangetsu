@@ -32,7 +32,7 @@ MigrationBridge _fakeBridge() => MigrationBridge(
       verifyOtp: (_, __) async => false,
     );
 
-// ── Minimal stubs (mirrors settings_screen_tv_test.dart) ─────────────────────
+// ── Minimal stubs (mirrors settings_screen_tv_test.dart / AppMode wiring) ────
 
 class _StubSearchPrefs extends SearchPrefs {
   @override
