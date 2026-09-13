@@ -9,7 +9,8 @@ import '../../core/tv/tv_list_focusable.dart';
 import '../../core/ui/source_switcher.dart';
 import '../../l10n/l10n.dart';
 import '../home/search_screen.dart';
-import 'browse_source_screen.dart';
+import '../sources/sources_search_field.dart';
+import 'browse_source_screen_tv.dart';
 import 'browse_sources_list.dart';
 
 /// TV entry for browsing installed sources without changing Home's active source.
@@ -62,16 +63,17 @@ class _BrowseSourcesScreenTvState extends State<BrowseSourcesScreenTv> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(24, 16, 48, 8),
+              padding: const EdgeInsets.fromLTRB(16, 8, 48, 16),
               child: Row(
                 children: [
                   const TvBackButton(),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 16),
                   Expanded(
                     child: Text(l10n.sources, style: AppText.largeTitle),
                   ),
                   TvFocusable(
                     variant: TvFocusVariant.float,
+                    scale: 1.0,
                     semanticLabel: l10n.search,
                     onTap: _openSearch,
                     child: Padding(
@@ -86,71 +88,33 @@ class _BrowseSourcesScreenTvState extends State<BrowseSourcesScreenTv> {
                 ],
               ),
             ),
+            // Tabs and search on separate rows so D-pad up from the list
+            // lands on search (focus only — no IME until OK), then up again
+            // to the tabs / Back. Sharing one row made search steal focus
+            // geometrically from the first source row.
             Padding(
-              padding: const EdgeInsets.fromLTRB(48, 8, 48, 12),
+              padding: const EdgeInsets.fromLTRB(40, 0, 40, 12),
               child: Row(
                 children: [
                   for (var i = 0; i < tabLabels.length; i++) ...[
-                    if (i > 0) const SizedBox(width: 10),
-                    TvFocusable(
+                    if (i > 0) const SizedBox(width: 12),
+                    _BrowseTvTabChip(
                       key: ValueKey('browse-sources-tab-$i'),
-                      variant: TvFocusVariant.float,
-                      borderRadius: 999,
+                      title: tabLabels[i],
+                      selected: _tabIndex == i,
+                      autofocus: i == 0,
                       onTap: () => setState(() => _tabIndex = i),
-                      builder: (focused) {
-                        final selected = _tabIndex == i;
-                        return Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 20,
-                            vertical: 11,
-                          ),
-                          decoration: BoxDecoration(
-                            color: selected
-                                ? Colors.white
-                                : (focused
-                                      ? Colors.white.withValues(alpha: 0.08)
-                                      : null),
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                          child: Text(
-                            tabLabels[i],
-                            style: TextStyle(
-                              color: selected
-                                  ? Colors.black
-                                  : AppColors.textSecondary,
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        );
-                      },
                     ),
                   ],
                 ],
               ),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(48, 0, 48, 12),
-              child: TextField(
+              padding: const EdgeInsets.fromLTRB(40, 0, 40, 16),
+              child: SourcesSearchField(
                 controller: _controller,
-                onChanged: (v) => setState(() => _query = v),
-                style: AppText.body.copyWith(color: AppColors.textPrimary),
-                cursorColor: AppColors.accent,
-                decoration: InputDecoration(
-                  hintText: l10n.searchSources,
-                  hintStyle: AppText.body,
-                  prefixIcon: const Icon(
-                    Icons.search,
-                    color: AppColors.textTertiary,
-                  ),
-                  filled: true,
-                  fillColor: AppColors.surface2,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(vertical: 14),
-                ),
+                hint: l10n.searchSources,
+                onChanged: (q) => setState(() => _query = q),
               ),
             ),
             Expanded(
@@ -160,12 +124,62 @@ class _BrowseSourcesScreenTvState extends State<BrowseSourcesScreenTv> {
                 onBrowse: (id, name) => Navigator.of(context).push(
                   MaterialPageRoute<void>(
                     builder: (_) =>
-                        BrowseSourceScreen(sourceId: id, title: name),
+                        BrowseSourceScreenTv(sourceId: id, title: name),
                   ),
                 ),
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Focusable kind-tab chip — D-pad stand-in for a [TabBar].
+class _BrowseTvTabChip extends StatelessWidget {
+  const _BrowseTvTabChip({
+    super.key,
+    required this.title,
+    required this.selected,
+    required this.onTap,
+    this.autofocus = false,
+  });
+
+  final String title;
+  final bool selected;
+  final VoidCallback onTap;
+  final bool autofocus;
+
+  @override
+  Widget build(BuildContext context) {
+    return TvFocusable(
+      // Poster-style white outline; no scale so row clip won't shave it.
+      variant: TvFocusVariant.float,
+      scale: 1.0,
+      borderRadius: 20,
+      autofocus: autofocus,
+      onTap: onTap,
+      semanticLabel: title,
+      child: ExcludeSemantics(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+          decoration: BoxDecoration(
+            color: selected
+                ? AppColors.accent.withValues(alpha: 0.18)
+                : AppColors.surface,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: selected ? AppColors.accent : Colors.transparent,
+              width: 2,
+            ),
+          ),
+          child: Text(
+            title,
+            style: AppText.headline.copyWith(
+              color: selected ? AppColors.accent : AppColors.textSecondary,
+            ),
+          ),
         ),
       ),
     );
@@ -224,45 +238,54 @@ class _BrowseSourcesListTv extends StatelessWidget {
     }
 
     return ListView(
-      padding: const EdgeInsets.only(bottom: 32),
+      clipBehavior: Clip.none,
+      padding: const EdgeInsets.fromLTRB(40, 0, 40, 48),
       children: [
         for (final (title, rows) in groups) ...[
           Padding(
-            padding: const EdgeInsets.fromLTRB(48, 18, 48, 8),
+            padding: const EdgeInsets.fromLTRB(4, 18, 4, 8),
             child: Text(title, style: AppText.headline),
           ),
           for (final s in rows)
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 2),
+              padding: const EdgeInsets.symmetric(vertical: 2),
               child: TvListFocusable(
                 onTap: () => onBrowse(s.id, s.label),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 16,
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              s.label,
-                              style: AppText.body,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            if (s.repo != null && s.repo!.isNotEmpty)
-                              Text(s.repo!, style: AppText.caption),
-                          ],
+                semanticLabel: s.label,
+                child: ExcludeSemantics(
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 16,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.surface,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                s.label,
+                                style: AppText.body,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              if (s.repo != null && s.repo!.isNotEmpty)
+                                Text(s.repo!, style: AppText.caption),
+                            ],
+                          ),
                         ),
-                      ),
-                      const Icon(
-                        Icons.chevron_right_rounded,
-                        color: AppColors.textTertiary,
-                      ),
-                    ],
+                        const Icon(
+                          Icons.chevron_right_rounded,
+                          color: AppColors.textTertiary,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
