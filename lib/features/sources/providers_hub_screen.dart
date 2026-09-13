@@ -525,6 +525,20 @@ class _HubTvViewState extends State<_HubTvView> {
 
   @override
   Widget build(BuildContext context) {
+    // Same live-count listenables as the phone hub so install/enable on an
+    // ecosystem screen is reflected when the user returns (and while this
+    // route is still under the stack).
+    return ListenableBuilder(
+      listenable: Listenable.merge([
+        sl<CloudStreamManager>(),
+        sl<AniyomiManager>(),
+        sl<MihonManager>(),
+      ]),
+      builder: (context, _) => _body(context),
+    );
+  }
+
+  Widget _body(BuildContext context) {
     final zangetsuCount = sl<ProviderRegistry>().getAll().length;
     final showCs = Platform.isAndroid;
     final showAniyomi = Platform.isAndroid;
@@ -587,55 +601,65 @@ class _HubTvViewState extends State<_HubTvView> {
       );
     }
 
+    // Header (Back) and list are separate traversal groups so D-pad up from
+    // the first ecosystem row lands on Back — not a stray focusable in the
+    // title row — and down from Back enters the list at the autofocused row.
+    // Mihon / LNReader stay phone-only (those screens have no TV branch).
     return Scaffold(
       backgroundColor: AppColors.bg,
       body: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 48, 16),
-              child: Row(
-                children: [
-                  const TvBackButton(),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Text(
-                      context.l10n.providers,
-                      style: AppText.largeTitle,
+            FocusTraversalGroup(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 48, 16),
+                child: Row(
+                  children: [
+                    const TvBackButton(),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Text(
+                        context.l10n.providers,
+                        style: AppText.largeTitle,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
             Expanded(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(40, 0, 40, 48),
-                children: [
-                  row(
-                    icon: Icons.dns_rounded,
-                    title: context.l10n.zangetsuProviders,
-                    subtitle: '$zangetsuCount installed',
-                    tint: AppColors.accent,
-                    onTap: () => _open(const ZangetsuSourcesScreen()),
-                  ),
-                  if (showCs)
+              child: FocusTraversalGroup(
+                child: ListView(
+                  // Focus rings scale slightly past the card; don't clip them.
+                  clipBehavior: Clip.none,
+                  padding: const EdgeInsets.fromLTRB(40, 0, 40, 48),
+                  children: [
                     row(
-                      icon: Icons.extension_outlined,
-                      title: context.l10n.cloudStream,
-                      subtitle: _csSubtitle(),
-                      tint: _csBlue,
-                      onTap: () => _open(const CloudStreamSourcesScreen()),
+                      icon: Icons.dns_rounded,
+                      title: context.l10n.zangetsuProviders,
+                      subtitle: '$zangetsuCount installed',
+                      tint: AppColors.accent,
+                      onTap: () => _open(const ZangetsuSourcesScreen()),
                     ),
-                  if (showAniyomi)
-                    row(
-                      icon: Icons.movie_filter_outlined,
-                      title: context.l10n.aniyomi,
-                      subtitle: _aniyomiSubtitle(),
-                      tint: _aniGreen,
-                      onTap: () => _open(const AniyomiSourcesScreen()),
-                    ),
-                ],
+                    if (showCs)
+                      row(
+                        icon: Icons.extension_outlined,
+                        title: context.l10n.cloudStream,
+                        subtitle: _csSubtitle(),
+                        tint: _csBlue,
+                        onTap: () => _open(const CloudStreamSourcesScreen()),
+                      ),
+                    if (showAniyomi)
+                      row(
+                        icon: Icons.movie_filter_outlined,
+                        title: context.l10n.aniyomi,
+                        subtitle: _aniyomiSubtitle(),
+                        tint: _aniGreen,
+                        onTap: () => _open(const AniyomiSourcesScreen()),
+                      ),
+                  ],
+                ),
               ),
             ),
           ],

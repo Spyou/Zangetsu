@@ -81,8 +81,9 @@ class _AniScreenTvViewState extends State<_AniScreenTvView> {
                 ],
               ),
             ),
+            // Tabs and search on separate rows — see zangetsu_sources_screen_tv.
             Padding(
-              padding: const EdgeInsets.fromLTRB(40, 0, 40, 16),
+              padding: const EdgeInsets.fromLTRB(40, 0, 40, 12),
               child: Row(
                 children: [
                   _AniTvTabChip(
@@ -97,17 +98,7 @@ class _AniScreenTvViewState extends State<_AniScreenTvView> {
                     selected: _tab == 1,
                     onTap: () => setState(() => _tab = 1),
                   ),
-                  const SizedBox(width: 20),
-                  Expanded(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 340),
-                      child: SourcesSearchField(
-                        controller: _searchCtrl,
-                        onChanged: (q) => setState(() => _query = q),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
+                  const Spacer(),
                   TvFocusable(
                     scale: 1.04,
                     onTap: () => showSourceLanguageSheetTv(
@@ -131,6 +122,13 @@ class _AniScreenTvViewState extends State<_AniScreenTvView> {
                     ),
                   ),
                 ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(40, 0, 40, 16),
+              child: SourcesSearchField(
+                controller: _searchCtrl,
+                onChanged: (q) => setState(() => _query = q),
               ),
             ),
             Expanded(

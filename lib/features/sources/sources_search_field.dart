@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 
+import '../../core/app_mode.dart';
+import '../../core/di/injector.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
+import '../../core/tv/tv_text_field.dart';
 
 /// Whether an extension/plugin row matches a search [query].
 ///
@@ -18,8 +21,12 @@ bool sourceSearchMatches(String query, String name, [String? lang]) {
 /// The shared search box used by the provider screens (phone + TV).
 ///
 /// Purely presentational: the owning screen holds the [controller] and
-/// rebuilds itself from [onChanged]. On TV the field participates in normal
-/// D-pad focus traversal; the accent focus border marks it as focused.
+/// rebuilds itself from [onChanged].
+///
+/// On TV this uses [TvTextField] so D-pad focus does **not** raise the
+/// leanback IME (a bare [TextField] would steal arrows and open the
+/// keyboard the moment focus lands from a source row below). OK/Select
+/// opens the keyboard when the user actually wants to type.
 class SourcesSearchField extends StatelessWidget {
   const SourcesSearchField({
     super.key,
@@ -34,40 +41,64 @@ class SourcesSearchField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return TextField(
-      controller: controller,
-      onChanged: onChanged,
-      style: AppText.body,
-      cursorColor: AppColors.accent,
-      decoration: InputDecoration(
-        hintText: hint,
-        hintStyle: AppText.body.copyWith(color: AppColors.textSecondary),
-        prefixIcon:
-            const Icon(Icons.search, color: AppColors.textSecondary, size: 20),
-        suffixIcon: controller.text.isEmpty
-            ? null
-            : IconButton(
-                icon: const Icon(Icons.close,
-                    color: AppColors.textSecondary, size: 18),
+    final isTv = sl.isRegistered<AppMode>() && sl<AppMode>().isTv;
+    final decoration = InputDecoration(
+      hintText: hint,
+      hintStyle: AppText.body.copyWith(color: AppColors.textSecondary),
+      prefixIcon:
+          const Icon(Icons.search, color: AppColors.textSecondary, size: 20),
+      suffixIcon: controller.text.isEmpty
+          ? null
+          : Focus(
+              // Clear is tap/OK-reachable via the field itself on phone;
+              // on TV keep it out of D-pad traversal so arrows stay on the
+              // search field ↔ tabs ↔ list path.
+              canRequestFocus: false,
+              skipTraversal: true,
+              descendantsAreFocusable: !isTv,
+              descendantsAreTraversable: !isTv,
+              child: IconButton(
+                icon: const Icon(
+                  Icons.close,
+                  color: AppColors.textSecondary,
+                  size: 18,
+                ),
                 onPressed: () {
                   controller.clear();
                   onChanged('');
                 },
               ),
-        isDense: true,
-        filled: true,
-        fillColor: AppColors.surface,
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide.none,
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: AppColors.accent, width: 1.5),
-        ),
+            ),
+      isDense: true,
+      filled: true,
+      fillColor: AppColors.surface,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide.none,
       ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: AppColors.accent, width: 1.5),
+      ),
+    );
+
+    if (isTv) {
+      return TvTextField(
+        controller: controller,
+        onChanged: onChanged,
+        style: AppText.body,
+        cursorColor: AppColors.accent,
+        decoration: decoration,
+      );
+    }
+
+    return TextField(
+      controller: controller,
+      onChanged: onChanged,
+      style: AppText.body,
+      cursorColor: AppColors.accent,
+      decoration: decoration,
     );
   }
 }

@@ -63,8 +63,12 @@ class _ZTvViewState extends State<_ZTvView> {
                   ],
                 ),
               ),
+              // Tabs and search on separate rows so D-pad up from the list
+              // lands on search (focus only — no IME until OK), then up again
+              // to the tabs / Back. Sharing one row made search steal focus
+              // geometrically from the first source row.
               Padding(
-                padding: const EdgeInsets.fromLTRB(40, 0, 40, 16),
+                padding: const EdgeInsets.fromLTRB(40, 0, 40, 12),
                 child: Row(
                   children: [
                     _ZTvTabChip(
@@ -79,17 +83,14 @@ class _ZTvViewState extends State<_ZTvView> {
                       selected: _tab == 1,
                       onTap: () => setState(() => _tab = 1),
                     ),
-                    const SizedBox(width: 20),
-                    Expanded(
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 340),
-                        child: SourcesSearchField(
-                          controller: _searchCtrl,
-                          onChanged: (q) => setState(() => _query = q),
-                        ),
-                      ),
-                    ),
                   ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(40, 0, 40, 16),
+                child: SourcesSearchField(
+                  controller: _searchCtrl,
+                  onChanged: (q) => setState(() => _query = q),
                 ),
               ),
               Expanded(
