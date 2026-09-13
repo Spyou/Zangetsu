@@ -204,8 +204,7 @@ class _JsHost {
       '__settings[${jsonEncode(sourceId)}] = ${jsonEncode(settings)};',
     );
     if (r.isError) {
-      // ignore: avoid_print
-      print('[settings] push failed for $sourceId: ${r.stringResult}');
+      debugPrint('[settings] push failed for $sourceId: ${r.stringResult}');
     }
   }
 
@@ -444,8 +443,7 @@ class _JsHost {
       // challenged below, that clearance is stale (e.g. a persisted cookie that
       // expired) and must be dropped rather than reused.
       final sentClearance = _cfCookie.containsKey(host);
-      // ignore: avoid_print
-      print('[fetch] $method $url${wantCf ? ' (cf)' : ''}');
+      debugPrint('[fetch] $method $url${wantCf ? ' (cf)' : ''}');
       var resp = await _request(url, method, hdr, body, follow, tMs);
       // Auto-recover from a Cloudflare challenge even without the opt-in flag:
       // solve (once) and replay with the clearance. CRUCIALLY, also replay when
@@ -458,8 +456,7 @@ class _JsHost {
       if (Platform.isAndroid && follow && _looksLikeBlocked(resp)) {
         final viaNative = await _retryOverNative(url, method, hdr, body);
         if (viaNative != null && (viaNative.statusCode ?? 0) < 400) {
-          // ignore: avoid_print
-          print('[fetch] retried over native lane -> ${viaNative.statusCode}');
+          debugPrint('[fetch] retried over native lane -> ${viaNative.statusCode}');
           resp = viaNative;
         }
       }
@@ -491,8 +488,7 @@ class _JsHost {
         // solve instead of the source just silently returning nothing.
         CfSolveNeeded.needsSolve(host, url, sourceId: srcId);
       }
-      // ignore: avoid_print
-      print(
+      debugPrint(
         '[fetch] <- ${resp.statusCode} ${(resp.data?.toString().length ?? 0)}B $url',
       );
       final responseHeaders = <String, String>{};
@@ -508,8 +504,7 @@ class _JsHost {
         '__resolveFetch(${jsonEncode(id)}, ${jsonEncode(responseJson)});',
       );
     } catch (e) {
-      // ignore: avoid_print
-      print('[fetch] FAILED $e');
+      debugPrint('[fetch] FAILED $e');
       if (id != null) {
         _runtime.evaluate(
           '__rejectFetch(${jsonEncode(id)}, ${jsonEncode(e.toString())});',
@@ -587,8 +582,7 @@ class _JsHost {
         if (ua != null && ua.isNotEmpty) _cfUa[host] = ua;
         _cfStore.remember(host, cookie, ua); // reuse across restarts
         CfSolveNeeded.clear(host); // whatever needed the solve can retry now
-        // ignore: avoid_print
-        print('[cf] solved $host (ua=${(ua ?? '').split(')').first})');
+        debugPrint('[cf] solved $host (ua=${(ua ?? '').split(')').first})');
       } else {
         // Solver returned no clearance (dead/parked host, or not a real CF
         // challenge) → mark failed so we don't re-run the 30s solve every call.
@@ -751,8 +745,7 @@ class _JsHost {
       final src = (map['__src'] ?? '?').toString();
       final level = (map['level'] ?? 'log').toString();
       final message = (map['message'] ?? '').toString();
-      // ignore: avoid_print
-      print('[$src/js $level] $message');
+      debugPrint('[$src/js $level] $message');
     } catch (_) {}
   }
 
@@ -996,8 +989,7 @@ class JsProvider implements BaseProvider, ReadingProvider {
       final msg = e is JsRuntimeException ? e.message : e.toString();
       // The bootstrap signals an absent function with this exact prefix.
       if (msg.contains('missing method: getSettings')) return null;
-      // ignore: avoid_print
-      print('[settings] schema load failed for $sourceId: $msg');
+      debugPrint('[settings] schema load failed for $sourceId: $msg');
       return null;
     }
   }
