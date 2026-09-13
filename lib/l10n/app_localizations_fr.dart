@@ -531,6 +531,17 @@ class AppLocalizationsFr extends AppLocalizations {
       'Envoie un journal de diag pour aider à corriger un souci';
 
   @override
+  String get sendingReport => 'Sending report…';
+
+  @override
+  String get reportSent => 'Report sent';
+
+  @override
+  String reportSentBody(String ref) {
+    return 'Thanks. If you tell us what happened, quote this code: $ref';
+  }
+
+  @override
   String get about => 'À propos';
 
   @override

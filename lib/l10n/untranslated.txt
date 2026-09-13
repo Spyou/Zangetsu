@@ -1,5 +1,8 @@
 {
   "de": [
+    "sendingReport",
+    "reportSent",
+    "reportSentBody",
     "readerFullscreen",
     "offlineTitle",
     "offlineBody",
@@ -76,6 +79,9 @@
   ],
 
   "es": [
+    "sendingReport",
+    "reportSent",
+    "reportSentBody",
     "readerFullscreen",
     "offlineTitle",
     "offlineBody",
@@ -152,6 +158,9 @@
   ],
 
   "fr": [
+    "sendingReport",
+    "reportSent",
+    "reportSentBody",
     "readerFullscreen",
     "offlineTitle",
     "offlineBody",
@@ -228,6 +237,9 @@
   ],
 
   "it": [
+    "sendingReport",
+    "reportSent",
+    "reportSentBody",
     "readerFullscreen",
     "offlineTitle",
     "offlineBody",
@@ -304,6 +316,9 @@
   ],
 
   "ja": [
+    "sendingReport",
+    "reportSent",
+    "reportSentBody",
     "readerFullscreen",
     "offlineTitle",
     "offlineBody",
@@ -380,6 +395,9 @@
   ],
 
   "zh": [
+    "sendingReport",
+    "reportSent",
+    "reportSentBody",
     "readerFullscreen",
     "offlineTitle",
     "offlineBody",
@@ -456,6 +474,9 @@
   ],
 
   "zh_TW": [
+    "sendingReport",
+    "reportSent",
+    "reportSentBody",
     "readerFullscreen",
     "offlineTitle",
     "offlineBody",

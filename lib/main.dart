@@ -426,6 +426,7 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
     try {
       final info = await PackageInfo.fromPlatform();
       kAppVersion = info.version;
+      kAppBuild = info.buildNumber;
       AppLogger.instance.log(
         '===== session started · v${info.version} (build ${info.buildNumber}) =====',
       );

@@ -186,6 +186,14 @@
 	"privacySubtitle": "NSFW sources",
 	"shareLogs": "Share logs",
 	"shareLogsSubtitle": "Send a diagnostic log to help fix an issue",
+	"sendingReport": "Sending report…",
+	"reportSent": "Report sent",
+	"reportSentBody": "Thanks. If you tell us what happened, quote this code: {ref}",
+	"@reportSentBody": {
+		"placeholders": {
+			"ref": { "type": "String" }
+		}
+	},
 	"about": "About",
 	"versionLabel": "v{version}",
 	"@versionLabel": {

@@ -1,0 +1,18 @@
+name = "zangetsu-logs"
+main = "src/index.js"
+compatibility_date = "2026-09-13"
+
+# Reports are kept here for 30 days as a backup — the readable copy is the file
+# attached to the Discord message. KV rather than R2 on purpose: R2 needs a
+# payment method on file even on its free tier, and a 25KB log has no use for
+# R2's headroom.
+#
+# Create the namespace once, then paste the id it prints here:
+#   wrangler kv namespace create LOGS
+[[kv_namespaces]]
+binding = "LOGS"
+id = "4cb9a82d2b7349cab0ce4c99de730c76"
+
+# DISCORD_WEBHOOK is a SECRET, not a var — it must never appear in this file,
+# which is committed to a public repo. Set it with:
+#   wrangler secret put DISCORD_WEBHOOK

@@ -10,6 +10,7 @@ import 'package:get_it/get_it.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 import '../announce/announcement.dart';
+import '../logging/log_report_service.dart';
 import '../announce/announcement_service.dart';
 import '../cache/app_image_cache.dart';
 import '../platform/apple_tv.dart';
@@ -405,6 +406,10 @@ Future<void> initDependencies() async {
   dio.interceptors.add(aniListPolicy);
   sl.registerSingleton<AniListNetworkPolicy>(aniListPolicy);
   sl.registerSingleton<Dio>(dio);
+  // Sends the diagnostic log when someone taps Settings → Share logs. Falls
+  // back to the share sheet when no intake URL is configured, so it is safe to
+  // register in every build.
+  sl.registerSingleton<LogReportService>(LogReportService(sl<Dio>()));
   sl.registerSingleton<AiringService>(AiringService(sl<Dio>()));
   sl.registerSingleton<ComingSoonService>(ComingSoonService(sl<Dio>()));
 

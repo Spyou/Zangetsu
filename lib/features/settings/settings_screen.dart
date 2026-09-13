@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:share_plus/share_plus.dart';
@@ -14,6 +15,7 @@ import '../../core/tracker/tracker_hub.dart';
 import '../../core/zmode/metadata_provider_prefs.dart';
 import '../../core/cache/media_cache.dart';
 import '../../core/logging/app_logger.dart';
+import '../../core/logging/log_report_service.dart';
 import '../../core/tracker/mal_service.dart';
 import '../../core/tracker/simkl_service.dart';
 import '../../core/tracker/tracker.dart';
@@ -217,7 +219,52 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await prefs.setTitleLanguage(picked);
   }
 
-  /// Bottom sheet to pick the in-app DNS-over-HTTPS provider for CS sources.
+  /// Send the diagnostic log straight to us, falling back to the share sheet.
+  ///
+  /// Sharing put the work on the reporter — find the file, pick an app, send it
+  /// somewhere — so reports arrived as screen recordings with no log attached.
+  /// This sends it in one tap and hands back a short code to quote.
+  ///
+  /// The fallback matters: the upload needs the Worker deployed AND a network,
+  /// and where it can't reach (blocked networks, offline) the old behaviour is
+  /// still there rather than a dead button.
+  Future<void> _sendLogReport() async {
+    final reporter = sl<LogReportService>();
+    if (!reporter.configured) return _shareLogs();
+
+    final messenger = ScaffoldMessenger.of(context);
+    messenger
+      ..clearSnackBars()
+      ..showSnackBar(SnackBar(content: Text(context.l10n.sendingReport)));
+
+    final ref = await reporter.send();
+    if (!mounted) return;
+    messenger.clearSnackBars();
+    if (ref == null) return _shareLogs();
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: Text(ctx.l10n.reportSent),
+        content: Text(ctx.l10n.reportSentBody(ref)),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: ref));
+              Navigator.pop(ctx);
+            },
+            child: Text(ctx.l10n.copy),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(ctx.l10n.ok),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _shareLogs() async {
     final file = await AppLogger.instance.exportFile();
     if (!mounted) return;
@@ -1057,7 +1104,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         title: l10n.shareLogs,
         subtitle: l10n.shareLogsSubtitle,
         keywords: 'logs share diagnostic debug bug report crash',
-        onTap: _shareLogs,
+        onTap: _sendLogReport,
       ),
       // About — a single destination holding the app info, contributors,
       // social links, updates, beta toggle and support (so the section opens

@@ -530,6 +530,17 @@ class AppLocalizationsIt extends AppLocalizations {
       'Invia un log di diagnostica per aiutare a risolvere un problema';
 
   @override
+  String get sendingReport => 'Sending report…';
+
+  @override
+  String get reportSent => 'Report sent';
+
+  @override
+  String reportSentBody(String ref) {
+    return 'Thanks. If you tell us what happened, quote this code: $ref';
+  }
+
+  @override
   String get about => 'Informazioni';
 
   @override

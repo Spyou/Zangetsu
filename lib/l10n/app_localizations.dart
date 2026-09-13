@@ -1099,6 +1099,24 @@ abstract class AppLocalizations {
   /// **'Send a diagnostic log to help fix an issue'**
   String get shareLogsSubtitle;
 
+  /// No description provided for @sendingReport.
+  ///
+  /// In en, this message translates to:
+  /// **'Sending report…'**
+  String get sendingReport;
+
+  /// No description provided for @reportSent.
+  ///
+  /// In en, this message translates to:
+  /// **'Report sent'**
+  String get reportSent;
+
+  /// No description provided for @reportSentBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Thanks. If you tell us what happened, quote this code: {ref}'**
+  String reportSentBody(String ref);
+
   /// No description provided for @about.
   ///
   /// In en, this message translates to:

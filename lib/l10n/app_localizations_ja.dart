@@ -514,6 +514,17 @@ class AppLocalizationsJa extends AppLocalizations {
   String get shareLogsSubtitle => '不具合調査用の診断ログを送信';
 
   @override
+  String get sendingReport => 'Sending report…';
+
+  @override
+  String get reportSent => 'Report sent';
+
+  @override
+  String reportSentBody(String ref) {
+    return 'Thanks. If you tell us what happened, quote this code: $ref';
+  }
+
+  @override
   String get about => 'このアプリについて';
 
   @override
