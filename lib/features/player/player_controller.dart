@@ -3095,6 +3095,16 @@ class PlayerCubit extends Cubit<PlayerState> {
 
   @override
   Future<void> close() async {
+    // Leaving supersedes anything still in flight. Every delayed continuation
+    // in here bails when _gen moves on, so bumping it once is what stops one
+    // firing into a disposed player: the resume watchdog sleeps 15s, then 4s
+    // more, then seeks — and a tester who left before that landed on
+    // `Assertion failed: "[Player] has been disposed"`. Its only other guard
+    // was "a newer open replaced me", which closing never was.
+    //
+    // Before _persist, which doesn't consult _gen — the resume mark is still
+    // written on the way out.
+    _gen++;
     await _persist(flush: true);
     // Leaving the player → drop Watching. Do not immediately restore a
     // "Playing" browse status; that is what kept the profile occupied after
