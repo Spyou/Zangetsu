@@ -157,9 +157,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       final done = Completer<void>();
       final key = UniqueKey();
       setState(() {
-        _tvLeaves.add(
-          _TvSettingsLeaf(key: key, builder: builder, done: done),
-        );
+        _tvLeaves.add(_TvSettingsLeaf(key: key, builder: builder, done: done));
       });
       _syncShellBackIntercept();
       return done.future;
@@ -212,10 +210,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           SettingsCard(
             children: [
               for (var i = 0; i < items.length; i++)
-                items[i].toTile(
-                  iconAccent: i == 0,
-                  autofocus: i == 0,
-                ),
+                items[i].toTile(iconAccent: i == 0, autofocus: i == 0),
             ],
           ),
         ],
@@ -252,7 +247,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// Label for the title-language row. Romaji and Native are proper nouns for
   /// what they are, so only the third needs translating.
   String _titleLanguageLabel(AppLocalizations l10n) =>
-      switch (_providerPrefs?.titleLanguage ?? TitleLanguage.romaji) {
+      switch (_providerPrefs?.titleLanguage ?? TitleLanguage.english) {
         TitleLanguage.romaji => 'Romaji',
         TitleLanguage.english => 'English',
         TitleLanguage.native => l10n.titleLanguageNative,
@@ -499,7 +494,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
                   child: Align(
                     alignment: Alignment.centerLeft,
-                    child: Text(sheetL10n.searchLayout, style: AppText.headline),
+                    child: Text(
+                      sheetL10n.searchLayout,
+                      style: AppText.headline,
+                    ),
                   ),
                 ),
                 Padding(
@@ -910,403 +908,401 @@ class _SettingsScreenState extends State<SettingsScreen> {
     required int enabledCount,
     required int connectedCount,
   }) => [
-      // Account & sync
+    // Account & sync
+    _SettingsEntry(
+      section: SettingsSection.account,
+      icon: Icons.sync_alt_rounded,
+      title: l10n.connections,
+      subtitle: connectedCount > 0
+          ? l10n.connectedCount(connectedCount)
+          : l10n.connectionsTvSubtitle,
+      keywords: l10n.connectionsTvSubtitle.toLowerCase(),
+      onTap: () async {
+        await _push(
+          _isTv ? const ConnectionsScreenTv() : const ConnectionsScreen(),
+        );
+        if (mounted) setState(() {});
+      },
+    ),
+    if (!_isTv || !isAppleTv)
       _SettingsEntry(
         section: SettingsSection.account,
-        icon: Icons.sync_alt_rounded,
-        title: l10n.connections,
-        subtitle: connectedCount > 0
-            ? l10n.connectedCount(connectedCount)
-            : l10n.connectionsTvSubtitle,
-        keywords: l10n.connectionsTvSubtitle.toLowerCase(),
+        icon: Icons.gamepad_outlined,
+        title: l10n.discord,
+        subtitle: l10n.discordSubtitle,
+        keywords: 'discord rich presence',
         onTap: () async {
-          await _push(
-            _isTv ? const ConnectionsScreenTv() : const ConnectionsScreen(),
-          );
+          await _push(const DiscordSettingsScreen());
           if (mounted) setState(() {});
         },
       ),
-      if (!_isTv || !isAppleTv)
-        _SettingsEntry(
-          section: SettingsSection.account,
-          icon: Icons.gamepad_outlined,
-          title: l10n.discord,
-          subtitle: l10n.discordSubtitle,
-          keywords: 'discord rich presence',
-          onTap: () async {
-            await _push(const DiscordSettingsScreen());
+    _SettingsEntry(
+      section: SettingsSection.account,
+      icon: Icons.groups_2_outlined,
+      title: l10n.watchParty,
+      subtitle: l10n.watchPartySubtitle,
+      keywords: 'watch party together',
+      onTap: () {
+        if (sl<AuthCubit>().state.user == null) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text(l10n.signInToWatchTogether)));
+          return;
+        }
+        _push(const WatchPartyLobbyScreen());
+      },
+    ),
+    _SettingsEntry(
+      section: SettingsSection.account,
+      icon: Icons.cloud_upload_outlined,
+      title: l10n.syncLibraryToCloud,
+      subtitle: l10n.syncLibraryToCloudSubtitle,
+      keywords:
+          'sync cloud upload library history continue watching list device '
+          'cross-device re-sync fix restore',
+      onTap: () async {
+        if (sl<AuthCubit>().state.user == null) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text(l10n.signInFirst)));
+          return;
+        }
+        // The session may have lapsed (logged-in from cache only). Get a live
+        // one first — otherwise every upsert silently no-ops ("Synced 0").
+        final live = await ensureLiveSession(context);
+        if (!context.mounted) return;
+        if (!live) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text(l10n.reconnectToSyncLibrary)));
+          return;
+        }
+        final messenger = ScaffoldMessenger.of(context);
+        messenger
+          ..clearSnackBars()
+          ..showSnackBar(SnackBar(content: Text(l10n.syncingLibraryToCloud)));
+        final h = (await sl<WatchHistory>().pushAllLocalToCloud()).pushed;
+        final l = (await sl<MyListStore>().pushAllLocalToCloud()).pushed;
+        if (!context.mounted) return;
+        messenger
+          ..clearSnackBars()
+          ..showSnackBar(
+            SnackBar(
+              content: Text(
+                h == 0 && l == 0
+                    ? l10n.syncLibraryAlreadySynced
+                    : l10n.syncLibraryPushed(h, l),
+              ),
+            ),
+          );
+      },
+    ),
+    _SettingsEntry(
+      section: SettingsSection.account,
+      icon: Icons.cloud_sync_outlined,
+      title: l10n.backupAndRestore,
+      subtitle: l10n.backupAndRestoreSubtitle,
+      keywords: 'backup restore export import save cloud',
+      onTap: () => _push(const BackupScreen()),
+    ),
+    // Sources
+    _SettingsEntry(
+      section: SettingsSection.sources,
+      icon: Icons.dns_rounded,
+      title: l10n.providers,
+      subtitle: l10n.providersEnabledCount(enabledCount),
+      keywords:
+          'providers sources extensions plugins cloudstream aniyomi repository',
+      onTap: () async {
+        await _push(const SourcesScreen());
+        if (mounted) setState(() {});
+      },
+    ),
+    _SettingsEntry(
+      section: SettingsSection.sources,
+      icon: Icons.low_priority_rounded,
+      title: 'Source Priority',
+      subtitle: 'Order Auto Resolve tries sources in',
+      keywords: 'source priority order auto resolve sweep anime movies tv',
+      onTap: () => _push(const SourcePriorityScreen()),
+    ),
+    _SettingsEntry(
+      section: SettingsSection.sources,
+      icon: Icons.health_and_safety_outlined,
+      title: l10n.sourceHealth,
+      subtitle: l10n.sourceHealthSubtitle,
+      keywords: 'source health test working dead status check',
+      onTap: () => _push(const SourceHealthScreen()),
+    ),
+    if (Platform.isAndroid) ...[
+      _SettingsEntry(
+        section: SettingsSection.sources,
+        icon: Icons.extension_outlined,
+        title: l10n.addCloudStreamRepository,
+        subtitle: l10n.installCloudStreamSources,
+        keywords: 'cloudstream repository repo install sources extensions',
+        onTap: _addCloudStreamRepo,
+      ),
+      _SettingsEntry(
+        section: SettingsSection.sources,
+        icon: Icons.update_rounded,
+        title: l10n.sourceUpdates,
+        subtitle: l10n.sourceUpdatesSubtitle,
+        keywords: 'source updates notify extensions upgrade',
+        trailing: Switch.adaptive(
+          value: sl<CloudStreamManager>().notifyUpdates,
+          activeThumbColor: AppColors.accent,
+          onChanged: (v) async {
+            await sl<CloudStreamManager>().setNotifyUpdates(v);
             if (mounted) setState(() {});
           },
         ),
-      _SettingsEntry(
-        section: SettingsSection.account,
-        icon: Icons.groups_2_outlined,
-        title: l10n.watchParty,
-        subtitle: l10n.watchPartySubtitle,
-        keywords: 'watch party together',
-        onTap: () {
-          if (sl<AuthCubit>().state.user == null) {
-            ScaffoldMessenger.of(
-              context,
-            ).showSnackBar(SnackBar(content: Text(l10n.signInToWatchTogether)));
-            return;
-          }
-          _push(const WatchPartyLobbyScreen());
-        },
-      ),
-      _SettingsEntry(
-        section: SettingsSection.account,
-        icon: Icons.cloud_upload_outlined,
-        title: l10n.syncLibraryToCloud,
-        subtitle: l10n.syncLibraryToCloudSubtitle,
-        keywords:
-            'sync cloud upload library history continue watching list device '
-            'cross-device re-sync fix restore',
-        onTap: () async {
-          if (sl<AuthCubit>().state.user == null) {
-            ScaffoldMessenger.of(
-              context,
-            ).showSnackBar(SnackBar(content: Text(l10n.signInFirst)));
-            return;
-          }
-          // The session may have lapsed (logged-in from cache only). Get a live
-          // one first — otherwise every upsert silently no-ops ("Synced 0").
-          final live = await ensureLiveSession(context);
-          if (!context.mounted) return;
-          if (!live) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text(l10n.reconnectToSyncLibrary)),
-            );
-            return;
-          }
-          final messenger = ScaffoldMessenger.of(context);
-          messenger
-            ..clearSnackBars()
-            ..showSnackBar(SnackBar(content: Text(l10n.syncingLibraryToCloud)));
-          final h = (await sl<WatchHistory>().pushAllLocalToCloud()).pushed;
-          final l = (await sl<MyListStore>().pushAllLocalToCloud()).pushed;
-          if (!context.mounted) return;
-          messenger
-            ..clearSnackBars()
-            ..showSnackBar(
-              SnackBar(
-                content: Text(
-                  h == 0 && l == 0
-                      ? l10n.syncLibraryAlreadySynced
-                      : l10n.syncLibraryPushed(h, l),
-                ),
-              ),
-            );
-        },
-      ),
-      _SettingsEntry(
-        section: SettingsSection.account,
-        icon: Icons.cloud_sync_outlined,
-        title: l10n.backupAndRestore,
-        subtitle: l10n.backupAndRestoreSubtitle,
-        keywords: 'backup restore export import save cloud',
-        onTap: () => _push(const BackupScreen()),
-      ),
-      // Sources
-      _SettingsEntry(
-        section: SettingsSection.sources,
-        icon: Icons.dns_rounded,
-        title: l10n.providers,
-        subtitle: l10n.providersEnabledCount(enabledCount),
-        keywords:
-            'providers sources extensions plugins cloudstream aniyomi repository',
-        onTap: () async {
-          await _push(const SourcesScreen());
-          if (mounted) setState(() {});
-        },
       ),
       _SettingsEntry(
         section: SettingsSection.sources,
-        icon: Icons.low_priority_rounded,
-        title: 'Source Priority',
-        subtitle: 'Order Auto Resolve tries sources in',
-        keywords: 'source priority order auto resolve sweep anime movies tv',
-        onTap: () => _push(const SourcePriorityScreen()),
-      ),
-      _SettingsEntry(
-        section: SettingsSection.sources,
-        icon: Icons.health_and_safety_outlined,
-        title: l10n.sourceHealth,
-        subtitle: l10n.sourceHealthSubtitle,
-        keywords: 'source health test working dead status check',
-        onTap: () => _push(const SourceHealthScreen()),
-      ),
-      if (Platform.isAndroid) ...[
-        _SettingsEntry(
-          section: SettingsSection.sources,
-          icon: Icons.extension_outlined,
-          title: l10n.addCloudStreamRepository,
-          subtitle: l10n.installCloudStreamSources,
-          keywords: 'cloudstream repository repo install sources extensions',
-          onTap: _addCloudStreamRepo,
-        ),
-        _SettingsEntry(
-          section: SettingsSection.sources,
-          icon: Icons.update_rounded,
-          title: l10n.sourceUpdates,
-          subtitle: l10n.sourceUpdatesSubtitle,
-          keywords: 'source updates notify extensions upgrade',
-          trailing: Switch.adaptive(
-            value: sl<CloudStreamManager>().notifyUpdates,
-            activeThumbColor: AppColors.accent,
-            onChanged: (v) async {
-              await sl<CloudStreamManager>().setNotifyUpdates(v);
-              if (mounted) setState(() {});
-            },
-          ),
-        ),
-        _SettingsEntry(
-          section: SettingsSection.sources,
-          icon: Icons.autorenew_rounded,
-          title: l10n.autoUpdateExtensions,
-          subtitle: l10n.autoUpdateExtensionsSubtitle,
-          keywords:
-              'auto update extensions sources plugins automatic upgrade cloudstream aniyomi',
-          trailing: Switch.adaptive(
-            value: sl<PlaybackPrefs>().autoUpdateExtensions,
-            activeThumbColor: AppColors.accent,
-            onChanged: (v) async {
-              await sl<PlaybackPrefs>().setAutoUpdateExtensions(v);
-              if (mounted) setState(() {});
-            },
-          ),
-        ),
-      ],
-      // Playback & downloads
-      _SettingsEntry(
-        section: SettingsSection.playback,
-        id: LeafParent.playback,
-        icon: Icons.play_circle_outline,
-        title: l10n.playback,
-        subtitle: l10n.playbackSubtitle,
+        icon: Icons.autorenew_rounded,
+        title: l10n.autoUpdateExtensions,
+        subtitle: l10n.autoUpdateExtensionsSubtitle,
         keywords:
-            'playback quality autoplay speed player decoder audio subtitle resume gesture',
-        onTap: () => _push(const PlaybackSettingsScreen()),
-      ),
-      // Manga/novel reader — phone only. TV has no reading surface.
-      if (!_isTv)
-        _SettingsEntry(
-          section: SettingsSection.reading,
-          id: LeafParent.reader,
-          icon: Icons.menu_book_outlined,
-          title: l10n.reader,
-          subtitle: l10n.readerSubtitle,
-          keywords:
-              'reader manga novel reading defaults fit direction fontsize theme orientation preload',
-          onTap: () => _push(const ReaderSettingsScreen()),
+            'auto update extensions sources plugins automatic upgrade cloudstream aniyomi',
+        trailing: Switch.adaptive(
+          value: sl<PlaybackPrefs>().autoUpdateExtensions,
+          activeThumbColor: AppColors.accent,
+          onChanged: (v) async {
+            await sl<PlaybackPrefs>().setAutoUpdateExtensions(v);
+            if (mounted) setState(() {});
+          },
         ),
-      _SettingsEntry(
-        section: SettingsSection.history,
-        icon: Icons.history_rounded,
-        title: l10n.history,
-        subtitle: l10n.historySubtitle,
-        keywords: 'history watch watched continue recent resume',
-        onTap: () async {
-          await _push(const HistoryScreen());
-          if (mounted) setState(() {});
-        },
       ),
+    ],
+    // Playback & downloads
+    _SettingsEntry(
+      section: SettingsSection.playback,
+      id: LeafParent.playback,
+      icon: Icons.play_circle_outline,
+      title: l10n.playback,
+      subtitle: l10n.playbackSubtitle,
+      keywords:
+          'playback quality autoplay speed player decoder audio subtitle resume gesture',
+      onTap: () => _push(const PlaybackSettingsScreen()),
+    ),
+    // Manga/novel reader — phone only. TV has no reading surface.
+    if (!_isTv)
       _SettingsEntry(
-        section: SettingsSection.downloads,
-        id: LeafParent.downloads,
-        icon: Icons.download_outlined,
-        title: l10n.downloads,
-        subtitle: _isTv ? l10n.downloadsSubtitleTv : l10n.downloadsSubtitle,
-        keywords: 'downloads offline episodes save manage',
-        onTap: () => _push(const DownloadsScreen()),
-      ),
-      _SettingsEntry(
-        section: SettingsSection.downloads,
-        id: LeafParent.storage,
-        icon: Icons.sd_storage_outlined,
-        title: l10n.storage,
-        subtitle: l10n.storageSubtitle,
-        keywords: 'storage space cache clear disk usage',
-        onTap: () => _push(const StorageSettingsScreen()),
-      ),
-      _SettingsEntry(
-        section: SettingsSection.downloads,
-        icon: Icons.downloading_outlined,
-        title: l10n.torrents,
-        subtitle: l10n.torrentsSubtitle,
-        keywords: 'torrent magnet streaming seed data wifi',
-        onTap: () => _push(const TorrentSettingsScreen()),
-      ),
-      // Interface & notifications
-      _SettingsEntry(
-        section: SettingsSection.interface,
-        id: LeafParent.appearance,
-        icon: Icons.palette_outlined,
-        title: l10n.appearance,
-        subtitle: l10n.appearanceSubtitle,
+        section: SettingsSection.reading,
+        id: LeafParent.reader,
+        icon: Icons.menu_book_outlined,
+        title: l10n.reader,
+        subtitle: l10n.readerSubtitle,
         keywords:
-            'appearance accent colour color theme highlight personalise '
-            'quality badge poster 4k hd cam',
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _value(themeAccentLabel(l10n)),
-            const SizedBox(width: 10),
-            Container(
-              width: 20,
-              height: 20,
-              decoration: BoxDecoration(
-                color: AppColors.accent,
-                shape: BoxShape.circle,
-                border: Border.all(color: AppColors.hairline),
-              ),
+            'reader manga novel reading defaults fit direction fontsize theme orientation preload',
+        onTap: () => _push(const ReaderSettingsScreen()),
+      ),
+    _SettingsEntry(
+      section: SettingsSection.history,
+      icon: Icons.history_rounded,
+      title: l10n.history,
+      subtitle: l10n.historySubtitle,
+      keywords: 'history watch watched continue recent resume',
+      onTap: () async {
+        await _push(const HistoryScreen());
+        if (mounted) setState(() {});
+      },
+    ),
+    _SettingsEntry(
+      section: SettingsSection.downloads,
+      id: LeafParent.downloads,
+      icon: Icons.download_outlined,
+      title: l10n.downloads,
+      subtitle: _isTv ? l10n.downloadsSubtitleTv : l10n.downloadsSubtitle,
+      keywords: 'downloads offline episodes save manage',
+      onTap: () => _push(const DownloadsScreen()),
+    ),
+    _SettingsEntry(
+      section: SettingsSection.downloads,
+      id: LeafParent.storage,
+      icon: Icons.sd_storage_outlined,
+      title: l10n.storage,
+      subtitle: l10n.storageSubtitle,
+      keywords: 'storage space cache clear disk usage',
+      onTap: () => _push(const StorageSettingsScreen()),
+    ),
+    _SettingsEntry(
+      section: SettingsSection.downloads,
+      icon: Icons.downloading_outlined,
+      title: l10n.torrents,
+      subtitle: l10n.torrentsSubtitle,
+      keywords: 'torrent magnet streaming seed data wifi',
+      onTap: () => _push(const TorrentSettingsScreen()),
+    ),
+    // Interface & notifications
+    _SettingsEntry(
+      section: SettingsSection.interface,
+      id: LeafParent.appearance,
+      icon: Icons.palette_outlined,
+      title: l10n.appearance,
+      subtitle: l10n.appearanceSubtitle,
+      keywords:
+          'appearance accent colour color theme highlight personalise '
+          'quality badge poster 4k hd cam',
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _value(themeAccentLabel(l10n)),
+          const SizedBox(width: 10),
+          Container(
+            width: 20,
+            height: 20,
+            decoration: BoxDecoration(
+              color: AppColors.accent,
+              shape: BoxShape.circle,
+              border: Border.all(color: AppColors.hairline),
             ),
-          ],
-        ),
-        onTap: () => _push(const AppearanceScreen()),
-      ),
-      _SettingsEntry(
-        section: SettingsSection.interface,
-        icon: Icons.translate_rounded,
-        title: l10n.titleLanguage,
-        subtitle: l10n.titleLanguageSubtitle,
-        keywords: 'title language romaji english native japanese anilist name',
-        trailing: _value(_titleLanguageLabel(l10n)),
-        onTap: () async {
-          await _pickTitleLanguage();
-          if (mounted) setState(() {});
-        },
-      ),
-      // One row, both settings. Two rows opening the same sheet would lie about
-      // what each opens, and the sheet is the Home wordmark's too — sharing it
-      // is what keeps the two entry points from drifting apart.
-      _SettingsEntry(
-        section: SettingsSection.interface,
-        icon: Icons.hub_outlined,
-        title: l10n.metadata,
-        subtitle: _malNeedsLogin
-            ? l10n.malLoginForLists
-            : l10n.metadataSubtitle,
-        // Every keyword both rows carried, so searching any one provider still
-        // finds this.
-        keywords:
-            'anime manga novel metadata provider anilist mal myanimelist '
-            'movie tv series tmdb simkl fallback catalogue',
-        trailing: _value('${_animeProviderLabel()} · ${_videoProviderLabel()}'),
-        onTap: () => showMetadataSwitchSheet(context),
-      ),
-      _SettingsEntry(
-        section: SettingsSection.interface,
-        icon: Icons.language_rounded,
-        title: l10n.appLanguage,
-        subtitle: l10n.appLanguageSubtitle,
-        keywords: l10n.appLanguageKeywords,
-        trailing: _value(appLanguageValueLabel(context)),
-        onTap: () async {
-          if (_isTv) {
-            await pickAppLanguageTv(context);
-          } else {
-            await pickAppLanguagePhone(context);
-          }
-          if (mounted) setState(() {});
-        },
-      ),
-      if (!_isTv)
-        _SettingsEntry(
-          section: SettingsSection.interface,
-          icon: Icons.dashboard_customize_outlined,
-          title: l10n.navigationBar,
-          subtitle: l10n.navigationBarSubtitle,
-          keywords:
-              'navigation bar tabs dock bottom reorder hide downloads '
-              'history customise customize interface',
-          onTap: () => _push(const NavTabsScreen()),
-        ),
-      _SettingsEntry(
-        section: SettingsSection.interface,
-        icon: Icons.grid_view_rounded,
-        title: l10n.searchLayout,
-        subtitle: l10n.searchLayoutSubtitle,
-        keywords: 'search layout grid list results view interface',
-        trailing: _value(sl<SearchPrefs>().layout.localizedLabel(context)),
-        onTap: _pickSearchLayout,
-      ),
-      _SettingsEntry(
-        section: SettingsSection.interface,
-        icon: Icons.download_rounded,
-        title: l10n.batchDownloadStyle,
-        subtitle: l10n.batchDownloadStyleSubtitle,
-        keywords:
-            'batch download style sheet minimal classic wheel episodes multi',
-        trailing: _value(
-          sl<PlaybackPrefs>().batchDownloadStyle == 'minimal'
-              ? l10n.batchDownloadMinimal
-              : l10n.batchDownloadClassic,
-        ),
-        onTap: _pickBatchDownloadStyle,
-      ),
-      if (Platform.isAndroid)
-        _SettingsEntry(
-          section: SettingsSection.notifications,
-          icon: Icons.notifications_none_rounded,
-          title: l10n.notifications,
-          subtitle: l10n.notificationsSubtitle,
-          keywords: 'notifications alerts new episode subscribe airing',
-          onTap: () => _push(const SubscriptionsScreen()),
-        ),
-      // Advanced
-      if (Platform.isAndroid)
-        _SettingsEntry(
-          section: SettingsSection.advanced,
-          icon: Icons.vpn_lock_outlined,
-          title: l10n.dns,
-          subtitle: _isTv
-              ? (_dnsChoice == CsDns.off
-                    ? l10n.dnsOffTvSubtitle
-                    : CsDns.labelFor(_dnsChoice))
-              : l10n.dnsSubtitle,
-          keywords:
-              'dns cloudflare google adguard quad9 isp block bypass private',
-          trailing: _value(
-            _dnsChoice == CsDns.off ? l10n.off : CsDns.labelFor(_dnsChoice),
           ),
-          onTap: _pickDns,
-        ),
-      _SettingsEntry(
-        section: SettingsSection.advanced,
-        id: LeafParent.privacy,
-        icon: Icons.shield_outlined,
-        title: l10n.privacy,
-        subtitle: l10n.privacySubtitle,
-        keywords: 'privacy nsfw adult content hide 18',
-        onTap: () async {
-          await _push(const PrivacySettingsScreen());
-          if (mounted) setState(() {});
-        },
+        ],
       ),
+      onTap: () => _push(const AppearanceScreen()),
+    ),
+    _SettingsEntry(
+      section: SettingsSection.interface,
+      icon: Icons.translate_rounded,
+      title: l10n.titleLanguage,
+      subtitle: l10n.titleLanguageSubtitle,
+      keywords: 'title language romaji english native japanese anilist name',
+      trailing: _value(_titleLanguageLabel(l10n)),
+      onTap: () async {
+        await _pickTitleLanguage();
+        if (mounted) setState(() {});
+      },
+    ),
+    // One row, both settings. Two rows opening the same sheet would lie about
+    // what each opens, and the sheet is the Home wordmark's too — sharing it
+    // is what keeps the two entry points from drifting apart.
+    _SettingsEntry(
+      section: SettingsSection.interface,
+      icon: Icons.hub_outlined,
+      title: l10n.metadata,
+      subtitle: _malNeedsLogin ? l10n.malLoginForLists : l10n.metadataSubtitle,
+      // Every keyword both rows carried, so searching any one provider still
+      // finds this.
+      keywords:
+          'anime manga novel metadata provider anilist mal myanimelist '
+          'movie tv series tmdb simkl fallback catalogue',
+      trailing: _value('${_animeProviderLabel()} · ${_videoProviderLabel()}'),
+      onTap: () => showMetadataSwitchSheet(context),
+    ),
+    _SettingsEntry(
+      section: SettingsSection.interface,
+      icon: Icons.language_rounded,
+      title: l10n.appLanguage,
+      subtitle: l10n.appLanguageSubtitle,
+      keywords: l10n.appLanguageKeywords,
+      trailing: _value(appLanguageValueLabel(context)),
+      onTap: () async {
+        if (_isTv) {
+          await pickAppLanguageTv(context);
+        } else {
+          await pickAppLanguagePhone(context);
+        }
+        if (mounted) setState(() {});
+      },
+    ),
+    if (!_isTv)
       _SettingsEntry(
-        section: SettingsSection.advanced,
-        icon: Icons.bug_report_outlined,
-        title: l10n.shareLogs,
-        subtitle: l10n.shareLogsSubtitle,
-        keywords: 'logs share diagnostic debug bug report crash',
-        onTap: _sendLogReport,
-      ),
-      // About — a single destination holding the app info, contributors,
-      // social links, updates, beta toggle and support (so the section opens
-      // straight to it — no nested "About" sub-page).
-      _SettingsEntry(
-        section: SettingsSection.about,
-        icon: Icons.info_outline_rounded,
-        title: l10n.about,
-        subtitle: 'v$kAppVersion',
+        section: SettingsSection.interface,
+        icon: Icons.dashboard_customize_outlined,
+        title: l10n.navigationBar,
+        subtitle: l10n.navigationBarSubtitle,
         keywords:
-            'about version app info license developers credits team '
-            'contributors social discord telegram how it works guide '
-            'check updates upgrade latest beta prerelease support donate coffee',
-        onTap: () => _push(const AboutSettingsScreen()),
+            'navigation bar tabs dock bottom reorder hide downloads '
+            'history customise customize interface',
+        onTap: () => _push(const NavTabsScreen()),
       ),
-    ];
+    _SettingsEntry(
+      section: SettingsSection.interface,
+      icon: Icons.grid_view_rounded,
+      title: l10n.searchLayout,
+      subtitle: l10n.searchLayoutSubtitle,
+      keywords: 'search layout grid list results view interface',
+      trailing: _value(sl<SearchPrefs>().layout.localizedLabel(context)),
+      onTap: _pickSearchLayout,
+    ),
+    _SettingsEntry(
+      section: SettingsSection.interface,
+      icon: Icons.download_rounded,
+      title: l10n.batchDownloadStyle,
+      subtitle: l10n.batchDownloadStyleSubtitle,
+      keywords:
+          'batch download style sheet minimal classic wheel episodes multi',
+      trailing: _value(
+        sl<PlaybackPrefs>().batchDownloadStyle == 'minimal'
+            ? l10n.batchDownloadMinimal
+            : l10n.batchDownloadClassic,
+      ),
+      onTap: _pickBatchDownloadStyle,
+    ),
+    if (Platform.isAndroid)
+      _SettingsEntry(
+        section: SettingsSection.notifications,
+        icon: Icons.notifications_none_rounded,
+        title: l10n.notifications,
+        subtitle: l10n.notificationsSubtitle,
+        keywords: 'notifications alerts new episode subscribe airing',
+        onTap: () => _push(const SubscriptionsScreen()),
+      ),
+    // Advanced
+    if (Platform.isAndroid)
+      _SettingsEntry(
+        section: SettingsSection.advanced,
+        icon: Icons.vpn_lock_outlined,
+        title: l10n.dns,
+        subtitle: _isTv
+            ? (_dnsChoice == CsDns.off
+                  ? l10n.dnsOffTvSubtitle
+                  : CsDns.labelFor(_dnsChoice))
+            : l10n.dnsSubtitle,
+        keywords:
+            'dns cloudflare google adguard quad9 isp block bypass private',
+        trailing: _value(
+          _dnsChoice == CsDns.off ? l10n.off : CsDns.labelFor(_dnsChoice),
+        ),
+        onTap: _pickDns,
+      ),
+    _SettingsEntry(
+      section: SettingsSection.advanced,
+      id: LeafParent.privacy,
+      icon: Icons.shield_outlined,
+      title: l10n.privacy,
+      subtitle: l10n.privacySubtitle,
+      keywords: 'privacy nsfw adult content hide 18',
+      onTap: () async {
+        await _push(const PrivacySettingsScreen());
+        if (mounted) setState(() {});
+      },
+    ),
+    _SettingsEntry(
+      section: SettingsSection.advanced,
+      icon: Icons.bug_report_outlined,
+      title: l10n.shareLogs,
+      subtitle: l10n.shareLogsSubtitle,
+      keywords: 'logs share diagnostic debug bug report crash',
+      onTap: _sendLogReport,
+    ),
+    // About — a single destination holding the app info, contributors,
+    // social links, updates, beta toggle and support (so the section opens
+    // straight to it — no nested "About" sub-page).
+    _SettingsEntry(
+      section: SettingsSection.about,
+      icon: Icons.info_outline_rounded,
+      title: l10n.about,
+      subtitle: 'v$kAppVersion',
+      keywords:
+          'about version app info license developers credits team '
+          'contributors social discord telegram how it works guide '
+          'check updates upgrade latest beta prerelease support donate coffee',
+      onTap: () => _push(const AboutSettingsScreen()),
+    ),
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -1356,10 +1352,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       },
       child: Navigator(
         pages: [
-          MaterialPage<void>(
-            key: const ValueKey('settings-hub'),
-            child: hub,
-          ),
+          MaterialPage<void>(key: const ValueKey('settings-hub'), child: hub),
           for (final leaf in _tvLeaves)
             MaterialPage<void>(
               key: leaf.key,
