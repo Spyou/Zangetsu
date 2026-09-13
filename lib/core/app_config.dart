@@ -8,6 +8,7 @@ const String kAppName = 'Zangetsu';
 /// pre-boot fallback.
 String kAppVersion = '1.0.0';
 
+
 /// Stable application id embedded in default provider-repo manifests and
 /// checked by the repo guard so a manga-only (Sozo) repo can't be added.
 const String kAppId = 'watch_app';
@@ -18,7 +19,8 @@ const int kManifestSchemaVersion = 2;
 /// Community Discord invite. Lived in two places (the launch community sheet
 /// and Settings → About) and drifted — the sheet's copy went stale and expired.
 /// One const now, so refreshing the invite is a single edit here.
-const String kDiscordInviteUrl = 'https://discord.gg/938JJBn44';
+const String kDiscordInviteUrl = 'https://discord.gg/hey6vz9kg6';
+
 
 /// Developer announcements feed (a plain JSON file in the public app repo).
 /// The app READS this on launch to show in-app announcements — never writes.
