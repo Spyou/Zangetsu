@@ -196,6 +196,9 @@ class TvPlayerActivity : Activity() {
     private lateinit var btnAspectRatio: TextView
     private lateinit var btnMegaskip: TextView
     private lateinit var btnSpeed: TextView
+    // ±N s seek pills on the bottom row (Settings toggle + duration).
+    private lateinit var btnSeekBackward: TextView
+    private lateinit var btnSeekForward: TextView
     // MegaSkip jump size in seconds (read from the launch extras).
     private var megaSkipSecs = 85
     // Whether the AniSkip "Skip intro/ending" pill may show (Settings toggle).
@@ -2079,12 +2082,26 @@ class TvPlayerActivity : Activity() {
         btnAspectRatio = findViewById(R.id.btn_ratio)
         btnMegaskip = findViewById(R.id.btn_megaskip)
         btnSpeed = findViewById(R.id.btn_speed)
+        btnSeekBackward = findViewById(R.id.btn_seek_backward)
+        btnSeekForward = findViewById(R.id.btn_seek_forward)
         fillerBadge = findViewById(R.id.filler_badge)
         // MegaSkip pill: label + visibility from the megaSkip prefs (launch extras).
         megaSkipSecs = intent.getIntExtra(EXTRA_MEGASKIP_SECS, 85)
         btnMegaskip.text = "+${megaSkipSecs}s"
         btnMegaskip.visibility =
             if (intent.getBooleanExtra(EXTRA_MEGASKIP, true)) View.VISIBLE else View.GONE
+
+        // Seek ±N s pills — wired for D-pad focus highlight + OK (layout alone
+        // leaves them focusable but visually inert and with no click handler).
+        val seekSecs = (seekButtonDurationMs / 1000L).coerceAtLeast(1L)
+        val seekLabel = "${seekSecs}s"
+        btnSeekBackward.text = seekLabel
+        btnSeekForward.text = seekLabel
+        btnSeekBackward.contentDescription = "Seek back $seekLabel"
+        btnSeekForward.contentDescription = "Seek forward $seekLabel"
+        val seekVis = if (seekButtonsEnabled) View.VISIBLE else View.GONE
+        btnSeekBackward.visibility = seekVis
+        btnSeekForward.visibility = seekVis
 
         findViewById<TextView>(R.id.title).text = intent.getStringExtra(EXTRA_TITLE) ?: ""
         // episode_label / filler badge are set by updateEpisodeUi.
@@ -2123,7 +2140,18 @@ class TvPlayerActivity : Activity() {
             }
         })
 
-        for (b in listOf(btnEpisodes, btnQuality, btnSources, btnAudioSubs, btnNext, btnAspectRatio, btnMegaskip, btnSpeed)) {
+        for (b in listOf(
+            btnEpisodes,
+            btnQuality,
+            btnSources,
+            btnAudioSubs,
+            btnNext,
+            btnAspectRatio,
+            btnMegaskip,
+            btnSpeed,
+            btnSeekBackward,
+            btnSeekForward,
+        )) {
             // Focusable even in touch mode so requestFocus() works on emulators
             // (real TVs are always in D-pad/non-touch mode anyway).
             applyPillFocus(b, false)
@@ -2133,7 +2161,7 @@ class TvPlayerActivity : Activity() {
                     // Keep zone in sync for touch focus (D-pad uses enterZone).
                     focusZone = when (v.id) {
                         R.id.btn_quality, R.id.btn_sources, R.id.btn_audio_subs -> 1
-                        else -> 2 // episodes / next / megaskip / speed bottom row
+                        else -> 2 // episodes / seek / next / megaskip / speed bottom row
                     }
                     cancelAutoHide()
                 }
@@ -2148,6 +2176,8 @@ class TvPlayerActivity : Activity() {
         btnAudioSubs.bindSingleTapActivate { openAvMenu() }
         btnNext.bindSingleTapActivate { loadEpisode(nextAutoplayIndex()) }
         btnAspectRatio.bindSingleTapActivate { changeAspectRatio() }
+        btnSeekBackward.bindSingleTapActivate { seekBy(-seekButtonDurationMs) }
+        btnSeekForward.bindSingleTapActivate { seekBy(seekButtonDurationMs) }
         btnMegaskip.bindSingleTapActivate { seekBy(megaSkipSecs * 1000L) }
         btnSpeed.bindSingleTapActivate { openSpeedMenu() }
         updateSpeedPillLabel()
