@@ -23,6 +23,9 @@ plugins {
     id("org.jetbrains.kotlin.android") version "2.2.20" apply false
     // Firebase: reads android/app/google-services.json at build time.
     id("com.google.gms.google-services") version "4.4.2" apply false
+    // Crash reporting. Applied in app/build.gradle.kts only when
+    // google-services.json is present, same as google-services itself.
+    id("com.google.firebase.crashlytics") version "3.0.2" apply false
 }
 
 include(":app")

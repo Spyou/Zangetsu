@@ -158,7 +158,10 @@ class AppLogger {
   }
 
   /// Strip secrets so a shared log never leaks a session/token/key/email.
-  @visibleForTesting
+  ///
+  /// Public, not test-only: crash reports run error strings through it too.
+  /// Those routinely carry a source URL, and a token in a query string would
+  /// otherwise end up sitting in a third-party dashboard.
   static String redact(String s) {
     var out = s;
     out = out.replaceAll(

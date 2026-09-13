@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' show PlatformDispatcher;
 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart' show ValueListenable;
@@ -16,6 +17,7 @@ import 'core/di/injector.dart';
 import 'core/discord/discord_rpc.dart';
 import 'core/environment.dart';
 import 'core/logging/app_logger.dart';
+import 'core/logging/crash_reports.dart';
 import 'core/platform/apple_tv.dart';
 import 'core/notify/cs_notify.dart';
 import 'core/notify/notification_service.dart';
@@ -62,11 +64,19 @@ Future<void> main() async {
         if (message != null) AppLogger.instance.log(message);
         origDebugPrint(message, wrapWidth: wrapWidth);
       };
-      // Flutter framework errors → log + normal presentation.
+      // Flutter framework errors → log + crash report + normal presentation.
       final origOnError = FlutterError.onError;
       FlutterError.onError = (details) {
         AppLogger.instance.logError(details.exception, details.stack);
+        CrashReports.record(details.exception, details.stack);
         origOnError?.call(details);
+      };
+      // Errors from the engine that never reach a Dart zone — a failed
+      // platform-channel reply, for one. Without this they are invisible.
+      PlatformDispatcher.instance.onError = (error, stack) {
+        AppLogger.instance.logError(error, stack);
+        CrashReports.record(error, stack, fatal: true);
+        return true;
       };
       // Cap the in-memory image cache so a heavy source's posters + heroes can't
       // pile up and OOM-crash (default is 100 MB; libmpv adds a big native
@@ -87,6 +97,9 @@ Future<void> main() async {
       try {
         await Firebase.initializeApp().timeout(const Duration(seconds: 8));
         Analytics.enabled = true;
+        // After initializeApp, and only if it worked — a build with no
+        // google-services.json has no Firebase to report to.
+        await CrashReports.enable();
       } catch (e, st) {
         AppLogger.instance.logError(e, st);
       }
@@ -134,6 +147,7 @@ Future<void> main() async {
     },
     (error, stack) {
       AppLogger.instance.logError(error, stack);
+      CrashReports.record(error, stack, fatal: true);
     },
   );
 }

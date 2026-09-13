@@ -10,6 +10,7 @@ plugins {
     id("org.jetbrains.kotlin.plugin.serialization") version "2.2.20"
     // Applied at the bottom only when google-services.json is present (gitignored).
     id("com.google.gms.google-services") apply false
+    id("com.google.firebase.crashlytics") apply false
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
@@ -290,4 +291,8 @@ dependencies {
 // (Firebase console → Project settings → Android app) to turn Firebase on.
 if (file("google-services.json").exists()) {
     apply(plugin = "com.google.gms.google-services")
+    // Crashlytics only makes sense with a Firebase project behind it, so it
+    // rides the same condition — a fork without google-services.json still
+    // builds rather than failing on a missing plugin.
+    apply(plugin = "com.google.firebase.crashlytics")
 }
