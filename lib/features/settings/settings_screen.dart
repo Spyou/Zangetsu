@@ -970,7 +970,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         // The session may have lapsed (logged-in from cache only). Get a live
         // one first — otherwise every upsert silently no-ops ("Synced 0").
         final live = await ensureLiveSession(context);
-        if (!context.mounted) return;
+        if (!mounted) return;
         if (!live) {
           ScaffoldMessenger.of(
             context,
@@ -983,7 +983,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ..showSnackBar(SnackBar(content: Text(l10n.syncingLibraryToCloud)));
         final h = (await sl<WatchHistory>().pushAllLocalToCloud()).pushed;
         final l = (await sl<MyListStore>().pushAllLocalToCloud()).pushed;
-        if (!context.mounted) return;
+        if (!mounted) return;
         messenger
           ..clearSnackBars()
           ..showSnackBar(
