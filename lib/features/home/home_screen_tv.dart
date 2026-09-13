@@ -172,6 +172,7 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
     try {
       episodes = await sl<CatalogueRepository>().episodes(
         item.url,
+        category: category,
         sourceId: item.sourceId,
       );
     } catch (_) {

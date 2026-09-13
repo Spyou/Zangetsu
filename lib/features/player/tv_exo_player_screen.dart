@@ -31,7 +31,7 @@ import '../../core/playback/subtitle_search_service.dart';
 import '../../core/playback/title_prefs.dart';
 import '../../core/playback/tv_playback_tracker.dart';
 import '../../core/playback/tv_track_helpers.dart';
-import '../../core/repository/source_repository.dart';
+import '../../core/repository/catalogue_repository.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/torrent/torrent_prefs.dart';
 import '../../core/torrent/torrent_service.dart';
@@ -828,22 +828,34 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
 
   void _switchCategory(String cat) {
     if (cat == _category) return;
+    // Optimistic checkmark — don't wait for the async re-resolve or the Audio
+    // row keeps the previous tick (looked like Sub never selected).
+    final previous = _category;
+    setState(() => _category = cat);
     // Re-resolve the current episode under the new category, keeping position.
     final pos = _c?.position.value ?? 0;
     () async {
       final ep = _ep;
-      if (ep == null) return;
+      if (ep == null) {
+        if (mounted) setState(() => _category = previous);
+        return;
+      }
       try {
         // Two provider shapes: (1) the language is a URL segment (/sub/ ↔ /dub/)
         // — tvEpisodeUrl rewrites in place and the same list works; (2) separate
         // episode lists per language — the rewrite is a no-op, so re-fetch the
         // other list and swap it in (mirrors the phone's switchCategory).
+        //
+        // Must go through CatalogueRepository (not SourceRepository): Z Mode
+        // remembers the sub/dub cut on MetadataRepository when detail/episodes
+        // run, and sources() has no category arg — so a SourceRepository call
+        // left the cut on sub and Dub kept playing Japanese.
         final rewritten = tvEpisodeUrl(ep.url, cat);
         var epUrl = rewritten;
         var newEpisodes = _episodes;
         var newIndex = _index;
         if (rewritten == ep.url && widget.showUrl != null) {
-          final other = await sl<SourceRepository>().episodes(
+          final other = await sl<CatalogueRepository>().episodes(
             widget.showUrl!,
             category: cat,
             sourceId: widget.sourceId,
@@ -857,11 +869,13 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
         final sources = await widget.resolveSources(epUrl);
         final prefer = cat == 'dub' ? AudioKind.dub : AudioKind.sub;
         final src = pickDefault(sources, prefer: prefer);
-        if (src == null) return;
+        if (src == null) {
+          if (mounted) setState(() => _category = previous);
+          return;
+        }
         _sources = sources;
         _episodes = newEpisodes;
         _index = newIndex;
-        _category = cat;
         // Remember the choice for this title so the next open honours it.
         if (widget.showUrl != null) {
           sl<TitlePrefsStore>().setCategory(
@@ -872,7 +886,9 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
         }
         await _open(src, seekToMs: pos);
         if (mounted) setState(() {});
-      } catch (_) {}
+      } catch (_) {
+        if (mounted) setState(() => _category = previous);
+      }
     }();
   }
 

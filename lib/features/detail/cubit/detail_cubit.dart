@@ -13,6 +13,7 @@ import '../../../core/models/episode.dart';
 import '../../../core/models/media_detail.dart';
 import '../../../core/models/media_extras.dart';
 import '../../../core/models/provider_info.dart';
+import '../../../core/playback/playback_prefs.dart';
 import '../../../core/playback/title_prefs.dart';
 import '../../../core/repository/catalogue_repository.dart';
 import '../../../core/zmode/metadata_repository.dart';
@@ -132,12 +133,17 @@ class DetailCubit extends Cubit<DetailState> {
        _prefs = prefs ?? sl<TitlePrefsStore>(),
        // Seed the INITIAL category from the per-title remembered choice so the
        // Sub/Dub toggle reflects the saved value on the very first render (no
-       // flash from 'sub' → remembered). Falls back to 'sub' when unset.
+       // flash from 'sub' → remembered). Else Settings › Default audio, else
+       // 'sub'. Must match openPlayer's launchCategory so Z Mode's remembered
+       // cut (set on detail fetch) agrees with the player category — otherwise
+       // Default audio = Dub still resolved the sub list.
        super(
          DetailState(
            category:
                (prefs ?? sl<TitlePrefsStore>()).category(sourceId ?? '', url) ??
-               'sub',
+               (sl.isRegistered<PlaybackPrefs>()
+                   ? sl<PlaybackPrefs>().defaultCategory
+                   : 'sub'),
          ),
        ) {
     // Prefetch episode metadata using the MAL id we already know from the

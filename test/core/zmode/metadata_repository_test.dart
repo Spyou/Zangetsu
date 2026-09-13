@@ -435,42 +435,21 @@ void main() {
     );
   });
 
-  test('phone Sub/Dub switch updates the cut; TV-style SourceRepository does not',
-      () async {
-    // Phone PlayerCubit.switchCategory calls CatalogueRepository.episodes with
-    // the new category, which re-runs detail() and updates the remembered cut
-    // before resolveSources. TV ExoPlayer._switchCategory calls
-    // SourceRepository.episodes instead — that never touches MetadataRepository
-    // — so the next sources() call still resolves the previous cut. Symptom:
-    // pick Dub on TV, badge flips, audio stays Japanese.
+  test('Sub/Dub switch via CatalogueRepository.episodes updates the cut', () async {
+    // Phone PlayerCubit.switchCategory and TV (Exo + native) setCategory both
+    // call CatalogueRepository.episodes with the new category before
+    // resolveSources. That re-runs detail() and updates the remembered cut.
+    // Going through SourceRepository instead left the cut on sub — Dub badge,
+    // Japanese audio. Regression for that TV bug.
     kind = ZKind.anime;
     await repo.detail('zm://anime/mal:100', category: 'sub');
-
-    // Phone path.
     await repo.episodes('zm://anime/mal:100', category: 'dub');
     src.log.clear();
     await repo.sources('zm://anime/mal:100/ep/1', fast: true);
     expect(
       src.log,
       contains('episodes:https://src/fma:dub'),
-      reason: 'phone switch left the cut on sub',
-    );
-
-    // Back to sub, then the TV path: ask the underlying source directly
-    // (what TV does today) and resolve again.
-    await repo.detail('zm://anime/mal:100', category: 'sub');
-    await src.episodes(
-      'https://src/fma',
-      category: 'dub',
-      sourceId: 'allanime',
-    );
-    src.log.clear();
-    await repo.sources('zm://anime/mal:100/ep/1', fast: true);
-    expect(
-      src.log,
-      contains('episodes:https://src/fma:dub'),
-      reason: 'TV Sub/Dub switch left the remembered cut on sub — '
-          'resolveSources still fetched Japanese',
+      reason: 'Sub/Dub switch left the cut on sub',
     );
   });
 

@@ -596,6 +596,8 @@ class TvPlayerActivity : Activity() {
         fetchSources() // refresh the Server picker for the new episode/category
         bumpControls()
         switching = false // new media's buffering now drives the spinner
+        // Refresh Audio/Subs checkmarks for the newly loaded cut.
+        if (avMenuActive) rebuildAvMenuDeferred()
     }
 
     private fun subsFromMap(raw: Any?): List<MediaItem.SubtitleConfiguration>? {
@@ -846,9 +848,32 @@ class TvPlayerActivity : Activity() {
         switching = true
         loading.visibility = View.VISIBLE
         category = cat
-        // Remember this sub/dub choice for the title so the next launch opens in
-        // the same version (persisted Dart-side in TitlePrefsStore).
-        bridge.invokeMethod("setCategory", mapOf("category" to cat))
+        // Optimistic checkmark — menu used to stay on the previous pick until
+        // a full rebuild happened for another reason (looked like Sub never
+        // selected / Dub kept the tick).
+        lastFocusLabel = if (cat == "dub") "Dub" else "Sub"
+        if (avMenuActive) rebuildAvMenuDeferred()
+        // Persist cut, then resolve. Chaining avoids racing setCategory's
+        // episode-list refresh against resolveEpisode (opaque Sub/Dub urls).
+        bridge.invokeMethod(
+            "setCategory",
+            mapOf("category" to cat),
+            object : MethodChannel.Result {
+                override fun success(result: Any?) = resolveAfterCategory(cat)
+                override fun error(code: String, msg: String?, details: Any?) =
+                    resolveAfterCategory(cat)
+                override fun notImplemented() = resolveAfterCategory(cat)
+            },
+        )
+    }
+
+    private fun resolveAfterCategory(cat: String) {
+        val bridge = MainActivity.tvBridge ?: run {
+            switching = false
+            loading.visibility = View.GONE
+            toastFail()
+            return
+        }
         bridge.invokeMethod(
             "resolveEpisode",
             mapOf("index" to currentIndex, "category" to cat),
