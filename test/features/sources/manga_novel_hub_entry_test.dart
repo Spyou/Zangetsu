@@ -344,19 +344,18 @@ void main() {
 
         for (final t in const [
           'Providers',
-          'Active source',
           'Source health',
-          'Auto-update extensions',
         ]) {
           expect(find.text(t), findsOneWidget, reason: 'tile: $t');
         }
+        expect(find.text('Active source'), findsNothing);
+        // Auto-update extensions is Android-only (Platform.isAndroid).
+        expect(find.text('Auto-update extensions'), findsNothing);
 
         // The surviving entries keep their original relative order.
         final providersY = tester.getTopLeft(find.text('Providers')).dy;
-        final activeSourceY = tester.getTopLeft(find.text('Active source')).dy;
         final healthY = tester.getTopLeft(find.text('Source health')).dy;
-        expect(providersY, lessThan(activeSourceY));
-        expect(activeSourceY, lessThan(healthY));
+        expect(providersY, lessThan(healthY));
       },
     );
 

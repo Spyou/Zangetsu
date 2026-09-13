@@ -34,7 +34,6 @@ import '../../core/privacy/incognito_mode.dart';
 import '../../core/playback/search_prefs.dart';
 import '../../core/playback/subtitle_language.dart';
 import '../../core/aniyomi/aniyomi_provider.dart';
-import '../../core/mihon/mihon_manager.dart';
 import '../../core/provider/cloudstream_provider.dart';
 import '../../core/provider/cs_dns.dart';
 import '../../core/provider/provider_manager.dart';
@@ -47,14 +46,12 @@ import 'discord_settings_screen.dart';
 import 'torrent_settings_screen.dart';
 import '../../core/provider/provider_downloader.dart';
 import '../../core/provider/provider_registry.dart';
-import '../../core/repository/source_repository.dart';
 import '../../core/state/active_source_cubit.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/locale/app_language_picker.dart';
 import '../../l10n/l10n.dart';
 import '../home/metadata_switch_sheet.dart';
 import '../../l10n/ui_strings.dart';
-import '../../core/ui/source_switcher.dart';
 import '../../core/ui/subtitle_language_picker.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/update/update_service.dart';
@@ -74,7 +71,6 @@ import '../notify/subscriptions_screen.dart';
 import 'tracker_settings_screen.dart';
 import '../sources/source_health_screen.dart';
 import '../sources/sources_screen.dart';
-import '../sources/zangetsu_sources_screen.dart';
 import 'source_priority_screen.dart';
 import 'player_controls_screen.dart';
 import 'connections_screen_tv.dart';
@@ -148,8 +144,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.dispose();
   }
 
-  ActiveSourceCubit get _active => context.read<ActiveSourceCubit>();
-
   ProviderRegistry get _registry => sl<ProviderRegistry>();
 
   CloudStreamManager get _csManager => sl<CloudStreamManager>();
@@ -197,7 +191,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// TV multi-item section list — same Material page push/pop as Playback.
   Widget _tvSectionPage(BuildContext context, String section) {
     final enabledCount = _registry.getAll().where((e) => e.enabled).length;
-    final activeId = context.watch<ActiveSourceCubit>().state;
     final connectedCount = <Tracker>[
       sl<AniListService>(),
       sl<MalService>(),
@@ -206,7 +199,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final items = _buildSettingsEntries(
       l10n: context.l10n,
       enabledCount: enabledCount,
-      activeId: activeId,
       connectedCount: connectedCount,
     ).where((e) => e.section == section).toList();
 
@@ -635,48 +627,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (mounted) setState(() {});
   }
 
-  String _activeLabel(String activeId) {
-    // Tagged, because this line names a source with nothing around it: two
-    // ecosystems ship an AniKoto, and "Active source — AniKoto" cannot say
-    // which of them you are actually on.
-    final tag = SourceRepository.ecosystemTag(activeId);
-    String tagged(String name) => tag == null ? name : '$tag · $name';
-    if (activeId.startsWith('cs:')) {
-      return tagged(_csManager.get(activeId)?.displayName ?? activeId);
-    }
-    if (activeId.startsWith('ani:')) {
-      return tagged(
-        sl<AniyomiManager>().get(activeId)?.displayName ?? activeId,
-      );
-    }
-    if (activeId.startsWith('mihon:')) {
-      return tagged(sl<MihonManager>().get(activeId)?.displayName ?? activeId);
-    }
-    final entry = _registry.entryFor(activeId);
-    if (entry == null) return activeId;
-    return entry.displayName.isNotEmpty ? entry.displayName : entry.name;
-  }
-
-  /// Opens the SAME source picker as the Home header (tabbed anime/movies with
-  /// CS·/Ani· labels + repo tags) and applies the chosen source. Reuses
-  /// [SourceSwitcher.showPicker] so Settings and Home stay in sync.
-  void _pickActiveSource() {
-    SourceSwitcher(
-      currentId: _active.state,
-      onChanged: (id) {
-        if (id != _active.state) {
-          _active.setSource(id);
-          if (mounted) setState(() {});
-        }
-      },
-      onInstallSources: () => Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (_) => const ZangetsuSourcesScreen(openToRepos: true),
-        ),
-      ),
-    ).showPicker(context);
-  }
-
   /// Prompts for a CloudStream repo URL, installs it via the native channel,
   /// and reports how many sources are now available. Android-only.
   Future<void> _addCloudStreamRepo() async {
@@ -958,7 +908,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   List<_SettingsEntry> _buildSettingsEntries({
     required AppLocalizations l10n,
     required int enabledCount,
-    required String activeId,
     required int connectedCount,
   }) => [
       // Account & sync
@@ -1070,27 +1019,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
           await _push(const SourcesScreen());
           if (mounted) setState(() {});
         },
-      ),
-      _SettingsEntry(
-        section: SettingsSection.sources,
-        icon: Icons.swap_horiz_rounded,
-        title: l10n.activeSource,
-        subtitle: _activeLabel(activeId),
-        keywords: 'active source default provider switch',
-        // The one coral accent here: an "active" dot before the chevron.
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: const [
-            _AccentDot(),
-            SizedBox(width: 10),
-            Icon(
-              Icons.chevron_right_rounded,
-              color: AppColors.textTertiary,
-              size: 20,
-            ),
-          ],
-        ),
-        onTap: _pickActiveSource,
       ),
       _SettingsEntry(
         section: SettingsSection.sources,
@@ -1383,7 +1311,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final enabledCount = _registry.getAll().where((e) => e.enabled).length;
-    final activeId = context.watch<ActiveSourceCubit>().state;
     final l10n = context.l10n;
     final connectedCount = <Tracker>[
       sl<AniListService>(),
@@ -1395,7 +1322,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final entries = _buildSettingsEntries(
       l10n: l10n,
       enabledCount: enabledCount,
-      activeId: activeId,
       connectedCount: connectedCount,
     );
 
@@ -1777,18 +1703,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
   }
-}
-
-/// The 6px coral "active source" dot.
-class _AccentDot extends StatelessWidget {
-  const _AccentDot();
-
-  @override
-  Widget build(BuildContext context) => Container(
-    width: 6,
-    height: 6,
-    decoration: BoxDecoration(color: AppColors.accent, shape: BoxShape.circle),
-  );
 }
 
 /// A TV leaf route stacked on the nested Settings navigator, with a [done]
