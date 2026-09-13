@@ -292,6 +292,13 @@ class ProviderRegistry {
       displayName: displayName,
     );
     await _box.put(providerKey(resolvedRepo, sourceId), entry.toJson());
+    // Logged because installing was previously silent: a shared log showed the
+    // source count jump from 0 to 58 with nothing to explain it, which reads
+    // like a boot bug rather than someone restoring a backup. A restore comes
+    // through here too, one line per provider.
+    debugPrint(
+      '[ProviderRegistry] installed $sourceId v$version from $resolvedRepo',
+    );
     // [force] bypasses the JS cache (and busts the CDN edge) so an Update
     // actually pulls the new code; a fresh install has nothing cached anyway.
     await _loadEntryIntoRuntime(entry, force: force);

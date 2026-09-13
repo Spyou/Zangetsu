@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 import 'backup_payload.dart';
 import 'sources_backup.dart';
 import 'library_backup.dart';
@@ -39,6 +41,13 @@ class BackupService {
         case BackupBundle.settings: await _settings.merge(d); restored.add(b);
       }
     }
+    // A restore rewrites sources, library and settings at once. Unlogged, the
+    // result looks like the app spontaneously changing state — which is how it
+    // read in a shared log until the bundles were named here.
+    debugPrint(
+      '[backup] restore · ${restored.map((b) => b.name).join(", ")} '
+      '· ${failures.length} failed',
+    );
     return RestoreReport(restored: restored, failures: failures);
   }
 }
