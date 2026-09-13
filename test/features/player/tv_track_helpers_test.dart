@@ -13,6 +13,46 @@ void main() {
     });
   });
 
+  group('episodeUrlAfterCategorySwitch', () {
+    // Regression: TV Audio menu Sub/Dub. Opaque episode urls (AniKoto etc.)
+    // don't rewrite — without the other cut's list, picking Sub while on Dub
+    // keeps resolving the Dub episode (wrong audio + stale checkmark race).
+    test('opaque url without other list stays on the wrong cut', () {
+      expect(categorySwitchNeedsEpisodeRefetch('https://anikoto/data/DUB', 'sub'), isTrue);
+      expect(
+        episodeUrlAfterCategorySwitch(
+          currentUrl: 'https://anikoto/data/DUB',
+          category: 'sub',
+          index: 0,
+        ),
+        'https://anikoto/data/DUB',
+      );
+    });
+    test('opaque url with other list swaps to that cut', () {
+      expect(
+        episodeUrlAfterCategorySwitch(
+          currentUrl: 'https://anikoto/data/DUB',
+          category: 'sub',
+          index: 0,
+          otherCategoryUrls: const ['https://anikoto/data/SUB'],
+        ),
+        'https://anikoto/data/SUB',
+      );
+    });
+    test('rewriteable url does not need the other list', () {
+      expect(categorySwitchNeedsEpisodeRefetch('https://x/anime/dub/1', 'sub'), isFalse);
+      expect(
+        episodeUrlAfterCategorySwitch(
+          currentUrl: 'https://x/anime/dub/1',
+          category: 'sub',
+          index: 0,
+          otherCategoryUrls: const ['https://ignored'],
+        ),
+        'https://x/anime/sub/1',
+      );
+    });
+  });
+
   group('subtitleMime', () {
     test('by format', () {
       expect(subtitleMime('vtt'), 'text/vtt');

@@ -81,8 +81,9 @@ class _AniScreenTvViewState extends State<_AniScreenTvView> {
                 ],
               ),
             ),
+            // Tabs and search on separate rows — see zangetsu_sources_screen_tv.
             Padding(
-              padding: const EdgeInsets.fromLTRB(40, 0, 40, 16),
+              padding: const EdgeInsets.fromLTRB(40, 0, 40, 12),
               child: Row(
                 children: [
                   _AniTvTabChip(
@@ -97,17 +98,7 @@ class _AniScreenTvViewState extends State<_AniScreenTvView> {
                     selected: _tab == 1,
                     onTap: () => setState(() => _tab = 1),
                   ),
-                  const SizedBox(width: 20),
-                  Expanded(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 340),
-                      child: SourcesSearchField(
-                        controller: _searchCtrl,
-                        onChanged: (q) => setState(() => _query = q),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
+                  const Spacer(),
                   TvFocusable(
                     scale: 1.04,
                     onTap: () => showSourceLanguageSheetTv(
@@ -133,59 +124,65 @@ class _AniScreenTvViewState extends State<_AniScreenTvView> {
                 ],
               ),
             ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(40, 0, 40, 16),
+              child: SourcesSearchField(
+                controller: _searchCtrl,
+                onChanged: (q) => setState(() => _query = q),
+              ),
+            ),
+            // Add-repo above the list — see zangetsu_sources_screen_tv.
+            if (_tab == 1)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(40, 0, 40, 12),
+                child: TvListFocusable(
+                  onTap: widget.onAddRepo,
+                  semanticLabel: context.l10n.addAniyomiRepo,
+                  child: ExcludeSemantics(
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 14,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.surface,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.add,
+                            color: AppColors.accent,
+                            size: 18,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            context.l10n.addAniyomiRepo,
+                            style: AppText.headline.copyWith(
+                              color: AppColors.accent,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             Expanded(
               child: ListView(
                 clipBehavior: Clip.none,
                 padding: const EdgeInsets.fromLTRB(40, 0, 40, 48),
-                children: _tab == 0
-                    ? [
-                        // ── Installed ────────────────────────────────
-                        _AniScreenTvInstalledContent(query: _query),
-                      ]
-                    : [
-                        // ── Repositories ─────────────────────────────
-                        _AniScreenTvContent(
-                          repoUrls: widget.repoUrls,
-                          onRemoveRepo: widget.onRemoveRepo,
-                          query: _query,
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.only(top: 8),
-                          child: TvListFocusable(
-                            onTap: widget.onAddRepo,
-                            semanticLabel: context.l10n.addAniyomiRepo,
-                            child: ExcludeSemantics(
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 20,
-                                  vertical: 14,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: AppColors.surface,
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(
-                                      Icons.add,
-                                      color: AppColors.accent,
-                                      size: 18,
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      context.l10n.addAniyomiRepo,
-                                      style: AppText.headline.copyWith(
-                                        color: AppColors.accent,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
+                children: [
+                  if (_tab == 0)
+                    _AniScreenTvInstalledContent(query: _query)
+                  else
+                    _AniScreenTvContent(
+                      repoUrls: widget.repoUrls,
+                      onRemoveRepo: widget.onRemoveRepo,
+                      query: _query,
+                    ),
+                ],
               ),
             ),
           ],

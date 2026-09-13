@@ -19,10 +19,13 @@ typedef EpisodeMeta = ({
 
 /// Per-episode title / synopsis / still / rating / runtime for the episode list.
 /// Best-effort: every method returns an empty map on any error/timeout and
-/// never throws. Anime uses AniZip (by MAL id — a separate API, unaffected by
-/// AniList throttling); movie-source TV series use one TMDB season call.
-/// Results are cached in memory for the session AND on disk (Hive) so a
-/// re-opened title fills in instantly instead of popping in again.
+/// never throws. Anime uses AniZip (by MAL id) for titles/synopses, then
+/// backfills missing stills from TMDB via AniZip's `themoviedb_id` mapping —
+/// AniZip only ships images for early episodes on long shows, which is why
+/// range chips past 1–50 used to show the show poster. Movie-source TV series
+/// use one TMDB season call. Results are cached in memory for the session AND
+/// on disk (Hive) so a re-opened title fills in instantly instead of popping
+/// in again.
 class EpisodeMetadataService {
   EpisodeMetadataService(this._dio);
 
@@ -53,7 +56,11 @@ class EpisodeMetadataService {
 
   Future<Map<int, EpisodeMeta>> _fetchAnime(int malId) async {
     final disk = await _readDisk('a:$malId');
-    if (disk != null) return _animeCache[malId] = parseAniZip(disk);
+    if (disk != null) {
+      final parsed = parseAniZip(disk);
+      final filled = await _backfillStillsFromTmdb(parsed, parseAniZipTmdbId(disk));
+      return _animeCache[malId] = filled;
+    }
     try {
       final res = await _dio
           .get<dynamic>(
@@ -63,9 +70,94 @@ class EpisodeMetadataService {
           .timeout(const Duration(seconds: 6));
       final out = parseAniZip(res.data);
       if (out.isNotEmpty) await _writeDisk('a:$malId', res.data);
-      return _animeCache[malId] = out;
+      final filled = await _backfillStillsFromTmdb(out, parseAniZipTmdbId(res.data));
+      return _animeCache[malId] = filled;
     } catch (_) {
       return const {};
+    }
+  }
+
+  /// AniZip only attaches stills to early episodes on long shows (Shippuden:
+  /// 1–32). Later range chips then fall back to the show poster. AniZip's
+  /// `mappings.themoviedb_id` points at the same title on TMDB, which has
+  /// per-episode stills across every season — fill the gaps from there.
+  Future<Map<int, EpisodeMeta>> _backfillStillsFromTmdb(
+    Map<int, EpisodeMeta> base,
+    int? tmdbId,
+  ) async {
+    if (tmdbId == null || base.isEmpty) return base;
+    if (base.values.every((m) => m.image != null && m.image!.isNotEmpty)) {
+      return base;
+    }
+    try {
+      final res = await _dio
+          .get<dynamic>(
+            '$_tmdbBase/tv/$tmdbId',
+            options: Options(validateStatus: (s) => s != null && s < 500),
+          )
+          .timeout(const Duration(seconds: 6));
+      final seasons = (res.data is Map) ? res.data['seasons'] : null;
+      if (seasons is! List || seasons.isEmpty) return base;
+
+      final seasonInfos = <({int number, int count})>[
+        for (final s in seasons)
+          if (s is Map)
+            (
+              number: (s['season_number'] as num?)?.toInt() ?? 0,
+              count: (s['episode_count'] as num?)?.toInt() ?? 0,
+            ),
+      ].where((s) => s.number >= 1 && s.count > 0).toList();
+      if (seasonInfos.isEmpty) return base;
+
+      // Parallel season fetches — each is disk/memory cached by [tvEpisodeMeta].
+      final seasonMaps = await Future.wait([
+        for (final s in seasonInfos) tvEpisodeMeta(tmdbId, s.number),
+      ]);
+
+      final out = Map<int, EpisodeMeta>.from(base);
+      var absoluteBase = 0;
+      for (var i = 0; i < seasonInfos.length; i++) {
+        final info = seasonInfos[i];
+        final seasonMeta = seasonMaps[i];
+        if (seasonMeta.isNotEmpty) {
+          final nums = seasonMeta.keys.toList()..sort();
+          for (final entry in seasonMeta.entries) {
+            final abs = absoluteEpisodeNumber(
+              seasonEpisodeNumber: entry.key,
+              seasonEpisodeCount: info.count,
+              absoluteBase: absoluteBase,
+              minNumInSeason: nums.first,
+              maxNumInSeason: nums.last,
+            );
+            final still = entry.value.image;
+            if (still == null || still.isEmpty) continue;
+            final existing = out[abs];
+            if (existing == null) {
+              out[abs] = (
+                title: entry.value.title,
+                overview: entry.value.overview,
+                image: still,
+                rating: entry.value.rating,
+                runtime: entry.value.runtime,
+                airDate: entry.value.airDate,
+              );
+            } else if (existing.image == null || existing.image!.isEmpty) {
+              out[abs] = (
+                title: existing.title,
+                overview: existing.overview,
+                image: still,
+                rating: existing.rating,
+                runtime: existing.runtime,
+                airDate: existing.airDate,
+              );
+            }
+          }
+        }
+        absoluteBase += info.count;
+      }
+      return out;
+    } catch (_) {
+      return base;
     }
   }
 
@@ -162,8 +254,12 @@ class EpisodeMetadataService {
     } catch (_) {/* cache is optional */}
   }
 
-  /// AniZip: `{ episodes: { "1": { title{en}, overview, image, rating,
-  /// runtime, airDate }, ... } }`.
+  /// AniZip: `{ episodes: { "1": { title{en}, overview|summary, image, rating,
+  /// runtime|length, airDate }, ... } }`. Long shows often omit `overview`
+  /// after the early episodes and only ship `summary` (Shippuden: 1–32 have
+  /// overview; 33–500 are summary-only) — read both so later range chips
+  /// still get descriptions. Stills are similarly sparse; [parseAniZipTmdbId]
+  /// + TMDB season fetches fill those in [_backfillStillsFromTmdb].
   static Map<int, EpisodeMeta> parseAniZip(Object? data) {
     final out = <int, EpisodeMeta>{};
     if (data is Map && data['episodes'] is Map) {
@@ -172,16 +268,47 @@ class EpisodeMetadataService {
         if (n == null || v is! Map) return;
         final meta = _meta(
           title: _aniZipTitle(v['title']),
-          overview: v['overview'],
+          overview: v['overview'] ?? v['summary'],
           image: v['image'],
           rating: v['rating'],
-          runtime: v['runtime'],
+          runtime: v['runtime'] ?? v['length'],
           airDate: v['airDate'] ?? v['airdate'],
         );
         if (meta != null) out[n] = meta;
       });
     }
     return out;
+  }
+
+  /// `mappings.themoviedb_id` from an AniZip mappings payload, or null.
+  static int? parseAniZipTmdbId(Object? data) {
+    if (data is! Map) return null;
+    final mappings = data['mappings'];
+    if (mappings is! Map) return null;
+    final id = mappings['themoviedb_id'];
+    if (id is num) return id.toInt();
+    return int.tryParse('$id');
+  }
+
+  /// Map a TMDB season's episode_number onto the absolute episode index AniZip
+  /// / our list use.
+  ///
+  /// Some titles (Shippuden) number continuously across seasons (S2 starts at
+  /// 33); others (Attack on Titan) restart at 1 each season. Detect continuous
+  /// numbering when the season's min is > 1 or its max exceeds that season's
+  /// episode count; otherwise offset by [absoluteBase].
+  static int absoluteEpisodeNumber({
+    required int seasonEpisodeNumber,
+    required int seasonEpisodeCount,
+    required int absoluteBase,
+    required int minNumInSeason,
+    required int maxNumInSeason,
+  }) {
+    final usesAbsolute =
+        minNumInSeason > 1 || maxNumInSeason > seasonEpisodeCount;
+    return usesAbsolute
+        ? seasonEpisodeNumber
+        : absoluteBase + seasonEpisodeNumber;
   }
 
   /// TMDB season: `{ episodes: [ { episode_number, name, overview, still_path,

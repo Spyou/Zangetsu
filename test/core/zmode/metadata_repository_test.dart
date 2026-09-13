@@ -102,7 +102,7 @@ class _Src implements SourceRepository {
   }
   @override
   Future<List<Episode>> episodes(String url, {String category = 'sub', String? sourceId}) async {
-    log.add('episodes:$url');
+    log.add('episodes:$url:$category');
     return _eps;
   }
 
@@ -281,7 +281,10 @@ void main() {
   test('sources() resolves the show then plays the same-numbered episode', () async {
     kind = ZKind.anime;
     await repo.sources('zm://anime/mal:100/ep/2', fast: true);
-    expect(src.log, ['episodes:https://src/fma', 'sources:https://src/fma/2:allanime']);
+    expect(src.log, [
+      'episodes:https://src/fma:sub',
+      'sources:https://src/fma/2:allanime',
+    ]);
   });
 
   test('a named source is the one asked, not the remembered winner', () async {
@@ -413,6 +416,40 @@ void main() {
       src.log.where((l) => l.startsWith('detail:')),
       contains(endsWith(':dub')),
       reason: 'the source was asked for sub',
+    );
+  });
+
+  test('sources() uses the cut Detail last showed', () async {
+    // zm:// episode urls carry no sub/dub. CatalogueRepository.sources has no
+    // category arg either, so the cut is remembered when Detail fetches it and
+    // sources() reuses that. Without this, Default audio / a Dub badge can
+    // resolve the sub list and still play Japanese.
+    kind = ZKind.anime;
+    await repo.detail('zm://anime/mal:100', category: 'dub');
+    src.log.clear();
+    await repo.sources('zm://anime/mal:100/ep/1', fast: true);
+    expect(
+      src.log,
+      contains('episodes:https://src/fma:dub'),
+      reason: 'sources() ignored the dub cut Detail remembered',
+    );
+  });
+
+  test('Sub/Dub switch via CatalogueRepository.episodes updates the cut', () async {
+    // Phone PlayerCubit.switchCategory and TV (Exo + native) setCategory both
+    // call CatalogueRepository.episodes with the new category before
+    // resolveSources. That re-runs detail() and updates the remembered cut.
+    // Going through SourceRepository instead left the cut on sub — Dub badge,
+    // Japanese audio. Regression for that TV bug.
+    kind = ZKind.anime;
+    await repo.detail('zm://anime/mal:100', category: 'sub');
+    await repo.episodes('zm://anime/mal:100', category: 'dub');
+    src.log.clear();
+    await repo.sources('zm://anime/mal:100/ep/1', fast: true);
+    expect(
+      src.log,
+      contains('episodes:https://src/fma:dub'),
+      reason: 'Sub/Dub switch left the cut on sub',
     );
   });
 
@@ -617,9 +654,10 @@ void main() {
       ),
     );
     final d = await r.detail('zm://anime/mal:100');
-    // Display comes from the source ("Ep 0" — its own numbering, kept in the
-    // title); id/url/number are rewritten to the canonical position so a
-    // source that starts at 0, or restarts per season, still scrobbles right.
+    // Display keeps a real source title ("Ep 0"); id/url/number are rewritten
+    // to the canonical position so a source that starts at 0, or restarts per
+    // season, still scrobbles right. Generic "Episode N" source stubs do NOT
+    // overwrite catalogue/AniZip names (see carryEpisodeDisplayMeta).
     expect(d.episodes[0].title, 'Ep 0');
     expect(d.episodes[0].number, 1);
     expect(d.episodes[0].url, 'zm://anime/mal:100/ep/1');
@@ -662,7 +700,7 @@ void main() {
     src.log.clear();
     await r.sources('zm://anime/mal:100/ep/2');
     expect(gqlCalls, 0);
-    expect(src.log, ['episodes:https://src/fma', 'sources:https://src/fma/2:allanime']);
+    expect(src.log, ['episodes:https://src/fma:sub', 'sources:https://src/fma/2:allanime']);
   });
 }
 

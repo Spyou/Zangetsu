@@ -103,8 +103,9 @@ class _CsTvViewState extends State<_CsTvView> {
                 ],
               ),
             ),
+            // Tabs and search on separate rows — see zangetsu_sources_screen_tv.
             Padding(
-              padding: const EdgeInsets.fromLTRB(40, 0, 40, 16),
+              padding: const EdgeInsets.fromLTRB(40, 0, 40, 12),
               child: Row(
                 children: [
                   _CsTvTabChip(
@@ -119,68 +120,64 @@ class _CsTvViewState extends State<_CsTvView> {
                     selected: _tab == 1,
                     onTap: () => setState(() => _tab = 1),
                   ),
-                  const SizedBox(width: 20),
-                  Expanded(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 340),
-                      child: SourcesSearchField(
-                        controller: _searchCtrl,
-                        onChanged: (q) => setState(() => _query = q),
-                      ),
-                    ),
-                  ),
                 ],
               ),
             ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(40, 0, 40, 16),
+              child: SourcesSearchField(
+                controller: _searchCtrl,
+                onChanged: (q) => setState(() => _query = q),
+              ),
+            ),
+            // Add-repo above the list — see zangetsu_sources_screen_tv.
+            if (_tab == 1)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(40, 0, 40, 12),
+                child: TvListFocusable(
+                  onTap: _showAddCsRepoDialog,
+                  semanticLabel: context.l10n.addCSRepo,
+                  child: ExcludeSemantics(
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 14,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.surface,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.add,
+                            color: AppColors.accent,
+                            size: 18,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            context.l10n.addCSRepo,
+                            style: AppText.headline.copyWith(
+                              color: AppColors.accent,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             Expanded(
               child: ListView(
                 clipBehavior: Clip.none,
                 padding: const EdgeInsets.fromLTRB(40, 0, 40, 48),
-                children: _tab == 0
-                    ? [
-                        // ── Installed ────────────────────────────────
-                        _CsScreenTvInstalledContent(query: _query),
-                      ]
-                    : [
-                        // ── Repositories ─────────────────────────────
-                        _CsScreenTvReposContent(query: _query),
-                        Padding(
-                          padding: const EdgeInsets.only(top: 8),
-                          child: TvListFocusable(
-                            onTap: _showAddCsRepoDialog,
-                            semanticLabel: context.l10n.addCSRepo,
-                            child: ExcludeSemantics(
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 20,
-                                  vertical: 14,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: AppColors.surface,
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(
-                                      Icons.add,
-                                      color: AppColors.accent,
-                                      size: 18,
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      context.l10n.addCSRepo,
-                                      style: AppText.headline.copyWith(
-                                        color: AppColors.accent,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
+                children: [
+                  if (_tab == 0)
+                    _CsScreenTvInstalledContent(query: _query)
+                  else
+                    _CsScreenTvReposContent(query: _query),
+                ],
               ),
             ),
           ],
@@ -723,121 +720,132 @@ class _CsScreenTvRepoSectionState extends State<_CsScreenTvRepoSection> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // ── Repo header row ─────────────────────────────────────────────
+          // Full-width expand target — see zangetsu_sources_screen_tv.
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
-            child: Wrap(
-              crossAxisAlignment: WrapCrossAlignment.center,
-              spacing: 8,
-              runSpacing: 8,
+            padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // Expand/collapse toggle.
                 TvListFocusable(
                   onTap: () => setState(() => _expanded = !_expanded),
                   semanticLabel: '$title, $subtitle',
                   child: ExcludeSemantics(
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        AnimatedRotation(
-                          turns: _expanded ? 0 : -0.25,
-                          duration: const Duration(milliseconds: 200),
-                          child: const Icon(
-                            Icons.expand_more,
-                            color: AppColors.textSecondary,
-                            size: 22,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
+                      child: Row(
+                        children: [
+                          AnimatedRotation(
+                            turns: _expanded ? 0 : -0.25,
+                            duration: const Duration(milliseconds: 200),
+                            child: const Icon(
+                              Icons.expand_more,
+                              color: AppColors.textSecondary,
+                              size: 22,
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 6),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              title,
-                              style: AppText.headline,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  title,
+                                  style: AppText.headline,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  subtitle,
+                                  style: AppText.caption.copyWith(
+                                    color: AppColors.textTertiary,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
                             ),
-                            const SizedBox(height: 2),
-                            Text(
-                              subtitle,
-                              style: AppText.caption.copyWith(
-                                color: AppColors.textTertiary,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                        ),
-                      ],
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
-                // Update pill — apply all updates for this repo.
-                if (updates.isNotEmpty)
-                  TvListFocusable(
-                    onTap: _applyUpdates,
-                    semanticLabel:
-                        '$title, apply ${updates.length == 1 ? context.l10n.oneUpdate : '${updates.length} updates'}',
-                    child: ExcludeSemantics(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 5,
-                        ),
-                        decoration: BoxDecoration(
-                          color: AppColors.accent.withValues(alpha: 0.16),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text(
-                          updates.length == 1
-                              ? context.l10n.oneUpdate
-                              : '${updates.length} updates',
-                          style: AppText.caption.copyWith(
-                            color: AppColors.accent,
-                            fontWeight: FontWeight.w600,
+                if (!isOther || updates.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(4, 0, 4, 4),
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      children: [
+                        if (updates.isNotEmpty)
+                          TvListFocusable(
+                            onTap: _applyUpdates,
+                            semanticLabel:
+                                '$title, apply ${updates.length == 1 ? context.l10n.oneUpdate : '${updates.length} updates'}',
+                            child: ExcludeSemantics(
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 5,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: AppColors.accent.withValues(
+                                    alpha: 0.16,
+                                  ),
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Text(
+                                  updates.length == 1
+                                      ? context.l10n.oneUpdate
+                                      : '${updates.length} updates',
+                                  style: AppText.caption.copyWith(
+                                    color: AppColors.accent,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ),
                           ),
-                        ),
-                      ),
-                    ),
-                  ),
-                // context.l10n.checkUpdates — real repos only (no synthetic Other group).
-                if (group.url.isNotEmpty)
-                  TvListFocusable(
-                    onTap: _checkUpdates,
-                    semanticLabel: '$title, check updates',
-                    child: ExcludeSemantics(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 6,
-                        ),
-                        child: Text(
-                          context.l10n.checkUpdates,
-                          style: AppText.caption.copyWith(
-                            color: AppColors.textSecondary,
+                        if (group.url.isNotEmpty)
+                          TvListFocusable(
+                            onTap: _checkUpdates,
+                            semanticLabel: '$title, check updates',
+                            child: ExcludeSemantics(
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 6,
+                                ),
+                                child: Text(
+                                  context.l10n.checkUpdates,
+                                  style: AppText.caption.copyWith(
+                                    color: AppColors.textSecondary,
+                                  ),
+                                ),
+                              ),
+                            ),
                           ),
-                        ),
-                      ),
-                    ),
-                  ),
-                // context.l10n.removeRepo2 — real repos only.
-                if (group.url.isNotEmpty)
-                  TvListFocusable(
-                    onTap: _removeRepo,
-                    semanticLabel: '$title, remove repo',
-                    child: ExcludeSemantics(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 6,
-                        ),
-                        child: Text(
-                          context.l10n.removeDownloadTooltip,
-                          style: AppText.caption.copyWith(
-                            color: AppColors.textSecondary,
+                        if (group.url.isNotEmpty)
+                          TvListFocusable(
+                            onTap: _removeRepo,
+                            semanticLabel: '$title, remove repo',
+                            child: ExcludeSemantics(
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 6,
+                                ),
+                                child: Text(
+                                  context.l10n.removeDownloadTooltip,
+                                  style: AppText.caption.copyWith(
+                                    color: AppColors.textSecondary,
+                                  ),
+                                ),
+                              ),
+                            ),
                           ),
-                        ),
-                      ),
+                      ],
                     ),
                   ),
               ],
@@ -877,9 +885,7 @@ class _CsScreenTvRepoSectionState extends State<_CsScreenTvRepoSection> {
                           ),
                         )
                       else
-                        // Index-tracked loop so the first plugin row gets
-                        // autofocus, routing D-pad there after repo is added.
-                        for (final (idx, plugin) in catalog.indexed) ...[
+                        for (final plugin in catalog) ...[
                           const Divider(
                             height: 0.5,
                             thickness: 0.5,
@@ -898,7 +904,6 @@ class _CsScreenTvRepoSectionState extends State<_CsScreenTvRepoSection> {
                                     plugin.internalName,
                                     group.url,
                                   ),
-                            autofocus: idx == 0,
                           ),
                         ],
                     ],
@@ -912,22 +917,18 @@ class _CsScreenTvRepoSectionState extends State<_CsScreenTvRepoSection> {
 
 /// One CS plugin row with a single [TvFocusable] Install / Installed / Update
 /// action button — mirrors the phone's [_CsScreenPluginRow].
-/// [autofocus] should be true only for the first row so D-pad focus lands on
-/// the Install button immediately after a repo is added and expanded.
 class _CsScreenTvPluginRow extends StatefulWidget {
   const _CsScreenTvPluginRow({
     required this.plugin,
     required this.installed,
     this.repoUrl = '',
     this.update,
-    this.autofocus = false,
   });
 
   final CsPluginMeta plugin;
   final bool installed;
   final String repoUrl;
   final CsUpdate? update;
-  final bool autofocus;
 
   @override
   State<_CsScreenTvPluginRow> createState() => _CsScreenTvPluginRowState();
@@ -1073,7 +1074,6 @@ class _CsScreenTvPluginRowState extends State<_CsScreenTvPluginRow> {
             )
           else if (installed && widget.update != null)
             TvActionChip(
-              autofocus: widget.autofocus,
               label: 'Update → v${widget.update!.onlineVersion}',
               onTap: _update,
               semanticLabel:
@@ -1081,7 +1081,6 @@ class _CsScreenTvPluginRowState extends State<_CsScreenTvPluginRow> {
             )
           else if (installed)
             TvActionChip(
-              autofocus: widget.autofocus,
               label: context.l10n.installed,
               emphasized: false,
               onTap: _uninstall,
@@ -1089,7 +1088,6 @@ class _CsScreenTvPluginRowState extends State<_CsScreenTvPluginRow> {
             )
           else
             TvActionChip(
-              autofocus: widget.autofocus,
               label: context.l10n.install,
               onTap: _install,
               semanticLabel: '${widget.plugin.name}, install',

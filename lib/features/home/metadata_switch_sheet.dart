@@ -93,38 +93,49 @@ Future<void> showMetadataSwitchSheet(BuildContext context) async {
   final picked = await showModalBottomSheet<Object>(
     context: context,
     backgroundColor: AppColors.surface,
+    // Both sections in one sheet clear the default half-height cap; without
+    // this the Column below overflows on phones (and with the MAL warning).
+    isScrollControlled: true,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
     ),
-    builder: (sheet) => SafeArea(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const SizedBox(height: 10),
-          Center(
-            child: Container(
-              width: 38,
-              height: 4,
-              decoration: BoxDecoration(
-                color: AppColors.textTertiary.withValues(alpha: 0.5),
-                borderRadius: BorderRadius.circular(2),
-              ),
+    builder: (sheet) {
+      final maxHeight = MediaQuery.sizeOf(sheet).height * 0.9;
+      return SafeArea(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: maxHeight),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const SizedBox(height: 10),
+                Center(
+                  child: Container(
+                    width: 38,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: AppColors.textTertiary.withValues(alpha: 0.5),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                if (animeFirst) ...[
+                  ...animeSection(sheet),
+                  const SizedBox(height: 6),
+                  ...videoSection(sheet),
+                ] else ...[
+                  ...videoSection(sheet),
+                  const SizedBox(height: 6),
+                  ...animeSection(sheet),
+                ],
+                const SizedBox(height: 10),
+              ],
             ),
           ),
-          if (animeFirst) ...[
-            ...animeSection(sheet),
-            const SizedBox(height: 6),
-            ...videoSection(sheet),
-          ] else ...[
-            ...videoSection(sheet),
-            const SizedBox(height: 6),
-            ...animeSection(sheet),
-          ],
-          const SizedBox(height: 10),
-        ],
-      ),
-    ),
+        ),
+      );
+    },
   );
 
   if (picked == null) return;

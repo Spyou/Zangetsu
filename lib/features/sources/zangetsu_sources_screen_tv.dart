@@ -63,8 +63,12 @@ class _ZTvViewState extends State<_ZTvView> {
                   ],
                 ),
               ),
+              // Tabs and search on separate rows so D-pad up from the list
+              // lands on search (focus only — no IME until OK), then up again
+              // to the tabs / Back. Sharing one row made search steal focus
+              // geometrically from the first source row.
               Padding(
-                padding: const EdgeInsets.fromLTRB(40, 0, 40, 16),
+                padding: const EdgeInsets.fromLTRB(40, 0, 40, 12),
                 child: Row(
                   children: [
                     _ZTvTabChip(
@@ -79,68 +83,66 @@ class _ZTvViewState extends State<_ZTvView> {
                       selected: _tab == 1,
                       onTap: () => setState(() => _tab = 1),
                     ),
-                    const SizedBox(width: 20),
-                    Expanded(
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 340),
-                        child: SourcesSearchField(
-                          controller: _searchCtrl,
-                          onChanged: (q) => setState(() => _query = q),
-                        ),
-                      ),
-                    ),
                   ],
                 ),
               ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(40, 0, 40, 16),
+                child: SourcesSearchField(
+                  controller: _searchCtrl,
+                  onChanged: (q) => setState(() => _query = q),
+                ),
+              ),
+              // Add-repo lives ABOVE the list (not as a ListView sibling after
+              // a tall nested Column). Directional focus otherwise skips the
+              // nested repo rows and jumps straight to Add repo at the bottom.
+              if (_tab == 1)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(40, 0, 40, 12),
+                  child: TvListFocusable(
+                    onTap: _showAddRepoDialog,
+                    semanticLabel: context.l10n.addRepo,
+                    child: ExcludeSemantics(
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 14,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppColors.surface,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.add,
+                              color: AppColors.accent,
+                              size: 18,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              context.l10n.addRepo,
+                              style: AppText.headline.copyWith(
+                                color: AppColors.accent,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
               Expanded(
                 child: ListView(
                   clipBehavior: Clip.none,
                   padding: const EdgeInsets.fromLTRB(40, 0, 40, 48),
-                  children: _tab == 0
-                      ? [
-                          // ── Installed ────────────────────────────
-                          _ZTvInstalledContent(query: _query),
-                        ]
-                      : [
-                          // ── Repositories ──────────────────────────
-                          _ZTvReposContent(query: _query),
-                          Padding(
-                            padding: const EdgeInsets.only(top: 8),
-                            child: TvListFocusable(
-                              onTap: _showAddRepoDialog,
-                              semanticLabel: context.l10n.addRepo,
-                              child: ExcludeSemantics(
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 20,
-                                    vertical: 14,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: AppColors.surface,
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        Icons.add,
-                                        color: AppColors.accent,
-                                        size: 18,
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        context.l10n.addRepo,
-                                        style: AppText.headline.copyWith(
-                                          color: AppColors.accent,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
+                  children: [
+                    if (_tab == 0)
+                      _ZTvInstalledContent(query: _query)
+                    else
+                      _ZTvReposContent(query: _query),
+                  ],
                 ),
               ),
             ],
@@ -703,119 +705,131 @@ class _ZTvRepoGroupState extends State<_ZTvRepoGroup> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // ── Repo header row ─────────────────────────────────────────────
+          // Full-width expand target so D-pad down from search/Add-repo lands
+          // here (a Wrap + mainAxisSize.min focusable is easy to miss
+          // geometrically, which used to skip straight past the list).
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
-            child: Wrap(
-              crossAxisAlignment: WrapCrossAlignment.center,
-              spacing: 8,
-              runSpacing: 8,
+            padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // Expand/collapse toggle.
                 TvListFocusable(
                   onTap: () => setState(() => _expanded = !_expanded),
                   semanticLabel:
                       '${repo.displayName}, ${repo.sources.length} sources',
                   child: ExcludeSemantics(
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        AnimatedRotation(
-                          turns: _expanded ? 0 : -0.25,
-                          duration: const Duration(milliseconds: 200),
-                          child: const Icon(
-                            Icons.expand_more,
-                            color: AppColors.textSecondary,
-                            size: 22,
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              repo.displayName,
-                              style: AppText.headline,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
+                      child: Row(
+                        children: [
+                          AnimatedRotation(
+                            turns: _expanded ? 0 : -0.25,
+                            duration: const Duration(milliseconds: 200),
+                            child: const Icon(
+                              Icons.expand_more,
+                              color: AppColors.textSecondary,
+                              size: 22,
                             ),
-                            const SizedBox(height: 2),
-                            Text(
-                              updateCount > 0
-                                  ? '${repo.sources.length} sources · '
-                                        '$updateCount update${updateCount == 1 ? '' : 's'}'
-                                  : '${repo.sources.length} sources',
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  repo.displayName,
+                                  style: AppText.headline,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  updateCount > 0
+                                      ? '${repo.sources.length} sources · '
+                                            '$updateCount update${updateCount == 1 ? '' : 's'}'
+                                      : '${repo.sources.length} sources',
+                                  style: AppText.caption.copyWith(
+                                    color: updateCount > 0
+                                        ? AppColors.accent
+                                        : AppColors.textTertiary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(4, 0, 4, 4),
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 4,
+                    children: [
+                      TvListFocusable(
+                        onTap: () => context.read<SourcesBloc>().add(
+                          RepoRefreshed(repo.url),
+                        ),
+                        semanticLabel: '${repo.displayName}, refresh',
+                        child: ExcludeSemantics(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 6,
+                            ),
+                            child: Text(
+                              context.l10n.refresh,
                               style: AppText.caption.copyWith(
-                                color: updateCount > 0
-                                    ? AppColors.accent
-                                    : AppColors.textTertiary,
+                                color: AppColors.textSecondary,
                               ),
                             ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                // context.l10n.refresh action.
-                TvListFocusable(
-                  onTap: () =>
-                      context.read<SourcesBloc>().add(RepoRefreshed(repo.url)),
-                  semanticLabel: '${repo.displayName}, refresh',
-                  child: ExcludeSemantics(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 6,
-                      ),
-                      child: Text(
-                        context.l10n.refresh,
-                        style: AppText.caption.copyWith(
-                          color: AppColors.textSecondary,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-                // "Update all" action — only when updates exist.
-                if (updateCount > 0)
-                  TvListFocusable(
-                    onTap: () =>
-                        context.read<SourcesBloc>().add(RepoUpdated(repo.url)),
-                    semanticLabel:
-                        '${repo.displayName}, update all ($updateCount)',
-                    child: ExcludeSemantics(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 6,
-                        ),
-                        child: Text(
-                          context.l10n.updateAllCount(updateCount),
-                          style: AppText.caption.copyWith(
-                            color: AppColors.accent,
-                            fontWeight: FontWeight.w600,
                           ),
                         ),
                       ),
-                    ),
-                  ),
-                // context.l10n.removeDownloadTooltip action.
-                TvListFocusable(
-                  onTap: () => _removeRepo(context),
-                  semanticLabel: '${repo.displayName}, remove',
-                  child: ExcludeSemantics(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 6,
-                      ),
-                      child: Text(
-                        context.l10n.removeDownloadTooltip,
-                        style: AppText.caption.copyWith(
-                          color: AppColors.textSecondary,
+                      if (updateCount > 0)
+                        TvListFocusable(
+                          onTap: () => context.read<SourcesBloc>().add(
+                            RepoUpdated(repo.url),
+                          ),
+                          semanticLabel:
+                              '${repo.displayName}, update all ($updateCount)',
+                          child: ExcludeSemantics(
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 6,
+                              ),
+                              child: Text(
+                                context.l10n.updateAllCount(updateCount),
+                                style: AppText.caption.copyWith(
+                                  color: AppColors.accent,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      TvListFocusable(
+                        onTap: () => _removeRepo(context),
+                        semanticLabel: '${repo.displayName}, remove',
+                        child: ExcludeSemantics(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 6,
+                            ),
+                            child: Text(
+                              context.l10n.removeDownloadTooltip,
+                              style: AppText.caption.copyWith(
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                          ),
                         ),
                       ),
-                    ),
+                    ],
                   ),
                 ),
               ],
@@ -842,22 +856,18 @@ class _ZTvRepoGroupState extends State<_ZTvRepoGroup> {
                           ),
                         )
                       else
-                        // Index-tracked loop so the first row gets autofocus,
-                        // routing the D-pad there after the repo is added.
                         // A live search also filters by name/lang.
-                        for (final (idx, source)
-                            in repo.sources
-                                .where(
-                                  (s) =>
-                                      (!s.nsfw ||
-                                          sl<PlaybackPrefs>().nsfwSources) &&
-                                      sourceSearchMatches(
-                                        widget.query,
-                                        s.name,
-                                        s.lang,
-                                      ),
-                                )
-                                .indexed) ...[
+                        for (final source
+                            in repo.sources.where(
+                              (s) =>
+                                  (!s.nsfw ||
+                                      sl<PlaybackPrefs>().nsfwSources) &&
+                                  sourceSearchMatches(
+                                    widget.query,
+                                    s.name,
+                                    s.lang,
+                                  ),
+                            )) ...[
                           const Divider(
                             height: 0.5,
                             thickness: 0.5,
@@ -872,7 +882,6 @@ class _ZTvRepoGroupState extends State<_ZTvRepoGroup> {
                             hasUpdate: widget.updatableKeys.contains(
                               ProviderRegistry.providerKey(repo.url, source.id),
                             ),
-                            autofocus: idx == 0,
                           ),
                         ],
                     ],
@@ -886,22 +895,18 @@ class _ZTvRepoGroupState extends State<_ZTvRepoGroup> {
 
 /// One repo source row. The action button (Install / Update / Uninstall) is
 /// a single [TvFocusable] — D-pad OK fires the same bloc event as the phone.
-/// [autofocus] should be true only for the first row in a newly expanded list
-/// so the remote lands on an actionable Install button without manual nav.
 class _ZTvRepoSourceRow extends StatelessWidget {
   const _ZTvRepoSourceRow({
     required this.repo,
     required this.source,
     required this.installed,
     required this.hasUpdate,
-    this.autofocus = false,
   });
 
   final ProviderRepo repo;
   final RepoSource source;
   final bool installed;
   final bool hasUpdate;
-  final bool autofocus;
 
   String get _key => ProviderRegistry.providerKey(repo.url, source.id);
 
@@ -954,7 +959,6 @@ class _ZTvRepoSourceRow extends StatelessWidget {
           const SizedBox(width: 8),
           if (installed && hasUpdate)
             TvActionChip(
-              autofocus: autofocus,
               label: context.l10n.update,
               icon: Icons.download_rounded,
               onTap: () => context.read<SourcesBloc>().add(SourceUpdated(_key)),
@@ -962,7 +966,6 @@ class _ZTvRepoSourceRow extends StatelessWidget {
             )
           else if (installed)
             TvActionChip(
-              autofocus: autofocus,
               label: context.l10n.installed,
               emphasized: false,
               onTap: () => _uninstall(context),
@@ -970,7 +973,6 @@ class _ZTvRepoSourceRow extends StatelessWidget {
             )
           else
             TvActionChip(
-              autofocus: autofocus,
               label: context.l10n.install,
               onTap: () => context.read<SourcesBloc>().add(
                 SourceInstalled(repo: repo, source: source),

@@ -4,6 +4,7 @@ import 'dart:async' show unawaited;
 import '../logging/app_logger.dart';
 import '../provider/cf_solve_needed.dart';
 import '../models/episode.dart';
+import '../models/episode_title.dart';
 import '../models/home_section.dart';
 import '../models/media_detail.dart';
 import '../models/media_item.dart';
@@ -701,13 +702,13 @@ class MetadataRepository implements CatalogueRepository {
       return d;
     }
     // Union, longest wins: the SOURCE decides what plays, the CATALOGUE
-    // decides what exists. Where both have an episode the source's row is
-    // used (its titles, thumbnails and dates are real); past the end of the
-    // source's list the catalogue's row stays, marked unavailable, so an
-    // announced-but-unuploaded episode is still visible and still says why it
-    // won't open. Past the end of the CATALOGUE's list the source simply wins
-    // outright — which is how MAL's 0-episode long-runners and Simkl get a
-    // full list at all.
+    // decides what exists AND how episodes are labelled. Display (title,
+    // synopsis, still, rating) comes from the user's chosen metadata provider
+    // (AniList/MAL or TMDB/Simkl) — same stack as Home — not from the stream
+    // source's "Episode N" stubs. Past the end of the source's list the
+    // catalogue's row stays, marked unavailable. Past the end of the
+    // CATALOGUE's list the source simply wins outright — which is how MAL's
+    // 0-episode long-runners and Simkl get a full list at all.
     final count = d.episodes.length > srcEpisodes.length
         ? d.episodes.length
         : srcEpisodes.length;
@@ -731,7 +732,12 @@ class MetadataRepository implements CatalogueRepository {
       episodes: [
         for (var i = 0; i < count; i++)
           if (i < srcEpisodes.length)
-            _canonicalize(srcEpisodes[i], c, i + 1)
+            _canonicalize(
+              srcEpisodes[i],
+              c,
+              i + 1,
+              catalogue: i < d.episodes.length ? d.episodes[i] : null,
+            )
           else
             d.episodes[i].copyWith(
               unavailable: _whyMissing(
@@ -777,29 +783,36 @@ class MetadataRepository implements CatalogueRepository {
     return '${t.day} ${_months[t.month - 1]}';
   }
 
-  /// [e] with its display kept but id/url/number replaced by the canonical,
-  /// position-numbered form — see the comment in [detail]. [number] in
-  /// particular is read as ground truth by trackers (AniList/MAL/Simkl
-  /// scrobbling), filler lookups and skip-time lookups — all keyed by the
-  /// canonical episode count, not whatever the source calls it (a source that
-  /// restarts numbering per season would otherwise scrobble the wrong
-  /// episode). The source's own number, if worth showing, belongs in the
-  /// title, never here.
-  static Episode _canonicalize(Episode e, ZCanonical c, int n) => Episode(
-    id: '$n',
-    title: e.title,
-    number: n.toDouble(),
-    url: ZmodeIds.episodeUrl(c, n),
-    date: e.date,
-    thumbnail: e.thumbnail,
-    filler: e.filler,
-    season: e.season,
-    scanlator: e.scanlator,
-    description: e.description,
-    metaTitle: e.metaTitle,
-    rating: e.rating,
-    runtimeMinutes: e.runtimeMinutes,
-  );
+  /// [e] with playability rewritten to the canonical zm://…/ep/n form, and
+  /// display fields preferred from [catalogue] when the stream source only
+  /// supplied a generic "Episode N" (or empty) label. Numbering stays
+  /// catalogue-canonical for trackers / filler / skip lookups.
+  static Episode _canonicalize(
+    Episode e,
+    ZCanonical c,
+    int n, {
+    Episode? catalogue,
+  }) {
+    final playable = Episode(
+      id: '$n',
+      title: e.title,
+      number: n.toDouble(),
+      url: ZmodeIds.episodeUrl(c, n),
+      date: e.date,
+      thumbnail: e.thumbnail,
+      filler: e.filler,
+      season: e.season,
+      scanlator: e.scanlator,
+      description: e.description,
+      metaTitle: e.metaTitle,
+      rating: e.rating,
+      runtimeMinutes: e.runtimeMinutes,
+    );
+    if (catalogue == null) return playable;
+    // One-element carry: catalogue (AniList/MAL/TMDB/Simkl[+AniZip]) owns
+    // names and synopses; the source row only proved this slot can play.
+    return carryEpisodeDisplayMeta([catalogue], [playable]).first;
+  }
 
   /// The episode list for [url] in [category].
   ///

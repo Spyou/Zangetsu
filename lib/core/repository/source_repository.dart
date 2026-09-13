@@ -188,11 +188,14 @@ class SourceRepository implements CatalogueRepository {
     final raw = _rawSources(narrowByLang: false);
 
     // ── Registry supplement (TV: loadAll skipped, runtime empty) ──
-    final runtimeIds = raw.map((s) => s.id).toSet();
+    // One slot per sourceId in the JS runtime — two repos can both install
+    // `hianime`, but only one can be live. Without dedupe the priority
+    // screen (and anything else keyed on id) crashes on duplicate keys.
+    final seenIds = raw.map((s) => s.id).toSet();
     final registryOnly = <({String id, String name, String? lang})>[];
     if (sl.isRegistered<ProviderRegistry>()) {
       for (final entry in sl<ProviderRegistry>().getAll()) {
-        if (entry.enabled && !runtimeIds.contains(entry.name)) {
+        if (entry.enabled && seenIds.add(entry.name)) {
           registryOnly.add((
             id: entry.name,
             name: (entry.displayName.isNotEmpty
@@ -221,6 +224,11 @@ class SourceRepository implements CatalogueRepository {
   List<({String id, String name})> get loadedSources => _named(_rawLoadedSources);
 
   /// Disambiguates same-named sources by appending their language code.
+  ///
+  /// Also collapses duplicate ids (first wins). Multi-language Mihon/Aniyomi
+  /// extensions use distinct ids per language, so those still all appear —
+  /// this only drops true same-id collisions (two registry installs of one
+  /// JS sourceId, etc.).
   List<({String id, String name})> _named(
     List<({String id, String name, String? lang})> raw,
   ) {
@@ -228,14 +236,16 @@ class SourceRepository implements CatalogueRepository {
     for (final s in raw) {
       counts[s.name] = (counts[s.name] ?? 0) + 1;
     }
+    final seen = <String>{};
     return [
       for (final s in raw)
-        (
-          id: s.id,
-          name: (counts[s.name]! > 1 && (s.lang ?? '').isNotEmpty)
-              ? '${s.name} (${s.lang!.toUpperCase()})'
-              : s.name,
-        ),
+        if (seen.add(s.id))
+          (
+            id: s.id,
+            name: (counts[s.name]! > 1 && (s.lang ?? '').isNotEmpty)
+                ? '${s.name} (${s.lang!.toUpperCase()})'
+                : s.name,
+          ),
     ];
   }
 

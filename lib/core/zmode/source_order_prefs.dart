@@ -98,7 +98,13 @@ List<({String id, String name})> applySourceOrder(
   List<({String id, String name})> candidates,
   List<String> order,
 ) {
-  if (order.isEmpty) return candidates;
+  // Always unique by id: duplicate candidates (same sourceId from two repos
+  // when the runtime hasn't loaded either) used to reach ReorderableListView
+  // / TV rows keyed on id and assert. First occurrence wins.
+  if (order.isEmpty) {
+    final seen = <String>{};
+    return [for (final c in candidates) if (seen.add(c.id)) c];
+  }
   final byId = {for (final c in candidates) c.id: c};
   final ordered = <({String id, String name})>[];
   for (final id in order) {

@@ -130,8 +130,13 @@ class PlaybackResolver {
   static const Duration probeBudget = Duration(seconds: 5);
 
   /// Sources that blew [perSourceBudget], and when. Without this the very next
-  /// sweep pays the same 38 seconds again — which is exactly what the device
-  /// log showed, twice in a row for the same source.
+  /// automatic sweep (next episode, probe, Home re-ask) pays the same 38
+  /// seconds again — which is exactly what the device log showed, twice in a
+  /// row for the same source.
+  ///
+  /// Cleared by [invalidateWinner] / [invalidateShow] when the viewer
+  /// explicitly asks to play (episode tap, Retry). The cooldown is only for
+  /// background / follow-on work — a tap means "try again".
   ///
   /// Deliberately NOT [SourceHealthStore]: a timeout there is recorded as
   /// "alive but slow" on purpose, so a slow source keeps appearing in search
@@ -442,6 +447,10 @@ class PlaybackResolver {
 
   /// Drop the cached winner for [zmEpisodeUrl] so the next
   /// [resolveForPlayback] re-sweeps sources instead of reusing the failed one.
+  ///
+  /// Also clears over-budget cooldowns: an episode tap / Retry is the viewer
+  /// asking to try again, so a source that timed out on the previous attempt
+  /// must be eligible. Background sweeps keep the cooldown until this runs.
   void invalidateWinner(String zmEpisodeUrl) {
     // Also drops a remembered "nothing has this episode": Retry and the
     // player's own source-switch both come through here, and they must get a
@@ -462,10 +471,13 @@ class PlaybackResolver {
     for (final k in misses) {
       _noSource.remove(k);
     }
-    if (winners.isNotEmpty || misses.isNotEmpty) {
+    final clearedBudget = _overBudget.isNotEmpty;
+    if (clearedBudget) _overBudget.clear();
+    if (winners.isNotEmpty || misses.isNotEmpty || clearedBudget) {
       debugPrint(
         '[playback] invalidateWinner · $zmEpisodeUrl '
-        '(${winners.length} winner(s), ${misses.length} miss(es))',
+        '(${winners.length} winner(s), ${misses.length} miss(es)'
+        '${clearedBudget ? ', over-budget cleared' : ''})',
       );
     }
   }
@@ -498,10 +510,17 @@ class PlaybackResolver {
     for (final k in flights) {
       _inFlight.remove(k);
     }
-    if (winners.isNotEmpty || misses.isNotEmpty || flights.isNotEmpty) {
+    // Source switch / CF solve — same "try again" intent as an episode tap.
+    final clearedBudget = _overBudget.isNotEmpty;
+    if (clearedBudget) _overBudget.clear();
+    if (winners.isNotEmpty ||
+        misses.isNotEmpty ||
+        flights.isNotEmpty ||
+        clearedBudget) {
       debugPrint(
         '[playback] invalidateShow · $prefix '
-        '(${winners.length} winner(s), ${misses.length} miss(es))',
+        '(${winners.length} winner(s), ${misses.length} miss(es)'
+        '${clearedBudget ? ', over-budget cleared' : ''})',
       );
     }
   }

@@ -304,6 +304,10 @@ class _MatchLineState extends State<MatchLine> {
       return TvFocusable(
         key: key,
         onTap: onTap,
+        // Both actions open a sheet that autofocuses a TvFocusable. KeyDown
+        // open + KeyUp on that first item would pick/dismiss instantly —
+        // same race waitForKeyUp documents on TvFocusable.
+        waitForKeyUp: true,
         variant: TvFocusVariant.float,
         scale: 1.02,
         borderRadius: borderRadius,

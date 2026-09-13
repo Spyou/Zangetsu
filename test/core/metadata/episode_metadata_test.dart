@@ -59,9 +59,78 @@ void main() {
       expect(m[1]?.title, 'Named');
       expect(m[1]?.rating, isNull);
     });
+
+    // AniZip only fills `overview` on early episodes for long shows (Naruto
+    // Shippuden: 1–32). The rest ship `summary` only — without this fallback
+    // ranges 51–100+ look bare (no description) even when titles exist.
+    test('summary fills overview when overview is absent', () {
+      final m = EpisodeMetadataService.parseAniZip({
+        'episodes': {
+          '51': {
+            'title': {'en': 'Reunion'},
+            'summary': 'Team Kakashi learns Sai`s true mission.',
+          },
+          '1': {
+            'title': {'en': 'Homecoming'},
+            'overview': 'Prefer overview when both exist.',
+            'summary': 'Ignored summary.',
+          },
+        },
+      });
+      expect(m[51]?.title, 'Reunion');
+      expect(m[51]?.overview, 'Team Kakashi learns Sai`s true mission.');
+      expect(m[1]?.overview, 'Prefer overview when both exist.');
+    });
+
+    test('reads themoviedb_id from mappings', () {
+      expect(
+        EpisodeMetadataService.parseAniZipTmdbId({
+          'mappings': {'themoviedb_id': '31910'},
+        }),
+        31910,
+      );
+      expect(
+        EpisodeMetadataService.parseAniZipTmdbId({
+          'mappings': {'themoviedb_id': 1429},
+        }),
+        1429,
+      );
+      expect(EpisodeMetadataService.parseAniZipTmdbId({'episodes': {}}), isNull);
+    });
+
     test('non-map / missing episodes -> empty', () {
       expect(EpisodeMetadataService.parseAniZip(null), isEmpty);
       expect(EpisodeMetadataService.parseAniZip({'x': 1}), isEmpty);
+    });
+  });
+
+  group('absoluteEpisodeNumber', () {
+    // Shippuden-style: S2 episode_number continues from 33.
+    test('continuous numbering across seasons', () {
+      expect(
+        EpisodeMetadataService.absoluteEpisodeNumber(
+          seasonEpisodeNumber: 33,
+          seasonEpisodeCount: 21,
+          absoluteBase: 32,
+          minNumInSeason: 33,
+          maxNumInSeason: 53,
+        ),
+        33,
+      );
+    });
+
+    // Attack on Titan-style: each season restarts at 1.
+    test('per-season numbering uses absoluteBase', () {
+      expect(
+        EpisodeMetadataService.absoluteEpisodeNumber(
+          seasonEpisodeNumber: 1,
+          seasonEpisodeCount: 12,
+          absoluteBase: 25,
+          minNumInSeason: 1,
+          maxNumInSeason: 12,
+        ),
+        26,
+      );
     });
   });
 

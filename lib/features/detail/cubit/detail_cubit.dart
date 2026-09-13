@@ -10,16 +10,19 @@ import '../../../core/lnreader/novel_cloudflare.dart';
 import '../../../core/metadata/episode_metadata_service.dart';
 import '../../../core/metadata/metadata_enrichment.dart';
 import '../../../core/models/episode.dart';
+import '../../../core/models/episode_title.dart';
 import '../../../core/models/media_detail.dart';
 import '../../../core/models/media_extras.dart';
 import '../../../core/models/provider_info.dart';
+import '../../../core/playback/playback_prefs.dart';
 import '../../../core/playback/title_prefs.dart';
 import '../../../core/repository/catalogue_repository.dart';
 import '../../../core/zmode/metadata_repository.dart';
 import '../../../core/zmode/zmode_ids.dart';
 import '../../../core/zmode/metadata_provider_prefs.dart';
 
-export '../../../core/models/episode_title.dart' show cleanTitle;
+export '../../../core/models/episode_title.dart'
+    show cleanTitle, carryEpisodeDisplayMeta;
 
 /// Lifecycle of the detail load. Mirrors Sozo Read's `DetailStatus`
 /// (we drop `initial` — the cubit starts in `loading` since `load()`
@@ -132,12 +135,17 @@ class DetailCubit extends Cubit<DetailState> {
        _prefs = prefs ?? sl<TitlePrefsStore>(),
        // Seed the INITIAL category from the per-title remembered choice so the
        // Sub/Dub toggle reflects the saved value on the very first render (no
-       // flash from 'sub' → remembered). Falls back to 'sub' when unset.
+       // flash from 'sub' → remembered). Else Settings › Default audio, else
+       // 'sub'. Must match openPlayer's launchCategory so Z Mode's remembered
+       // cut (set on detail fetch) agrees with the player category — otherwise
+       // Default audio = Dub still resolved the sub list.
        super(
          DetailState(
            category:
                (prefs ?? sl<TitlePrefsStore>()).category(sourceId ?? '', url) ??
-               'sub',
+               (sl.isRegistered<PlaybackPrefs>()
+                   ? sl<PlaybackPrefs>().defaultCategory
+                   : 'sub'),
          ),
        ) {
     // Prefetch episode metadata using the MAL id we already know from the
@@ -268,12 +276,20 @@ class DetailCubit extends Cubit<DetailState> {
         'load success title="${detail.title}" eps=${detail.episodes.length} '
         '${sw.elapsedMilliseconds}ms',
       );
+      // Keep AniZip/TMDB episode names that already painted on the catalogue
+      // partial — the matched source's "Episode N" list must not wipe them.
+      final carried = detail.copyWith(
+        episodes: carryEpisodeDisplayMeta(
+          state.detail?.episodes,
+          detail.episodes,
+        ),
+      );
       emit(state.copyWith(
         status: DetailStatus.success,
-        detail: detail,
+        detail: carried,
         episodesLoading: false,
       ));
-      _enrich(detail);
+      _enrich(carried);
     } on CloudflareRequiredException catch (e) {
       _log('load cloudflare required ${e.url} ${sw.elapsedMilliseconds}ms', level: 'W');
       emit(state.copyWith(
@@ -359,6 +375,10 @@ class DetailCubit extends Cubit<DetailState> {
       final merged = fresh.copyWith(
         malId: fresh.malId ?? previous?.malId,
         tmdbId: fresh.tmdbId ?? previous?.tmdbId,
+        episodes: carryEpisodeDisplayMeta(
+          previous?.episodes,
+          fresh.episodes,
+        ),
       );
       _log(
         'refresh success title="${merged.title}" eps=${merged.episodes.length} '
@@ -415,9 +435,27 @@ class DetailCubit extends Cubit<DetailState> {
   /// match lands.
   Future<void>? _enriching;
 
+  /// Episode list identity the in-flight [_enriching] started against. When
+  /// the source list replaces the catalogue partial under that run, joining
+  /// alone would drop AniZip titles (apply checks list identity). After the
+  /// join we re-enrich whatever is on screen if it is a different list.
+  List<Episode>? _enrichingForEpisodes;
+
   Future<void> _enrich(MediaDetail detail, {bool force = false}) async {
-    if (!force && (state.cast.isNotEmpty || state.relations.isNotEmpty)) return;
-    if (!force && _enriching != null) return _enriching;
+    if (!force && (state.cast.isNotEmpty || state.relations.isNotEmpty)) {
+      await _enrichEpisodesOnly(detail);
+      return;
+    }
+    if (!force && _enriching != null) {
+      await _enriching;
+      final current = state.detail;
+      if (current != null &&
+          !identical(current.episodes, _enrichingForEpisodes)) {
+        await _enrichEpisodesOnly(current);
+      }
+      return;
+    }
+    _enrichingForEpisodes = detail.episodes;
     final run = _enrichOnce(detail, force: force);
     _enriching = run;
     try {
@@ -425,6 +463,27 @@ class DetailCubit extends Cubit<DetailState> {
     } finally {
       if (identical(_enriching, run)) _enriching = null;
     }
+  }
+
+  /// AniZip / TMDB season names for the episode list currently on screen.
+  Future<void> _enrichEpisodesOnly(MediaDetail detail) async {
+    if (detail.episodes.isEmpty) return;
+    try {
+      final enriched = await sl<EpisodeMetadataService>().enrich(
+        episodes: detail.episodes,
+        type: detail.type,
+        malId: detail.malId,
+        tmdbId: detail.tmdbId,
+        tmdbIsTv: detail.tmdbIsTv,
+      );
+      if (isClosed) return;
+      final onScreen = state.detail?.episodes;
+      if (!identical(enriched, detail.episodes) &&
+          onScreen != null &&
+          identical(onScreen, detail.episodes)) {
+        _patchDetail((cur) => cur.copyWith(episodes: enriched));
+      }
+    } catch (_) {/* keep episodes as-is */}
   }
 
   Future<void> _enrichOnce(MediaDetail detail, {required bool force}) async {

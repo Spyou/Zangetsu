@@ -27,6 +27,7 @@ import '../../core/playback/title_prefs.dart';
 import '../../core/playback/tv_playback_tracker.dart';
 import '../../core/playback/tv_track_helpers.dart';
 import '../../core/playback/watch_history.dart';
+import '../../core/repository/catalogue_repository.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/tv/tv_playback_failure.dart';
 import '../../core/zmode/playback_resolver.dart';
@@ -260,7 +261,10 @@ class TvAvNativePlayer {
         final index = (args['index'] as num?)?.toInt() ?? -1;
         final category = (args['category'] as String?) ?? _category;
         if (index < 0 || index >= _episodes.length) return null;
-        final ep = _episodes[index];
+        // Self-contained Sub/Dub swap — see TvNativePlayer.resolveEpisode.
+        final epIndex = await _ensureEpisodesForCategory(index, category);
+        if (epIndex < 0 || epIndex >= _episodes.length) return null;
+        final ep = _episodes[epIndex];
         final src = await _resolveSource(ep, category: category);
         if (src == null) return null;
         _rememberSkew(src);
@@ -297,11 +301,24 @@ class TvAvNativePlayer {
         }
         return null;
       case 'setCategory':
+        // Same as Android TvNativePlayer: persist the choice and re-fetch via
+        // CatalogueRepository so Z Mode's remembered cut updates before the
+        // next resolveEpisode (sources() has no category arg).
         final cat = (call.arguments as Map)['category'] as String?;
         if (cat != null) {
           _category = cat;
           if (_showUrl != null) {
             await sl<TitlePrefsStore>().setCategory(_sourceId, _showUrl!, cat);
+            try {
+              final other = await sl<CatalogueRepository>().episodes(
+                _showUrl!,
+                category: cat,
+                sourceId: _sourceId,
+              );
+              if (other.isNotEmpty) {
+                _episodes = await _enrichEpisodes(other);
+              }
+            } catch (_) {}
           }
         }
         return null;
@@ -550,6 +567,29 @@ class TvAvNativePlayer {
         },
     ],
   };
+
+  /// Swap `_episodes` to [category] when URL rewrite can't express the cut.
+  /// Returns the index to resolve (clamped if the other list is shorter).
+  static Future<int> _ensureEpisodesForCategory(int index, String category) async {
+    if (index < 0 || index >= _episodes.length) return index;
+    final current = _episodes[index];
+    if (!categorySwitchNeedsEpisodeRefetch(current.url, category)) {
+      return index;
+    }
+    if (_showUrl == null) return index;
+    try {
+      final other = await sl<CatalogueRepository>().episodes(
+        _showUrl!,
+        category: category,
+        sourceId: _sourceId,
+      );
+      if (other.isEmpty) return index;
+      _episodes = await _enrichEpisodes(other);
+      return index < _episodes.length ? index : 0;
+    } catch (_) {
+      return index;
+    }
+  }
 
   static Future<VideoSource?> _resolveSource(
     Episode ep, {

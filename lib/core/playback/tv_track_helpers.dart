@@ -192,6 +192,30 @@ String tvEpisodeUrl(String url, String category) {
   return url;
 }
 
+/// True when `/sub/`↔`/dub/` rewrite can't express the cut — the caller must
+/// fetch the other category's episode list before resolving, or Sub/Dub keeps
+/// playing the previous cut's stream (opaque CloudStream / AniKoto urls).
+bool categorySwitchNeedsEpisodeRefetch(String currentUrl, String category) =>
+    tvEpisodeUrl(currentUrl, category) == currentUrl;
+
+/// Episode URL to open after a Sub/Dub switch.
+///
+/// [otherCategoryUrls] is the other cut's episode list (same index). Required
+/// when [categorySwitchNeedsEpisodeRefetch] is true; ignored when the URL
+/// rewrite already flipped the cut.
+String episodeUrlAfterCategorySwitch({
+  required String currentUrl,
+  required String category,
+  required int index,
+  List<String> otherCategoryUrls = const [],
+}) {
+  final rewritten = tvEpisodeUrl(currentUrl, category);
+  if (rewritten != currentUrl) return rewritten;
+  if (otherCategoryUrls.isEmpty) return currentUrl;
+  final i = index < otherCategoryUrls.length ? index : 0;
+  return otherCategoryUrls[i];
+}
+
 /// ExoPlayer needs the correct MIME for side-loaded subtitles or they don't
 /// parse. Prefer the provider's [format], else sniff the [url] extension.
 String subtitleMime(String? format, {String url = ''}) {

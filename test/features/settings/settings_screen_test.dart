@@ -32,7 +32,7 @@ MigrationBridge _fakeBridge() => MigrationBridge(
       verifyOtp: (_, __) async => false,
     );
 
-// ── Minimal stubs (mirrors settings_screen_tv_test.dart) ─────────────────────
+// ── Minimal stubs (mirrors settings_screen_tv_test.dart / AppMode wiring) ────
 
 class _StubSearchPrefs extends SearchPrefs {
   @override
@@ -176,9 +176,10 @@ void main() {
     await tester.pumpAndSettle();
 
     // The Sources section's tiles are now on screen.
-    for (final t in const ['Providers', 'Active source', 'Source health']) {
+    for (final t in const ['Providers', 'Source health']) {
       expect(find.text(t), findsOneWidget, reason: 'tile: $t');
     }
+    expect(find.text('Active source'), findsNothing);
     // Other sections' rows are gone (we're on the Sources sub-page).
     expect(find.text('Downloads'), findsNothing);
     expect(find.text('About'), findsNothing);

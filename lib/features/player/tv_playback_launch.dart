@@ -91,6 +91,16 @@ Future<void> launchTvPlayback({
     'episodes=${episodes.length} startIdx=$startIndex '
     'showUrl=$showUrl showTitle=$showTitle category=$category',
   );
+  // Episode tap / Retry — drop any remembered miss and over-budget cooldowns
+  // so sources that timed out on the last attempt get another chance. Auto
+  // next-episode and probes keep those cooldowns; this path is intentional.
+  if (showUrl != null &&
+      ZmodeIds.isZ(showUrl) &&
+      startIndex >= 0 &&
+      startIndex < episodes.length &&
+      sl.isRegistered<PlaybackResolver>()) {
+    sl<PlaybackResolver>().invalidateWinner(episodes[startIndex].url);
+  }
   final mode = playbackContentMode(showUrl: showUrl);
   if (!await ensureTvPlaybackSourcesOrPrompt(context, showUrl: showUrl)) {
     return;
