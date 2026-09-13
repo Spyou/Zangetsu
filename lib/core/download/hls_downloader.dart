@@ -23,6 +23,15 @@ class HlsDownloader {
   static const int _concurrency = 4; // parallel segment fetches
   static const int _maxAhead = 32; // cap out-of-order buffer (memory bound)
 
+  /// Tries per segment. Three, not more: a segment that fails three times with
+  /// a growing gap between attempts is not a blip, and a thousand-segment
+  /// download shouldn't spend minutes discovering the host is down.
+  static const int _segmentAttempts = 3;
+
+  /// Multiplied by the attempt number, so the waits are 400ms then 800ms — a
+  /// dropped connection wants a moment, and a rate limiter wants a bit more.
+  static const Duration _segmentRetryDelay = Duration(milliseconds: 400);
+
   /// Returns null on success (file written to [outputPath]). On failure or
   /// cancellation the partial file is removed and a short reason string is
   /// returned — surfaced on the download tile and logged by the manager, so a
@@ -222,21 +231,41 @@ class HlsDownloader {
     }
   }
 
+  /// Fetches one segment, trying [_segmentAttempts] times before giving up.
+  ///
+  /// A single failure here used to end the whole download AND delete the
+  /// partial file, so segment 900 of 1000 failing threw away all 900. An
+  /// episode is hundreds to thousands of segments; on mobile data one of them
+  /// failing once is the normal case, not an edge case. The MP4 path has asked
+  /// background_downloader for 5 retries all along — this only brings HLS in
+  /// line with it.
+  ///
+  /// A 4xx is not retried: the segment is gone or forbidden, and asking three
+  /// times only makes the failure slower.
   Future<Uint8List?> _fetchBytes(String url, Map<String, String> headers) async {
-    try {
-      final r = await _dio.getUri<List<int>>(
-        Uri.parse(url),
-        options: Options(
-          responseType: ResponseType.bytes,
-          headers: headers,
-          validateStatus: (s) => s != null && s < 500,
-        ),
-      );
-      if (r.statusCode != 200 || r.data == null) return null;
-      return Uint8List.fromList(r.data!);
-    } catch (_) {
-      return null;
+    for (var attempt = 1; attempt <= _segmentAttempts; attempt++) {
+      try {
+        final r = await _dio.getUri<List<int>>(
+          Uri.parse(url),
+          options: Options(
+            responseType: ResponseType.bytes,
+            headers: headers,
+            validateStatus: (s) => s != null && s < 500,
+          ),
+        );
+        if (r.statusCode == 200 && r.data != null) {
+          return Uint8List.fromList(r.data!);
+        }
+        // Answered, but not with the segment. 4xx won't change on a retry.
+        if (r.statusCode != null && r.statusCode! >= 400) return null;
+      } catch (_) {
+        // Timeout, reset connection, DNS — exactly what a retry is for.
+      }
+      if (attempt < _segmentAttempts) {
+        await Future<void>.delayed(_segmentRetryDelay * attempt);
+      }
     }
+    return null;
   }
 
   static String _resolveRef(String ref, String base) {

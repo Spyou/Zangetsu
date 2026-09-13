@@ -348,6 +348,20 @@ class ChapterDownloader extends ChangeNotifier {
     return current;
   }
 
+  /// Tries per page. Three, matching the HLS segment budget — the failure and
+  /// the fix are the same shape on both paths.
+  static const int _pageAttempts = 3;
+
+  /// Multiplied by the attempt number: 400ms, then 800ms.
+  static const Duration _pageRetryDelay = Duration(milliseconds: 400);
+
+  /// A 4xx means the CDN has answered and the answer is no — usually a dead
+  /// link or a missing Referer. Retrying only makes the failure slower.
+  static bool _isPermanent(DioException e) {
+    final code = e.response?.statusCode;
+    return code != null && code >= 400 && code < 500;
+  }
+
   /// Returns the page's size on disk. A file already there from an earlier
   /// attempt is reused rather than re-fetched.
   Future<int> _fetchPage(PageImage page, File file) async {
@@ -358,14 +372,32 @@ class ChapterDownloader extends ChangeNotifier {
     // The headers matter more here than anywhere else in the app: most manga
     // CDNs are Referer-locked or behind Cloudflare and answer a bare GET with
     // 403. They come from the source alongside the URL — always send them.
-    final res = await _dio.get<List<int>>(
-      page.url,
-      options: Options(
-        headers: page.headers,
-        responseType: ResponseType.bytes,
-      ),
-    );
-    final data = res.data;
+    //
+    // Tried [_pageAttempts] times: one page failing used to fail the whole
+    // chapter, and a sixty-page chapter over a patchy connection gives that
+    // plenty of chances. Pages already on disk are skipped above, so a retry
+    // only re-fetches what is actually missing.
+    List<int>? data;
+    for (var attempt = 1; attempt <= _pageAttempts; attempt++) {
+      try {
+        final res = await _dio.get<List<int>>(
+          page.url,
+          options: Options(
+            headers: page.headers,
+            responseType: ResponseType.bytes,
+          ),
+        );
+        data = res.data;
+        if (data != null && data.isNotEmpty) break;
+      } catch (e) {
+        // A CDN that says no is not going to say yes on the third ask.
+        if (e is DioException && _isPermanent(e)) rethrow;
+        if (attempt == _pageAttempts) rethrow;
+      }
+      if (attempt < _pageAttempts) {
+        await Future<void>.delayed(_pageRetryDelay * attempt);
+      }
+    }
     if (data == null || data.isEmpty) throw Exception('Empty image');
     // Write under a temp name so a kill mid-write can't leave a truncated file
     // that the retry then counts as already done.
