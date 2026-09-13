@@ -32,7 +32,7 @@
   <img src="https://img.shields.io/badge/⬇️_DOWNLOAD_ZANGETSU-FF4D57?style=for-the-badge&logo=android&logoColor=white&labelColor=1a1a2e" alt="Download Zangetsu" height="42"/>
 </a>
 &nbsp;
-<a href="https://discord.gg/yepFx8E2ZH">
+<a href="https://discord.gg/hey6vz9kg6">
   <img src="https://img.shields.io/badge/💬_JOIN_DISCORD-5865F2?style=for-the-badge&logo=discord&logoColor=white&labelColor=1a1a2e" alt="Discord" height="42"/>
 </a>
 
@@ -181,7 +181,7 @@ Yes — Zangetsu is fully open source under the GPL-3.0 license.
 <details>
 <summary><b>How do I get support or report a bug?</b></summary>
 <br/>
-Join the <a href="https://discord.gg/yepFx8E2ZH">Discord server</a> or open an <a href="https://github.com/Spyou/Zangetsu/issues">issue on GitHub</a>.
+Join the <a href="https://discord.gg/hey6vz9kg6">Discord server</a> or open an <a href="https://github.com/Spyou/Zangetsu/issues">issue on GitHub</a>.
 </details>
 
 ---
@@ -201,7 +201,7 @@ Join the <a href="https://discord.gg/yepFx8E2ZH">Discord server</a> or open an <
 
 <div align="center">
 
-<a href="https://discord.gg/yepFx8E2ZH">
+<a href="https://discord.gg/hey6vz9kg6">
   <img src="https://img.shields.io/badge/Discord-Join%20the%20Server-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"/>
 </a>
 <a href="https://www.reddit.com/r/ZangetsuOfficial/s/JgDHfIOlIT">
