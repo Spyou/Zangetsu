@@ -278,14 +278,35 @@ class MihonProvider implements BaseProvider, ReadingProvider {
       'sourceId': info.id,
       'url': chapterUrl,
     });
-    if (raw == null || raw.isEmpty) return const [];
+    // null means the CALL failed — _safeInvoke swallows network errors, source
+    // errors and Cloudflare challenges alike. Returning [] for that made a
+    // failure indistinguishable from a chapter that genuinely has no pages,
+    // and the reader showed a chapter someone was halfway through as empty
+    // with no way to retry. An empty STRING is different: the source answered,
+    // it just had nothing to say.
+    if (raw == null) {
+      throw ProviderException('getPages failed for $chapterUrl');
+    }
+    if (raw.isEmpty) return const [];
+    final List<PageImage> pages;
     try {
-      final pages = pagesFromJson(jsonDecode(raw));
-      if (pages.isEmpty) return pages;
-      // Attach the source's Cloudflare session (cf_clearance cookie + matching
-      // UA) to each page so Flutter's image loader can fetch pages from a
-      // Cloudflare-gated image host (e.g. static.comix.to). Empty/no-op for
-      // sources that aren't behind Cloudflare.
+      pages = pagesFromJson(jsonDecode(raw));
+    } catch (e) {
+      // Same reasoning as above: unreadable is not empty.
+      debugPrint('[mihon] getPages parse failed for $chapterUrl: $e');
+      throw ProviderException('getPages returned unreadable data: $e');
+    }
+    if (pages.isEmpty) return pages;
+
+    // Attach the source's Cloudflare session (cf_clearance cookie + matching
+    // UA) to each page so Flutter's image loader can fetch pages from a
+    // Cloudflare-gated image host (e.g. static.comix.to). Empty/no-op for
+    // sources that aren't behind Cloudflare.
+    //
+    // Its own try: this is a bonus on top of pages we already have, so a
+    // failure here hands back the plain list rather than failing a chapter
+    // that was fetched perfectly well.
+    try {
       final cookieHeaders = await _imageCookieHeaders(pages.first.url);
       if (cookieHeaders.isEmpty) return pages;
       return [
@@ -293,8 +314,8 @@ class MihonProvider implements BaseProvider, ReadingProvider {
           PageImage(url: p.url, headers: {...?p.headers, ...cookieHeaders}),
       ];
     } catch (e) {
-      debugPrint('[mihon] getPages parse failed for $chapterUrl: $e');
-      return const [];
+      debugPrint('[mihon] cookie headers failed for $chapterUrl: $e');
+      return pages;
     }
   }
 

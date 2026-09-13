@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:watch_app/core/error/exceptions.dart';
 import 'package:watch_app/core/mihon/mihon_provider.dart';
 import 'package:watch_app/core/mihon/mihon_source_info.dart';
 import 'package:watch_app/core/models/provider_info.dart';
@@ -242,8 +243,30 @@ void main() {
       expect(pages[1].url, 'https://cdn.example.com/p3.jpg');
     });
 
-    test('malformed getPages reply degrades to an empty list', () async {
+    test('a malformed reply is a failure, not an empty chapter', () async {
+      // This used to degrade to []. That made "the source broke" and "this
+      // chapter has no pages" indistinguishable, and the reader drew a blank
+      // screen — no message, no retry — for a chapter someone was halfway
+      // through. Dropping ONE bad page still degrades (the test above); it is
+      // only an unusable WHOLE reply that now surfaces.
       install((call) async => call.method == 'getPages' ? 'not json' : null);
+      final p = MihonProvider(info: srcInfo());
+      expect(() => p.getPages('/c1'), throwsA(isA<ProviderException>()));
+    });
+
+    test('a failed call is a failure, not an empty chapter', () async {
+      // _safeInvoke swallows network errors, source errors and Cloudflare
+      // challenges alike and answers null. That is the common path to a blank
+      // reader, and the one the bug report was about.
+      install((call) async => throw PlatformException(code: 'boom'));
+      final p = MihonProvider(info: srcInfo());
+      expect(() => p.getPages('/c1'), throwsA(isA<ProviderException>()));
+    });
+
+    test('a source that genuinely has no pages still reports empty', () async {
+      // The distinction that makes the above safe: an empty STRING reply means
+      // the source answered and had nothing, which is not an error.
+      install((call) async => call.method == 'getPages' ? '' : null);
       final p = MihonProvider(info: srcInfo());
       expect(await p.getPages('/c1'), isEmpty);
     });
