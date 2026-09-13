@@ -654,9 +654,10 @@ void main() {
       ),
     );
     final d = await r.detail('zm://anime/mal:100');
-    // Display comes from the source ("Ep 0" — its own numbering, kept in the
-    // title); id/url/number are rewritten to the canonical position so a
-    // source that starts at 0, or restarts per season, still scrobbles right.
+    // Display keeps a real source title ("Ep 0"); id/url/number are rewritten
+    // to the canonical position so a source that starts at 0, or restarts per
+    // season, still scrobbles right. Generic "Episode N" source stubs do NOT
+    // overwrite catalogue/AniZip names (see carryEpisodeDisplayMeta).
     expect(d.episodes[0].title, 'Ep 0');
     expect(d.episodes[0].number, 1);
     expect(d.episodes[0].url, 'zm://anime/mal:100/ep/1');

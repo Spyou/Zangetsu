@@ -115,22 +115,24 @@ class Episode extends Equatable {
   Map<String, dynamic> toJson() => _$EpisodeToJson(this);
 
   Episode copyWith({
+    String? title,
     String? description,
     String? metaTitle,
     String? thumbnail,
     String? date,
     double? rating,
     int? runtimeMinutes,
+    int? season,
     String? unavailable,
   }) => Episode(
         id: id,
-        title: title,
+        title: title ?? this.title,
         number: number,
         url: url,
         date: date ?? this.date,
         thumbnail: thumbnail ?? this.thumbnail,
         filler: filler,
-        season: season,
+        season: season ?? this.season,
         scanlator: scanlator,
         description: description ?? this.description,
         metaTitle: metaTitle ?? this.metaTitle,

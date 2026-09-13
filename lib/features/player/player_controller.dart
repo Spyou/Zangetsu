@@ -1780,7 +1780,15 @@ class PlayerCubit extends Cubit<PlayerState> {
   /// Resolves sources for [index] and starts the best one.
   /// [fromRoom] bypasses the viewer lock so the room can move viewers to the
   /// host's episode; all other callers leave it false so viewer taps stay blocked.
-  Future<void> openEpisode(int index, {bool fromRoom = false}) async {
+  ///
+  /// [resetSourceCooldowns] is true for episode taps / Retry (try every source
+  /// again). Auto next-episode leaves it false so a source that just timed out
+  /// is not paid for again mid-binge.
+  Future<void> openEpisode(
+    int index, {
+    bool fromRoom = false,
+    bool resetSourceCooldowns = true,
+  }) async {
     if (_isRoomViewer && !fromRoom) return;
     final gen = ++_gen;
     await _persist(flush: true);
@@ -1809,6 +1817,11 @@ class PlayerCubit extends Cubit<PlayerState> {
         active: () => null,
       ),
     );
+    if (resetSourceCooldowns &&
+        sl.isRegistered<PlaybackResolver>() &&
+        (showUrl != null && ZmodeIds.isZ(showUrl!))) {
+      sl<PlaybackResolver>().invalidateWinner(_episodeUrl(currentEpisode));
+    }
     try {
       final resolved = await _resolveSources(_episodeUrl(currentEpisode));
       if (gen != _gen) return; // superseded by a newer open
@@ -2630,7 +2643,9 @@ class PlayerCubit extends Cubit<PlayerState> {
       autoSkipFiller: sl<PlaybackPrefs>().autoSkipFiller,
     );
     if (target == null) return;
-    await openEpisode(target);
+    // Auto binge keeps over-budget cooldowns (avoid re-paying a slow source).
+    // A manual Next is the same intent as tapping an episode — try again.
+    await openEpisode(target, resetSourceCooldowns: !auto);
   }
 
   Future<void> playPrevious() async {

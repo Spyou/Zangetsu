@@ -79,6 +79,36 @@ void main() {
     expect(prefs.excluded(ZKind.anime), isEmpty);
   });
 
+  group('applySourceOrder', () {
+    test('collapses duplicate candidate ids when no order is saved', () {
+      // Two registry installs of the same sourceId (different repos) can both
+      // appear in pickableSources before the JS runtime has loaded either —
+      // Source Priority keys rows by id, so duplicates crash the screen.
+      final out = applySourceOrder(
+        const [
+          (id: 'hianime', name: 'HiAnime'),
+          (id: 'other', name: 'Other'),
+          (id: 'hianime', name: 'HiAnime (again)'),
+        ],
+        const [],
+      );
+      expect(out.map((s) => s.id), ['hianime', 'other']);
+      expect(out.first.name, 'HiAnime');
+    });
+
+    test('saved order also keeps each id once', () {
+      final out = applySourceOrder(
+        const [
+          (id: 'hianime', name: 'HiAnime'),
+          (id: 'hianime', name: 'HiAnime (again)'),
+          (id: 'other', name: 'Other'),
+        ],
+        const ['other', 'hianime', 'hianime'],
+      );
+      expect(out.map((s) => s.id), ['other', 'hianime']);
+    });
+  });
+
   group('what Auto Resolve actually sweeps', () {
     List<({String id, String name})> pool(int n) =>
         [for (var i = 1; i <= n; i++) (id: 's$i', name: 'S$i')];

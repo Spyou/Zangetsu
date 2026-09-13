@@ -346,6 +346,47 @@ void main() {
     expect(src.log, contains('sources:https://b/3:src-b'));
   });
 
+  test('invalidateWinner clears over-budget so an episode tap retries', () async {
+    // A tap / Retry is intentional: sources that timed out must be eligible
+    // again. The cooldown only protects automatic follow-on sweeps.
+    final src = _SweepSrc(
+      aEps: const [
+        Episode(id: '1', title: 'Ep 1', number: 1, url: 'https://a/1'),
+        Episode(id: '2', title: 'Ep 2', number: 2, url: 'https://a/2'),
+        Episode(id: '3', title: 'Ep 3', number: 3, url: 'https://a/3'),
+      ],
+      // b can serve ep2 (so the first sweep finishes) but not ep3 — the retry
+      // must fall through to src-a, which is only possible if the cooldown
+      // was cleared.
+      bEps: const [
+        Episode(id: '1', title: 'Ep 1', number: 1, url: 'https://b/1'),
+        Episode(id: '2', title: 'Ep 2', number: 2, url: 'https://b/2'),
+      ],
+      hangs: const {'src-a'},
+    );
+    final matcher = SourceMatcher(
+      sources: src, store: store, prefs: prefs,
+      candidates: (_) => src.loadedSources,
+    );
+    final r = resolver(
+      sources: src,
+      matcher: matcher,
+      preferred: 'src-a',
+      budget: const Duration(milliseconds: 60),
+    );
+
+    await r.resolveForPlayback(_ep2);
+    src.log.clear();
+    r.invalidateWinner('zm://anime/mal:100/ep/3');
+    await expectLater(
+      r.resolveForPlayback('zm://anime/mal:100/ep/3'),
+      throwsA(isA<EpisodeNotAvailable>()),
+    );
+
+    expect(src.log.where((l) => l.endsWith(':src-a')), isNotEmpty,
+        reason: 'after invalidateWinner, src-a must be tried again');
+  });
+
   test('dub and sub are resolved and cached separately', () async {
     // The reported bug lives here. sub and dub are different episode lists
     // for the SAME zm:// url, so a cache keyed on the url alone hands a dub

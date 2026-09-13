@@ -357,6 +357,31 @@ void main() {
       );
       expect(cubit.state.cast, isNotEmpty, reason: 'and it still enriched');
     });
+
+    test('source list still gets AniZip titles after the catalogue enrich',
+        () async {
+      // Regression: catalogue partial paints → AniZip fills titles → source
+      // "Episode N" list lands and joins the in-flight enrich, which then
+      // refuses to apply (wrong list identity). Symptom: real titles flash,
+      // then bare Episode 1/2/3. After the join we must enrich the list on
+      // screen so Display stays on the metadata stack (AniList/MAL + AniZip).
+      final loading = cubit.load();
+      await epMeta.started.future;
+      repo.gate.complete();
+      await loading;
+      expect(cubit.state.detail!.episodes.map((e) => e.id), ['src1']);
+
+      epMeta.release.complete();
+      gated.release.complete();
+      // Allow the joined run to finish AND the follow-up episode enrich.
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      expect(
+        cubit.state.detail!.episodes.single.description,
+        'desc src1',
+        reason: 'source rows never received AniZip/TMDB episode meta',
+      );
+    });
   });
 
   test(
