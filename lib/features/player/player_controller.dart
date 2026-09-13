@@ -3033,6 +3033,11 @@ class PlayerCubit extends Cubit<PlayerState> {
       tmdbIsTv: tmdbIsTv,
       imdbId: imdbId,
       episode: ep.toInt(),
+      // Deliberately the raw field, not seasonOf(): that falls back to parsing
+      // the episode title, and a guessed season written into someone's watch
+      // history is worse than the flat numbering it would replace.
+      season: currentEpisode.season,
+      seasonEpisode: seasonEpisodeOf(episodes, currentEpisode),
     );
   }
 

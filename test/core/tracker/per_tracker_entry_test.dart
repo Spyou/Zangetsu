@@ -84,6 +84,8 @@ class _StubTracker extends ChangeNotifier implements Tracker {
     bool tmdbIsTv = false,
     String? imdbId,
     required int episode,
+    int? season,
+    int? seasonEpisode,
     MediaKind kind = MediaKind.anime,
     bool novel = false,
   }) async {}

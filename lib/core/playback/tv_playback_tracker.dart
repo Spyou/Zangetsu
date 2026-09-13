@@ -86,6 +86,10 @@ class TvPlaybackTracker {
       tmdbIsTv: tmdbIsTv,
       imdbId: imdbId,
       episode: epNum.toInt(),
+      // No episode list here, so the position inside the season is unknown
+      // and the source's own number can't stand in for it — see
+      // SimklService.watchedBody. Falls back to the flat shape.
+      season: episode.season,
     );
   }
 }

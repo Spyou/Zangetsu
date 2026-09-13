@@ -157,3 +157,27 @@ class Episode extends Equatable {
         unavailable,
       ];
 }
+
+/// Where [ep] sits inside its OWN season, 1-based — or null when that can't be
+/// answered ([ep] reports no season, or isn't in [eps]).
+///
+/// Needed because [Episode.number] is whatever the source calls the episode,
+/// and sources disagree. Reacher's season 3 on one source is numbered 17-24,
+/// continuing from season 2 rather than restarting; on another it's 1-8. Both
+/// are "episode 3 of season 3" to anything that stores seasons separately, and
+/// sending 19 there records an episode the season doesn't have.
+///
+/// Counts by position rather than arithmetic on [Episode.number]: specials and
+/// gaps make "first number in the season" an unreliable offset, and a list is
+/// what every caller already has.
+int? seasonEpisodeOf(List<Episode> eps, Episode ep) {
+  final season = ep.season;
+  if (season == null) return null;
+  var n = 0;
+  for (final e in eps) {
+    if (e.season != season) continue;
+    n++;
+    if (e.id == ep.id) return n;
+  }
+  return null;
+}

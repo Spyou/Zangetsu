@@ -210,6 +210,11 @@ abstract interface class Tracker implements Listenable {
   /// without this a novel with no [malId] resolves against its franchise's
   /// manga entry instead of its own. Ignored outside AniList; ignored by
   /// [malId]-based resolution (unambiguous there already).
+  /// [season] is the episode's REAL season, or null when the source didn't
+  /// report one — never a season guessed from an episode title. Only trackers
+  /// that model a show as seasons-within-one-entry need it: on MAL and AniList
+  /// every season is its own entry, so an episode number there is already
+  /// unambiguous and they ignore this.
   Future<void> scrobble({
     int? malId,
     String? title,
@@ -217,6 +222,8 @@ abstract interface class Tracker implements Listenable {
     bool tmdbIsTv,
     String? imdbId,
     required int episode,
+    int? season,
+    int? seasonEpisode,
     MediaKind kind = MediaKind.anime,
     bool novel = false,
   });

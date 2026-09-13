@@ -200,8 +200,17 @@ class SimklService extends ChangeNotifier implements Tracker {
           validateStatus: (s) => s != null && s < 500,
         ),
       );
-      return res.statusCode != null && res.statusCode! < 300;
-    } catch (_) {
+      final ok = res.statusCode != null && res.statusCode! < 300;
+      // A rejected sync used to be completely silent — the bool came back
+      // false and every caller dropped it, so "Simkl isn't tracking me" had
+      // nothing behind it in a shared log. Only the failures are logged;
+      // a working scrobble stays quiet.
+      if (!ok) {
+        debugPrint('[simkl] POST $path → ${res.statusCode} ${res.data}');
+      }
+      return ok;
+    } catch (e) {
+      debugPrint('[simkl] POST $path failed: $e');
       return false;
     }
   }
@@ -248,6 +257,8 @@ class SimklService extends ChangeNotifier implements Tracker {
     bool tmdbIsTv = false,
     String? imdbId,
     required int episode,
+    int? season,
+    int? seasonEpisode,
     MediaKind kind = MediaKind.anime,
     bool novel = false, // no manga/novel API to disambiguate — ignored
   }) async {
@@ -258,14 +269,85 @@ class SimklService extends ChangeNotifier implements Tracker {
     final bool isMovie = t.bucket == 'movies';
     final obj = isMovie
         ? {'ids': t.ids} // a movie: mark the whole thing watched
-        : {
-            'ids': t.ids,
-            'episodes': [
-              {'number': episode},
-            ],
-          };
-    await _post('/sync/history', _body(t, obj)); // silent on success
+        : {'ids': t.ids, ...watchedBody(episode, season, seasonEpisode, malId)};
+    final ok = await _post('/sync/history', _body(t, obj));
+    // Logged either way, not just on failure. A scrobble happens once per
+    // finished episode, so it's a line an hour at worst — and "Simkl says I'm
+    // still on S3E2" is otherwise unanswerable: nothing recorded what we sent
+    // or whether Simkl took it.
+    debugPrint(
+      '[simkl] scrobble ${t.ids} '
+      // What actually goes in the request, not what the source called it.
+      // Printing the source's number here once read as "s3e19" for an episode
+      // correctly sent as s3e3 — a log that disagrees with the request is
+      // worse than none.
+      '${obj.containsKey('seasons') ? 's${season}e1-$seasonEpisode' : 'e1-$episode'} '
+      '${obj.containsKey('seasons') ? '(seasoned' : '(flat'}'
+      // Only when the source called it something else, which is the case
+      // worth being able to spot in a shared log.
+      '${obj.containsKey('seasons') && seasonEpisode != episode ? ', source e$episode)' : ')'} '
+      '→ ${ok ? 'ok' : 'rejected'}',
+    );
   }
+
+  /// The watched-episode half of a `/sync/history` show entry.
+  ///
+  /// Simkl keeps a series as ONE entry with seasons inside it, so an episode
+  /// number alone can't say which season — S3E3 and S1E3 are both "3". That is
+  /// why a multi-season series looked stuck: every episode landed against the
+  /// same season no matter what was actually watched.
+  ///
+  /// The season is only sent when it can be trusted:
+  ///
+  /// - [season] must be non-null, i.e. the source genuinely reported one.
+  ///   Callers pass `Episode.season`, never `seasonOf()` — the latter falls
+  ///   back to parsing the episode TITLE, and a guess written into someone's
+  ///   history is worse than the flat numbering it replaces.
+  /// - [seasonEpisode] must be known — the episode's position INSIDE its
+  ///   season. [episode] is whatever the source calls it, and sources disagree:
+  ///   one numbers Reacher's season 3 as 17-24, another as 1-8. Sending 19 as
+  ///   "season 3 episode 19" records an episode that season doesn't have, and
+  ///   Simkl accepts it with a 2xx while storing nothing — which reads as
+  ///   working right up until you look at the website.
+  /// - [malId] must be null. A MAL id resolves to a season-specific anime
+  ///   entry whose episodes start at 1, so "season 3" is meaningless there and
+  ///   sending it would break the anime path, which is correct today.
+  ///
+  /// Anything else keeps the flat shape this has always sent.
+  @visibleForTesting
+  static Map<String, dynamic> watchedBody(
+    int episode,
+    int? season,
+    int? seasonEpisode,
+    int? malId,
+  ) {
+    if (season == null || season <= 0 || seasonEpisode == null ||
+        seasonEpisode <= 0 || malId != null) {
+      return {'episodes': _upTo(episode)};
+    }
+    return {
+      'seasons': [
+        {'number': season, 'episodes': _upTo(seasonEpisode)},
+      ],
+    };
+  }
+
+  /// Episodes 1..[n], which is how progress is expressed to Simkl.
+  ///
+  /// MAL and AniList keep a high-water mark: say "episode 8" and the list reads
+  /// 8/220. Simkl instead counts the DISTINCT episodes it has been told about,
+  /// so sending only the one just finished left an account that had watched
+  /// eight episodes reading "Watching · 1". [setStatus] already worked around
+  /// this; scrobbling never did, which is the other half of "Simkl tracking
+  /// doesn't work".
+  ///
+  /// Re-sending the earlier ones every time is deliberate: it costs one request
+  /// either way, Simkl ignores episodes it already has, and it self-heals a
+  /// history with gaps — episodes watched before the account was connected, or
+  /// on another device, or skipped.
+  static List<Map<String, dynamic>> _upTo(int n) => [
+    for (var i = 1; i <= n; i++) {'number': i},
+  ];
 
   @override
   Future<void> setStatus({

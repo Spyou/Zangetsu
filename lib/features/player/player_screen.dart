@@ -810,6 +810,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
           tmdbIsTv: widget.tmdbIsTv,
           imdbId: widget.imdbId,
           episode: epNum.toInt(),
+          season: ep.season,
+          seasonEpisode: seasonEpisodeOf(widget.episodes, ep),
         );
       }
       final subs = src.subtitles
