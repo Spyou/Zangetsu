@@ -184,7 +184,46 @@ class SourceRepository implements CatalogueRepository {
   /// [ProviderRegistry] and merge them in. The registry is the source of
   /// truth for what's installed+enabled; the runtime is just a cache of
   /// what's currently loaded.
+  /// Cached answer for [pickableSources], and the fingerprint it was built
+  /// from. See the getter.
+  List<({String id, String name})>? _pickableCache;
+  int? _pickableKey;
+
+  /// Everything [pickableSources] reads, in a form that is cheap to compute.
+  ///
+  /// Hashes the source IDS of each ecosystem, not their counts. Counts look
+  /// tempting — they are already in memory — but disabling one CloudStream
+  /// source and enabling another leaves the count identical while the list
+  /// changes, and the cache would then hide a source until restart. Hashing
+  /// ids walks the same lists without building records, running [_named] over
+  /// 200+ entries, or touching the registry box.
+  ///
+  /// The registry is the exception: reading it means a Hive read plus a JSON
+  /// parse per entry, which is the single most expensive part of the getter.
+  /// It contributes its write revision instead — which catches enable/disable
+  /// as well, since that is a write like any other.
+  int get _pickableFingerprint => Object.hashAll([
+    Object.hashAll(_manager.all.map((p) => p.sourceId)),
+    Object.hashAll(_csManager.enabled.map((p) => p.sourceId)),
+    Object.hashAll(_aniManager.all.map((p) => p.sourceId)),
+    Object.hashAll(_mihonManager.all.map((p) => p.sourceId)),
+    Object.hashAll(_lnrManager?.installedSources.map((s) => s.id) ?? const []),
+    // Both NSFW prefs filter the list, so a toggle has to invalidate it.
+    _prefs.showNsfwAniyomi,
+    _prefs.nsfwSources,
+    sl.isRegistered<ProviderRegistry>() ? sl<ProviderRegistry>().revision : 0,
+  ]);
+
   List<({String id, String name})> get pickableSources {
+    // Memoised because this is on the source matcher's hot path: it is called
+    // once per candidate lookup, and a home reload (what the Cloudflare
+    // "solve" button triggers) ran it TWELVE times inside one 30ms frame with
+    // 214 sources installed — enumerating five ecosystems and re-reading the
+    // registry box each time, all on the UI thread. That is the freeze.
+    final key = _pickableFingerprint;
+    final hit = _pickableCache;
+    if (hit != null && key == _pickableKey) return hit;
+
     final raw = _rawSources(narrowByLang: false);
 
     // ── Registry supplement (TV: loadAll skipped, runtime empty) ──
@@ -215,9 +254,10 @@ class SourceRepository implements CatalogueRepository {
       'ani=${_aniManager.all.length} mihon=${_mihonManager.all.length} '
       'lnr=${_lnrManager?.installedSources.length ?? 0} '
       'registrySupplement=${registryOnly.length} '
-      '→ ${named.length} pickable',
+      '→ ${named.length} pickable (rebuilt)',
     );
-    return named;
+    _pickableKey = key;
+    return _pickableCache = named;
   }
 
   @override

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:watch_app/core/hive/safe_box.dart';
 import 'package:hive/hive.dart';
@@ -131,6 +132,26 @@ class ProviderRegistry {
   final Map<String, String> _bundledJs = {};
 
   Box<Map> get _box => Hive.box<Map>(boxName);
+
+  /// Bumped on every write to the registry box.
+  ///
+  /// Exists so [SourceRepository.pickableSources] can cache its answer and
+  /// know when to throw it away. That getter reads EVERY entry here and JSON-
+  /// parses it, and the source matcher calls it once per candidate lookup — a
+  /// single Cloudflare "solve" reloaded home and ran it twelve times in thirty
+  /// milliseconds, on the UI thread, with 214 sources installed.
+  ///
+  /// Driven by Hive's own change stream rather than by bumping a counter in
+  /// each of the five mutating methods: a missed bump would leave a source
+  /// invisible until restart, and that is a far worse bug than the one this
+  /// is fixing.
+  int get revision {
+    _watch ??= _box.watch().listen((_) => _revision++);
+    return _revision;
+  }
+
+  int _revision = 0;
+  StreamSubscription<BoxEvent>? _watch;
 
   static Future<void> init() async {
     if (!Hive.isBoxOpen(boxName)) {
