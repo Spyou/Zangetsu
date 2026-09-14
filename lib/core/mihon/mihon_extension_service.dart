@@ -10,6 +10,7 @@ import 'package:hive/hive.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../aniyomi/aniyomi_repo.dart';
+import '../provider/cf_solve_needed.dart';
 import 'mihon_manager.dart';
 import 'mihon_provider.dart';
 import 'mihon_repo.dart';
@@ -120,9 +121,22 @@ class MihonExtensionService {
   /// complete a Cloudflare challenge for [url]. The `cf_clearance` cookie it
   /// captures is shared with the Mihon OkHttp client, so the source loads
   /// afterwards. Best-effort — a missing channel (non-Android) is a silent no-op.
+  ///
+  /// Also drops [url]'s host from [CfSolveNeeded] on the way out. Without that
+  /// the latch set when the challenge was first seen never lifts, and the
+  /// resolver and matcher keep skipping the very source the user just solved —
+  /// the WebView passes, the cookie lands, and nothing ever gets to use it.
+  /// (The JS-provider path clears its own in `_solveCfImpl`; this is the same
+  /// thing for the native ecosystems, which all come through here.)
+  ///
+  /// The native call resolves when the screen CLOSES, not on a verified
+  /// clearance, so this also clears when the user simply backed out. That is
+  /// self-correcting: the next request hits the challenge and re-flags it.
   static Future<void> solveCloudflare(String url) async {
     try {
       await _channel.invokeMethod<void>('solveCloudflare', {'url': url});
+      final host = Uri.tryParse(url)?.host;
+      if (host != null && host.isNotEmpty) CfSolveNeeded.clear(host);
     } on PlatformException catch (e) {
       debugPrint('[mihon] solveCloudflare failed: $e');
     } on MissingPluginException {
