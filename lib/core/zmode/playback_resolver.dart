@@ -299,7 +299,20 @@ class PlaybackResolver {
   ///
   /// Playback sweeps only. A filtered sweep (downloading) is nobody's
   /// foreground wait — closing the player must not cancel a download.
-  void abortSweeps() => _sweepGen++;
+  void abortSweeps() {
+    _sweepGen++;
+    // Moving the generation only stops the NEXT candidate — the loop reads it
+    // between candidates. The one already in flight was still waited out, up
+    // to its whole budget, and at the 25s a chosen source gets that reads as a
+    // frozen app. Waking the sweep is what makes leaving immediate.
+    if (!_abortSignal.isCompleted) _abortSignal.complete();
+    // Fresh signal, so a sweep started after this one isn't born aborted.
+    _abortSignal = Completer<void>();
+  }
+
+  /// Completed by [abortSweeps] to wake a sweep blocked on a candidate.
+  /// Rotated there, so each abort only wakes the sweeps that were running.
+  Completer<void> _abortSignal = Completer<void>();
 
   /// Sweeps that ended with nothing able to serve the episode, and when.
   ///
@@ -377,6 +390,10 @@ class PlaybackResolver {
     // abort already set, so the sweep it was meant to stop never sees a change
     // and runs to the end — which is the bug, silently reintroduced.
     final gen = _sweepGen;
+    // Derived ONCE per sweep, not per candidate: every `then` registers a
+    // listener on the completer, and one per candidate would pile up 37 of
+    // them each sweep on a signal that usually never fires.
+    final abortFuture = _abortSignal.future.then<_Attempt?>((_) => null);
     final p = ZmodeIds.parseEpisode(zmEpisodeUrl);
     if (p == null) {
       debugPrint('[playback] _resolve → ArgumentError: not a zm episode url');
@@ -462,7 +479,7 @@ class PlaybackResolver {
       _Attempt? attempt;
       final budget = _budgetFor(sourceId, chosen);
       try {
-        attempt = await _tryCandidate(
+        final call = _tryCandidate(
           p,
           sourceId,
           t,
@@ -471,6 +488,24 @@ class PlaybackResolver {
           onTitleMatch: () => hadTitleMatch = true,
           onMiss: (reason) => note(sourceId, reason),
         ).timeout(budget);
+        if (accept == null) {
+          // Stop WAITING when the viewer leaves. The request underneath is not
+          // cancellable, so it finishes in the background and its answer is
+          // dropped — exactly what already happens to an over-budget one.
+          // A null here falls into the `attempt == null` continue below, and
+          // the top of the loop then throws PlaybackAborted as it always did.
+          attempt = await Future.any<_Attempt?>([call, abortFuture]);
+          // The loser still completes. Swallow it, or the TimeoutException
+          // nobody is waiting for surfaces as an unhandled async error.
+          if (attempt == null) {
+            unawaited(call.then<void>((_) {}, onError: (_) {}));
+          }
+        } else {
+          // A filtered sweep (downloading) is nobody's foreground wait, and
+          // abortSweeps deliberately leaves it alone — see its doc. Closing
+          // the player must not cancel a download.
+          attempt = await call;
+        }
       } on TimeoutException {
         _overBudget[sourceId] = DateTime.now();
         note(sourceId, SweepReason.timedOut);

@@ -201,6 +201,46 @@ void main() {
     }
   });
 
+  group('leaving stops the candidate the sweep is waiting on', () {
+    test('abort returns at once instead of waiting the budget out', () async {
+      // The regression: abortSweeps only moved _sweepGen, which the loop reads
+      // BETWEEN candidates — so backing out still sat through the one in
+      // flight. At the 8s flat budget that was tolerable; once a chosen source
+      // got 25s it read as a frozen app (anikoto, measured on device at 25.0s
+      // between "trying" and "the viewer left").
+      JsEngine.debugRunsOffUiIsolateOverride = true;
+      final src = _SlowSrc(aDelay: const Duration(milliseconds: 900));
+      final b = build(src);
+      await b.m.pinTitleToSource(_show, 'src-a', title: 'FMA');
+
+      final sw = Stopwatch()..start();
+      final call = b.r.resolveForPlayback(_ep2);
+      await Future<void>.delayed(const Duration(milliseconds: 40));
+      b.r.abortSweeps();
+      await expectLater(call, throwsA(isA<PlaybackAborted>()));
+      sw.stop();
+
+      // The chosen budget here is 600ms; without the fix this could not have
+      // returned before it.
+      expect(
+        sw.elapsedMilliseconds,
+        lessThan(400),
+        reason: 'waited out the budget instead of leaving when asked',
+      );
+    });
+
+    test('a sweep nobody aborted still runs to its answer', () async {
+      // The no-regression half: the race must not cut a sweep short on its own.
+      JsEngine.debugRunsOffUiIsolateOverride = true;
+      final src = _SlowSrc(aDelay: const Duration(milliseconds: 250));
+      final b = build(src);
+      await b.m.pinTitleToSource(_show, 'src-a', title: 'FMA');
+
+      final res = await b.r.resolveForPlayback(_ep2);
+      expect(res.match.sourceId, 'src-a');
+    });
+  });
+
   group('sweepFailureDetail', () {
     SweepOutcome o(String name, SweepReason r) =>
         (sourceId: name, name: name, reason: r);
