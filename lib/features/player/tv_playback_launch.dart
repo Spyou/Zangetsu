@@ -28,6 +28,10 @@ enum TvPlayerKind {
   exoView,
 }
 
+/// How many dead sources to walk past on TV before giving up and asking. The
+/// phone player uses the same ceiling (`_maxSourceHops`, player_controller).
+const int kMaxTvSourceHops = 3;
+
 /// Pure routing: Apple TV always uses system AVKit; Android TV keeps native
 /// Exo vs platform-view.
 TvPlayerKind tvPlayerKind({
@@ -85,6 +89,10 @@ Future<void> launchTvPlayback({
   bool tmdbIsTv = false,
   String? imdbId,
   bool skipOverlay = false,
+  /// How many dead sources this attempt has already walked past. 0 is a fresh
+  /// play; anything higher is an automatic hop and must NOT reset what we
+  /// just learned. See the invalidateWinner guard below.
+  int sourceHop = 0,
 }) async {
   debugPrint(
     '[tv-playback] launchTvPlayback · sourceId=$sourceId '
@@ -94,7 +102,12 @@ Future<void> launchTvPlayback({
   // Episode tap / Retry — drop any remembered miss and over-budget cooldowns
   // so sources that timed out on the last attempt get another chance. Auto
   // next-episode and probes keep those cooldowns; this path is intentional.
-  if (showUrl != null &&
+  //
+  // NOT on a source hop: invalidateWinner clears the unplayable set too, so
+  // hopping through here would forget the dead source we just excluded and
+  // the sweep would hand back the same one, forever.
+  if (sourceHop == 0 &&
+      showUrl != null &&
       ZmodeIds.isZ(showUrl) &&
       startIndex >= 0 &&
       startIndex < episodes.length &&
@@ -226,6 +239,39 @@ Future<void> launchTvPlayback({
       if (errorCode != null) {
         dismissLoading?.call();
         final isZm = (showUrl != null && ZmodeIds.isZ(showUrl));
+        // The dead source has just been excluded for this episode by
+        // TvNativePlayer._handlePlaybackError, so a re-resolve lands on a
+        // different one. Walk on silently, the way the phone player does,
+        // instead of making the viewer read a dialog and pick "Try Next
+        // Source" for something the app can work out on its own. The dialog
+        // is still there once the hops run out.
+        if (isZm && sourceHop < kMaxTvSourceHops && context.mounted) {
+          debugPrint(
+            '[tv-playback] playbackError · auto-hop '
+            '${sourceHop + 1}/$kMaxTvSourceHops (code=$errorCode)',
+          );
+          await launchTvPlayback(
+            context: context,
+            sourceId: sourceId,
+            episodes: episodes,
+            startIndex: startIndex,
+            resume: resume,
+            resolveSources: resolveSources,
+            showUrl: showUrl,
+            showTitle: showTitle,
+            cover: cover,
+            coverHeaders: coverHeaders,
+            category: category,
+            availableCategories: availableCategories,
+            malId: malId,
+            scrobbleTitle: scrobbleTitle,
+            tmdbId: tmdbId,
+            tmdbIsTv: tmdbIsTv,
+            imdbId: imdbId,
+            sourceHop: sourceHop + 1,
+          );
+          return;
+        }
         if (!isZm && context.mounted) {
           await showTvPlaybackLoadError(
             context,

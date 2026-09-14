@@ -465,7 +465,16 @@ class TvNativePlayer {
       if (sl.isRegistered<PlaybackResolver>()) {
         final resolver = sl<PlaybackResolver>();
         failedSourceId = resolver.resolvedSourceId(epUrl) ?? _sourceId;
-        resolver.invalidateWinner(epUrl);
+        // Exclude THIS source for THIS episode, rather than forgetting
+        // everything we know about the episode. invalidateWinner wipes the
+        // _unplayable set as part of its job, so using it here would clear the
+        // very memory we are trying to write and the next sweep would hand
+        // back the same dead link. Same call the phone player makes.
+        resolver.markSourceUnplayable(
+          epUrl,
+          failedSourceId,
+          category: _category,
+        );
       }
     }
     // Mark the source as unhealthy — it will be skipped (skippable) for the
