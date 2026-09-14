@@ -700,7 +700,7 @@ void main() {
     src.log.clear();
     await r.sources('zm://anime/mal:100/ep/2');
     expect(gqlCalls, 0);
-    expect(src.log, ['episodes:https://src/fma', 'sources:https://src/fma/2:allanime']);
+    expect(src.log, ['episodes:https://src/fma:sub', 'sources:https://src/fma/2:allanime']);
   });
 }
 
