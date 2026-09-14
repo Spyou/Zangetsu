@@ -1,0 +1,160 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:watch_app/core/aniyomi/aniyomi_mapping.dart';
+import 'package:watch_app/core/playback/source_selection.dart';
+import 'package:watch_app/core/models/video_source.dart';
+
+/// Aniyomi has no sub/dub parameter — `getVideoList(episode)` takes an episode
+/// and nothing else. A source carrying both cuts says so in each video's OWN
+/// title ("Dub - 1080p"), so both arrive in one list. That word used to be read
+/// straight into `quality` as though it were a resolution, so a Dub row was
+/// visible but nothing could switch to it: [VideoSource.kind] was never set.
+void main() {
+  group('reading the cut out of a video title', () {
+    test('a dub is recognised and the word leaves the quality label', () {
+      final r = audioKindFromTitle('Dub - 1080p');
+      expect(r.kind, AudioKind.dub);
+      expect(r.quality, '1080p', reason: 'would read "DUB • Dub - 1080p"');
+    });
+
+    test('the marker is found wherever it sits', () {
+      expect(audioKindFromTitle('1080p (Dub)').kind, AudioKind.dub);
+      expect(audioKindFromTitle('1080p (Dub)').quality, '1080p');
+      expect(audioKindFromTitle('Server A · Dubbed · 720p').kind, AudioKind.dub);
+      expect(audioKindFromTitle('Server A · Dubbed · 720p').quality,
+          'Server A · 720p');
+    });
+
+    test('sub, however it is spelled', () {
+      for (final t in ['Sub - 720p', 'Subbed 720p', 'HardSub 720p', 'soft-sub 720p']) {
+        expect(audioKindFromTitle(t).kind, AudioKind.sub, reason: t);
+      }
+      expect(audioKindFromTitle('Raw - 1080p').kind, AudioKind.raw);
+    });
+
+    test('a title that is only the cut leaves no quality behind', () {
+      final r = audioKindFromTitle('Dub');
+      expect(r.kind, AudioKind.dub);
+      expect(r.quality, isNull, reason: 'an empty label is worse than none');
+    });
+
+    test('whole words only', () {
+      // The failure this guards: "Subaru" is not a sub, "Dublin" is not a dub.
+      for (final t in ['Subaru 1080p', 'Dublin Stream', 'Redub2 mirror']) {
+        expect(audioKindFromTitle(t).kind, AudioKind.unknown, reason: t);
+        expect(audioKindFromTitle(t).quality, t, reason: 'label untouched: $t');
+      }
+    });
+
+    test('a plain quality says nothing about audio', () {
+      for (final t in ['1080p', '720p', 'Doodstream', '', null]) {
+        expect(audioKindFromTitle(t).kind, AudioKind.unknown, reason: '$t');
+      }
+      expect(audioKindFromTitle('1080p').quality, '1080p');
+    });
+  });
+
+  group('what an unmarked entry is taken to be', () {
+    test('nothing, when no title mentions a dub — the no-regression case', () {
+      // THE contract. Every Aniyomi source that has only ever had one cut must
+      // keep the exact `unknown` kind it had before, or its picker, ordering
+      // and failover all change underneath it.
+      expect(
+        fallbackAudioKind(['1080p', '720p', 'Doodstream', null]),
+        AudioKind.unknown,
+      );
+    });
+
+    test('sub, once something in the list is marked dub', () {
+      expect(
+        fallbackAudioKind(['1080p', 'Dub - 1080p', '720p']),
+        AudioKind.sub,
+      );
+    });
+
+    test('a dub-only list still infers nothing for the rest', () {
+      expect(fallbackAudioKind(['Dub - 1080p', 'Dub - 720p']), AudioKind.sub);
+    });
+  });
+
+  group('videoSourceFromVideo', () {
+    Map<String, dynamic> v(String title) => {
+      'videoUrl': 'https://cdn.test/x.m3u8',
+      'videoTitle': title,
+    };
+
+    test('carries the cut through, and keeps the resolution readable', () {
+      final s = videoSourceFromVideo(v('Dub - 1080p'));
+      expect(s.kind, AudioKind.dub);
+      expect(s.quality, '1080p');
+    });
+
+    test('the fallback only fills an entry that named nothing', () {
+      expect(
+        videoSourceFromVideo(v('1080p'), fallbackKind: AudioKind.sub).kind,
+        AudioKind.sub,
+      );
+      // An explicit dub is never overwritten by the fallback.
+      expect(
+        videoSourceFromVideo(v('Dub - 1080p'), fallbackKind: AudioKind.sub).kind,
+        AudioKind.dub,
+      );
+    });
+
+    test('default fallback leaves it unknown, as before', () {
+      expect(videoSourceFromVideo(v('1080p')).kind, AudioKind.unknown);
+    });
+  });
+
+  group('every server still reaches the picker', () {
+    // The guarantee behind the change: setting `kind` GROUPS the list, it
+    // never trims it. Both server sheets render
+    //   for (final k in availableKinds(sources))
+    //     for (final s in sourcesForKind(sources, k))
+    // so this walk must always return the whole list, whatever kinds are in it.
+    List<VideoSource> asRendered(List<VideoSource> sources) => [
+      for (final k in availableKinds(sources)) ...sourcesForKind(sources, k),
+    ];
+
+    VideoSource src(String url, AudioKind k) =>
+        VideoSource(url: url, kind: k, quality: '1080p');
+
+    test('a mixed sub/dub list loses nothing', () {
+      final all = [
+        src('a', AudioKind.sub),
+        src('b', AudioKind.dub),
+        src('c', AudioKind.sub),
+        src('d', AudioKind.dub),
+      ];
+      expect(asRendered(all).toSet(), all.toSet());
+      expect(asRendered(all), hasLength(all.length));
+    });
+
+    test('an all-unknown list — the untouched-source case — loses nothing', () {
+      final all = [
+        src('a', AudioKind.unknown),
+        src('b', AudioKind.unknown),
+      ];
+      expect(asRendered(all), all);
+    });
+
+    test('every combination of kinds survives the round trip', () {
+      const kinds = AudioKind.values;
+      for (var i = 0; i < kinds.length; i++) {
+        for (var j = 0; j < kinds.length; j++) {
+          for (var k = 0; k < kinds.length; k++) {
+            final all = [
+              src('a', kinds[i]),
+              src('b', kinds[j]),
+              src('c', kinds[k]),
+            ];
+            expect(
+              asRendered(all).toSet(),
+              all.toSet(),
+              reason: '${kinds[i]}/${kinds[j]}/${kinds[k]}',
+            );
+          }
+        }
+      }
+    });
+  });
+}

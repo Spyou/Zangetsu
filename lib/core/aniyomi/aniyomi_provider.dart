@@ -247,9 +247,16 @@ class AniyomiProvider implements BaseProvider {
     if (raw == null || raw.isEmpty) return const [];
     try {
       final list = jsonDecode(raw) as List<dynamic>;
-      return list
-          .whereType<Map<String, dynamic>>()
-          .map(videoSourceFromVideo)
+      final maps = list.whereType<Map<String, dynamic>>().toList();
+      // A source that carries both cuts says so in each video's own title, so
+      // the decision needs the whole list: once one entry is marked dub, the
+      // unmarked ones are the sub. No dub anywhere → every kind stays unknown,
+      // exactly as before.
+      final fallback = fallbackAudioKind(
+        maps.map((m) => m['videoTitle'] as String?),
+      );
+      return maps
+          .map((m) => videoSourceFromVideo(m, fallbackKind: fallback))
           .where((v) => v.url.isNotEmpty)
           .toList();
     } catch (e) {

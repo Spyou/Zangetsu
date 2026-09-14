@@ -182,6 +182,73 @@ Episode episodeFromSEpisode(Map<String, dynamic> j) {
 /// Converts one Video JSON object (from getVideoList) into a [VideoSource].
 ///
 /// Container is inferred from the URL extension: `.m3u8` → HLS, everything
+// ── Sub/dub, as Aniyomi actually expresses it ────────────────────────────────
+//
+// Aniyomi's API has no sub/dub parameter — `getVideoList(episode)` takes an
+// episode and nothing else. A source that carries both cuts says so in each
+// video's OWN title ("Dub - 1080p"), so the two arrive as separate entries in
+// one list. That word was being read straight into `quality` as if it were a
+// resolution, which is why a Dub row was visible but could not be switched to:
+// nothing ever set [VideoSource.kind].
+
+/// Matches a whole word only, so "Subaru" is not a sub and "Dublin" is not a
+/// dub. Ordered longest-first where prefixes overlap (hardsub before sub).
+final RegExp _kAudioMarker = RegExp(
+  r'\b(hard[\s-]?sub(?:bed)?|soft[\s-]?sub(?:bed)?|dub(?:bed)?|sub(?:bed)?|raw)\b',
+  caseSensitive: false,
+);
+
+/// Leftover punctuation once a marker is cut out of a label — "Dub - 1080p"
+/// must read "1080p", not "- 1080p".
+final RegExp _kOrphanSeparators = RegExp(r'^[\s\-–—·•|:/()\[\]]+|[\s\-–—·•|:/()\[\]]+$');
+final RegExp _kDoubledSeparators = RegExp(r'[\s]*([\-–—·•|])[\s]*\1*[\s]*');
+
+/// The audio cut named by a video's title, and that title with the naming
+/// removed so it can still serve as the quality label.
+///
+/// Returns [AudioKind.unknown] when the title says nothing about audio — the
+/// overwhelmingly common case, and the one that must keep behaving exactly as
+/// it did before.
+({AudioKind kind, String? quality}) audioKindFromTitle(String? title) {
+  if (title == null || title.trim().isEmpty) {
+    return (kind: AudioKind.unknown, quality: null);
+  }
+  final m = _kAudioMarker.firstMatch(title);
+  if (m == null) return (kind: AudioKind.unknown, quality: title);
+
+  final word = m.group(1)!.toLowerCase().replaceAll(RegExp(r'[\s-]'), '');
+  final kind = word == 'raw'
+      ? AudioKind.raw
+      : word.startsWith('dub')
+      ? AudioKind.dub
+      // hardsub / softsub / sub / subbed all mean the same thing here.
+      : AudioKind.sub;
+
+  var rest = title.replaceRange(m.start, m.end, ' ');
+  // replaceAllMapped, not replaceAll: r'$1' is a literal there, not a group.
+  rest = rest.replaceAllMapped(_kDoubledSeparators, (m) => ' ${m[1]} ');
+  rest = rest.replaceAll(_kOrphanSeparators, '').trim();
+  rest = rest.replaceAll(RegExp(r'\s{2,}'), ' ');
+  return (kind: kind, quality: rest.isEmpty ? null : rest);
+}
+
+/// What an entry that names no cut should be taken as.
+///
+/// Only ever [AudioKind.sub], and only when SOMETHING in the list is marked
+/// dub — a list where no title mentions audio gets [AudioKind.unknown] back,
+/// so every source that has only ever had one cut keeps the exact kind (and
+/// therefore the exact picker, ordering and failover) it had before.
+///
+/// Takes the raw titles rather than built sources so the decision is made
+/// before construction: [VideoSource] has no copyWith, and rebuilding one
+/// field by hand is how a newly added field gets silently dropped later.
+AudioKind fallbackAudioKind(Iterable<String?> videoTitles) {
+  final anyDub = videoTitles.any(
+    (t) => audioKindFromTitle(t).kind == AudioKind.dub,
+  );
+  return anyDub ? AudioKind.sub : AudioKind.unknown;
+}
+
 /// else → MP4 (Aniyomi extensions rarely expose DASH or torrent links).
 ///
 /// Expected JSON keys (from the native bridge — see Task 7 contract):
@@ -190,7 +257,10 @@ Episode episodeFromSEpisode(Map<String, dynamic> j) {
 ///   headers        — JSON object mapping header name to value (nullable)
 ///   subtitleTracks — array of {url:String, lang:String} objects
 ///   audioTracks    — array of {url:String, lang:String} objects (informational)
-VideoSource videoSourceFromVideo(Map<String, dynamic> j) {
+VideoSource videoSourceFromVideo(
+  Map<String, dynamic> j, {
+  AudioKind fallbackKind = AudioKind.unknown,
+}) {
   final videoUrl = (j['videoUrl'] as String?) ?? '';
   final lowerUrl = videoUrl.toLowerCase();
   final container = lowerUrl.endsWith('.m3u8')
@@ -220,13 +290,17 @@ VideoSource videoSourceFromVideo(Map<String, dynamic> j) {
     }
   }
 
-  final quality = j['videoTitle'] as String?;
+  // "Dub - 1080p" is a cut AND a resolution. Split them: the cut drives the
+  // audio picker, what remains is still the quality label.
+  final audio = audioKindFromTitle(j['videoTitle'] as String?);
+  final quality = audio.quality;
   // Hidden local-proxy fallback for Cloudflare-walled streams (see VideoSource).
   final proxyUrl = j['proxyUrl'] as String?;
 
   return VideoSource(
     url: videoUrl,
     quality: (quality?.isNotEmpty == true) ? quality : null,
+    kind: audio.kind == AudioKind.unknown ? fallbackKind : audio.kind,
     container: container,
     headers: (headers != null && headers.isEmpty) ? null : headers,
     subtitles: subtitles,
