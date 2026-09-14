@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 import 'package:watch_app/core/hive/safe_box.dart';
 
@@ -56,6 +57,15 @@ class ResumeStore {
       'positionMs': position.inMilliseconds,
       'durationMs': duration.inMilliseconds,
     });
+    // Logged because its ABSENCE is the interesting case. The flush runs from
+    // the player's dispose(), so when Android kills the app straight out of
+    // picture-in-picture it never happens and the position is silently lost —
+    // a complaint that could not be checked in a shared log, because a write
+    // that did happen left no more trace than one that did not.
+    debugPrint(
+      '[resume] saved ${position.inSeconds}s/${duration.inSeconds}s '
+      '· $sourceId $episodeId',
+    );
   }
 
   ResumeMark? get(String sourceId, String showId, String episodeId) {
