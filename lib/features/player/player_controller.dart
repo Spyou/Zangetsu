@@ -576,7 +576,16 @@ class PlayerCubit extends Cubit<PlayerState> {
       if (gen != _gen) return;
       emit(state.copyWith(sources: resolved, loadingSources: false));
       _buildQualityMenu(gen);
-      final pick = pickDefault(resolved, preferQuality: _preferredQuality());
+      // prefer: the cut we just switched TO. Without it this takes the
+      // default (sub), so asking for dub on a source that returns BOTH cuts in
+      // one list hands back a sub stream. Harmless where a list carries one
+      // cut — that kind simply has no matches and the whole pool is used, as
+      // before — but the Aniyomi path now produces exactly such mixed lists.
+      final pick = pickDefault(
+        resolved,
+        prefer: cat == 'dub' ? AudioKind.dub : AudioKind.sub,
+        preferQuality: _preferredQuality(),
+      );
       if (pick == null) {
         emit(
           state.copyWith(error: () => 'No playable sources for this episode.'),

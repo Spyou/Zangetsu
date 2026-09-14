@@ -157,4 +157,37 @@ void main() {
       }
     });
   });
+
+  group('picking a stream out of a mixed list', () {
+    // Why switchCategory now passes `prefer`. These pin the selection rule it
+    // depends on — that a mixed list really does hand back the wrong cut when
+    // nobody says which one is wanted.
+    final mixed = [
+      const VideoSource(url: 'sub-1080', kind: AudioKind.sub, quality: '1080p'),
+      const VideoSource(url: 'dub-1080', kind: AudioKind.dub, quality: '1080p'),
+      const VideoSource(url: 'dub-720', kind: AudioKind.dub, quality: '720p'),
+    ];
+
+    test('asking for dub gets dub', () {
+      expect(pickDefault(mixed, prefer: AudioKind.dub)!.url, 'dub-1080');
+    });
+
+    test('saying nothing gets sub — the bug switchCategory used to hit', () {
+      // pickDefault defaults to sub, so a caller that forgets `prefer` while
+      // switching TO dub is silently handed the sub stream.
+      expect(pickDefault(mixed)!.url, 'sub-1080');
+    });
+
+    test('a single-cut list ignores prefer entirely — the no-regression case', () {
+      // Every Aniyomi source that never mentions a dub stays `unknown`, so
+      // neither kind matches and the whole pool is used, exactly as before.
+      final unknownOnly = [
+        const VideoSource(url: 'a', kind: AudioKind.unknown, quality: '1080p'),
+        const VideoSource(url: 'b', kind: AudioKind.unknown, quality: '720p'),
+      ];
+      expect(pickDefault(unknownOnly, prefer: AudioKind.dub)!.url, 'a');
+      expect(pickDefault(unknownOnly, prefer: AudioKind.sub)!.url, 'a');
+      expect(pickDefault(unknownOnly)!.url, 'a');
+    });
+  });
 }
