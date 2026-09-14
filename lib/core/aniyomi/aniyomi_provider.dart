@@ -255,6 +255,15 @@ class AniyomiProvider implements BaseProvider {
       final fallback = fallbackAudioKind(
         maps.map((m) => m['videoTitle'] as String?),
       );
+      // Exactly what the extension handed back, verbatim. Whether an Aniyomi
+      // source FILTERS to its preferred audio or merely SORTS by it decides
+      // between an ordering fix and fetching both cuts, and nothing else in
+      // the app can tell the two apart — the filtered list just looks like a
+      // source with one cut.
+      debugPrint(
+        '[aniyomi] getVideoList · ${maps.length} videos, fallback=$fallback '
+        '→ ${maps.map((m) => m['videoTitle'] ?? '?').join(" | ")}',
+      );
       return maps
           .map((m) => videoSourceFromVideo(m, fallbackKind: fallback))
           .where((v) => v.url.isNotEmpty)

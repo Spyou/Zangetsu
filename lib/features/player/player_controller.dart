@@ -2571,6 +2571,23 @@ class PlayerCubit extends Cubit<PlayerState> {
         !sl.isRegistered<PlaybackResolver>()) {
       return false;
     }
+    // A source the viewer pinned to this title by hand is a choice, not a
+    // candidate. Hopping off it meant pinning AniKoto, watching its one link
+    // fail, and having Netflix start instead with nothing said — the pin
+    // looked ignored. The resolver already refuses to substitute for a pin
+    // during its sweep; this is the same rule for the dead-link path, which
+    // is where it actually bit.
+    final canonical = ZmodeIds.parseShow(url);
+    if (canonical != null && sl.isRegistered<SourceMatcher>()) {
+      final pinned = sl<SourceMatcher>().pinnedSource(canonical);
+      if (pinned != null) {
+        debugPrint(
+          '[player] source failover · $pinned is pinned by hand — not '
+          'substituting another source',
+        );
+        return false;
+      }
+    }
     // Bounded. Each hop is a real scrape, and a library where nothing plays
     // should say so rather than walk thirty sources one dead link at a time.
     if (_sourceHops >= _maxSourceHops) {
