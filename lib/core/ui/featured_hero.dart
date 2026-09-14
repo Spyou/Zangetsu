@@ -1,4 +1,6 @@
 
+import 'dart:math' as math;
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
@@ -11,6 +13,24 @@ import '../metadata/title_logo_service.dart';
 import '../models/media_item.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text.dart';
+
+/// Height of the floating home header the hero reserves room for, measured
+/// from the bottom of the status bar: 8px of top padding, a 48px icon row and
+/// 2px of air so the card never quite touches the icons. Added to the
+/// status-bar inset — see the card's Padding below.
+///
+/// 58 is not a taste call: the dev phone's inset is 32, and 32 + 58 is exactly
+/// the 90 that has always been hardcoded there. So every phone whose status
+/// bar is 32 or less keeps the layout it has today, to the pixel, and only the
+/// taller ones — where the header was landing on the artwork — move.
+const double kHeroHeaderRoom = 58;
+
+/// Space to leave above the artwork card for the floating header, given the
+/// status-bar [topInset]. 90 is the floor — the value that was hardcoded here
+/// — so a normal phone keeps its layout to the pixel and only tall-cutout
+/// devices push the card down.
+double heroTopReserve(double topInset) =>
+    math.max(90, topInset + kHeroHeaderRoom);
 
 /// Lightweight metadata shown under the hero title: a few genres + episode
 /// count (or year for movies). Lazily fetched, so it never blocks the banner.
@@ -199,8 +219,23 @@ class _FeaturedHeroState extends State<FeaturedHero> {
           // ── The artwork card, floating on the glow ────────────────────────
           // Rounded, no border/shadow; its bottom melts into the page colour so
           // there's no hard edge below it.
+          //
+          // The top inset is the room the floating home header sits in. It was
+          // a flat 90, which is the status bar (24) plus the header itself
+          // (8 + a 48 icon row) plus a little air. The header is inside a
+          // SafeArea, so on a phone with a tall cutout it slides DOWN as the
+          // status bar grows while this number stayed put — and the wordmark
+          // and icons ended up on the artwork. Grow with the inset instead.
+          //
+          // max() rather than a plain sum on purpose: 90 stays the floor, so
+          // no phone that looks right today has its card move at all.
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 90, 16, 40),
+            padding: EdgeInsets.fromLTRB(
+              16,
+              heroTopReserve(MediaQuery.paddingOf(context).top),
+              16,
+              40,
+            ),
             child: _card(provider, tint, memW),
           ),
         ],
