@@ -408,6 +408,10 @@ class PlaybackResolver {
       '[playback] _resolve · titleLookup → "${t.title}" '
       '(alt="${t.alt}" malId=${t.malId})',
     );
+    // The source the viewer pinned to THIS title by hand — stronger than the
+    // mode-wide preference in [_chosenSources], and the only one that stops
+    // the sweep below.
+    final pinned = _matcher.pinnedSource(p.show);
     final ordered = _orderedCandidates(p.show);
     debugPrint(
       '[playback] _resolve · ${ordered.length} ordered candidates '
@@ -519,7 +523,28 @@ class PlaybackResolver {
           '[playback] _resolve · $sourceId → error during resolution: $e',
         );
       }
-      if (attempt == null) continue;
+      if (attempt == null) {
+        // A source the viewer PICKED by hand is not a candidate among others.
+        // Walking past it to whatever answers next meant pinning AnimePahe and
+        // silently getting Netflix 25 seconds later — the substitution was
+        // never mentioned, so it read as the pin being ignored. Stop here and
+        // let the failure say what happened to the source they chose.
+        //
+        // Playback only (accept == null): a download sweep is looking for a
+        // file any source can provide, not honouring a viewing choice. And
+        // only when it FAILED — a pin that answers still hands off to the
+        // player's own dead-link failover, which is a different question.
+        // gen check first: the viewer LEAVING is not the pin failing, and the
+        // top of the loop still has to throw PlaybackAborted for it.
+        if (accept == null && sourceId == pinned && gen == _sweepGen) {
+          debugPrint(
+            '[playback] _resolve · $sourceId was pinned by hand and did not '
+            'answer — not substituting another source',
+          );
+          break;
+        }
+        continue;
+      }
 
       // The caller can require more than "has streams". Downloading does: a
       // source can play perfectly and still hand back only DASH manifests,

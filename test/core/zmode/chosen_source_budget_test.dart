@@ -241,6 +241,33 @@ void main() {
     });
   });
 
+  group('a source picked by hand is not silently substituted', () {
+    test('when the pin fails, the sweep stops instead of playing another',
+        () async {
+      // The complaint: pin AnimePahe, stare at a spinner for 25s, then watch
+      // Netflix start — with nothing said about the swap.
+      JsEngine.debugRunsOffUiIsolateOverride = true;
+      final src = _SlowSrc(aDelay: const Duration(seconds: 5), bHasEpisode: true);
+      final b = build(src);
+      await b.m.pinTitleToSource(_show, 'src-a', title: 'FMA');
+
+      // src-b could serve it, and without the guard it would.
+      await expectLater(
+        b.r.resolveForPlayback(_ep2),
+        throwsA(anyOf(isA<EpisodeNotAvailable>(), isA<NoSourceMatch>())),
+      );
+    });
+
+    test('an UNPINNED slow source still falls through, as it always did',
+        () async {
+      JsEngine.debugRunsOffUiIsolateOverride = true;
+      final src = _SlowSrc(aDelay: const Duration(seconds: 5), bHasEpisode: true);
+      final b = build(src); // nothing pinned
+      final res = await b.r.resolveForPlayback(_ep2);
+      expect(res.match.sourceId, 'src-b');
+    });
+  });
+
   group('sweepFailureDetail', () {
     SweepOutcome o(String name, SweepReason r) =>
         (sourceId: name, name: name, reason: r);
