@@ -89,7 +89,7 @@ void main() {
     'a search that hits a Cloudflare challenge while solving is suppressed '
     'records the host as needing a solve',
     () async {
-      final provider = manager.load(sourceId: 'cf-src', jsSource: _cfBlockedJs);
+      final provider = await manager.load(sourceId: 'cf-src', jsSource: _cfBlockedJs);
       await provider.search('foo', 1);
 
       expect(CfSolveNeeded.hostFlagged('cf-blocked.test'), isTrue);
@@ -99,7 +99,7 @@ void main() {
   );
 
   test('a search that succeeds records nothing', () async {
-    final provider = manager.load(sourceId: 'ok-src', jsSource: _healthyJs);
+    final provider = await manager.load(sourceId: 'ok-src', jsSource: _healthyJs);
     final results = await provider.search('foo', 1);
 
     expect(results, isEmpty); // the fake's own answer, just proving it ran
@@ -121,7 +121,7 @@ void main() {
             .setMockMethodCallHandler(channel, null);
       });
 
-      final provider = manager.load(
+      final provider = await manager.load(
         sourceId: 'cf-home-src',
         jsSource: _cfBlockedHomeJs,
       );
@@ -133,7 +133,7 @@ void main() {
   );
 
   test('a successful solve clears the flag', () async {
-    final provider = manager.load(sourceId: 'cf-src', jsSource: _cfBlockedJs);
+    final provider = await manager.load(sourceId: 'cf-src', jsSource: _cfBlockedJs);
     await provider.search('foo', 1);
     expect(CfSolveNeeded.hostFlagged('cf-blocked.test'), isTrue);
 

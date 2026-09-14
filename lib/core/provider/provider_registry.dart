@@ -262,7 +262,7 @@ class ProviderRegistry {
     );
     await _box.put(key, entry.toJson());
     if (enabled) {
-      _manager.load(
+      await _manager.load(
         sourceId: name,
         jsSource: jsSource,
         originRepoUrl: kBundledRepoUrl,
@@ -422,7 +422,7 @@ class ProviderRegistry {
           '(seed it via installFromBundled before loadAll)',
         );
       }
-      _manager.load(
+      await _manager.load(
         sourceId: entry.name,
         jsSource: js,
         originRepoUrl: entry.originRepoUrl,
@@ -435,7 +435,7 @@ class ProviderRegistry {
       url: entry.url,
       force: force,
     );
-    _manager.load(
+    await _manager.load(
       sourceId: entry.name,
       jsSource: cached.jsCode,
       originRepoUrl: entry.originRepoUrl,

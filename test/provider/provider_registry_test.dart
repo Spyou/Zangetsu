@@ -16,12 +16,12 @@ class _FakeManager implements ProviderRuntimeLoader {
   JsProvider? get(String id) => null;
 
   @override
-  void load({
+  Future<void> load({
     required String sourceId,
     required String jsSource,
     String originRepoUrl = '',
     String displayName = '',
-  }) {
+  }) async {
     loaded.add(sourceId);
   }
 

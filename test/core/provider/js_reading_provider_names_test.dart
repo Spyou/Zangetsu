@@ -91,8 +91,8 @@ void main() {
   group('Sozo Read-shaped provider (fallback names only)', () {
     late JsProvider provider;
 
-    setUp(() {
-      provider = manager.load(sourceId: 'sozo-fake', jsSource: _sozoShapedJs);
+    setUp(() async {
+      provider = await manager.load(sourceId: 'sozo-fake', jsSource: _sozoShapedJs);
     });
 
     test('getEpisodes() falls back to getChapters()', () async {
@@ -126,8 +126,8 @@ void main() {
   group('Zangetsu-shaped provider (primary names) — anime-safety', () {
     late JsProvider provider;
 
-    setUp(() {
-      provider = manager.load(
+    setUp(() async {
+      provider = await manager.load(
         sourceId: 'zangetsu-fake',
         jsSource: _zangetsuShapedJs,
       );
@@ -162,8 +162,8 @@ void main() {
   group('fallback never swallows a genuine provider error', () {
     late JsProvider provider;
 
-    setUp(() {
-      provider = manager.load(
+    setUp(() async {
+      provider = await manager.load(
         sourceId: 'error-fake',
         jsSource: _genuineErrorJs,
       );

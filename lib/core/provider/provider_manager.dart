@@ -6,7 +6,6 @@ import 'package:flutter/foundation.dart';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_js/flutter_js.dart';
 
 import '../aniyomi/aniyomi_extension_service.dart';
 import '../aniyomi/aniyomi_provider.dart';
@@ -25,6 +24,7 @@ import 'cf_clearance_store.dart';
 import 'cf_solve_needed.dart';
 import 'crypto_ops.dart';
 import 'js_bootstrap.dart';
+import 'js_engine.dart';
 import 'reading_provider.dart';
 
 enum ProviderHealthStatus { healthy, degraded, broken }
@@ -60,35 +60,29 @@ bool looksLikeCloudflareBlock(int status, String body) {
 
 class _JsHost {
   _JsHost({required this.dio}) {
-    _runtime = getJavascriptRuntime();
-    _runtime.enableHandlePromises();
-    // Never perform work re-entrantly inside sendMessage. The tvOS bridge
-    // invokes these callbacks while evaluate() still owns the JS engine lock;
-    // awaiting HTTP or evaluating a resolver from that callback deadlocks the
-    // engine before evaluate() can return its Promise handle.
-    _runtime.onMessage('fetch', (raw) {
-      scheduleMicrotask(() => _onFetch(raw));
-    });
-    _runtime.onMessage('console', (raw) {
-      scheduleMicrotask(() => _onConsole(raw));
-    });
-    _runtime.onMessage('crypto', (raw) {
-      scheduleMicrotask(() => _onCrypto(raw));
-    });
-    _runtime.onMessage('timer', (raw) {
-      scheduleMicrotask(() => _onTimer(raw));
-    });
-    final r = _runtime.evaluate(kJsBootstrap);
-    if (r.isError) {
-      throw JsRuntimeException('Bootstrap failed: ${r.stringResult}');
-    }
-    if (isAppleTv) {
-      _runtime.evaluate('globalThis.__usePollingBridge = true;');
+    _engine = JsEngine(onChannel: _onChannel, polling: isAppleTv);
+  }
+
+  /// Everything the runtime asks Dart for. Deliberately all still on THIS
+  /// isolate even when the engine is on its own: fetch needs Dio, the native
+  /// Cloudflare solver, the Hive clearance store and [CfSolveNeeded]; console
+  /// needs the app log. A port hop costs microseconds against an HTTP request,
+  /// and this way none of that has to learn about isolates.
+  void _onChannel(String channel, dynamic payload) {
+    switch (channel) {
+      case 'fetch':
+        _onFetch(payload);
+      case 'console':
+        _onConsole(payload);
+      case 'crypto':
+        _onCrypto(payload);
+      case 'timer':
+        _onTimer(payload);
     }
   }
 
   final Dio dio;
-  late final JavascriptRuntime _runtime;
+  late final JsEngine _engine;
   final Map<String, JsProvider> providers = {};
   int _providerCallSeq = 0;
 
@@ -171,41 +165,50 @@ class _JsHost {
   int failuresFor(String sourceId) => _health[sourceId]?.failures ?? 0;
   void resetHealth(String sourceId) => _health.remove(sourceId);
 
-  void loadProvider(String sourceId, String jsSource) {
-    final r = _runtime.evaluate(wrapProviderSource(sourceId, jsSource));
+  /// Awaits the engine so a bootstrap failure surfaces here rather than as a
+  /// pile of confusing per-call errors later.
+  Future<void> loadProvider(String sourceId, String jsSource) async {
+    await _engine.ready;
+    final r = await _engine.eval(wrapProviderSource(sourceId, jsSource));
     if (r.isError) {
       throw JsRuntimeException(
-        'Provider eval failed for $sourceId: ${r.stringResult}',
+        'Provider eval failed for $sourceId: ${r.value}',
       );
     }
   }
 
-  void loadExtractor(String extractorId, String jsSource) {
-    final r = _runtime.evaluate(wrapExtractorSource(extractorId, jsSource));
+  Future<void> loadExtractor(String extractorId, String jsSource) async {
+    await _engine.ready;
+    final r = await _engine.eval(wrapExtractorSource(extractorId, jsSource));
     if (r.isError) {
       throw JsRuntimeException(
-        'Extractor eval failed for $extractorId: ${r.stringResult}',
+        'Extractor eval failed for $extractorId: ${r.value}',
       );
     }
   }
 
   void removeProvider(String sourceId) {
-    _runtime.evaluate(
+    _engine.post(
       'delete globalThis.__providers[${jsonEncode(sourceId)}];',
     );
   }
 
   /// Pushes [settings] into the JS runtime as `__settings[sourceId]`.
-  /// One-shot sync eval — best-effort, never throws. Replaces the slot
-  /// entirely so cleared keys disappear from the JS side too. Providers
-  /// read it as `__settings[__SOURCE_ID]` inside their wrapped closure.
+  /// Best-effort and never throws — the result is only read to log a failure.
+  /// Replaces the slot entirely so cleared keys disappear from the JS side
+  /// too. Providers read it as `__settings[__SOURCE_ID]` inside their wrapped
+  /// closure.
   void setSettings(String sourceId, Map<String, dynamic> settings) {
-    final r = _runtime.evaluate(
-      '__settings[${jsonEncode(sourceId)}] = ${jsonEncode(settings)};',
-    );
-    if (r.isError) {
-      debugPrint('[settings] push failed for $sourceId: ${r.stringResult}');
-    }
+    _engine
+        .eval('__settings[${jsonEncode(sourceId)}] = ${jsonEncode(settings)};')
+        .then((r) {
+          if (r.isError) {
+            debugPrint('[settings] push failed for $sourceId: ${r.value}');
+          }
+        })
+        .catchError((Object e) {
+          debugPrint('[settings] push failed for $sourceId: $e');
+        });
   }
 
   // Chains [action] after the current queue tail so calls run strictly one at a
@@ -265,9 +268,12 @@ class _JsHost {
       // backstop for the rare case the JS timer never fires.
       final expr =
           '__callProviderT(${jsonEncode(sourceId)}, ${jsonEncode(method)}, ${jsonEncode(argsJson)}, ${timeout.inMilliseconds})';
-      final asyncResult = await _runtime.evaluateAsync(expr);
-      final resolved = await _runtime
-          .handlePromise(asyncResult)
+      // The engine gets a little longer than we are willing to wait, so that
+      // when a source really does hang it is THIS timeout the user sees rather
+      // than a raw TimeoutException from the other side of the port. The inner
+      // one still matters: it stops the engine pumping a call nobody wants.
+      final resolved = await _engine
+          .callAsync(expr, timeout + const Duration(seconds: 2))
           .timeout(
             timeout,
             onTimeout: () {
@@ -277,7 +283,7 @@ class _JsHost {
             },
           );
       if (resolved.isError) {
-        var msg = resolved.stringResult;
+        var msg = resolved.value;
         if (msg.startsWith('"') && msg.endsWith('"')) {
           try {
             final unq = jsonDecode(msg);
@@ -286,7 +292,7 @@ class _JsHost {
         }
         throw JsRuntimeException(msg);
       }
-      var s = resolved.stringResult;
+      var s = resolved.value;
       if (s.isEmpty || s == 'null') {
         throw JsRuntimeException('$sourceId.$method returned null');
       }
@@ -332,10 +338,10 @@ class _JsHost {
   return 'scheduled';
 })()
 ''';
-    final scheduled = _runtime.evaluate(expr);
-    if (scheduled.isError || scheduled.stringResult != 'scheduled') {
+    final scheduled = await _engine.eval(expr);
+    if (scheduled.isError || scheduled.value != 'scheduled') {
       throw JsRuntimeException(
-        'Could not schedule $sourceId.$method: ${scheduled.stringResult}',
+        'Could not schedule $sourceId.$method: ${scheduled.value}',
       );
     }
     return _pumpAppleTvCall(callId, method, timeout);
@@ -348,10 +354,10 @@ class _JsHost {
   ) async {
     final deadline = DateTime.now().add(timeout);
     while (DateTime.now().isBefore(deadline)) {
-      final requestsResult = _runtime.evaluate(
+      final requestsResult = await _engine.eval(
         'JSON.stringify(globalThis.__nativeRequests.splice(0))',
       );
-      final decoded = jsonDecode(requestsResult.stringResult);
+      final decoded = jsonDecode(requestsResult.value);
       if (decoded is List) {
         for (final raw in decoded) {
           if (raw is! Map) continue;
@@ -370,7 +376,7 @@ class _JsHost {
         }
       }
 
-      final result = _runtime.evaluate('''
+      final result = await _engine.eval('''
 (function() {
   var value = globalThis.__providerResults[${jsonEncode(callId)}];
   if (!value) return '';
@@ -378,8 +384,8 @@ class _JsHost {
   return JSON.stringify(value);
 })()
 ''');
-      if (result.stringResult.isNotEmpty) {
-        final payload = jsonDecode(result.stringResult) as Map<String, dynamic>;
+      if (result.value.isNotEmpty) {
+        final payload = jsonDecode(result.value) as Map<String, dynamic>;
         if (payload['ok'] == true) {
           return (payload['value'] ?? '').toString();
         }
@@ -500,13 +506,13 @@ class _JsHost {
         'url': resp.realUri.toString(),
         'body': resp.data?.toString() ?? '',
       });
-      _runtime.evaluate(
+      _engine.post(
         '__resolveFetch(${jsonEncode(id)}, ${jsonEncode(responseJson)});',
       );
     } catch (e) {
       debugPrint('[fetch] FAILED $e');
       if (id != null) {
-        _runtime.evaluate(
+        _engine.post(
           '__rejectFetch(${jsonEncode(id)}, ${jsonEncode(e.toString())});',
         );
       }
@@ -716,12 +722,12 @@ class _JsHost {
       } else {
         throw FormatException('Unknown crypto op: $op');
       }
-      _runtime.evaluate(
+      _engine.post(
         '__resolveCrypto(${jsonEncode(id)}, ${jsonEncode(result)});',
       );
     } catch (e) {
       if (id != null) {
-        _runtime.evaluate(
+        _engine.post(
           '__rejectCrypto(${jsonEncode(id)}, ${jsonEncode(e.toString())});',
         );
       }
@@ -734,7 +740,7 @@ class _JsHost {
       final id = payload['id'] as String;
       final ms = (payload['ms'] as num?)?.toInt() ?? 0;
       Future<void>.delayed(Duration(milliseconds: ms < 0 ? 0 : ms), () {
-        _runtime.evaluate('__fireTimer(${jsonEncode(id)});');
+        _engine.post('__fireTimer(${jsonEncode(id)});');
       });
     } catch (_) {}
   }
@@ -749,7 +755,7 @@ class _JsHost {
     } catch (_) {}
   }
 
-  void dispose() => _runtime.dispose();
+  void dispose() => _engine.dispose();
 }
 
 /// Thin per-source wrapper. Calls route through the shared _JsHost and
@@ -1000,10 +1006,14 @@ class JsProvider implements BaseProvider, ReadingProvider {
 abstract class ProviderRuntimeLoader {
   JsProvider? get(String id);
 
-  /// Loads [jsSource] into the runtime under [sourceId]. Return type is
-  /// `void` here so test doubles needn't fabricate a [JsProvider]; the
-  /// concrete [ProviderManager] still returns the loaded provider.
-  void load({
+  /// Loads [jsSource] into the runtime under [sourceId]. Returns `Future<void>`
+  /// here so test doubles needn't fabricate a [JsProvider]; the concrete
+  /// [ProviderManager] still returns the loaded provider.
+  ///
+  /// Async because the runtime may be on another isolate — and because that
+  /// finally makes [ProviderRegistry.loadAll]'s per-entry timeout real: a
+  /// provider whose JS hangs used to block the boot regardless.
+  Future<void> load({
     required String sourceId,
     required String jsSource,
     String originRepoUrl,
@@ -1036,13 +1046,13 @@ class ProviderManager implements ProviderRuntimeLoader {
   /// Loads [jsSource] as a provider under [sourceId]. One provider per
   /// sourceId is live at a time; reloading replaces it.
   @override
-  JsProvider load({
+  Future<JsProvider> load({
     required String sourceId,
     required String jsSource,
     String originRepoUrl = '',
     String displayName = '',
-  }) {
-    _host.loadProvider(sourceId, jsSource);
+  }) async {
+    await _host.loadProvider(sourceId, jsSource);
     final provider = JsProvider._(
       sourceId: sourceId,
       originRepoUrl: originRepoUrl,
@@ -1055,9 +1065,10 @@ class ProviderManager implements ProviderRuntimeLoader {
 
   /// Loads [jsSource] as an extractor; it registers itself under each host
   /// in its getInfo().hosts list and is reachable via extractVideo().
-  void loadExtractor({required String extractorId, required String jsSource}) {
-    _host.loadExtractor(extractorId, jsSource);
-  }
+  Future<void> loadExtractor({
+    required String extractorId,
+    required String jsSource,
+  }) => _host.loadExtractor(extractorId, jsSource);
 
   /// Mirrors per-source settings into the JS runtime so subsequent
   /// provider calls can read them as `__settings[sourceId]`. Safe to
