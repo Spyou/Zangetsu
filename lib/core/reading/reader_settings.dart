@@ -15,6 +15,26 @@ int readerDecodeWidth(int deviceWidthPx, {double zoomHeadroom = 2.0}) {
   return scaled.clamp(deviceWidthPx, 4096);
 }
 
+/// Headroom for the WEBTOON strip, which is a different problem from a paged
+/// reader and has to be costed differently.
+///
+/// `ResizeImage` caps width only, so a slice keeps its full aspect: at 2x
+/// headroom on a 1080px phone one 1:3 slice decodes to ~53MB against an 80MB
+/// image cache. One or two pages fit, every scroll evicts the page behind it,
+/// and scrolling back re-decodes from scratch — which is the stutter, and why
+/// going back up loses your place.
+///
+/// So the strip decodes at 1x while it is not zoomed — ~6.7MB a page, a dozen
+/// of them resident — and asks for more resolution only once someone actually
+/// zooms in. That is the same bargain the reference Android readers strike
+/// with a subsampling view: a cheap base layer, detail fetched on demand.
+/// A paged reader keeps the full 2x: only a page or two is ever live there.
+///
+/// [scale] is the live pinch scale. Clamped at 3x because past that the source
+/// image has no more detail to give and the decode is pure memory.
+double webtoonZoomHeadroom(double scale) =>
+    scale <= 1.05 ? 1.0 : scale.clamp(1.0, 3.0);
+
 /// How a manga page image scales within its viewport. Mirrors
 /// `ReaderPrefs.fitMode`'s string keys 1:1.
 enum FitMode { contain, width, height, original, smart }

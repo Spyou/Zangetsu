@@ -1,8 +1,12 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+
+import '../../core/reading/reader_image_budget.dart';
+import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:visibility_detector/visibility_detector.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:gal/gal.dart';
@@ -82,6 +86,11 @@ class MangaReaderScreen extends StatefulWidget {
   State<MangaReaderScreen> createState() => _MangaReaderScreenState();
 }
 
+/// How long a page takes to fade in once its image lands. Short on purpose:
+/// this plays while someone is still scrolling, and the package's 500ms
+/// default is long enough to look like the page is struggling.
+const Duration _kPageFade = Duration(milliseconds: 220);
+
 class _MangaReaderScreenState extends State<MangaReaderScreen>
     with ReaderComfortMixin<MangaReaderScreen>, TickerProviderStateMixin {
   /// Hands-free scrolling — webtoon only; paged modes step whole pages and
@@ -128,6 +137,11 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
   // one-finger scrolling; a two-finger pinch drives this scale/offset which a
   // Transform applies over the whole list. See _buildVertical.
   double _wScale = 1.0; // current strip scale, clamped [1, 4]
+
+  /// ONE controller drives every page placeholder, so a screenful of them
+  /// pulses together and costs a single ticker — same convention as
+  /// `states.dart`'s skeleton grid.
+  late final AnimationController _shimmer;
   Offset _wOffset = Offset.zero; // current strip translation
   bool _wZooming = false; // true only while a 2-finger pinch is live
   double _wStartScale = 1.0; // scale at pinch start
@@ -165,6 +179,16 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
     // swallows that.
     applyReaderComfort();
     _syncVolumeKeys();
+    // A manga page dwarfs the covers the app-wide 80MB budget was sized for;
+    // measured mid-scroll the cache sat pinned at 79.4/80MB, evicting a page
+    // for every page it took in. Raised for as long as a chapter is open.
+    unawaited(ReaderImageBudget.acquire());
+    // One-way loop: the highlight travels down the page and starts again.
+    // reverse:true would walk it back up, which reads as a glitch.
+    _shimmer = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1400),
+    )..repeat();
     _load();
     _maybeResolveChapters();
   }
@@ -176,6 +200,8 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
     // already current (set on every settled onPageChanged); vertical mode's
     // is only updated on scroll events, so re-derive it from the live
     // ScrollController one last time before that controller goes away.
+    ReaderImageBudget.release(); // hands the page bitmaps back to the OS
+    _shimmer.dispose();
     _captureFinalVerticalIndex();
     _flushProgress(); // reader close: don't lose the last-read position
     _autoScroll.dispose();
@@ -377,8 +403,30 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
     return readerDecodeWidth((mq.size.width * mq.devicePixelRatio).round());
   }
 
+  /// Decode width for a page in the WEBTOON strip — see [webtoonZoomHeadroom].
+  ///
+  /// Tracks the live pinch, so an un-zoomed strip keeps a dozen cheap pages
+  /// resident and a zoomed one re-resolves the pages on screen at the
+  /// resolution actually being displayed. Settling on [_wScale] AFTER the
+  /// gesture ends is deliberate: re-decoding mid-pinch would fight the
+  /// gesture for the same frames.
+  int _webtoonDecodeWidth(BuildContext context) {
+    final mq = MediaQuery.of(context);
+    final device = (mq.size.width * mq.devicePixelRatio).round();
+    return readerDecodeWidth(
+      device,
+      zoomHeadroom: webtoonZoomHeadroom(_wZooming ? 1.0 : _wScale),
+    );
+  }
+
   void _preload(int index, List<PageImage> pages) {
-    final width = _decodeWidth(context);
+    // The SAME width the list will ask for, or the page is fetched and decoded
+    // twice under two different cache keys — paying double and warming neither.
+    // Keyed off the direction actually being rendered, not the auto-webtoon
+    // guess: an explicit 'vertical' override renders the strip too.
+    final width = _effectiveDirection(sl<ReaderPrefs>()) == 'vertical'
+        ? _webtoonDecodeWidth(context)
+        : _decodeWidth(context);
     final window = preloadWindow(
       index,
       pages.length,
@@ -901,12 +949,16 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
 
   Widget _buildBody(ReaderPrefs prefs) {
     if (_loading) {
+      // A bare spinner on black for the whole page fetch is the single worst
+      // moment in the reader: it looks like nothing is there, and on a slow
+      // source it is the FIRST thing anyone sees of a chapter. Draw the strip
+      // it is about to become instead — the same shimmering page slots the
+      // list uses, so the wait reads as the reader filling in rather than as
+      // a dead screen.
       return GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: _toggleChrome,
-        child: const Center(
-          child: CircularProgressIndicator(color: Colors.white70),
-        ),
+        child: _loadingSkeleton(context),
       );
     }
     if (_error != null) {
@@ -1075,6 +1127,18 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
               key: const ValueKey('manga-listview'),
               controller: _verticalController,
               physics: _wZooming ? const NeverScrollableScrollPhysics() : null,
+              // Build and decode well past the viewport. Flutter's default is
+              // 250 logical pixels, which on a strip whose pages run THOUSANDS
+              // of pixels tall means a page only starts decoding as its top
+              // edge arrives — so it arrives blank and fills in late, which is
+              // what "pages don't load properly" is.
+              //
+              // Three quarters of a viewport in each direction — the same
+              // reserve the reference Android readers use, for the same
+              // reason. Bigger is not better: every laid-out page holds a
+              // decoded bitmap, and this reader already fights the image
+              // cache (see [_preload]).
+              scrollCacheExtent: const ScrollCacheExtent.viewport(0.75),
               itemCount: pages.length,
               // The end-of-chapter footer rides along INSIDE the last item
               // rather than being an extra one. itemCount stays == pages.length
@@ -1152,6 +1216,9 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
   }
 
   void _onWebtoonScaleEnd(ScaleEndDetails d) {
+    // Leaving _wZooming clears the hold on [_webtoonDecodeWidth], so the pages
+    // on screen re-resolve at the zoomed resolution — soft during the pinch,
+    // sharp the moment it settles. Same bargain a subsampling view makes.
     setState(() => _wZooming = false);
   }
 
@@ -1251,7 +1318,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
   );
 
   Widget _verticalItem(BuildContext context, PageImage page, int index) {
-    final width = _decodeWidth(context);
+    final width = _webtoonDecodeWidth(context);
     // See the comment on _pagedItem's RepaintBoundary — same reasoning here.
     return RepaintBoundary(
       child: GestureDetector(
@@ -1265,9 +1332,18 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                   width: double.infinity,
                   fit: _verticalBoxFit(_effectiveFit(sl<ReaderPrefs>())),
                   // A downloaded/CBZ page needs no fetch — it is there.
-                  frameBuilder: (context, child, frame, _) {
+                  // A local page decodes fast but not instantly, and it used
+                  // to cut straight from placeholder to art. Same short fade
+                  // the network path gets, so both read the same way.
+                  frameBuilder: (context, child, frame, wasSync) {
                     if (frame != null) _loaded.add(index);
-                    return child;
+                    if (wasSync) return child;
+                    return AnimatedOpacity(
+                      opacity: frame == null ? 0 : 1,
+                      duration: _kPageFade,
+                      curve: Curves.easeOut,
+                      child: child,
+                    );
                   },
                   errorBuilder: (_, _, _) => const SizedBox(
                     height: 200,
@@ -1284,6 +1360,14 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                   memCacheWidth: width,
                   maxWidthDiskCache: width,
                   fit: _verticalBoxFit(_effectiveFit(sl<ReaderPrefs>())),
+                  // The package default is 500ms, which is a long time to
+                  // watch a page arrive while you are still scrolling. Short
+                  // enough to feel immediate, long enough not to be a cut.
+                  fadeInDuration: _kPageFade,
+                  fadeOutDuration: _kPageFade,
+                  // The placeholder is already on screen holding the page's
+                  // space — fading it IN as well just delays the shimmer.
+                  placeholderFadeInDuration: Duration.zero,
                   // The page is on screen for real from here. Scrolling PAST a
                   // placeholder is not reading it, and that distinction is what
                   // keeps a fast scroll from marking the chapter read.
@@ -1295,14 +1379,12 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                       fit: _verticalBoxFit(_effectiveFit(sl<ReaderPrefs>())),
                     );
                   },
-                  // Fixed-height static placeholder (not a spinner) — avoids a
-                  // zero-height flash in the list while still not perpetually
-                  // animating; same ColoredBox convention as poster_card.dart.
-                  placeholder: (_, _) => SizedBox(
-                    height: _reservedHeight(context, index),
-                    width: double.infinity,
-                    child: ColoredBox(color: AppColors.surface2),
-                  ),
+                  // A page that has not arrived used to be a flat grey block,
+                  // which reads as broken rather than busy. It still reserves
+                  // the page's real height (see [_reservedHeight]) so the list
+                  // does not jump, but it now says it is working.
+                  placeholder: (_, _) =>
+                      _pagePlaceholder(context, index),
                   errorWidget: (_, _, _) => const SizedBox(
                     height: 200,
                     child: Icon(
@@ -1314,6 +1396,90 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                 ),
         ),
       ),
+    );
+  }
+
+  /// The strip, before there are any pages to put in it.
+  ///
+  /// Deliberately the same slots [_pagePlaceholder] draws, so the moment the
+  /// page list lands the screen does not change character — the skeletons are
+  /// simply replaced one by one by the art.
+  Widget _loadingSkeleton(BuildContext context) {
+    final h = MediaQuery.sizeOf(context).height;
+    return IgnorePointer(
+      child: ListView.builder(
+        physics: const NeverScrollableScrollPhysics(),
+        padding: EdgeInsets.zero,
+        // Enough to fill a screen and a little past it; nothing here scrolls.
+        itemCount: 3,
+        itemBuilder: (context, i) => Padding(
+          padding: EdgeInsets.only(bottom: i == 2 ? 0 : 2),
+          child: SizedBox(
+            height: h * 0.62,
+            child: _shimmerSlot(context, label: null),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// The shimmering surface shared by the loading skeleton and every page
+  /// placeholder, so the two are visually the same thing.
+  Widget _shimmerSlot(BuildContext context, {required String? label}) {
+    return AnimatedBuilder(
+      animation: _shimmer,
+      builder: (context, _) {
+        // -1 -> 2 so the highlight starts and ends fully off the slot.
+        final t = -1.0 + 3.0 * _shimmer.value;
+        return DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment(-1, t - 1),
+              end: Alignment(1, t + 1),
+              colors: [
+                AppColors.surface2,
+                Color.alphaBlend(
+                  Colors.white.withValues(alpha: 0.05),
+                  AppColors.surface2,
+                ),
+                AppColors.surface2,
+              ],
+              stops: const [0.35, 0.5, 0.65],
+            ),
+          ),
+          child: label == null
+              ? null
+              : Center(
+                  child: Text(
+                    label,
+                    style: AppText.caption.copyWith(
+                      color: AppColors.textSecondary.withValues(alpha: 0.5),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+        );
+      },
+    );
+  }
+
+  /// Shown in a page's place until its image arrives.
+  ///
+  /// Holds the page's real height (see [_reservedHeight]) so nothing shifts
+  /// when the image lands, and sweeps a soft highlight across itself so the
+  /// wait reads as loading rather than as a dead grey slab. The page number
+  /// sits in the middle: on a slow source it is the only evidence the reader
+  /// is where you think it is.
+  ///
+  /// A sweeping gradient rather than a pulsing block — a pulse dims the whole
+  /// screen at once when several placeholders are visible, which is precisely
+  /// the "broken app" look it was meant to avoid.
+  Widget _pagePlaceholder(BuildContext context, int index) {
+    return SizedBox(
+      height: _reservedHeight(context, index),
+      width: double.infinity,
+      child: _shimmerSlot(context, label: '${index + 1}'),
     );
   }
 

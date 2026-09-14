@@ -159,4 +159,43 @@ void main() {
       ]);
     });
   });
+
+  group('webtoonZoomHeadroom', () {
+    // The strip is a different problem from a paged reader. ResizeImage caps
+    // width only, so a 1:3 slice at 2x headroom decodes to ~53MB against an
+    // 80MB image cache — one page. Every scroll then evicts the page behind
+    // it and scrolling back re-decodes, which is the stutter users report.
+    test('an un-zoomed strip decodes at 1x, so pages stay resident', () {
+      expect(webtoonZoomHeadroom(1.0), 1.0);
+      expect(readerDecodeWidth(1080, zoomHeadroom: webtoonZoomHeadroom(1.0)),
+          1080);
+    });
+
+    test('a hair above 1 is still 1x — a stray pixel must not cost 4x memory',
+        () {
+      expect(webtoonZoomHeadroom(1.02), 1.0);
+      expect(webtoonZoomHeadroom(1.05), 1.0);
+    });
+
+    test('zooming in asks for the resolution actually on screen', () {
+      expect(webtoonZoomHeadroom(2.0), 2.0);
+      expect(readerDecodeWidth(1080, zoomHeadroom: webtoonZoomHeadroom(2.0)),
+          2160);
+    });
+
+    test('capped at 3x — past that the source has no more detail to give', () {
+      expect(webtoonZoomHeadroom(4.0), 3.0);
+      expect(webtoonZoomHeadroom(99.0), 3.0);
+    });
+
+    test('the memory it buys, stated plainly', () {
+      // 1:3 slice on a 1080px phone, 4 bytes a pixel.
+      double mb(double headroom) {
+        final w = readerDecodeWidth(1080, zoomHeadroom: headroom);
+        return w * w * 3 * 4 / (1024 * 1024);
+      }
+      expect(mb(webtoonZoomHeadroom(1.0)), lessThan(15));   // ~13MB, 6 fit
+      expect(mb(2.0), greaterThan(50));                     // ~53MB, one fits
+    });
+  });
 }
