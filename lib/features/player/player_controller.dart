@@ -379,6 +379,13 @@ class PlayerCubit extends Cubit<PlayerState> {
   int _lastHistoryMs = 0; // throttle: last wall-clock ms we wrote progress
   int _gen = 0; // bumped per open; async continuations bail if superseded
   final Set<String> _tried = {}; // source URLs already attempted this episode
+
+  /// How many times this episode has given up on a SOURCE (not a mirror) and
+  /// swept for another. Each hop is a real scrape, so it is bounded: a library
+  /// where nothing plays should say so rather than walk thirty sources one
+  /// dead link at a time. Reset per episode.
+  int _sourceHops = 0;
+  static const int _maxSourceHops = 3;
   bool _recovering = false; // debounce: one error-recovery at a time
   // True once the current source has actually produced playback (position
   // advanced). libmpv emits transient "connection"/"failed to open" warnings
@@ -537,6 +544,7 @@ class PlayerCubit extends Cubit<PlayerState> {
     final gen = ++_gen;
     final keepPos = _lastPos;
     _tried.clear();
+    _sourceHops = 0; // a different cut is a fresh set of sources
     _recovering = false;
     emit(
       state.copyWith(
@@ -1777,6 +1785,19 @@ class PlayerCubit extends Cubit<PlayerState> {
   // SubtitleSearchService (OpenSubtitles); results apply through
   // setSubtitleFromFile. Full subtitle styling + delay/sync are handled above.
 
+  /// The message for a sweep that ended with nothing playable.
+  ///
+  /// [settled] is what to say when every source genuinely answered. When some
+  /// of them did NOT — timed out, cooling off, waiting on a Cloudflare check —
+  /// that verdict isn't ours to give: the episode may well be there on a
+  /// source we never really asked. So say what happened instead, on the second
+  /// line the error view already renders under the headline.
+  static String _sweepError(String settled, List<SweepOutcome> outcomes) {
+    final why = sweepFailureDetail(outcomes);
+    if (why == null) return settled;
+    return "Couldn't check every source\n$why";
+  }
+
   /// Resolves sources for [index] and starts the best one.
   /// [fromRoom] bypasses the viewer lock so the room can move viewers to the
   /// host's episode; all other callers leave it false so viewer taps stay blocked.
@@ -1796,6 +1817,7 @@ class PlayerCubit extends Cubit<PlayerState> {
     // same-episode re-open (recovery/failover) must keep targeting it.
     if (index != state.currentIndex) _pendingResume = Duration.zero;
     _tried.clear();
+    _sourceHops = 0;
     _recovering = false;
     _skips = const []; // clear previous episode's skip markers
     _skipsForIndex = -1; // refetched when the new duration arrives
@@ -1861,12 +1883,15 @@ class PlayerCubit extends Cubit<PlayerState> {
       // alongside the open above so it can't compete with the stream starting.
       unawaited(_pollForMoreSources(_episodeUrl(currentEpisode)));
       if (roomRole == RoomRole.host) onLocalPlayback?.call('episode', Duration.zero);
-    } on NoSourceMatch {
+    } on NoSourceMatch catch (e) {
       // No BuildContext down here to call context.l10n — this mirrors
       // AppLocalizationsEn.noSourceHasThisYet verbatim.
       if (gen != _gen) return;
       emit(
-        state.copyWith(loadingSources: false, error: () => 'No source has this yet'),
+        state.copyWith(
+          loadingSources: false,
+          error: () => _sweepError('No source has this yet', e.outcomes),
+        ),
       );
     } on EpisodeNotAvailable catch (e) {
       // Auto Resolve swept every installed source and none could serve this
@@ -1877,9 +1902,12 @@ class PlayerCubit extends Cubit<PlayerState> {
       emit(
         state.copyWith(
           loadingSources: false,
-          error: () => e.hadTitleMatch
-              ? "Episode ${e.episode} isn't available on any source yet"
-              : 'No source has this yet',
+          error: () => _sweepError(
+            e.hadTitleMatch
+                ? "Episode ${e.episode} isn't available on any source yet"
+                : 'No source has this yet',
+            e.outcomes,
+          ),
         ),
       );
     } on EpisodeNotOnSource catch (e) {
@@ -2487,19 +2515,93 @@ class PlayerCubit extends Cubit<PlayerState> {
       _toast("That one didn't cut. Trying another source.");
       await _open(next, seekTo: _lastPos);
       _applyDefaultQuality(); // honor the quality pref on the fallback source too
-    } else {
-      emit(
-        state.copyWith(
-          // Headline, then the plain fact on its own line — the screen styles
-          // them differently. The joke never replaces the information: a
-          // viewer has to be able to tell a dead host from no connection.
-          error: () =>
-              'Nothing left to cut.\n'
-              'Every source failed (tried ${_tried.length}).',
-        ),
-      );
+    } else if (!await _tryNextSource()) {
+      emit(state.copyWith(error: () => _deadEndMessage()));
     }
     _recovering = false;
+  }
+
+  /// Every mirror this SOURCE offered is dead. Ask the next source.
+  ///
+  /// `state.sources` only ever holds one source's links, so running out of
+  /// them used to end playback outright — "every source failed (tried 1)" with
+  /// twenty more sources sitting untouched, which is exactly what a dead CDN
+  /// link looks like from here. The source resolved fine; its links just don't
+  /// open.
+  ///
+  /// Only for Z Mode urls, where a resolver owns the source choice. A session
+  /// launched against one specific source has no next source to go to.
+  ///
+  /// Returns true when something new is playing.
+  Future<bool> _tryNextSource() async {
+    final url = showUrl;
+    if (url == null ||
+        !ZmodeIds.isZ(url) ||
+        !sl.isRegistered<PlaybackResolver>()) {
+      return false;
+    }
+    // Bounded. Each hop is a real scrape, and a library where nothing plays
+    // should say so rather than walk thirty sources one dead link at a time.
+    if (_sourceHops >= _maxSourceHops) {
+      debugPrint('[player] source failover · stopping after $_sourceHops hops');
+      return false;
+    }
+    final epUrl = _episodeUrl(currentEpisode);
+    final gen = _gen;
+    final resolver = sl<PlaybackResolver>();
+    // The RESOLVED source, not [sourceId] — a Z Mode session's own id is
+    // 'zm', and excluding that matches no candidate at all, so the next sweep
+    // cheerfully returns the same dead source. Read before marking: marking
+    // drops the winner this reads.
+    final winner = resolver.resolvedSourceId(epUrl, category: _activeCategory);
+    if (winner == null) return false;
+    _sourceHops++;
+    resolver.markSourceUnplayable(epUrl, winner, category: _activeCategory);
+    _toast('That one didn\'t cut. Trying another source.');
+    try {
+      final resolved = await _resolveSources(epUrl);
+      if (gen != _gen) return true; // superseded; leaving is not a dead end
+      final fresh = resolved.where((s) => !_tried.contains(s.url)).toList();
+      if (fresh.isEmpty) return false;
+      emit(state.copyWith(sources: resolved, error: () => null));
+      final pick = _preferredSource(fresh) ?? pickDefault(
+        fresh,
+        preferQuality: _preferredQuality(),
+      );
+      if (pick == null) return false;
+      await _open(pick, seekTo: _lastPos);
+      if (gen != _gen) return true;
+      _buildQualityMenu(gen);
+      _applyDefaultQuality();
+      return true;
+    } catch (e) {
+      // A sweep that finds nothing throws (EpisodeNotAvailable / NoSourceMatch)
+      // — that is a dead end, not a crash.
+      debugPrint('[player] source failover · no next source: $e');
+      return false;
+    }
+  }
+
+  /// Headline plus the plain fact, on the second line the error view styles
+  /// separately. The joke never replaces the information: a viewer has to be
+  /// able to tell a dead host from no connection.
+  String _deadEndMessage() {
+    final url = showUrl;
+    final sources = url != null &&
+            ZmodeIds.isZ(url) &&
+            sl.isRegistered<PlaybackResolver>()
+        // The source playing now is not in the excluded set yet.
+        ? sl<PlaybackResolver>().unplayableCount(
+              _episodeUrl(currentEpisode),
+              category: _activeCategory,
+            ) +
+            1
+        : 1;
+    final links = _tried.length;
+    return 'Nothing left to cut.\n'
+        '${sources == 1 ? "1 source" : "$sources sources"} answered, but '
+        '${links == 1 ? "its link" : "all $links links"} failed to open. '
+        'Tap Try again, or pick a different source.';
   }
 
   /// A started source stalled for too long (dead host / pulled segment).
@@ -2533,11 +2635,18 @@ class PlayerCubit extends Cubit<PlayerState> {
         _episodeUrl(currentEpisode),
         sourceId: sourceId,
       );
-      emit(
-        state.copyWith(
-          error: () => 'Nothing left to cut.\nEvery server stalled.',
-        ),
-      );
+      // A source whose every mirror stalls is as unplayable as one whose links
+      // 404 — same fallthrough to the next source rather than ending here.
+      if (!await _tryNextSource()) {
+        emit(
+          state.copyWith(
+            error: () =>
+                'Nothing left to cut.\n'
+                'Every server stalled. Tap Try again, or pick a '
+                'different source.',
+          ),
+        );
+      }
     }
     _recovering = false;
   }

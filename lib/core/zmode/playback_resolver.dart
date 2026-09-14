@@ -7,6 +7,7 @@ import '../models/video_source.dart';
 import '../playback/source_health_store.dart';
 import '../di/injector.dart';
 import '../provider/cf_solve_needed.dart';
+import '../provider/js_engine.dart';
 import '../provider/provider_manager.dart';
 import '../repository/source_repository.dart';
 import 'match_store.dart';
@@ -14,17 +15,78 @@ import 'source_matcher.dart';
 import 'zmode_ids.dart';
 import 'zmode_source_prefs.dart';
 
+/// Why one source did not end the sweep. Recorded for every candidate so a
+/// failure can say what actually happened instead of "no source has this".
+///
+/// The distinction that matters to a viewer is whether a source ANSWERED.
+/// [timedOut], [cloudflare], [unhealthy] and [cooldown] mean it never really
+/// did — and telling someone an episode does not exist because four sources
+/// were slow is simply untrue. [streamsDead] is a source that answered with
+/// links that turned out not to play. The rest are real answers.
+enum SweepReason {
+  timedOut,
+  cloudflare,
+  unhealthy,
+  cooldown,
+  failed,
+  streamsDead,
+  noTitleMatch,
+  episodeMissing,
+  noStreams,
+}
+
+/// One candidate's verdict in a sweep.
+typedef SweepOutcome = ({String sourceId, String name, SweepReason reason});
+
+/// A short, true sentence about why a sweep found nothing, or null when the
+/// outcomes say nothing the caller doesn't already know.
+///
+/// Only speaks up for the reasons that leave the question open — a source that
+/// was never really asked, or one whose links turned out to be dead. If every
+/// source genuinely answered and genuinely lacked the episode, the caller's
+/// own message is already the right one.
+String? sweepFailureDetail(List<SweepOutcome> outcomes) {
+  String names(SweepReason r) {
+    final n = outcomes.where((o) => o.reason == r).map((o) => o.name).toList();
+    if (n.isEmpty) return '';
+    if (n.length == 1) return n.first;
+    if (n.length == 2) return '${n[0]} and ${n[1]}';
+    return '${n.first} and ${n.length - 1} others';
+  }
+
+  final slow = names(SweepReason.timedOut);
+  final deadLinks = names(SweepReason.streamsDead);
+  final cf = names(SweepReason.cloudflare);
+  final cooling = names(SweepReason.cooldown);
+  final unwell = names(SweepReason.unhealthy);
+
+  if (slow.isNotEmpty) return '$slow took too long to answer';
+  if (deadLinks.isNotEmpty) return '$deadLinks gave links that would not open';
+  if (cf.isNotEmpty) return '$cf needs a Cloudflare check';
+  if (cooling.isNotEmpty) return '$cooling was skipped after a recent timeout';
+  if (unwell.isNotEmpty) return '$unwell is not responding';
+  return null;
+}
+
 /// Thrown when no installed source can play this metadata episode — either
 /// because no source has the title, the episode is missing everywhere, or
 /// every source that has it returned no streams.
 class EpisodeNotAvailable implements Exception {
-  const EpisodeNotAvailable(this.canonical, this.episode, {this.hadTitleMatch = false});
+  const EpisodeNotAvailable(
+    this.canonical,
+    this.episode, {
+    this.hadTitleMatch = false,
+    this.outcomes = const [],
+  });
   final ZCanonical canonical;
   final int episode;
 
   /// True when at least one source matched the show but none could serve this
   /// episode (missing or empty streams).
   final bool hadTitleMatch;
+
+  /// What each candidate actually did. See [sweepFailureDetail].
+  final List<SweepOutcome> outcomes;
 
   @override
   String toString() => hadTitleMatch
@@ -76,7 +138,11 @@ class PlaybackResolver {
 
     /// Overridable so tests don't have to wait [defaultPerSourceBudget] out.
     Duration? perSourceBudget,
+
+    /// Likewise for [chosenSourceBudget].
+    Duration? chosenBudget,
   }) : _budget = perSourceBudget ?? defaultPerSourceBudget,
+       _chosenBudget = chosenBudget ?? chosenSourceBudget,
        _matcher = matcher,
        _sources = sources,
        _store = store,
@@ -118,10 +184,43 @@ class PlaybackResolver {
   /// a real device: a JS provider with its own 15s internal timeout took 15.8s
   /// and then 38s, an Aniyomi source sat 12.5s on a Cloudflare page, another
   /// 7.3s before an IOException — four sources turned a single Play tap into
-  /// 100 seconds of frozen UI, because JS providers run on this isolate and a
-  /// second spent in one is a second of frames not drawn.
+  /// 100 seconds of frozen UI, because JS providers ran on the UI isolate and
+  /// a second spent in one was a second of frames not drawn.
+  ///
+  /// That last part is no longer true where [JsEngine.runsOffUiIsolate] — the
+  /// wait is now just a wait. It stays 8s anyway for sources nobody chose:
+  /// with a long source list, being patient with all of them is how a Play tap
+  /// turns into a minute. Patience is spent on the one the viewer picked; see
+  /// [chosenSourceBudget].
   static const Duration defaultPerSourceBudget = Duration(seconds: 8);
   final Duration _budget;
+
+  /// What a source the viewer PICKED gets instead — pinned for this title, or
+  /// set as the default for the kind. Both are an explicit "use this one", and
+  /// cutting that off at 8s is what produced "nothing plays" on a source the
+  /// viewer knew was fine, just slow.
+  ///
+  /// Only applied where provider JS runs off the UI isolate
+  /// ([JsEngine.runsOffUiIsolate]). The 8s above was never about the source's
+  /// patience — it bounded how long the UI could be frozen. Where that is
+  /// still true, a 25s wait would still be 25 frozen seconds, so the tight
+  /// budget stands.
+  static const Duration chosenSourceBudget = Duration(seconds: 25);
+  final Duration _chosenBudget;
+
+  /// The budget for [sourceId] given the sources this viewer chose.
+  Duration _budgetFor(String sourceId, Set<String> chosen) =>
+      JsEngine.runsOffUiIsolate && chosen.contains(sourceId)
+      ? _chosenBudget
+      : _budget;
+
+  /// The sources the viewer explicitly picked for [c] — the per-title pin and
+  /// the kind-wide default. NOT `lastPlayed`: that is the app's own memory of
+  /// a successful Auto Resolve, not a choice anybody made.
+  Set<String> _chosenSources(ZCanonical c) => {
+    ?_matcher.pinnedSource(c),
+    ?_prefs.get(c.kind),
+  };
 
   /// Tighter than [_budget], because the two are asking different questions.
   /// Playback is worth waiting 8s for — it is the thing you asked for. A
@@ -144,6 +243,42 @@ class PlaybackResolver {
   /// with its own short cooldown, so nothing about search changes.
   final Map<String, DateTime> _overBudget = {};
   static const Duration overBudgetCooldown = Duration(minutes: 10);
+
+  /// Sources whose links were handed over and then would not play, per
+  /// `zm://…|category`. A source can answer a sweep perfectly and still be
+  /// useless: a dead CDN link resolves in two seconds and fails in the player.
+  /// Without this the very next resolve hands back the same dead link, so the
+  /// player had nowhere to go and said "every source failed" having asked
+  /// exactly one.
+  ///
+  /// Episode-scoped and session-only. Cleared by [invalidateWinner], so an
+  /// episode tap or Retry gives every source another chance.
+  final Map<String, Set<String>> _unplayable = {};
+
+  /// Records that [sourceId]'s links did not play for this episode, and drops
+  /// it as the cached winner so the next resolve sweeps past it.
+  ///
+  /// Deliberately NOT [invalidateWinner]: that clears the very memory this is
+  /// trying to write, and the next sweep would pick the same dead source.
+  void markSourceUnplayable(
+    String zmEpisodeUrl,
+    String sourceId, {
+    String category = 'sub',
+  }) {
+    final key = _winKey(zmEpisodeUrl, category);
+    (_unplayable[key] ??= <String>{}).add(sourceId);
+    _winners.remove(key);
+    _noSource.remove(key);
+    debugPrint(
+      '[playback] markSourceUnplayable · $sourceId for $zmEpisodeUrl '
+      '($category) — ${_unplayable[key]!.length} now excluded',
+    );
+  }
+
+  /// How many sources have been tried and found unplayable for this episode.
+  /// The player says so when it finally gives up.
+  int unplayableCount(String zmEpisodeUrl, {String category = 'sub'}) =>
+      _unplayable[_winKey(zmEpisodeUrl, category)]?.length ?? 0;
 
   /// Bumped by [abortSweeps]. A sweep captures this before its loop and stops
   /// as soon as it no longer matches.
@@ -266,6 +401,15 @@ class PlaybackResolver {
       throw NoSourceMatch(p.show);
     }
 
+    final chosen = _chosenSources(p.show);
+    final dead = _unplayable[_winKey(zmEpisodeUrl, category)] ?? const <String>{};
+    final outcomes = <SweepOutcome>[];
+    void note(String sourceId, SweepReason reason) => outcomes.add((
+      sourceId: sourceId,
+      name: _sources.displayName(sourceId),
+      reason: reason,
+    ));
+
     var hadTitleMatch = false;
     for (final sourceId in ordered) {
       // First thing in the loop, so leaving stops the very next candidate
@@ -279,22 +423,35 @@ class PlaybackResolver {
         );
         throw const PlaybackAborted();
       }
+      // Asked already this episode, and its links would not play. Handing
+      // them back a second time is how "every source failed (tried 1)"
+      // happened with twenty more sources sitting untouched.
+      if (dead.contains(sourceId)) {
+        debugPrint(
+          '[playback] _resolve · skip $sourceId (its links did not play)',
+        );
+        note(sourceId, SweepReason.streamsDead);
+        continue;
+      }
       if (CfSolveNeeded.sourceFlagged(sourceId)) {
         debugPrint(
           '[playback] _resolve · skip $sourceId (CF blocked)',
         );
+        note(sourceId, SweepReason.cloudflare);
         continue;
       }
       if (_health.isSkippable(sourceId)) {
         debugPrint(
           '[playback] _resolve · skip $sourceId (unhealthy)',
         );
+        note(sourceId, SweepReason.unhealthy);
         continue;
       }
       if (_recentlyOverBudget(sourceId)) {
         debugPrint(
           '[playback] _resolve · skip $sourceId (over budget recently)',
         );
+        note(sourceId, SweepReason.cooldown);
         continue;
       }
 
@@ -303,6 +460,7 @@ class PlaybackResolver {
       // throwing ("no sources in response") or hanging must not kill the
       // others — fall through to the next candidate instead.
       _Attempt? attempt;
+      final budget = _budgetFor(sourceId, chosen);
       try {
         attempt = await _tryCandidate(
           p,
@@ -311,14 +469,17 @@ class PlaybackResolver {
           fast: fast,
           category: category,
           onTitleMatch: () => hadTitleMatch = true,
-        ).timeout(_budget);
+          onMiss: (reason) => note(sourceId, reason),
+        ).timeout(budget);
       } on TimeoutException {
         _overBudget[sourceId] = DateTime.now();
+        note(sourceId, SweepReason.timedOut);
         debugPrint(
-          '[playback] _resolve · $sourceId → over ${_budget.inSeconds}s '
+          '[playback] _resolve · $sourceId → over ${budget.inSeconds}s '
           'budget, skipping it for ${overBudgetCooldown.inMinutes}m',
         );
       } catch (e) {
+        note(sourceId, SweepReason.failed);
         debugPrint(
           '[playback] _resolve · $sourceId → error during resolution: $e',
         );
@@ -395,10 +556,18 @@ class PlaybackResolver {
         '[playback] _resolve → EpisodeNotAvailable '
         '(hadTitleMatch=true, episode=${p.episode})',
       );
-      throw EpisodeNotAvailable(p.show, p.episode, hadTitleMatch: true);
+      throw EpisodeNotAvailable(
+        p.show,
+        p.episode,
+        hadTitleMatch: true,
+        outcomes: outcomes,
+      );
     }
-    debugPrint('[playback] _resolve → NoSourceMatch');
-    throw NoSourceMatch(p.show);
+    debugPrint(
+      '[playback] _resolve → NoSourceMatch · '
+      '${sweepFailureDetail(outcomes) ?? "every source answered"}',
+    );
+    throw NoSourceMatch(p.show, outcomes: outcomes);
   }
 
   /// Returns streams for [zmEpisodeUrl], sweeping sources when needed.
@@ -470,6 +639,9 @@ class PlaybackResolver {
     }
     for (final k in misses) {
       _noSource.remove(k);
+    }
+    for (final k in _unplayable.keys.where(mine).toList()) {
+      _unplayable.remove(k);
     }
     final clearedBudget = _overBudget.isNotEmpty;
     if (clearedBudget) _overBudget.clear();
@@ -827,6 +999,7 @@ class PlaybackResolver {
     ({String title, String? alt, int? malId}) t, {
     required bool fast,
     required void Function() onTitleMatch,
+    required void Function(SweepReason) onMiss,
     String category = 'sub',
   }) async {
     final match = await _matcher.matchOn(
@@ -838,6 +1011,7 @@ class PlaybackResolver {
     );
     if (match == null) {
       debugPrint('[playback] _resolve · $sourceId → no title match');
+      onMiss(SweepReason.noTitleMatch);
       return null;
     }
     onTitleMatch();
@@ -854,6 +1028,7 @@ class PlaybackResolver {
       debugPrint(
         '[playback] _resolve · $sourceId → episode ${p.episode} not found',
       );
+      onMiss(SweepReason.episodeMissing);
       return null;
     }
 
@@ -866,6 +1041,7 @@ class PlaybackResolver {
       debugPrint(
         '[playback] _resolve · $sourceId → 0 streams for ep ${p.episode}',
       );
+      onMiss(SweepReason.noStreams);
       return null;
     }
     return _Attempt(match: match, episodeUrl: srcEp.url, streams: streams);

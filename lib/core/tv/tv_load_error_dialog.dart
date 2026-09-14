@@ -107,15 +107,22 @@ class _TvPlaybackLoadErrorDialog extends StatelessWidget {
           );
         };
       case TvPlaybackLoadFailureKind.noSourceMatch:
-        title = l10n.noSourceHasThisYet;
+        // When a source never actually answered, "none of them have this" is a
+        // verdict we haven't earned — say what happened instead.
+        title = failure.detail == null
+            ? l10n.noSourceHasThisYet
+            : "Couldn't check every source";
         body =
+            failure.detail ??
             'None of your installed sources have this title. Try another source '
             'from the detail screen, or install more in Providers.';
         primaryLabel = l10n.ok;
         onPrimary = () => Navigator.pop(context);
       case TvPlaybackLoadFailureKind.episodeNotAvailable:
-        title = "Couldn't load this episode";
-        body = l10n.noSourcesFoundForThisEpisode;
+        title = failure.detail == null
+            ? "Couldn't load this episode"
+            : "Couldn't check every source";
+        body = failure.detail ?? l10n.noSourcesFoundForThisEpisode;
         primaryLabel = l10n.ok;
         onPrimary = () => Navigator.pop(context);
       case TvPlaybackLoadFailureKind.generic:

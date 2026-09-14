@@ -5,13 +5,19 @@ import '../models/media_item.dart';
 import '../provider/cf_solve_needed.dart';
 import '../repository/source_repository.dart';
 import 'match_store.dart';
+import 'playback_resolver.dart' show SweepReason;
 import 'zmode_ids.dart';
 import 'zmode_source_prefs.dart';
 
 /// Thrown by playback when a metadata title has no source at all.
 class NoSourceMatch implements Exception {
-  const NoSourceMatch(this.canonical);
+  const NoSourceMatch(this.canonical, {this.outcomes = const []});
   final ZCanonical canonical;
+
+  /// What each candidate did, when this came from a full sweep. Empty when
+  /// there was nothing to ask. See `sweepFailureDetail`.
+  final List<({String sourceId, String name, SweepReason reason})> outcomes;
+
   @override
   String toString() => 'No installed source has $canonical';
 }

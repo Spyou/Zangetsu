@@ -24,13 +24,19 @@ enum TvPlaybackLoadFailureKind {
 }
 
 class TvPlaybackLoadFailure {
-  const TvPlaybackLoadFailure(this.kind, {this.mode});
+  const TvPlaybackLoadFailure(this.kind, {this.mode, this.detail});
 
   final TvPlaybackLoadFailureKind kind;
   final ContentMode? mode;
 
+  /// What actually stopped the sweep, when some source never answered — a
+  /// timeout, a Cloudflare check, a cooldown. Null when every source did
+  /// answer and [kind] alone is the honest story. See `sweepFailureDetail`.
+  final String? detail;
+
   @override
-  String toString() => 'TvPlaybackLoadFailure($kind, mode=$mode)';
+  String toString() =>
+      'TvPlaybackLoadFailure($kind, mode=$mode, detail=$detail)';
 }
 
 ContentMode playbackContentMode({String? showUrl}) {
@@ -117,22 +123,24 @@ TvPlaybackLoadFailure classifyPlaybackError(
     final kind = error.hadTitleMatch
         ? TvPlaybackLoadFailureKind.episodeNotAvailable
         : TvPlaybackLoadFailureKind.noSourceMatch;
+    final detail = sweepFailureDetail(error.outcomes);
     debugPrint(
       '[tv-playback] classifyPlaybackError · EpisodeNotAvailable '
-      '→ $kind (hadTitleMatch=${error.hadTitleMatch})',
+      '→ $kind (hadTitleMatch=${error.hadTitleMatch}) detail=$detail',
     );
-    return TvPlaybackLoadFailure(kind, mode: mode);
+    return TvPlaybackLoadFailure(kind, mode: mode, detail: detail);
   }
   if (error is NoSourceMatch) {
     final hasSources = hasInstalledPlaybackSources(mode);
     final kind = hasSources
         ? TvPlaybackLoadFailureKind.noSourceMatch
         : TvPlaybackLoadFailureKind.noSourcesInstalled;
+    final detail = sweepFailureDetail(error.outcomes);
     debugPrint(
       '[tv-playback] classifyPlaybackError · NoSourceMatch '
-      '→ $kind (hasSources=$hasSources)',
+      '→ $kind (hasSources=$hasSources) detail=$detail',
     );
-    return TvPlaybackLoadFailure(kind, mode: mode);
+    return TvPlaybackLoadFailure(kind, mode: mode, detail: detail);
   }
   debugPrint('[tv-playback] classifyPlaybackError · generic · $error');
   return TvPlaybackLoadFailure(TvPlaybackLoadFailureKind.generic, mode: mode);
