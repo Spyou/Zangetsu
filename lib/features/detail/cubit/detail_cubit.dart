@@ -255,6 +255,11 @@ class DetailCubit extends Cubit<DetailState> {
           _enrich(partial);
         },
       );
+      // Backing out while this was in flight closes the cubit, and every emit
+      // below then throws "Cannot emit new states after calling close" — 41 of
+      // them across the shared reports. The work is finished either way; there
+      // is just no longer a screen to tell.
+      if (isClosed) return;
       // A novel (LNReader) plugin swallows its own fetch failure and returns
       // an empty detail rather than throwing (LnReaderProvider.getDetail's
       // fallback), so a Cloudflare challenge never reaches the catch below.
@@ -304,6 +309,7 @@ class DetailCubit extends Cubit<DetailState> {
       // between waiting and hunting a fault.
       final limited = aniListRateLimitOf(e);
       final offline = limited == null && await isOfflineErrorConfirmed(e);
+      if (isClosed) return; // that await can outlive the screen too
       _log(
         'load failed offline=$offline limited=${limited?.seconds} '
         '${sw.elapsedMilliseconds}ms: $e',

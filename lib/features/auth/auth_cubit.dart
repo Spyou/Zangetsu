@@ -136,9 +136,56 @@ class AuthCubit extends Cubit<AuthState> {
     } catch (_) {}
   }
 
+  /// Avatar URLs Storage has definitively refused, and the ones already
+  /// checked. Session-scoped: a fresh launch asks again.
+  ///
+  /// Every screen that shows the avatar builds its OWN image provider, and a
+  /// 4xx is never cached by any of them — so a profile pointing at a legacy
+  /// path that no longer exists is re-requested on every rebuild, forever. One
+  /// shared report had the same refused URL fetched 450 times in a single
+  /// session; across reports it was 909 of them, drowning everything else in
+  /// the log. Remembering the refusal in ONE place fixes every screen at once.
+  static final Set<String> _deadAvatars = {};
+  static final Set<String> _checkedAvatars = {};
+
   String? _avatarFromUser(AuthUser u) {
     final path = u.avatarPath;
-    return (path != null && path.isNotEmpty) ? _sb.avatarUrl(path) : null;
+    if (path == null || path.isEmpty) return null;
+    final url = _sb.avatarUrl(path);
+    if (_deadAvatars.contains(url)) return null;
+    unawaited(_verifyAvatar(url));
+    return url;
+  }
+
+  /// Asks once whether [url] actually exists, and drops it if the answer is a
+  /// definitive no.
+  ///
+  /// Only a 4xx counts. A timeout or a dead network says nothing about the
+  /// file — treating those as gone would hide a perfectly good avatar from
+  /// anyone who opened the app on a bad connection.
+  Future<void> _verifyAvatar(String url) async {
+    if (!_checkedAvatars.add(url)) return;
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 10);
+    try {
+      final req = await client.headUrl(Uri.parse(url));
+      final res = await req.close();
+      await res.drain<void>();
+      if (res.statusCode >= 400 && res.statusCode < 500) {
+        _deadAvatars.add(url);
+        if (!isClosed && state.avatarUrl == url) {
+          emit(state.copyWith(avatarUrl: () => null));
+        }
+      }
+    } catch (_) {
+      // Offline, or the host refused a HEAD. Says nothing about the file, so
+      // the URL is left alone and the image widget still tries it normally.
+      // Deliberately NOT removed from _checkedAvatars: _avatarFromUser runs on
+      // every state build, so re-arming here would fire a fresh HEAD each time
+      // — the very loop this is meant to stop. One attempt per launch.
+    } finally {
+      client.close(force: true);
+    }
   }
 
   /// Load the `profiles` row for [uid], or null if missing/offline.
