@@ -60,85 +60,102 @@ Future<EpisodeAction?> showEpisodeActionSheet(
   /// surprised that marking an episode moved their AniList progress.
   required bool tracksToServices,
 }) {
+  // Without isScrollControlled a sheet is capped at 9/16 of the screen
+  // (_kDefaultScrollControlDisabledMaxHeightRatio) and anything past that is
+  // simply clipped — no scrolling, no warning. These rows come to ~493dp once
+  // the tracker subtitle is on, which needs an ~876dp-tall screen to clear the
+  // cap. Most phones are shorter, so "Mark this and all above as watched" was
+  // cut off the bottom edge. Same treatment showEpisodePlayerSheet below
+  // already gets, for the same reason.
   return showModalBottomSheet<EpisodeAction>(
     context: context,
     backgroundColor: AppColors.surface,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
     ),
+    isScrollControlled: true,
     builder: (sheetContext) => SafeArea(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const SizedBox(height: 10),
-          Container(
-            width: 36,
-            height: 4,
-            decoration: BoxDecoration(
-              color: AppColors.hairline,
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 14, 20, 8),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                episodeLabel,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: AppText.headline,
+      child: ConstrainedBox(
+        // Not full height: the list is short, and keeping the episode list
+        // visible behind it is what makes this read as a menu.
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(sheetContext).height * 0.7,
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 10),
+              Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.hairline,
+                  borderRadius: BorderRadius.circular(2),
+                ),
               ),
-            ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 14, 20, 8),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    episodeLabel,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppText.headline,
+                  ),
+                ),
+              ),
+              _PlayerRow(
+                icon: Icons.play_circle_outline_rounded,
+                label: 'Play with…',
+                trailingText: currentPlayerLabel,
+                onTap: () =>
+                    Navigator.pop(sheetContext, EpisodeAction.pickPlayer),
+              ),
+              _PlayerRow(
+                icon: Icons.swap_horiz_rounded,
+                label: 'Play mirror',
+                subtitle: 'Choose the source before it starts',
+                onTap: () => Navigator.pop(sheetContext, EpisodeAction.playMirror),
+              ),
+              if (canSurveySources)
+                _PlayerRow(
+                  icon: Icons.travel_explore_rounded,
+                  label: 'Where to watch',
+                  subtitle: 'See which of your sources has this episode',
+                  onTap: () =>
+                      Navigator.pop(sheetContext, EpisodeAction.whereToWatch),
+                ),
+              _PlayerRow(
+                icon: Icons.refresh_rounded,
+                label: 'Reload links',
+                subtitle: 'Fetch fresh streams if playback keeps failing',
+                onTap: () =>
+                    Navigator.pop(sheetContext, EpisodeAction.reloadLinks),
+              ),
+              Divider(height: 1, color: AppColors.hairline),
+              _PlayerRow(
+                icon: isWatched
+                    ? Icons.remove_done_rounded
+                    : Icons.check_circle_outline_rounded,
+                label: isWatched ? 'Mark as unwatched' : 'Mark as watched',
+                subtitle: tracksToServices
+                    ? 'Also updates your connected trackers'
+                    : null,
+                onTap: () =>
+                    Navigator.pop(sheetContext, EpisodeAction.toggleWatched),
+              ),
+              _PlayerRow(
+                icon: Icons.done_all_rounded,
+                label: 'Mark this and all above as watched',
+                onTap: () =>
+                    Navigator.pop(sheetContext, EpisodeAction.markAboveWatched),
+              ),
+              const SizedBox(height: 8),
+            ],
           ),
-          _PlayerRow(
-            icon: Icons.play_circle_outline_rounded,
-            label: 'Play with…',
-            trailingText: currentPlayerLabel,
-            onTap: () =>
-                Navigator.pop(sheetContext, EpisodeAction.pickPlayer),
-          ),
-          _PlayerRow(
-            icon: Icons.swap_horiz_rounded,
-            label: 'Play mirror',
-            subtitle: 'Choose the source before it starts',
-            onTap: () => Navigator.pop(sheetContext, EpisodeAction.playMirror),
-          ),
-          if (canSurveySources)
-            _PlayerRow(
-              icon: Icons.travel_explore_rounded,
-              label: 'Where to watch',
-              subtitle: 'See which of your sources has this episode',
-              onTap: () =>
-                  Navigator.pop(sheetContext, EpisodeAction.whereToWatch),
-            ),
-          _PlayerRow(
-            icon: Icons.refresh_rounded,
-            label: 'Reload links',
-            subtitle: 'Fetch fresh streams if playback keeps failing',
-            onTap: () =>
-                Navigator.pop(sheetContext, EpisodeAction.reloadLinks),
-          ),
-          Divider(height: 1, color: AppColors.hairline),
-          _PlayerRow(
-            icon: isWatched
-                ? Icons.remove_done_rounded
-                : Icons.check_circle_outline_rounded,
-            label: isWatched ? 'Mark as unwatched' : 'Mark as watched',
-            subtitle: tracksToServices
-                ? 'Also updates your connected trackers'
-                : null,
-            onTap: () =>
-                Navigator.pop(sheetContext, EpisodeAction.toggleWatched),
-          ),
-          _PlayerRow(
-            icon: Icons.done_all_rounded,
-            label: 'Mark this and all above as watched',
-            onTap: () =>
-                Navigator.pop(sheetContext, EpisodeAction.markAboveWatched),
-          ),
-          const SizedBox(height: 8),
-        ],
+        ),
       ),
     ),
   );
