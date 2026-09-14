@@ -9,6 +9,7 @@ import 'package:watch_app/core/models/video_source.dart';
 /// straight into `quality` as though it were a resolution, so a Dub row was
 /// visible but nothing could switch to it: [VideoSource.kind] was never set.
 void main() {
+  _noToggleNarrowing();
   group('reading the cut out of a video title', () {
     test('a dub is recognised and the word leaves the quality label', () {
       final r = audioKindFromTitle('Dub - 1080p');
@@ -188,6 +189,40 @@ void main() {
       expect(pickDefault(unknownOnly, prefer: AudioKind.dub)!.url, 'a');
       expect(pickDefault(unknownOnly, prefer: AudioKind.sub)!.url, 'a');
       expect(pickDefault(unknownOnly)!.url, 'a');
+    });
+  });
+}
+
+/// A source that labels its cuts but offers no Sub/Dub toggle must not have its
+/// default narrowed to one of them — 1.9.8 picked the best of the whole list,
+/// and with no toggle there is no way back to the other cut.
+void _noToggleNarrowing() {
+  group('no toggle means no narrowing', () {
+    final mixed = [
+      const VideoSource(url: 'sub-480', quality: '480p', kind: AudioKind.sub),
+      const VideoSource(url: 'dub-1080', quality: '1080p', kind: AudioKind.dub),
+    ];
+
+    test('the whole list is in play when nothing narrows it', () {
+      // AudioKind.unknown matches neither, so pickDefault uses every server —
+      // the 1080p dub wins on quality rather than losing for being a dub.
+      final pick = pickDefault(mixed, prefer: AudioKind.unknown);
+      expect(pick?.url, 'dub-1080');
+    });
+
+    test('asking for a cut still narrows to it, for sources that have a toggle',
+        () {
+      expect(pickDefault(mixed, prefer: AudioKind.sub)?.url, 'sub-480');
+      expect(pickDefault(mixed, prefer: AudioKind.dub)?.url, 'dub-1080');
+    });
+
+    test('an unlabelled list is unaffected either way', () {
+      final plain = [
+        const VideoSource(url: 'a', quality: '720p'),
+        const VideoSource(url: 'b', quality: '1080p'),
+      ];
+      expect(pickDefault(plain, prefer: AudioKind.unknown)?.url, 'b');
+      expect(pickDefault(plain, prefer: AudioKind.sub)?.url, 'b');
     });
   });
 }

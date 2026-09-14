@@ -1875,10 +1875,24 @@ class PlayerCubit extends Cubit<PlayerState> {
             );
       // Otherwise the source remembered for this title (e.g. Hindi), else the
       // adaptive default.
+      // Let the audio cut narrow the default ONLY when the title actually
+      // offers a choice between cuts. Aniyomi labels each video's cut but
+      // exposes no toggle — the counts that drive it are CloudStream-only — so
+      // narrowing to "sub" here quietly hid every dub server behind a switch
+      // that does not exist. AudioKind.unknown matches nothing in a labelled
+      // list, so pickDefault falls through to the whole pool: the best stream
+      // of every server, which is what a source with no cut choice always did.
+      final narrowTo = availableCategories.length > 1
+          ? (_activeCategory == 'dub' ? AudioKind.dub : AudioKind.sub)
+          : AudioKind.unknown;
       final pick =
           fromPick ??
           _preferredSource(resolved) ??
-          pickDefault(resolved, preferQuality: _preferredQuality());
+          pickDefault(
+            resolved,
+            prefer: narrowTo,
+            preferQuality: _preferredQuality(),
+          );
       if (pick == null) {
         emit(
           state.copyWith(error: () => 'No playable sources for this episode.'),
