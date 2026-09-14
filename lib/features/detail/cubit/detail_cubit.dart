@@ -307,6 +307,10 @@ class DetailCubit extends Cubit<DetailState> {
       ));
       _enrich(carried);
     } on CloudflareRequiredException catch (e) {
+      // The last emit in here without one: a catch is not covered by the
+      // isClosed check in the try body, and the fetch that threw is exactly
+      // the slow kind somebody backs out of.
+      if (isClosed) return;
       _log('load cloudflare required ${e.url} ${sw.elapsedMilliseconds}ms', level: 'W');
       emit(state.copyWith(
         status: DetailStatus.error,
