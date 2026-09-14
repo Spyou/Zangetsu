@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -18,6 +19,7 @@ import '../../../core/playback/playback_prefs.dart';
 import '../../../core/playback/title_prefs.dart';
 import '../../../core/repository/catalogue_repository.dart';
 import '../../../core/zmode/metadata_repository.dart';
+import '../../../core/zmode/season_chain.dart';
 import '../../../core/zmode/zmode_ids.dart';
 import '../../../core/zmode/metadata_provider_prefs.dart';
 
@@ -44,6 +46,7 @@ class DetailState extends Equatable {
     this.error,
     this.cast = const [],
     this.relations = const [],
+    this.seasons = const [],
     this.cloudflareUrl,
     this.episodesLoading = false,
     this.extrasLoading = false,
@@ -56,6 +59,11 @@ class DetailState extends Equatable {
   /// loads (AniList for anime, TMDB for movie/TV). Empty until resolved.
   final List<CastMember> cast;
   final List<MediaRelation> relations;
+
+  /// The franchise's seasons in order, when it has more than one. Empty for
+  /// the great majority of titles, which is what tells the Relations tab to
+  /// draw no Seasons section at all. See [SeasonChain].
+  final List<SeasonEntry> seasons;
   final bool extrasLoading;
 
   /// 'sub' | 'dub'. Drives the Sub/Dub toggle and the player `category`.
@@ -85,6 +93,7 @@ class DetailState extends Equatable {
     String? error,
     List<CastMember>? cast,
     List<MediaRelation>? relations,
+    List<SeasonEntry>? seasons,
     String? cloudflareUrl,
     bool clearCloudflareUrl = false,
     bool? episodesLoading,
@@ -98,6 +107,7 @@ class DetailState extends Equatable {
     error: error ?? this.error,
     cast: cast ?? this.cast,
     relations: relations ?? this.relations,
+    seasons: seasons ?? this.seasons,
     cloudflareUrl: clearCloudflareUrl
         ? null
         : (cloudflareUrl ?? this.cloudflareUrl),
@@ -116,6 +126,7 @@ class DetailState extends Equatable {
     error,
     cast,
     relations,
+    seasons,
     cloudflareUrl,
   ];
 }
@@ -625,6 +636,9 @@ class DetailCubit extends Cubit<DetailState> {
         if (isClosed) return;
         if (extras.cast.isNotEmpty || extras.relations.isNotEmpty) {
           emit(state.copyWith(cast: extras.cast, relations: extras.relations));
+          // After the tab has something to show, not before: the walk costs a
+          // request per hop and nobody is waiting on it.
+          unawaited(_loadSeasons(d));
           return;
         }
       } catch (_) {/* fall through to source-supplied extras */}
@@ -638,6 +652,23 @@ class DetailCubit extends Cubit<DetailState> {
       );
     }
     _log('enrich done ${sw.elapsedMilliseconds}ms');
+  }
+
+  /// Walks the franchise so the Relations tab can show its seasons in order.
+  ///
+  /// Deliberately after Cast/Relations have already painted: each hop is a
+  /// request, and nothing on screen is waiting for the answer. A miss is an
+  /// empty list, which simply means no Seasons section.
+  Future<void> _loadSeasons(MediaDetail d) async {
+    try {
+      final seasons = await sl<MetadataEnrichment>().seasons(d);
+      if (isClosed || seasons.isEmpty) return;
+      // The detail may have moved on while the walk was in flight.
+      if (state.detail?.url != d.url) return;
+      emit(state.copyWith(seasons: seasons));
+    } catch (e) {
+      _log('seasons failed: $e', level: 'W');
+    }
   }
 
   /// Sub/Dub re-fetch. No-op when the category is unchanged. Otherwise

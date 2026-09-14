@@ -77,6 +77,42 @@ class EpisodeMetadataService {
     }
   }
 
+  /// The real season number for [malId], or null when AniZip has no mapping.
+  ///
+  /// Shares the episode payload's disk cache, so on a title whose episode list
+  /// has already been enriched this costs nothing at all.
+  Future<int?> animeSeasonNumber(int malId) async {
+    final memo = _seasonCache[malId];
+    if (memo != null) return memo == 0 ? null : memo;
+    final disk = await _readDisk('a:$malId');
+    if (disk != null) {
+      final n = parseAniZipSeason(disk);
+      _seasonCache[malId] = n ?? 0;
+      return n;
+    }
+    try {
+      final res = await _dio
+          .get<dynamic>(
+            'https://api.ani.zip/mappings?mal_id=$malId',
+            options: Options(validateStatus: (s) => s != null && s < 500),
+          )
+          .timeout(const Duration(seconds: 6));
+      final n = parseAniZipSeason(res.data);
+      if (parseAniZip(res.data).isNotEmpty) {
+        await _writeDisk('a:$malId', res.data);
+      }
+      // 0 stands for "asked, and there is no answer" — without it an unmapped
+      // title is re-requested on every open.
+      _seasonCache[malId] = n ?? 0;
+      return n;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// malId -> season number, 0 meaning "AniZip has no mapping".
+  final Map<int, int> _seasonCache = {};
+
   /// AniZip only attaches stills to early episodes on long shows (Shippuden:
   /// 1–32). Later range chips then fall back to the show poster. AniZip's
   /// `mappings.themoviedb_id` points at the same title on TMDB, which has
@@ -288,6 +324,27 @@ class EpisodeMetadataService {
     final id = mappings['themoviedb_id'];
     if (id is num) return id.toInt();
     return int.tryParse('$id');
+  }
+
+  /// The TVDB/TMDB season this title belongs to, from an AniZip payload.
+  ///
+  /// AniList has no season number — it files every cour as its own title, so
+  /// chain position says "5 seasons" for a show that has three. AniZip stamps
+  /// each episode with the season it really belongs to, and both halves of a
+  /// split cour carry the SAME number, which is what collapses them.
+  ///
+  /// Season 0 is specials; it is never the answer. Returns the lowest real
+  /// season present, since an entry whose episodes span 0 and 2 is season 2.
+  static int? parseAniZipSeason(Object? data) {
+    if (data is! Map || data['episodes'] is! Map) return null;
+    int? lowest;
+    (data['episodes'] as Map).forEach((_, v) {
+      if (v is! Map) return;
+      final n = (v['seasonNumber'] as num?)?.toInt();
+      if (n == null || n <= 0) return;
+      if (lowest == null || n < lowest!) lowest = n;
+    });
+    return lowest;
   }
 
   /// Map a TMDB season's episode_number onto the absolute episode index AniZip

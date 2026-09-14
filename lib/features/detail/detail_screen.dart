@@ -11,6 +11,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/zmode/season_chain.dart';
 import '../../core/zmode/metadata_provider_prefs.dart';
 import '../../core/ui/poster_card.dart';
 import '../../core/metadata/synopsis.dart';
@@ -2254,6 +2255,7 @@ class _DetailViewState extends State<_DetailView>
           _RelationsTab(
             loading: state.extrasLoading,
             relations: state.relations,
+            seasons: state.seasons,
             onOpen: _openRelation,
           ),
           // ── Details ──────────────────────────────────────────────────────────

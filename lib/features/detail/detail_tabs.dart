@@ -217,9 +217,14 @@ class _RelationsTab extends StatelessWidget {
     this.loading = false,
     required this.relations,
     required this.onOpen,
+    this.seasons = const [],
     this.tvFocus = false,
   });
   final List<MediaRelation> relations;
+
+  /// The franchise's seasons in order. Empty for most titles — and then this
+  /// tab renders exactly as it always did, one grid of relations.
+  final List<SeasonEntry> seasons;
   final void Function(MediaRelation) onOpen;
 
   /// See [_CastTab.loading] — same request, same reason.
@@ -230,26 +235,117 @@ class _RelationsTab extends StatelessWidget {
   /// passes this flag, so the phone render is byte-identical to the original.
   final bool tvFocus;
 
+  /// A season drawn as a relation card. Reusing [MediaRelation] is the whole
+  /// trick: the card, the accent label and the tap handler are then the ones
+  /// the tab already has, so a season behaves exactly like every other poster
+  /// here — including opening its OWN title, with its own tracking.
+  static MediaRelation _asRelation(BuildContext context, SeasonEntry s) =>
+      MediaRelation(
+        title: s.title,
+        cover: s.cover,
+        relation: s.isCurrent
+            ? '${context.l10n.seasonNumber(s.number)} · ${context.l10n.statusWatching}'
+            : context.l10n.seasonNumber(s.number),
+        malId: s.malId,
+        anilistId: s.anilistId,
+      );
+
+  /// The relations left once the seasons have been lifted out.
+  ///
+  /// A prequel is also season 2; showing it in both places is the same title
+  /// twice on one screen. Everything that is NOT a season — films, the source
+  /// manga, side stories, recaps — is untouched.
+  List<MediaRelation> get _rest {
+    if (seasons.isEmpty) return relations;
+    final taken = {
+      for (final s in seasons) ...[
+        if (s.anilistId != null) 'a:${s.anilistId}',
+        if (s.malId != null) 'm:${s.malId}',
+      ],
+    };
+    return [
+      for (final r in relations)
+        if (!taken.contains('a:${r.anilistId}') &&
+            !taken.contains('m:${r.malId}'))
+          r,
+    ];
+  }
+
+  static const SliverGridDelegate _grid =
+      SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3,
+        mainAxisSpacing: 16,
+        crossAxisSpacing: 12,
+        childAspectRatio: 0.47,
+      );
+
   @override
   Widget build(BuildContext context) {
-    if (relations.isEmpty) {
+    if (relations.isEmpty && seasons.isEmpty) {
       if (loading) return const _CardGridSkeleton();
       return _emptyTab(
         Icons.account_tree_outlined,
         context.l10n.noRelatedTitles,
       );
     }
-    return GridView.builder(
-      padding: const EdgeInsets.fromLTRB(16, 18, 16, 40),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3,
-        mainAxisSpacing: 16,
-        crossAxisSpacing: 12,
-        childAspectRatio: 0.47,
+    // One grid and no headings when there are no seasons — byte-identical to
+    // what this tab rendered before seasons existed.
+    if (seasons.isEmpty) {
+      return GridView.builder(
+        padding: const EdgeInsets.fromLTRB(16, 18, 16, 40),
+        gridDelegate: _grid,
+        itemCount: relations.length,
+        itemBuilder: (_, i) => _card(context, relations[i], i),
+      );
+    }
+    final rest = _rest;
+    return CustomScrollView(
+      slivers: [
+        _header(context, context.l10n.seasons),
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+          sliver: SliverGrid(
+            gridDelegate: _grid,
+            delegate: SliverChildBuilderDelegate(
+              (_, i) => _card(context, _asRelation(context, seasons[i]), i),
+              childCount: seasons.length,
+            ),
+          ),
+        ),
+        if (rest.isNotEmpty) ...[
+          _header(context, context.l10n.relations),
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 40),
+            sliver: SliverGrid(
+              gridDelegate: _grid,
+              delegate: SliverChildBuilderDelegate(
+                (_, i) => _card(context, rest[i], seasons.length + i),
+                childCount: rest.length,
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _header(BuildContext context, String text) => SliverToBoxAdapter(
+    child: Padding(
+      padding: const EdgeInsets.fromLTRB(16, 18, 16, 10),
+      child: Text(
+        text.toUpperCase(),
+        style: AppText.caption.copyWith(
+          color: AppColors.textSecondary,
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.6,
+        ),
       ),
-      itemCount: relations.length,
-      itemBuilder: (_, i) {
-        final r = relations[i];
+    ),
+  );
+
+  Widget _card(BuildContext context, MediaRelation r, int i) {
+    {
         final visual = Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -305,8 +401,7 @@ class _RelationsTab extends StatelessWidget {
           );
         }
         return _PressableCard(onTap: () => onOpen(r), child: visual);
-      },
-    );
+    }
   }
 }
 

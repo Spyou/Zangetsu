@@ -1006,6 +1006,7 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
                             // ── Relations ──────────────────────────────────
                             _RelationsTab(
                               relations: state.relations,
+                              seasons: state.seasons,
                               onOpen: _openRelation,
                               tvFocus: true,
                             ),

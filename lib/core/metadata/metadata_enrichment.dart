@@ -8,6 +8,9 @@ import '../models/media_extras.dart';
 import '../models/person.dart';
 import '../models/provider_info.dart';
 import '../zmode/metadata_provider_prefs.dart';
+import '../di/injector.dart';
+import 'episode_metadata_service.dart';
+import '../zmode/season_chain.dart';
 
 /// Fetches Cast + Relations for a title from a metadata API — AniList for anime
 /// (keyed by MAL id), TMDB for movies/series (keyed by TMDB id, via the same
@@ -34,6 +37,38 @@ class MetadataEnrichment {
   final Dio _dio;
   final AniListApi _anilist;
   final MetadataProviderPrefs? Function()? _prefs;
+
+  /// Built lazily and kept: the chain caches per franchise, and throwing that
+  /// away between titles would re-walk (and re-request) the same seasons.
+  late final SeasonChain _seasons =
+      SeasonChain(_anilist, sl<EpisodeMetadataService>());
+
+  /// The franchise's seasons in order, or empty when [d] has no prequel and no
+  /// sequel — the ordinary case.
+  ///
+  /// Anime only: AniList models each season as its own title, which is the
+  /// whole reason this exists. A TMDB series already carries real seasons in
+  /// one entry and needs nothing here.
+  Future<List<SeasonEntry>> seasons(MediaDetail d) async {
+    if (d.type != ProviderType.anime) return const [];
+    try {
+      final malId = d.malId;
+      if (malId == null) return const [];
+      // MediaDetail carries a MAL id, never an AniList one, and the walk is
+      // AniList-native — so resolve once here rather than per hop.
+      final media = await _anilist.mediaByMalId(malId);
+      if (media == null) return const [];
+      return await _seasons.of(
+        anilistId: media.id,
+        currentTitle: d.title,
+        currentMalId: malId,
+        currentCover: d.cover,
+        currentEpisodes: media.episodes,
+      );
+    } catch (_) {
+      return const [];
+    }
+  }
 
   // TMDB v3 — api_key attached by the Dio interceptor (initDependencies).
   static const String _tmdbBase = 'https://api.themoviedb.org/3';

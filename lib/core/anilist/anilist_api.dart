@@ -360,6 +360,51 @@ class AniListApi {
     return out;
   }
 
+  /// One hop of the season chain: the prequel/sequel neighbours of an AniList
+  /// id, with just enough to draw a poster.
+  ///
+  /// Separate from [mediaExtras] because walking a franchise asks a much
+  /// narrower question — no cast, no recommendations, no MAL-id round trip.
+  /// `relations` is only ever ONE level deep in AniList's schema, so reaching
+  /// season 1 from season 3 means asking again per hop; keeping the selection
+  /// this small is what makes that affordable.
+  Future<List<({String relation, int id, int? idMal, String? format,
+      String title, String? cover, int? episodes})>> seasonNeighbours(
+    int anilistId,
+  ) async {
+    final d = await _gql(
+      'query(\$id:Int){ Media(id:\$id,type:ANIME){ relations{ edges{ '
+      'relationType node{ id idMal format episodes '
+      'title{romaji english native} coverImage{medium} } } } } }',
+      {'id': anilistId},
+    );
+    final edges = (d?['Media'] is Map) ? d!['Media']['relations'] : null;
+    final list = (edges is Map) ? edges['edges'] : null;
+    if (list is! List) return const [];
+    final out = <({String relation, int id, int? idMal, String? format,
+        String title, String? cover, int? episodes})>[];
+    for (final e in list) {
+      if (e is! Map) continue;
+      final node = e['node'];
+      if (node is! Map) continue;
+      final title = aniListTitle(node['title'], titleLanguagePref);
+      final id = (node['id'] as num?)?.toInt();
+      if (title == null || title.isEmpty || id == null) continue;
+      out.add((
+        relation: (e['relationType'] as String?) ?? '',
+        id: id,
+        idMal: (node['idMal'] as num?)?.toInt(),
+        format: node['format'] as String?,
+        title: title,
+        cover: (node['coverImage'] is Map)
+            ? node['coverImage']['medium'] as String?
+            : null,
+        episodes: (node['episodes'] as num?)?.toInt(),
+      ));
+    }
+    return out;
+  }
+
   /// Cast (characters + their Japanese voice actors) and related anime titles
   /// for an anime, by MAL id. Unauthenticated; returns empty lists on miss.
   Future<({List<CastMember> cast, List<MediaRelation> relations})> mediaExtras(
