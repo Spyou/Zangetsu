@@ -6,9 +6,30 @@ import '../models/media_item.dart';
 import '../theme/app_colors.dart';
 import 'featured_hero.dart';
 
-/// Fixed hero height — the carousel pins this so the container never resizes
-/// between slides and the hero fills it edge-to-edge (Prime-style).
-const double kHeroHeight = 540;
+/// Hero height as a share of the screen, so the banner keeps the same
+/// proportions everywhere instead of the same pixel count.
+///
+/// It used to be a flat 540. That is ~62% of a 872dp phone and looks right
+/// there, but the same 540 is 84% of a 640dp one — the banner swallowed the
+/// whole screen, the dock sat on top of the page dots, and nothing below the
+/// hero was reachable without scrolling. Same number, different phone, broken
+/// layout. 0.62 is that approved look, expressed as the ratio it always was.
+const double kHeroHeightFactor = 0.62;
+
+/// Floor and ceiling. The floor keeps the content block (logo, meta line and
+/// buttons — about 230dp with its bottom inset) from crowding the artwork on a
+/// very short screen; the ceiling stops a tall tablet getting a hero the size
+/// of a poster.
+const double kHeroHeightMin = 380;
+const double kHeroHeightMax = 560;
+
+/// The hero height for [context]'s screen.
+///
+/// Reads the screen rather than the incoming constraints on purpose: the
+/// carousel is built inside a sliver, where the height constraint is unbounded.
+double heroHeightFor(BuildContext context) => (MediaQuery.sizeOf(context).height *
+        kHeroHeightFactor)
+    .clamp(kHeroHeightMin, kHeroHeightMax);
 
 /// Banner transition styles (A/B).
 enum HeroTransition {
@@ -215,19 +236,21 @@ class _FeaturedCarouselState extends State<FeaturedCarousel> {
 
   @override
   Widget build(BuildContext context) {
+    final heroHeight = heroHeightFor(context);
+
     // Empty state — reserve the height so layout doesn't jump.
-    if (_count == 0) return const SizedBox(height: kHeroHeight);
+    if (_count == 0) return SizedBox(height: heroHeight);
 
     // Single item — no dots, no timer. Still pinned to the hero height.
     if (_count == 1) {
       return RepaintBoundary(
-        child: SizedBox(height: kHeroHeight, child: _hero(_pages.first)),
+        child: SizedBox(height: heroHeight, child: _hero(_pages.first)),
       );
     }
 
     return RepaintBoundary(
       child: SizedBox(
-        height: kHeroHeight,
+        height: heroHeight,
         child: Stack(
           children: [
             // ── Pager (cinematic cross-fade or parallax slide) ─────────────
