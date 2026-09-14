@@ -2505,6 +2505,12 @@ class PlayerCubit extends Cubit<PlayerState> {
       return;
     }
     _recovering = true;
+    // close() bumps _gen precisely so continuations like this one bail instead
+    // of firing into a disposed player. This was the one that never checked:
+    // _tryNextSource awaits a whole re-resolve (seconds, in the logs), which is
+    // plenty of time to back out, and the emit below then threw "Cannot emit
+    // new states after calling close" — straight into Crashlytics.
+    final gen = _gen;
     final failed = state.active;
     if (failed != null) _tried.add(failed.url);
     // Never re-try a source we've already attempted this episode (prevents the
@@ -2525,7 +2531,9 @@ class PlayerCubit extends Cubit<PlayerState> {
       await _open(next, seekTo: _lastPos);
       _applyDefaultQuality(); // honor the quality pref on the fallback source too
     } else if (!await _tryNextSource()) {
-      emit(state.copyWith(error: () => _deadEndMessage()));
+      // Guarded, not returned: _recovering still has to drop, or a player that
+      // outlives this (a newer open on the same cubit) can never recover again.
+      if (gen == _gen) emit(state.copyWith(error: () => _deadEndMessage()));
     }
     _recovering = false;
   }
