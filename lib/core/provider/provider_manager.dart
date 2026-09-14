@@ -58,6 +58,41 @@ bool looksLikeCloudflareBlock(int status, String body) {
   return b.contains('you have been blocked') || b.contains('error code: 1020');
 }
 
+/// Whether a JS-provider response is a Cloudflare challenge the WebView solver
+/// could actually pass.
+///
+/// `server: cloudflare` used to be enough on its own. It is not evidence of
+/// anything: Cloudflare fronts a large slice of the web and stamps that header
+/// on every ordinary 403 it serves — a hotlink block on a stream CDN, a WAF
+/// rule, an expired token. Each of those got latched as "needs a solve", which
+/// made the resolver skip the source entirely and put up a button that opened
+/// a WebView with no challenge in it, so the solve could never succeed. Across
+/// 37 shared reports that was 22 sources flagged and not one solved; on the dev
+/// phone it was `fetch.nexabloom.top` (403, `server: cloudflare`, no challenge
+/// anywhere in the body) taking AniKoto out of every sweep.
+///
+/// So Cloudflare has to actually say it is challenging: the `cf-mitigated`
+/// header it sets on a real one, or the interstitial's own markup.
+///
+/// Scope is deliberately the JS providers only. CloudStream keeps its own
+/// predicate in PluginHost.kt, and Aniyomi/Mihon/LNReader theirs — none of
+/// them route through here.
+@visibleForTesting
+bool looksLikeCfChallenge({
+  required int status,
+  required String body,
+  String? cfMitigated,
+}) {
+  if (status != 403 && status != 503) return false;
+  if ((cfMitigated ?? '').toLowerCase().contains('challenge')) return true;
+  final b = body.toLowerCase();
+  return b.contains('just a moment') ||
+      b.contains('challenge-platform') ||
+      b.contains('cf-chl') ||
+      b.contains('checking your browser') ||
+      b.contains('enable javascript and cookies');
+}
+
 class _JsHost {
   _JsHost({required this.dio}) {
     _engine = JsEngine(onChannel: _onChannel, polling: isAppleTv);
@@ -691,17 +726,11 @@ class _JsHost {
     }
   }
 
-  bool _looksLikeCfChallenge(Response<dynamic> resp) {
-    final code = resp.statusCode ?? 0;
-    if (code != 403 && code != 503) return false;
-    final server = (resp.headers.value('server') ?? '').toLowerCase();
-    final bodyText = (resp.data?.toString() ?? '').toLowerCase();
-    return server.contains('cloudflare') ||
-        bodyText.contains('just a moment') ||
-        bodyText.contains('challenge-platform') ||
-        bodyText.contains('cf-chl') ||
-        bodyText.contains('enable javascript and cookies');
-  }
+  bool _looksLikeCfChallenge(Response<dynamic> resp) => looksLikeCfChallenge(
+    status: resp.statusCode ?? 0,
+    cfMitigated: resp.headers.value('cf-mitigated'),
+    body: resp.data?.toString() ?? '',
+  );
 
   void _onCrypto(dynamic raw) {
     String? id;
