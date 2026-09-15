@@ -960,13 +960,89 @@ class SourceRepository implements CatalogueRepository {
     final local = await _localPages(chapterUrl, sourceId);
     if (local != null) return local;
 
+    final key = '${sourceId ?? _active.state}|$chapterUrl';
+    final hit = _pageListCache[key];
+    if (hit != null && !hit.stale) return hit.pages;
+
+    // Someone is already fetching this exact chapter — wait for THAT request
+    // instead of starting a second one.
+    //
+    // Measured on a real source: a page list took 8-14 SECONDS to come back,
+    // and warming the next chapter meant the reader then asked for the same
+    // chapter again while the first request was still in the air. Both waited
+    // the full time; one of them was pure waste. A finished-result cache can't
+    // help here, because neither request has finished yet.
+    final inFlight = _pageFetches[key];
+    if (inFlight != null) return inFlight;
+
     final p = _providerFor(sourceId);
     if (p is! ReadingProvider) {
       throw UnsupportedError('${p.sourceId} does not support reading content');
     }
     // ReadingProvider is deliberately unrelated to BaseProvider (Task 3), so
     // the `is!` check above doesn't statically promote — cast explicitly.
-    return (p as ReadingProvider).getPages(chapterUrl);
+    final future = _fetchPages(p as ReadingProvider, key, chapterUrl);
+    _pageFetches[key] = future;
+    try {
+      return await future;
+    } finally {
+      _pageFetches.remove(key);
+    }
+  }
+
+  Future<List<PageImage>> _fetchPages(
+    ReadingProvider p,
+    String key,
+    String chapterUrl,
+  ) async {
+    final started = DateTime.now();
+    final fetched = await p.getPages(chapterUrl);
+    final ms = DateTime.now().difference(started).inMilliseconds;
+    // The reader shows a spinner for exactly this long, and until now nothing
+    // recorded it — so "it was black for a few seconds" was unanswerable from
+    // a shared log. Cheap, and the number is the whole diagnosis.
+    debugPrint('[reader] ${fetched.length} pages in ${ms}ms · $chapterUrl');
+    if (fetched.isNotEmpty) _rememberPages(key, fetched);
+    return fetched;
+  }
+
+  /// Page fetches currently in the air, keyed like [_pageListCache]. Entries
+  /// live only for the length of the request.
+  final Map<String, Future<List<PageImage>>> _pageFetches = {};
+
+  /// Page lists the reader has already fetched, so reopening the chapter you
+  /// were just reading — or stepping back one — doesn't sit on a spinner
+  /// waiting for a request whose answer hasn't changed.
+  ///
+  /// Deliberately in memory and deliberately short-lived. Plenty of sources
+  /// hand back image URLs signed with a short-lived token; caching those to
+  /// disk, or for an hour, would trade a spinner for broken pages. Ten minutes
+  /// covers "flip forward, flip back" and nothing riskier, and the whole thing
+  /// dies with the process.
+  static const _pageCacheTtl = Duration(minutes: 10);
+  static const _pageCacheMax = 12;
+  final Map<String, _CachedPages> _pageListCache = {};
+
+  void _rememberPages(String key, List<PageImage> pages) {
+    _pageListCache.remove(key); // re-insert so the oldest key is first out
+    _pageListCache[key] = _CachedPages(pages, DateTime.now());
+    while (_pageListCache.length > _pageCacheMax) {
+      _pageListCache.remove(_pageListCache.keys.first);
+    }
+  }
+
+  /// Fetches a chapter's pages into the cache without returning them — the
+  /// reader calls this for the NEXT chapter once you're most of the way
+  /// through the current one, so tapping through lands on pages instead of a
+  /// spinner. Silent on failure: this is a guess about what you'll read next,
+  /// and a wrong guess must never surface as an error.
+  Future<void> warmPages(String chapterUrl, {String? sourceId}) async {
+    final key = '${sourceId ?? _active.state}|$chapterUrl';
+    final hit = _pageListCache[key];
+    if (hit != null && !hit.stale) return;
+    try {
+      await pages(chapterUrl, sourceId: sourceId);
+    } catch (_) {}
   }
 
   /// Pages of a downloaded chapter, or null when it isn't saved. Resolved
@@ -1089,4 +1165,16 @@ extension SourceNameTag on SourceRepository {
     final tag = SourceRepository.ecosystemTag(sourceId);
     return tag == null ? name : '$tag · $name';
   }
+}
+
+/// One chapter's page list plus when it was fetched — see
+/// `SourceRepository._pageListCache` for why it expires.
+class _CachedPages {
+  const _CachedPages(this.pages, this.at);
+
+  final List<PageImage> pages;
+  final DateTime at;
+
+  bool get stale =>
+      DateTime.now().difference(at) > SourceRepository._pageCacheTtl;
 }
