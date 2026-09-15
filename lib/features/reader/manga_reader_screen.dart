@@ -1,11 +1,15 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/reading/reader_image_budget.dart';
+import '../../core/reading/crop_borders.dart';
+import '../../core/reading/reader_page_queue.dart';
 import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:visibility_detector/visibility_detector.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
@@ -105,9 +109,45 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
   late final PageController _pageController;
   late final ScrollController _verticalController;
 
+  /// The page the webtoon strip is CENTRED on — scroll offset 0 is its top.
+  ///
+  /// The strip is built as two slivers around it: the pages above, laid out
+  /// upward into negative offsets, and this page onward laid out downward.
+  /// That is what makes resuming exact. The old code jumped to
+  /// `index / pageCount * maxScrollExtent`, a percentage of a height built
+  /// from pages that had not loaded yet — so page 31 of 112 landed 28% down
+  /// the strip and drifted further as the real heights arrived. Anchoring
+  /// instead means a page above changing height extends the strip upward and
+  /// cannot move what you are reading.
+  int _anchorIndex = 0;
+
+  /// Marks the centre sliver. Rebuilt with [_anchorIndex] so a seek re-centres
+  /// rather than trying to compute where the page lives in pixels.
+  Key _centerKey = const ValueKey('manga-center-0');
+
   bool _loading = true;
   String? _error;
+
+  /// Every page currently in the strip — which, once you read past the end of
+  /// a chapter, spans MORE THAN ONE chapter. [_slots] says which.
   List<PageImage>? _pages;
+
+  /// Parallel to [_pages]: where each page came from. This is what lets one
+  /// flat strip hold several chapters, so reading into the next one is just
+  /// scrolling rather than tearing the reader down and building it again.
+  final List<_PageSlot> _slots = [];
+
+  /// Chapter indices already in the strip, in the order they were appended.
+  final List<int> _stripChapters = [];
+
+  /// One page at a time, nearest first. See [ReaderPageQueue].
+  late final ReaderPageQueue _pageQueue;
+
+  /// What the queue should actually do for a given page url.
+  final Map<String, Future<void> Function()> _queueTasks = {};
+
+  /// True while the next chapter is being fetched for the strip's tail.
+  bool _appending = false;
 
   // Whether this chapter's first page turned out to be a long vertical strip.
   // Null until _detectWebtoon resolves it, and again on every chapter change.
@@ -130,6 +170,14 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
 
   bool _chromeVisible = false;
   int _lastScrollSaveMs = 0;
+
+  /// False for the moment between a chapter's pages arriving and the strip
+  /// actually having laid out. See [_buildBody] for what it hides.
+  bool _stripReady = true;
+  Timer? _stripReadyTimer;
+
+  /// Fires once scrolling has actually stopped, to move the anchor onto the
+  /// page being read. See [_reanchorToCurrentPage].
   Offset? _lastDoubleTapPos;
   final Map<int, TransformationController> _zoomControllers = {};
 
@@ -141,7 +189,6 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
   /// ONE controller drives every page placeholder, so a screenful of them
   /// pulses together and costs a single ticker — same convention as
   /// `states.dart`'s skeleton grid.
-  late final AnimationController _shimmer;
   Offset _wOffset = Offset.zero; // current strip translation
   bool _wZooming = false; // true only while a 2-finger pinch is live
   double _wStartScale = 1.0; // scale at pinch start
@@ -172,7 +219,18 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
     // access — which, if auto-scroll was never used, is dispose(), where
     // the element is already deactivated and the lookup throws.
     _autoScroll = ReaderAutoScroll(vsync: this);
-    _verticalController = ScrollController()..addListener(_onVerticalScroll);
+    // keepScrollOffset:false — the strip's position is OURS to set, via the
+    // anchor. Left on (the default), Flutter stashes the offset in
+    // PageStorage under the list's key and restores it when the strip is
+    // rebuilt for the next chapter — so tapping "next" opened the new chapter
+    // at the old one's offset, i.e. at the bottom, showing its end-of-chapter
+    // card over a screen of pages that hadn't loaded.
+    _pageQueue = ReaderPageQueue(
+      fetch: (key) async =>
+          await (_queueTasks.remove(key)?.call() ?? Future.value()),
+    );
+    _verticalController = ScrollController(keepScrollOffset: false)
+      ..addListener(_onVerticalScroll);
     // Wakelock/brightness/orientation — see ReaderComfortMixin. Best-effort:
     // a plugin-channel failure (e.g. an unusual device, or — in widget tests
     // — no host handler at all) must not crash the reader; the mixin itself
@@ -185,10 +243,6 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
     unawaited(ReaderImageBudget.acquire());
     // One-way loop: the highlight travels down the page and starts again.
     // reverse:true would walk it back up, which reads as a glitch.
-    _shimmer = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1400),
-    )..repeat();
     _load();
     _maybeResolveChapters();
   }
@@ -201,12 +255,14 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
     // is only updated on scroll events, so re-derive it from the live
     // ScrollController one last time before that controller goes away.
     ReaderImageBudget.release(); // hands the page bitmaps back to the OS
-    _shimmer.dispose();
     _captureFinalVerticalIndex();
     _flushProgress(); // reader close: don't lose the last-read position
     _autoScroll.dispose();
     VolumeKeys.disable(); // give the volume rocker back
     restoreReaderComfort();
+    _pageQueue.dispose();
+    _stripReadyTimer?.cancel();
+    _aspectFlush?.cancel();
     _verticalController.removeListener(_onVerticalScroll);
     _verticalController.dispose();
     _pageController.dispose();
@@ -224,6 +280,12 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
   /// from another group — see [adjacentChapterIndex].
   int? get _nextIndex => adjacentChapterIndex(_chapters, _index, step: 1);
   int? get _prevIndex => adjacentChapterIndex(_chapters, _index, step: -1);
+
+  /// The chapter after everything currently in the strip — what an overscroll
+  /// at the bottom should reach for.
+  int? get _afterStrip => _stripChapters.isEmpty
+      ? _nextIndex
+      : adjacentChapterIndex(_chapters, _stripChapters.last, step: 1);
 
   /// Background upgrade for a Continue Reading resume: opened with just the
   /// one already-read chapter, this fetches the show's real chapter list
@@ -270,12 +332,34 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
         widget.showId,
         _chapter.id,
       );
-      final start = clampPageIndex(saved?.pos ?? 0, pages.length);
+      var start = clampPageIndex(saved?.pos ?? 0, pages.length);
+      // Reopening a chapter you read to the end used to drop you straight onto
+      // the end-of-chapter card, because that IS the saved position and the
+      // card rides inside the last page. Useless place to land: nothing above
+      // it you haven't read, nothing below it but a button.
+      //
+      // Vertical only. The card lives in the webtoon strip, so in paged mode
+      // the last page is just a page and resuming onto it is exactly right.
+      if (start == pages.length - 1 &&
+          pages.length > 1 &&
+          _effectiveDirection(sl<ReaderPrefs>()) == 'vertical') {
+        start = 0;
+      }
       setState(() {
         _pages = pages;
+        _slots
+          ..clear()
+          ..addAll([
+            for (var i = 0; i < pages.length; i++)
+              _PageSlot(_index, i, pages.length),
+          ]);
+        _stripChapters
+          ..clear()
+          ..add(_index);
         _pageIndex = start;
         _loading = false;
       });
+      _armStripReady();
       _preload(start, pages);
       _restoreControllerPositions(start, pages.length);
       _detectWebtoon();
@@ -338,12 +422,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
           spreads == null ? start : _spreadOfPage(spreads, start),
         );
       }
-      if (_verticalController.hasClients && pageCount > 1) {
-        final max = _verticalController.position.maxScrollExtent;
-        if (max > 0) {
-          _verticalController.jumpTo(start / (pageCount - 1) * max);
-        }
-      }
+      if (pageCount > 1) _anchorToPage(start);
     });
   }
 
@@ -432,22 +511,339 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
       pages.length,
       count: sl<ReaderPrefs>().preloadCount,
     );
+
+    // Through the queue, one at a time, nearest first — NOT all at once.
+    //
+    // Firing the whole window in parallel let the network decide what arrived
+    // first, so pages appeared in a scatter rather than top to bottom, and on
+    // a rate-limited source (measured at 8-19s per request) the page actually
+    // on screen could finish LAST, behind four nobody had reached yet.
+    //
+    // The visible page goes in at [PagePriority.current] so it always wins;
+    // the rest queue behind it in reading order. Anything still waiting that
+    // the reader has since scrolled away from is dropped.
+    final keep = <String>{for (final i in window) pages[i].url};
+    _pageQueue.keepOnly(keep);
     for (final i in window) {
       final p = pages[i];
-      // Warm the bytes on disk, deliberately NOT precacheImage. A page decodes
-      // to width × height × 4 — around 28MB at our decode width — against a
-      // 100MB Flutter image cache, so precaching even a few pages pushed the
-      // already-decoded ones straight back out and the reader paid to decode
-      // them again on the way past. This is the same call CachedNetworkImage
-      // makes for maxWidthDiskCache, so the file lands under the key the
-      // visible page resolves to; only the page you're actually looking at
-      // ends up decoded in memory.
-      DefaultCacheManager()
-          .getImageFile(p.url, headers: p.headers, maxWidth: width)
-          .drain<void>()
-          .catchError((_) {}); // best-effort — a failed prefetch is not fatal
+      _pageQueue.add(
+        p.url,
+        i == index ? PagePriority.current : PagePriority.adjacent,
+      );
+      _queueTasks[p.url] = () => _fetchPageBytes(p, i, width);
+    }
+    _warmNextChapter(index, pages.length);
+    // Within a couple of pages of the strip's end — pull the next chapter on.
+    if (sl<ReaderPrefs>().overscrollChapter && index >= pages.length - 2) {
+      unawaited(_appendNextChapter());
     }
   }
+
+  /// Moves [_index] onto the chapter the reader has actually scrolled into.
+  ///
+  /// Without this, reading on past a chapter boundary leaves the reader still
+  /// "in" the old chapter: next/prev would skip one, the chapter sheet would
+  /// highlight the wrong row, and the comfort of continuous scrolling would
+  /// come with a reader that had lost track of where you are.
+  void _followChapter(int stripIndex) {
+    final c = _slotAt(stripIndex)?.chapterIdx;
+    if (c == null || c == _index || c < 0 || c >= _chapters.length) return;
+    setState(() => _index = c);
+    _warmedNext = false; // the next chapter to warm is a different one now
+  }
+
+  /// Pulls the next chapter onto the END of the strip, so reading past the
+  /// last page of one chapter just carries on into the next.
+  ///
+  /// This is what replaces the chapter change for anyone who simply keeps
+  /// scrolling: nothing is torn down, there is no loading screen, the anchor
+  /// does not move, and the pages are already below you by the time you reach
+  /// them. Tapping "next chapter" still does a real [_goToChapter] — that is a
+  /// deliberate jump, and rebuilding for it is correct.
+  ///
+  /// Appending only ever adds BELOW the reading position, which is the one
+  /// direction that cannot move what you are looking at.
+  Future<void> _appendNextChapter() async {
+    if (_appending || !mounted) return;
+    final pages = _pages;
+    if (pages == null || pages.isEmpty || _stripChapters.isEmpty) return;
+    final after = adjacentChapterIndex(_chapters, _stripChapters.last, step: 1);
+    if (after == null || _stripChapters.contains(after)) return;
+
+    // Drives the spinner on the end card, so it has to rebuild.
+    setState(() => _appending = true);
+    try {
+      final next = await sl<SourceRepository>().pages(
+        _chapters[after].url,
+        sourceId: widget.sourceId,
+      );
+      if (!mounted || next.isEmpty) return;
+      // The strip may have been rebuilt underneath us — a chapter jump, a
+      // reload — while the request was in the air. Identity is the check: a
+      // rebuild always assigns a NEW list.
+      if (!identical(_pages, pages) || _stripChapters.contains(after)) return;
+      setState(() {
+        _pages = [...pages, ...next];
+        for (var i = 0; i < next.length; i++) {
+          _slots.add(_PageSlot(after, i, next.length));
+        }
+        _stripChapters.add(after);
+        // Everything added sits BELOW the reading position, so the anchor and
+        // the scroll offset are untouched — no compensation needed.
+      });
+    } catch (_) {
+      // A chapter that will not load is not an error here — you simply reach
+      // the end card, which still offers the explicit jump.
+    } finally {
+      if (mounted) {
+        setState(() => _appending = false);
+      } else {
+        _appending = false;
+      }
+    }
+  }
+
+  /// Fetches the NEXT chapter's page list once you're most of the way through
+  /// this one, so tapping through opens on pages instead of a spinner.
+  ///
+  /// Two thirds in, not on the last page: by the time the footer is on screen
+  /// the tap is already coming, and the request needs a head start to be worth
+  /// making. One request per chapter read, and only for someone who has
+  /// actually read most of it — so it never costs anything for a chapter that
+  /// was opened and abandoned.
+  void _warmNextChapter(int index, int pageCount) {
+    if (_warmedNext || pageCount < 3) return;
+    // Late on purpose. Sources rate-limit, and this request queues behind the
+    // SAME limiter the current chapter's page images are waiting on — warming
+    // early bought a faster chapter change at the cost of slower pages in the
+    // chapter being read, which is the wrong trade.
+    if (index < pageCount - 2) return;
+    final next = _nextIndex;
+    if (next == null) return;
+    _warmedNext = true;
+    unawaited(
+      sl<SourceRepository>().warmPages(
+        _chapters[next].url,
+        sourceId: widget.sourceId,
+      ),
+    );
+  }
+
+  /// Downloads one page's bytes, and learns its shape on the way past.
+  ///
+  /// Deliberately NOT precacheImage. A page decodes to width x height x 4 —
+  /// around 28MB at our decode width — so precaching even a few pushed the
+  /// already-decoded ones straight back out of the image cache and the reader
+  /// paid to decode them again on the way past. This is the same call
+  /// CachedNetworkImage makes for maxWidthDiskCache, so the file lands under
+  /// the key the visible page resolves to; only the page being looked at ends
+  /// up decoded in memory.
+  Future<void> _fetchPageBytes(PageImage p, int index, int width) async {
+    // A page the NATIVE side draws must be measured from what the native side
+    // draws — never from the url.
+    //
+    // These are the sources that serve their pages scrambled and reassemble
+    // them in their own interceptor. Fetching the url from Dart gets the
+    // scrambled bytes, whose dimensions need not match the reassembled page at
+    // all; reserving a slot from those and then rendering the real one leaves
+    // black space around it. It also downloads every page twice, once here and
+    // once natively, for nothing.
+    // Trimming borders means looking at the pixels, which the header-only
+    // path below deliberately never does. Opting in to the crop is opting in
+    // to that decode.
+    if (_drawnLocally(p) || sl<ReaderPrefs>().cropBorders) {
+      await _measureFromProvider(p, width);
+      return;
+    }
+    final stream = DefaultCacheManager().getImageFile(
+      p.url,
+      headers: p.headers,
+      maxWidth: width,
+    );
+    await for (final r in stream) {
+      if (r is FileInfo) {
+        // Shape read off the file BEFORE the page is ever built — see
+        // [_measureFromFile] for why that matters so much here.
+        if (!_aspect.containsKey(p.url)) {
+          await _measureFromFile(r.file, p.url, index);
+        }
+        return;
+      }
+    }
+  }
+
+  /// Records a page's shape, and — when the reader is trimming borders — the
+  /// part of it that is actually artwork.
+  ///
+  /// The aspect stored is the CROPPED one, so the slot reserved for the page
+  /// is the size the page will really draw at. Storing the full aspect and
+  /// then drawing a cropped image would just move the flat band from inside
+  /// the picture to underneath it.
+  Future<void> _recordShape(String url, ui.Image image, int w, int h) async {
+    var aspect = h / w;
+    if (sl<ReaderPrefs>().cropBorders) {
+      try {
+        final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+        final bytes = data?.buffer.asUint8List();
+        if (bytes != null) {
+          final r = findContentRect(bytes, w, h);
+          final cw = r.right - r.left, ch = r.bottom - r.top;
+          if (cw > 0 && ch > 0 && (cw != w || ch != h)) {
+            _crop[url] = (x: r.left / w, y: r.top / h, w: cw / w, h: ch / h);
+            aspect = ch / cw;
+          }
+        }
+      } catch (_) {
+        // Un-inspectable page: draw it whole, which is what used to happen.
+      }
+    }
+    if (!mounted || _aspect.containsKey(url)) return;
+    _aspect[url] = aspect;
+    _flushAspects();
+  }
+
+  /// Resolves a natively-drawn page far enough to learn its real shape.
+  ///
+  /// This is the only honest measurement for a page whose bytes the extension
+  /// rewrites — it asks the very provider that will draw it. It costs a decode,
+  /// which is why it is only ever done for pages [_preload] was going to fetch
+  /// anyway, and why [ReaderImageBudget] raises the image cache while a chapter
+  /// is open.
+  Future<void> _measureFromProvider(PageImage p, int width) async {
+    if (!mounted || _aspect.containsKey(p.url)) return;
+    final done = Completer<void>();
+    final stream = _pageProvider(p, width).resolve(ImageConfiguration.empty);
+    late final ImageStreamListener listener;
+    listener = ImageStreamListener(
+      (info, _) {
+        final w = info.image.width, h = info.image.height;
+        if (mounted && w > 0 && h > 0 && !_aspect.containsKey(p.url)) {
+          unawaited(_recordShape(p.url, info.image, w, h));
+        }
+        stream.removeListener(listener);
+        if (!done.isCompleted) done.complete();
+      },
+      onError: (_, _) {
+        stream.removeListener(listener);
+        if (!done.isCompleted) done.complete();
+      },
+    );
+    stream.addListener(listener);
+    return done.future;
+  }
+
+  /// Reads a page's true shape out of the downloaded file's header, without
+  /// decoding the image.
+  ///
+  /// This is the fix for manhwa. A comic page is about one screen tall, so a
+  /// placeholder guessing wrong is a small correction. A manhwa page is
+  /// SEVERAL screens tall — the guess reserves one screen, the real image
+  /// wants five, and the page grows by thousands of pixels while you are
+  /// standing inside it. Anchoring cannot save you there: the anchor pins the
+  /// page's TOP, and everything you are reading is below that top, so it all
+  /// slides down. Measured on device, a page finishing its decode moved the
+  /// panel being read ~700px down the screen with no input at all.
+  ///
+  /// So the shape is learned from the bytes [_preload] has already fetched,
+  /// one download ahead of where you are reading. By the time a page reaches
+  /// the viewport its slot is already the right size and there is nothing left
+  /// to correct. `ImageDescriptor` parses the header only — no full decode, no
+  /// bitmap, nothing added to the image cache.
+  Future<void> _measureFromFile(File file, String url, int index) async {
+    if (!mounted || _aspect.containsKey(url)) return;
+    // ONLY pages below the one being read.
+    //
+    // Resizing a slot at or above the reading position pushes everything under
+    // it down — that is the "it slides down while I'm reading" report, and it
+    // is why the idle re-anchor alone was not enough: between stopping and the
+    // anchor catching up, every page from the anchor down to you can still
+    // shove you.
+    //
+    // Below the reading position there is nothing to shove: the strip simply
+    // grows downward into space nobody is looking at. And because [_preload]
+    // runs ahead, a page is measured while it is still below you and is the
+    // right size by the time you arrive — so it never resizes under you at
+    // all. Pages you have already passed keep their estimate, which costs
+    // nothing but a slightly inexact scrollbar.
+    if (index < _pageIndex) return;
+    if (index == _pageIndex) {
+      // The page you are standing in — allowed ONLY while you are at its very
+      // top, where it can grow downward without moving anything on screen.
+      // That is the chapter-open case, and skipping it cost a measured 316px
+      // lurch the moment page one's image landed. Once you have scrolled into
+      // the page its top is above you, and resizing it would shove the panel
+      // you are reading.
+      if (index != _anchorIndex || !_verticalController.hasClients) return;
+      if (_verticalController.position.pixels > 0) return;
+    }
+    ui.ImmutableBuffer? buffer;
+    ui.ImageDescriptor? desc;
+    try {
+      // fromFilePath, NOT readAsBytes + fromUint8List. The latter pulls the
+      // whole page into the Dart heap and then copies it again — several MB
+      // per page, on the UI isolate, while you are scrolling. This hands the
+      // path to the engine and never materialises the bytes in Dart at all.
+      buffer = await ui.ImmutableBuffer.fromFilePath(file.path);
+      desc = await ui.ImageDescriptor.encoded(buffer);
+      final w = desc.width, h = desc.height;
+      if (w <= 0 || h <= 0 || !mounted) return;
+      _aspect[url] = h / w;
+      _flushAspects();
+    } catch (_) {
+      // An unreadable file is the image loader's problem, not ours — it will
+      // show its own error. Leaving the aspect unset just means the old guess.
+    } finally {
+      desc?.dispose();
+      buffer?.dispose();
+    }
+  }
+
+  /// Batches newly-measured shapes into one rebuild.
+  ///
+  /// [_preload] fetches several pages at once, and calling setState per page
+  /// would lay the strip out several times for one scroll — which is how an
+  /// earlier attempt at measuring ahead ended up tripling scroll bounce.
+  void _flushAspects() {
+    if (_aspectFlush?.isActive ?? false) return;
+    _aspectFlush = Timer(const Duration(milliseconds: 250), () {
+      if (!mounted) return;
+      if (!_verticalController.hasClients) {
+        setState(() {});
+        return;
+      }
+      // Never while the finger is down or the fling is running. setState here
+      // rebuilds every laid-out page, and doing that mid-scroll is a stutter
+      // you can feel. These corrections only ever apply to pages BELOW the
+      // reader, so nothing is lost by waiting for the scroll to settle.
+      if (_verticalController.position.isScrollingNotifier.value) {
+        _aspectFlush = Timer(
+          const Duration(milliseconds: 250),
+          () => _flushAspects(),
+        );
+        return;
+      }
+      // Hold `pixels` — NOT the distance from the top of the strip.
+      //
+      // Offset 0 is the anchor page's top, so a page ABOVE the anchor getting
+      // its true height only pushes minScrollExtent further negative; at the
+      // same `pixels` the anchor is still in the same place on screen and
+      // nothing you are looking at moves. Restoring the distance-from-top
+      // instead would faithfully re-apply every correction made above you,
+      // which is precisely the shove this is here to stop.
+      final pixels = _verticalController.position.pixels;
+      setState(() {});
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_verticalController.hasClients) return;
+        final p = _verticalController.position;
+        if ((p.pixels - pixels).abs() < 0.5) return;
+        _verticalController.jumpTo(
+          pixels.clamp(p.minScrollExtent, p.maxScrollExtent),
+        );
+      });
+    });
+  }
+
+  Timer? _aspectFlush;
 
   void _onPageChanged(int index) {
     // `index` is a spread index when the double-page view is active, else a
@@ -519,7 +915,24 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
   /// Height/width of pages we've laid out, so a page that has been seen once
   /// reserves its real height on the way back. Keyed by index rather than url
   /// because the same url can legitimately repeat within a chapter.
-  final Map<int, double> _aspect = {};
+  /// Measured page shapes, keyed by the page's URL — NOT by its index.
+  ///
+  /// Index keys were a bug: page 5 of this chapter and page 5 of the next one
+  /// shared a key, so the map had to be thrown away on every chapter change
+  /// and each chapter re-learned every height from scratch. Keyed by URL it
+  /// can simply be kept, so a chapter you come back to reserves the right
+  /// space on the first frame and nothing shifts as the images arrive.
+  final Map<String, double> _aspect = {};
+
+  /// The part of a page that is actually artwork, as fractions of the whole,
+  /// for pages whose flat margins are being trimmed. Empty when "crop borders"
+  /// is off, and empty for any page we could not inspect.
+  ///
+  /// Kept beside [_aspect] because the two must agree: the height reserved for
+  /// a page is derived from the CROPPED shape, so that trimming a margin makes
+  /// the page shorter rather than leaving the same hole with the art moved up
+  /// inside it.
+  final Map<String, ({double x, double y, double w, double h})> _crop = {};
 
   /// The first page's real decoded aspect, used for every page not yet seen.
   /// Measured in [_detectWebtoon] from the decoded image — NOT from the laid
@@ -529,6 +942,11 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
 
   /// One first-page resolve per chapter, whatever the auto-webtoon pref says.
   bool _measuredFirstPage = false;
+
+  /// Set once the next chapter's page list has been asked for, so reading
+  /// back and forth across the threshold doesn't re-request it. Cleared on
+  /// every chapter change.
+  bool _warmedNext = false;
 
   /// Pages whose image has actually drawn. A page still showing its
   /// placeholder has NOT been read, however far past it the list has scrolled.
@@ -551,13 +969,10 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
           pageCount: pages.length,
           visible: _visible,
         ) ??
-        estimateIndexFromScroll(
-          pos.pixels,
-          pos.maxScrollExtent,
-          pages.length,
-        );
+        _estimateOrKeep(pos, pages.length);
     if (current != _pageIndex) {
       _pageIndex = current; // notifier only — see _onPageChanged
+      _followChapter(current);
       if (!_seeking) _preload(current, pages);
     }
     // Same reasoning as _onPageChanged: a slider drag also drives this via
@@ -565,12 +980,46 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
     // truth for the preload/save once the drag ends.
     if (_seeking) return;
 
+    // Deliberately NO idle re-anchor here. Moving the anchor forward changes
+    // what offset 0 means, so the frame after the rebuild renders at the old
+    // offset — one page out — before the correction lands. That single bad
+    // frame is a visible lurch, and measured on device it was a full page:
+    //
+    //   re-anchor jump: was=1961 want=-221 delta=-2182   (page height 2182)
+    //
+    // Its job — stopping a page above from shoving you — is done earlier and
+    // better now: [_measureFromFile] and [_measureFromProvider] size a page
+    // before you ever reach it, so it does not resize under you at all.
+
     // Throttle routine in-chapter saves to ~once/second, same as the novel
     // reader's scroll listener.
     final now = DateTime.now().millisecondsSinceEpoch;
     if (now - _lastScrollSaveMs < 1000) return;
     _lastScrollSaveMs = now;
     _saveProgress(flush: false);
+  }
+
+  /// The scroll-derived page, or the one we already had when the strip has no
+  /// extent to derive it FROM.
+  ///
+  /// On the first frame after a chapter loads, nothing has been laid out yet
+  /// and maxScrollExtent is still 0 — and `estimateIndexFromScroll(0, 0, n)`
+  /// answers `n - 1`, the LAST page (it is pinned that way by its own test, so
+  /// a chapter scrolled to a zero-height bottom still counts as finished).
+  ///
+  /// Harmless when a scroll position was the source of truth. Not harmless now
+  /// that the anchor follows `_pageIndex`: the reader took that answer, moved
+  /// the anchor to the final page, and opened the chapter on its
+  /// end-of-chapter card over a page that had not loaded — a black screen
+  /// saying "End of Chapter 8" on page 1 of 36.
+  int _estimateOrKeep(ScrollPosition pos, int pageCount) {
+    final span = pos.maxScrollExtent - pos.minScrollExtent;
+    if (span <= 0) return clampPageIndex(_pageIndex, pageCount);
+    return estimateIndexFromScroll(
+      pos.pixels - pos.minScrollExtent,
+      span,
+      pageCount,
+    );
   }
 
   /// Re-derives `_pageIndex` from the live ScrollController — called from
@@ -590,11 +1039,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
           pageCount: pages.length,
           visible: _visible,
         ) ??
-        estimateIndexFromScroll(
-          pos.pixels,
-          pos.maxScrollExtent,
-          pages.length,
-        );
+        _estimateOrKeep(pos, pages.length);
   }
 
   /// Persists the current chapter's position. `ReadStore.save`/
@@ -608,14 +1053,20 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
     if (widget.peek) return; // just looking — leave saved progress alone
     final pages = _pages;
     if (pages == null || pages.isEmpty) return; // nothing loaded yet
-    final ep = _chapter;
-    final pos = complete ? pages.length - 1 : _pageIndex;
+    // The strip can hold several chapters, so progress belongs to the chapter
+    // under the reading position — NOT to the strip as a whole, and not to
+    // whichever chapter happened to be opened first.
+    final slot = _slotAt(_pageIndex) ?? _slotAt(pages.length - 1);
+    if (slot == null) return;
+    final ep = _chapters[slot.chapterIdx];
+    final total = slot.chapterPages;
+    final pos = complete ? total - 1 : slot.pageInChapter;
     sl<ReadStore>().save(
       widget.sourceId,
       widget.showId,
       ep.id,
       pos: pos,
-      total: pages.length,
+      total: total,
     );
     sl<ReadHistory>().save(
       ReadEntry(
@@ -627,7 +1078,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
         chapterNumber: ep.number,
         chapterUrl: ep.url,
         pos: pos,
-        total: pages.length,
+        total: total,
         updatedMs: DateTime.now().millisecondsSinceEpoch,
         type: ProviderType.manga,
       ),
@@ -680,13 +1131,17 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
       _pages = null;
       // Shapes and visibility belong to the chapter that was open.
       _visible.clear();
-      _aspect.clear();
       _loaded.clear();
       _chapterAspect = null;
       _measuredFirstPage = false;
       _error = null;
       _looksLikeWebtoon = null;
+      _warmedNext = false;
       _pageIndex = 0;
+      // Back to the top, or the next chapter opens centred on the page number
+      // the last one was left on.
+      _anchorIndex = 0;
+      _centerKey = const ValueKey('manga-center-0');
       _lastScrollSaveMs = 0;
       // A new chapter starts un-zoomed — don't carry the last one's pinch over.
       _wScale = 1.0;
@@ -714,12 +1169,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
         spreads == null ? clamped : _spreadOfPage(spreads, clamped),
       );
     }
-    if (_verticalController.hasClients && pages.length > 1) {
-      final max = _verticalController.position.maxScrollExtent;
-      if (max > 0) {
-        _verticalController.jumpTo(clamped / (pages.length - 1) * max);
-      }
-    }
+    if (pages.length > 1) _anchorToPage(clamped);
   }
 
   /// Slider drag settled — preload around the page it landed on and persist
@@ -785,12 +1235,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
           spreads == null ? _pageIndex : _spreadOfPage(spreads, _pageIndex),
         );
       }
-      if (_verticalController.hasClients && pages.length > 1) {
-        final max = _verticalController.position.maxScrollExtent;
-        if (max > 0) {
-          _verticalController.jumpTo(_pageIndex / (pages.length - 1) * max);
-        }
-      }
+      if (pages.length > 1) _anchorToPage(_pageIndex);
     });
   }
 
@@ -909,8 +1354,9 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
     if (_effectiveDirection(prefs) == 'vertical') {
       if (!_verticalController.hasClients) return;
       final page = _verticalController.position.viewportDimension * 0.85;
+      final pos = _verticalController.position;
       final target = (_verticalController.offset + (forward ? page : -page))
-          .clamp(0.0, _verticalController.position.maxScrollExtent);
+          .clamp(pos.minScrollExtent, pos.maxScrollExtent);
       _verticalController.animateTo(
         target,
         duration: const Duration(milliseconds: 180),
@@ -949,16 +1395,22 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
 
   Widget _buildBody(ReaderPrefs prefs) {
     if (_loading) {
-      // A bare spinner on black for the whole page fetch is the single worst
-      // moment in the reader: it looks like nothing is there, and on a slow
-      // source it is the FIRST thing anyone sees of a chapter. Draw the strip
-      // it is about to become instead — the same shimmering page slots the
-      // list uses, so the wait reads as the reader filling in rather than as
-      // a dead screen.
+      // A spinner and the chapter's name, and nothing else.
+      //
+      // This used to draw a full screen of shimmering page slots. The problem
+      // was that they looked EXACTLY like the placeholder a real page shows
+      // while its image downloads — so you couldn't tell "the chapter list is
+      // still being fetched" from "page 3 is still coming", and the whole
+      // thing read as one long loading screen you were never getting out of.
+      //
+      // The two states are now different on sight: a spinner means the chapter
+      // hasn't arrived, a shimmering slot with a page number on it means that
+      // page hasn't. Reopening a chapter usually skips this entirely now —
+      // see SourceRepository's page-list cache.
       return GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: _toggleChrome,
-        child: _loadingSkeleton(context),
+        child: _ChapterLoadingBar(label: _chapterLabel(_index)),
       );
     }
     if (_error != null) {
@@ -992,16 +1444,36 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
       onPointerCancel: (_) => _autoScroll.resumeAfterTouch(),
       child: ReaderPullChapter(
         enabled: prefs.overscrollChapter,
+        // Past the END OF THE STRIP, not past the chapter being read. The
+        // strip can already hold the next chapter or two, so pulling at its
+        // bottom means "the one after everything loaded" — offering the one
+        // after the CURRENT chapter would have jumped backwards into pages
+        // already sitting below.
         hasPrev: _prevIndex != null,
-        hasNext: _nextIndex != null,
+        hasNext: _afterStrip != null,
         prevLabel: _chapterLabel(_prevIndex),
-        nextLabel: _chapterLabel(_nextIndex),
-        onChangeChapter: (d) => _goToChapter(d > 0 ? _nextIndex : _prevIndex),
+        nextLabel: _chapterLabel(_afterStrip),
+        onChangeChapter: (d) => _goToChapter(d > 0 ? _afterStrip : _prevIndex),
         child: direction == 'vertical'
             ? _buildVertical(pages)
             : _buildPaged(pages, direction),
       ),
     );
+    if (!_stripReady) {
+      content = Stack(
+        children: [
+          content,
+          Positioned.fill(
+            child: IgnorePointer(
+              child: ColoredBox(
+                color: readerBgColor(prefs.mangaBackground),
+                child: _ChapterLoadingBar(label: _chapterLabel(_index)),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
     // Only wrap in ColorFiltered when a filter is actually chosen — 'none'
     // (the default) must leave this widget out of the tree entirely so the
     // default reading path is byte-for-byte what it was before this feature.
@@ -1057,7 +1529,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
 
   /// Full-screen end-of-chapter page, same card the webtoon strip ends with.
   Widget _chapterEndPage() =>
-      Center(child: SingleChildScrollView(child: _chapterEndFooter()));
+      Center(child: SingleChildScrollView(child: _chapterEndFooter(_index)));
 
   /// One PageView page in double-page mode: a lone page renders exactly like
   /// the single-page path, a two-page spread lays the two page images side by
@@ -1080,9 +1552,28 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
   /// typical scan leaves without pixel analysis.
   // ponytail: content-aware crop deferred (needs pixel analysis) — this is a
   // fixed ~3%-per-edge inset, tuned to trim margins without eating art.
-  Widget _cropIfEnabled(Widget image) {
+  /// Trims a page's flat margins, when the reader is set to.
+  ///
+  /// This used to be `Transform.scale(1.06)` inside a `ClipRect` — a blind 3%
+  /// shave off every side, which took artwork off a page that had no margin
+  /// and left almost all of a wide one. The rect now comes from looking at the
+  /// page (see [findContentRect]), so a page with nothing to trim is left
+  /// exactly as it was.
+  Widget _cropIfEnabled(Widget image, String url) {
     if (!sl<ReaderPrefs>().cropBorders) return image;
-    return ClipRect(child: Transform.scale(scale: 1.06, child: image));
+    final r = _crop[url];
+    if (r == null) return image;
+    return ClipRect(
+      child: Align(
+        alignment: Alignment(
+          r.w >= 1 ? 0 : (r.x / (1 - r.w)) * 2 - 1,
+          r.h >= 1 ? 0 : (r.y / (1 - r.h)) * 2 - 1,
+        ),
+        widthFactor: r.w,
+        heightFactor: r.h,
+        child: image,
+      ),
+    );
   }
 
   /// Webtoon pinch-zoom. The strip stays a lazy `ListView.builder` (one-finger
@@ -1123,9 +1614,19 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
             transform: Matrix4.identity()
               ..translateByDouble(_wOffset.dx, _wOffset.dy, 0, 1.0)
               ..scaleByDouble(_wScale, _wScale, 1.0, 1.0),
-            child: ListView.builder(
+            // Two slivers around [_anchorIndex] rather than one flat list.
+            // Everything before the centre key lays out UPWARD into negative
+            // offsets, so offset 0 is always the top of the anchor page and a
+            // page above it finishing its decode — changing height — extends
+            // the strip upward instead of shoving the page being read.
+            //
+            // A plain ListView pinned the viewport to a pixel offset computed
+            // from placeholder heights, so every real height that arrived
+            // moved the content under the reader. That is the scrambling.
+            child: CustomScrollView(
               key: const ValueKey('manga-listview'),
               controller: _verticalController,
+              center: _centerKey,
               physics: _wZooming ? const NeverScrollableScrollPhysics() : null,
               // Build and decode well past the viewport. Flutter's default is
               // 250 logical pixels, which on a strip whose pages run THOUSANDS
@@ -1139,55 +1640,147 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
               // decoded bitmap, and this reader already fights the image
               // cache (see [_preload]).
               scrollCacheExtent: const ScrollCacheExtent.viewport(0.75),
-              itemCount: pages.length,
-              // The end-of-chapter footer rides along INSIDE the last item
-              // rather than being an extra one. itemCount stays == pages.length
-              // so `estimateIndexFromScroll`'s scroll-to-page mapping (and the
-              // slider that shares it) needs no adjustment for a phantom page.
-              itemBuilder: (context, index) {
-                final page = _verticalItem(context, pages[index], index);
-                final body = index != pages.length - 1
-                    ? page
-                    : Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [page, _chapterEndFooter()],
-                      );
-                // What the page counter reads. Cheap — the detector only
-                // fires when a page's visible fraction actually changes.
-                return VisibilityDetector(
-                  key: ValueKey('manga-page-$index'),
-                  onVisibilityChanged: (info) {
-                    if (!mounted) return;
-                    if (info.visibleFraction <= 0) {
-                      _visible.remove(index);
-                    } else {
-                      _visible[index] = info.visibleFraction;
-                    }
-                    // Learn the page's real shape from the same callback, so
-                    // scrolling back reserves what it actually takes.
-                    //
-                    // Only once the image has DRAWN. Before that the item is
-                    // the placeholder, whose height was computed from the
-                    // aspect — measuring it reads back our own guess and locks
-                    // it in. The chapter-wide aspect comes from the decoded
-                    // first page instead (see _detectWebtoon).
-                    //
-                    // The last item carries the end-of-chapter footer inside
-                    // it, so its height is not a page's — skip it.
-                    if (index == pages.length - 1) return;
-                    if (!_loaded.contains(index)) return;
-                    final size = info.size;
-                    if (size.width <= 0 || size.height <= 0) return;
-                    _aspect[index] = size.height / size.width;
-                  },
-                  child: body,
-                );
-              },
+              slivers: [
+                // Pages above the anchor, nearest first — a sliver before the
+                // centre is built in reverse, so item 0 here is the page
+                // directly above the anchor.
+                // Wrap-content, NOT a declared extent.
+                //
+                // Declaring each page's height let the sliver size the strip
+                // without building it, which fixed a collapse — but it forces
+                // every child to the height it was promised, and any page
+                // whose promise was wrong drew with black around it. A page
+                // with no measured aspect of its own falls back to the
+                // CHAPTER's aspect, so every page shorter than page one got a
+                // black band: caught on device with a speech bubble sliced in
+                // half, the same letters continuing below the gap.
+                //
+                // A page is now exactly as tall as its image, which is the one
+                // arrangement in which a gap cannot happen.
+                SliverList.builder(
+                  itemCount: _anchorIndex,
+                  itemBuilder: (context, i) =>
+                      _verticalStripItem(context, pages, _anchorIndex - 1 - i),
+                ),
+                SliverList.builder(
+                  key: _centerKey,
+                  itemCount: pages.length - _anchorIndex,
+                  itemBuilder: (context, i) =>
+                      _verticalStripItem(context, pages, _anchorIndex + i),
+                ),
+              ],
             ),
           ),
         );
       },
     );
+  }
+
+  /// One page of the webtoon strip, by ABSOLUTE page index — shared by both
+  /// slivers so a page builds identically whichever side of the anchor it
+  /// falls on.
+  ///
+  /// The end-of-chapter footer rides along INSIDE the last item rather than
+  /// being an extra one, so the item count stays == the page count and the
+  /// slider's page mapping needs no adjustment for a phantom page.
+  Widget _verticalStripItem(
+    BuildContext context,
+    List<PageImage> pages,
+    int index,
+  ) {
+    // The transition card rides with the LAST page of each chapter — which,
+    // in a strip that holds several chapters, happens more than once. Its
+    // height is declared in [_extentOf] so nothing is clipped.
+    final page = _verticalItem(context, pages[index], index);
+    final slot = _slotAt(index);
+    final body = (slot?.isChapterEnd ?? false)
+        ? Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [page, _chapterEndFooter(slot!.chapterIdx)],
+          )
+        : page;
+    // What the page counter reads. Cheap — the detector only fires when a
+    // page's visible fraction actually changes.
+    return VisibilityDetector(
+      key: ValueKey('manga-page-$index'),
+      onVisibilityChanged: (info) {
+        if (!mounted) return;
+        if (info.visibleFraction <= 0) {
+          _visible.remove(index);
+        } else {
+          _visible[index] = info.visibleFraction;
+        }
+        // Learn the page's real shape from the same callback, so scrolling
+        // back reserves what it actually takes.
+        //
+        // Only once the image has DRAWN. Before that the item is the
+        // placeholder, whose height was computed from the aspect — measuring
+        // it reads back our own guess and locks it in. The chapter-wide
+        // aspect comes from the decoded first page instead (see
+        // _detectWebtoon).
+        //
+        if (!_loaded.contains(index)) return;
+        final size = info.size;
+        if (size.width <= 0 || size.height <= 0) return;
+        _aspect[pages[index].url] = size.height / size.width;
+      },
+      child: body,
+    );
+  }
+
+  /// Holds the chapter's spinner over the strip until the strip is actually
+  /// worth looking at.
+  ///
+  /// For a frame or two after the pages arrive, nothing has been laid out and
+  /// maxScrollExtent is still 0 — measured on device, exactly that. With no
+  /// extent the whole strip collapses and the LAST item surfaces, footer and
+  /// all, so a chapter you just opened flashed its own "End of Chapter N" card
+  /// over a page that had not loaded. On a slow source that flash lasted
+  /// seconds and read as a black screen.
+  ///
+  /// The strip is still built and still loading underneath — this only covers
+  /// it — so nothing is delayed by waiting.
+  void _armStripReady() {
+    _stripReadyTimer?.cancel();
+    _stripReady = false;
+    // Whichever comes first: the first page drawn, or a short grace period so
+    // a source that never answers cannot leave a spinner up forever.
+    _stripReadyTimer = Timer.periodic(const Duration(milliseconds: 50), (t) {
+      if (!mounted) {
+        t.cancel();
+        return;
+      }
+      final laid =
+          _verticalController.hasClients &&
+          _verticalController.position.maxScrollExtent > 0;
+      if (laid || _loaded.contains(0) || t.tick > 24) {
+        t.cancel();
+        _stripReadyTimer = null;
+        setState(() => _stripReady = true);
+      }
+    });
+  }
+
+  /// Re-centres the strip on [index]. This is what replaces a `jumpTo` in
+  /// webtoon mode.
+  ///
+  /// The anchor is structural — it decides which sliver a page is built into —
+  /// so moving it is a setState, and the offset is zeroed on the next frame
+  /// because offset 0 means "top of the anchor page" under the new layout.
+  /// Unlike a pixel jump this needs no page heights, so it is exact on a
+  /// chapter where nothing has loaded yet.
+  void _anchorToPage(int index) {
+    final target = index < 0 ? 0 : index;
+    if (_anchorIndex != target) {
+      setState(() {
+        _anchorIndex = target;
+        _centerKey = ValueKey('manga-center-$target');
+      });
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_verticalController.hasClients) return;
+      _verticalController.jumpTo(0);
+    });
   }
 
   void _onWebtoonScaleStart(ScaleStartDetails d) {
@@ -1270,6 +1863,18 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                       ? Image(
                           image: _pageProvider(page, width),
                           fit: _pageBoxFit(_effectiveFit(sl<ReaderPrefs>())),
+                          // Same gap as the strip had: nothing at all while
+                          // the page decodes.
+                          frameBuilder: (context, child, frame, wasSync) {
+                            if (frame != null) _loaded.add(index);
+                            if (wasSync || frame != null) return child;
+                            return Center(
+                              child: _shimmerSlot(
+                                context,
+                                label: '${index + 1}',
+                              ),
+                            );
+                          },
                           errorBuilder: (_, _, _) => const Icon(
                             Icons.broken_image_outlined,
                             color: Colors.white24,
@@ -1292,6 +1897,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                             size: 48,
                           ),
                         ),
+                  page.url,
                 ),
               ),
             ),
@@ -1304,6 +1910,10 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
   /// Webtoon mode has its own zones: top and bottom scroll a screenful, the
   /// middle opens the controls. There are no pages to turn in a continuous
   /// strip, so tapping used to do nothing here but toggle chrome.
+  /// The slot for strip position [i], or null when the strip has not caught up
+  /// (a frame between the pages landing and the slots being filled).
+  _PageSlot? _slotAt(int i) => (i >= 0 && i < _slots.length) ? _slots[i] : null;
+
   /// Height to hold for a page that hasn't drawn yet.
   ///
   /// It used to be a flat 200px against a page that renders at fifteen hundred
@@ -1311,11 +1921,17 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
   /// were reading slid away under you, and `maxScrollExtent` moved so much
   /// that anything derived from it was noise. Reserving the real shape is what
   /// makes the list stop moving.
-  double _reservedHeight(BuildContext context, int index) => reservedPageHeight(
-    MediaQuery.sizeOf(context).width,
-    measured: _aspect[index],
-    chapter: _chapterAspect,
-  );
+  double _reservedHeight(BuildContext context, int index) {
+    final pages = _pages;
+    final url = (pages != null && index >= 0 && index < pages.length)
+        ? pages[index].url
+        : null;
+    return reservedPageHeight(
+      MediaQuery.sizeOf(context).width,
+      measured: url == null ? null : _aspect[url],
+      chapter: _chapterAspect,
+    );
+  }
 
   Widget _verticalItem(BuildContext context, PageImage page, int index) {
     final width = _webtoonDecodeWidth(context);
@@ -1335,11 +1951,23 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                   // A local page decodes fast but not instantly, and it used
                   // to cut straight from placeholder to art. Same short fade
                   // the network path gets, so both read the same way.
+                  // Until the first frame decodes this shows the SAME
+                  // placeholder the network path shows.
+                  //
+                  // It used to fade in from opacity 0, which on this path
+                  // means the page is simply invisible while it loads — no
+                  // spinner, no page number, nothing. And this is not a rare
+                  // path: a source that rewrites its image bytes serves every
+                  // page through the native bridge (see [nativePageProvider]),
+                  // which is most long manhwa. That is the "it just shows
+                  // black" report — the progress ring was only ever on the
+                  // branch those pages never take.
                   frameBuilder: (context, child, frame, wasSync) {
                     if (frame != null) _loaded.add(index);
                     if (wasSync) return child;
+                    if (frame == null) return _pagePlaceholder(context, index);
                     return AnimatedOpacity(
-                      opacity: frame == null ? 0 : 1,
+                      opacity: 1,
                       duration: _kPageFade,
                       curve: Curves.easeOut,
                       child: child,
@@ -1366,7 +1994,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                   fadeInDuration: _kPageFade,
                   fadeOutDuration: _kPageFade,
                   // The placeholder is already on screen holding the page's
-                  // space — fading it IN as well just delays the shimmer.
+                  // space — fading it IN as well just delays it.
                   placeholderFadeInDuration: Duration.zero,
                   // The page is on screen for real from here. Scrolling PAST a
                   // placeholder is not reading it, and that distinction is what
@@ -1379,12 +2007,14 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                       fit: _verticalBoxFit(_effectiveFit(sl<ReaderPrefs>())),
                     );
                   },
-                  // A page that has not arrived used to be a flat grey block,
-                  // which reads as broken rather than busy. It still reserves
-                  // the page's real height (see [_reservedHeight]) so the list
-                  // does not jump, but it now says it is working.
-                  placeholder: (_, _) =>
-                      _pagePlaceholder(context, index),
+                  // A page that has not arrived reserves its real height
+                  // (see [_reservedHeight]) so the list does not jump, and
+                  // shows how far along the download actually is. A shimmer
+                  // says "something is happening"; a percentage says whether
+                  // it is nearly there or barely started, which on a slow
+                  // source is the difference between waiting and giving up.
+                  progressIndicatorBuilder: (_, _, progress) =>
+                      _pagePlaceholder(context, index, progress.progress),
                   errorWidget: (_, _, _) => const SizedBox(
                     height: 200,
                     child: Icon(
@@ -1394,6 +2024,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                     ),
                   ),
                 ),
+          page.url,
         ),
       ),
     );
@@ -1404,61 +2035,68 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
   /// Deliberately the same slots [_pagePlaceholder] draws, so the moment the
   /// page list lands the screen does not change character — the skeletons are
   /// simply replaced one by one by the art.
-  Widget _loadingSkeleton(BuildContext context) {
-    final h = MediaQuery.sizeOf(context).height;
-    return IgnorePointer(
-      child: ListView.builder(
-        physics: const NeverScrollableScrollPhysics(),
-        padding: EdgeInsets.zero,
-        // Enough to fill a screen and a little past it; nothing here scrolls.
-        itemCount: 3,
-        itemBuilder: (context, i) => Padding(
-          padding: EdgeInsets.only(bottom: i == 2 ? 0 : 2),
-          child: SizedBox(
-            height: h * 0.62,
-            child: _shimmerSlot(context, label: null),
-          ),
+  /// The shimmering surface a page shows in its own place until its image
+  /// arrives. Only pages use it — see the `_loading` branch of [_buildBody]
+  /// for why the chapter fetch deliberately looks like something else.
+  /// What a page shows while it is still coming: a progress ring, and nothing
+  /// else.
+  ///
+  /// It used to be a shimmering slab with "Page 7 · 45%" written across it,
+  /// which on a page several screens tall reads as a loading SCREEN rather
+  /// than a page that has not arrived. A ring on the reader's own background
+  /// says the same thing and gets out of the way.
+  ///
+  /// Determinate as soon as the download reports a total, so a page that is
+  /// nearly there looks nearly there.
+  Widget _shimmerSlot(
+    BuildContext context, {
+    required String label,
+    double? progress,
+    double? band,
+  }) {
+    return _repeatDown(
+      band,
+      SizedBox(
+        width: 36,
+        height: 36,
+        child: CircularProgressIndicator(
+          value: progress,
+          // The current Material 3 drawing, set property by property. The
+          // `year2023: false` shorthand does the same thing but is deprecated.
+          strokeWidth: 3,
+          strokeCap: StrokeCap.round,
+          trackGap: 4,
+          color: AppColors.accent,
+          backgroundColor: AppColors.textSecondary.withValues(alpha: 0.16),
         ),
       ),
     );
   }
 
-  /// The shimmering surface shared by the loading skeleton and every page
-  /// placeholder, so the two are visually the same thing.
-  Widget _shimmerSlot(BuildContext context, {required String? label}) {
-    return AnimatedBuilder(
-      animation: _shimmer,
-      builder: (context, _) {
-        // -1 -> 2 so the highlight starts and ends fully off the slot.
-        final t = -1.0 + 3.0 * _shimmer.value;
-        return DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment(-1, t - 1),
-              end: Alignment(1, t + 1),
-              colors: [
-                AppColors.surface2,
-                Color.alphaBlend(
-                  Colors.white.withValues(alpha: 0.05),
-                  AppColors.surface2,
-                ),
-                AppColors.surface2,
-              ],
-              stops: const [0.35, 0.5, 0.65],
-            ),
-          ),
-          child: label == null
-              ? null
-              : Center(
-                  child: Text(
-                    label,
-                    style: AppText.caption.copyWith(
-                      color: AppColors.textSecondary.withValues(alpha: 0.5),
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
+  /// Repeats [child] roughly once per screenful down a tall slot.
+  ///
+  /// A manhwa page runs several screens tall, and now that the slot is sized
+  /// correctly BEFORE the image arrives (see [_measureFromFile]) a single
+  /// centred spinner sits thousands of pixels away — off screen. What you got
+  /// instead was a black slab with nothing on it, which is exactly the "it
+  /// just shows black" report. Measuring ahead made that worse, not better,
+  /// because the slots got bigger.
+  ///
+  /// So the indicator appears about once per screen: wherever you are in a
+  /// page that has not arrived, one is in view telling you which page it is
+  /// and how far along it is. Capped, because a very tall page must not turn
+  /// into a hundred widgets.
+  Widget _repeatDown(double? band, Widget child) {
+    if (band == null || band <= 0) return Center(child: child);
+    return LayoutBuilder(
+      builder: (context, c) {
+        final h = c.maxHeight;
+        if (!h.isFinite || h <= band) return Center(child: child);
+        final n = math.min((h / band).ceil(), 10);
+        return Column(
+          children: [
+            for (var i = 0; i < n; i++) Expanded(child: Center(child: child)),
+          ],
         );
       },
     );
@@ -1475,11 +2113,16 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
   /// A sweeping gradient rather than a pulsing block — a pulse dims the whole
   /// screen at once when several placeholders are visible, which is precisely
   /// the "broken app" look it was meant to avoid.
-  Widget _pagePlaceholder(BuildContext context, int index) {
+  Widget _pagePlaceholder(BuildContext context, int index, [double? progress]) {
     return SizedBox(
       height: _reservedHeight(context, index),
       width: double.infinity,
-      child: _shimmerSlot(context, label: '${index + 1}'),
+      child: _shimmerSlot(
+        context,
+        label: '${index + 1}',
+        progress: progress,
+        band: MediaQuery.sizeOf(context).height,
+      ),
     );
   }
 
@@ -1489,59 +2132,200 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
   /// never sit on top of the art. Reading the last page now ends the way it
   /// should: the page finishes, then the card, then a pull opens the next
   /// chapter — the three line up instead of overlapping.
-  Widget _chapterEndFooter() {
-    final hasNext = _nextIndex != null;
-    final next = _chapterLabel(_nextIndex);
+  /// The marker between two chapters that are BOTH already in the strip.
+  ///
+  /// Reading here is continuous — the next chapter's pages are directly below
+  /// — so this has nothing to ask and nothing to load. It only says which
+  /// chapter you are crossing into, so the hand-off is not silent.
+  ///
+  /// Deliberately quiet: no button, because there is nothing to press that
+  /// scrolling would not do for you, and tapping one used to tear the strip
+  /// down to rebuild a chapter already an inch below.
+  Widget _chapterDivider(int fromIdx, int toIdx) {
+    final rule = Expanded(
+      child: Container(
+        height: 1,
+        color: AppColors.textSecondary.withValues(alpha: 0.18),
+      ),
+    );
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 28, 20, 44),
+      padding: const EdgeInsets.fromLTRB(24, 30, 24, 30),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              rule,
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Icon(
+                  Icons.south_rounded,
+                  size: 15,
+                  color: AppColors.textSecondary.withValues(alpha: 0.55),
+                ),
+              ),
+              rule,
+            ],
+          ),
+          const SizedBox(height: 14),
+          Text(
+            'UP NEXT',
+            style: AppText.caption.copyWith(
+              color: AppColors.textSecondary.withValues(alpha: 0.55),
+              fontSize: 10,
+              letterSpacing: 1.4,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 5),
+          Text(
+            _chapterLabel(toIdx) ?? '',
+            textAlign: TextAlign.center,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: AppText.body.copyWith(
+              color: AppColors.textPrimary,
+              fontWeight: FontWeight.w600,
+              fontSize: 14.5,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// The card between two chapters, for the chapter ENDING at this point —
+  /// [chapterIdx], not necessarily the one being read. The strip can hold
+  /// several chapters, so there can be several of these in it.
+  Widget _chapterEndFooter(int chapterIdx) {
+    final nextIdx = adjacentChapterIndex(_chapters, chapterIdx, step: 1);
+
+    // The next chapter is already sitting below this card — so this is a
+    // divider between two chapters in one strip, not the end of the road.
+    //
+    // Offering "Chapter 2 →" here was wrong twice over: it appeared in the
+    // MIDDLE of a scroll with nothing ended, and tapping it tore the strip
+    // down and rebuilt it for a chapter already loaded two inches below. A
+    // quiet marker is all this position wants; keep scrolling and you are
+    // there.
+    if (nextIdx != null && _stripChapters.contains(nextIdx)) {
+      return _chapterDivider(chapterIdx, nextIdx);
+    }
+
+    final hasNext = nextIdx != null;
+    final next = _chapterLabel(nextIdx);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 34, 20, 48),
       child: Column(
         children: [
           Text(
-            'End of ${_chapterLabel(_index) ?? 'this chapter'}',
+            'FINISHED',
+            style: AppText.caption.copyWith(
+              color: AppColors.textSecondary.withValues(alpha: 0.5),
+              fontSize: 10,
+              letterSpacing: 1.4,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 5),
+          Text(
+            _chapterLabel(chapterIdx) ?? 'this chapter',
             textAlign: TextAlign.center,
-            style: AppText.caption.copyWith(color: AppColors.textSecondary),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: AppText.body.copyWith(
+              color: AppColors.textPrimary,
+              fontWeight: FontWeight.w600,
+              fontSize: 14.5,
+            ),
           ),
           if (hasNext) ...[
-            const SizedBox(height: 12),
-            ReaderPillSurface(
-              radius: 22,
-              onTap: () => _goToChapter(_nextIndex),
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
-              child: Row(
+            const SizedBox(height: 20),
+            // The next chapter is being pulled onto the strip right now — say
+            // so, rather than offering a button that races the fetch.
+            if (_appending)
+              Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Flexible(
-                    child: Text(
-                      next ?? context.l10n.nextChapter,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppText.body.copyWith(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 13.5,
+                  SizedBox(
+                    width: 26,
+                    height: 26,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 3,
+                      strokeCap: StrokeCap.round,
+                      trackGap: 4,
+                      color: AppColors.accent,
+                      backgroundColor: AppColors.textSecondary.withValues(
+                        alpha: 0.16,
                       ),
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  Icon(
-                    Icons.arrow_forward_rounded,
-                    size: 17,
-                    color: AppColors.accent,
+                  const SizedBox(height: 12),
+                  Text(
+                    next ?? context.l10n.nextChapter,
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppText.caption.copyWith(
+                      color: AppColors.textSecondary,
+                    ),
                   ),
                 ],
+              )
+            else ...[
+              Text(
+                'UP NEXT',
+                style: AppText.caption.copyWith(
+                  color: AppColors.textSecondary.withValues(alpha: 0.5),
+                  fontSize: 10,
+                  letterSpacing: 1.4,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              context.l10n.orKeepPulling,
-              style: AppText.caption.copyWith(
-                color: AppColors.textSecondary.withValues(alpha: 0.7),
-                fontSize: 10.5,
+              const SizedBox(height: 10),
+              ReaderPillSurface(
+                radius: 22,
+                onTap: () => _goToChapter(nextIdx),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 11,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Flexible(
+                      child: Text(
+                        next ?? context.l10n.nextChapter,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppText.body.copyWith(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13.5,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Icon(
+                      Icons.arrow_forward_rounded,
+                      size: 17,
+                      color: AppColors.accent,
+                    ),
+                  ],
+                ),
               ),
-            ),
+              const SizedBox(height: 10),
+              Text(
+                context.l10n.orKeepPulling,
+                style: AppText.caption.copyWith(
+                  color: AppColors.textSecondary.withValues(alpha: 0.7),
+                  fontSize: 10.5,
+                ),
+              ),
+            ],
           ] else
             Padding(
-              padding: const EdgeInsets.only(top: 6),
+              padding: const EdgeInsets.only(top: 14),
               child: Text(
                 context.l10n.thatSTheLastChapter,
                 style: AppText.caption.copyWith(color: AppColors.textSecondary),
@@ -1630,8 +2414,12 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                         subtitle: pages == null || pages.isEmpty
                             ? 'Chapter ${chapterNumberLabel(_chapters, _index)}'
                                   ' / ${chapterCountLabel(_chapters)}'
-                            : 'ch ${chapterNumberLabel(_chapters, _index)}'
-                                  ' · pg ${pageIndex + 1}/${pages.length}',
+                            // Read off the slot, not the strip: once reading
+                            // has run on into the next chapter the strip holds
+                            // both, and "pg 30/22" is not a thing.
+                            : 'ch ${chapterNumberLabel(_chapters, _slotAt(pageIndex)?.chapterIdx ?? _index)}'
+                                  ' · pg ${(_slotAt(pageIndex)?.pageInChapter ?? pageIndex) + 1}'
+                                  '/${_slotAt(pageIndex)?.chapterPages ?? pages.length}',
                         onTap: _openChapterSheet,
                       ),
                     ),
@@ -1687,18 +2475,32 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                     child: pageCount > 1
                         ? ValueListenableBuilder<int>(
                             valueListenable: _pageIndexVN,
-                            builder: (context, pageIndex, _) => ReaderSlider(
-                              value: pageIndex.toDouble().clamp(
-                                0,
-                                (pageCount - 1).toDouble(),
-                              ),
-                              min: 0,
-                              max: (pageCount - 1).toDouble(),
-                              divisions: pageCount - 1,
-                              onChangeStart: (_) => _seeking = true,
-                              onChanged: (v) => _seekToPage(v.round()),
-                              onChangeEnd: (v) => _commitSeek(v.round()),
-                            ),
+                            builder: (context, pageIndex, _) {
+                              // Scrub the CHAPTER, not the strip. The strip
+                              // grows as reading runs on into the next
+                              // chapter, and a slider that silently got longer
+                              // under your thumb would be nonsense.
+                              final slot = _slotAt(pageIndex);
+                              final inChapter =
+                                  slot?.pageInChapter ?? pageIndex;
+                              final count = slot?.chapterPages ?? pageCount;
+                              final start = pageIndex - inChapter;
+                              if (count < 2) return const SizedBox(height: 40);
+                              return ReaderSlider(
+                                value: inChapter.toDouble().clamp(
+                                  0,
+                                  (count - 1).toDouble(),
+                                ),
+                                min: 0,
+                                max: (count - 1).toDouble(),
+                                divisions: count - 1,
+                                onChangeStart: (_) => _seeking = true,
+                                onChanged: (v) =>
+                                    _seekToPage(start + v.round()),
+                                onChangeEnd: (v) =>
+                                    _commitSeek(start + v.round()),
+                              );
+                            },
                           )
                         : const SizedBox(height: 40),
                   ),
@@ -2035,7 +2837,10 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                             ),
                           ),
                         ),
-                        Text(context.l10n.readerSettings, style: AppText.headline),
+                        Text(
+                          context.l10n.readerSettings,
+                          style: AppText.headline,
+                        ),
                         readerSheetSection(context.l10n.statusReading),
                         readerSheetGroup([
                           readerSheetRow(
@@ -2458,6 +3263,80 @@ BoxFit _verticalBoxFit(String fitModeKey) {
 /// a second finger goes down this grabs the arena — before the Scrollable's
 /// vertical-drag recognizer can cross its touch slop — so the pinch reliably
 /// wins instead of being read as a drag.
+/// What a chapter looks like while its page list is being fetched: the reader,
+/// empty, with a spinner in the middle of it.
+///
+/// It replaced a full screen of shimmering page slots — see the `_loading`
+/// branch of `_buildBody`. Indeterminate on purpose: a source hands back the
+/// whole page list in one response, so there is no honest percentage to show,
+/// and a ring sitting at some invented number would be worse than one that
+/// just says "working".
+class _ChapterLoadingBar extends StatelessWidget {
+  const _ChapterLoadingBar({this.label});
+
+  /// Which chapter is being fetched. Chrome is hidden when a chapter opens,
+  /// so without this the screen is a spinner on black and says nothing about
+  /// what it is waiting for.
+  final String? label;
+
+  @override
+  Widget build(BuildContext context) {
+    final name = label;
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: 34,
+            height: 34,
+            child: CircularProgressIndicator(
+              strokeWidth: 3,
+              strokeCap: StrokeCap.round,
+              trackGap: 4,
+              color: AppColors.accent,
+              backgroundColor: AppColors.textSecondary.withValues(alpha: 0.16),
+            ),
+          ),
+          if (name != null && name.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 40),
+              child: Text(
+                name,
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: AppText.caption.copyWith(
+                  color: AppColors.textSecondary,
+                  fontSize: 13,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Where one page of the strip came from.
+///
+/// The strip is flat — a single list the reader scrolls — but it can hold
+/// several chapters at once, so every page has to carry its own provenance:
+/// which chapter, where in that chapter, and how long that chapter is. The
+/// page counter, the slider, progress saving and scrobbling all read these
+/// rather than assuming the strip IS one chapter.
+class _PageSlot {
+  const _PageSlot(this.chapterIdx, this.pageInChapter, this.chapterPages);
+
+  final int chapterIdx;
+  final int pageInChapter;
+  final int chapterPages;
+
+  /// Last page of its chapter — where the transition card goes.
+  bool get isChapterEnd => pageInChapter == chapterPages - 1;
+}
+
 class _TwoFingerScaleRecognizer extends ScaleGestureRecognizer {
   final Set<int> _pointers = {};
 

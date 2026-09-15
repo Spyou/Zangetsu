@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
@@ -230,7 +231,16 @@ void _pureLogicTests() {
 /// URL — mirrors `_FakeReadingProvider` in novel_reader_test.dart, with
 /// `getPages` implemented instead of `getText`.
 class _FakeReadingProvider implements BaseProvider, ReadingProvider {
-  _FakeReadingProvider(this.sourceId, this.pagesByUrl, {this.episodes});
+  _FakeReadingProvider(
+    this.sourceId,
+    this.pagesByUrl, {
+    this.episodes,
+    this.gate,
+  });
+
+  /// Holds `getPages` open so a test can look at the reader mid-load. Left
+  /// null by every other test, which keeps the call synchronous as before.
+  final Future<void>? gate;
 
   @override
   final String sourceId;
@@ -284,8 +294,10 @@ class _FakeReadingProvider implements BaseProvider, ReadingProvider {
   }) => throw UnimplementedError();
 
   @override
-  Future<List<PageImage>> getPages(String chapterUrl) async =>
-      pagesByUrl[chapterUrl] ?? const [];
+  Future<List<PageImage>> getPages(String chapterUrl) async {
+    if (gate != null) await gate;
+    return pagesByUrl[chapterUrl] ?? const [];
+  }
 
   @override
   Future<ChapterText> getText(String chapterUrl) => throw UnimplementedError();
@@ -826,14 +838,16 @@ void main() {
       await disposeHarness(tester);
     });
 
-    testWidgets('vertical direction renders a ListView, not a PageView', (
+    testWidgets('vertical direction renders a scrolling strip, not a PageView', (
       tester,
     ) async {
       await tester.runAsync(() => sl<ReaderPrefs>().setDirection('vertical'));
       await tester.pumpWidget(harness());
       await settle(tester);
 
-      expect(find.byType(ListView), findsOneWidget);
+      // The strip is a centre-anchored CustomScrollView (two slivers around
+      // the page being read) rather than a flat ListView — see _anchorToPage.
+      expect(find.byType(CustomScrollView), findsOneWidget);
       expect(find.byType(PageView), findsNothing);
 
       await disposeHarness(tester);
@@ -1433,8 +1447,8 @@ void main() {
 
     // Guardrail: zoom must not cost the single-finger scroll that drives
     // mark-read-on-scroll-to-bottom. A one-pointer drag still moves the
-    // ListView's own controller.
-    testWidgets('vertical: a single-finger drag still scrolls the ListView', (
+    // strip's own controller.
+    testWidgets('vertical: a single-finger drag still scrolls the strip', (
       tester,
     ) async {
       await tester.runAsync(() => sl<ReaderPrefs>().setDirection('vertical'));
@@ -1443,7 +1457,7 @@ void main() {
       await tester.pumpWidget(harness());
       await settle(tester);
 
-      final list = tester.widget<ListView>(
+      final list = tester.widget<CustomScrollView>(
         find.byKey(const ValueKey('manga-listview')),
       );
       expect(list.controller!.offset, 0);
@@ -1458,6 +1472,195 @@ void main() {
 
       await disposeHarness(tester);
     });
+
+    // The scrambling fix. Resuming used to `jumpTo(index / (count - 1) *
+    // maxScrollExtent)` — a percentage of a strip whose height was a guess,
+    // because none of the pages had loaded yet. It landed near the right page
+    // and then drifted as every real height arrived, which is what reading a
+    // resumed chapter felt like.
+    //
+    // The strip is now centred on the resumed page, so offset 0 IS its top and
+    // the pages above it lay out into negative offsets. Two things follow, and
+    // both are asserted here: the resume is exact, and a page above finishing
+    // its decode can only extend the strip upward — it cannot move the page
+    // being read.
+    testWidgets('vertical: resuming lands exactly on the saved page', (
+      tester,
+    ) async {
+      await tester.runAsync(() => sl<ReaderPrefs>().setDirection('vertical'));
+      ani.register(_FakeReadingProvider('ani:m', {'u1': pages(20)}));
+      await tester.runAsync(
+        () => sl<ReadStore>().save('ani:m', 'm1', 'c1', pos: 10, total: 20),
+      );
+
+      await tester.pumpWidget(harness());
+      await settle(tester);
+
+      final pos = tester
+          .widget<CustomScrollView>(
+            find.byKey(const ValueKey('manga-listview')),
+          )
+          .controller!
+          .position;
+
+      // Page 10's top, not 52% of the way down a strip nothing has measured.
+      expect(pos.pixels, 0);
+      expect(
+        tester.getTopLeft(find.byKey(const ValueKey('manga-page-10'))).dy,
+        0,
+      );
+
+      // The ten pages above are real, laid out upward. A flat ListView could
+      // only ever report a zero minimum here, so this is what fails if the
+      // percentage jump ever comes back.
+      expect(pos.minScrollExtent, lessThan(0));
+      expect(pos.maxScrollExtent, greaterThan(0));
+
+      await disposeHarness(tester);
+    });
+
+    // The other half of the reading fix, and the one most at risk of being
+    // dropped by a future refactor of the strip: pages are built and decoded
+    // three quarters of a viewport PAST the visible area in both directions.
+    // Flutter's default is 250px, which on pages that run thousands of pixels
+    // tall means a page only starts decoding as its top edge arrives — so it
+    // shows up blank and fills in late.
+    testWidgets('vertical: the strip keeps its decode-ahead reserve', (
+      tester,
+    ) async {
+      await tester.runAsync(() => sl<ReaderPrefs>().setDirection('vertical'));
+      ani.register(_FakeReadingProvider('ani:m', {'u1': pages(20)}));
+
+      await tester.pumpWidget(harness());
+      await settle(tester);
+
+      final strip = tester.widget<CustomScrollView>(
+        find.byKey(const ValueKey('manga-listview')),
+      );
+      expect(strip.scrollCacheExtent, const ScrollCacheExtent.viewport(0.75));
+
+      await disposeHarness(tester);
+    });
+
+    // Opening a chapter used to fill the screen with shimmering page slots
+    // that were indistinguishable from the placeholder a real page shows
+    // while its image downloads — so a slow source read as one endless
+    // loading screen with no way to tell what was actually happening.
+    //
+    // A chapter that hasn't arrived now shows a spinner and nothing else.
+    testWidgets('a loading chapter shows a spinner, not fake pages', (
+      tester,
+    ) async {
+      await tester.runAsync(() => sl<ReaderPrefs>().setDirection('vertical'));
+      final gate = Completer<void>();
+      ani.register(
+        _FakeReadingProvider('ani:m', {'u1': pages(5)}, gate: gate.future),
+      );
+
+      await tester.pumpWidget(harness());
+      await tester.pump(); // mid-load: getPages is still held open
+
+      // Exactly one: the chapter's own spinner, with no pages behind it.
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      // The skeleton was a ListView of page-sized slots. Nothing scrollable
+      // belongs on screen before there are pages to scroll.
+      expect(find.byType(ListView), findsNothing);
+      expect(find.byType(CustomScrollView), findsNothing);
+
+      gate.complete();
+      await settle(tester);
+
+      // ...and once the pages land it's a real strip. (Page placeholders have
+      // spinners of their own now, so the strip's presence — not the absence
+      // of a spinner — is what separates the two states.)
+      expect(find.byType(CustomScrollView), findsOneWidget);
+
+      await disposeHarness(tester);
+    });
+
+    // Reading a chapter to the end saves the last page as your position. In
+    // the strip that page carries the end-of-chapter card, so resuming onto it
+    // opened the chapter showing "End of ..." and nothing else — everything
+    // above already read, nothing below but a button.
+    testWidgets('vertical: a finished chapter reopens at the top, not its end '
+        'card', (tester) async {
+      await tester.runAsync(() => sl<ReaderPrefs>().setDirection('vertical'));
+      ani.register(_FakeReadingProvider('ani:m', {'u1': pages(20)}));
+      await tester.runAsync(
+        () => sl<ReadStore>().save('ani:m', 'm1', 'c1', pos: 19, total: 20),
+      );
+
+      await tester.pumpWidget(harness());
+      await settle(tester);
+
+      expect(
+        tester.getTopLeft(find.byKey(const ValueKey('manga-page-0'))).dy,
+        0,
+      );
+      expect(find.textContaining('End of'), findsNothing);
+
+      await disposeHarness(tester);
+    });
+
+    // The chapter-change black screen. On the first frame after a chapter
+    // loads, maxScrollExtent is still 0 — and estimateIndexFromScroll(0, 0, n)
+    // answers n-1, the LAST page (pinned that way by its own test above). The
+    // anchor follows _pageIndex, so the reader moved to the final page and
+    // opened the chapter on its end-of-chapter card over an unloaded page.
+    testWidgets('vertical: opening a chapter does not jump to its last page', (
+      tester,
+    ) async {
+      await tester.runAsync(() => sl<ReaderPrefs>().setDirection('vertical'));
+      ani.register(_FakeReadingProvider('ani:m', {'u1': pages(20)}));
+
+      await tester.pumpWidget(harness());
+      await settle(tester);
+
+      // Page 1, at the top — not page 20 with the end card.
+      expect(find.textContaining('1/20'), findsOneWidget);
+      expect(find.textContaining('End of'), findsNothing);
+      expect(
+        tester.getTopLeft(find.byKey(const ValueKey('manga-page-0'))).dy,
+        0,
+      );
+
+      await disposeHarness(tester);
+    });
+
+    // A source that rewrites its image bytes (scrambled pages) serves every
+    // page through the native provider, and THAT path had no placeholder at
+    // all — it faded in from opacity 0, so a page that had not decoded yet was
+    // simply invisible. Every loading indicator built for this reader lived on
+    // the CachedNetworkImage branch, which those pages never take, so they
+    // showed a black screen with nothing on it.
+    testWidgets(
+      'vertical: a native-provider page shows a loading placeholder',
+      (tester) async {
+        await tester.runAsync(() => sl<ReaderPrefs>().setDirection('vertical'));
+        // The marker header is what routes a page to the native provider.
+        ani.register(
+          _FakeReadingProvider('ani:m', {
+            'u1': [
+              for (var i = 0; i < 4; i++)
+                PageImage(
+                  url: 'https://img/scrambled/$i.jpg',
+                  headers: const {'x-mihon-src': '7'},
+                ),
+            ],
+          }),
+        );
+
+        await tester.pumpWidget(harness());
+        await settle(tester);
+
+        // Nothing can decode in a widget test, so every page is mid-load — and
+        // mid-load must not mean invisible. A progress ring is the whole
+        // placeholder now; there is deliberately no text with it.
+        expect(find.byType(CircularProgressIndicator), findsWidgets);
+
+        await disposeHarness(tester);
+      },
+    );
 
     // Guardrail: a plain single tap still toggles chrome (AnimatedOpacity
     // targets flip 0 -> 1).
