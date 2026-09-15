@@ -241,6 +241,9 @@ class SimklService extends ChangeNotifier implements Tracker {
     String? imdbId,
     MediaKind kind = MediaKind.anime,
   }) async {
+    // The library just changed, so the cached copy is a lie. Dropped
+    // FIRST, so a throw further down still leaves it correct.
+    invalidateListCache();
     if (kind == MediaKind.manga) return; // Simkl has no manga/novel API
     if (!isConnected || !autoSync) return;
     // Movies are watched-once; "watching" is meaningless — wait for completion.
@@ -262,6 +265,9 @@ class SimklService extends ChangeNotifier implements Tracker {
     MediaKind kind = MediaKind.anime,
     bool novel = false, // no manga/novel API to disambiguate — ignored
   }) async {
+    // The library just changed, so the cached copy is a lie. Dropped
+    // FIRST, so a throw further down still leaves it correct.
+    invalidateListCache();
     if (kind == MediaKind.manga) return; // Simkl has no manga/novel API
     if (!isConnected || !autoSync || episode <= 0) return;
     final t = _target(malId, tmdbId, tmdbIsTv, imdbId);
@@ -359,6 +365,9 @@ class SimklService extends ChangeNotifier implements Tracker {
     required WatchStatus status,
     MediaKind kind = MediaKind.anime,
   }) async {
+    // The library just changed, so the cached copy is a lie. Dropped
+    // FIRST, so a throw further down still leaves it correct.
+    invalidateListCache();
     if (kind == MediaKind.manga) return; // Simkl has no manga/novel API
     if (!isConnected) return;
     await _addToList(_target(malId, tmdbId, tmdbIsTv, imdbId), status.simkl);
@@ -374,6 +383,9 @@ class SimklService extends ChangeNotifier implements Tracker {
     String? pinnedId,
     MediaKind kind = MediaKind.anime,
   }) async {
+    // The library just changed, so the cached copy is a lie. Dropped
+    // FIRST, so a throw further down still leaves it correct.
+    invalidateListCache();
     if (kind == MediaKind.manga) return; // Simkl has no manga/novel API
     if (!isConnected) return;
     // A pinned id wins over id resolution, exactly as in updateEntry — without
@@ -416,12 +428,48 @@ class SimklService extends ChangeNotifier implements Tracker {
   static double? _asDouble(Object? v) =>
       v is num ? v.toDouble() : (v is String ? double.tryParse(v) : null);
 
+  /// The last parsed library, and when it landed.
+  ///
+  /// `/sync/all-items?extended=full` returns the WHOLE library — 1024 items
+  /// for the account in the report this came from — and a shared log caught it
+  /// running 37 times in two hours, three of those inside three seconds. Simkl
+  /// enforces a daily request budget, which is how tracking quietly stops
+  /// working halfway through a session.
+  ///
+  /// HomeCubit caches it too, but drops that on every `load(reset: true)` — a
+  /// source switch, a retry, pull-to-refresh — none of which change what is on
+  /// somebody's Simkl list. This survives those.
+  ///
+  /// Short on purpose, and every write below clears it outright, so adding,
+  /// removing or rescoring an entry shows immediately rather than after a
+  /// timer.
+  List<TrackerListItem>? _listCache;
+  DateTime? _listCacheAt;
+  static const Duration listCacheTtl = Duration(minutes: 5);
+
+  /// Whether a library cached at [at] may still be served at [now]. Pulled
+  /// out so the window is testable without a Dio, a Hive box and a login.
+  @visibleForTesting
+  static bool listCacheFresh(DateTime? at, DateTime now) =>
+      at != null && now.difference(at) < listCacheTtl;
+
+  /// Forget the cached library. Called by every write in this class, and
+  /// available to a caller that genuinely wants fresh data.
+  void invalidateListCache() {
+    _listCache = null;
+    _listCacheAt = null;
+  }
+
+
   /// Read the connected user's full Simkl library — anime, TV shows AND movies —
   /// as metadata stubs + status. Best-effort: `[]` when disconnected or on ANY
   /// error (never throws).
   @override
   Future<List<TrackerListItem>> fetchList() async {
     if (!isConnected) return const [];
+    final hit = _listCache;
+    final at = _listCacheAt;
+    if (hit != null && listCacheFresh(at, DateTime.now())) return hit;
     try {
       // `/sync/all-items` (no type) returns every list: { anime, shows, movies }.
       final res = await _dio.get<dynamic>(
@@ -528,6 +576,8 @@ class SimklService extends ChangeNotifier implements Tracker {
         'shows=${(data['shows'] as List?)?.length ?? 0} '
         'movies=${(data['movies'] as List?)?.length ?? 0})',
       );
+      _listCache = out;
+      _listCacheAt = DateTime.now();
       return out;
     } catch (e) {
       debugPrint('[simkl] fetchList failed: $e');
@@ -550,17 +600,29 @@ class SimklService extends ChangeNotifier implements Tracker {
   }) async {
     if (kind == MediaKind.manga) return null; // Simkl has no manga/novel API
     if (!isConnected) return null;
-    // Simkl has no cheap single-item status read, so filter the anime library
-    // (matches by MAL id, or a pinned Simkl id). Movies/TV return null — Simkl
-    // still receives writes on Apply via updateEntry, it just can't prefill.
+    // Simkl has no cheap single-item status read, so the library is filtered
+    // instead — by MAL id (anime), a pinned Simkl id, or TMDB id (films and
+    // series, which carry no MAL id).
+    //
+    // Movies and TV used to bail out here, which meant Apply really did write
+    // to Simkl and the Tracking button then had nothing to re-read, so its
+    // icon never changed and the sync looked like it had failed. The library
+    // already carries `tmdbId` for both buckets (see parseBucket), so there is
+    // nothing extra to fetch.
     final pinned = int.tryParse(pinnedId ?? '');
-    if (malId == null && pinned == null) return null;
+    if (malId == null && pinned == null && tmdbId == null) return null;
     final list = await fetchList();
     for (final it in list) {
       final matchesMal = malId != null && it.item.malId == malId;
       final matchesPinned =
           pinned != null && it.item.id == 'tracker:simkl:$pinned';
-      if (matchesMal || matchesPinned) {
+      // TMDB numbers a film and a series independently, so the same id is two
+      // different titles depending on which. Matching the number alone would
+      // hand back somebody else's entry — the kind has to agree too.
+      final matchesTmdb = tmdbId != null &&
+          it.item.tmdbId == tmdbId &&
+          it.tmdbIsTv == tmdbIsTv;
+      if (matchesMal || matchesPinned || matchesTmdb) {
         // Library ids are stored as `tracker:simkl:<id>`; the trailing id is
         // what simkl.com puts in a url. Anything else shape-wise → no link.
         const prefix = 'tracker:simkl:';
@@ -570,7 +632,13 @@ class SimklService extends ChangeNotifier implements Tracker {
         return TrackerEntry(
           trackerName: displayName,
           onList: true,
-          url: simklId == null ? null : 'https://simkl.com/anime/$simklId',
+          // simkl.com files these under three different paths; /anime/ for a
+          // film would 404. Anime stays exactly as it was.
+          url: simklId == null
+              ? null
+              : 'https://simkl.com/'
+                    '${matchesMal || malId != null ? 'anime' : (it.tmdbIsTv ? 'tv' : 'movies')}'
+                    '/$simklId',
           title: it.item.title,
           status: it.status,
           score: it.score,
@@ -594,6 +662,9 @@ class SimklService extends ChangeNotifier implements Tracker {
     int? progress,
     MediaKind kind = MediaKind.anime,
   }) async {
+    // The library just changed, so the cached copy is a lie. Dropped
+    // FIRST, so a throw further down still leaves it correct.
+    invalidateListCache();
     if (kind == MediaKind.manga) return; // Simkl has no manga/novel API
     if (!isConnected) return;
     final pinned = int.tryParse(pinnedId ?? '');
