@@ -553,6 +553,7 @@ class MetadataRepository implements CatalogueRepository {
     /// resolver came from had dropped it, which would have quietly removed the
     /// metadata-provider switch.
     PreferredProvider? prefer,
+    bool Function()? abandoned,
   }) async {
     final c = ZmodeIds.parseShow(url);
     if (c == null) throw ArgumentError('not a metadata url: $url');
@@ -690,6 +691,9 @@ class MetadataRepository implements CatalogueRepository {
       m.showUrl,
       sourceId: m.sourceId,
       category: category,
+      // The slow half: the catalogue list is already on screen by now, and
+      // this is the call that sits in the provider queue.
+      abandoned: abandoned,
     );
     final srcEpisodes = srcDetail.episodes;
     AppLogger.instance.log(

@@ -202,6 +202,7 @@ class _FakeRepo implements SourceRepository {
     String category = 'sub',
     String? sourceId,
     void Function(MediaDetail partial)? onPartial,
+    bool Function()? abandoned,
   }) => throw UnimplementedError();
 
   @override

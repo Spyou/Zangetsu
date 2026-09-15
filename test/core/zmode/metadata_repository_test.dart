@@ -120,6 +120,7 @@ class _Src implements SourceRepository {
     String category = 'sub',
     String? sourceId,
     void Function(MediaDetail)? onPartial,
+    bool Function()? abandoned,
   }) async {
     log.add('detail:$url:$category');
     return MediaDetail(
@@ -169,6 +170,7 @@ class _EpSrc implements SourceRepository {
     String category = 'sub',
     String? sourceId,
     void Function(MediaDetail)? onPartial,
+    bool Function()? abandoned,
   }) async {
     log.add('detail:$url:$category');
     return MediaDetail(

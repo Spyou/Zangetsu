@@ -275,7 +275,13 @@ class _NoopRepo implements CatalogueRepository {
   @override
   Future<void> clearHttpCache() async {}
   @override
-  Future<MediaDetail> detail(String url, {String category = 'sub', String? sourceId, void Function(MediaDetail partial)? onPartial}) async =>
+  Future<MediaDetail> detail(
+    String url, {
+    String category = 'sub',
+    String? sourceId,
+    void Function(MediaDetail partial)? onPartial,
+    bool Function()? abandoned,
+  }) async =>
       const MediaDetail(
           id: 'x', title: 'x', url: 'zm://anime/mal:5114', type: ProviderType.anime, sourceId: 'zm');
 }

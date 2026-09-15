@@ -47,6 +47,7 @@ class _StubSourceRepository implements SourceRepository {
     String category = 'sub',
     String? sourceId,
     void Function(MediaDetail partial)? onPartial,
+    bool Function()? abandoned,
   }) async => _detail;
 }
 
@@ -78,6 +79,7 @@ class _SwappingRepository implements SourceRepository {
     String category = 'sub',
     String? sourceId,
     void Function(MediaDetail partial)? onPartial,
+    bool Function()? abandoned,
   }) async {
     calls++;
     return calls == 1 ? first : second;
@@ -162,6 +164,7 @@ class _PartialThenSourceRepository implements SourceRepository {
     String category = 'sub',
     String? sourceId,
     void Function(MediaDetail partial)? onPartial,
+    bool Function()? abandoned,
   }) async {
     onPartial?.call(partial);
     await gate.future;

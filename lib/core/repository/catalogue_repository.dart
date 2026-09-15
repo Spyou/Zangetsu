@@ -41,11 +41,24 @@ abstract interface class CatalogueRepository {
   /// synopsis has to wait for it. A source repository already holds
   /// everything and never calls it, so a caller that just wants the finished
   /// detail simply omits it.
+  /// [abandoned] lets a caller say the answer is no longer wanted — the
+  /// screen was closed before the fetch came back.
+  ///
+  /// Provider work runs strictly one call at a time (see `_serialized` in
+  /// provider_manager.dart), and a fetch nobody is waiting for still holds
+  /// that queue. Opening three titles five seconds apart made them take 12s,
+  /// 24s and 27s in a shared report — each waiting out the ones already backed
+  /// out of. Asked when a queued call is about to start, so leaving stops the
+  /// pile-up; a call already running cannot be recalled.
+  ///
+  /// Optional and null by default: every existing caller keeps exactly the
+  /// behaviour it has, and only a screen that knows when it is gone opts in.
   Future<MediaDetail> detail(
     String url, {
     String category = 'sub',
     String? sourceId,
     void Function(MediaDetail partial)? onPartial,
+    bool Function()? abandoned,
   });
 
   Future<void> clearHttpCache();

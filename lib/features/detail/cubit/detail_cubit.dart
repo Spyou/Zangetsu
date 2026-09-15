@@ -3,6 +3,7 @@ import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../core/di/injector.dart';
+import '../../../core/provider/provider_manager.dart';
 import '../../../core/error/exceptions.dart';
 import '../../../core/anilist/anilist_network_policy.dart';
 import '../../../core/error/network_failure.dart';
@@ -183,6 +184,12 @@ class DetailCubit extends Cubit<DetailState> {
     required String category,
     void Function(MediaDetail partial)? onPartial,
   }) {
+    // Backing out before this lands means the answer is no longer wanted.
+    // Provider calls run one at a time, so a fetch left running holds up the
+    // NEXT title you open — which is how three titles opened five seconds
+    // apart took 12s, 24s and 27s in a shared report. Closed is the whole
+    // test: this cubit is created per detail screen and closed with it.
+    bool gone() => isClosed;
     final p = prefer;
     if (p != null && sl.isRegistered<MetadataRepository>()) {
       return sl<MetadataRepository>().detail(
@@ -191,6 +198,7 @@ class DetailCubit extends Cubit<DetailState> {
         sourceId: _sourceId,
         onPartial: onPartial,
         prefer: p,
+        abandoned: gone,
       );
     }
     return _repo.detail(
@@ -198,6 +206,7 @@ class DetailCubit extends Cubit<DetailState> {
       category: category,
       sourceId: _sourceId,
       onPartial: onPartial,
+      abandoned: gone,
     );
   }
   final String _url;
@@ -317,6 +326,11 @@ class DetailCubit extends Cubit<DetailState> {
         cloudflareUrl: e.url,
         episodesLoading: false,
       ));
+    } on ProviderCallAbandoned {
+      // We asked for this: the screen closed while the call sat in the queue.
+      // Returning here keeps it out of the log and skips the offline probe
+      // below, which would be a network round trip for an answer nobody wants.
+      return;
     } catch (e, st) {
       // Same distinction Home makes: a request that never left the device is
       // not the title failing to load. A rate limit is a third thing again —

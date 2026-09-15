@@ -841,12 +841,19 @@ class SourceRepository implements CatalogueRepository {
     // A source detail arrives whole — there is no slow second half to skip
     // ahead of, so this is accepted for the interface and never called.
     void Function(MediaDetail partial)? onPartial,
+    bool Function()? abandoned,
   }) async {
     final sw = Stopwatch()..start();
     final sid = sourceId ?? _active.state;
     AppLogger.instance.log('[detail] source fetch start sourceId=$sid url=$url');
     try {
-      final d = await _providerFor(sourceId).getDetail(url, category: category);
+      final p = _providerFor(sourceId);
+      // Only the JS providers share the serialized call queue this is meant to
+      // unblock; the native ecosystems each run their own calls, so there is
+      // nothing for them to wait behind and nothing to pass on.
+      final d = p is JsProvider
+          ? await p.getDetail(url, category: category, abandoned: abandoned)
+          : await p.getDetail(url, category: category);
       AppLogger.instance.log(
         '[detail] source fetch done title="${d.title}" eps=${d.episodes.length} '
         '${sw.elapsedMilliseconds}ms',

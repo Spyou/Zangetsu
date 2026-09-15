@@ -67,6 +67,7 @@ class _StubSourceRepository implements SourceRepository {
     String category = 'sub',
     String? sourceId,
     void Function(MediaDetail partial)? onPartial,
+    bool Function()? abandoned,
   }) async => _detail;
 
   @override

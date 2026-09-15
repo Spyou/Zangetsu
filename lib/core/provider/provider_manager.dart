@@ -93,6 +93,17 @@ bool looksLikeCfChallenge({
       b.contains('enable javascript and cookies');
 }
 
+/// Thrown instead of running a queued provider call whose caller has gone.
+///
+/// Its own type so a caller can tell "you left" apart from a real failure: a
+/// screen that has closed must not record this against the source's health,
+/// and must not show an error nobody is there to read.
+class ProviderCallAbandoned implements Exception {
+  const ProviderCallAbandoned();
+  @override
+  String toString() => 'Provider call abandoned — the caller had gone';
+}
+
 class _JsHost {
   _JsHost({required this.dio}) {
     _engine = JsEngine(onChannel: _onChannel, polling: isAppleTv);
@@ -249,13 +260,24 @@ class _JsHost {
   // Chains [action] after the current queue tail so calls run strictly one at a
   // time; a failing call still releases the queue (errors are swallowed on the
   // chaining future, propagated only to the caller). See [_callQueue].
-  Future<T> _serialized<T>(Future<T> Function() action) {
+  Future<T> _serialized<T>(
+    Future<T> Function() action, {
+    bool Function()? abandoned,
+  }) {
     final done = Completer<T>();
     final prev = _callQueue;
     _callQueue = done.future.then<void>((_) {}, onError: (_) {});
-    prev.whenComplete(
-      () => action().then(done.complete, onError: done.completeError),
-    );
+    prev.whenComplete(() {
+      // Checked HERE, not at enqueue time: the whole point is the wait in
+      // between. A viewer who backed out while this sat in the queue is no
+      // longer owed an answer, and running it anyway is what made the next
+      // screen take 12s, then 24s, then 27s in the shared report.
+      if (abandoned?.call() ?? false) {
+        done.completeError(const ProviderCallAbandoned());
+        return;
+      }
+      action().then(done.complete, onError: done.completeError);
+    });
     return done.future;
   }
 
@@ -264,13 +286,19 @@ class _JsHost {
     String method,
     List<Object?> args, {
     Duration timeout = const Duration(seconds: 15),
+    bool Function()? abandoned,
   }) async {
     try {
       final v = await _serialized(
         () => _runCall(sourceId, method, args, timeout),
+        abandoned: abandoned,
       );
       _health.remove(sourceId);
       return v;
+    } on ProviderCallAbandoned {
+      // The viewer left. That says nothing about the source, so it must not
+      // count towards the failure tally that marks one degraded or broken.
+      rethrow;
     } catch (e) {
       final failures = (_health[sourceId]?.failures ?? 0) + 1;
       _health[sourceId] = _ProviderHealth(
@@ -813,7 +841,14 @@ class JsProvider implements BaseProvider, ReadingProvider {
     String method,
     List<Object?> args, {
     Duration timeout = const Duration(seconds: 15),
-  }) => _host.call(sourceId, method, args, timeout: timeout);
+    bool Function()? abandoned,
+  }) => _host.call(
+    sourceId,
+    method,
+    args,
+    timeout: timeout,
+    abandoned: abandoned,
+  );
 
   ProviderInfo? _infoCache;
 
@@ -917,13 +952,19 @@ class JsProvider implements BaseProvider, ReadingProvider {
   }
 
   @override
-  Future<MediaDetail> getDetail(String url, {String category = 'sub'}) async {
+  Future<MediaDetail> getDetail(
+    String url, {
+    String category = 'sub',
+    // Adding an optional parameter is a valid override, so the interface and
+    // every other provider stay exactly as they are.
+    bool Function()? abandoned,
+  }) async {
     // 30s: some providers enrich detail with extra metadata round-trips
     // (e.g. TMDB episode names/stills) on top of the page fetch.
     final raw = await _call('getDetail', [
       url,
       {'category': category},
-    ], timeout: const Duration(seconds: 30));
+    ], timeout: const Duration(seconds: 30), abandoned: abandoned);
     final map = jsonDecode(raw) as Map<String, dynamic>;
     // Sozo Read manga/novel detail payloads carry the chapter list under
     // `chapters`; Zangetsu's MediaDetail reads `episodes` (Task E4 compat

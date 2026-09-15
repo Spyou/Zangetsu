@@ -87,7 +87,13 @@ class _Repo implements CatalogueRepository {
   @override
   Future<void> clearHttpCache() async {}
   @override
-  Future<MediaDetail> detail(String url, {String category = 'sub', String? sourceId, void Function(MediaDetail partial)? onPartial}) async {
+  Future<MediaDetail> detail(
+    String url, {
+    String category = 'sub',
+    String? sourceId,
+    void Function(MediaDetail partial)? onPartial,
+    bool Function()? abandoned,
+  }) async {
     detailCalls++;
     return const MediaDetail(
         id: 'x', title: 'x', url: 'zm://manga/mal:777', type: ProviderType.manga, sourceId: 'zm');

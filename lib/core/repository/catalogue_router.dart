@@ -86,6 +86,7 @@ class CatalogueRouter implements CatalogueRepository {
     String category = 'sub',
     String? sourceId,
     void Function(MediaDetail partial)? onPartial,
+    bool Function()? abandoned,
   }) {
     final via = ZmodeIds.isZ(url) ? 'metadata' : 'source';
     AppLogger.instance.log('[detail] route $via url=$url sourceId=$sourceId');
@@ -94,6 +95,7 @@ class CatalogueRouter implements CatalogueRepository {
       category: category,
       sourceId: sourceId,
       onPartial: onPartial,
+      abandoned: abandoned,
     );
   }
 
