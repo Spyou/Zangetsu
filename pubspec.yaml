@@ -161,8 +161,6 @@ dependencies:
   firebase_messaging: ^16.4.3
   fluttertoast: ^10.0.0
   dynamic_color: ^2.1.0
-  # dart:ffi helpers (toNativeUtf8, calloc) for the tiled page decoder binding.
-  ffi: ^2.1.4
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -286,8 +284,6 @@ flutter:
     - assets/icon/providers/mal.png
     - assets/icon/providers/tmdb.png
     - assets/icon/providers/simkl.png
-    # Known-quadrant fixture for the tiled-page-decoder integration test.
-    - test/fixtures/tile_fixture_640x480.png
 
   fonts:
     - family: Inter

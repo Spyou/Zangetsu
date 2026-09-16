@@ -1,10 +1,9 @@
 import 'dart:async';
-import 'dart:isolate';
+import 'dart:io';
 import 'dart:ui' as ui;
 
-import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 
-import 'tile_decoder_ffi.dart';
 import 'tile_pyramid.dart';
 
 /// A decoded tile, ready to paint.
@@ -33,9 +32,13 @@ class TileImage {
 
 /// Least-recently-used bookkeeping for open pages.
 ///
-/// Separate from the isolate so the policy can be tested on its own — an LRU
-/// that evicts the wrong entry is a slow leak, and a leak of open file
-/// descriptors is one that ends in a crash rather than a slowdown.
+/// Kept as a standalone, independently-tested policy even though the tile
+/// decoder itself no longer runs an LRU on the Dart side — the native side
+/// (Kotlin `BitmapRegionDecoder`) owns that bookkeeping now, with the same
+/// evict-oldest policy. An LRU that evicts the wrong entry is a slow leak, and
+/// a leak of open file descriptors is one that ends in a crash rather than a
+/// slowdown, so the policy stays covered on its own regardless of which side
+/// implements it.
 class TileLru {
   TileLru({required this.capacity, required this.onEvict})
       : assert(capacity > 0);
@@ -81,274 +84,117 @@ abstract class TileSource {
   void release(String path);
 }
 
-/// Decodes tiles on a background isolate.
+/// Decodes tiles via the native `zangetsu/tiles` MethodChannel
+/// (`BitmapRegionDecoder`, API 10+).
 ///
-/// Every decode is off the UI isolate: a tile landing must never be able to
-/// stutter a scroll, which is the whole reason this is worth doing rather than
-/// decoding inline.
+/// A MethodChannel call is already asynchronous and the Kotlin side does the
+/// actual decoding on its own background thread, so there is no isolate here
+/// — that used to exist purely to keep FFI off the UI isolate, and taking it
+/// out also removes the isolate startup/teardown race this file used to
+/// guard against.
 class TileDecoder implements TileSource {
-  TileDecoder({this.openPages = 10});
+  static const _channel = MethodChannel('zangetsu/tiles');
 
-  /// How many pages stay open at once. Scrolling back should not reopen files.
-  final int openPages;
-
+  /// The channel only exists on Android — iOS never registers it, so a call
+  /// there would just throw [MissingPluginException]. Checked as a plain
+  /// platform fact (no I/O) so [TiledPageImage] can decide before it ever
+  /// asks for a tile, rather than after a decode has already failed.
   @override
-  bool get available => tileDecodingAvailable();
+  bool get available => Platform.isAndroid;
 
-  SendPort? _toIsolate;
-  Isolate? _isolate;
-  final _pending = <int, Completer<_RawTile?>>{};
-  var _nextId = 0;
-  Completer<void>? _starting;
-  Completer<void>? _shutdownAck;
-  Future<void>? _disposing;
-
-  Future<void> _ensureStarted() async {
-    if (_toIsolate != null) return;
-    if (_starting != null) return _starting!.future;
-    final starting = Completer<void>();
-    _starting = starting;
-
-    final fromIsolate = ReceivePort();
-    _isolate = await Isolate.spawn(_isolateMain, fromIsolate.sendPort);
-    fromIsolate.listen((message) {
-      if (message is SendPort) {
-        _toIsolate = message;
-        starting.complete();
-        return;
-      }
-      if (message is _RawTile) {
-        _pending.remove(message.id)?.complete(message);
-      } else if (message is _TileFailed) {
-        _pending.remove(message.id)?.complete(null);
-      } else if (message is _TileShutdownAck) {
-        final ack = _shutdownAck;
-        if (ack != null && !ack.isCompleted) ack.complete();
-      }
-    });
-    return starting.future;
-  }
+  /// Paths this decoder has told the native side to open, so a repeat
+  /// `decode()` for the same page doesn't reopen it, and so `dispose()` knows
+  /// what it still needs to close.
+  final _openPaths = <String>{};
+  bool _disposed = false;
 
   /// Decodes one tile. Returns null when the device cannot tile, the file
   /// cannot be read, or the region is refused — every one of which means the
   /// caller should fall back to a whole-page decode.
+  ///
+  /// Deliberately does not gate on [available] first: the try/catch below is
+  /// what actually has to handle "no such channel" (iOS, or any platform
+  /// where the plugin isn't there), so it has to run that path for real
+  /// rather than being short-circuited before it's ever exercised.
   @override
   Future<TileImage?> decode(String path, TileSpec spec) async {
-    if (!tileDecodingAvailable()) return null;
-    if (_disposing != null) return null;
-    await _ensureStarted();
-    if (_disposing != null || _toIsolate == null) return null;
+    if (_disposed) return null;
+    try {
+      if (!_openPaths.contains(path)) {
+        final opened = await _channel.invokeMapMethod<String, dynamic>(
+          'openPage',
+          {'path': path},
+        );
+        if (opened == null) return null;
+        _openPaths.add(path);
+      }
 
-    final id = _nextId++;
-    final completer = Completer<_RawTile?>();
-    _pending[id] = completer;
-    _toIsolate!.send(
-      _TileRequest(
-        id: id,
-        path: path,
-        x: (spec.source.left / spec.sample).round(),
-        y: (spec.source.top / spec.sample).round(),
-        width: (spec.source.width / spec.sample).round(),
-        height: (spec.source.height / spec.sample).round(),
-        sample: spec.sample,
-        openPages: openPages,
-      ),
-    );
+      // spec.source is in FULL-image (original) pixels, same as `sample` is
+      // separate from it — sent through exactly as-is. Dividing either of
+      // these by the other here is the bug that made every tile fall back
+      // last time: BitmapRegionDecoder.decodeRegion() wants the ORIGINAL
+      // coordinates and downsamples itself via inSampleSize.
+      final raw = await _channel.invokeMapMethod<String, dynamic>(
+        'decodeTile',
+        {
+          'path': path,
+          'x': spec.source.left.round(),
+          'y': spec.source.top.round(),
+          'w': spec.source.width.round(),
+          'h': spec.source.height.round(),
+          'sample': spec.sample,
+        },
+      );
+      if (raw == null) return null;
 
-    final raw = await completer.future;
-    if (raw == null) return null;
+      final bytes = raw['bytes'] as Uint8List;
+      final width = raw['width'] as int;
+      final height = raw['height'] as int;
 
-    // Turn raw RGBA into a ui.Image on this isolate. decodeImageFromPixels is
-    // the only step that must happen here.
-    final done = Completer<ui.Image>();
-    ui.decodeImageFromPixels(
-      raw.rgba,
-      raw.width,
-      raw.height,
-      ui.PixelFormat.rgba8888,
-      done.complete,
-      rowBytes: raw.stride,
-    );
-    return TileImage(await done.future, spec);
+      final completer = Completer<ui.Image>();
+      ui.decodeImageFromPixels(
+        bytes,
+        width,
+        height,
+        ui.PixelFormat.rgba8888,
+        completer.complete,
+      );
+      return TileImage(await completer.future, spec);
+    } on MissingPluginException {
+      return null;
+    } on PlatformException {
+      return null;
+    }
   }
 
   /// Drops a page's open handle. Called when a page leaves the strip.
   @override
   void release(String path) {
-    _toIsolate?.send(_TileRelease(path));
+    if (_disposed) return;
+    if (!_openPaths.remove(path)) return;
+    unawaited(
+      _channel.invokeMethod<void>('closePage', {'path': path}).catchError(
+        (Object _) {},
+      ),
+    );
   }
 
-  /// Starts the isolate without going through [decode], which refuses early on
-  /// a host with no native library. Lets the startup/teardown race be tested.
-  @visibleForTesting
-  Future<void> startForTest() => _ensureStarted();
-
-  /// Whether an isolate is currently held. A `true` here after `dispose()` has
-  /// returned means one was orphaned.
-  @visibleForTesting
-  bool get isolateAliveForTest => _isolate != null;
-
-  /// Safe to call more than once — later callers await the first shutdown
-  /// rather than starting a second one and racing on the ack.
-  Future<void> dispose() => _disposing ??= _dispose();
-
-  Future<void> _dispose() async {
-    // A spawn may be in flight. `_isolate` is assigned only after
-    // `Isolate.spawn` returns, so killing right now would kill nothing and
-    // leave a live isolate holding native fds with no reference left to reach
-    // it. Wait for the start to land first (bounded — a spawn that failed
-    // never completes this).
-    final starting = _starting;
-    if (starting != null && !starting.isCompleted) {
-      await starting.future.timeout(
-        const Duration(seconds: 2),
-        onTimeout: () {},
-      );
+  /// Safe to call more than once — the first call closes whatever pages are
+  /// still open and marks itself done; a later call is a no-op.
+  Future<void> dispose() async {
+    if (_disposed) return;
+    _disposed = true;
+    final paths = _openPaths.toList();
+    _openPaths.clear();
+    for (final path in paths) {
+      try {
+        await _channel.invokeMethod<void>('closePage', {'path': path});
+      } on MissingPluginException {
+        // already gone / never really open — nothing to clean up.
+      } on PlatformException {
+        // best-effort close; a failure here just means the native side
+        // leaked one entry from its own LRU, which it will evict anyway.
+      }
     }
-
-    if (_toIsolate != null) {
-      // kill(beforeNextEvent) does not guarantee a message sent moments
-      // earlier has been handled yet — a normal message and a kill control
-      // signal race independently. Without waiting for the isolate to
-      // confirm it closed its native handles, dispose() could kill it first
-      // and leak every open file. So: wait for the ack (bounded, in case the
-      // isolate is already gone), then kill.
-      final ack = Completer<void>();
-      _shutdownAck = ack;
-      _toIsolate!.send(const _TileShutdown());
-      await ack.future.timeout(const Duration(seconds: 2), onTimeout: () {});
-    }
-    _isolate?.kill(priority: Isolate.beforeNextEvent);
-    _isolate = null;
-    _toIsolate = null;
-    for (final c in _pending.values) {
-      if (!c.isCompleted) c.complete(null);
-    }
-    _pending.clear();
   }
-}
-
-// ---- messages across the isolate boundary ----
-
-class _TileRequest {
-  const _TileRequest({
-    required this.id,
-    required this.path,
-    required this.x,
-    required this.y,
-    required this.width,
-    required this.height,
-    required this.sample,
-    required this.openPages,
-  });
-
-  final int id;
-  final String path;
-  final int x, y, width, height, sample, openPages;
-}
-
-class _TileRelease {
-  const _TileRelease(this.path);
-  final String path;
-}
-
-class _TileShutdown {
-  const _TileShutdown();
-}
-
-/// Sent back once the isolate has closed every native handle, so `dispose()`
-/// knows it is safe to kill the isolate.
-class _TileShutdownAck {
-  const _TileShutdownAck();
-}
-
-class _RawTile {
-  const _RawTile(this.id, this.rgba, this.stride, this.width, this.height);
-  final int id;
-  final Uint8List rgba;
-  final int stride;
-  final int width;
-  final int height;
-}
-
-class _TileFailed {
-  const _TileFailed(this.id);
-  final int id;
-}
-
-/// Runs on the background isolate. Native handles live here and never cross
-/// back — a Pointer is meaningless in another isolate.
-void _isolateMain(SendPort toMain) {
-  final fromMain = ReceivePort();
-  toMain.send(fromMain.sendPort);
-
-  final handles = <String, TileHandle>{};
-  late final TileLru lru;
-  var lruReady = false;
-
-  void closePage(String path) {
-    final handle = handles.remove(path);
-    if (handle != null) tileClose(handle);
-  }
-
-  fromMain.listen((message) {
-    if (message is _TileShutdown) {
-      for (final h in handles.values) {
-        tileClose(h);
-      }
-      handles.clear();
-      toMain.send(const _TileShutdownAck());
-      fromMain.close();
-      return;
-    }
-
-    if (message is _TileRelease) {
-      if (lruReady) lru.remove(message.path);
-      closePage(message.path);
-      return;
-    }
-
-    if (message is! _TileRequest) return;
-
-    if (!lruReady) {
-      lru = TileLru(capacity: message.openPages, onEvict: closePage);
-      lruReady = true;
-    }
-
-    try {
-      var handle = handles[message.path];
-      if (handle == null) {
-        handle = tileOpen(message.path);
-        if (handle == null) {
-          toMain.send(_TileFailed(message.id));
-          return;
-        }
-        handles[message.path] = handle;
-      }
-      lru.touch(message.path);
-
-      final tile = tileDecode(
-        handle,
-        message.x,
-        message.y,
-        message.width,
-        message.height,
-        message.sample,
-      );
-      if (tile == null) {
-        toMain.send(_TileFailed(message.id));
-        return;
-      }
-      toMain.send(
-        _RawTile(message.id, tile.rgba, tile.stride, tile.width, tile.height),
-      );
-    } catch (_) {
-      // A decode that throws must not take the isolate down with it: the
-      // handles here are native file descriptors and nothing else would close
-      // them. Report the failure and let the caller fall back.
-      if (lruReady) lru.remove(message.path);
-      closePage(message.path);
-      toMain.send(_TileFailed(message.id));
-    }
-  });
 }

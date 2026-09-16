@@ -26,6 +26,7 @@ import com.spyou.watch_app.cloudstream.PluginHost
 import com.spyou.watch_app.cloudstream.RepoManager
 import com.spyou.watch_app.cloudstream.SubscriptionWorker
 import com.spyou.watch_app.mihon.MihonBridge
+import com.spyou.watch_app.tiles.TileBridge
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.CoroutineExceptionHandler
@@ -1108,6 +1109,12 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
         // bridge and separate source registry from Aniyomi's; nothing shared.
         val mihonChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "zangetsu/mihon")
         MihonBridge(applicationContext, extensionScope("mihon")).attach(mihonChannel)
+
+        // Tile channel: decodes just the visible region of a tall manga/manhwa
+        // page (BitmapRegionDecoder) instead of the whole page, for the reader's
+        // tiled-page path. Same registration shape as the two bridges above.
+        val tileChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "zangetsu/tiles")
+        TileBridge(extensionScope("tiles")).attach(tileChannel)
 
         // Novel-fetch channel: routes the LNReader plugin's HTTP requests
         // through native OkHttp (see NovelHttp.kt) instead of Dio/dart:io.
