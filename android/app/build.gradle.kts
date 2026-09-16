@@ -51,6 +51,25 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+
+        // AGP compiles native sources against the app's minSdk (24) by
+        // default, and the NDK 30 imagedecoder.h headers hard-error ("is
+        // unavailable") on every AImageDecoder_* call below API 30. This
+        // shim only ever calls them after tile_available() confirms API 30+
+        // at runtime, so it's safe to compile against platform 30 without
+        // raising the app's real minSdk.
+        externalNativeBuild {
+            cmake {
+                arguments += "-DANDROID_PLATFORM=30"
+            }
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
     }
 
     // Drop x86/x86_64 (emulator-only) native libs from every output — including
