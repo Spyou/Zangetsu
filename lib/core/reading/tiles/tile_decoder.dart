@@ -68,6 +68,7 @@ class TileDecoder {
   var _nextId = 0;
   Completer<void>? _starting;
   Completer<void>? _shutdownAck;
+  Future<void>? _disposing;
 
   Future<void> _ensureStarted() async {
     if (_toIsolate != null) return;
@@ -88,7 +89,8 @@ class TileDecoder {
       } else if (message is _TileFailed) {
         _pending.remove(message.id)?.complete(null);
       } else if (message is _TileShutdownAck) {
-        _shutdownAck?.complete();
+        final ack = _shutdownAck;
+        if (ack != null && !ack.isCompleted) ack.complete();
       }
     });
     return starting.future;
@@ -99,7 +101,9 @@ class TileDecoder {
   /// caller should fall back to a whole-page decode.
   Future<TileImage?> decode(String path, TileSpec spec) async {
     if (!tileDecodingAvailable()) return null;
+    if (_disposing != null) return null;
     await _ensureStarted();
+    if (_toIsolate == null) return null;
 
     final id = _nextId++;
     final completer = Completer<_RawTile?>();
@@ -139,7 +143,11 @@ class TileDecoder {
     _toIsolate?.send(_TileRelease(path));
   }
 
-  Future<void> dispose() async {
+  /// Safe to call more than once — later callers await the first shutdown
+  /// rather than starting a second one and racing on the ack.
+  Future<void> dispose() => _disposing ??= _dispose();
+
+  Future<void> _dispose() async {
     if (_toIsolate != null) {
       // kill(beforeNextEvent) does not guarantee a message sent moments
       // earlier has been handled yet — a normal message and a kill control
@@ -249,31 +257,39 @@ void _isolateMain(SendPort toMain) {
       lruReady = true;
     }
 
-    var handle = handles[message.path];
-    if (handle == null) {
-      handle = tileOpen(message.path);
+    try {
+      var handle = handles[message.path];
       if (handle == null) {
+        handle = tileOpen(message.path);
+        if (handle == null) {
+          toMain.send(_TileFailed(message.id));
+          return;
+        }
+        handles[message.path] = handle;
+      }
+      lru.touch(message.path);
+
+      final tile = tileDecode(
+        handle,
+        message.x,
+        message.y,
+        message.width,
+        message.height,
+        message.sample,
+      );
+      if (tile == null) {
         toMain.send(_TileFailed(message.id));
         return;
       }
-      handles[message.path] = handle;
-    }
-    lru.touch(message.path);
-
-    final tile = tileDecode(
-      handle,
-      message.x,
-      message.y,
-      message.width,
-      message.height,
-      message.sample,
-    );
-    if (tile == null) {
+      toMain.send(
+        _RawTile(message.id, tile.rgba, tile.stride, tile.width, tile.height),
+      );
+    } catch (_) {
+      // A decode that throws must not take the isolate down with it: the
+      // handles here are native file descriptors and nothing else would close
+      // them. Report the failure and let the caller fall back.
+      closePage(message.path);
       toMain.send(_TileFailed(message.id));
-      return;
     }
-    toMain.send(
-      _RawTile(message.id, tile.rgba, tile.stride, tile.width, tile.height),
-    );
   });
 }
