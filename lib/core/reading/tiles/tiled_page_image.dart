@@ -75,7 +75,7 @@ class _TiledPageImageState extends State<TiledPageImage> {
     // positions already flown past is work thrown away. Waiting for the scroll
     // to settle asks only for what you actually stopped on.
     _refineDebounce?.cancel();
-    _refineDebounce = Timer(const Duration(milliseconds: 90), () {
+    _refineDebounce = Timer(const Duration(milliseconds: 40), () {
       if (mounted) _refineForViewport();
     });
   }
@@ -165,7 +165,29 @@ class _TiledPageImageState extends State<TiledPageImage> {
       final dpr = MediaQuery.devicePixelRatioOf(context);
       final scale = box.size.width * dpr / widget.imageWidth;
       final sample = _pyramid.sampleFor(scale);
-      final wanted = _pyramid.tilesFor(visible, sample).toSet();
+
+      // Hold half a screen above and below what is actually visible. Keeping
+      // only the visible band meant every small scroll — and every scroll back
+      // up — threw tiles away and had to decode them again, which is the page
+      // going blurry under you for no reason. The margin costs a few MB and
+      // removes that entirely; a fast fling still outruns it, and nothing can
+      // fix that but decoding faster.
+      final margin = visible.height * 0.5;
+      final band = Rect.fromLTRB(
+        visible.left,
+        visible.top - margin,
+        visible.right,
+        visible.bottom + margin,
+      ).intersect(
+        Rect.fromLTWH(
+          0,
+          0,
+          widget.imageWidth.toDouble(),
+          widget.imageHeight.toDouble(),
+        ),
+      );
+
+      final wanted = _pyramid.tilesFor(band, sample).toSet();
 
       // Free anything that is neither wanted nor the base layer.
       final base = _pyramid.baseTile;

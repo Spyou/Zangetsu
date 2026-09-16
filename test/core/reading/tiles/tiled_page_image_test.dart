@@ -239,15 +239,23 @@ void main() {
       final pyramid = TilePyramid(imageWidth: 1080, imageHeight: 6000);
       expect(source.requested, contains(pyramid.baseTile));
 
-      // Every requested tile must actually overlap what's on screen. The
-      // visible band, in full-image pixels, is roughly the middle third of
-      // the page (computed from the scroll position set above).
-      final visibleBand = Rect.fromLTWH(0, 2200, 1080, 1600);
+      // Every requested tile must overlap what's on screen PLUS the half-
+      // screen margin kept either side, so scrolling back does not have to
+      // decode again. The visible band, in full-image pixels, is roughly the
+      // middle third of the page (from the scroll position set above); the
+      // margin is half its height top and bottom.
+      const visibleBand = Rect.fromLTWH(0, 2200, 1080, 1600);
+      final keptBand = Rect.fromLTRB(
+        visibleBand.left,
+        visibleBand.top - visibleBand.height / 2,
+        visibleBand.right,
+        visibleBand.bottom + visibleBand.height / 2,
+      );
       for (final spec in source.requested) {
         expect(
-          spec.source.overlaps(visibleBand),
+          spec.source.overlaps(keptBand),
           isTrue,
-          reason: '$spec does not overlap the visible band $visibleBand',
+          reason: '$spec does not overlap the kept band $keptBand',
         );
       }
 
