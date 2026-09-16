@@ -654,9 +654,8 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
   Future<void> _fetchPageBytes(PageImage p, int index, int width) async {
     // A tile crop needs a real file on disk, which most pages do not start
     // with — resolve one here, off the same preload pass that measures the
-    // page, so it is ready by the time the page is built. Off when the flag
-    // is off: nothing extra runs at all.
-    if (sl<ReaderPrefs>().tiledDecoding && !_pageFile.containsKey(p.url)) {
+    // page, so it is ready by the time the page is built.
+    if (!_pageFile.containsKey(p.url)) {
       final f = await _pageFiles.fileFor(p.url, p.headers);
       if (f != null && mounted) {
         _pageFile[p.url] = f.path;
@@ -2020,7 +2019,6 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
     final pixels = _pixelSize[page.url];
     final file = _pageFile[page.url];
     final canTile =
-        sl<ReaderPrefs>().tiledDecoding &&
         aspect != null &&
         pixels != null &&
         file != null &&

@@ -1687,15 +1687,20 @@ void main() {
       await disposeHarness(tester);
     });
 
-    // The safety rail: tiled decoding is a brand new code path behind a flag
-    // that defaults off, and with it off nothing about the existing strip may
-    // change — not just "no tiled widget", the ordinary vertical reader still
-    // has to behave exactly as it did before this feature existed.
-    testWidgets('vertical: tiling stays off with the flag off', (
+    // Tiling needs THREE things before it may draw a page: the aspect, the
+    // page's true pixel size, and a resolved on-disk file. In this sandbox
+    // there is no real network and no real file, so none of them is ever
+    // recorded — and a page missing any of them must take the plain path,
+    // never a guessed one. A guessed size means a tile crop addressed in the
+    // wrong space, which is a visibly broken page rather than a slow one.
+    //
+    // The strip assertions matter as much as the absent widget: tiling is new
+    // code in the reader, and the ordinary vertical path has to behave exactly
+    // as it did before the feature existed.
+    testWidgets('vertical: a page with nothing recorded takes the plain path', (
       tester,
     ) async {
       await tester.runAsync(() => sl<ReaderPrefs>().setDirection('vertical'));
-      await tester.runAsync(() => sl<ReaderPrefs>().setTiledDecoding(false));
       ani.register(_FakeReadingProvider('ani:m', {'u1': pages(20)}));
 
       await tester.pumpWidget(harness());
@@ -1711,25 +1716,5 @@ void main() {
 
       await disposeHarness(tester);
     });
-
-    // Flag on is not enough on its own — [TiledPageImage] also needs the
-    // page's true pixel size and a resolved on-disk file, and in this sandbox
-    // (no real network, no real file) neither one is ever recorded. A page
-    // with either missing must take the plain path, never a guessed one.
-    testWidgets(
-      'vertical: tiling stays off with the flag on but nothing recorded yet',
-      (tester) async {
-        await tester.runAsync(() => sl<ReaderPrefs>().setDirection('vertical'));
-        await tester.runAsync(() => sl<ReaderPrefs>().setTiledDecoding(true));
-        ani.register(_FakeReadingProvider('ani:m', {'u1': pages(20)}));
-
-        await tester.pumpWidget(harness());
-        await settle(tester);
-
-        expect(find.byType(TiledPageImage), findsNothing);
-
-        await disposeHarness(tester);
-      },
-    );
   });
 }

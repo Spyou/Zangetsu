@@ -324,21 +324,6 @@ class _ReaderSettingsScreenState extends State<ReaderSettingsScreen> {
                   if (mounted) setState(() {});
                 },
               ),
-              // TEMPORARY — here so tiled decoding can be read with, and
-              // compared against the old path on the same chapter, before it
-              // becomes the default. Deliberately not translated: it is coming
-              // out again once it is proven, and adding a key to eight .arb
-              // files for something with a known removal date is churn.
-              _toggleRow(
-                icon: Icons.grid_on_outlined,
-                title: 'Tiled page decoding (test)',
-                subtitle: 'Decode only the visible part of very tall pages',
-                value: prefs.tiledDecoding,
-                onChanged: (v) async {
-                  await prefs.setTiledDecoding(v);
-                  if (mounted) setState(() {});
-                },
-              ),
               _sliderRow(
                 icon: Icons.layers_outlined,
                 title: context.l10n.preloadPages,
