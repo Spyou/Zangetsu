@@ -1,8 +1,5 @@
-import 'dart:ui' as ui;
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:watch_app/core/reading/tiles/tile_decoder.dart';
-import 'package:watch_app/core/reading/tiles/tile_pyramid.dart';
 
 void main() {
   group('TileLru', () {
@@ -91,29 +88,29 @@ void main() {
   });
 
   group('TileDecoder', () {
-    test('dispose called twice concurrently completes both and does not throw',
-        () async {
+    test('dispose during isolate startup does not orphan the isolate', () async {
       final decoder = TileDecoder();
-      // On the test host tileDecodingAvailable() is false, so the isolate
-      // never spawns. This tests the null-isolate path, not the ack handshake.
-      await expectLater(
-        Future.wait([decoder.dispose(), decoder.dispose()]),
-        completes,
-      );
+      final starting = decoder.startForTest(); // deliberately not awaited
+      await decoder.dispose();
+      await starting;
+      // Let any late assignment inside _ensureStarted land before asserting.
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(decoder.isolateAliveForTest, isFalse);
     });
 
-    test('decode after dispose returns null', () async {
+    test('dispose after a real start kills the isolate', () async {
       final decoder = TileDecoder();
+      await decoder.startForTest();
+      expect(decoder.isolateAliveForTest, isTrue);
       await decoder.dispose();
-      // Even if tileDecodingAvailable() were true and the isolate spawned,
-      // decode would return null because _disposing is set. But on the test
-      // host it returns null immediately anyway. Either way, it should not throw.
-      final spec = TileSpec(
-        sample: 1,
-        source: ui.Rect.fromLTWH(0, 0, 100, 100),
-      );
-      final result = await decoder.decode('path', spec);
-      expect(result, isNull);
+      expect(decoder.isolateAliveForTest, isFalse);
+    });
+
+    test('dispose twice concurrently is safe once an isolate exists', () async {
+      final decoder = TileDecoder();
+      await decoder.startForTest();
+      await Future.wait([decoder.dispose(), decoder.dispose()]);
+      expect(decoder.isolateAliveForTest, isFalse);
     });
   });
 }

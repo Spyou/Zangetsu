@@ -1,7 +1,8 @@
 import 'dart:async';
 import 'dart:isolate';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
+
+import 'package:flutter/foundation.dart';
 
 import 'tile_decoder_ffi.dart';
 import 'tile_pyramid.dart';
@@ -103,7 +104,7 @@ class TileDecoder {
     if (!tileDecodingAvailable()) return null;
     if (_disposing != null) return null;
     await _ensureStarted();
-    if (_toIsolate == null) return null;
+    if (_disposing != null || _toIsolate == null) return null;
 
     final id = _nextId++;
     final completer = Completer<_RawTile?>();
@@ -143,11 +144,34 @@ class TileDecoder {
     _toIsolate?.send(_TileRelease(path));
   }
 
+  /// Starts the isolate without going through [decode], which refuses early on
+  /// a host with no native library. Lets the startup/teardown race be tested.
+  @visibleForTesting
+  Future<void> startForTest() => _ensureStarted();
+
+  /// Whether an isolate is currently held. A `true` here after `dispose()` has
+  /// returned means one was orphaned.
+  @visibleForTesting
+  bool get isolateAliveForTest => _isolate != null;
+
   /// Safe to call more than once — later callers await the first shutdown
   /// rather than starting a second one and racing on the ack.
   Future<void> dispose() => _disposing ??= _dispose();
 
   Future<void> _dispose() async {
+    // A spawn may be in flight. `_isolate` is assigned only after
+    // `Isolate.spawn` returns, so killing right now would kill nothing and
+    // leave a live isolate holding native fds with no reference left to reach
+    // it. Wait for the start to land first (bounded — a spawn that failed
+    // never completes this).
+    final starting = _starting;
+    if (starting != null && !starting.isCompleted) {
+      await starting.future.timeout(
+        const Duration(seconds: 2),
+        onTimeout: () {},
+      );
+    }
+
     if (_toIsolate != null) {
       // kill(beforeNextEvent) does not guarantee a message sent moments
       // earlier has been handled yet — a normal message and a kill control
@@ -288,6 +312,7 @@ void _isolateMain(SendPort toMain) {
       // A decode that throws must not take the isolate down with it: the
       // handles here are native file descriptors and nothing else would close
       // them. Report the failure and let the caller fall back.
+      if (lruReady) lru.remove(message.path);
       closePage(message.path);
       toMain.send(_TileFailed(message.id));
     }
