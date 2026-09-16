@@ -43,6 +43,12 @@ class _TiledPageImageState extends State<TiledPageImage> {
   bool _refining = false;
 
   @override
+  void initState() {
+    super.initState();
+    if (!widget.decoder.available) _failed = true;
+  }
+
+  @override
   void dispose() {
     for (final tile in _tiles.values) {
       tile.dispose();

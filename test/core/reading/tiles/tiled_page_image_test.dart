@@ -16,6 +16,9 @@ class _FakeTileSource implements TileSource {
   final requested = <TileSpec>[];
 
   @override
+  bool get available => true;
+
+  @override
   Future<TileImage?> decode(String path, TileSpec spec) async {
     requested.add(spec);
     final pixels = Uint8List(4 * 4 * 4);
@@ -29,6 +32,21 @@ class _FakeTileSource implements TileSource {
     );
     return TileImage(await completer.future, spec);
   }
+
+  @override
+  void release(String path) {}
+}
+
+/// A source that passes the startup gate (it CAN tile) but whose every decode
+/// fails — the "still deciding, then the base tile itself doesn't pan out"
+/// path, as opposed to the "can't tile at all" path the startup gate now
+/// short-circuits before a single frame is built.
+class _AvailableButFailingSource implements TileSource {
+  @override
+  bool get available => true;
+
+  @override
+  Future<TileImage?> decode(String path, TileSpec spec) async => null;
 
   @override
   void release(String path) {}
@@ -49,6 +67,63 @@ Future<void> _settle(WidgetTester tester) {
       await tester.pump();
     }
   });
+}
+
+/// A [TileImage] that remembers whether [dispose] was called on it, so a
+/// test can tell a correctly-disposed duplicate apart from a silently
+/// dropped (leaked) one.
+class _TrackedTileImage extends TileImage {
+  _TrackedTileImage(super.image, super.spec);
+
+  bool disposed = false;
+
+  @override
+  void dispose() {
+    disposed = true;
+    super.dispose();
+  }
+}
+
+/// A source whose `decode()` never resolves on its own — the test resolves
+/// each call explicitly, in whatever order it wants — and which counts how
+/// many times each [TileSpec] was asked for. That's what lets a test drive
+/// (and observe) the exact overlap ruling #4 guards against: two decodes for
+/// the same spec in flight at once.
+class _HeldTileSource implements TileSource {
+  final calls = <TileSpec, int>{};
+  final _pending = <TileSpec, List<Completer<TileImage?>>>{};
+
+  @override
+  bool get available => true;
+
+  @override
+  Future<TileImage?> decode(String path, TileSpec spec) {
+    calls[spec] = (calls[spec] ?? 0) + 1;
+    final completer = Completer<TileImage?>();
+    (_pending[spec] ??= []).add(completer);
+    return completer.future;
+  }
+
+  @override
+  void release(String path) {}
+
+  /// Resolves the [index]-th still-outstanding `decode()` call for [spec]
+  /// with a small real, trackable image. Must run inside [WidgetTester.runAsync]
+  /// — building the image goes through a genuine engine callback.
+  Future<_TrackedTileImage> resolve(TileSpec spec, {int index = 0}) async {
+    final pixels = Uint8List(4 * 4 * 4);
+    final imageCompleter = Completer<ui.Image>();
+    ui.decodeImageFromPixels(
+      pixels,
+      4,
+      4,
+      ui.PixelFormat.rgba8888,
+      imageCompleter.complete,
+    );
+    final tracked = _TrackedTileImage(await imageCompleter.future, spec);
+    _pending[spec]![index].complete(tracked);
+    return tracked;
+  }
 }
 
 void main() {
@@ -86,7 +161,12 @@ void main() {
                 path: '/nonexistent/page.jpg',
                 imageWidth: 1080,
                 imageHeight: 6000,
-                decoder: TileDecoder(),
+                // A real TileDecoder() would fail the startup gate on this
+                // host and skip straight to fallback before frame one — this
+                // test is about the window *before* that decision, so it
+                // needs a source that passes the gate and only fails once
+                // asked to decode.
+                decoder: _AvailableButFailingSource(),
                 fallbackBuilder: () => const SizedBox.shrink(),
               ),
             ),
@@ -183,6 +263,141 @@ void main() {
               'near the viewport',
         );
       }
+    },
+  );
+
+  testWidgets(
+    'a spec already awaiting decode is not requested again while a scroll '
+    'keeps rebuilding the page',
+    (tester) async {
+      tester.view.physicalSize = const Size(540, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+
+      final source = _HeldTileSource();
+      final pyramid = TilePyramid(imageWidth: 1080, imageHeight: 6000);
+
+      Widget page() => MaterialApp(
+            home: Scaffold(
+              body: ListView(
+                children: [
+                  TiledPageImage(
+                    path: '/page.jpg',
+                    imageWidth: 1080,
+                    imageHeight: 6000,
+                    decoder: source,
+                    fallbackBuilder: () => const SizedBox.shrink(),
+                  ),
+                ],
+              ),
+            ),
+          );
+
+      // Frame 0: _requestBase fires and asks for the base tile.
+      await tester.pumpWidget(page());
+      expect(source.calls[pyramid.baseTile], 1);
+
+      // Let the base tile land, which hands off to the first
+      // _refineForViewport — it asks for a sharper tile over the top of the
+      // page (the default, unscrolled viewport) and then hangs, since this
+      // source never resolves anything on its own.
+      await tester.runAsync(() => source.resolve(pyramid.baseTile));
+      await tester.pump();
+
+      final refinedSpecs =
+          source.calls.keys.where((s) => s != pyramid.baseTile).toList();
+      expect(refinedSpecs, hasLength(1),
+          reason: 'expected exactly one sharper tile requested and stuck '
+              'mid-decode; got $refinedSpecs');
+      final stuck = refinedSpecs.single;
+      expect(source.calls[stuck], 1);
+
+      // Rebuild the page several times — as a real scroll would, each frame
+      // — while that decode is still outstanding. Nothing about the page's
+      // own state changed, so a correct _refineForViewport should see the
+      // same "already asked for this" tile and do nothing.
+      for (var i = 0; i < 5; i++) {
+        await tester.pumpWidget(page());
+      }
+
+      expect(
+        source.calls[stuck],
+        1,
+        reason: 'a tile already awaiting decode must not be requested again '
+            'while a decode for it is still in flight',
+      );
+      expect(source.calls[pyramid.baseTile], 1);
+    },
+  );
+
+  testWidgets(
+    'a duplicate decode result is disposed, not silently overwriting the '
+    'tile already in use',
+    (tester) async {
+      tester.view.physicalSize = const Size(540, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+
+      final source = _HeldTileSource();
+      // A page no bigger than one tile: the base tile IS the only tile at
+      // any zoom, so _requestBase's own decode and _refineForViewport's
+      // first decode both ask for the exact same TileSpec — the base tile
+      // is requested once when the page starts up, and independently again
+      // as soon as the first refine pass runs, before either has resolved.
+      final pyramid = TilePyramid(imageWidth: 100, imageHeight: 100);
+
+      Widget page() => MaterialApp(
+            home: Scaffold(
+              body: ListView(
+                children: [
+                  TiledPageImage(
+                    path: '/page.jpg',
+                    imageWidth: 100,
+                    imageHeight: 100,
+                    decoder: source,
+                    fallbackBuilder: () => const SizedBox.shrink(),
+                  ),
+                ],
+              ),
+            ),
+          );
+
+      // Frame 0: _requestBase asks for the base tile (call #1) and hangs.
+      await tester.pumpWidget(page());
+      expect(source.calls[pyramid.baseTile], 1);
+
+      // Frame 1: _baseRequested is already true, so build() takes the
+      // refine branch. _refineForViewport wants the same base tile (it's
+      // the only tile there is) — it's not in _tiles yet, so it asks again
+      // (call #2) and also hangs, independently of _requestBase's own call.
+      await tester.pumpWidget(page());
+      expect(source.calls[pyramid.baseTile], 2);
+
+      // Resolve _requestBase's call first: the tile lands and gets stored.
+      final first = (await tester.runAsync(
+        () => source.resolve(pyramid.baseTile, index: 0),
+      ))!;
+      await tester.pump();
+
+      // Now resolve _refineForViewport's own (redundant) call.
+      final second = (await tester.runAsync(
+        () => source.resolve(pyramid.baseTile, index: 1),
+      ))!;
+      await tester.pump();
+
+      expect(first.disposed, isFalse,
+          reason: 'the tile actually in use must not be disposed out from '
+              'under the painter');
+      expect(second.disposed, isTrue,
+          reason: 'a duplicate decode that lands after the spec is already '
+              'held must be disposed, not silently overwrite it (a leaked '
+              'ui.Image on the scroll path)');
     },
   );
 }

@@ -57,6 +57,12 @@ class TileLru {
 /// wrong, and a fake standing in here is the only way to test it without a
 /// device.
 abstract class TileSource {
+  /// Whether this source can tile at all. Checked once when a page is built,
+  /// so a device that cannot tile never paints an empty frame before falling
+  /// back — asking per page, after a decode has already failed, is one black
+  /// frame per page on exactly the old devices that take this path.
+  bool get available;
+
   Future<TileImage?> decode(String path, TileSpec spec);
   void release(String path);
 }
@@ -71,6 +77,9 @@ class TileDecoder implements TileSource {
 
   /// How many pages stay open at once. Scrolling back should not reopen files.
   final int openPages;
+
+  @override
+  bool get available => tileDecodingAvailable();
 
   SendPort? _toIsolate;
   Isolate? _isolate;
