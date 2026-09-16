@@ -242,23 +242,36 @@ class EpisodeMetadataService {
     bool tmdbIsTv = false,
   }) async {
     if (episodes.isEmpty) return episodes;
+
+    var out = episodes;
     if (type == ProviderType.anime && malId != null) {
       final meta = await animeEpisodeMeta(malId);
-      return mergeMeta(episodes, (e) => meta[_intNumber(e)]);
+      out = mergeMeta(out, (e) => meta[_intNumber(e)]);
     }
+
     if (tmdbId != null && tmdbIsTv) {
-      final seasons = <int>{for (final e in episodes) e.season ?? 1};
-      final bySeason = <int, Map<int, EpisodeMeta>>{};
-      for (final s in seasons) {
-        bySeason[s] = await tvEpisodeMeta(tmdbId, s);
-      }
-      if (bySeason.values.every((m) => m.isEmpty)) return episodes;
-      return mergeMeta(
-        episodes,
-        (e) => bySeason[e.season ?? 1]?[_intNumber(e)],
-      );
+      out = await _enrichFromTmdbTv(out, tmdbId);
     }
-    return episodes;
+    return out;
+  }
+
+  /// TMDB `/tv/{id}/season/{n}` — match by season + episode-within-season, not
+  /// absolute catalogue numbering (Z-Mode `Episode.number` is absolute).
+  Future<List<Episode>> _enrichFromTmdbTv(
+    List<Episode> episodes,
+    int tmdbId,
+  ) async {
+    final seasons = episodeSeasonsPresent(episodes);
+    final bySeason = <int, Map<int, EpisodeMeta>>{};
+    for (final s in seasons) {
+      bySeason[s] = await tvEpisodeMeta(tmdbId, s);
+    }
+    if (bySeason.values.every((m) => m.isEmpty)) return episodes;
+    return mergeMeta(episodes, (e) {
+      final idx = episodeIndexInSeason(episodes, e);
+      if (idx == null) return null;
+      return bySeason[episodeSeasonNumber(e)]?[idx];
+    });
   }
 
   // ── Disk cache (best-effort; a Hive miss/failure just falls through) ──────

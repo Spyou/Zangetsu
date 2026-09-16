@@ -160,6 +160,47 @@ class Episode extends Equatable {
       ];
 }
 
+/// Season for [ep]: explicit [Episode.season], else parsed from an `S<n>`
+/// prefix on [title] (TorBox / TMDB lists use `S02 E05 - …`). Returns 1 when
+/// neither is present — same default as [seasonsOf] in the detail UI.
+int episodeSeasonNumber(Episode ep) {
+  if (ep.season != null && ep.season! > 0) return ep.season!;
+  final m = RegExp(r'^S(\d+)').firstMatch(ep.title.trim());
+  if (m != null) {
+    final s = int.tryParse(m.group(1)!);
+    if (s != null && s > 0) return s;
+  }
+  return 1;
+}
+
+/// Episode index within its season from `S02 E05` style titles (TorBox).
+int? parseEpisodeInSeasonFromTitle(String title) {
+  final m = RegExp(r'^S\d+\s+E(\d+)', caseSensitive: false).firstMatch(
+    title.trim(),
+  );
+  if (m == null) return null;
+  return int.tryParse(m.group(1)!);
+}
+
+/// Distinct season numbers present in [eps] (see [episodeSeasonNumber]).
+Set<int> episodeSeasonsPresent(List<Episode> eps) =>
+    {for (final e in eps) episodeSeasonNumber(e)};
+
+/// TMDB season APIs key by (season, episode within season). Z-Mode keeps
+/// absolute [Episode.number] for trackers but TorBox titles carry `S02 E03`.
+int? episodeIndexInSeason(List<Episode> eps, Episode ep) {
+  final fromTitle = parseEpisodeInSeasonFromTitle(ep.title);
+  if (fromTitle != null) return fromTitle;
+  final season = episodeSeasonNumber(ep);
+  var n = 0;
+  for (final e in eps) {
+    if (episodeSeasonNumber(e) != season) continue;
+    n++;
+    if (e.id == ep.id) return n;
+  }
+  return null;
+}
+
 /// Where [ep] sits inside its OWN season, 1-based — or null when that can't be
 /// answered ([ep] reports no season, or isn't in [eps]).
 ///

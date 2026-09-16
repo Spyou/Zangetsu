@@ -733,6 +733,11 @@ class MetadataRepository implements CatalogueRepository {
       // leaves the toggle hidden, exactly as before.
       subCount: srcDetail.subCount,
       dubCount: srcDetail.dubCount,
+      // TorBox (and similar) resolve TMDB ids for Torrentio; the catalogue
+      // (AniList) does not. Episode synopses for S02+ need TMDB season fetches.
+      tmdbId: srcDetail.tmdbId ?? d.tmdbId,
+      tmdbIsTv: srcDetail.tmdbIsTv || d.tmdbIsTv,
+      imdbId: srcDetail.imdbId ?? d.imdbId,
       episodes: [
         for (var i = 0; i < count; i++)
           if (i < srcEpisodes.length)

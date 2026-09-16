@@ -159,6 +159,44 @@ void main() {
     });
   });
 
+  group('episodeSeasonNumber', () {
+    test('reads season from S-prefix title when season field is null', () {
+      const ep = Episode(
+        id: '2x3',
+        title: 'S02 E03 - The Next',
+        number: 3,
+        url: 'u',
+      );
+      expect(episodeSeasonNumber(ep), 2);
+    });
+
+    test('prefers explicit season field', () {
+      const ep = Episode(
+        id: 'x',
+        title: 'S01 E01 - Wrong prefix',
+        number: 1,
+        url: 'u',
+        season: 4,
+      );
+      expect(episodeSeasonNumber(ep), 4);
+    });
+
+    test('parseEpisodeInSeasonFromTitle reads E number', () {
+      expect(
+        parseEpisodeInSeasonFromTitle('S02 E07 - Mugen Train'),
+        7,
+      );
+    });
+
+    test('episodeIndexInSeason uses title before position in list', () {
+      const eps = [
+        Episode(id: '1', title: 'S01 E01 - A', number: 1, url: 'u1'),
+        Episode(id: '2', title: 'S02 E03 - B', number: 26, url: 'u2'),
+      ];
+      expect(episodeIndexInSeason(eps, eps[1]), 3);
+    });
+  });
+
   group('mergeMeta', () {
     final byNum = <int, EpisodeMeta>{
       1: (
