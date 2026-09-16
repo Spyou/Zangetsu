@@ -229,9 +229,17 @@ class ChapterDownloadStore {
     }
 
     await deleteDir(staged);
-    return d.mode == ContentMode.novel
-        ? d.copyWith(textPath: moved.first)
-        : d.copyWith(archivePath: moved.first, pageCount: files.length);
+    if (d.mode != ContentMode.novel) {
+      return d.copyWith(archivePath: moved.first, pageCount: files.length);
+    }
+    // A novel's chapter images (img_0.jpg, ...) sort before text.html
+    // alphabetically, so `moved.first` is no longer safe once a chapter has
+    // pictures — pick the actual HTML file by name instead.
+    final text = moved.firstWhere(
+      (p) => p.endsWith('/$textFile'),
+      orElse: () => moved.first,
+    );
+    return d.copyWith(textPath: text);
   }
 
   /// Pack a chapter's pages into a `.cbz` beside the staging folder.

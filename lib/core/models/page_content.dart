@@ -25,10 +25,15 @@ class PageImage {
 }
 
 class ChapterText {
-  const ChapterText({required this.html, this.title});
+  const ChapterText({required this.html, this.title, this.folder});
 
   final String html;
   final String? title;
+
+  /// Absolute path of the folder this HTML was read from — set only for a
+  /// downloaded chapter, so the reader can resolve an `<img>`'s relative
+  /// `src` against it. Null for anything fetched live from the source.
+  final String? folder;
 
   factory ChapterText.fromJson(Map j) => ChapterText(
         html: (j['html'] ?? j['text'] ?? '').toString(),

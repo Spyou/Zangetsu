@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/foundation.dart' show debugPrint;
 
 import '../aniyomi/aniyomi_filters.dart';
@@ -1078,7 +1080,15 @@ class SourceRepository implements CatalogueRepository {
         );
         if (rec != null && rec.status == ChapterDownloadStatus.done) {
           final html = await store.localText(rec);
-          if (html != null && html.isNotEmpty) return ChapterText(html: html);
+          if (html != null && html.isNotEmpty) {
+            // The chapter's own folder on disk — a downloaded chapter's
+            // images (if it has any) sit right next to text.html, and the
+            // reader resolves their relative `src` against this.
+            final folder = rec.textPath != null
+                ? File(rec.textPath!).parent.path
+                : (await store.dirFor(rec)).path;
+            return ChapterText(html: html, folder: folder);
+          }
         }
       } catch (_) {
         // fall through to the network

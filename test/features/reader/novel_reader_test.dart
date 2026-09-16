@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
 import 'package:hive/hive.dart';
 import 'package:watch_app/core/di/injector.dart';
 import 'package:watch_app/core/models/episode.dart';
@@ -33,11 +34,17 @@ import 'package:watch_app/features/reader/novel_reader_screen.dart';
 /// URL — mirrors `_FakeReadingProvider` in reading_leaf_routing_test.dart,
 /// with per-URL text added so a widget test can tell chapters apart.
 class _FakeReadingProvider implements BaseProvider, ReadingProvider {
-  _FakeReadingProvider(this.sourceId, this.textByUrl);
+  _FakeReadingProvider(this.sourceId, this.textByUrl, {this.folderByUrl});
 
   @override
   final String sourceId;
   final Map<String, String> textByUrl;
+
+  /// Stands in for a real downloaded chapter's on-disk folder, without any
+  /// actual ChapterDownloadStore/file I/O — a widget test just needs
+  /// `ChapterText.folder` to be non-null for a URL to prove the reader
+  /// threads it through to `HtmlWidget.baseUrl`.
+  final Map<String, String>? folderByUrl;
 
   @override
   String get displayName => sourceId;
@@ -82,8 +89,10 @@ class _FakeReadingProvider implements BaseProvider, ReadingProvider {
       throw UnimplementedError();
 
   @override
-  Future<ChapterText> getText(String chapterUrl) async =>
-      ChapterText(html: '<p>${textByUrl[chapterUrl] ?? 'missing'}</p>');
+  Future<ChapterText> getText(String chapterUrl) async => ChapterText(
+        html: '<p>${textByUrl[chapterUrl] ?? 'missing'}</p>',
+        folder: folderByUrl?[chapterUrl],
+      );
 }
 
 /// A reading source whose `getText` throws on the first call and succeeds on
@@ -760,5 +769,50 @@ void main() {
         await Future<void>.delayed(const Duration(milliseconds: 50));
       });
     });
+
+    testWidgets(
+      'a chapter whose text carries a folder passes it to HtmlWidget as '
+      "baseUrl, so a relative image src resolves against it — a chapter "
+      'with no folder (the live/non-downloaded case) keeps baseUrl null',
+      (tester) async {
+        // The download → repository plumbing that actually sets
+        // ChapterText.folder for a real downloaded chapter is covered
+        // end-to-end in test/download/ (real ChapterDownloadStore + real
+        // dart:io) — that pipeline doesn't belong in a widget test. This
+        // proves the other half: the reader threading whatever folder it's
+        // handed straight to HtmlWidget's baseUrl.
+        ani.register(
+          _FakeReadingProvider(
+            'ani:n',
+            {'u1': 'chapter one text', 'u2': 'chapter two text'},
+            folderByUrl: {'u1': '/fake/dl/book/chapter-1'},
+          ),
+        );
+
+        await tester.pumpWidget(harness());
+        await tester.pumpAndSettle();
+
+        final downloaded = tester.widget<HtmlWidget>(find.byType(HtmlWidget));
+        expect(downloaded.baseUrl, Uri.file('/fake/dl/book/chapter-1/'));
+
+        // chrome → next, onto 'u2' — no folder for that url, so baseUrl
+        // must go back to null rather than sticking from the last chapter.
+        await tester.tap(find.byType(CustomScrollView));
+        await tester.pumpAndSettle();
+        await tester.runAsync(() async {
+          await tester.tap(find.byIcon(Icons.skip_next_rounded));
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+        });
+        await tester.pumpAndSettle();
+
+        final live = tester.widget<HtmlWidget>(find.byType(HtmlWidget));
+        expect(live.baseUrl, isNull);
+
+        await tester.runAsync(() async {
+          await tester.pumpWidget(const SizedBox());
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+        });
+      },
+    );
   });
 }

@@ -533,6 +533,13 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
               sliver: HtmlWidget(
                 cleanNovelHtml(text.html),
                 renderMode: RenderMode.sliverList,
+                // Only a downloaded chapter carries a folder — resolves an
+                // image's relative `src` (the download saves them bare, e.g.
+                // `img_0.jpg`) to the local file next to the saved HTML.
+                // Null for anything read live, same as before this existed.
+                baseUrl: text.folder == null
+                    ? null
+                    : Uri.file('${text.folder}/'),
                 textStyle: base,
                 // HtmlWidget caches its built tree and only re-renders when the
                 // HTML or one of these triggers changes — a changed `textStyle`

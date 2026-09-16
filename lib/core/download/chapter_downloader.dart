@@ -301,9 +301,99 @@ class ChapterDownloader extends ChangeNotifier {
   ) async {
     final text = await _repo.chapterText(rec.chapterUrl, sourceId: rec.sourceId);
     if (text.html.trim().isEmpty) throw Exception('Chapter has no text');
+    final (html, imageBytes) = await _downloadImages(
+      text.html,
+      rec.chapterUrl,
+      part,
+    );
     final file = File('${part.path}/${ChapterDownloadStore.textFile}');
-    await file.writeAsString(text.html, flush: true);
-    return rec.copyWith(bytes: await file.length());
+    await file.writeAsString(html, flush: true);
+    return rec.copyWith(bytes: await file.length() + imageBytes);
+  }
+
+  /// Matches an `<img … src="…">` tag's `src` attribute — group 1 is
+  /// everything up to and including `src=`, group 2 the quote character used,
+  /// group 3 the URL between the quotes. Requires whitespace right before
+  /// `src` so a lazy-load `data-src` attribute is never mistaken for it.
+  static final RegExp _imgTagSrc = RegExp(
+    r'''(<img\b[^>]*\ssrc\s*=\s*)(["'])(.*?)\2''',
+    caseSensitive: false,
+    dotAll: true,
+  );
+
+  /// Downloads every image an `<img>` tag in [html] points at into [part] as
+  /// `img_0.<ext>`, `img_1.<ext>` … and rewrites that tag's `src` to the bare
+  /// filename, so the folder reads offline wherever it ends up moved to.
+  ///
+  /// A relative `src` is resolved against [chapterUrl] first. `data:` URIs
+  /// are left alone — already inline, nothing to fetch. One image failing to
+  /// download leaves its tag untouched rather than failing the whole
+  /// chapter: a chapter with one broken picture beats no chapter.
+  ///
+  /// Returns the rewritten html and the total bytes written to disk.
+  Future<(String, int)> _downloadImages(
+    String html,
+    String chapterUrl,
+    Directory part,
+  ) async {
+    final matches = _imgTagSrc.allMatches(html).toList();
+    if (matches.isEmpty) return (html, 0);
+
+    final base = Uri.tryParse(chapterUrl);
+    final out = StringBuffer();
+    var cursor = 0;
+    var bytes = 0;
+    var index = 0;
+
+    for (final m in matches) {
+      out.write(html.substring(cursor, m.start));
+      cursor = m.end;
+      final src = m.group(3)!;
+
+      if (src.startsWith('data:')) {
+        out.write(m.group(0));
+        continue;
+      }
+
+      final resolved = base?.resolve(src) ?? Uri.tryParse(src);
+      if (resolved == null) {
+        out.write(m.group(0));
+        continue;
+      }
+
+      try {
+        final res = await _dio.get<List<int>>(
+          resolved.toString(),
+          options: Options(responseType: ResponseType.bytes),
+        );
+        final data = res.data;
+        if (data == null || data.isEmpty) throw Exception('Empty image');
+        final name = 'img_$index${_imgExt(resolved.path)}';
+        await File(
+          '${part.path}/$name',
+        ).writeAsBytes(data, flush: true);
+        bytes += data.length;
+        out
+          ..write(m.group(1))
+          ..write(m.group(2))
+          ..write(name)
+          ..write(m.group(2));
+        index++;
+      } catch (e) {
+        AppLogger.instance.log(
+          '[chapters] image skipped — $e',
+          level: 'W',
+        );
+        out.write(m.group(0));
+      }
+    }
+    out.write(html.substring(cursor));
+    return (out.toString(), bytes);
+  }
+
+  static String _imgExt(String path) {
+    final dot = path.lastIndexOf('.');
+    return dot < 0 ? '.img' : path.substring(dot);
   }
 
   Future<ChapterDownload> _downloadPages(
