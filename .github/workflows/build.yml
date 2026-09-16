@@ -2,37 +2,38 @@ name: Build Android APK
 
 on:
   push:
-      branches: [ main, master ]
-        workflow_dispatch:
+      branches:
+            - main
+                  - master
+                    workflow_dispatch:
 
-        jobs:
-          build:
-              runs-on: ubuntu-latest
+                    jobs:
+                      build:
+                          runs-on: ubuntu-latest
 
-                  steps:
-                        - name: Checkout do Código
-                                uses: actions/checkout@v4
+                              steps:
+                                    - name: Checkout do Código
+                                            uses: actions/checkout@v4
 
-                                      - name: Configurar Java 17
-                                              uses: actions/setup-java@v4
-                                                      with:
-                                                                distribution: 'temurin'
-                                                                          java-version: '17'
+                                                  - name: Configurar Java 17
+                                                          uses: actions/setup-java@v4
+                                                                  with:
+                                                                            distribution: 'temurin'
+                                                                                      java-version: '17'
 
-                                                                                - name: Configurar Flutter
-                                                                                        uses: subosito/flutter-action@v2
-                                                                                                with:
-                                                                                                          channel: 'stable'
+                                                                                            - name: Configurar Flutter
+                                                                                                    uses: subosito/flutter-action@v2
+                                                                                                            with:
+                                                                                                                      channel: 'stable'
 
-                                                                                                                - name: Baixar Dependências
-                                                                                                                        run: flutter pub get
+                                                                                                                            - name: Baixar Dependencias
+                                                                                                                                    run: flutter pub get
 
-                                                                                                                              - name: Compilar APK (Release)
-                                                                                                                                      run: flutter build apk --release
+                                                                                                                                          - name: Compilar APK (Release)
+                                                                                                                                                  run: flutter build apk --release
 
-                                                                                                                                            - name: Salvar APK nos Artefatos
-                                                                                                                                                    uses: actions/upload-artifact@v4
-                                                                                                                                                            with:
-                                                                                                                                                                      name: Zangetsu-Custom-Release
-                                                                                                                                                                                path: build/app/outputs/flutter-apk/app-release.apk
-                                                                                                                                                                                
+                                                                                                                                                        - name: Salvar APK nos Artefatos
+                                                                                                                                                                uses: actions/upload-artifact@v4
+                                                                                                                                                                        with:
+                                                                                                                                                                                  name: Zangetsu-Custom-Release
+                                                                                                                                                                                            path: build/app/outputs/flutter-apk/app-release.apk
