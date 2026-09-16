@@ -30,6 +30,30 @@ class EpubChapter {
 /// drive) is the caller's problem, same as [ChapterDownloadStore.publish] —
 /// this only ever writes to the path it's given.
 class EpubWriter {
+  /// The title to show for a chapter, given the "include chapter number"
+  /// option.
+  ///
+  /// Sources very often already put the number in the title, and blindly
+  /// prepending gave "Chapter 1: Chapter 1 [IMG]" on a real export. So the
+  /// number goes on only when it is not there already.
+  static String chapterTitle(String title, num? number, {required bool includeNumber}) {
+    if (!includeNumber || number == null) return title;
+    final n = number == number.roundToDouble()
+        ? number.toInt().toString()
+        : number.toString();
+    // "Chapter 1", "Ch. 1", "Ch 1", "Episode 1", "#1", "1." and bare "1 -"
+    // all count as already numbered. The trailing (\D|$) stops "1" matching
+    // the start of "10".
+    final already = RegExp(
+      r'^(chapter|chap|ch|episode|ep|#)?[\s.:#\-]*' +
+          RegExp.escape(n) +
+          r'(\D|$)',
+      caseSensitive: false,
+    );
+    if (already.hasMatch(title.trimLeft())) return title;
+    return 'Chapter $n: $title';
+  }
+
   /// Writes an EPUB to [outPath] and returns the file.
   static Future<File> write({
     required String outPath,

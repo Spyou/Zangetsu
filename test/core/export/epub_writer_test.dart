@@ -20,6 +20,7 @@ String _entryString(Archive a, String name) =>
     utf8.decode(a.findFile(name)!.content as List<int>);
 
 void main() {
+  _titleTests();
   late Directory dir;
 
   setUp(() async {
@@ -195,5 +196,48 @@ void main() {
     expect(second, contains('Chapter 3'));
     expect(first, isNot(contains('text 1')));
     expect(second, isNot(contains('text 4')));
+  });
+}
+
+void _titleTests() {
+  group('chapterTitle', () {
+    test('does not repeat a number the title already carries', () {
+      // The real export produced "Chapter 1: Chapter 1 [IMG]" before this.
+      expect(
+        EpubWriter.chapterTitle('Chapter 1 [IMG]', 1, includeNumber: true),
+        'Chapter 1 [IMG]',
+      );
+      for (final t in ['Ch. 2 - Start', 'Episode 3', '#4 Hello', '5. Onwards']) {
+        final n = int.parse(RegExp(r'\d+').firstMatch(t)!.group(0)!);
+        expect(
+          EpubWriter.chapterTitle(t, n, includeNumber: true),
+          t,
+          reason: '"$t" already says $n',
+        );
+      }
+    });
+
+    test('adds the number when the title does not have it', () {
+      expect(
+        EpubWriter.chapterTitle('The First Battle', 1, includeNumber: true),
+        'Chapter 1: The First Battle',
+      );
+      // "10" must not be treated as already-numbered by a chapter 1.
+      expect(
+        EpubWriter.chapterTitle('10 Reasons', 1, includeNumber: true),
+        'Chapter 1: 10 Reasons',
+      );
+    });
+
+    test('off, or no number, leaves the title alone', () {
+      expect(
+        EpubWriter.chapterTitle('Anything', 7, includeNumber: false),
+        'Anything',
+      );
+      expect(
+        EpubWriter.chapterTitle('Anything', null, includeNumber: true),
+        'Anything',
+      );
+    });
   });
 }

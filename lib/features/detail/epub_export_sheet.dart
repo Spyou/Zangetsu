@@ -201,9 +201,6 @@ class _EpubExportBodyState extends State<_EpubExportBody> {
     return out;
   }
 
-  String _fmtNumber(double n) =>
-      n == n.roundToDouble() ? n.toInt().toString() : n.toString();
-
   Future<void> _export() async {
     final chapters = _selected;
     if (chapters.isEmpty || _exporting) return;
@@ -222,9 +219,11 @@ class _EpubExportBodyState extends State<_EpubExportBody> {
       if (html == null) continue;
       built.add(
         EpubChapter(
-          title: _includeNumber && ep.number != null
-              ? 'Chapter ${_fmtNumber(ep.number!)}: ${ep.title}'
-              : ep.title,
+          title: EpubWriter.chapterTitle(
+            ep.title,
+            ep.number,
+            includeNumber: _includeNumber,
+          ),
           html: html,
           images: await _imagesFor(rec),
         ),
