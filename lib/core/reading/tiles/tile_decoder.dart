@@ -9,12 +9,26 @@ import 'tile_pyramid.dart';
 
 /// A decoded tile, ready to paint.
 class TileImage {
-  TileImage(this.image, this.spec);
+  TileImage(this.image, this.spec) {
+    liveBytes += image.width * image.height * 4;
+  }
+
+  /// Decoded tile bytes currently held, across every page. The point of this
+  /// feature is that this number stays near a screenful instead of tracking
+  /// page height, and `dumpsys meminfo` does NOT show it — its Graphics figure
+  /// reads the same for one page as for twelve.
+  static int liveBytes = 0;
 
   final ui.Image image;
   final TileSpec spec;
+  bool _disposed = false;
 
-  void dispose() => image.dispose();
+  void dispose() {
+    if (_disposed) return;
+    _disposed = true;
+    liveBytes -= image.width * image.height * 4;
+    image.dispose();
+  }
 }
 
 /// Least-recently-used bookkeeping for open pages.

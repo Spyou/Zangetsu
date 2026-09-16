@@ -123,7 +123,13 @@ class _TiledPageImageState extends State<TiledPageImage> {
 
       final box = context.findRenderObject() as RenderBox?;
       if (box == null) return;
-      final scale = box.size.width / widget.imageWidth;
+      // box.size is in LOGICAL pixels and imageWidth is in IMAGE pixels, so
+      // the ratio between them is short by the device pixel ratio. Without it
+      // a 2.75x screen picks a sample 2.75x too coarse and the page is drawn
+      // at roughly a quarter of the resolution it is displayed at — which
+      // looks like a big memory win and is really just a blurrier page.
+      final dpr = MediaQuery.devicePixelRatioOf(context);
+      final scale = box.size.width * dpr / widget.imageWidth;
       final sample = _pyramid.sampleFor(scale);
       final wanted = _pyramid.tilesFor(visible, sample).toSet();
 
