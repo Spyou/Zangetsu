@@ -27,6 +27,7 @@ import 'package:watch_app/core/reading/read_history.dart';
 import 'package:watch_app/core/reading/read_store.dart';
 import 'package:watch_app/core/reading/reader_prefs.dart';
 import 'package:watch_app/core/reading/reader_settings.dart';
+import 'package:watch_app/core/reading/tiles/tiled_page_image.dart';
 import 'package:watch_app/core/repository/source_repository.dart';
 import 'package:watch_app/core/state/active_source_cubit.dart';
 import 'package:watch_app/core/supabase/supabase_service.dart';
@@ -1685,5 +1686,50 @@ void main() {
 
       await disposeHarness(tester);
     });
+
+    // The safety rail: tiled decoding is a brand new code path behind a flag
+    // that defaults off, and with it off nothing about the existing strip may
+    // change — not just "no tiled widget", the ordinary vertical reader still
+    // has to behave exactly as it did before this feature existed.
+    testWidgets('vertical: tiling stays off with the flag off', (
+      tester,
+    ) async {
+      await tester.runAsync(() => sl<ReaderPrefs>().setDirection('vertical'));
+      await tester.runAsync(() => sl<ReaderPrefs>().setTiledDecoding(false));
+      ani.register(_FakeReadingProvider('ani:m', {'u1': pages(20)}));
+
+      await tester.pumpWidget(harness());
+      await settle(tester);
+
+      expect(find.byType(TiledPageImage), findsNothing);
+      // The strip itself is unaffected: still page 1 of 20, at the top.
+      expect(find.textContaining('1/20'), findsOneWidget);
+      expect(
+        tester.getTopLeft(find.byKey(const ValueKey('manga-page-0'))).dy,
+        0,
+      );
+
+      await disposeHarness(tester);
+    });
+
+    // Flag on is not enough on its own — [TiledPageImage] also needs the
+    // page's true pixel size and a resolved on-disk file, and in this sandbox
+    // (no real network, no real file) neither one is ever recorded. A page
+    // with either missing must take the plain path, never a guessed one.
+    testWidgets(
+      'vertical: tiling stays off with the flag on but nothing recorded yet',
+      (tester) async {
+        await tester.runAsync(() => sl<ReaderPrefs>().setDirection('vertical'));
+        await tester.runAsync(() => sl<ReaderPrefs>().setTiledDecoding(true));
+        ani.register(_FakeReadingProvider('ani:m', {'u1': pages(20)}));
+
+        await tester.pumpWidget(harness());
+        await settle(tester);
+
+        expect(find.byType(TiledPageImage), findsNothing);
+
+        await disposeHarness(tester);
+      },
+    );
   });
 }

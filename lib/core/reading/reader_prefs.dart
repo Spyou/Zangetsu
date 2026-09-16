@@ -251,6 +251,13 @@ class ReaderPrefs {
       _box.get('colorFilter', defaultValue: 'none') as String;
   Future<void> setColorFilter(String value) => _box.put('colorFilter', value);
 
+  /// Decode only the visible part of tall pages. Off until it has been read
+  /// with for a while.
+  bool get tiledDecoding =>
+      _box.get('tiledDecoding', defaultValue: false) as bool;
+  Future<void> setTiledDecoding(bool value) =>
+      _box.put('tiledDecoding', value);
+
   // ── Shared comfort (both readers) ──────────────────────────────────────
   /// Screen brightness override, 0..1, or -1 for "system" — i.e. no
   /// override, matching the player's own default and today's reader
