@@ -52,12 +52,21 @@ class TileLru {
   int get length => _order.length;
 }
 
+/// What [TiledPageImage] needs from a decoder. A seam, not an abstraction for
+/// its own sake: the widget's tile arithmetic is the part most likely to be
+/// wrong, and a fake standing in here is the only way to test it without a
+/// device.
+abstract class TileSource {
+  Future<TileImage?> decode(String path, TileSpec spec);
+  void release(String path);
+}
+
 /// Decodes tiles on a background isolate.
 ///
 /// Every decode is off the UI isolate: a tile landing must never be able to
 /// stutter a scroll, which is the whole reason this is worth doing rather than
 /// decoding inline.
-class TileDecoder {
+class TileDecoder implements TileSource {
   TileDecoder({this.openPages = 10});
 
   /// How many pages stay open at once. Scrolling back should not reopen files.
@@ -100,6 +109,7 @@ class TileDecoder {
   /// Decodes one tile. Returns null when the device cannot tile, the file
   /// cannot be read, or the region is refused — every one of which means the
   /// caller should fall back to a whole-page decode.
+  @override
   Future<TileImage?> decode(String path, TileSpec spec) async {
     if (!tileDecodingAvailable()) return null;
     if (_disposing != null) return null;
@@ -140,6 +150,7 @@ class TileDecoder {
   }
 
   /// Drops a page's open handle. Called when a page leaves the strip.
+  @override
   void release(String path) {
     _toIsolate?.send(_TileRelease(path));
   }
