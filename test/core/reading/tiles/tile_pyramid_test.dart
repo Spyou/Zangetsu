@@ -101,5 +101,54 @@ void main() {
       expect(a, b);
       expect({a, b}, hasLength(1));
     });
+
+    test('viewport edges on exact tile boundaries are not overfetched', () {
+      // A 1024x2048 page with 512px tiles (sample 1).
+      // Viewport bottom edge at y=512 is exactly on a tile boundary.
+      // Should return only the first row of tiles, not a phantom row starting at 512.
+      final boundary = TilePyramid(imageWidth: 1024, imageHeight: 2048);
+      final tiles = boundary.tilesFor(Rect.fromLTWH(0, 0, 1024, 512), 1);
+      // With 512px tiles, the first row spans y:0-512. The viewport is exactly that.
+      // Expected: 2 tiles (columns 0 and 1, both in row 0), not 3 or 4.
+      expect(tiles, hasLength(2));
+      // Both should be in row 0 (y: 0 to 512)
+      for (final t in tiles) {
+        expect(t.source.top, 0.0);
+        expect(t.source.bottom, 512.0);
+      }
+      // One covers x: 0-512, the other x: 512-1024
+      expect(tiles.any((t) => t.source.left == 0 && t.source.right == 512), isTrue);
+      expect(tiles.any((t) => t.source.left == 512 && t.source.right == 1024),
+          isTrue);
+    });
+
+    test('maxSample boundary: power-of-two sample at dimension equality', () {
+      // 512x512 fits exactly in one 512px tile with no shrinking.
+      final exact512 = TilePyramid(imageWidth: 512, imageHeight: 512);
+      expect(exact512.maxSample, 1);
+
+      // 1024x1024 needs to be halved to fit in a 512px tile.
+      final exact1024 = TilePyramid(imageWidth: 1024, imageHeight: 1024);
+      expect(exact1024.maxSample, 2);
+    });
+
+    test('no two tiles in a tiling overlap (plus area coverage)', () {
+      final tiles = tall.tilesFor(Rect.fromLTWH(0, 0, 1080, 6000), 1);
+      // Existing check: total area covers the page.
+      var area = 0.0;
+      for (final t in tiles) {
+        area += t.source.width * t.source.height;
+      }
+      expect(area, closeTo(1080 * 6000, 0.5));
+
+      // New check: no two tiles overlap.
+      for (var i = 0; i < tiles.length; i++) {
+        for (var j = i + 1; j < tiles.length; j++) {
+          expect(tiles[i].source.overlaps(tiles[j].source), isFalse,
+              reason:
+                  'Tiles $i (${tiles[i].source}) and $j (${tiles[j].source}) overlap');
+        }
+      }
+    });
   });
 }
