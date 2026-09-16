@@ -40,6 +40,12 @@ void main() {
     }
   });
 
+  test('@libs/fetch carries fetchText, not just fetchApi', () {
+    // Seven plugins (kakuyomu, lnori, linovelib, ...) call fetchText. It
+    // loaded fine without it and then threw "is not a function" on every call.
+    expect(eval("typeof __require('@libs/fetch').fetchText"), 'function');
+  });
+
   test('@/types/constants carries what the newer plugins read off it', () {
     expect(eval("__require('@/types/constants').NovelStatus.Ongoing"), 'Ongoing');
     expect(eval("typeof __require('@/types/constants').defaultCover"), 'string');

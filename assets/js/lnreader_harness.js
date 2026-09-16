@@ -118,6 +118,17 @@ function fetchApi(url, init) {
   });
 }
 
+// LNReader's fetchText: the body as a string, or '' when the request fails or
+// the status isn't 2xx — that is the contract kakuyomu, lnori, linovelib and
+// the other plugins that call it are written against. The optional encoding
+// argument is ignored because the body reaches us already decoded by Dart.
+function fetchText(url, init) {
+  return fetchApi(url, init).then(
+    function (r) { return r.ok ? r.text() : ''; },
+    function () { return ''; }
+  );
+}
+
 // ── @libs + node-module shims LNReader plugins require() ─────────────────────
 
 // Defined once and handed out under every name LNReader exposes them by:
@@ -156,7 +167,7 @@ function __require(name) {
     // Madara-template plugins (e.g. WBNovel) require('dayjs') at load time; without
     // it they throw 'unknown module: dayjs' before any fetch → "isn't responding".
     case 'dayjs': return globalThis.__dayjs;
-    case '@libs/fetch': return { fetchApi: fetchApi, fetchFile: fetchApi };
+    case '@libs/fetch': return { fetchApi: fetchApi, fetchText: fetchText, fetchFile: fetchApi };
     case '@libs/novelStatus': return { NovelStatus: __NOVEL_STATUS };
     case '@libs/isAbsoluteUrl': return { isUrlAbsolute: function (u) { return /^https?:\/\//.test(u); } };
     case '@libs/defaultCover': return { defaultCover: __DEFAULT_COVER };
