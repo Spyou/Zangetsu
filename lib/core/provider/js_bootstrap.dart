@@ -251,9 +251,13 @@ globalThis.unpackJs = function(source) {
   var body = s.slice(s.indexOf("}('") + 3, s.indexOf(".split('|'),0,{}))"));
   body = body.replace(/\\'/g, "'");
   var payload = body.slice(0, body.indexOf("',"));
+  // The words are numbered in the base the packer passed as `a` — often 36
+  // (the `c.toString(a)` variant), not always 62.
+  var radix = parseInt(body.slice(body.indexOf("',") + 2), 10);
+  if (!(radix >= 2 && radix <= 62)) radix = 62;
   var dict = body.slice(body.indexOf("'", body.indexOf("',") + 2) + 1, body.lastIndexOf("'")).split('|');
-  function r62(t){ var a=0; for (var i=0;i<t.length;i++){ var c=t.charCodeAt(i); a = a*62 + (c<=57 ? c-48 : c>=97 ? c-87 : c-29); } return a; }
-  return payload.replace(/[0-9A-Za-z]+/g, function(k){ var i=r62(k); return (i<dict.length && dict[i]!=='') ? dict[i] : k; });
+  function unbase(t){ var a=0; for (var i=0;i<t.length;i++){ var c=t.charCodeAt(i); var d = c<=57 ? c-48 : c>=97 ? c-87 : c-29; if (d >= radix) return -1; a = a*radix + d; } return a; }
+  return payload.replace(/[0-9A-Za-z]+/g, function(k){ var i=unbase(k); return (i>=0 && i<dict.length && dict[i]!=='') ? dict[i] : k; });
 };
 ''';
 

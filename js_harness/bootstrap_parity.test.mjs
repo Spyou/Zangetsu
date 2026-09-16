@@ -58,6 +58,7 @@ const CASES = {
   unpackJs: [
     ['player.src("x")'],
     ["eval(function(p,a,c,k,e,d){}('0 1',2,2,'hello|world'.split('|'),0,{}))"],
+    ["eval(function(p,a,c,k,e,d){}('z.10(A)',36,37,'|||||||||||||||||||||||||||||||||||player|src'.split('|'),0,{}))"],
   ],
   bytesToHex: [[[]], [[0, 1, 2, 255]], [[16, 255]]],
   bytesToB64: [[[]], [[0, 1, 2]], [[104, 105]], [[255, 255, 255, 255]]],
