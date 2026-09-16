@@ -8863,6 +8863,96 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Your saved novel list'**
   String get yourSavedNovelList;
+
+  /// No description provided for @epub.
+  ///
+  /// In en, this message translates to:
+  /// **'EPUB'**
+  String get epub;
+
+  /// No description provided for @exportAsEpub.
+  ///
+  /// In en, this message translates to:
+  /// **'Export as EPUB'**
+  String get exportAsEpub;
+
+  /// No description provided for @chaptersDownloadedCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{done} of {total} chapters downloaded'**
+  String chaptersDownloadedCount(int done, int total);
+
+  /// No description provided for @noChaptersDownloadedToExport.
+  ///
+  /// In en, this message translates to:
+  /// **'No chapters downloaded yet — download some first.'**
+  String get noChaptersDownloadedToExport;
+
+  /// No description provided for @allChapters.
+  ///
+  /// In en, this message translates to:
+  /// **'All chapters'**
+  String get allChapters;
+
+  /// No description provided for @startChapter.
+  ///
+  /// In en, this message translates to:
+  /// **'Start'**
+  String get startChapter;
+
+  /// No description provided for @endChapter.
+  ///
+  /// In en, this message translates to:
+  /// **'End'**
+  String get endChapter;
+
+  /// No description provided for @includeChapterNumber.
+  ///
+  /// In en, this message translates to:
+  /// **'Include chapter number'**
+  String get includeChapterNumber;
+
+  /// No description provided for @includeChapterNumberSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'\"Chapter 5: Title\" instead of just \"Title\"'**
+  String get includeChapterNumberSubtitle;
+
+  /// No description provided for @fileNameLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'File name'**
+  String get fileNameLabel;
+
+  /// No description provided for @folderLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Folder'**
+  String get folderLabel;
+
+  /// No description provided for @exportingChapterProgress.
+  ///
+  /// In en, this message translates to:
+  /// **'Chapter {done} of {total}'**
+  String exportingChapterProgress(int done, int total);
+
+  /// No description provided for @exportedToFolder.
+  ///
+  /// In en, this message translates to:
+  /// **'Exported to {folder}'**
+  String exportedToFolder(String folder);
+
+  /// No description provided for @epubExportFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t save the EPUB'**
+  String get epubExportFailed;
+
+  /// No description provided for @export.
+  ///
+  /// In en, this message translates to:
+  /// **'Export'**
+  String get export;
 }
 
 class _AppLocalizationsDelegate

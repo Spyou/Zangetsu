@@ -75,7 +75,22 @@
     "adultOnly",
     "yourSavedAnimeList",
     "yourSavedMangaList",
-    "yourSavedNovelList"
+    "yourSavedNovelList",
+    "epub",
+    "exportAsEpub",
+    "chaptersDownloadedCount",
+    "noChaptersDownloadedToExport",
+    "allChapters",
+    "startChapter",
+    "endChapter",
+    "includeChapterNumber",
+    "includeChapterNumberSubtitle",
+    "fileNameLabel",
+    "folderLabel",
+    "exportingChapterProgress",
+    "exportedToFolder",
+    "epubExportFailed",
+    "export"
   ],
 
   "es": [
@@ -154,7 +169,22 @@
     "adultOnly",
     "yourSavedAnimeList",
     "yourSavedMangaList",
-    "yourSavedNovelList"
+    "yourSavedNovelList",
+    "epub",
+    "exportAsEpub",
+    "chaptersDownloadedCount",
+    "noChaptersDownloadedToExport",
+    "allChapters",
+    "startChapter",
+    "endChapter",
+    "includeChapterNumber",
+    "includeChapterNumberSubtitle",
+    "fileNameLabel",
+    "folderLabel",
+    "exportingChapterProgress",
+    "exportedToFolder",
+    "epubExportFailed",
+    "export"
   ],
 
   "fr": [
@@ -233,7 +263,22 @@
     "adultOnly",
     "yourSavedAnimeList",
     "yourSavedMangaList",
-    "yourSavedNovelList"
+    "yourSavedNovelList",
+    "epub",
+    "exportAsEpub",
+    "chaptersDownloadedCount",
+    "noChaptersDownloadedToExport",
+    "allChapters",
+    "startChapter",
+    "endChapter",
+    "includeChapterNumber",
+    "includeChapterNumberSubtitle",
+    "fileNameLabel",
+    "folderLabel",
+    "exportingChapterProgress",
+    "exportedToFolder",
+    "epubExportFailed",
+    "export"
   ],
 
   "it": [
@@ -312,7 +357,22 @@
     "adultOnly",
     "yourSavedAnimeList",
     "yourSavedMangaList",
-    "yourSavedNovelList"
+    "yourSavedNovelList",
+    "epub",
+    "exportAsEpub",
+    "chaptersDownloadedCount",
+    "noChaptersDownloadedToExport",
+    "allChapters",
+    "startChapter",
+    "endChapter",
+    "includeChapterNumber",
+    "includeChapterNumberSubtitle",
+    "fileNameLabel",
+    "folderLabel",
+    "exportingChapterProgress",
+    "exportedToFolder",
+    "epubExportFailed",
+    "export"
   ],
 
   "ja": [
@@ -391,7 +451,22 @@
     "adultOnly",
     "yourSavedAnimeList",
     "yourSavedMangaList",
-    "yourSavedNovelList"
+    "yourSavedNovelList",
+    "epub",
+    "exportAsEpub",
+    "chaptersDownloadedCount",
+    "noChaptersDownloadedToExport",
+    "allChapters",
+    "startChapter",
+    "endChapter",
+    "includeChapterNumber",
+    "includeChapterNumberSubtitle",
+    "fileNameLabel",
+    "folderLabel",
+    "exportingChapterProgress",
+    "exportedToFolder",
+    "epubExportFailed",
+    "export"
   ],
 
   "zh": [
@@ -470,7 +545,22 @@
     "adultOnly",
     "yourSavedAnimeList",
     "yourSavedMangaList",
-    "yourSavedNovelList"
+    "yourSavedNovelList",
+    "epub",
+    "exportAsEpub",
+    "chaptersDownloadedCount",
+    "noChaptersDownloadedToExport",
+    "allChapters",
+    "startChapter",
+    "endChapter",
+    "includeChapterNumber",
+    "includeChapterNumberSubtitle",
+    "fileNameLabel",
+    "folderLabel",
+    "exportingChapterProgress",
+    "exportedToFolder",
+    "epubExportFailed",
+    "export"
   ],
 
   "zh_TW": [
@@ -549,6 +639,21 @@
     "adultOnly",
     "yourSavedAnimeList",
     "yourSavedMangaList",
-    "yourSavedNovelList"
+    "yourSavedNovelList",
+    "epub",
+    "exportAsEpub",
+    "chaptersDownloadedCount",
+    "noChaptersDownloadedToExport",
+    "allChapters",
+    "startChapter",
+    "endChapter",
+    "includeChapterNumber",
+    "includeChapterNumberSubtitle",
+    "fileNameLabel",
+    "folderLabel",
+    "exportingChapterProgress",
+    "exportedToFolder",
+    "epubExportFailed",
+    "export"
   ]
 }

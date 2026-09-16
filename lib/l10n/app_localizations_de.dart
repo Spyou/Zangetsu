@@ -5182,4 +5182,57 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get yourSavedNovelList => 'Your saved novel list';
+
+  @override
+  String get epub => 'EPUB';
+
+  @override
+  String get exportAsEpub => 'Export as EPUB';
+
+  @override
+  String chaptersDownloadedCount(int done, int total) {
+    return '$done of $total chapters downloaded';
+  }
+
+  @override
+  String get noChaptersDownloadedToExport =>
+      'No chapters downloaded yet — download some first.';
+
+  @override
+  String get allChapters => 'All chapters';
+
+  @override
+  String get startChapter => 'Start';
+
+  @override
+  String get endChapter => 'End';
+
+  @override
+  String get includeChapterNumber => 'Include chapter number';
+
+  @override
+  String get includeChapterNumberSubtitle =>
+      '\"Chapter 5: Title\" instead of just \"Title\"';
+
+  @override
+  String get fileNameLabel => 'File name';
+
+  @override
+  String get folderLabel => 'Folder';
+
+  @override
+  String exportingChapterProgress(int done, int total) {
+    return 'Chapter $done of $total';
+  }
+
+  @override
+  String exportedToFolder(String folder) {
+    return 'Exported to $folder';
+  }
+
+  @override
+  String get epubExportFailed => 'Couldn\'t save the EPUB';
+
+  @override
+  String get export => 'Export';
 }

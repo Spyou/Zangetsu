@@ -94,6 +94,11 @@ dependencies:
   # Lazy HTML rendering for the novel reader (RenderMode.sliverList) — only the
   # on-screen paragraphs are built, so long chapters scroll without jank.
   flutter_widget_from_html: ^0.15.3
+  # DOM parsing for EPUB export — walks scraped chapter HTML to serialise it
+  # as well-formed XHTML rather than regexing it. Already in the tree
+  # transitively (flutter_widget_from_html), now a direct dependency since we
+  # use it ourselves.
+  html: ^0.15.6
   # Dominant-colour extraction for the colour-matched hero banner
   palette_generator: ^0.3.3+3
 

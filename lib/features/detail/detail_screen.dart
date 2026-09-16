@@ -24,6 +24,7 @@ import 'open_related.dart';
 import '../../core/ui/episode_unavailable_dialog.dart';
 import '../../core/zmode/playback_resolver.dart';
 import 'episode_sources_sheet.dart';
+import 'epub_export_sheet.dart';
 import '../../core/ui/jump_prompt.dart';
 import '../../core/app_mode.dart';
 import '../../core/cache/app_image_cache.dart';
@@ -2138,6 +2139,22 @@ class _DetailViewState extends State<_DetailView>
                   tooltip: context.l10n.openSourceSite,
                   onTap: _openSourceSite,
                 ),
+                // Novel only — a manga chapter is images, not text, and
+                // there's nothing to put in an EPUB.
+                if (detail.type == ProviderType.novel)
+                  _IconAction(
+                    icon: Icons.output,
+                    label: context.l10n.epub,
+                    tooltip: context.l10n.exportAsEpub,
+                    onTap: () => showEpubExportSheet(
+                      context,
+                      sourceId: detail.sourceId.isNotEmpty
+                          ? detail.sourceId
+                          : item.sourceId,
+                      showTitle: detail.title,
+                      chapters: eps,
+                    ),
+                  ),
               ],
             ),
           ),
