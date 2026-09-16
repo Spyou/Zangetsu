@@ -50,6 +50,7 @@ import 'features/onboarding/boot_error_screen.dart';
 import 'features/onboarding/onboarding_screen.dart';
 import 'features/shell/root_shell.dart';
 import 'features/watch_together/ui/party_bar.dart';
+import 'pip_overlay.dart';
 
 Future<void> main() async {
   // Run inside a guarded zone so uncaught async errors land in the shareable
@@ -691,6 +692,7 @@ class _TvBootGate extends StatelessWidget {
       builder: (_, visible, _) {
         if (visible) return RepaintBoundary(child: shellBuilder());
         return const SplashScreen();
+            builder: (context, child) => Stack(children: [if (child != null) child, const PipOverlay()]),
       },
     );
   }
