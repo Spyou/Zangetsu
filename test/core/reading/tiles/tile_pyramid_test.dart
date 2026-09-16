@@ -96,10 +96,22 @@ void main() {
     });
 
     test('tiles compare by value, so they work as map keys', () {
-      const a = TileSpec(sample: 2, source: Rect.fromLTWH(0, 0, 10, 10));
-      const b = TileSpec(sample: 2, source: Rect.fromLTWH(0, 0, 10, 10));
+      // Built at runtime, NOT const. Two identical const TileSpecs are
+      // canonicalised by Dart into the same instance, so a const version of
+      // this test passes even with operator== and hashCode deleted outright —
+      // it measures the compiler, not TileSpec. The identical() line below is
+      // here to keep it that way.
+      final a = TileSpec(sample: 2, source: Rect.fromLTWH(0, 0, 10, 10));
+      final b = TileSpec(sample: 2, source: Rect.fromLTWH(0, 0, 10, 10));
+      expect(identical(a, b), isFalse);
       expect(a, b);
+      expect(a.hashCode, b.hashCode);
       expect({a, b}, hasLength(1));
+
+      // And unequal specs must stay distinct, or every tile would collide.
+      final other = TileSpec(sample: 4, source: Rect.fromLTWH(0, 0, 10, 10));
+      expect(a, isNot(other));
+      expect({a, other}, hasLength(2));
     });
 
     test('viewport edges on exact tile boundaries are not overfetched', () {
