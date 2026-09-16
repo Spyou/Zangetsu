@@ -68,4 +68,63 @@ void main() {
       expect(await File(result.textPath!).readAsString(), '<p>hello</p>');
     },
   );
+
+  // Deleting a downloaded chapter has to take a novel's whole folder (html +
+  // the images saved beside it) but must NEVER take a manga's, whose parent is
+  // the show folder shared with every other chapter of that series.
+  test('ownedFolder claims a novel chapter folder but never a manga one', () {
+    final novel = ChapterDownload(
+      id: 'n',
+      sourceId: 's',
+      showId: 'sh',
+      showTitle: 'Show',
+      chapterId: 'c1',
+      chapterTitle: 'Chapter 1',
+      chapterUrl: 'u',
+      mode: ContentMode.novel,
+      status: ChapterDownloadStatus.done,
+      textPath: '/dl/Zangetsu/Show/Chapter 1/text.html',
+    );
+    expect(
+      ChapterDownloadStore.ownedFolder(novel)?.path,
+      '/dl/Zangetsu/Show/Chapter 1',
+    );
+
+    final manga = ChapterDownload(
+      id: 'm',
+      sourceId: 's',
+      showId: 'sh',
+      showTitle: 'Show',
+      chapterId: 'c1',
+      chapterTitle: 'Chapter 1',
+      chapterUrl: 'u',
+      mode: ContentMode.manga,
+      status: ChapterDownloadStatus.done,
+      archivePath: '/dl/Zangetsu/Show/Chapter 1.cbz',
+    );
+    expect(
+      ChapterDownloadStore.ownedFolder(manga),
+      isNull,
+      reason: "a manga's parent is the SHOW folder — claiming it would delete "
+          'every other downloaded chapter of that series',
+    );
+
+    // A novel with no html recorded owns nothing to delete.
+    expect(
+      ChapterDownloadStore.ownedFolder(
+        ChapterDownload(
+          id: 'x',
+          sourceId: 's',
+          showId: 'sh',
+          showTitle: 'Show',
+          chapterId: 'c1',
+          chapterTitle: 'C',
+          chapterUrl: 'u',
+          mode: ContentMode.novel,
+          status: ChapterDownloadStatus.done,
+        ),
+      ),
+      isNull,
+    );
+  });
 }
