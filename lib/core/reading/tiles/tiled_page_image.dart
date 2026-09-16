@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -42,6 +44,15 @@ class _TiledPageImageState extends State<TiledPageImage> {
   bool _baseRequested = false;
   bool _refining = false;
 
+  /// The scrollable this page sits in. Refinement is driven from here rather
+  /// than from rebuilds: a sliver TRANSLATES its children while you scroll, it
+  /// does not rebuild them, so a post-frame callback in [build] only ran when
+  /// something else happened to rebuild the page — a tap on the reader chrome,
+  /// say. That is the "blurry until I touch it" bug: the sharp tiles were
+  /// never asked for until you interacted.
+  ScrollPosition? _position;
+  Timer? _refineDebounce;
+
   @override
   void initState() {
     super.initState();
@@ -49,7 +60,30 @@ class _TiledPageImageState extends State<TiledPageImage> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_failed) return;
+    final position = Scrollable.maybeOf(context)?.position;
+    if (identical(position, _position)) return;
+    _position?.removeListener(_onScroll);
+    _position = position;
+    _position?.addListener(_onScroll);
+  }
+
+  void _onScroll() {
+    // Debounced: during a fling this fires every frame, and decoding tiles for
+    // positions already flown past is work thrown away. Waiting for the scroll
+    // to settle asks only for what you actually stopped on.
+    _refineDebounce?.cancel();
+    _refineDebounce = Timer(const Duration(milliseconds: 90), () {
+      if (mounted) _refineForViewport();
+    });
+  }
+
+  @override
   void dispose() {
+    _refineDebounce?.cancel();
+    _position?.removeListener(_onScroll);
     for (final tile in _tiles.values) {
       tile.dispose();
     }
@@ -164,11 +198,6 @@ class _TiledPageImageState extends State<TiledPageImage> {
     if (!_baseRequested) {
       // Off the build phase.
       WidgetsBinding.instance.addPostFrameCallback((_) => _requestBase());
-    } else {
-      // Scrolling changes what is visible, so refinement is re-checked after
-      // each frame this page takes part in. `_refineForViewport` is cheap when
-      // nothing has changed: every wanted tile is already held.
-      WidgetsBinding.instance.addPostFrameCallback((_) => _refineForViewport());
     }
 
     return AspectRatio(

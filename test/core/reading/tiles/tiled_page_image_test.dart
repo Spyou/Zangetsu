@@ -363,6 +363,10 @@ void main() {
                     decoder: source,
                     fallbackBuilder: () => const SizedBox.shrink(),
                   ),
+                  // Something to scroll against: one 100px page in an 800px
+                  // viewport cannot scroll, so the drag below would move
+                  // nothing and refinement would never be asked for.
+                  const SizedBox(height: 2000),
                 ],
               ),
             ),
@@ -372,11 +376,14 @@ void main() {
       await tester.pumpWidget(page());
       expect(source.calls[pyramid.baseTile], 1);
 
-      // Frame 1: _baseRequested is already true, so build() takes the
-      // refine branch. _refineForViewport wants the same base tile (it's
-      // the only tile there is) — it's not in _tiles yet, so it asks again
-      // (call #2) and also hangs, independently of _requestBase's own call.
-      await tester.pumpWidget(page());
+      // Now SCROLL. Refinement is driven by the scroll position, not by
+      // rebuilds — a sliver translates its children rather than rebuilding
+      // them, so a rebuild-driven refine only ran when something else
+      // happened to rebuild the page. _refineForViewport wants the same base
+      // tile (it's the only tile there is) and it is not in _tiles yet, so it
+      // asks again (call #2), independently of _requestBase's own call.
+      await tester.drag(find.byType(ListView), const Offset(0, -20));
+      await tester.pump(const Duration(milliseconds: 150));
       expect(source.calls[pyramid.baseTile], 2);
 
       // Resolve _requestBase's call first: the tile lands and gets stored.
