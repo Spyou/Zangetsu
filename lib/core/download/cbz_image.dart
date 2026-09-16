@@ -53,7 +53,7 @@ class CbzImage extends ImageProvider<CbzImage> {
       );
 
   Future<ui.Codec> _load(CbzImage key, ImageDecoderCallback decode) async {
-    final bytes = await _readEntry(key.archivePath, key.index);
+    final bytes = await readCbzArchiveEntry(key.archivePath, key.index);
     if (bytes == null || bytes.isEmpty) {
       throw StateError('Page ${key.index} missing from ${key.archivePath}');
     }
@@ -81,7 +81,11 @@ String? _openPath;
 Archive? _openArchive;
 InputFileStream? _openStream;
 
-Future<Uint8List?> _readEntry(String path, int index) async {
+/// Pulls one page's bytes out of a `.cbz` by index: a seek and a copy, not a
+/// decompress, since pages are stored uncompressed. Shared with
+/// `PageFileCache` (`lib/core/reading/page_file_cache.dart`) so there is one
+/// zip-entry reader, not two.
+Future<Uint8List?> readCbzArchiveEntry(String path, int index) async {
   if (_openPath != path) {
     _closeOpen();
     if (!File(path).existsSync()) return null;
