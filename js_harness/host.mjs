@@ -38,15 +38,35 @@ globalThis.__console = function (src, level, args) {
   console.log('[' + src + '/js ' + level + ']', parts.join(' '));
 };
 
-globalThis.htmlText = (s) => String(s || '')
-  .replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&')
-  .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
-  .replace(/&#39;/g, "'").trim();
+// Mirrors globalThis.htmlText in js_bootstrap.dart: strips tags, decodes the
+// numeric/hex character references providers actually hit (&#8212; &#x2014;)
+// and the named ones, then collapses runs of whitespace.
+globalThis.htmlText = function (html) {
+  if (!html) return '';
+  return String(html)
+    .replace(/<[^>]*>/g, '')
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, h) => String.fromCodePoint(parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(parseInt(d, 10)))
+    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+};
 
-globalThis.absUrl = (h, b) => /^https?:\/\//i.test(h) ? h
-  : h.startsWith('//') ? 'https:' + h
-  : b ? (h.startsWith('/') ? b.match(/^(https?:\/\/[^/]+)/)[1] + h : b.replace(/\/$/, '') + '/' + h)
-  : h;
+// Mirrors globalThis.absUrl in js_bootstrap.dart. A base the host regex can't
+// match (protocol-relative, scheme-less) yields the href unchanged there, so it
+// must not throw here either.
+globalThis.absUrl = function (href, base) {
+  if (!href) return '';
+  if (/^https?:\/\//i.test(href)) return href;
+  if (href.startsWith('//')) return 'https:' + href;
+  if (!base) return href;
+  if (href.startsWith('/')) {
+    const m = base.match(/^(https?:\/\/[^/]+)/i);
+    return m ? m[1] + href : href;
+  }
+  return base.replace(/\/$/, '') + '/' + href;
+};
 
 // Dean-Edwards p,a,c,k,e,d unpacker (base-62), no eval. Returns input unchanged
 // if not packed. Mirrors globalThis.unpackJs in js_bootstrap.dart.
