@@ -658,7 +658,17 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
     // is off: nothing extra runs at all.
     if (sl<ReaderPrefs>().tiledDecoding && !_pageFile.containsKey(p.url)) {
       final f = await _pageFiles.fileFor(p.url, p.headers);
-      if (f != null && mounted) _pageFile[p.url] = f.path;
+      if (f != null && mounted) {
+        _pageFile[p.url] = f.path;
+        // Read the TRUE pixel size here rather than leaving it to the measure
+        // paths below, because neither can supply it for every page kind: a
+        // page the native side draws never reaches [_measureFromFile], and
+        // [_measureFromProvider] only ever knows the size it decoded AT, not
+        // the size the file really is. Getting that wrong means a tile crop
+        // addressed in the wrong space — and a page cropped wrong is a visibly
+        // broken page, not a slow one.
+        await _recordPixelSize(f, p.url);
+      }
     }
     // A page the NATIVE side draws must be measured from what the native side
     // draws — never from the url.
@@ -770,6 +780,29 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
   /// the viewport its slot is already the right size and there is nothing left
   /// to correct. `ImageDescriptor` parses the header only — no full decode, no
   /// bitmap, nothing added to the image cache.
+  /// Records a page's true pixel size, read header-only from the file
+  /// [PageFileCache] resolved for it. Header-only on purpose: the point is to
+  /// avoid decoding the page, so pulling the whole thing in to ask how big it
+  /// is would defeat the feature it serves.
+  Future<void> _recordPixelSize(File file, String url) async {
+    if (_pixelSize.containsKey(url)) return;
+    ui.ImmutableBuffer? buffer;
+    ui.ImageDescriptor? desc;
+    try {
+      buffer = await ui.ImmutableBuffer.fromFilePath(file.path);
+      desc = await ui.ImageDescriptor.encoded(buffer);
+      final w = desc.width, h = desc.height;
+      if (w <= 0 || h <= 0 || !mounted) return;
+      _pixelSize[url] = Size(w.toDouble(), h.toDouble());
+    } catch (_) {
+      // Unreadable means no tiling for this page, which is the same as not
+      // having a file at all — the plain path draws it.
+    } finally {
+      desc?.dispose();
+      buffer?.dispose();
+    }
+  }
+
   Future<void> _measureFromFile(File file, String url, int index) async {
     if (!mounted || _aspect.containsKey(url)) return;
     // ONLY pages below the one being read.
