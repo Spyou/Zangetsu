@@ -7,7 +7,12 @@ import 'package:ffi/ffi.dart';
 /// A page held open by the native side. [ptr] is opaque — only this library
 /// may touch it.
 class TileHandle {
-  TileHandle(this.ptr, this.width, this.height);
+  // Private on purpose: only tileOpen() can produce one, and tileOpen()
+  // gates on tileDecodingAvailable() first. tileDecode() below trusts that
+  // and skips its own gate check — a handle built any other way would let
+  // it reach the native call directly, which on Android 7-9 (API 24-29)
+  // throws from a failed dlopen instead of returning null.
+  TileHandle._(this.ptr, this.width, this.height);
 
   final Pointer<Void> ptr;
   final int width;
@@ -79,7 +84,7 @@ TileHandle? tileOpen(String path) {
   try {
     final ptr = _open(cPath, wPtr, hPtr);
     if (ptr == nullptr) return null;
-    return TileHandle(ptr, wPtr.value, hPtr.value);
+    return TileHandle._(ptr, wPtr.value, hPtr.value);
   } finally {
     calloc.free(cPath);
     calloc.free(wPtr);
