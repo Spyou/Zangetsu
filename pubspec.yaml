@@ -167,6 +167,10 @@ dependencies:
   fluttertoast: ^10.0.0
   dynamic_color: ^2.1.0
 dev_dependencies:
+  # Test-only: gives the EPUB tests a REAL XML parse, which catches what a
+  # hand-rolled tag-balance check cannot (an unescaped '&', a bad attribute)
+  # — exactly what a strict e-reader rejects the whole file over.
+  xml: ^6.5.0
   flutter_test:
     sdk: flutter
   integration_test:
