@@ -87,9 +87,19 @@ bool tile_decode(void* h, int32_t x, int32_t y, int32_t w, int32_t h_,
     crop.top = y;
     crop.right = x + w;
     crop.bottom = y + h_;
-    if (crop.left < 0 || crop.top < 0 || crop.right > sw ||
-        crop.bottom > sh || crop.right <= crop.left ||
-        crop.bottom <= crop.top) {
+
+    // Clamp to the scaled image instead of refusing. The caller divides the
+    // page by the same sample but rounds, while sw/sh truncate, so a page
+    // whose size is not an exact multiple of the sample asks for one pixel
+    // more than exists: a 1080-wide page at sample 16 is 67.5, requested as
+    // 68, and 67 is what there is. Refusing that failed EVERY tile of every
+    // such page and fell back silently, which measured as "tiling saves
+    // nothing" rather than as a bug.
+    if (crop.right > sw) crop.right = sw;
+    if (crop.bottom > sh) crop.bottom = sh;
+
+    if (crop.left < 0 || crop.top < 0 || crop.left >= sw || crop.top >= sh ||
+        crop.right <= crop.left || crop.bottom <= crop.top) {
       break;
     }
     if (AImageDecoder_setCrop(dec, crop) != ANDROID_IMAGE_DECODER_SUCCESS) {
