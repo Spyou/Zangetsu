@@ -621,10 +621,10 @@ class SourceSwitcher extends StatelessWidget {
     // scrolling it — which is exactly what happened when these were first
     // tuned down to match the compact layout (7 picker tests went red).
     //   pill search 36 + 8 margins  -> 48
-    //   auto row 46 + hairline 9 -> 56
+    //   auto row 46 + hairline 18 -> 64
     //   source row 30 avatar + 16 padding -> 48
     final searchH = showSearch ? 48 : 0;
-    final autoRowH = onAutoResolve != null ? 56 : 0;
+    final autoRowH = onAutoResolve != null ? 64 : 0;
     final sheetH = (24 + 48 + searchH + autoRowH + (total + headers) * 48 + 24)
         .clamp(240.0, screenH * 0.85);
 
@@ -839,7 +839,11 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
     final focusId = _autofocusSourceId(sorted);
     var focusGiven = false;
     return ListView(
-      shrinkWrap: !_isTv,
+      // NOT shrinkWrap: these lists sit inside an Expanded, so the height is
+      // already bounded. Shrink-wrapping a bounded list clipped the first row
+      // under the Auto Resolve row, and it builds every row eagerly — which
+      // with forty sources is forty rows laid out per frame.
+      shrinkWrap: false,
       padding: EdgeInsets.zero,
       children: [
         for (final s in sorted)
@@ -873,7 +877,11 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
     final focusId = _autofocusSourceId(sorted);
     var focusGiven = false;
     return ListView(
-      shrinkWrap: !_isTv,
+      // NOT shrinkWrap: these lists sit inside an Expanded, so the height is
+      // already bounded. Shrink-wrapping a bounded list clipped the first row
+      // under the Auto Resolve row, and it builds every row eagerly — which
+      // with forty sources is forty rows laid out per frame.
+      shrinkWrap: false,
       padding: EdgeInsets.zero,
       children: [
         for (final s in sorted)
@@ -975,7 +983,11 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
       );
     }
     return ListView(
-      shrinkWrap: !_isTv,
+      // NOT shrinkWrap: these lists sit inside an Expanded, so the height is
+      // already bounded. Shrink-wrapping a bounded list clipped the first row
+      // under the Auto Resolve row, and it builds every row eagerly — which
+      // with forty sources is forty rows laid out per frame.
+      shrinkWrap: false,
       padding: EdgeInsets.zero,
       children: children,
     );
@@ -1186,7 +1198,7 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
                 _autoResolveRow(),
                 // A hairline, not a caption: "OR PICK ONE" cost a whole line
                 // to say what the gap already says.
-                const Divider(height: 9, thickness: 1, color: AppColors.hairline),
+                const Divider(height: 18, thickness: 1, color: AppColors.hairline),
               ],
               Expanded(
                 child: TabBarView(children: [for (final t in tabs) t.body()]),
@@ -1320,9 +1332,16 @@ class _SourceRow extends StatelessWidget {
     return name.isEmpty ? '?' : name.characters.first.toUpperCase();
   }
 
-  Widget get _letterTile => Text(
-    _initial,
-    style: AppText.headline.copyWith(color: AppColors.textSecondary),
+  /// Centred on purpose: as the Container's direct child the Container's own
+  /// alignment would do it, but this is ALSO returned as
+  /// CachedNetworkImage's placeholder/errorWidget, and there it sits in a bare
+  /// 30x30 box that aligns top-left. A source whose icon url 404s was drawing
+  /// its letter in the corner of the tile.
+  Widget get _letterTile => Center(
+    child: Text(
+      _initial,
+      style: AppText.headline.copyWith(color: AppColors.textSecondary),
+    ),
   );
 
   /// The 30x30 tile's content: the source's icon when there is one, else the
@@ -1338,7 +1357,12 @@ class _SourceRow extends StatelessWidget {
         cacheManager: AppImageCache.manager,
         width: 30,
         height: 30,
-        fit: BoxFit.cover,
+        // contain, NOT cover: these are logos, and a good share of them are
+        // wide wordmarks. cover cropped those to their middle — 4K HDHUB came
+        // out as a sliver of letters with both ends cut off. contain shrinks a
+        // wide logo instead of beheading it; square icons look the same either
+        // way.
+        fit: BoxFit.contain,
         placeholder: (context, url) => _letterTile,
         errorWidget: (context, url, error) => _letterTile,
       ),

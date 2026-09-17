@@ -178,8 +178,13 @@ void main() {
           img.imageUrl,
           Exception('network down'),
         );
-        expect(fallback, isA<Text>());
-        expect((fallback as Text).data, 'I'); // "Icon Source" -> "I"
+        // Centred, not a bare Text: CachedNetworkImage hands its errorWidget a
+        // plain 30x30 box that aligns top-left, so an uncentred letter drew in
+        // the CORNER of the tile for any source whose icon url fails.
+        expect(fallback, isA<Center>());
+        final letter = (fallback as Center).child;
+        expect(letter, isA<Text>());
+        expect((letter as Text).data, 'I'); // "Icon Source" -> "I"
       },
     );
   });
