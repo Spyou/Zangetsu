@@ -204,8 +204,25 @@ SourceBuckets categorizedSources() {
   // Aniyomi providers — always anime; keyed by their `ani:` sourceId.
   // NSFW-flagged sources are hidden when the pref is off.
   final showNsfwAni = sl<PlaybackPrefs>().showNsfwAniyomi;
-  for (final p in sl<AniyomiManager>().all) {
-    if (!aniyomiNsfwVisible(p, showNsfwAniyomi: showNsfwAni)) continue;
+  // Language filter, same as the Mihon block below. Its absence here is why
+  // choosing English still listed every Aniyomi language in the picker and on
+  // the Sources screen — both read this function.
+  final aniLangs = sl.isRegistered<AnimeLangPrefs>()
+      ? (sl<AnimeLangPrefs>().enabled ?? defaultSourceLangs())
+      : null;
+  var aniSources = sl<AniyomiManager>()
+      .all
+      .where((p) => aniyomiNsfwVisible(p, showNsfwAniyomi: showNsfwAni))
+      .toList();
+  if (aniLangs != null) {
+    aniSources = visibleInstalledSources(
+      aniSources,
+      aniLangs,
+      pkgOf: (p) => p is AniyomiProvider ? p.info.pkg : p.sourceId,
+      langOf: (p) => p is AniyomiProvider ? p.info.lang : '',
+    );
+  }
+  for (final p in aniSources) {
     // The source object carries no icon — the repo index does, and
     // SourceIconStore keeps what it saw. Null until that repo has been read
     // once, which just means the letter tile.
@@ -235,10 +252,24 @@ SourceBuckets categorizedSources() {
     final langs = sl.isRegistered<MangaLangPrefs>()
         ? (sl<MangaLangPrefs>().enabled ?? defaultSourceLangs())
         : null;
-    for (final p in sl<MihonManager>().all) {
-      if (p.info.nsfw && !nsfwEnabled) continue;
+    var mihonSources = sl<MihonManager>()
+        .all
+        .where((p) => !(p.info.nsfw && !nsfwEnabled))
+        .toList();
+    if (langs != null) {
+      // Guarded, not a hard filter: narrowing MangaDex's 61 languages to the
+      // ones you read is the point, but an extension whose ONLY language you
+      // filtered out is one you installed deliberately — hiding it leaves you
+      // no way to use it.
+      mihonSources = visibleInstalledSources(
+        mihonSources,
+        langs,
+        pkgOf: (p) => p.pkg,
+        langOf: (p) => p.info.lang,
+      );
+    }
+    for (final p in mihonSources) {
       final lang = p.info.lang;
-      if (langs != null && !sourceLangVisible(lang, langs)) continue;
       // Carry the language code in the subtitle so the ones that DO show (e.g.
       // the enabled languages of a multi-language extension) stay
       // distinguishable; it feeds the picker's search too.

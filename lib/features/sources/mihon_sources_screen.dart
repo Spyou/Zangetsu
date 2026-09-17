@@ -8,6 +8,7 @@ import 'package:hive/hive.dart';
 import '../../core/di/injector.dart';
 import '../../core/hive/source_icon_store.dart';
 import '../../core/ui/source_icon_tile.dart';
+import '../../core/i18n/source_languages.dart';
 import '../../core/prefs/source_lang_prefs.dart';
 import '../../core/repository/source_actions.dart' as source_actions;
 import '../../core/mihon/mihon_extension_service.dart';
@@ -148,7 +149,17 @@ class _MihonScreenPhoneViewState extends State<_MihonScreenPhoneView> {
               tooltip: context.l10n.languages,
               icon: const Icon(Icons.language_rounded),
               onPressed: () =>
-                  showSourceLanguageSheet(context, sl<MangaLangPrefs>()),
+                  showSourceLanguageSheet(
+                    context,
+                    sl<MangaLangPrefs>(),
+                    // Offer what's installed, not just the built-in list —
+                    // otherwise a language this screen hides has no row to
+                    // turn it back on.
+                    present: presentLangCodes(
+                      sl<MihonManager>().all,
+                      (p) => p.info.lang,
+                    ),
+                  ),
             ),
           ],
           bottom: TabBar(
@@ -229,14 +240,31 @@ class _MihonInstalledGroupState extends State<_MihonInstalledGroup> {
 
   @override
   Widget build(BuildContext context) {
+    final langPrefs = sl.isRegistered<MangaLangPrefs>()
+        ? sl<MangaLangPrefs>()
+        : null;
     return ListenableBuilder(
-      listenable: sl<MihonManager>(),
+      // The language prefs too, not just the manager: the globe in this
+      // screen's app bar edits them, and without listening the list it edits
+      // sat unchanged until something else happened to rebuild it.
+      listenable: Listenable.merge([sl<MihonManager>(), langPrefs]),
       builder: (context, _) {
         final query = widget.query;
-        final sources = sl<MihonManager>()
+        var sources = sl<MihonManager>()
             .all
             .where((p) => sourceSearchMatches(query, p.displayName, p.info.lang))
             .toList();
+        // Respect the language filter here as well. It used to apply only in
+        // the picker and the browse list, so choosing English still left this
+        // screen showing MangaDex's 61 languages — with the button that sets
+        // the filter right at the top of it.
+        final langs = langPrefs?.enabled ?? defaultSourceLangs();
+        sources = visibleInstalledSources(
+          sources,
+          langs,
+          pkgOf: (p) => p.pkg,
+          langOf: (p) => p.info.lang,
+        );
         // Group by extension package so a multi-language extension (MangaDex is a
         // SourceFactory that yields one source PER LANGUAGE) collapses to ONE row
         // instead of ~40 — matching Mihon's Extensions list. Which languages you

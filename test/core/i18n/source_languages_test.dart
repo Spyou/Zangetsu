@@ -48,9 +48,15 @@ void main() {
 
     test('always shows a language the picker cannot toggle (not in the map)',
         () {
-      // 'eo' (Esperanto) isn't a filterable language, so it must never be
-      // hidden behind a toggle that doesn't exist.
-      expect(sourceLangVisible('eo', {'en'}), isTrue);
+      // A code with no entry in kSourceLanguages has no toggle in the picker,
+      // so hiding it would strand the source with no way to get it back.
+      //
+      // Deliberately a code that cannot become real: this used to say 'eo',
+      // which stopped being unknown the day Esperanto was added to the map,
+      // and the test then failed for a year without meaning anything.
+      expect(sourceLangVisible('zz', {'en'}), isTrue);
+      expect(kSourceLanguages.containsKey('zz'), isFalse,
+          reason: 'the example has to stay genuinely unknown');
     });
   });
 
@@ -67,7 +73,8 @@ void main() {
     test('maps a known code, falls back to the raw code otherwise', () {
       expect(sourceLangLabel('en'), 'English');
       expect(sourceLangLabel('ja'), 'Japanese');
-      expect(sourceLangLabel('eo'), 'eo');
+      // Same reasoning as above — an example that cannot quietly become known.
+      expect(sourceLangLabel('zz'), 'zz');
     });
   });
 

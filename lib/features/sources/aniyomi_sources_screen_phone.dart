@@ -44,7 +44,14 @@ class _AniScreenPhoneViewState extends State<_AniScreenPhoneView> {
               tooltip: context.l10n.languages,
               icon: const Icon(Icons.language_rounded),
               onPressed: () =>
-                  showSourceLanguageSheet(context, sl<AnimeLangPrefs>()),
+                  showSourceLanguageSheet(
+                    context,
+                    sl<AnimeLangPrefs>(),
+                    present: presentLangCodes(
+                      sl<AniyomiManager>().all,
+                      (p) => p is AniyomiProvider ? p.info.lang : '',
+                    ),
+                  ),
             ),
           ],
           bottom: TabBar(
@@ -125,17 +132,30 @@ class _AniyomiInstalledGroupState extends State<_AniyomiInstalledGroup> {
 
   @override
   Widget build(BuildContext context) {
+    final langPrefs = sl.isRegistered<AnimeLangPrefs>()
+        ? sl<AnimeLangPrefs>()
+        : null;
     return ListenableBuilder(
-      listenable: sl<AniyomiManager>(),
+      // The language prefs too: the globe in this screen's app bar edits them,
+      // and without listening the list it edits sat unchanged.
+      listenable: Listenable.merge([sl<AniyomiManager>(), langPrefs]),
       builder: (context, _) {
         final query = widget.query;
-        final sources = sl<AniyomiManager>()
+        var sources = sl<AniyomiManager>()
             .all
             .where((p) => sourceSearchMatches(
                 query,
                 p.displayName,
                 p is AniyomiProvider ? p.info.lang : null))
             .toList();
+        // Same filter the picker and the browse list use. Without it, picking
+        // English left this screen listing every language anyway.
+        sources = visibleInstalledSources(
+          sources,
+          langPrefs?.enabled ?? defaultSourceLangs(),
+          pkgOf: (p) => p is AniyomiProvider ? p.info.pkg : p.sourceId,
+          langOf: (p) => p is AniyomiProvider ? p.info.lang : '',
+        );
         if (sources.isEmpty) {
           return EmptyState(
             icon: Icons.extension_outlined,
