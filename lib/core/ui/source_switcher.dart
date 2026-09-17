@@ -577,9 +577,20 @@ class SourceSwitcher extends StatelessWidget {
     final total = relevant.fold(0, (sum, l) => sum + l.length);
     // Search only earns its space once there's a list worth filtering.
     final showSearch = total > 6;
-    final searchH = showSearch ? 56 : 0;
-    final autoRowH = onAutoResolve != null ? 60 : 0;
-    final sheetH = (24 + 48 + searchH + autoRowH + (total + headers) * 52 + 24)
+    // Measured against the compact layout: pill search ~44, auto row ~46 plus
+    // its "OR PICK ONE" label ~19, rows ~46. Guessing high here is not free —
+    // the sheet reserves whatever this says and leaves dead space below the
+    // list if the numbers describe an older, taller layout.
+    // Reserve slightly MORE than each piece measures, never less: the sheet is
+    // a fixed box, so under-reserving clips the bottom of the list rather than
+    // scrolling it — which is exactly what happened when these were first
+    // tuned down to match the compact layout (7 picker tests went red).
+    //   pill search 36 + 8 margins  -> 48
+    //   auto row 46 + hairline 9 -> 56
+    //   source row 30 avatar + 16 padding -> 48
+    final searchH = showSearch ? 48 : 0;
+    final autoRowH = onAutoResolve != null ? 56 : 0;
+    final sheetH = (24 + 48 + searchH + autoRowH + (total + headers) * 48 + 24)
         .clamp(240.0, screenH * 0.85);
 
     showModalBottomSheet<void>(
@@ -945,31 +956,67 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
     return b.anime.isNotEmpty || b.movies.isNotEmpty || b.nsfw.isNotEmpty;
   }
 
+  /// Auto Resolve, drawn as one of the choices rather than a banner above
+  /// them — because that is what it is: [_SourcePickerSheetState] computes
+  /// `isActive: !autoSelected && ...`, so picking auto DESELECTS every source.
+  /// It therefore gets the same selected treatment a source row gets (accent
+  /// bar + wash), and the sheet shows exactly one selected row at a time.
   Widget _autoResolveRow() {
-    final body = Padding(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
-      child: Row(
-        children: [
-          Icon(Icons.auto_awesome_rounded, color: AppColors.accent, size: 20),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text('Auto Resolve', style: AppText.headline),
-                Text(
-                  'Try every installed source until one matches',
-                  style: AppText.caption.copyWith(
-                    color: AppColors.textTertiary,
-                  ),
-                ),
-              ],
-            ),
+    final on = widget.autoSelected;
+    final body = DecoratedBox(
+      decoration: BoxDecoration(
+        color: on ? AppColors.accent.withValues(alpha: 0.10) : Colors.transparent,
+        border: Border(
+          left: BorderSide(
+            color: on ? AppColors.accent : Colors.transparent,
+            width: 3,
           ),
-          if (widget.autoSelected)
-            Icon(Icons.check, color: AppColors.accent, size: 20),
-        ],
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 8, 16, 8),
+        child: Row(
+          children: [
+            // Same 30px tile the source avatars use, so it sits in the list
+            // rather than on top of it.
+            Container(
+              width: 30,
+              height: 30,
+              margin: const EdgeInsets.only(right: 10),
+              decoration: BoxDecoration(
+                color: AppColors.accent.withValues(alpha: 0.18),
+                borderRadius: BorderRadius.circular(9),
+              ),
+              alignment: Alignment.center,
+              child: Icon(
+                Icons.auto_awesome_rounded,
+                color: AppColors.accent,
+                size: 17,
+              ),
+            ),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('Auto Resolve', style: AppText.headline),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(
+                      'Try every installed source until one matches',
+                      style: AppText.body.copyWith(
+                        fontSize: 11.5,
+                        height: 1.0,
+                        color: AppColors.textTertiary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (on) Icon(Icons.check, color: AppColors.accent, size: 18),
+          ],
+        ),
       ),
     );
     if (_isTv) {
@@ -1078,13 +1125,9 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
-              if (widget.onAutoResolve != null) ...[
-                _autoResolveRow(),
-                const Divider(height: 1, color: AppColors.hairline),
-              ],
               if (widget.showSearch)
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+                  padding: const EdgeInsets.fromLTRB(14, 2, 14, 6),
                   child: _PickerSearchField(
                     controller: _searchCtrl,
                     onChanged: (q) => setState(() => _query = q),
@@ -1103,6 +1146,12 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
                 labelStyle: AppText.body.copyWith(fontWeight: FontWeight.w600),
                 tabs: [for (final t in tabs) Tab(text: t.title)],
               ),
+              if (widget.onAutoResolve != null) ...[
+                _autoResolveRow(),
+                // A hairline, not a caption: "OR PICK ONE" cost a whole line
+                // to say what the gap already says.
+                const Divider(height: 9, thickness: 1, color: AppColors.hairline),
+              ],
               Expanded(
                 child: TabBarView(children: [for (final t in tabs) t.body()]),
               ),
@@ -1156,7 +1205,7 @@ class _PickerSearchField extends StatelessWidget {
         prefixIcon: const Icon(
           Icons.search,
           color: AppColors.textSecondary,
-          size: 20,
+          size: 18,
         ),
         suffixIcon: controller.text.isEmpty
             ? null
@@ -1176,15 +1225,18 @@ class _PickerSearchField extends StatelessWidget {
         filled: true,
         fillColor: AppColors.surface2,
         contentPadding: const EdgeInsets.symmetric(
-          horizontal: 12,
-          vertical: 10,
+          horizontal: 14,
+          vertical: 8,
         ),
+        // Pill rather than a rounded rectangle: the sheet is a short stack of
+        // round shapes (avatars, chips), and a 12px box read as a form field
+        // dropped into it.
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(999),
           borderSide: BorderSide.none,
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(999),
           borderSide: BorderSide(color: AppColors.accent, width: 1.5),
         ),
       ),
@@ -1244,13 +1296,13 @@ class _SourceRow extends StatelessWidget {
         ),
       ),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(17, 11, 20, 11),
+        padding: const EdgeInsets.fromLTRB(14, 8, 16, 8),
         child: Row(
           children: [
             Container(
-              width: 36,
-              height: 36,
-              margin: const EdgeInsets.only(right: 12),
+              width: 30,
+              height: 30,
+              margin: const EdgeInsets.only(right: 10),
               decoration: BoxDecoration(
                 color: AppColors.surface2,
                 borderRadius: BorderRadius.circular(9),
