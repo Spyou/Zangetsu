@@ -1101,6 +1101,16 @@
 			}
 		}
 	},
+	"markedAsRead": "Marked as read",
+	"markedUnread": "Marked unread",
+	"markedChaptersAsRead": "Marked {count} chapters as read",
+	"@markedChaptersAsRead": {
+		"placeholders": {
+			"count": {
+				"type": "int"
+			}
+		}
+	},
 	"downloadChaptersQuestion": "Download {count} chapters?",
 	"@downloadChaptersQuestion": {
 		"placeholders": {

@@ -28,7 +28,7 @@ class _EpisodesTab extends StatefulWidget {
     this.nextAiringEpisode,
     this.nextAiringAt,
     required this.onOpen,
-    this.onPickPlayer,
+    this.onEpisodeMenu,
     this.onRefresh,
     required this.onDownload,
     this.onDownloadMany,
@@ -83,7 +83,7 @@ class _EpisodesTab extends StatefulWidget {
 
   /// Long-press an episode → pick which player opens it, this once. Null on
   /// the reading path: a chapter opens the reader, so there's nothing to pick.
-  final void Function(int fullIndex)? onPickPlayer;
+  final void Function(int fullIndex)? onEpisodeMenu;
 
   /// Force-refresh the list past the 10-min source cache (header ↻ button).
   /// Null hides the button.
@@ -530,6 +530,9 @@ class _EpisodesTabState extends State<_EpisodesTab> {
               isInProgress: st.inProgress,
               fraction: st.fraction,
               onTap: () => widget.onOpen(fullIndex),
+              onLongPress: widget.onEpisodeMenu == null
+                  ? null
+                  : () => widget.onEpisodeMenu!(fullIndex),
               onDownload: () => widget.onDownload(ep),
               sourceId: widget.sourceId,
               downloadSourceId: widget.downloadSourceId,
@@ -549,9 +552,9 @@ class _EpisodesTabState extends State<_EpisodesTab> {
             isResume: st.resume,
             fraction: st.fraction,
             onTap: () => widget.onOpen(fullIndex),
-            onLongPress: widget.onPickPlayer == null
+            onLongPress: widget.onEpisodeMenu == null
                 ? null
-                : () => widget.onPickPlayer!(fullIndex),
+                : () => widget.onEpisodeMenu!(fullIndex),
             onDownload: () => widget.onDownload(ep),
             sourceId: widget.sourceId,
             showId: widget.showId,
@@ -587,9 +590,9 @@ class _EpisodesTabState extends State<_EpisodesTab> {
             fraction: st.fraction,
             available: ep.available,
             onTap: () => widget.onOpen(fullIndex),
-            onLongPress: widget.onPickPlayer == null
+            onLongPress: widget.onEpisodeMenu == null
                 ? null
-                : () => widget.onPickPlayer!(fullIndex),
+                : () => widget.onEpisodeMenu!(fullIndex),
           );
         },
       ),
@@ -1097,6 +1100,7 @@ class _ChapterRow extends StatelessWidget {
     required this.isInProgress,
     required this.fraction,
     required this.onTap,
+    this.onLongPress,
     required this.onDownload,
     required this.sourceId,
     required this.downloadSourceId,
@@ -1115,6 +1119,12 @@ class _ChapterRow extends StatelessWidget {
   final bool isInProgress;
   final double fraction;
   final VoidCallback onTap;
+
+  /// The chapter actions menu — mark read, mark this and all above. A chapter
+  /// row is NOT an episode row (that's the point of this class), so it needs
+  /// its own: wiring the menu up to [_EpisodeRow] alone left reading with no
+  /// long-press at all.
+  final VoidCallback? onLongPress;
   final VoidCallback onDownload;
   final String sourceId;
 
@@ -1134,6 +1144,7 @@ class _ChapterRow extends StatelessWidget {
 
     return InkWell(
       onTap: onTap,
+      onLongPress: onLongPress,
       splashColor: AppColors.accentSoft,
       highlightColor: AppColors.surface,
       child: Padding(

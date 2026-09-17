@@ -886,10 +886,15 @@ class _DetailViewState extends State<_DetailView>
     );
   }
 
-  /// Long-press an episode → choose where it plays, this once. Settings keeps
-  /// owning the standing default, so trying VLC on one episode doesn't quietly
-  /// rewire every later tap. Dismissing plays nothing — a long-press that
-  /// started playback on its own would be a trap.
+  /// Long-press an episode or chapter → the actions menu.
+  ///
+  /// Streaming gets the player rows too (choosing where it plays, this once —
+  /// Settings keeps owning the standing default, so trying VLC on one episode
+  /// doesn't quietly rewire every later tap). Reading gets only the marking
+  /// rows, because a chapter resolves to the reader.
+  ///
+  /// Dismissing does nothing — a long-press that started playback on its own
+  /// would be a trap.
   Future<void> _pickPlayerFor(
     List<Episode> episodes,
     int index,
@@ -905,17 +910,34 @@ class _DetailViewState extends State<_DetailView>
 
     final resume = sl<ResumeStore>();
     final hub = sl<TrackerHub>();
+    final isReading =
+        detail.type == ProviderType.novel || detail.type == ProviderType.manga;
+    final read = sl<ReadStore>();
+    // Chapters keep their read state in ReadStore, episodes in ResumeStore —
+    // and the two are keyed DIFFERENTLY. Reading keys by item.id (what the
+    // chapter list and the reader both use), video by item.url. Writing a
+    // chapter under the video key stored it somewhere nothing reads, so the
+    // row never dimmed.
+    final readShowId = widget.item.id;
+    bool markedDone(Episode e) => isReading
+        ? read.finished(widget.item.sourceId, readShowId, e.id)
+        : (resume.get(widget.item.sourceId, widget.item.url, e.id)?.finished ??
+              false);
     final action = await showEpisodeActionSheet(
       context,
+      reading: isReading,
       episodeLabel: label,
-      currentPlayerLabel: prefs.externalPlayerPackage.isEmpty
-          ? context.l10n.builtIn
-          : (prefs.externalPlayerLabel.isEmpty
-                ? context.l10n.external
-                : prefs.externalPlayerLabel),
-      isWatched:
-          resume.get(widget.item.sourceId, widget.item.url, ep.id)?.finished ??
-          false,
+      // Only meaningful for streaming, and the reading sheet has no row to
+      // put it on — so don't go asking which external player is configured
+      // for something that opens the reader.
+      currentPlayerLabel: isReading
+          ? ''
+          : (prefs.externalPlayerPackage.isEmpty
+                ? context.l10n.builtIn
+                : (prefs.externalPlayerLabel.isEmpty
+                      ? context.l10n.external
+                      : prefs.externalPlayerLabel)),
+      isWatched: markedDone(ep),
       tracksToServices: hub.anyConnected,
       // Metadata titles only, and only when there is something to survey: a
       // source-backed title already IS one source, and a row that opens an
@@ -1002,17 +1024,22 @@ class _DetailViewState extends State<_DetailView>
         await _openPlayer(episodes, index, detail, category);
 
       case EpisodeAction.toggleWatched:
-        final nowWatched =
-            !(resume
-                    .get(widget.item.sourceId, widget.item.url, ep.id)
-                    ?.finished ??
-                false);
-        await resume.setWatched(
-          widget.item.sourceId,
-          widget.item.url,
-          ep.id,
-          watched: nowWatched,
-        );
+        final nowWatched = !markedDone(ep);
+        if (isReading) {
+          await read.setRead(
+            widget.item.sourceId,
+            readShowId,
+            ep.id,
+            read: nowWatched,
+          );
+        } else {
+          await resume.setWatched(
+            widget.item.sourceId,
+            widget.item.url,
+            ep.id,
+            watched: nowWatched,
+          );
+        }
         // Only forward when marking. Trackers store a high-water mark, not a
         // set, so there's no "unwatch episode 12" to send — dropping progress
         // back would be a guess at what the user wanted their list to say.
@@ -1021,9 +1048,13 @@ class _DetailViewState extends State<_DetailView>
         setState(() {});
         showAppToast(
           context,
-          nowWatched
-              ? context.l10n.markedAsWatched
-              : context.l10n.markedUnwatched,
+          isReading
+              ? (nowWatched
+                    ? context.l10n.markedAsRead
+                    : context.l10n.markedUnread)
+              : (nowWatched
+                    ? context.l10n.markedAsWatched
+                    : context.l10n.markedUnwatched),
         );
 
       case EpisodeAction.markAboveWatched:
@@ -1031,12 +1062,21 @@ class _DetailViewState extends State<_DetailView>
         // mid-season and want the backlog cleared, and excluding the episode
         // you pressed would mean marking it separately every time.
         for (var i = 0; i <= index; i++) {
-          await resume.setWatched(
-            widget.item.sourceId,
-            widget.item.url,
-            episodes[i].id,
-            watched: true,
-          );
+          if (isReading) {
+            await read.setRead(
+              widget.item.sourceId,
+              readShowId,
+              episodes[i].id,
+              read: true,
+            );
+          } else {
+            await resume.setWatched(
+              widget.item.sourceId,
+              widget.item.url,
+              episodes[i].id,
+              watched: true,
+            );
+          }
         }
         // One tracker write for the highest episode, not one per episode —
         // progress is a high-water mark, so the rest are implied and firing
@@ -1044,7 +1084,12 @@ class _DetailViewState extends State<_DetailView>
         await _scrobbleUpTo(ep, detail);
         if (!mounted) return;
         setState(() {});
-        showAppToast(context, context.l10n.markedEpisodesAsWatched(index + 1));
+        showAppToast(
+          context,
+          isReading
+              ? context.l10n.markedChaptersAsRead(index + 1)
+              : context.l10n.markedEpisodesAsWatched(index + 1),
+        );
     }
   }
 
@@ -2242,11 +2287,10 @@ class _DetailViewState extends State<_DetailView>
             nextAiringAt: _nextAiringAt,
             onOpen: (fullIndex) =>
                 _openPlayer(eps, fullIndex, detail, category),
-            // Reading types resolve to a reader, so there's no player to pick.
-            onPickPlayer: isReading
-                ? null
-                : (fullIndex) =>
-                      _pickPlayerFor(eps, fullIndex, detail, category),
+            // Reading has no player to pick, but it does have the marking
+            // rows — gating the whole menu on the player is what hid them.
+            onEpisodeMenu: (fullIndex) =>
+                _pickPlayerFor(eps, fullIndex, detail, category),
             onRefresh: cubit.refresh,
             onDownload: (ep) => isReading
                 ? _downloadChapter(ep, detail)

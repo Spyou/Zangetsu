@@ -59,6 +59,12 @@ Future<EpisodeAction?> showEpisodeActionSheet(
   /// Whether any tracker is linked. Only used for the subtitle, so nobody is
   /// surprised that marking an episode moved their AniList progress.
   required bool tracksToServices,
+
+  /// Manga/novel. Leaves ONLY the two marking rows, reworded as read rather
+  /// than watched. Everything above them is about playback — a chapter
+  /// resolves to the reader, so there is no player to pick, no mirror to
+  /// choose, no stream to reload, and no point surveying sources for one.
+  bool reading = false,
 }) {
   // Without isScrollControlled a sheet is capped at 9/16 of the screen
   // (_kDefaultScrollControlDisabledMaxHeightRatio) and anything past that is
@@ -106,20 +112,25 @@ Future<EpisodeAction?> showEpisodeActionSheet(
                   ),
                 ),
               ),
-              _PlayerRow(
-                icon: Icons.play_circle_outline_rounded,
-                label: 'Play with…',
-                trailingText: currentPlayerLabel,
-                onTap: () =>
-                    Navigator.pop(sheetContext, EpisodeAction.pickPlayer),
-              ),
-              _PlayerRow(
-                icon: Icons.swap_horiz_rounded,
-                label: 'Play mirror',
-                subtitle: 'Choose the source before it starts',
-                onTap: () => Navigator.pop(sheetContext, EpisodeAction.playMirror),
-              ),
-              if (canSurveySources)
+              if (!reading) ...[
+                _PlayerRow(
+                  icon: Icons.play_circle_outline_rounded,
+                  label: 'Play with…',
+                  trailingText: currentPlayerLabel,
+                  onTap: () =>
+                      Navigator.pop(sheetContext, EpisodeAction.pickPlayer),
+                ),
+                _PlayerRow(
+                  icon: Icons.swap_horiz_rounded,
+                  label: 'Play mirror',
+                  subtitle: 'Choose the source before it starts',
+                  onTap: () =>
+                      Navigator.pop(sheetContext, EpisodeAction.playMirror),
+                ),
+              ],
+              // Streaming only, like the two rows above it: reading gets the
+              // marking rows and nothing else.
+              if (canSurveySources && !reading)
                 _PlayerRow(
                   icon: Icons.travel_explore_rounded,
                   label: 'Where to watch',
@@ -127,19 +138,22 @@ Future<EpisodeAction?> showEpisodeActionSheet(
                   onTap: () =>
                       Navigator.pop(sheetContext, EpisodeAction.whereToWatch),
                 ),
-              _PlayerRow(
-                icon: Icons.refresh_rounded,
-                label: 'Reload links',
-                subtitle: 'Fetch fresh streams if playback keeps failing',
-                onTap: () =>
-                    Navigator.pop(sheetContext, EpisodeAction.reloadLinks),
-              ),
+              if (!reading)
+                _PlayerRow(
+                  icon: Icons.refresh_rounded,
+                  label: 'Reload links',
+                  subtitle: 'Fetch fresh streams if playback keeps failing',
+                  onTap: () =>
+                      Navigator.pop(sheetContext, EpisodeAction.reloadLinks),
+                ),
               Divider(height: 1, color: AppColors.hairline),
               _PlayerRow(
                 icon: isWatched
                     ? Icons.remove_done_rounded
                     : Icons.check_circle_outline_rounded,
-                label: isWatched ? 'Mark as unwatched' : 'Mark as watched',
+                label: reading
+                    ? (isWatched ? 'Mark as unread' : 'Mark as read')
+                    : (isWatched ? 'Mark as unwatched' : 'Mark as watched'),
                 subtitle: tracksToServices
                     ? 'Also updates your connected trackers'
                     : null,
@@ -148,7 +162,9 @@ Future<EpisodeAction?> showEpisodeActionSheet(
               ),
               _PlayerRow(
                 icon: Icons.done_all_rounded,
-                label: 'Mark this and all above as watched',
+                label: reading
+                    ? 'Mark this and all above as read'
+                    : 'Mark this and all above as watched',
                 onTap: () =>
                     Navigator.pop(sheetContext, EpisodeAction.markAboveWatched),
               ),

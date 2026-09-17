@@ -53,7 +53,42 @@ class ReadStore {
 
   /// True when the chapter is effectively done: last page (manga) or ≥95%
   /// scrolled (novel, where total is always 1000).
+  /// Mark a chapter read (or not) by hand, from the chapter list's long-press
+  /// menu.
+  ///
+  /// Stores a flag rather than faking a read position. Writing `pos == total`
+  /// would make it "finished" but would also tell the reader to reopen the
+  /// chapter at its last page, which is not what someone who never opened it
+  /// meant. Unmarking clears the position too, or a genuinely-read chapter
+  /// would still pass the 95% rule below and read as finished anyway.
+  ///
+  /// Runs in incognito on purpose: this is an explicit request to record
+  /// something, not the passive history incognito exists to suppress.
+  Future<void> setRead(
+    String sourceId,
+    String showId,
+    String chapterId, {
+    required bool read,
+  }) async {
+    final key = _key(sourceId, showId, chapterId);
+    final raw = _box.get(key);
+    final m = raw == null
+        ? <String, dynamic>{}
+        : Map<String, dynamic>.from(raw);
+    if (read) {
+      m['read'] = true;
+    } else {
+      m.remove('read');
+      m['pos'] = 0;
+    }
+    await _box.put(key, m);
+  }
+
   bool finished(String sourceId, String showId, String chapterId) {
+    // The hand-set flag wins: it is the only signal for a chapter that was
+    // never opened.
+    final raw = _box.get(_key(sourceId, showId, chapterId));
+    if (raw is Map && raw['read'] == true) return true;
     final mark = get(sourceId, showId, chapterId);
     if (mark == null || mark.total <= 0) return false;
     if (mark.total == 1000) return mark.pos >= 950; // novel: 95% of permille

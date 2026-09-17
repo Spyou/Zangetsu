@@ -2920,6 +2920,17 @@ class AppLocalizationsFr extends AppLocalizations {
   }
 
   @override
+  String get markedAsRead => 'Marked as read';
+
+  @override
+  String get markedUnread => 'Marked unread';
+
+  @override
+  String markedChaptersAsRead(int count) {
+    return 'Marked $count chapters as read';
+  }
+
+  @override
   String downloadChaptersQuestion(int count) {
     return 'Télécharger $count chapitres ?';
   }

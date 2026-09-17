@@ -172,6 +172,40 @@ class _FakeReadStore extends ReadStore {
   }
 }
 
+
+/// Records the showId used for READS and for WRITES separately.
+///
+/// The plain [_FakeReadStore] keys on chapterId alone, so it cannot notice the
+/// two disagreeing — which is exactly the bug this guards: marking a chapter
+/// wrote under the video key (item.url) while the row read under the reading
+/// key (item.id), so nothing ever dimmed.
+class _KeyedReadStore extends ReadStore {
+  final List<String> readShowIds = [];
+  final List<String> writtenShowIds = [];
+  final Set<String> _done = {};
+
+  @override
+  ({int pos, int total})? get(String s, String showId, String chapterId) => null;
+
+  @override
+  bool finished(String s, String showId, String chapterId) {
+    readShowIds.add(showId);
+    return _done.contains('$showId::$chapterId');
+  }
+
+  @override
+  Future<void> setRead(
+    String s,
+    String showId,
+    String chapterId, {
+    required bool read,
+  }) async {
+    writtenShowIds.add(showId);
+    final k = '$showId::$chapterId';
+    read ? _done.add(k) : _done.remove(k);
+  }
+}
+
 /// [ReadHistory] stub for the ReadHistory-fallback resume test — [entry], when
 /// set, is what `_readResumeIndex` finds once it falls off the end of an empty
 /// [ReadStore]. Doesn't touch Hive (the real ReadHistory only does that inside
@@ -710,6 +744,83 @@ void main() {
         find.byWidgetPredicate((w) => w is SizedBox && w.width == 116),
         findsNothing,
       );
+    },
+  );
+
+  testWidgets(
+    'marking a chapter read writes the key the chapter list reads',
+    (tester) async {
+      // Reading state is keyed by item.id; video by item.url. Writing a
+      // chapter under the video key stored it where nothing looks, so the
+      // row stayed undimmed and the mark seemed not to take.
+      tester.view.physicalSize = const Size(800, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      sl.registerSingleton<SourceRepository>(
+        _StubSourceRepository(novelWithDates(null)),
+      );
+      sl.registerSingleton<CatalogueRepository>(sl<SourceRepository>());
+      final store = _KeyedReadStore();
+      sl.unregister<ReadStore>();
+      sl.registerSingleton<ReadStore>(store);
+
+      await tester.pumpWidget(
+        const MaterialApp(home: DetailScreen(item: _novelItem)),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(store.readShowIds, isNotEmpty, reason: 'row read some key');
+      final rowKey = store.readShowIds.first;
+
+      await tester.longPress(find.byKey(chapterCover).first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Mark as read'));
+      await tester.pumpAndSettle();
+
+      expect(store.writtenShowIds, isNotEmpty, reason: 'the mark was written');
+      expect(store.writtenShowIds.first, rowKey);
+
+      // The confirmation toast sets a 2s timer; let it expire or the binding
+      // fails the test for a pending timer after teardown.
+      await tester.pump(const Duration(seconds: 3));
+    },
+  );
+
+  testWidgets(
+    'long-pressing a chapter opens the READING actions menu',
+    (tester) async {
+      // Chapters render as _ChapterRow, not _EpisodeRow. Wiring the menu into
+      // the episode row alone left reading with no long-press at all — the
+      // callback reached the tab and stopped one widget short of the leaf.
+      tester.view.physicalSize = const Size(800, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      sl.registerSingleton<SourceRepository>(
+        _StubSourceRepository(novelWithDates(null)),
+      );
+      sl.registerSingleton<CatalogueRepository>(sl<SourceRepository>());
+
+      await tester.pumpWidget(
+        const MaterialApp(home: DetailScreen(item: _novelItem)),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      await tester.longPress(find.byKey(chapterCover).first);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Mark as read'), findsOneWidget);
+      expect(find.text('Mark this and all above as read'), findsOneWidget);
+      // Those two rows and nothing else — everything above them is playback.
+      expect(find.text('Play with…'), findsNothing);
+      expect(find.text('Play mirror'), findsNothing);
+      expect(find.text('Reload links'), findsNothing);
+      expect(find.text('Where to watch'), findsNothing);
+      expect(find.text('Where to read'), findsNothing);
+      expect(find.text('Mark as watched'), findsNothing);
     },
   );
 

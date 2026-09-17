@@ -5438,6 +5438,24 @@ abstract class AppLocalizations {
   /// **'Marked {count} episodes as watched'**
   String markedEpisodesAsWatched(int count);
 
+  /// No description provided for @markedAsRead.
+  ///
+  /// In en, this message translates to:
+  /// **'Marked as read'**
+  String get markedAsRead;
+
+  /// No description provided for @markedUnread.
+  ///
+  /// In en, this message translates to:
+  /// **'Marked unread'**
+  String get markedUnread;
+
+  /// No description provided for @markedChaptersAsRead.
+  ///
+  /// In en, this message translates to:
+  /// **'Marked {count} chapters as read'**
+  String markedChaptersAsRead(int count);
+
   /// No description provided for @downloadChaptersQuestion.
   ///
   /// In en, this message translates to:
