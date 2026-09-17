@@ -55,8 +55,60 @@ globalThis.FormData = __FormData;
 // mid-call; point it at the same bridge.
 if (!globalThis.fetch) globalThis.fetch = function (url, init) { return fetchApi(url, init); };
 
+// Minimal Headers — QuickJS ships none either (the runtime is built with
+// xhr: false, which skips flutter_js's fetch polyfill). The mtlnovel family
+// builds its request headers with `new Headers()` on every call, and readfrom
+// does it in its constructor, so without this they throw "Headers is not
+// defined" before a single request. Names match case-insensitively, but the
+// spelling the plugin used is what goes out, so a plugin's 'User-Agent'
+// replaces the default one instead of riding next to it.
+function __Headers(init) {
+  this.__h = {};
+  if (!init) return;
+  var self = this;
+  if (init instanceof __Headers) {
+    for (var n in init.__h) this.__h[n] = [init.__h[n][0], init.__h[n][1]];
+  } else if (Array.isArray(init)) {
+    init.forEach(function (e) { self.append(e[0], e[1]); });
+  } else {
+    for (var k in init) {
+      if (Object.prototype.hasOwnProperty.call(init, k)) this.append(k, init[k]);
+    }
+  }
+}
+__Headers.prototype.append = function (k, v) {
+  var n = String(k).toLowerCase();
+  var e = this.__h[n];
+  this.__h[n] = e ? [e[0], e[1] + ', ' + String(v)] : [String(k), String(v)];
+};
+__Headers.prototype.set = function (k, v) {
+  this.__h[String(k).toLowerCase()] = [String(k), String(v)];
+};
+__Headers.prototype.get = function (k) {
+  var e = this.__h[String(k).toLowerCase()];
+  return e ? e[1] : null;
+};
+__Headers.prototype.has = function (k) {
+  return Object.prototype.hasOwnProperty.call(this.__h, String(k).toLowerCase());
+};
+__Headers.prototype.delete = function (k) { delete this.__h[String(k).toLowerCase()]; };
+__Headers.prototype.forEach = function (cb, thisArg) {
+  for (var n in this.__h) cb.call(thisArg, this.__h[n][1], n, this);
+};
+globalThis.Headers = __Headers;
+
 function __rawFetch(url, init) {
   init = init || {};
+  // A Headers object would cross the JSON outbox as {} and the request would
+  // go out without any of them — flatten it to the plain map Dart reads.
+  if (init.headers instanceof __Headers) {
+    var flat = {};
+    for (var hn in init.headers.__h) flat[init.headers.__h[hn][0]] = init.headers.__h[hn][1];
+    var copy = {};
+    for (var ik in init) copy[ik] = init[ik];
+    copy.headers = flat;
+    init = copy;
+  }
   // A FormData body can't cross the JSON outbox — serialise it to
   // x-www-form-urlencoded (WordPress admin-ajax reads $_POST identically to a
   // multipart post for these plain string fields).
@@ -80,25 +132,9 @@ function __rawFetch(url, init) {
     globalThis.__outbox.push({ id: id, url: String(url), init: init });
   });
 }
-// Minimal Headers: what the seven plugins that read a response header use.
+// Response headers, for the seven plugins that read one.
 function __headers(raw) {
-  var map = {};
-  if (raw) {
-    for (var k in raw) {
-      if (Object.prototype.hasOwnProperty.call(raw, k)) {
-        map[String(k).toLowerCase()] = String(raw[k]);
-      }
-    }
-  }
-  return {
-    get: function (name) {
-      var v = map[String(name).toLowerCase()];
-      return v === undefined ? null : v;
-    },
-    has: function (name) {
-      return Object.prototype.hasOwnProperty.call(map, String(name).toLowerCase());
-    },
-  };
+  return new __Headers(raw);
 }
 
 function fetchApi(url, init) {
