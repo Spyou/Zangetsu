@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:watch_app/core/hive/safe_box.dart';
+import 'package:watch_app/core/hive/source_icon_store.dart';
 import 'package:watch_app/core/lnreader/novel_cloudflare.dart';
 
 import 'package:dio/dio.dart';
@@ -104,6 +105,7 @@ import '../lnreader/lnreader_runtime.dart' show LnReaderHttpResponse;
 import '../mihon/mihon_extension_service.dart';
 import '../mihon/mihon_manager.dart';
 import '../mihon/mihon_provider.dart';
+import '../mihon/mihon_repo.dart';
 import '../../features/auth/auth_cubit.dart';
 import '../../features/auth/migration_bridge.dart';
 import '../../features/auth/tv_pairing_service.dart';
@@ -765,6 +767,11 @@ Future<void> initDependencies() async {
       if (!Hive.isBoxOpen('aniyomi_repos')) {
         await openBoxSafely<String>('aniyomi_repos');
       }
+      // Icon URLs picked up from repo indexes, read synchronously by the
+      // source picker. Shared with Mihon.
+      if (!Hive.isBoxOpen(SourceIconStore.boxName)) {
+        await openBoxSafely<String>(SourceIconStore.boxName);
+      }
       final box = Hive.box<dynamic>(AniyomiExtensionService.installedBoxName);
       if (box.isEmpty) {
         return; // nothing installed yet
@@ -826,6 +833,9 @@ Future<void> initDependencies() async {
       if (!Hive.isBoxOpen('mihon_repos')) {
         await openBoxSafely<String>('mihon_repos');
       }
+      if (!Hive.isBoxOpen(SourceIconStore.boxName)) {
+        await openBoxSafely<String>(SourceIconStore.boxName);
+      }
       final box = Hive.box<dynamic>(MihonExtensionService.installedBoxName);
       if (box.isEmpty) {
         return; // nothing installed yet
@@ -837,6 +847,27 @@ Future<void> initDependencies() async {
       final sources = await service.listSources();
       final providers = sources.map((s) => MihonProvider(info: s)).toList();
       mihonManager.registerAll(providers);
+      // Nothing else reads a Mihon repo index at launch — Aniyomi gets its
+      // icons for free off the update check, Mihon would show letters until
+      // the user next opened its Sources screen. So read each index once, and
+      // only while we have no icon at all for what's installed.
+      if (providers.isNotEmpty &&
+          providers.every((p) => SourceIconStore.urlFor(p.pkg) == null)) {
+        final repoUrls = Hive.isBoxOpen('mihon_repos')
+            ? Hive.box<String>('mihon_repos').values.toList()
+            : const <String>[];
+        unawaited(() async {
+          for (final url in repoUrls) {
+            // fetchIndex records the icons on its way past; the entries
+            // themselves are of no use here.
+            try {
+              await MihonRepo.fetchIndex(url);
+            } catch (_) {
+              /* an icon is never worth a boot failure */
+            }
+          }
+        }());
+      }
       // Honor a saved `mihon:` active source (the user quit while in manga
       // mode) that wasn't loaded yet at boot. reapplySaved only swaps when the
       // saved id is now valid and never resets an already-restored source, so

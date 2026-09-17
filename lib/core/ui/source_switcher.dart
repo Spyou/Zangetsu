@@ -6,6 +6,7 @@ import '../aniyomi/aniyomi_provider.dart';
 import '../app_mode.dart';
 import '../cache/app_image_cache.dart';
 import '../di/injector.dart';
+import '../hive/source_icon_store.dart';
 import '../i18n/source_languages.dart';
 import '../lnreader/lnreader_manager.dart';
 import '../mihon/mihon_manager.dart';
@@ -187,13 +188,14 @@ SourceBuckets categorizedSources() {
   final showNsfwAni = sl<PlaybackPrefs>().showNsfwAniyomi;
   for (final p in sl<AniyomiManager>().all) {
     if (!aniyomiNsfwVisible(p, showNsfwAniyomi: showNsfwAni)) continue;
-    // icon: always null — AniyomiSourceInfo carries no icon field (that would
-    // need a native APK-icon lookup, out of scope here).
+    // The source object carries no icon — the repo index does, and
+    // SourceIconStore keeps what it saw. Null until that repo has been read
+    // once, which just means the letter tile.
     anime.add((
       id: p.sourceId,
       label: 'Ani · ${p.displayName}',
       repo: 'Aniyomi',
-      icon: null,
+      icon: p is AniyomiProvider ? SourceIconStore.urlFor(p.pkg) : null,
     ));
   }
   // Mihon providers — always manga; keyed by their `mihon:` sourceId. Only the
@@ -222,13 +224,13 @@ SourceBuckets categorizedSources() {
       // Carry the language code in the subtitle so the ones that DO show (e.g.
       // the enabled languages of a multi-language extension) stay
       // distinguishable; it feeds the picker's search too.
-      // icon: always null — MihonSourceInfo carries no icon field (same
-      // native-APK-lookup gap as Aniyomi above).
+      // Same store as the Aniyomi rows above; a multi-language extension is
+      // one package, so every one of its rows shares the icon.
       manga.add((
         id: p.sourceId,
         label: 'Mihon · ${p.displayName}',
         repo: lang.isNotEmpty ? 'Mihon · $lang' : 'Mihon',
-        icon: null,
+        icon: SourceIconStore.urlFor(p.pkg),
       ));
     }
   }
@@ -1332,12 +1334,19 @@ class _SourceRow extends StatelessWidget {
     return name.isEmpty ? '?' : name.characters.first.toUpperCase();
   }
 
-  /// Centred on purpose: as the Container's direct child the Container's own
-  /// alignment would do it, but this is ALSO returned as
-  /// CachedNetworkImage's placeholder/errorWidget, and there it sits in a bare
-  /// 30x30 box that aligns top-left. A source whose icon url 404s was drawing
-  /// its letter in the corner of the tile.
-  Widget get _letterTile => Center(
+  bool get _hasIcon => icon != null && icon!.isNotEmpty;
+
+  /// Carries its own plate and centring rather than leaning on the tile
+  /// Container: this is ALSO CachedNetworkImage's placeholder/errorWidget, and
+  /// there it sits in a bare 30x30 box that aligns top-left and has no
+  /// background — a source whose icon url 404s drew a bare letter in the
+  /// corner of the tile.
+  Widget get _letterTile => Container(
+    decoration: BoxDecoration(
+      color: AppColors.surface2,
+      borderRadius: BorderRadius.circular(9),
+    ),
+    alignment: Alignment.center,
     child: Text(
       _initial,
       style: AppText.headline.copyWith(color: AppColors.textSecondary),
@@ -1395,7 +1404,11 @@ class _SourceRow extends StatelessWidget {
               height: 30,
               margin: const EdgeInsets.only(right: 10),
               decoration: BoxDecoration(
-                color: AppColors.surface2,
+                // No plate under a real icon. Extension logos ship with a
+                // pixel or two of transparent margin, so the plate showed
+                // through as a grey frame around every one of them; the
+                // letter carries its own plate instead.
+                color: _hasIcon ? Colors.transparent : AppColors.surface2,
                 borderRadius: BorderRadius.circular(9),
               ),
               alignment: Alignment.center,

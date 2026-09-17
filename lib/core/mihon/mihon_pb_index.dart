@@ -72,6 +72,7 @@ Map<String, dynamic> _decodeExtension(Uint8List bytes) {
   int versionCode = 0;
   int contentWarning = 0;
   String apkUrl = '';
+  String iconUrl = '';
   final sources = <Map<String, dynamic>>[];
   while (!r.isAtEnd) {
     final tag = r.readVarint();
@@ -94,7 +95,9 @@ Map<String, dynamic> _decodeExtension(Uint8List bytes) {
         break;
       case 3:
         if (wire == 2) {
-          apkUrl = _decodeResourcesApkUrl(r.readLengthDelimited());
+          final res = _decodeResources(r.readLengthDelimited());
+          apkUrl = res.apk;
+          iconUrl = res.icon;
         } else {
           r.skip(wire);
         }
@@ -138,26 +141,29 @@ Map<String, dynamic> _decodeExtension(Uint8List bytes) {
     'versionCode': versionCode,
     // enum: 3 == CONTENT_WARNING_NSFW; downstream only checks that one flag.
     'contentWarning': contentWarning == 3 ? 'CONTENT_WARNING_NSFW' : '',
-    'resources': {'apkUrl': apkUrl},
+    'resources': {'apkUrl': apkUrl, 'iconUrl': iconUrl},
     'sources': sources,
   };
 }
 
-/// Resources { apkUrl=1 iconUrl=2 jarUrl=501 } — we only need the APK URL.
-String _decodeResourcesApkUrl(Uint8List bytes) {
+/// Resources { apkUrl=1 iconUrl=2 jarUrl=501 } — we read the APK and the icon.
+({String apk, String icon}) _decodeResources(Uint8List bytes) {
   final r = _PbReader(bytes);
   String apkUrl = '';
+  String iconUrl = '';
   while (!r.isAtEnd) {
     final tag = r.readVarint();
     final field = tag >> 3;
     final wire = tag & 0x7;
     if (field == 1 && wire == 2) {
       apkUrl = r.readString();
+    } else if (field == 2 && wire == 2) {
+      iconUrl = r.readString();
     } else {
       r.skip(wire);
     }
   }
-  return apkUrl;
+  return (apk: apkUrl, icon: iconUrl);
 }
 
 /// Source { id=1 name=2 language=3 homeUrl=4 mirrorUrls=5 message=7 }.

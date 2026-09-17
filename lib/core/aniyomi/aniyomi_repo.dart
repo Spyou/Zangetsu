@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:get_it/get_it.dart';
 
+import '../hive/source_icon_store.dart';
+
 /// A single anime source entry within a repo index entry.
 class AniyomiRepoSource {
   const AniyomiRepoSource({
@@ -43,9 +45,13 @@ class AniyomiRepoEntry {
     required this.sources,
     required String repoBaseUrl,
     String absoluteApkUrl = '',
-  }) : apkUrl = absoluteApkUrl.startsWith('http')
-           ? absoluteApkUrl
-           : '${AniyomiRepo.normalizeBase(repoBaseUrl)}/apk/$apk';
+    String absoluteIconUrl = '',
+  })  : apkUrl = absoluteApkUrl.startsWith('http')
+            ? absoluteApkUrl
+            : '${AniyomiRepo.normalizeBase(repoBaseUrl)}/apk/$apk',
+        iconUrl = absoluteIconUrl.startsWith('http')
+            ? absoluteIconUrl
+            : '${AniyomiRepo.normalizeBase(repoBaseUrl)}/icon/$pkg.png';
 
   final String name;
   final String pkg;
@@ -69,6 +75,15 @@ class AniyomiRepoEntry {
   /// reconstructed from the base — rebuilding the old path 404s on all ~1400
   /// of its extensions, so nothing installs.
   final String apkUrl;
+
+  /// Full URL to the extension's icon.
+  ///
+  /// Repos keep these in an `icon/` folder named after the package, which is
+  /// how the picker gets a real logo instead of a letter tile. The newer
+  /// index carries its own absolute link (same reason as [apkUrl]) and that
+  /// wins when present. Not every repo publishes icons — a 404 here is
+  /// expected and just falls back to the letter.
+  final String iconUrl;
 }
 
 /// Utilities for reading Aniyomi extension repository index files.
@@ -207,6 +222,11 @@ class AniyomiRepo {
     }
 
     if (rawJson == null || rawJson.isEmpty) return [];
-    return parseIndex(rawJson, repoBaseUrl: base);
+    final entries = parseIndex(rawJson, repoBaseUrl: base);
+    // The index is the only place an extension's logo is named, so keep the
+    // icon URLs on the way past — the source picker has no other way to get
+    // one for an installed extension.
+    SourceIconStore.recordAll(entries);
+    return entries;
   }
 }

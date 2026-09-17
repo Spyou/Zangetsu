@@ -4,10 +4,16 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
+import 'package:watch_app/core/aniyomi/aniyomi_provider.dart';
+import 'package:watch_app/core/aniyomi/aniyomi_source_info.dart';
 import 'package:watch_app/core/app_mode.dart';
 import 'package:watch_app/core/di/injector.dart' show sl;
 import 'package:watch_app/core/lnreader/lnreader_extension_service.dart';
 import 'package:watch_app/core/lnreader/lnreader_manager.dart';
+import 'package:watch_app/core/hive/source_icon_store.dart';
+import 'package:watch_app/core/mihon/mihon_manager.dart';
+import 'package:watch_app/core/mihon/mihon_provider.dart';
+import 'package:watch_app/core/mihon/mihon_source_info.dart';
 import 'package:watch_app/core/mode/content_mode.dart';
 import 'package:watch_app/core/mode/content_mode_cubit.dart';
 import 'package:watch_app/core/playback/playback_prefs.dart';
@@ -178,11 +184,16 @@ void main() {
           img.imageUrl,
           Exception('network down'),
         );
-        // Centred, not a bare Text: CachedNetworkImage hands its errorWidget a
-        // plain 30x30 box that aligns top-left, so an uncentred letter drew in
-        // the CORNER of the tile for any source whose icon url fails.
-        expect(fallback, isA<Center>());
-        final letter = (fallback as Center).child;
+        // Centred AND plated, not a bare Text: CachedNetworkImage hands its
+        // errorWidget a plain 30x30 box that aligns top-left and paints
+        // nothing, so an uncentred letter drew in the CORNER of the tile —
+        // and since the row stopped plating tiles that have an icon url, the
+        // letter has to bring its own background or a 404 leaves a bare glyph.
+        expect(fallback, isA<Container>());
+        final plate = fallback as Container;
+        expect(plate.alignment, Alignment.center);
+        expect(plate.decoration, isNotNull);
+        final letter = plate.child;
         expect(letter, isA<Text>());
         expect((letter as Text).data, 'I'); // "Icon Source" -> "I"
       },
@@ -266,6 +277,89 @@ void main() {
     test('a plugin the catalog has no iconUrl for gets a null icon', () {
       final b = categorizedSources();
       final row = b.anime.firstWhere((r) => r.id == 'cs:No Icon Plugin');
+      expect(row.icon, isNull);
+    });
+  });
+
+  group('categorizedSources: Aniyomi + Mihon icons from the repo index', () {
+    late Directory tempDir;
+
+    setUp(() async {
+      tempDir = await Directory.systemTemp.createTemp('ani_mihon_icon_test');
+      Hive.init(tempDir.path);
+      await ProviderRegistry.init();
+      await PlaybackPrefs.init();
+      await CloudStreamManager.init();
+      await Hive.openBox<String>(SourceIconStore.boxName);
+
+      sl.registerSingleton<ProviderRegistry>(
+        ProviderRegistry(downloader: _FakeFetcher(), manager: _FakeManager()),
+      );
+      sl.registerSingleton<PlaybackPrefs>(PlaybackPrefs());
+      sl.registerSingleton<CloudStreamManager>(CloudStreamManager());
+      sl.registerSingleton<AniyomiManager>(
+        AniyomiManager()
+          ..register(AniyomiProvider(
+            info: const AniyomiSourceInfo(
+              id: 1,
+              name: 'HiAnime',
+              lang: 'en',
+              baseUrl: 'https://a.test',
+              pkg: 'com.test.anime',
+              nsfw: false,
+            ),
+          ))
+          ..register(AniyomiProvider(
+            info: const AniyomiSourceInfo(
+              id: 2,
+              name: 'Unseen',
+              lang: 'en',
+              baseUrl: 'https://b.test',
+              pkg: 'com.test.unseen',
+              nsfw: false,
+            ),
+          )),
+      );
+      sl.registerSingleton<MihonManager>(
+        MihonManager()
+          ..register(MihonProvider(
+            info: const MihonSourceInfo(
+              id: 42,
+              name: 'MangaDex',
+              lang: 'en',
+              baseUrl: 'https://md.test',
+              pkg: 'com.test.manga',
+              nsfw: false,
+            ),
+          )),
+      );
+
+      // What a repo-index fetch would have left behind.
+      final box = Hive.box<String>(SourceIconStore.boxName);
+      await box.put('com.test.anime', 'https://icons.test/anime.png');
+      await box.put('com.test.manga', 'https://icons.test/manga.png');
+    });
+
+    tearDown(() async {
+      await sl.reset();
+      await Hive.deleteFromDisk();
+      try {
+        await tempDir.delete(recursive: true);
+      } catch (_) {}
+    });
+
+    test('an Aniyomi row gets the icon its repo index advertised', () {
+      final row = categorizedSources().anime.firstWhere((r) => r.id == 'ani:1');
+      expect(row.icon, 'https://icons.test/anime.png');
+    });
+
+    test('a Mihon row gets the icon its repo index advertised', () {
+      final row = categorizedSources().manga.firstWhere((r) => r.id == 'mihon:42');
+      expect(row.icon, 'https://icons.test/manga.png');
+    });
+
+    test('a package no index has been read for keeps a null icon (letter tile)', () {
+      final row = categorizedSources().anime.firstWhere((r) => r.id == 'ani:2');
       expect(row.icon, isNull);
     });
   });
