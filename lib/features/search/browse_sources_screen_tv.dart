@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/mode/content_mode.dart';
+import '../../core/ui/source_icon_tile.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/tv/tv_back_button.dart';
@@ -265,6 +266,14 @@ class _BrowseSourcesListTv extends StatelessWidget {
                     ),
                     child: Row(
                       children: [
+                        Padding(
+                          padding: const EdgeInsets.only(right: 14),
+                          child: SourceIconTile(
+                            size: 38,
+                            name: sourceRowName(s.label),
+                            icon: s.icon,
+                          ),
+                        ),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,

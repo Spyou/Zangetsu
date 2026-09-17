@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 import 'package:watch_app/core/di/injector.dart' show sl;
 import 'package:watch_app/core/provider/provider_manager.dart';
+import 'package:watch_app/core/ui/source_icon_tile.dart';
 import 'package:watch_app/features/search/browse_sources_list.dart';
 
 import '../../support/picker_deps.dart';
@@ -133,4 +134,15 @@ void main() {
     expect(find.text('No sources installed'), findsNothing);
   });
 
+  testWidgets('every row carries a source icon tile', (t) async {
+    await t.pumpWidget(MaterialApp(
+      home: Scaffold(body: BrowseSourcesList(onBrowse: (_, _) {})),
+    ));
+    await t.pumpAndSettle();
+
+    // This list and the picker show the same sources; a row here without a
+    // logo while the picker has one is exactly the drift the shared tile
+    // exists to stop.
+    expect(find.byType(SourceIconTile), findsWidgets);
+  });
 }

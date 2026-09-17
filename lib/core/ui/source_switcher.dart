@@ -1,13 +1,12 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter/material.dart';
 
 import '../aniyomi/aniyomi_provider.dart';
 import '../app_mode.dart';
-import '../cache/app_image_cache.dart';
 import '../di/injector.dart';
 import '../hive/source_icon_store.dart';
 import '../i18n/source_languages.dart';
+import 'source_icon_tile.dart';
 import '../lnreader/lnreader_manager.dart';
 import '../mihon/mihon_manager.dart';
 import '../prefs/source_lang_prefs.dart';
@@ -69,6 +68,33 @@ String? _repoLabelFromUrl(String? repoUrl) {
 String sourceRowName(String label) {
   final i = label.indexOf('· ');
   return (i == -1 ? label : label.substring(i + 2)).trim();
+}
+
+/// `sourceId -> icon URL` for every loaded CloudStream source.
+///
+/// A loaded plugin carries no icon of its own — only the repo catalog entry it
+/// was installed from does, keyed by the plugin's internal name. Shared by the
+/// picker and the CloudStream sources screen so the two cannot disagree.
+/// Best-effort: an icon must never stop a list from building.
+Map<String, String> cloudStreamIconUrls() {
+  final out = <String, String>{};
+  try {
+    for (final g in sl<CloudStreamManager>().repoGroups) {
+      for (final s in g.sources) {
+        final internalName = s.sourcePlugin?.split('@').first;
+        if (internalName == null) continue;
+        for (final p in g.catalog) {
+          if (p.internalName == internalName && p.iconUrl != null) {
+            out[s.sourceId] = p.iconUrl!;
+            break;
+          }
+        }
+      }
+    }
+  } catch (_) {
+    /* icons are cosmetic */
+  }
+  return out;
 }
 
 /// Buckets installed + enabled providers (JS + CloudStream) by manifest type.
@@ -150,24 +176,16 @@ SourceBuckets categorizedSources() {
   // Best-effort: neither a repo tag nor an icon must ever stop the picker
   // from opening.
   final csRepoById = <String, String>{};
-  final iconById = <String, String>{};
+  final iconById = cloudStreamIconUrls();
   try {
     for (final g in mgr.repoGroups) {
       if (g.name.isEmpty) continue;
       for (final s in g.sources) {
         csRepoById[s.sourceId] = g.name;
-        final internalName = s.sourcePlugin?.split('@').first;
-        if (internalName == null) continue;
-        for (final p in g.catalog) {
-          if (p.internalName == internalName && p.iconUrl != null) {
-            iconById[s.sourceId] = p.iconUrl!;
-            break;
-          }
-        }
       }
     }
   } catch (_) {
-    /* tags/icons are cosmetic */
+    /* tags are cosmetic */
   }
   for (final p in mgr.enabled) {
     final repo = csRepoById[p.sourceId];
@@ -1326,58 +1344,6 @@ class _SourceRow extends StatelessWidget {
   /// Cloudflare solve). Null everywhere else, so the row is untouched.
   final Widget? trailing;
 
-  /// First letter of the source's own name for the avatar — the ecosystem
-  /// prefix ("CS · ", "Ani · ") is stripped first, or every CloudStream row
-  /// would read "C".
-  String get _initial {
-    final name = sourceRowName(label);
-    return name.isEmpty ? '?' : name.characters.first.toUpperCase();
-  }
-
-  bool get _hasIcon => icon != null && icon!.isNotEmpty;
-
-  /// Carries its own plate and centring rather than leaning on the tile
-  /// Container: this is ALSO CachedNetworkImage's placeholder/errorWidget, and
-  /// there it sits in a bare 30x30 box that aligns top-left and has no
-  /// background — a source whose icon url 404s drew a bare letter in the
-  /// corner of the tile.
-  Widget get _letterTile => Container(
-    decoration: BoxDecoration(
-      color: AppColors.surface2,
-      borderRadius: BorderRadius.circular(9),
-    ),
-    alignment: Alignment.center,
-    child: Text(
-      _initial,
-      style: AppText.headline.copyWith(color: AppColors.textSecondary),
-    ),
-  );
-
-  /// The 30x30 tile's content: the source's icon when there is one, else the
-  /// letter — which is also the fallback while the icon loads or if it fails,
-  /// so the tile never shows a blank hole or a spinner.
-  Widget get _tileContent {
-    final url = icon;
-    if (url == null || url.isEmpty) return _letterTile;
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(9),
-      child: CachedNetworkImage(
-        imageUrl: url,
-        cacheManager: AppImageCache.manager,
-        width: 30,
-        height: 30,
-        // contain, NOT cover: these are logos, and a good share of them are
-        // wide wordmarks. cover cropped those to their middle — 4K HDHUB came
-        // out as a sliver of letters with both ends cut off. contain shrinks a
-        // wide logo instead of beheading it; square icons look the same either
-        // way.
-        fit: BoxFit.contain,
-        placeholder: (context, url) => _letterTile,
-        errorWidget: (context, url, error) => _letterTile,
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final hasRepo = repo != null && repo!.isNotEmpty;
@@ -1399,20 +1365,11 @@ class _SourceRow extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(14, 8, 16, 8),
         child: Row(
           children: [
-            Container(
-              width: 30,
-              height: 30,
-              margin: const EdgeInsets.only(right: 10),
-              decoration: BoxDecoration(
-                // No plate under a real icon. Extension logos ship with a
-                // pixel or two of transparent margin, so the plate showed
-                // through as a grey frame around every one of them; the
-                // letter carries its own plate instead.
-                color: _hasIcon ? Colors.transparent : AppColors.surface2,
-                borderRadius: BorderRadius.circular(9),
-              ),
-              alignment: Alignment.center,
-              child: _tileContent,
+            Padding(
+              padding: const EdgeInsets.only(right: 10),
+              // sourceRowName first: the tag ("CS · ", "Ani · ") is not part
+              // of the name, and every CloudStream row would read "C".
+              child: SourceIconTile(name: sourceRowName(label), icon: icon),
             ),
             Expanded(
               child: Column(

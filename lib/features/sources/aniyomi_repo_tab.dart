@@ -3,6 +3,7 @@ import 'package:get_it/get_it.dart';
 import 'package:hive/hive.dart';
 
 import '../../core/aniyomi/aniyomi_extension_service.dart';
+import '../../core/ui/source_icon_tile.dart';
 import '../../core/aniyomi/aniyomi_provider.dart';
 import '../../core/aniyomi/aniyomi_repo.dart';
 import '../../core/aniyomi/aniyomi_update.dart';
@@ -820,6 +821,12 @@ class _AniyomiExtensionRowState extends State<_AniyomiExtensionRow> {
       padding: const EdgeInsets.fromLTRB(16, 10, 12, 10),
       child: Row(
         children: [
+          // The index names the icon, so a browse row can show the real logo
+          // before anything is installed.
+          Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: SourceIconTile(name: _entry.name, icon: _entry.iconUrl),
+          ),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,

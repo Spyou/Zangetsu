@@ -441,6 +441,12 @@ class _ZTvInstalledRow extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(16, 8, 6, 8),
         child: Row(
           children: [
+            // Letter only: the registry entry keeps no logo, so an installed
+            // JS provider has nothing to draw. The repo row below does.
+            Padding(
+              padding: const EdgeInsets.only(right: 14),
+              child: SourceIconTile(size: 38, name: name),
+            ),
             // Source name + meta (non-interactive label).
             Expanded(
               child: Column(
@@ -928,6 +934,14 @@ class _ZTvRepoSourceRow extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 10, 12, 10),
       child: Row(
         children: [
+          Padding(
+            padding: const EdgeInsets.only(right: 14),
+            child: SourceIconTile(
+              size: 38,
+              name: source.name,
+              icon: ProviderReposRegistry.resolveLogoUrl(repo, source),
+            ),
+          ),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,

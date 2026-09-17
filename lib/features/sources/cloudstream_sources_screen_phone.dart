@@ -359,6 +359,15 @@ class _CsScreenSourceRow extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(16, 8, 6, 8),
         child: Row(
           children: [
+            Padding(
+              padding: const EdgeInsets.only(right: 12),
+              // A loaded plugin has no icon of its own; the catalog entry it
+              // came from does.
+              child: SourceIconTile(
+                name: source.displayName,
+                icon: cloudStreamIconUrls()[source.sourceId],
+              ),
+            ),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -933,6 +942,13 @@ class _CsScreenPluginRowState extends State<_CsScreenPluginRow> {
       padding: const EdgeInsets.fromLTRB(16, 8, 12, 8),
       child: Row(
         children: [
+          Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: SourceIconTile(
+              name: widget.plugin.name,
+              icon: widget.plugin.iconUrl,
+            ),
+          ),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,

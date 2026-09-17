@@ -3,6 +3,7 @@ import 'package:get_it/get_it.dart';
 import 'package:hive/hive.dart';
 
 import '../../core/aniyomi/aniyomi_repo.dart';
+import '../../core/ui/source_icon_tile.dart';
 import '../../core/di/injector.dart';
 import '../../core/i18n/source_languages.dart';
 import '../../core/mihon/mihon_extension_service.dart';
@@ -864,6 +865,12 @@ class _MihonExtensionRowState extends State<_MihonExtensionRow> {
       padding: const EdgeInsets.fromLTRB(16, 10, 12, 10),
       child: Row(
         children: [
+          // The index names the icon, so a browse row can show the real logo
+          // before anything is installed.
+          Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: SourceIconTile(name: _entry.name, icon: _entry.iconUrl),
+          ),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,

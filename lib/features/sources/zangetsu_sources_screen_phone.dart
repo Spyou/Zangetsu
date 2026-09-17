@@ -445,6 +445,12 @@ class _ZInstalledRow extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 8, 6, 8),
       child: Row(
         children: [
+          // Letter only: the registry entry keeps no logo, so an installed JS
+          // provider has nothing to draw. The browse row below does.
+          Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: SourceIconTile(name: name),
+          ),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -841,6 +847,14 @@ class _ZRepoSourceRow extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 10, 12, 10),
       child: Row(
         children: [
+          // The manifest may declare a `logo`, relative to itself.
+          Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: SourceIconTile(
+              name: source.name,
+              icon: ProviderReposRegistry.resolveLogoUrl(repo, source),
+            ),
+          ),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,

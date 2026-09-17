@@ -7,6 +7,7 @@ import '../../core/provider/cloudstream_provider.dart';
 import '../../core/provider/provider_manager.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
+import '../../core/ui/source_icon_tile.dart';
 import '../../core/ui/source_switcher.dart';
 import '../../l10n/l10n.dart';
 
@@ -165,6 +166,12 @@ class BrowseSourcesList extends StatelessWidget {
           ),
           for (final s in rows)
             ListTile(
+              // sourceRowName strips the ecosystem tag so the letter fallback
+              // is the source's own initial, not "C" for every CloudStream row.
+              leading: SourceIconTile(
+                name: sourceRowName(s.label),
+                icon: s.icon,
+              ),
               title: Text(
                 s.label,
                 style: AppText.body,

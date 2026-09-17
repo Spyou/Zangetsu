@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../core/app_mode.dart';
+import '../../core/ui/source_icon_tile.dart';
 import '../../core/di/injector.dart';
 import '../../core/models/provider_info.dart';
 import '../../core/playback/playback_prefs.dart';

@@ -399,18 +399,32 @@ class _AniSourceRowState extends State<_AniSourceRow> {
       if (update == null) return const SizedBox.shrink();
       return Padding(
         padding: const EdgeInsets.only(right: 4),
-        child: FilledButton(
-          onPressed: _busy ? null : () => _applyUpdate(update),
-          style: FilledButton.styleFrom(
-            backgroundColor: AppColors.accent,
-            foregroundColor: Colors.white,
-            elevation: 0,
-            visualDensity: VisualDensity.compact,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        // Capped width + an ellipsis, because this row also carries a
+        // settings, a sign-in and a delete button: the button's full label
+        // used to win the width fight outright and the source NAME was what
+        // got squeezed away. NOT a Flexible — that defaults to flex:1, so it
+        // claimed half the row's free space and, with no update to show, left
+        // it empty and dragged the trailing buttons into the middle.
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 148),
+          child: FilledButton(
+            onPressed: _busy ? null : () => _applyUpdate(update),
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.accent,
+              foregroundColor: Colors.white,
+              elevation: 0,
+              visualDensity: VisualDensity.compact,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            child: Text(
+              context.l10n.updateArrowVersion('${update.availableVersion}'),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
-          child: Text(context.l10n.updateArrowVersion('${update.availableVersion}')),
         ),
       );
     }
@@ -428,6 +442,15 @@ class _AniSourceRowState extends State<_AniSourceRow> {
         padding: const EdgeInsets.fromLTRB(16, 8, 6, 8),
         child: Row(
           children: [
+            Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: SourceIconTile(
+                name: source.displayName,
+                icon: aniProvider == null
+                    ? null
+                    : SourceIconStore.urlFor(aniProvider.info.pkg),
+              ),
+            ),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -463,6 +486,15 @@ class _AniSourceRowState extends State<_AniSourceRow> {
                 icon: const Icon(Icons.tune_rounded, size: 20),
                 color: AppColors.textSecondary,
                 onPressed: _openSettings,
+                // Default IconButtons are 48x48 for a 20px glyph. Three of
+                // them ate the width the source NAME needed once the row
+                // grew an icon tile; 36 still clears the 36dp touch floor.
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints.tightFor(
+                  width: 36,
+                  height: 36,
+                ),
               ),
             if (source_actions.webViewUrlFor(source.sourceId) != null)
               IconButton(
@@ -471,12 +503,30 @@ class _AniSourceRowState extends State<_AniSourceRow> {
                 color: AppColors.textSecondary,
                 onPressed: () =>
                     source_actions.openSourceWebView(source.sourceId),
+                // Default IconButtons are 48x48 for a 20px glyph. Three of
+                // them ate the width the source NAME needed once the row
+                // grew an icon tile; 36 still clears the 36dp touch floor.
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints.tightFor(
+                  width: 36,
+                  height: 36,
+                ),
               ),
             IconButton(
               tooltip: context.l10n.uninstall,
               icon: const Icon(Icons.delete_outline_rounded, size: 20),
               color: AppColors.textSecondary,
               onPressed: () => _confirmUninstall(context),
+              // Default IconButtons are 48x48 for a 20px glyph. Three of
+              // them ate the width the source NAME needed once the row
+              // grew an icon tile; 36 still clears the 36dp touch floor.
+              visualDensity: VisualDensity.compact,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints.tightFor(
+                width: 36,
+                height: 36,
+              ),
             ),
           ],
         ),
