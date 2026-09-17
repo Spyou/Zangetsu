@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/di/injector.dart';
 import '../../core/mihon/mihon_manager.dart';
 import '../../core/playback/pinned_sources.dart';
+import '../../core/prefs/source_lang_prefs.dart';
 import '../../core/provider/cloudstream_provider.dart';
 import '../../core/provider/provider_manager.dart';
 import '../../core/theme/app_colors.dart';
@@ -109,6 +110,12 @@ class BrowseSourcesList extends StatelessWidget {
       if (sl.isRegistered<CloudStreamManager>()) sl<CloudStreamManager>(),
       if (sl.isRegistered<AniyomiManager>()) sl<AniyomiManager>(),
       if (sl.isRegistered<MihonManager>()) sl<MihonManager>(),
+      // The language prefs too. Turning a language back on changes which
+      // sources belong here, and without these the list kept the answer it
+      // had — the only way to see the new ones was to pin something, because
+      // that fires the notifier below and forces the rebuild.
+      if (sl.isRegistered<MangaLangPrefs>()) sl<MangaLangPrefs>(),
+      if (sl.isRegistered<AnimeLangPrefs>()) sl<AnimeLangPrefs>(),
     ]),
     builder: (context, _) => ValueListenableBuilder<List<String>>(
       // Pinning is a long-press away on every row, and the switcher can
