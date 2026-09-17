@@ -25,9 +25,9 @@ Deno.serve(async (req) => {
     if (!v.ok || !v.legacyUid || !v.email) return json({ ok: false, error: "verify_failed" }, 401);
 
     // 2. Does a Supabase user already exist for this email?
-    const { data: list, error: listErr } = await admin.auth.admin.listUsers();
-    if (listErr) return json({ ok: false, error: "server_error" }, 500);
-    const existing = list.users.find((u) => u.email?.toLowerCase() === v.email!.toLowerCase());
+    const found = await findUserByEmail(v.email);
+    if (found.error) return json({ ok: false, error: "server_error" }, 500);
+    const existing = found.user;
     const profile = existing
       ? (await admin.from("profiles").select("*").eq("id", existing.id).maybeSingle()).data
       : null;
@@ -84,6 +84,21 @@ Deno.serve(async (req) => {
     return json({ ok: false, error: "server_error" }, 500);
   }
 });
+
+// listUsers() returns one page, and GoTrue's default page is 50 users. Reading
+// only that page missed everyone after the first 50, so an account that
+// already exists went down the "create" path and failed there.
+async function findUserByEmail(email: string) {
+  const wanted = email.toLowerCase();
+  const perPage = 1000;
+  for (let page = 1; ; page++) {
+    const { data, error } = await admin.auth.admin.listUsers({ page, perPage });
+    if (error) return { error };
+    const user = data.users.find((u) => u.email?.toLowerCase() === wanted);
+    if (user) return { user };
+    if (data.users.length === 0) return {};
+  }
+}
 
 async function claimData(legacyUid: string, newUid: string) {
   for (const t of ["mylist", "history", "backups"]) {
