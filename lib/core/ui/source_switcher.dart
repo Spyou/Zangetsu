@@ -1,8 +1,10 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter/material.dart';
 
 import '../aniyomi/aniyomi_provider.dart';
 import '../app_mode.dart';
+import '../cache/app_image_cache.dart';
 import '../di/injector.dart';
 import '../i18n/source_languages.dart';
 import '../lnreader/lnreader_manager.dart';
@@ -33,11 +35,11 @@ import 'states.dart';
 /// [TvSourcePicker] — which reads only anime/movies/nsfw and has no mode
 /// filter — renders exactly as it did before these two fields existed.
 typedef SourceBuckets = ({
-  List<({String id, String label, String? repo})> anime,
-  List<({String id, String label, String? repo})> movies,
-  List<({String id, String label, String? repo})> nsfw,
-  List<({String id, String label, String? repo})> manga,
-  List<({String id, String label, String? repo})> novel,
+  List<({String id, String label, String? repo, String? icon})> anime,
+  List<({String id, String label, String? repo, String? icon})> movies,
+  List<({String id, String label, String? repo, String? icon})> nsfw,
+  List<({String id, String label, String? repo, String? icon})> manga,
+  List<({String id, String label, String? repo, String? icon})> novel,
 });
 
 /// Short repo identifier from a manifest URL (the GitHub repo name, else the
@@ -80,14 +82,15 @@ SourceBuckets categorizedSources() {
   // used to be reg.typeOf(e.name) AND sourceTypeOf(e.name) called per row
   // below (two repo-manifest deserializes per row instead of one total).
   final typeMap = reg.typeMapOf();
-  ({String id, String label, String? repo}) row(e) {
+  ({String id, String label, String? repo, String? icon}) row(e) {
     final base = (e.displayName as String).isNotEmpty
         ? e.displayName as String
         : e.name as String;
     final repo = _repoLabelFromUrl(e.originRepoUrl as String?);
     // No ecosystem tag: these ARE the app's own sources, and the repo line
     // underneath already says where they came from.
-    return (id: e.name as String, label: base, repo: repo);
+    // icon: always null — a Zangetsu JS manifest carries no icon field.
+    return (id: e.name as String, label: base, repo: repo, icon: null);
   }
 
   int byLabel(a, b) => sourceRowName(
@@ -95,11 +98,11 @@ SourceBuckets categorizedSources() {
   ).toLowerCase().compareTo(sourceRowName(row(b).label).toLowerCase());
 
   final enabled = reg.getAll().where((e) => e.enabled).toList();
-  final anime = <({String id, String label, String? repo})>[];
-  final movies = <({String id, String label, String? repo})>[];
-  final nsfw = <({String id, String label, String? repo})>[];
-  final manga = <({String id, String label, String? repo})>[];
-  final novel = <({String id, String label, String? repo})>[];
+  final anime = <({String id, String label, String? repo, String? icon})>[];
+  final movies = <({String id, String label, String? repo, String? icon})>[];
+  final nsfw = <({String id, String label, String? repo, String? icon})>[];
+  final manga = <({String id, String label, String? repo, String? icon})>[];
+  final novel = <({String id, String label, String? repo, String? icon})>[];
   for (final e in (enabled..sort(byLabel))) {
     if (nsfwIds.contains(e.name)) {
       if (nsfwEnabled) nsfw.add(row(e));
@@ -134,28 +137,45 @@ SourceBuckets categorizedSources() {
   // CloudStream row under C, which is the opposite of the interleaving this
   // comment has always claimed.
   int byRowLabel(
-    ({String id, String label, String? repo}) a,
-    ({String id, String label, String? repo}) b,
+    ({String id, String label, String? repo, String? icon}) a,
+    ({String id, String label, String? repo, String? icon}) b,
   ) => sourceRowName(
     a.label,
   ).toLowerCase().compareTo(sourceRowName(b.label).toLowerCase());
   final mgr = sl<CloudStreamManager>();
-  // Map each CS source to its origin repo's name, for the repo tag.
-  // Best-effort: a repo tag must NEVER stop the picker from opening.
+  // Map each CS source to its origin repo's name, for the repo tag, and to
+  // the repo catalog's advertised icon (loaded providers don't carry one
+  // themselves — only the catalog entry they were installed from does).
+  // Best-effort: neither a repo tag nor an icon must ever stop the picker
+  // from opening.
   final csRepoById = <String, String>{};
+  final iconById = <String, String>{};
   try {
     for (final g in mgr.repoGroups) {
       if (g.name.isEmpty) continue;
       for (final s in g.sources) {
         csRepoById[s.sourceId] = g.name;
+        final internalName = s.sourcePlugin?.split('@').first;
+        if (internalName == null) continue;
+        for (final p in g.catalog) {
+          if (p.internalName == internalName && p.iconUrl != null) {
+            iconById[s.sourceId] = p.iconUrl!;
+            break;
+          }
+        }
       }
     }
   } catch (_) {
-    /* tags are cosmetic */
+    /* tags/icons are cosmetic */
   }
   for (final p in mgr.enabled) {
     final repo = csRepoById[p.sourceId];
-    final csRow = (id: p.sourceId, label: 'CS · ${p.displayName}', repo: repo);
+    final csRow = (
+      id: p.sourceId,
+      label: 'CS · ${p.displayName}',
+      repo: repo,
+      icon: iconById[p.sourceId],
+    );
     if (p.providerType == ProviderType.anime) {
       anime.add(csRow);
     } else {
@@ -167,10 +187,13 @@ SourceBuckets categorizedSources() {
   final showNsfwAni = sl<PlaybackPrefs>().showNsfwAniyomi;
   for (final p in sl<AniyomiManager>().all) {
     if (!aniyomiNsfwVisible(p, showNsfwAniyomi: showNsfwAni)) continue;
+    // icon: always null — AniyomiSourceInfo carries no icon field (that would
+    // need a native APK-icon lookup, out of scope here).
     anime.add((
       id: p.sourceId,
       label: 'Ani · ${p.displayName}',
       repo: 'Aniyomi',
+      icon: null,
     ));
   }
   // Mihon providers — always manga; keyed by their `mihon:` sourceId. Only the
@@ -199,10 +222,13 @@ SourceBuckets categorizedSources() {
       // Carry the language code in the subtitle so the ones that DO show (e.g.
       // the enabled languages of a multi-language extension) stay
       // distinguishable; it feeds the picker's search too.
+      // icon: always null — MihonSourceInfo carries no icon field (same
+      // native-APK-lookup gap as Aniyomi above).
       manga.add((
         id: p.sourceId,
         label: 'Mihon · ${p.displayName}',
         repo: lang.isNotEmpty ? 'Mihon · $lang' : 'Mihon',
+        icon: null,
       ));
     }
   }
@@ -212,8 +238,17 @@ SourceBuckets categorizedSources() {
   // so plenty of existing tests still build a GetIt without it).
   // `installedSources` is SYNC and reads stored meta only — no runtime build.
   if (sl.isRegistered<LnReaderManager>()) {
-    for (final p in sl<LnReaderManager>().installedSources) {
-      novel.add((id: p.id, label: 'LNReader · ${p.name}', repo: 'LNReader'));
+    final lnr = sl<LnReaderManager>();
+    for (final p in lnr.installedSources) {
+      // p.id is already the `lnr:`-prefixed sourceId; metaFor wants the bare
+      // plugin id back off it.
+      final icon = lnr.metaFor(p.id.substring(4))?.iconUrl;
+      novel.add((
+        id: p.id,
+        label: 'LNReader · ${p.name}',
+        repo: 'LNReader',
+        icon: (icon != null && icon.isNotEmpty) ? icon : null,
+      ));
     }
   }
 
@@ -297,8 +332,8 @@ ProviderType _typeOfFromMap(String id, Map<String, String> typeMap) {
 /// The id prefix is the truth here (`cs:`, `ani:`, `mihon:`, `lnr:`), the same
 /// routing every other part of the app uses, rather than the "CS · " label
 /// text which is only for reading.
-List<({String title, List<({String id, String label, String? repo})> rows})>
-ecosystemTabs(List<({String id, String label, String? repo})> rows) {
+List<({String title, List<({String id, String label, String? repo, String? icon})> rows})>
+ecosystemTabs(List<({String id, String label, String? repo, String? icon})> rows) {
   bool isCs(String id) => id.startsWith('cs:');
   bool isAni(String id) => id.startsWith('ani:');
   final zangetsu = [
@@ -336,8 +371,8 @@ SourceBuckets filterBucketsForMode(SourceBuckets buckets, ContentMode mode) {
   // repos — see ProviderRegistry's composite repoUrl+sourceId key), and a
   // map would collapse those into one row, silently dropping one from the
   // picker/search.
-  List<({String id, String label, String? repo})> filter(
-    List<({String id, String label, String? repo})> rows,
+  List<({String id, String label, String? repo, String? icon})> filter(
+    List<({String id, String label, String? repo, String? icon})> rows,
   ) => rows
       .where((r) => mode.matchesProvider(_typeOfFromMap(r.id, typeMap)))
       .toList();
@@ -684,21 +719,22 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
     super.dispose();
   }
 
-  List<({String id, String label, String? repo})> _filter(
-    List<({String id, String label, String? repo})> rows,
+  List<({String id, String label, String? repo, String? icon})> _filter(
+    List<({String id, String label, String? repo, String? icon})> rows,
   ) => [
     for (final s in rows)
       if (_sourcePickerMatches(_query, s.label, s.repo)) s,
   ];
 
   Widget _rowFor(
-    ({String id, String label, String? repo}) src, {
+    ({String id, String label, String? repo, String? icon}) src, {
     bool autofocus = false,
   }) {
     final trailing = widget.trailingBuilder?.call(src.id);
     final row = _SourceRow(
       label: src.label,
       repo: src.repo,
+      icon: src.icon,
       isActive: !widget.autoSelected && src.id == widget.currentId,
       isPinned: PinnedSources.isPinned(src.id),
       // On TV trailing actions are siblings beside the row so D-pad can
@@ -790,7 +826,7 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
   }
 
   // A scrollable flat list for a single tab.
-  Widget _flat(List<({String id, String label, String? repo})> all) {
+  Widget _flat(List<({String id, String label, String? repo, String? icon})> all) {
     final rows = _filter(all);
     if (rows.isEmpty) {
       return _empty(_query.trim().isEmpty ? 'No sources here' : 'No matches');
@@ -824,7 +860,7 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
   // A reading mode's single-bucket tab (Manga or Novel) — same flat list as
   // [_flat], but a genuinely-empty bucket (nothing installed, not just a
   // search with no matches) gets the install CTA instead of plain text.
-  Widget _readingFlat(List<({String id, String label, String? repo})> all) {
+  Widget _readingFlat(List<({String id, String label, String? repo, String? icon})> all) {
     final rows = _filter(all);
     if (rows.isEmpty) {
       if (all.isEmpty && _query.trim().isEmpty) return _installCta();
@@ -860,7 +896,7 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
   /// carry both, the pool is shared, and hunting for a source under a heading
   /// that guessed wrong is worse than one alphabetical list. NSFW stays
   /// separate: that split is deliberate and gated on the Privacy toggle.
-  List<({String id, String label, String? repo})> get _video => [
+  List<({String id, String label, String? repo, String? icon})> get _video => [
     ...widget.buckets.anime,
     ...widget.buckets.movies,
   ]..sort((x, y) => x.label.toLowerCase().compareTo(y.label.toLowerCase()));
@@ -868,7 +904,7 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
   /// Source id that should receive autofocus on TV — current selection if
   /// present, else the first row. Null when Auto Resolve owns autofocus.
   String? _autofocusSourceId(
-    List<({String id, String label, String? repo})> rows,
+    List<({String id, String label, String? repo, String? icon})> rows,
   ) {
     if (!_isTv || rows.isEmpty) return null;
     if (widget.autoSelected && widget.onAutoResolve != null) return null;
@@ -906,15 +942,15 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
     final pinned = _filter([
       for (final id in pinnedIds) ...allRows.where((s) => s.id == id),
     ]);
-    bool unpinned(({String id, String label, String? repo}) s) =>
+    bool unpinned(({String id, String label, String? repo, String? icon}) s) =>
         !pinnedIds.contains(s.id);
-    final focusCandidates = <({String id, String label, String? repo})>[
+    final focusCandidates = <({String id, String label, String? repo, String? icon})>[
       ...pinned,
       for (final c in categories) ..._filter(c.rows.where(unpinned).toList()),
     ];
     final focusId = _autofocusSourceId(focusCandidates);
     var focusGiven = false;
-    bool takeFocus(({String id, String label, String? repo}) s) {
+    bool takeFocus(({String id, String label, String? repo, String? icon}) s) {
       if (focusGiven || focusId == null || s.id != focusId) return false;
       focusGiven = true;
       return true;
@@ -1250,6 +1286,7 @@ class _SourceRow extends StatelessWidget {
     required this.isActive,
     required this.onTap,
     this.repo,
+    this.icon,
     this.isPinned = false,
     this.autofocus = false,
     this.onLongPress,
@@ -1260,6 +1297,11 @@ class _SourceRow extends StatelessWidget {
 
   /// Origin repo, shown small + dim under the name. Null/empty → not shown.
   final String? repo;
+
+  /// The source's own icon URL. Null/empty (most sources — see
+  /// `categorizedSources`) → the letter tile below is the permanent look,
+  /// not a loading state.
+  final String? icon;
   final bool isActive;
   final bool isPinned;
   final bool autofocus;
@@ -1276,6 +1318,31 @@ class _SourceRow extends StatelessWidget {
   String get _initial {
     final name = sourceRowName(label);
     return name.isEmpty ? '?' : name.characters.first.toUpperCase();
+  }
+
+  Widget get _letterTile => Text(
+    _initial,
+    style: AppText.headline.copyWith(color: AppColors.textSecondary),
+  );
+
+  /// The 30x30 tile's content: the source's icon when there is one, else the
+  /// letter — which is also the fallback while the icon loads or if it fails,
+  /// so the tile never shows a blank hole or a spinner.
+  Widget get _tileContent {
+    final url = icon;
+    if (url == null || url.isEmpty) return _letterTile;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(9),
+      child: CachedNetworkImage(
+        imageUrl: url,
+        cacheManager: AppImageCache.manager,
+        width: 30,
+        height: 30,
+        fit: BoxFit.cover,
+        placeholder: (context, url) => _letterTile,
+        errorWidget: (context, url, error) => _letterTile,
+      ),
+    );
   }
 
   @override
@@ -1308,12 +1375,7 @@ class _SourceRow extends StatelessWidget {
                 borderRadius: BorderRadius.circular(9),
               ),
               alignment: Alignment.center,
-              child: Text(
-                _initial,
-                style: AppText.headline.copyWith(
-                  color: AppColors.textSecondary,
-                ),
-              ),
+              child: _tileContent,
             ),
             Expanded(
               child: Column(

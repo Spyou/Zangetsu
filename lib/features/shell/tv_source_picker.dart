@@ -53,7 +53,8 @@ class TvSourcePicker extends StatelessWidget {
     final rows = <_PickerRow>[];
 
     void addSection(
-        String header, List<({String id, String label, String? repo})> sources) {
+        String header,
+        List<({String id, String label, String? repo, String? icon})> sources) {
       if (sources.isEmpty) return;
       rows.add(_PickerRow.header(header));
       for (final s in sources) {

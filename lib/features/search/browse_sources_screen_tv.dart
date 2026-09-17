@@ -201,7 +201,7 @@ class _BrowseSourcesListTv extends StatelessWidget {
   Widget build(BuildContext context) {
     final b = categorizedSources();
     final q = query.trim().toLowerCase();
-    bool matches(({String id, String label, String? repo}) s) =>
+    bool matches(({String id, String label, String? repo, String? icon}) s) =>
         q.isEmpty ||
         s.label.toLowerCase().contains(q) ||
         (s.repo?.toLowerCase().contains(q) ?? false);
@@ -210,7 +210,7 @@ class _BrowseSourcesListTv extends StatelessWidget {
     final showManga = kind == SourceListKind.manga;
     final showNovel = kind == SourceListKind.novel;
 
-    final groups = <(String, List<({String id, String label, String? repo})>)>[
+    final groups = <(String, List<({String id, String label, String? repo, String? icon})>)>[
       if (showStreaming) (context.l10n.anime, b.anime.where(matches).toList()),
       if (showStreaming)
         (context.l10n.moviesSeries, b.movies.where(matches).toList()),

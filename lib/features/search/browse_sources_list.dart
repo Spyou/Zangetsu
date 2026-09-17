@@ -17,7 +17,7 @@ import '../../l10n/l10n.dart';
 enum SourceListKind { streaming, manga, novel }
 
 /// One source row as the buckets describe it.
-typedef SourceRow = ({String id, String label, String? repo});
+typedef SourceRow = ({String id, String label, String? repo, String? icon});
 
 /// Move pinned sources into a single group at the top, in pin order.
 ///
@@ -103,7 +103,7 @@ class BrowseSourcesList extends StatelessWidget {
   Widget _build(BuildContext context, List<String> pinnedIds) {
     final b = categorizedSources();
     final q = query.trim().toLowerCase();
-    bool matches(({String id, String label, String? repo}) s) =>
+    bool matches(({String id, String label, String? repo, String? icon}) s) =>
         q.isEmpty ||
         s.label.toLowerCase().contains(q) ||
         (s.repo?.toLowerCase().contains(q) ?? false);
@@ -112,7 +112,7 @@ class BrowseSourcesList extends StatelessWidget {
     final showManga = kind == null || kind == SourceListKind.manga;
     final showNovel = kind == null || kind == SourceListKind.novel;
 
-    var groups = <(String, List<({String id, String label, String? repo})>)>[
+    var groups = <(String, List<({String id, String label, String? repo, String? icon})>)>[
       if (showStreaming) (context.l10n.anime, b.anime.where(matches).toList()),
       if (showStreaming)
         (context.l10n.moviesSeries, b.movies.where(matches).toList()),

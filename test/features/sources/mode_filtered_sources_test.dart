@@ -156,15 +156,15 @@ void main() {
         // regression, since ProviderRegistry keys entries by repoUrl+sourceId
         // and explicitly supports the same sourceId installed twice.
         final buckets = (
-          anime: <({String id, String label, String? repo})>[
-            (id: 'js:dup', label: 'Dup', repo: 'repoA'),
-            (id: 'js:dup', label: 'Dup', repo: 'repoB'),
-            (id: 'js:solo', label: 'Solo', repo: null),
+          anime: <({String id, String label, String? repo, String? icon})>[
+            (id: 'js:dup', label: 'Dup', repo: 'repoA', icon: null),
+            (id: 'js:dup', label: 'Dup', repo: 'repoB', icon: null),
+            (id: 'js:solo', label: 'Solo', repo: null, icon: null),
           ],
-          movies: const <({String id, String label, String? repo})>[],
-          nsfw: const <({String id, String label, String? repo})>[],
-          manga: const <({String id, String label, String? repo})>[],
-          novel: const <({String id, String label, String? repo})>[],
+          movies: const <({String id, String label, String? repo, String? icon})>[],
+          nsfw: const <({String id, String label, String? repo, String? icon})>[],
+          manga: const <({String id, String label, String? repo, String? icon})>[],
+          novel: const <({String id, String label, String? repo, String? icon})>[],
         );
         final filtered = filterBucketsForMode(buckets, ContentMode.anime);
         expect(filtered.anime, buckets.anime); // byte-identical: all 3 survive, in order

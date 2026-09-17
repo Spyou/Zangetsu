@@ -18,14 +18,14 @@ import 'package:watch_app/features/home/search_screen.dart';
 import 'package:watch_app/l10n/app_localizations.dart';
 
 SourceBuckets _buckets({
-  List<({String id, String label, String? repo})> anime = const [],
-  List<({String id, String label, String? repo})> movies = const [],
-  List<({String id, String label, String? repo})> nsfw = const [],
-  List<({String id, String label, String? repo})> manga = const [],
-  List<({String id, String label, String? repo})> novel = const [],
+  List<({String id, String label, String? repo, String? icon})> anime = const [],
+  List<({String id, String label, String? repo, String? icon})> movies = const [],
+  List<({String id, String label, String? repo, String? icon})> nsfw = const [],
+  List<({String id, String label, String? repo, String? icon})> manga = const [],
+  List<({String id, String label, String? repo, String? icon})> novel = const [],
 }) => (anime: anime, movies: movies, nsfw: nsfw, manga: manga, novel: novel);
 
-const _row = (id: 'js:x', label: 'X', repo: null);
+const _row = (id: 'js:x', label: 'X', repo: null, icon: null);
 
 AppLocalizations get _l10n =>
     lookupAppLocalizations(const Locale('en'));
