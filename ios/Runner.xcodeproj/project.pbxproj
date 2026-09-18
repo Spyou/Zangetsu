@@ -5,9 +5,9 @@
 	};
 	objectVersion = 54;
 	objects = {
-B37A00000000000000000023 = {isa = XCBuildConfiguration; baseConfigurationReference = B37A00000000000000000026; buildSettings = {APPLICATION_EXTENSION_API_ONLY = YES; CODE_SIGN_STYLE = Automatic; INFOPLIST_FILE = BetaRemoteActivity/Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 16.2; PRODUCT_BUNDLE_IDENTIFIER = com.serenity.zangetsu.beta.remoteactivity; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; SKIP_INSTALL = YES; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2"; }; name = Profile; };
-B37A00000000000000000022 = {isa = XCBuildConfiguration; baseConfigurationReference = B37A00000000000000000026; buildSettings = {APPLICATION_EXTENSION_API_ONLY = YES; CODE_SIGN_STYLE = Automatic; INFOPLIST_FILE = BetaRemoteActivity/Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 16.2; PRODUCT_BUNDLE_IDENTIFIER = com.serenity.zangetsu.beta.remoteactivity; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; SKIP_INSTALL = YES; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2"; }; name = Release; };
-B37A00000000000000000021 = {isa = XCBuildConfiguration; baseConfigurationReference = B37A00000000000000000026; buildSettings = {APPLICATION_EXTENSION_API_ONLY = YES; CODE_SIGN_STYLE = Automatic; INFOPLIST_FILE = BetaRemoteActivity/Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 16.2; PRODUCT_BUNDLE_IDENTIFIER = com.serenity.zangetsu.beta.remoteactivity; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; SKIP_INSTALL = YES; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2"; }; name = Debug; };
+B37A00000000000000000023 = {isa = XCBuildConfiguration; baseConfigurationReference = B37A00000000000000000026; buildSettings = {APPLICATION_EXTENSION_API_ONLY = YES; CODE_SIGN_STYLE = Automatic; INFOPLIST_FILE = BetaRemoteActivity/Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 16.2; PRODUCT_BUNDLE_IDENTIFIER = com.spyou.zangetsu.remoteactivity; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; SKIP_INSTALL = YES; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2"; }; name = Profile; };
+B37A00000000000000000022 = {isa = XCBuildConfiguration; baseConfigurationReference = B37A00000000000000000026; buildSettings = {APPLICATION_EXTENSION_API_ONLY = YES; CODE_SIGN_STYLE = Automatic; INFOPLIST_FILE = BetaRemoteActivity/Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 16.2; PRODUCT_BUNDLE_IDENTIFIER = com.spyou.zangetsu.remoteactivity; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; SKIP_INSTALL = YES; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2"; }; name = Release; };
+B37A00000000000000000021 = {isa = XCBuildConfiguration; baseConfigurationReference = B37A00000000000000000026; buildSettings = {APPLICATION_EXTENSION_API_ONLY = YES; CODE_SIGN_STYLE = Automatic; INFOPLIST_FILE = BetaRemoteActivity/Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 16.2; PRODUCT_BUNDLE_IDENTIFIER = com.spyou.zangetsu.remoteactivity; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; SKIP_INSTALL = YES; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2"; }; name = Debug; };
 B37A00000000000000000010 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BetaRemoteActivityAttributes.swift; path = ../apple/BetaRemoteActivityAttributes.swift; sourceTree = SOURCE_ROOT; };
 B37A00000000000000000011 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BetaRemoteActivity.swift; path = BetaRemoteActivity/BetaRemoteActivity.swift; sourceTree = SOURCE_ROOT; };
 B37A00000000000000000012 = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; path = BetaRemoteActivity.appex; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -546,7 +546,7 @@ B37A00000000000000000026 = {isa = PBXFileReference; lastKnownFileType = text.xcc
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.serenity.zangetsu.beta;
+				PRODUCT_BUNDLE_IDENTIFIER = com.spyou.zangetsu;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_OBJC_BRIDGING_HEADER = "Runner/Runner-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
@@ -563,7 +563,7 @@ B37A00000000000000000026 = {isa = PBXFileReference; lastKnownFileType = text.xcc
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.serenity.zangetsu.beta.RunnerTests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.spyou.zangetsu.RunnerTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
@@ -581,7 +581,7 @@ B37A00000000000000000026 = {isa = PBXFileReference; lastKnownFileType = text.xcc
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.serenity.zangetsu.beta.RunnerTests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.spyou.zangetsu.RunnerTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Runner.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Runner";
@@ -597,7 +597,7 @@ B37A00000000000000000026 = {isa = PBXFileReference; lastKnownFileType = text.xcc
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.serenity.zangetsu.beta.RunnerTests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.spyou.zangetsu.RunnerTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Runner.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Runner";
@@ -732,7 +732,7 @@ B37A00000000000000000026 = {isa = PBXFileReference; lastKnownFileType = text.xcc
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.serenity.zangetsu.beta;
+				PRODUCT_BUNDLE_IDENTIFIER = com.spyou.zangetsu;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_OBJC_BRIDGING_HEADER = "Runner/Runner-Bridging-Header.h";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
@@ -758,7 +758,7 @@ B37A00000000000000000026 = {isa = PBXFileReference; lastKnownFileType = text.xcc
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.serenity.zangetsu.beta;
+				PRODUCT_BUNDLE_IDENTIFIER = com.spyou.zangetsu;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_OBJC_BRIDGING_HEADER = "Runner/Runner-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;

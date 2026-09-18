@@ -60,11 +60,6 @@ class UpdateService {
   /// version the user chose to skip). Returns null on no-update or any error —
   /// callers must treat null as "nothing to do" (never throws).
   Future<UpdateInfo?> checkForUpdate({bool respectSkip = false}) async {
-    // Experimental fork: never offer an upstream APK as an update to Beta.
-    if ((await PackageInfo.fromPlatform()).packageName ==
-        'com.serenity.zangetsu.beta') {
-      return null;
-    }
     try {
       final beta = await betaOptIn();
       final release = beta

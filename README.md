@@ -1,4 +1,4 @@
-# Zangetsu Beta
+# Zangetsu
 
 A phone-and-TV companion fork of [Spyou/Zangetsu](https://github.com/Spyou/Zangetsu), developed in [Serenity-MIST/Zangetsu](https://github.com/Serenity-MIST/Zangetsu).
 
@@ -79,12 +79,12 @@ Use Flutter, Android SDK and a compatible JDK. Development used Flutter 3.44/Dar
 
 ```sh
 flutter pub get
-flutter build apk --release --target-platform android-arm,android-arm64 --build-name 0.7.0 --build-number 7
+flutter build apk --release --target-platform android-arm,android-arm64
 ```
 
 Output: `build/app/outputs/flutter-apk/app-release.apk`. The optional `tool/build_beta.ps1` helper assumes sibling Flutter/cache directories from the development workspace; they are not prerequisites for the standard command.
 
-The name is **Zangetsu Beta**, Android ID `com.serenity.zangetsu.beta`, separate from the original app. Upstream automatic APK updates are disabled. Configure your own signing key for distribution; without release configuration the Android project falls back to debug signing. Never commit signing keys or local credentials. Updates to your own installs must use the same signing key.
+The review source uses **Zangetsu**, Android ID `com.spyou.watch_app`, and Apple bundle ID `com.spyou.zangetsu`. The previously installed 0.7.0 prototype used a separate Beta identity; its installation results do not validate this identity change. The companion QR scheme remains versioned separately for compatibility. Configure your own signing key for distribution; without release configuration the Android project falls back to debug signing. Never commit signing keys or local credentials. Updates to your own installs must use the same signing key.
 
 ## Protocol and privacy
 
@@ -97,3 +97,7 @@ Wi-Fi control is a local TCP prototype without TLS. Use a trusted local network 
 The application, design and source ecosystem come from [Spyou/Zangetsu](https://github.com/Spyou/Zangetsu) and its contributors. Remote interaction was informed by the Drift/Sinotec prototype. Existing third-party notices and the [license](LICENSE) remain applicable.
 
 Reports should include phone/TV OS, app version, transport and reproducible steps. Community help is especially needed with Apple builds, mixed-platform pairing and background media behaviour. Do not include pairing secrets, private stream URLs or signing material.
+
+## AI assistance and review status
+
+Codex substantially generated and refactored the companion implementation, Android/Apple integrations, tests and documentation. Automated checks and limited Android device testing are recorded above; a human maintainer still needs to read, understand and review the contribution. This is not a claim that the full contribution has been manually validated. See [REVIEW_HANDOFF.md](REVIEW_HANDOFF.md) for remaining work, provenance gaps and security-sensitive paths.

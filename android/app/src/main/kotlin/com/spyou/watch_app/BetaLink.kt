@@ -119,7 +119,7 @@ object BetaLink {
         }
         try {
             nsd?.registerService(NsdServiceInfo().apply {
-                serviceName = "Zangetsu Beta ${android.os.Build.MODEL}"
+                serviceName = "Zangetsu ${android.os.Build.MODEL}"
                 serviceType = BetaLink.serviceType
                 setPort(port)
                 setAttribute("deviceId", deviceId)
@@ -138,7 +138,7 @@ object BetaLink {
         val adapter = context.getSystemService(BluetoothManager::class.java)?.adapter
             ?: throw IllegalStateException("This device has no Bluetooth adapter")
         check(adapter.isEnabled) { "Turn Bluetooth on in Android settings first" }
-        val listener = adapter.listenUsingRfcommWithServiceRecord("Zangetsu Beta", uuid)
+        val listener = adapter.listenUsingRfcommWithServiceRecord("Zangetsu", uuid)
         bluetooth = listener
         pairingPrefs?.edit()?.putBoolean("receiverBluetooth", true)?.apply()
         bluetoothStatus = "Bluetooth ready · pair devices in Android settings"

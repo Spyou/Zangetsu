@@ -1,7 +1,7 @@
 /// Single source of truth for the product name. Final rename = one
 /// find/replace on the token `WATCH_APP` across the repo, plus a bundle-id
 /// rename (`flutter pub run rename` or manual android/ios edits).
-const String kAppName = 'Zangetsu Beta';
+const String kAppName = 'Zangetsu';
 
 /// Running app version shown in Settings/About. Populated from the real build
 /// (PackageInfo) at boot so it never goes stale; this literal is just the

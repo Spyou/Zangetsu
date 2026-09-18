@@ -46,7 +46,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.serenity.zangetsu.beta"
+        applicationId = "com.spyou.watch_app"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion

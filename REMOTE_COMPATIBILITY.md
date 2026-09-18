@@ -29,7 +29,7 @@ Android keeps its existing Bluetooth HID and RFCOMM paths, with Wi-Fi companion 
 4. Check iOS Live Activity permission, foreground/background transitions, stale state, tapping back into the app, and ending the activity on disconnect.
 5. Check Android system media controls and the manufacturer's island with real TV playback, including other music apps and local phone playback. Do not infer OEM support from successful compilation.
 
-Beta identity remains separate from upstream: com.serenity.zangetsu.beta; Live Activity extension com.serenity.zangetsu.beta.remoteactivity. This fork is published separately from the upstream project. No upstream pull request is implied.
+Review source now restores upstream Android identity com.spyou.watch_app and Apple identity com.spyou.zangetsu; Live Activity extension com.spyou.zangetsu.remoteactivity. Earlier installed builds used separate Beta IDs. This fork is published separately from the upstream project. No upstream pull request is implied.
 
 Platform references: https://developer.android.com/reference/android/media/session/MediaSession ; https://developer.apple.com/documentation/technotes/tn3179-understanding-local-network-privacy ; https://developer.apple.com/documentation/activitykit/displaying-live-data-with-live-activities .
 

@@ -171,7 +171,7 @@ class TvPlayerActivity : Activity() {
             .put("megaSkipEnabled", intent.getBooleanExtra(EXTRA_MEGASKIP, true)).put("megaSkipSeconds", megaSkipSecs)
             .put("canSkipIntro", skipIntroEnabled && skipIntervals.any { (p?.currentPosition ?: -1) >= it.start && (p?.currentPosition ?: -1) < it.end })
             .put("skipLabel", if (::skipButton.isInitialized) skipButton.text.toString() else "Skip Intro")
-            .put("title", intent.getStringExtra(EXTRA_TITLE) ?: "Zangetsu Beta")
+            .put("title", intent.getStringExtra(EXTRA_TITLE) ?: "Zangetsu")
             .put("episodeLabel", episodeLabels.getOrNull(currentIndex) ?: intent.getStringExtra(EXTRA_EP_LABEL) ?: "")
             .put("episodeIndex", currentIndex).put("episodes", org.json.JSONArray(episodeLabels.toList()))
             .put("optionsVersion", betaOptionsVersion())

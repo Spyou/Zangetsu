@@ -382,7 +382,7 @@
 					"-framework",
 					JavaScriptCore,
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.serenity.zangetsu.beta;
+				PRODUCT_BUNDLE_IDENTIFIER = com.spyou.zangetsu;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "appletvsimulator appletvos";
 				SWIFT_OBJC_BRIDGING_HEADER = "Runner/Runner-Bridging-Header.h";
@@ -476,7 +476,7 @@
 					"-framework",
 					JavaScriptCore,
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.serenity.zangetsu.beta;
+				PRODUCT_BUNDLE_IDENTIFIER = com.spyou.zangetsu;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "appletvsimulator appletvos";
 				SWIFT_OBJC_BRIDGING_HEADER = "Runner/Runner-Bridging-Header.h";
@@ -564,7 +564,7 @@
 					"-framework",
 					JavaScriptCore,
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.serenity.zangetsu.beta;
+				PRODUCT_BUNDLE_IDENTIFIER = com.spyou.zangetsu;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "appletvsimulator appletvos";
 				SWIFT_OBJC_BRIDGING_HEADER = "Runner/Runner-Bridging-Header.h";

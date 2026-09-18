@@ -10,11 +10,11 @@ $betaFlutter = Join-Path $betaWork 'flutter/bin/flutter.bat'
 if (!(Test-Path -LiteralPath $betaFlutter)) { throw 'Workspace Flutter SDK is missing.' }
 Push-Location $betaProject
 try {
-    & $betaFlutter build apk --release --no-pub --target-platform android-arm,android-arm64 --build-name 0.7.0 --build-number 7
+    & $betaFlutter build apk --release --no-pub --target-platform android-arm,android-arm64
     if ($LASTEXITCODE -ne 0) { throw 'Beta APK build failed.' }
     $betaOutputs = Join-Path $betaWorkspace 'outputs'
     New-Item -ItemType Directory -Force -Path $betaOutputs | Out-Null
-    Copy-Item -LiteralPath 'build/app/outputs/flutter-apk/app-release.apk' -Destination (Join-Path $betaOutputs 'Zangetsu-Beta-0.7.0.apk')
+    Copy-Item -LiteralPath 'build/app/outputs/flutter-apk/app-release.apk' -Destination (Join-Path $betaOutputs 'Zangetsu-review.apk')
     if ($WithDeviceTests) {
         Push-Location android
         try {

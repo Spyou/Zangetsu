@@ -42,7 +42,7 @@ public class BetaConnectionService extends Service {
   PendingIntent open=PendingIntent.getActivity(this,0,new Intent(this,MainActivity.class),PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
   PendingIntent stop=PendingIntent.getService(this,1,new Intent(this,BetaConnectionService.class).setAction("STOP"),PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
   int icon=android.R.drawable.ic_media_play;
-  Notification.Builder builder=(Build.VERSION.SDK_INT>=26?new Notification.Builder(this,"beta_remote"):new Notification.Builder(this)).setSmallIcon(icon).setContentTitle(target!=null?name(target):"Zangetsu Beta").setContentText(target!=null?"TV remote · Bluetooth connected":detail).setContentIntent(open).setOngoing(true).setOnlyAlertOnce(true).setShowWhen(false);
+  Notification.Builder builder=(Build.VERSION.SDK_INT>=26?new Notification.Builder(this,"beta_remote"):new Notification.Builder(this)).setSmallIcon(icon).setContentTitle(target!=null?name(target):"Zangetsu").setContentText(target!=null?"TV remote · Bluetooth connected":detail).setContentIntent(open).setOngoing(true).setOnlyAlertOnce(true).setShowWhen(false);
   if((target!=null && registered) || (BetaRemoteBridge.Companion.getShared()!=null && BetaRemoteBridge.Companion.getShared().isCompanionConnected())){
    builder.addAction(notificationAction("VOLUME_DOWN","Volume down",R.drawable.beta_volume_down,23));
    if(playbackAvailable){
@@ -86,7 +86,7 @@ public class BetaConnectionService extends Service {
   if(hid==null){if(!requesting){requesting=adapter.getProfileProxy(this,listener,BluetoothProfile.HID_DEVICE);update(requesting?"Starting Bluetooth remote…":"Bluetooth keyboard mode unavailable.");}return;}
   if(registered){reconnect();return;}
   if(registering)return;registering=true;
-  boolean ok=hid.registerApp(new BluetoothHidDeviceAppSdpSettings("Zangetsu Beta","TV remote","Zangetsu",BluetoothHidDevice.SUBCLASS1_KEYBOARD,DESCRIPTOR),null,null,getMainExecutor(),callback);
+  boolean ok=hid.registerApp(new BluetoothHidDeviceAppSdpSettings("Zangetsu","TV remote","Zangetsu",BluetoothHidDevice.SUBCLASS1_KEYBOARD,DESCRIPTOR),null,null,getMainExecutor(),callback);
   if(!ok){registering=false;update("Could not enable remote mode. Close other Bluetooth remote apps.");retry();}
  }
  private final BluetoothHidDevice.Callback callback=new BluetoothHidDevice.Callback(){
@@ -111,5 +111,5 @@ public class BetaConnectionService extends Service {
  public void hardwareVolume(int usage){if(target!=null && registered){tap(2,usage);hardwareVolumeCount++;lastHardwareUsage=usage;}}
  public void stopRemote(){stopped=true;prefs.edit().putBoolean("hidEnabled",false).apply();handler.removeCallbacksAndMessages(null);release();if(hid!=null){if(target!=null)hid.disconnect(target);if(registered)hid.unregisterApp();}target=null;registered=false;update("Disconnected. Tap Connect to resume.");stopForeground(STOP_FOREGROUND_REMOVE);stopSelf();}
  @Override public void onDestroy(){stopped=true;if(media!=null)media.close();handler.removeCallbacksAndMessages(null);try{release();if(hid!=null){hid.unregisterApp();adapter.closeProfileProxy(BluetoothProfile.HID_DEVICE,hid);}}catch(SecurityException ignored){}unregisterReceiver(receiver);observer=null;instance=null;running=false;super.onDestroy();}
- @Override protected void dump(FileDescriptor fd,PrintWriter w,String[] args){w.println("Zangetsu Beta: registered="+registered+" connected="+(target!=null)+" stopped="+stopped+" heldReport="+heldReport);w.println("TV="+(target!=null?name(target):savedName()));w.println("Notification actions="+notificationActionCount+" last="+lastNotificationAction);w.println("Hardware volume events="+hardwareVolumeCount+" lastUsage="+lastHardwareUsage);w.println(detail);}
+ @Override protected void dump(FileDescriptor fd,PrintWriter w,String[] args){w.println("Zangetsu: registered="+registered+" connected="+(target!=null)+" stopped="+stopped+" heldReport="+heldReport);w.println("TV="+(target!=null?name(target):savedName()));w.println("Notification actions="+notificationActionCount+" last="+lastNotificationAction);w.println("Hardware volume events="+hardwareVolumeCount+" lastUsage="+lastHardwareUsage);w.println(detail);}
 }

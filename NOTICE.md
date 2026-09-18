@@ -51,3 +51,27 @@ If you believe this project incorporates third-party code, assets, or content
 without proper attribution or in violation of its license, please open an
 issue or contact Spyou directly (https://github.com/Spyou) so it can be
 corrected or removed.
+
+Companion additions — attribution and provenance review
+
+Google code scanner for Android
+  Dependency: com.google.android.gms:play-services-code-scanner:16.1.0
+  Documentation: https://developers.google.com/ml-kit/vision/barcode-scanning/code-scanner
+  Distributed under the applicable Google SDK terms; it is not represented as GPL source.
+  Maintainers must confirm distribution compatibility before merging.
+
+AndroidX Test runner 1.6.2 and ext:junit 1.2.1
+  https://github.com/android/android-test
+  License: Apache-2.0. Used for Android instrumentation tests.
+
+Drift / Sinotec remote prototype
+  BetaConnectionService.java includes HID behaviour adapted from the user-provided
+  Drift/Sinotec prototype. The source URL, copyright holder and applicable permission
+  have not been verified in this review. README credit does not resolve this gap.
+  Do not treat this code as cleared for upstream incorporation until its provenance
+  and compatible permission have been established or the affected code replaced.
+
+Device-test media
+  android/app/src/main/assets/beta-test.mp4 was included during prototype testing.
+  Its origin and redistribution permission have not been established in this review.
+  It must be replaced with a documented, permitted fixture or removed before merging.
