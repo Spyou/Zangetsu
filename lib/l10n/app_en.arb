@@ -2931,10 +2931,7 @@
 	"@sourceLabel": {"placeholders": {"name": {"type": "String"}}},
 	"wrongTitle": "Wrong title?",
 	"noSourceHasThisYet": "No source has this yet",
-  "checkedTopSources": "Checked your top {count} sources — none had this",
-  "@checkedTopSources": {
-    "placeholders": { "count": { "type": "int" } }
-  },
+  "checkedTopSources": "Checked your top sources — none had this",
 	"pickTheRightTitle": "Pick the right title",
 	"searchThisSource": "Search this source",
 	"matchSaved": "Saved. Matched to {name} now.",

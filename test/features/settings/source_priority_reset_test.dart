@@ -57,10 +57,13 @@ void main() {
   // Once the sweep is capped, "No source has this yet" is false — 10 of 500
   // were asked. Saying so is what keeps a capped search from reading as a
   // wrong answer.
-  test('the capped failure message says how many were actually checked', () {
-    final msg = AppLocalizationsEn().checkedTopSources(kAutoResolveCap);
-    expect(msg, contains('10'));
-    expect(msg.toLowerCase(), isNot(contains('no source has')),
-        reason: 'it must not repeat the claim that everything was asked');
+  // Once the sweep is capped, "No source has this yet" is false — only your
+  // top sources were asked. It deliberately names no number: someone with 3
+  // sources installed must not be told 10 were checked.
+  test('the capped failure message does not claim everything was asked', () {
+    final msg = AppLocalizationsEn().checkedTopSources;
+    expect(msg.toLowerCase(), isNot(contains('no source has')));
+    expect(msg, isNot(contains('10')),
+        reason: 'a fixed number is wrong for anyone with fewer sources');
   });
 }

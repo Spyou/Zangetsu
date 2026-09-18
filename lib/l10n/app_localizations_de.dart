@@ -5072,9 +5072,7 @@ class AppLocalizationsDe extends AppLocalizations {
   String get noSourceHasThisYet => 'No source has this yet';
 
   @override
-  String checkedTopSources(int count) {
-    return 'Checked your top $count sources — none had this';
-  }
+  String get checkedTopSources => 'Checked your top sources — none had this';
 
   @override
   String get pickTheRightTitle => 'Pick the right title';

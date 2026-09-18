@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../../core/zmode/source_order_prefs.dart' show kAutoResolveCap;
 import 'package:flutter/rendering.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -392,7 +391,7 @@ class _MatchLineState extends State<MatchLine> {
           final semanticLabel = state.auto
               ? (autoHint == null ? 'Auto Resolve' : 'Auto Resolve ($autoHint)')
               : selectedId == null
-              ? l10n.checkedTopSources(kAutoResolveCap)
+              ? l10n.checkedTopSources
               : sl<SourceRepository>().taggedName(selectedId);
           // Sized and filled like _DownloadButton directly above, so Play,
           // Download and Source read as one stack. The row body opens the
@@ -415,7 +414,7 @@ class _MatchLineState extends State<MatchLine> {
                   state.auto
                       ? 'Auto Resolve'
                       : selectedId == null
-                      ? l10n.checkedTopSources(kAutoResolveCap)
+                      ? l10n.checkedTopSources
                       : sl<SourceRepository>().taggedName(selectedId),
                   style: AppText.button.copyWith(
                     // Dimmed only when there is no source to name at all; a

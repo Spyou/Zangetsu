@@ -21,8 +21,18 @@ import '../../core/zmode/zmode_module.dart'
 /// Dead outranks a good history on purpose: 47 past plays do not help an
 /// episode that will not load today, and a row still reading "played 47 times"
 /// is what would keep a broken source at the top of the sweep.
-String reasonForSource({required int plays, required SourceHealth health}) {
+String reasonForSource({
+  required int plays,
+  required SourceHealth health,
+  bool tried = true,
+}) {
+  // Dead first, whether or not it is being tried: naming the actual problem
+  // beats "never used" on a source that is broken.
   if (health == SourceHealth.dead) return "hasn't worked recently";
+  // A row below the cut, or one narrowed out, is not being tried — so it must
+  // not say it is. Same rule as the failure sheet: never claim something was
+  // attempted when it was not.
+  if (!tried && plays == 0) return 'never used';
   if (plays == 0) return 'never used yet · trying it out';
   return 'played $plays times';
 }
@@ -210,7 +220,8 @@ class _SourcePriorityScreenState extends State<SourcePriorityScreen> {
 
   /// Why this source is where it is. The thing the old screen could not say,
   /// and the reason nobody knew which ten to keep.
-  String _reasonFor(String id) => reasonForSource(
+  String _reasonFor(String id, {bool tried = true}) => reasonForSource(
+        tried: tried,
     plays: sl<SourceScoreStore>().plays(id),
     health: sl<SourceHealthStore>().statusOf(id),
   );
@@ -426,37 +437,6 @@ class _SourcePriorityScreenState extends State<SourcePriorityScreen> {
               for (var i = 0; i < list.length; i++) _row(kind, list[i], i),
             ],
           ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 6),
-          child: Align(
-            alignment: Alignment.centerRight,
-            child: _isTv
-                ? TvFocusable(
-                    variant: TvFocusVariant.pill,
-                    onTap: () => _reset(kind),
-                    semanticLabel: 'Reset order',
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 6,
-                      ),
-                      child: Text(
-                        'Reset order',
-                        style: AppText.button.copyWith(
-                          color: AppColors.accent,
-                        ),
-                      ),
-                    ),
-                  )
-                : TextButton(
-                    onPressed: () => _reset(kind),
-                    child: Text(
-                      'Reset order',
-                      style: AppText.button.copyWith(color: AppColors.accent),
-                    ),
-                  ),
-          ),
-        ),
       ],
     );
   }
@@ -564,7 +544,9 @@ class _SourcePriorityScreenState extends State<SourcePriorityScreen> {
                   child: _nameAndRepo(
                     s,
                     color: textColor,
-                    reason: showReason ? _reasonFor(s.id) : null,
+                    reason: showReason
+                        ? _reasonFor(s.id, tried: false)
+                        : null,
                   ),
                 ),
                 if (_health(s.id) case final h?) _healthChip(h),

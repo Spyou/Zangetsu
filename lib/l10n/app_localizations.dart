@@ -8675,8 +8675,8 @@ abstract class AppLocalizations {
   /// No description provided for @checkedTopSources.
   ///
   /// In en, this message translates to:
-  /// **'Checked your top {count} sources — none had this'**
-  String checkedTopSources(int count);
+  /// **'Checked your top sources — none had this'**
+  String get checkedTopSources;
 
   /// No description provided for @pickTheRightTitle.
   ///
