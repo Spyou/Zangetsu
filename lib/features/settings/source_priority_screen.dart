@@ -588,7 +588,10 @@ class _SourcePriorityScreenState extends State<SourcePriorityScreen> {
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8),
           child: Text(
-            'nothing below here is tried',
+            // NOT "nothing below is tried" — that reads as though these
+            // sources are broken. They are fine; they are simply past the
+            // number chosen above, and raising it brings them straight back.
+            'beyond your top $_cap · raise it to include these',
             style: AppText.caption.copyWith(
               color: AppColors.accent.withValues(alpha: 0.9),
               fontSize: 10.5,
