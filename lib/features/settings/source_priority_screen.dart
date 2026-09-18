@@ -275,8 +275,11 @@ class _SourcePriorityScreenState extends State<SourcePriorityScreen> {
     return Scaffold(
       backgroundColor: AppColors.bg,
       appBar: settingsAppBar('Source Priority'),
+      // No horizontal padding here on purpose: SettingsCard carries its own
+      // 16px margin, so anything given an inset by this ListView ends up 12px
+      // further in than the cards and the whole screen looks ragged.
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(12, 8, 12, 32),
+        padding: const EdgeInsets.fromLTRB(0, 10, 0, 36),
         children: [
           _capControl(ZKind.anime),
           _section(ZKind.anime, _sources),
@@ -285,7 +288,7 @@ class _SourcePriorityScreenState extends State<SourcePriorityScreen> {
             _offSection(ZKind.anime, _sourcesOff),
           ],
           Padding(
-            padding: const EdgeInsets.fromLTRB(8, 14, 8, 0),
+            padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
             child: Text(
               'Drag a source to keep it where you put it. Everything else is '
               'sorted by what has actually worked for you. A title pinned from '
@@ -295,7 +298,7 @@ class _SourcePriorityScreenState extends State<SourcePriorityScreen> {
           ),
           if (_hasPins)
             Padding(
-              padding: const EdgeInsets.fromLTRB(8, 4, 0, 0),
+              padding: const EdgeInsets.fromLTRB(12, 6, 0, 0),
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: _resetButton(ZKind.anime),
@@ -435,9 +438,14 @@ class _SourcePriorityScreenState extends State<SourcePriorityScreen> {
     );
   }
 
+  /// Same 16px gutter [SettingsCard] uses, so the tiles line up with the card
+  /// above them instead of sitting 12px proud of it.
   Widget _listSurface(List<Widget> children) => Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-    child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: children),
+    padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: children,
+    ),
   );
 
   Widget _section(ZKind kind, List<({String id, String name})> list) {
@@ -500,7 +508,7 @@ class _SourcePriorityScreenState extends State<SourcePriorityScreen> {
             color: tried
                 ? AppColors.settingsCard
                 : Color.lerp(AppColors.bg, AppColors.settingsCard, 0.45),
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(16),
             border: Border.all(
               color: tried ? AppColors.hairline : Colors.transparent,
             ),
@@ -568,7 +576,7 @@ class _SourcePriorityScreenState extends State<SourcePriorityScreen> {
   }
 
   Widget _cutLine() => Padding(
-    padding: const EdgeInsets.fromLTRB(14, 4, 14, 8),
+    padding: const EdgeInsets.fromLTRB(2, 10, 2, 10),
     child: Row(
       children: [
         Expanded(
@@ -580,11 +588,11 @@ class _SourcePriorityScreenState extends State<SourcePriorityScreen> {
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8),
           child: Text(
-            'stops here',
+            'nothing below here is tried',
             style: AppText.caption.copyWith(
               color: AppColors.accent.withValues(alpha: 0.9),
-              fontSize: 10,
-              letterSpacing: 0.6,
+              fontSize: 10.5,
+              letterSpacing: 0.3,
             ),
           ),
         ),
