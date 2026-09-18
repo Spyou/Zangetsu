@@ -110,7 +110,7 @@ class _TvPlaybackLoadErrorDialog extends StatelessWidget {
         // When a source never actually answered, "none of them have this" is a
         // verdict we haven't earned — say what happened instead.
         title = failure.detail == null
-            ? l10n.noSourceHasThisYet
+            ? l10n.checkedTopSources
             : "Couldn't check every source";
         body =
             failure.detail ??

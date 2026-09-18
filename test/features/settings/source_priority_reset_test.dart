@@ -66,4 +66,17 @@ void main() {
     expect(msg, isNot(contains('10')),
         reason: 'a fixed number is wrong for anyone with fewer sources');
   });
+
+  // Phone and TV are fed by the same capped sweep, so they must say the same
+  // thing about it. The TV dialog was reverted to "No source has this yet"
+  // while the playback sweep was still uncapped, and capping it afterwards
+  // left that claim false on one screen only.
+  test('the capped message is the one used, not the everything-was-asked one',
+      () {
+    final l10n = AppLocalizationsEn();
+    expect(l10n.checkedTopSources.toLowerCase(), isNot(contains('no source has')));
+    // The old string still exists — it is correct wherever a sweep really is
+    // exhaustive, and deleting it would break the seven locales inheriting it.
+    expect(l10n.noSourceHasThisYet, isNotEmpty);
+  });
 }
