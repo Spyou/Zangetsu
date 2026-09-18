@@ -7,13 +7,14 @@ import '../../core/repository/source_repository.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/tv/tv_focusable.dart';
+import '../../core/tv/tv_list_focusable.dart';
 import '../../core/ui/settings_widgets.dart';
 import '../../core/ui/source_switcher.dart' show categorizedSources;
 import '../../core/zmode/source_order_prefs.dart';
 import '../../core/zmode/source_score_store.dart';
 import '../../core/zmode/zmode_ids.dart';
 import '../../core/zmode/zmode_module.dart'
-    show candidatesForKind, sourceRecordOf;
+    show candidatesForKind, sweepCandidates;
 
 /// Why a source sits where it does, in one short line.
 ///
@@ -48,6 +49,8 @@ class _SourcePriorityScreenState extends State<SourcePriorityScreen> {
   // distinction most people don't draw.
   late List<({String id, String name})> _sources = _ordered(ZKind.anime);
   late List<({String id, String name})> _sourcesOff = _off(ZKind.anime);
+  late List<({String id, String name})> _sourcesUnavailable =
+      _unavailable(ZKind.anime);
 
   /// Everything installed for [kind], in the user's saved order.
   List<({String id, String name})> _all(ZKind kind) => applySourceOrder(
@@ -55,28 +58,51 @@ class _SourcePriorityScreenState extends State<SourcePriorityScreen> {
     _prefs.get(kind),
   );
 
-  /// What Auto Resolve actually sweeps — ranked the same way, so this screen
-  /// can't show one thing while the sweep does another.
+  /// What Auto Resolve actually sweeps, in the order it walks them.
   ///
-  /// Ranking is skipped once a saved order exists: dragging is a takeover, and
-  /// re-sorting on top of it would undo the drag the moment the screen rebuilt.
-  List<({String id, String name})> _ordered(ZKind kind) {
-    final on = activeSources(_all(kind), excluded: _prefs.excluded(kind));
-    if (_manual) return on;
-    return rankByRecord(on, sourceRecordOf);
-  }
+  /// This is [sweepCandidates] itself — the sweep's own function, uncapped —
+  /// rather than a second implementation that agrees with it by inspection.
+  /// The screen labels its first ten "USED AUTOMATICALLY", which is a claim
+  /// that can be checked; ranking a wider pool here (one that still holds
+  /// sources the language filter narrows out, and on TV sources whose runtime
+  /// was never loaded) made that claim false for anyone with a language filter
+  /// set. One function, one answer.
+  List<({String id, String name})> _ordered(ZKind kind) =>
+      sweepCandidates(kind);
 
   /// True once the user has dragged: a saved order IS the takeover flag, so
   /// there is no second piece of state to keep in step with it.
   bool get _manual => _prefs.get(ZKind.anime).isNotEmpty;
 
-  /// The rest, kept visible so turning one on is one tap rather than a hunt
-  /// through the Sources screen.
+  /// Sources the USER switched off, kept visible so turning one back on is one
+  /// tap rather than a hunt through the Sources screen.
+  ///
+  /// Read straight from the exclude set rather than inferred as "everything
+  /// not in [_ordered]". Those are different questions now that [_ordered] is
+  /// narrowed: a source dropped for its language is absent from the sweep but
+  /// nobody switched it off, and offering it a "turn back on" button that
+  /// writes to an exclude set it was never in would do visibly nothing.
   List<({String id, String name})> _off(ZKind kind) {
-    final on = {for (final s in _ordered(kind)) s.id};
+    final excluded = _prefs.excluded(kind);
     return [
       for (final s in _all(kind))
-        if (!on.contains(s.id)) s,
+        if (excluded.contains(s.id)) s,
+    ];
+  }
+
+  /// Installed, not switched off, and still not swept — narrowed out by the
+  /// language filter, or its runtime is not loaded.
+  ///
+  /// Its own group because the fix is different: this one is reached from
+  /// Settings > Interface (language) or by the source loading, not by a toggle
+  /// on this screen. Folding it in with [_off] would offer a button that
+  /// cannot help.
+  List<({String id, String name})> _unavailable(ZKind kind) {
+    final swept = {for (final s in _ordered(kind)) s.id};
+    final excluded = _prefs.excluded(kind);
+    return [
+      for (final s in _all(kind))
+        if (!swept.contains(s.id) && !excluded.contains(s.id)) s,
     ];
   }
 
@@ -85,7 +111,7 @@ class _SourcePriorityScreenState extends State<SourcePriorityScreen> {
   /// has to pin down everything else as it currently stands or the rest would
   /// silently move too.
   Future<void> _setOn(ZKind kind, String id, {required bool on}) async {
-    final off = {for (final s in _off(kind)) s.id};
+    final off = {..._prefs.excluded(kind)};
     if (on) {
       off.remove(id);
     } else {
@@ -98,6 +124,7 @@ class _SourcePriorityScreenState extends State<SourcePriorityScreen> {
   void _refresh(ZKind kind) => setState(() {
     _sources = _ordered(ZKind.anime);
     _sourcesOff = _off(ZKind.anime);
+    _sourcesUnavailable = _unavailable(ZKind.anime);
   });
 
   Future<void> _turnOff(ZKind kind, String id) => _setOn(kind, id, on: false);
@@ -229,9 +256,14 @@ class _SourcePriorityScreenState extends State<SourcePriorityScreen> {
     _save(kind, list);
   }
 
+  /// Hand ranking back to the app.
+  ///
+  /// Clears the saved ORDER only. Which sources are switched off is a separate
+  /// decision and stays put: someone who turned off three sources they never
+  /// want tried has not asked for those back just because they want the
+  /// remaining ones ranked automatically again.
   Future<void> _reset(ZKind kind) async {
     await _prefs.clear(kind);
-    await _prefs.setExcluded(kind, const {});
     if (!mounted) return;
     _refresh(kind);
   }
@@ -244,11 +276,10 @@ class _SourcePriorityScreenState extends State<SourcePriorityScreen> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(12, 8, 12, 32),
         children: [
-          // Advice at the top, where it can change what you do — not a rule
-          // the app enforces behind your back. A number is given because
-          // "fewer is faster" is useless without one, and it is phrased as a
-          // suggestion because it IS one: every source is used until you say
-          // otherwise.
+          // What the sweep actually does, said plainly at the top. This used
+          // to be advice ("around 10 finds almost everything") that nothing
+          // enforced; the cap is real now, so the line states it rather than
+          // suggesting it.
           Padding(
             padding: const EdgeInsets.fromLTRB(8, 4, 8, 12),
             child: Text(
@@ -272,9 +303,54 @@ class _SourcePriorityScreenState extends State<SourcePriorityScreen> {
             ),
           ],
           if (_sourcesOff.isNotEmpty) ...[
-            const SettingsSectionLabel('NOT USED BY AUTO RESOLVE'),
+            const SettingsSectionLabel('SWITCHED OFF'),
             _offSection(ZKind.anime, _sourcesOff),
           ],
+          // Installed but not swept, and no toggle here will change that —
+          // say which knob actually applies instead of offering one that
+          // cannot help.
+          if (_sourcesUnavailable.isNotEmpty) ...[
+            const SettingsSectionLabel('NOT AVAILABLE RIGHT NOW'),
+            _plainSection(
+              ZKind.anime,
+              _sourcesUnavailable,
+              textColor: AppColors.textTertiary,
+              icon: Icons.do_not_disturb_on_outlined,
+              semanticLabel: (s) => '${_labelFor(s)} — not available right now',
+              // Nothing on this screen can change it, so the row does not
+              // pretend otherwise. The caption below says where the knob is.
+              onTap: (_) {},
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
+              child: Text(
+                'These are installed but Auto Resolve is not trying them — '
+                'their language is switched off in Settings > Interface, or '
+                'the source has not loaded yet.',
+                style: AppText.caption.copyWith(color: AppColors.textTertiary),
+              ),
+            ),
+          ],
+          // Only once you have actually dragged something. Someone who never
+          // takes over never sees a control for a mode they were never in.
+          if (_manual)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 12, 0, 0),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'You moved a source, so this order is yours now.',
+                      style: AppText.caption.copyWith(
+                        color: AppColors.textTertiary,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  _resetButton(ZKind.anime),
+                ],
+              ),
+            ),
           Padding(
             padding: const EdgeInsets.fromLTRB(8, 14, 8, 0),
             child: Text(
@@ -285,6 +361,32 @@ class _SourcePriorityScreenState extends State<SourcePriorityScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  /// TV gets the focus wrapper every other row on this screen already uses,
+  /// with a plain label inside it — nesting a TextButton would put two tap
+  /// handlers on one target and steal D-pad traversal, which is exactly what
+  /// [SettingsTile] avoids by passing `onTap: null` under its focusable.
+  Widget _resetButton(ZKind kind) {
+    if (_isTv) {
+      return TvListFocusable(
+        onTap: () => _reset(kind),
+        semanticLabel: 'Reset to automatic',
+        child: ExcludeSemantics(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Text(
+              'Reset to automatic',
+              style: AppText.caption.copyWith(color: AppColors.textSecondary),
+            ),
+          ),
+        ),
+      );
+    }
+    return TextButton(
+      onPressed: () => _reset(kind),
+      child: const Text('Reset to automatic'),
     );
   }
 

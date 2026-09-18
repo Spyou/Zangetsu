@@ -242,15 +242,27 @@ List<({String id, String name})> orderedCandidates(ZKind kind) {
 /// CAPPED at [kAutoResolveCap]. A sweep stops at the first hit, so this costs
 /// nothing when a source has the title; it bounds the MISS, which is the case
 /// that used to walk every installed source one at a time.
-List<({String id, String name})> sweepList(ZKind kind) {
+List<({String id, String name})> sweepList(ZKind kind) =>
+    sweepCandidates(kind).take(kAutoResolveCap).toList();
+
+/// [sweepList] without the cap: every source the sweep is willing to walk, in
+/// the order it would walk them.
+///
+/// Split out so the Source Priority screen can render the SAME list the sweep
+/// uses instead of building its own. It used to rank a wider pool — one that
+/// still holds sources the language filter narrows out and, on TV, sources
+/// whose runtime was never loaded — so the screen could put a source in its
+/// top ten that the sweep would never attempt, under a heading claiming it was
+/// used automatically. One function, one answer.
+List<({String id, String name})> sweepCandidates(ZKind kind) {
   final narrowed = languageNarrowedCandidates(
     orderedCandidates(kind),
     {for (final s in sl<SourceRepository>().loadedSources) s.id},
   );
-  if (sl<SourceOrderPrefs>().get(kind).isNotEmpty) {
-    return narrowed.take(kAutoResolveCap).toList();
-  }
-  return rankByRecord(narrowed, sourceRecordOf).take(kAutoResolveCap).toList();
+  // A saved order is the user's takeover; ranking on top of it would undo the
+  // drag. The cap still applies either way, at the caller.
+  if (sl<SourceOrderPrefs>().get(kind).isNotEmpty) return narrowed;
+  return rankByRecord(narrowed, sourceRecordOf);
 }
 
 /// What the ranker knows about one source: how often it has actually played,
