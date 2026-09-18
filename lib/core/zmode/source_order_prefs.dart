@@ -1,6 +1,7 @@
 import 'package:hive/hive.dart';
 
 import '../hive/safe_box.dart';
+import '../playback/source_health_store.dart';
 import 'zmode_ids.dart';
 
 /// The user's preferred sweep order of installed sources, per content type —
@@ -136,3 +137,74 @@ List<({String id, String name})> activeSources(
   for (final s in ordered)
     if (!excluded.contains(s.id)) s,
 ];
+
+/// How many sources Auto Resolve will try before giving up.
+///
+/// A sweep walks candidates one at a time and stops at the first hit, so the
+/// cap costs nothing on the common case — it bounds the miss, which is the
+/// case that used to walk every installed source. The number is the same one
+/// the Source Priority screen has advised in prose since it was written.
+const int kAutoResolveCap = 10;
+
+/// One source's track record, as the ranker sees it.
+typedef SourceRecord = ({int plays, SourceHealth health, int? responseMs});
+
+/// [pool] reordered by what has actually worked on this device.
+///
+/// STABLE: sources the records cannot separate keep the order they came in,
+/// so with no history at all this returns [pool] untouched — which is exactly
+/// today's behaviour, and the reason this can be turned on for everyone
+/// rather than hidden behind a setting.
+///
+/// Nothing is dropped. The cap is applied by the caller, because the picker
+/// and pin lookups need the whole list and only the sweep is bounded.
+///
+/// [trialSlots] keeps room inside the cap for a source that has never played.
+/// Ranking purely on history is self-fulfilling: a source installed today has
+/// no plays, so it never gets tried, so it never earns any. One slot is enough
+/// to keep the list from freezing on whatever happened to be installed first.
+List<({String id, String name})> rankByRecord(
+  List<({String id, String name})> pool,
+  SourceRecord Function(String id) recordOf, {
+  int trialSlots = 1,
+  int cap = kAutoResolveCap,
+}) {
+  // Decorate-sort-undecorate on the incoming index, so ties keep pool order.
+  final indexed = [
+    for (var i = 0; i < pool.length; i++) (at: i, s: pool[i], r: recordOf(pool[i].id)),
+  ];
+  indexed.sort((a, b) {
+    // Dead sinks below everything, however good its history was. A source
+    // that is failing right now cannot play this episode, and its 50 past
+    // plays are what would otherwise keep it at the top of the sweep.
+    final aDead = a.r.health == SourceHealth.dead;
+    final bDead = b.r.health == SourceHealth.dead;
+    if (aDead != bDead) return aDead ? 1 : -1;
+    if (a.r.plays != b.r.plays) return b.r.plays.compareTo(a.r.plays);
+    final am = a.r.responseMs, bm = b.r.responseMs;
+    if (am != null && bm != null && am != bm) return am.compareTo(bm);
+    return a.at.compareTo(b.at);
+  });
+  final ranked = [for (final e in indexed) e.s];
+  if (trialSlots <= 0 || cap <= 0 || ranked.length <= cap) return ranked;
+
+  // Already an unproven source inside the cap? Then the slot is spent and
+  // promoting another would push out a source that has earned its place.
+  final inCap = ranked.take(cap);
+  if (inCap.any((s) => recordOf(s.id).plays == 0)) return ranked;
+
+  final promote = ranked.skip(cap).firstWhere(
+    (s) {
+      final r = recordOf(s.id);
+      return r.plays == 0 && r.health != SourceHealth.dead;
+    },
+    orElse: () => (id: '', name: ''),
+  );
+  if (promote.id.isEmpty) return ranked;
+
+  // Into the LAST slot inside the cap: the trial is worth a try, not a
+  // promotion over sources that have actually worked.
+  final out = [...ranked]..remove(promote);
+  out.insert(cap - 1, promote);
+  return out;
+}
