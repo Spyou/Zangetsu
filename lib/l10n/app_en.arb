@@ -925,6 +925,7 @@
 	"otherApps": "Other apps",
 	"seeAll2": "See All",
 	"openInBrowser": "Open in browser",
+	"markAsRead": "Mark as read",
 	"copyLink": "Copy link",
 	"removeTracking": "Remove tracking",
 	"noTrackersConnectedNConnectOneInSettingsConnections": "No trackers connected.\\nConnect one in Settings → Connections.",
@@ -1101,6 +1102,9 @@
 			}
 		}
 	},
+	"openInBrowser": "Open in browser",
+	"openInBrowserSubtitle": "Read this chapter on the source's own site",
+	"readingSettings": "Reading settings",
 	"markedAsRead": "Marked as read",
 	"markedUnread": "Marked unread",
 	"markedChaptersAsRead": "Marked {count} chapters as read",

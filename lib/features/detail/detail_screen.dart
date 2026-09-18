@@ -81,6 +81,7 @@ import '../../core/reading/chapter_nav.dart';
 import '../../core/reading/read_history.dart';
 import '../../core/reading/read_store.dart';
 import '../../core/repository/catalogue_repository.dart';
+import '../../core/repository/source_actions.dart' as source_actions;
 import '../../core/repository/source_repository.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
@@ -926,6 +927,7 @@ class _DetailViewState extends State<_DetailView>
     final action = await showEpisodeActionSheet(
       context,
       reading: isReading,
+      canOpenInBrowser: isReading && source_actions.canOpenInBrowser(widget.item.sourceId, ep.url),
       episodeLabel: label,
       // Only meaningful for streaming, and the reading sheet has no row to
       // put it on — so don't go asking which external player is configured
@@ -1022,6 +1024,12 @@ class _DetailViewState extends State<_DetailView>
         if (!await _sweepForEpisode(ep)) return;
         if (!mounted) return;
         await _openPlayer(episodes, index, detail, category);
+
+      case EpisodeAction.openInBrowser:
+        await source_actions.openUrlInSourceWebView(
+          source_actions.chapterWebUrl(widget.item.sourceId, ep.url) ?? '',
+          title: detail.title,
+        );
 
       case EpisodeAction.toggleWatched:
         final nowWatched = !markedDone(ep);

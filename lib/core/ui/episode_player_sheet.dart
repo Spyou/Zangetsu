@@ -33,6 +33,10 @@ enum EpisodeAction {
   /// than starting on whichever the app chose and switching afterwards.
   playMirror,
 
+  /// Open this chapter's page on the source's own site, in the in-app
+  /// browser. Reading only — for when the reader can't render it.
+  openInBrowser,
+
   /// Ask every installed source whether it has THIS episode, and watch them
   /// answer. Different from [playMirror]: that picks between mirrors within
   /// the one source already matched, this is about which SOURCE to use at all.
@@ -59,6 +63,11 @@ Future<EpisodeAction?> showEpisodeActionSheet(
   /// Whether any tracker is linked. Only used for the subtitle, so nobody is
   /// surprised that marking an episode moved their AniList progress.
   required bool tracksToServices,
+
+  /// Whether this chapter has a page that can be opened on the source's own
+  /// site. Reading only; hidden rather than greyed, because a source that keys
+  /// chapters by an internal id has nothing to open.
+  bool canOpenInBrowser = false,
 
   /// Manga/novel. Leaves ONLY the two marking rows, reworded as read rather
   /// than watched. Everything above them is about playback — a chapter
@@ -168,6 +177,14 @@ Future<EpisodeAction?> showEpisodeActionSheet(
                 onTap: () =>
                     Navigator.pop(sheetContext, EpisodeAction.markAboveWatched),
               ),
+              if (reading && canOpenInBrowser)
+                _PlayerRow(
+                  icon: Icons.public_rounded,
+                  label: 'Open in browser',
+                  subtitle: "Read it on the source's own site",
+                  onTap: () =>
+                      Navigator.pop(sheetContext, EpisodeAction.openInBrowser),
+                ),
               const SizedBox(height: 8),
             ],
           ),

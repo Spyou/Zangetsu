@@ -5042,6 +5042,12 @@ abstract class AppLocalizations {
   /// **'Open in browser'**
   String get openInBrowser;
 
+  /// No description provided for @markAsRead.
+  ///
+  /// In en, this message translates to:
+  /// **'Mark as read'**
+  String get markAsRead;
+
   /// No description provided for @copyLink.
   ///
   /// In en, this message translates to:
@@ -5437,6 +5443,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Marked {count} episodes as watched'**
   String markedEpisodesAsWatched(int count);
+
+  /// No description provided for @openInBrowserSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Read this chapter on the source\'s own site'**
+  String get openInBrowserSubtitle;
+
+  /// No description provided for @readingSettings.
+  ///
+  /// In en, this message translates to:
+  /// **'Reading settings'**
+  String get readingSettings;
 
   /// No description provided for @markedAsRead.
   ///

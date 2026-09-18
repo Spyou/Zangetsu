@@ -69,6 +69,12 @@ class _StubSourceRepository implements SourceRepository {
   @override
   Future<bool> ensureSourceLoaded(String sourceId) async => true;
 
+  /// "Open in browser" joins a relative chapter key onto this. Empty means the
+  /// source has no site, which is the honest default for a stub — the row is
+  /// then hidden rather than opening nothing.
+  @override
+  String baseUrlFor(String sourceId) => '';
+
   @override
   List<({String id, String name})> get pickableSources => loadedSources;
 

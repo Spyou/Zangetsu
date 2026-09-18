@@ -27,6 +27,8 @@ import '../../core/models/provider_info.dart';
 import '../../core/reading/page_file_cache.dart';
 import '../../core/reading/read_history.dart';
 import '../../core/reading/read_store.dart';
+import '../../core/ui/app_toast.dart';
+import '../../core/repository/source_actions.dart' as source_actions;
 import '../../core/reading/reader_overrides.dart';
 import '../../core/reading/reader_prefs.dart';
 import '../../core/reading/tap_zones.dart';
@@ -103,6 +105,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
   /// Hands-free scrolling — webtoon only; paged modes step whole pages and
   /// have nothing to creep.
   late final ReaderAutoScroll _autoScroll;
+  final GlobalKey _menuButtonKey = GlobalKey();
   late int _index; // chapter index
   // Mutable so a Continue Reading resume (opened with just the one chapter)
   // can widen to the show's full list in the background — see
@@ -2454,12 +2457,32 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 16),
-            TextButton(
-              onPressed: _load,
-              child: Text(
-                context.l10n.retry,
-                style: AppText.body.copyWith(color: AppColors.accent),
-              ),
+            // Retry alone was a dead end: when a chapter won't render, the
+            // thing you actually want is the page on the source's own site.
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                TextButton(
+                  onPressed: _load,
+                  child: Text(
+                    context.l10n.retry,
+                    style: AppText.body.copyWith(color: AppColors.accent),
+                  ),
+                ),
+                if (source_actions.canOpenInBrowser(widget.sourceId, _chapter.url))
+                  TextButton(
+                    onPressed: () => unawaited(
+                      source_actions.openUrlInSourceWebView(
+                        source_actions.chapterWebUrl(widget.sourceId, _chapter.url) ?? '',
+                        title: widget.showTitle,
+                      ),
+                    ),
+                    child: Text(
+                      context.l10n.openInBrowser,
+                      style: AppText.body.copyWith(color: AppColors.accent),
+                    ),
+                  ),
+              ],
             ),
           ],
         ),
@@ -2520,9 +2543,10 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                   ),
                   const SizedBox(width: 9),
                   ReaderPillIconButton(
+                    key: _menuButtonKey,
                     icon: Icons.more_vert_rounded,
                     tooltip: context.l10n.readerSettings,
-                    onTap: _openSettingsSheet,
+                    onTap: () => unawaited(_openReaderMenu()),
                   ),
                 ],
               ),
@@ -2848,6 +2872,105 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
   /// readerSheetRow/ReaderSegmentedControl/readerSheetGroup pieces, so this
   /// sheet, the novel reader's, and Settings -> Reader all read as one
   /// design instead of three different layouts.
+
+  /// The ⋮ menu — a popup anchored to the button, not a bottom sheet.
+  ///
+  /// A sheet climbing up over the page you're reading is a lot of motion for
+  /// three short rows. Reader settings still gets a sheet, because it IS a
+  /// panel; this is just the way in.
+  Future<void> _openReaderMenu() async {
+    final chapter = _chapter;
+    final canBrowse = source_actions.canOpenInBrowser(
+      widget.sourceId,
+      chapter.url,
+    );
+    final box = _menuButtonKey.currentContext?.findRenderObject() as RenderBox?;
+    final overlay =
+        Overlay.of(context).context.findRenderObject() as RenderBox?;
+    if (box == null || overlay == null) return;
+    // Anchored under the button it came from, which is what makes it read as
+    // that button's menu rather than a new screen.
+    final origin = box.localToGlobal(Offset.zero, ancestor: overlay);
+    final position = RelativeRect.fromLTRB(
+      origin.dx,
+      origin.dy + box.size.height + 4,
+      overlay.size.width - origin.dx - box.size.width,
+      0,
+    );
+
+    final picked = await showMenu<_ReaderMenuAction>(
+      context: context,
+      position: position,
+      color: AppColors.surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      items: [
+        // Hidden rather than greyed when the source has no page for this
+        // chapter — see source_actions.chapterWebUrl.
+        if (canBrowse)
+          PopupMenuItem(
+            value: _ReaderMenuAction.openInBrowser,
+            child: _menuRow(
+              Icons.public_rounded,
+              context.l10n.openInBrowser,
+            ),
+          ),
+        PopupMenuItem(
+          value: _ReaderMenuAction.toggleRead,
+          child: _menuRow(
+            _markedRead
+                ? Icons.remove_done_rounded
+                : Icons.check_circle_outline_rounded,
+            _markedRead ? context.l10n.markedUnread : context.l10n.markAsRead,
+          ),
+        ),
+        PopupMenuItem(
+          value: _ReaderMenuAction.settings,
+          child: _menuRow(Icons.tune_rounded, context.l10n.readingSettings),
+        ),
+      ],
+    );
+    if (!mounted || picked == null) return;
+
+    switch (picked) {
+      case _ReaderMenuAction.openInBrowser:
+        await source_actions.openUrlInSourceWebView(
+          source_actions.chapterWebUrl(widget.sourceId, chapter.url) ?? '',
+          title: widget.showTitle,
+        );
+      case _ReaderMenuAction.toggleRead:
+        await _toggleReadFromMenu();
+      case _ReaderMenuAction.settings:
+        _openSettingsSheet();
+    }
+  }
+
+  Widget _menuRow(IconData icon, String label) => Row(
+    children: [
+      Icon(icon, size: 20, color: AppColors.textSecondary),
+      const SizedBox(width: 12),
+      Text(label, style: AppText.body),
+    ],
+  );
+
+  bool get _markedRead =>
+      sl<ReadStore>().finished(widget.sourceId, widget.showId, _chapter.id);
+
+  Future<void> _toggleReadFromMenu() async {
+    final now = !_markedRead;
+    await sl<ReadStore>().setRead(
+      widget.sourceId,
+      widget.showId,
+      _chapter.id,
+      read: now,
+    );
+    if (!mounted) return;
+    setState(() {});
+    showAppToast(
+      context,
+      now ? context.l10n.markedAsRead : context.l10n.markedUnread,
+    );
+  }
+
   void _openSettingsSheet() {
     showModalBottomSheet<void>(
       context: context,
@@ -3561,3 +3684,6 @@ int estimateIndexFromScroll(double pixels, double maxExtent, int pageCount) {
   final raw = (pixels / maxExtent * (pageCount - 1)).round();
   return raw.clamp(0, pageCount - 1);
 }
+
+/// What the reader's ⋮ popup can return.
+enum _ReaderMenuAction { openInBrowser, toggleRead, settings }

@@ -165,3 +165,55 @@ Future<void> openSourceWebView(String sourceId) async {
     title: sl<SourceRepository>().displayName(sourceId),
   );
 }
+
+/// Opens ONE page — a chapter, an episode — on the source's own site, in the
+/// same in-app browser.
+///
+/// [openSourceWebView] always lands on the site's front page, which is right
+/// for signing in and useless for "show me this chapter". The session and
+/// cookies are shared either way, so a Cloudflare-gated or logged-in source
+/// still works.
+///
+/// Silently does nothing when [url] isn't an http(s) link — some sources key
+/// their chapters by an internal id rather than a URL, and a button that opens
+/// a blank page is worse than one that doesn't fire.
+Future<void> openUrlInSourceWebView(String url, {String? title}) async {
+  final u = url.trim();
+  if (!u.startsWith('http://') && !u.startsWith('https://')) return;
+  await MihonExtensionService.openSourceWebView(u, title: title);
+}
+
+/// The web page for one chapter/episode, or null when there isn't one.
+///
+/// Mihon and Aniyomi hand back an OPAQUE chapter key, not a URL — usually a
+/// path like `/series/x/chapter-110`, sometimes just an id. Treating that as a
+/// link meant the "Open in browser" row was hidden on every Mihon source,
+/// which is the whole set of sources it was built for. A relative key is
+/// resolved against the source's own base URL, the same join the extension
+/// itself does.
+String? chapterWebUrl(String sourceId, String chapterUrl) =>
+    joinChapterUrl(webViewUrlFor(sourceId), chapterUrl);
+
+/// The join itself, with [base] passed in — pure, so the rules that matter
+/// (which schemes are refused, how a relative key is joined) can be tested
+/// without standing up a SourceRepository.
+String? joinChapterUrl(String? base, String chapterUrl) {
+  final u = chapterUrl.trim();
+  if (u.isEmpty) return null;
+  if (u.startsWith('http://') || u.startsWith('https://')) return u;
+  // Anything else carrying a scheme is not a web page. A chapter key comes
+  // from a third-party extension, so javascript:/file:/intent: must never
+  // reach a WebView.
+  if (RegExp(r'^[a-zA-Z][a-zA-Z0-9+.-]*:').hasMatch(u)) return null;
+  if (base == null || base.trim().isEmpty) return null;
+  var b = base.trim();
+  while (b.endsWith('/')) {
+    b = b.substring(0, b.length - 1);
+  }
+  return u.startsWith('/') ? '$b$u' : '$b/$u';
+}
+
+/// Whether a chapter has a page worth offering — so a caller can hide the row
+/// rather than show one that opens nothing.
+bool canOpenInBrowser(String sourceId, String chapterUrl) =>
+    chapterWebUrl(sourceId, chapterUrl) != null;

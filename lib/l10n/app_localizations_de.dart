@@ -2660,6 +2660,9 @@ class AppLocalizationsDe extends AppLocalizations {
   String get openInBrowser => 'Im Browser öffnen';
 
   @override
+  String get markAsRead => 'Mark as read';
+
+  @override
   String get copyLink => 'Link kopieren';
 
   @override
@@ -2910,6 +2913,13 @@ class AppLocalizationsDe extends AppLocalizations {
   String markedEpisodesAsWatched(int count) {
     return ' $count Folgen als gesehen markiert';
   }
+
+  @override
+  String get openInBrowserSubtitle =>
+      'Read this chapter on the source\'s own site';
+
+  @override
+  String get readingSettings => 'Reading settings';
 
   @override
   String get markedAsRead => 'Marked as read';
