@@ -8,7 +8,19 @@ class SMangaImpl : SManga {
 
     override lateinit var url: String
 
-    override lateinit var title: String
+    // Defaulted, NOT lateinit — deliberately different from upstream Mihon.
+    //
+    // We hand extensions a stub carrying only `url` (MihonBridge's getDetails
+    // and getChapters), and an extension's parser is free to READ title before
+    // it writes one. Reading an uninitialised lateinit throws, which killed the
+    // whole details call with "lateinit property title has not been
+    // initialized" and left that manga permanently unopenable.
+    //
+    // SAnimeImpl in this same tree already defaults title to "", which is why
+    // only manga ever hit this. Nothing checks ::title.isInitialized, and
+    // MihonJson already treats an unset title as "" — so the lateinit bought
+    // nothing but a crash.
+    override var title: String = ""
 
     override var thumbnail_url: String? = null
 
