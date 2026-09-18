@@ -56,8 +56,15 @@ class _FakeOrderPrefs implements SourceOrderPrefs {
     _order[kind] = orderedIds;
   }
 
+  // A real one, not a hardcoded empty set — otherwise the test asserting a
+  // stale exclude set is ignored would pass against any implementation.
+  final Map<ZKind, Set<String>> _excluded = {};
   @override
-  Set<String> excluded(ZKind kind) => const {};
+  Set<String> excluded(ZKind kind) => _excluded[kind] ?? const {};
+  @override
+  Future<void> setExcluded(ZKind kind, Set<String> ids) async {
+    _excluded[kind] = ids;
+  }
 
   /// How many the sweep may try. Defaults to [kAutoResolveCap] like the real
   /// store, so the existing cap tests keep asserting the shipped default; a
@@ -158,5 +165,18 @@ void main() {
     // orderedCandidates stays whole — the picker and pin lookups need it.
     expect(orderedCandidates(ZKind.anime).length, greaterThan(3),
         reason: 'only the SWEEP is capped; the pickable list must stay full');
+  });
+
+  // Switching a source off is gone: the limit and the order do that job now.
+  // A stale exclude set from before must NOT keep a source out, or someone who
+  // once used the removed toggle would have sources silently off forever with
+  // no UI left to find them.
+  test('a saved exclude set from the old toggle no longer hides a source', () {
+    orderPrefs.setExcluded(ZKind.anime, {'s0'});
+    expect(
+      [for (final x in sweepList(ZKind.anime)) x.id],
+      contains('s0'),
+      reason: 'nothing reads the exclude set any more; it is inert, not lost',
+    );
   });
 }

@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
 import '../../core/playback/source_health_store.dart';
-import '../../core/repository/source_repository.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/tv/tv_focusable.dart';
@@ -13,8 +12,7 @@ import '../../core/ui/source_switcher.dart' show categorizedSources;
 import '../../core/zmode/source_order_prefs.dart';
 import '../../core/zmode/source_score_store.dart';
 import '../../core/zmode/zmode_ids.dart';
-import '../../core/zmode/zmode_module.dart'
-    show candidatesForKind, sweepCandidates;
+import '../../core/zmode/zmode_module.dart' show sweepCandidates;
 
 /// Why a source sits where it does, in one short line.
 ///
@@ -51,14 +49,8 @@ class _SourcePriorityScreenState extends State<SourcePriorityScreen> {
   // orders of the same sources was twice the list to keep straight for a
   // distinction most people don't draw.
   late List<({String id, String name})> _sources = _ordered(ZKind.anime);
-  late List<({String id, String name})> _sourcesOff = _off(ZKind.anime);
   late int _cap = _prefs.cap(ZKind.anime);
 
-  /// Everything installed for [kind], in the user's saved order.
-  List<({String id, String name})> _all(ZKind kind) => applySourceOrder(
-    candidatesForKind(sl<SourceRepository>(), kind),
-    _prefs.get(kind),
-  );
 
   /// What Auto Resolve actually sweeps, in the order it walks them.
   ///
@@ -78,45 +70,13 @@ class _SourcePriorityScreenState extends State<SourcePriorityScreen> {
   /// auto-ranked. It only decides whether there is anything to undo.
   bool get _hasPins => _prefs.get(ZKind.anime).isNotEmpty;
 
-  /// Sources the USER switched off, kept visible so turning one back on is one
-  /// tap rather than a hunt through the Sources screen.
-  ///
-  /// Read straight from the exclude set rather than inferred as "everything
-  /// not in [_ordered]". Those are different questions now that [_ordered] is
-  /// narrowed: a source dropped for its language is absent from the sweep but
-  /// nobody switched it off, and offering it a "turn back on" button that
-  /// writes to an exclude set it was never in would do visibly nothing.
-  List<({String id, String name})> _off(ZKind kind) {
-    final excluded = _prefs.excluded(kind);
-    return [
-      for (final s in _all(kind))
-        if (excluded.contains(s.id)) s,
-    ];
-  }
 
-  /// Writing an explicit list the first time someone touches this: until then
-  /// the default (top [kDefaultActiveSources]) applies, and flipping one row
-  /// has to pin down everything else as it currently stands or the rest would
-  /// silently move too.
-  Future<void> _setOn(ZKind kind, String id, {required bool on}) async {
-    final off = {..._prefs.excluded(kind)};
-    if (on) {
-      off.remove(id);
-    } else {
-      off.add(id);
-    }
-    await _prefs.setExcluded(kind, off);
-    if (mounted) _refresh(kind);
-  }
 
   void _refresh(ZKind kind) => setState(() {
     _sources = _ordered(ZKind.anime);
-    _sourcesOff = _off(ZKind.anime);
     _cap = _prefs.cap(ZKind.anime);
   });
 
-  Future<void> _turnOff(ZKind kind, String id) => _setOn(kind, id, on: false);
-  Future<void> _turnOn(ZKind kind, String id) => _setOn(kind, id, on: true);
 
   /// A one-word verdict from the health store, when it has one worth showing.
   /// Silent for a healthy source: a row of green "ok" labels is noise, and the
@@ -283,10 +243,6 @@ class _SourcePriorityScreenState extends State<SourcePriorityScreen> {
         children: [
           _capControl(ZKind.anime),
           _section(ZKind.anime, _sources),
-          if (_sourcesOff.isNotEmpty) ...[
-            const SettingsSectionLabel('SWITCHED OFF'),
-            _offSection(ZKind.anime, _sourcesOff),
-          ],
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
             child: Text(
@@ -560,12 +516,7 @@ class _SourcePriorityScreenState extends State<SourcePriorityScreen> {
                 ),
               ),
               if (health != null) _healthChip(health),
-              const SizedBox(width: 4),
-              _iconButton(
-                icon: Icons.close_rounded,
-                semanticLabel: 'Stop Auto Resolve using ${_labelFor(s)}',
-                onTap: () => _turnOff(kind, s.id),
-              ),
+              const SizedBox(width: 8),
             ],
           ),
         ),
@@ -652,72 +603,8 @@ class _SourcePriorityScreenState extends State<SourcePriorityScreen> {
     );
   }
 
-  /// A list with no drag handles or arrows — just each row's info and one
-  /// action icon. Used below the cap and for switched-off sources: neither
-  /// position is something a drag would move `_sources` to correctly, since
-  /// `_reorder`/`_move` index straight into the full list and these rows sit
-  /// at an offset from it.
-  Widget _plainSection(
-    ZKind kind,
-    List<({String id, String name})> list, {
-    required Color textColor,
-    required IconData icon,
-    required String Function(({String id, String name}) s) semanticLabel,
-    required void Function(String id) onTap,
-    bool showReason = false,
-    IconData? leadingIcon,
-    String Function(({String id, String name}) s)? leadingSemanticLabel,
-    void Function(String id)? leadingOnTap,
-  }) {
-    return SettingsCard(
-      children: [
-        for (final s in list)
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-            child: Row(
-              children: [
-                Expanded(
-                  child: _nameAndRepo(
-                    s,
-                    color: textColor,
-                    reason: showReason ? _reasonFor(s.id) : null,
-                  ),
-                ),
-                if (_health(s.id) case final h?) _healthChip(h),
-                const SizedBox(width: 4),
-                if (leadingIcon != null && leadingOnTap != null) ...[
-                  _iconButton(
-                    icon: leadingIcon,
-                    semanticLabel: leadingSemanticLabel!(s),
-                    onTap: () => leadingOnTap(s.id),
-                  ),
-                  const SizedBox(width: 2),
-                ],
-                _iconButton(
-                  icon: icon,
-                  semanticLabel: semanticLabel(s),
-                  onTap: () => onTap(s.id),
-                ),
-              ],
-            ),
-          ),
-      ],
-    );
-  }
 
 
-  /// The switched-off list: no drag handles (order is meaningless here) and a
-  /// + to put one back. Deliberately still on screen — a source that vanished
-  /// with no way back is how people end up reinstalling things.
-  Widget _offSection(ZKind kind, List<({String id, String name})> list) =>
-      _plainSection(
-        kind,
-        list,
-        textColor: AppColors.textTertiary,
-        icon: Icons.add_rounded,
-        semanticLabel: (s) => 'Let Auto Resolve use ${_labelFor(s)} again',
-        onTap: (id) => _turnOn(kind, id),
-      );
 
   /// TV row: up/down arrows instead of a drag handle — dragging isn't
   /// D-pad-drivable, so this is the only way to reorder with a remote.
@@ -760,12 +647,6 @@ class _SourcePriorityScreenState extends State<SourcePriorityScreen> {
             enabled: index < count - 1,
             semanticLabel: 'Move ${_labelFor(s)} down',
             onTap: () => _move(kind, index, 1),
-          ),
-          const SizedBox(width: 6),
-          _iconButton(
-            icon: Icons.close_rounded,
-            semanticLabel: 'Stop Auto Resolve using ${_labelFor(s)}',
-            onTap: () => _turnOff(kind, s.id),
           ),
         ],
       ),

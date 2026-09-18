@@ -215,13 +215,19 @@ List<({String id, String name})> orderedCandidates(ZKind kind) {
   // sweep's list. `candidatesForKind` stays whole, so the per-title picker
   // still offers every installed source — turning one off means "stop
   // trying it automatically", not "hide it from me".
-  return activeSources(
-    sweepOrder(
-      candidatesForKind(sl<SourceRepository>(), kind),
-      kind,
-      prefs.get(kind),
-    ),
-    excluded: prefs.excluded(kind),
+  // No exclude set any more. Switching a source off was the only way to keep
+  // it out of the sweep before there was a limit; now the limit and the order
+  // do that job, and a source below the cut is simply not tried. Keeping a
+  // second, invisible way to disable a source — with the UI for it gone —
+  // would leave anyone who had used it with sources silently off and no way
+  // to find them.
+  //
+  // `SourceOrderPrefs.excluded` still exists and still holds whatever was
+  // saved; nothing reads it, so it is inert rather than lost.
+  return sweepOrder(
+    candidatesForKind(sl<SourceRepository>(), kind),
+    kind,
+    prefs.get(kind),
   );
 }
 
