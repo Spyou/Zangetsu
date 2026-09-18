@@ -614,8 +614,16 @@ class _SourcePriorityScreenState extends State<SourcePriorityScreen> {
     int index,
     int count,
   ) {
-    return Padding(
+    // Same two signals the phone row carries. Without them the number at the
+    // top of a TV screen is a setting with nothing on screen showing what it
+    // did — which is the state this whole screen was rewritten to leave.
+    final tried = index < _cap;
+    final atCut = index == _cap - 1;
+    return Column(
       key: ValueKey(s.id),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       child: Row(
         children: [
@@ -623,15 +631,22 @@ class _SourcePriorityScreenState extends State<SourcePriorityScreen> {
             width: 22,
             child: Text(
               '${index + 1}',
-              style: AppText.caption.copyWith(color: AppColors.textTertiary),
+              style: AppText.caption.copyWith(
+                color: tried
+                    ? AppColors.textSecondary
+                    : AppColors.textTertiary,
+              ),
             ),
           ),
           const SizedBox(width: 10),
           Expanded(
-            child: _nameAndRepo(
-              s,
-              color: AppColors.textPrimary,
-              reason: _reasonFor(s.id),
+            child: Opacity(
+              opacity: tried ? 1 : 0.45,
+              child: _nameAndRepo(
+                s,
+                color: AppColors.textPrimary,
+                reason: _reasonFor(s.id),
+              ),
             ),
           ),
           if (_health(s.id) case final h?) ...[_healthChip(h), const SizedBox(width: 4)],
@@ -650,6 +665,9 @@ class _SourcePriorityScreenState extends State<SourcePriorityScreen> {
           ),
         ],
       ),
+        ),
+        if (atCut) _cutLine(),
+      ],
     );
   }
 
