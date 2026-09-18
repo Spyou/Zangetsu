@@ -143,11 +143,16 @@ class PlaybackResolver {
     /// Likewise for [chosenSourceBudget].
     Duration? chosenBudget,
 
+    /// Likewise for [relaxedPerSourceBudget].
+    Duration? relaxedBudget,
+
     /// Counts a play against the source that served it. Optional — see
     /// [_scores].
     SourceScoreStore? scores,
   }) : _budget = perSourceBudget ?? defaultPerSourceBudget,
        _chosenBudget = chosenBudget ?? chosenSourceBudget,
+       _relaxedBudget =
+           relaxedBudget ?? perSourceBudget ?? relaxedPerSourceBudget,
        _matcher = matcher,
        _sources = sources,
        _store = store,
@@ -199,12 +204,30 @@ class PlaybackResolver {
   /// a second spent in one was a second of frames not drawn.
   ///
   /// That last part is no longer true where [JsEngine.runsOffUiIsolate] — the
-  /// wait is now just a wait. It stays 8s anyway for sources nobody chose:
-  /// with a long source list, being patient with all of them is how a Play tap
-  /// turns into a minute. Patience is spent on the one the viewer picked; see
-  /// [chosenSourceBudget].
+  /// wait is now just a wait — so this 8s is now only the fallback for where
+  /// it IS still true (Apple, which runs JavaScriptCore in-process). There,
+  /// 8s of patience would still be 8s of frozen frames.
+  ///
+  /// Everywhere else, see [relaxedPerSourceBudget].
   static const Duration defaultPerSourceBudget = Duration(seconds: 8);
   final Duration _budget;
+
+  /// What an un-chosen source gets where the wait costs no frames.
+  ///
+  /// 8s was never the source's fault. It bounded UI freeze, and once provider
+  /// JS moved off the UI isolate it stopped bounding anything except total
+  /// sweep length — while still being short enough to throw away a source that
+  /// simply answers slowly. That produced the reported bug directly: a source
+  /// needing ~12s was cut off by Auto Resolve and reported as having nothing,
+  /// then played perfectly the moment the viewer picked it by hand, because a
+  /// hand-picked source gets [chosenSourceBudget] instead.
+  ///
+  /// Same patience for both now, so "Auto Resolve says no, picking it says
+  /// yes" cannot happen. Total sweep length is bounded by the source cap and
+  /// the waves instead — by asking fewer sources and asking them together,
+  /// rather than by giving up on each one early.
+  static const Duration relaxedPerSourceBudget = Duration(seconds: 20);
+  final Duration _relaxedBudget;
 
   /// What a source the viewer PICKED gets instead — pinned for this title, or
   /// set as the default for the kind. Both are an explicit "use this one", and
@@ -220,10 +243,15 @@ class PlaybackResolver {
   final Duration _chosenBudget;
 
   /// The budget for [sourceId] given the sources this viewer chose.
-  Duration _budgetFor(String sourceId, Set<String> chosen) =>
-      JsEngine.runsOffUiIsolate && chosen.contains(sourceId)
-      ? _chosenBudget
-      : _budget;
+  ///
+  /// Where the wait is free (JS off the UI isolate), a chosen source still gets
+  /// the most patience, and everything else gets [relaxedPerSourceBudget]
+  /// rather than the old 8s. Where it is not free, the tight budget applies to
+  /// everything, chosen or not — exactly as before.
+  Duration _budgetFor(String sourceId, Set<String> chosen) {
+    if (!JsEngine.runsOffUiIsolate) return _budget;
+    return chosen.contains(sourceId) ? _chosenBudget : _relaxedBudget;
+  }
 
   /// The sources the viewer explicitly picked for [c] — the per-title pin and
   /// the kind-wide default. NOT `lastPlayed`: that is the app's own memory of
