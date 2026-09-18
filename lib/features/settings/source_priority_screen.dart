@@ -588,10 +588,12 @@ class _SourcePriorityScreenState extends State<SourcePriorityScreen> {
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8),
           child: Text(
-            // NOT "nothing below is tried" — that reads as though these
-            // sources are broken. They are fine; they are simply past the
-            // number chosen above, and raising it brings them straight back.
-            'beyond your top $_cap · raise it to include these',
+            // Two things this line must not do. It must not imply these
+            // sources are broken (they are fine — just past the number set
+            // above), and it must not tell anyone to raise a number that is
+            // already at its maximum. Dragging one up works at every setting,
+            // so that is the action it names.
+            'Auto Resolve stops here · drag one up to use it',
             style: AppText.caption.copyWith(
               color: AppColors.accent.withValues(alpha: 0.9),
               fontSize: 10.5,
