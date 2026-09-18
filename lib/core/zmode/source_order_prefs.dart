@@ -181,26 +181,39 @@ List<({String id, String name})> rankByRecord(
     final bDead = b.r.health == SourceHealth.dead;
     if (aDead != bDead) return aDead ? 1 : -1;
     if (a.r.plays != b.r.plays) return b.r.plays.compareTo(a.r.plays);
+    // A source with no timing yet is not "equal speed" — it is unknown, and
+    // treating unknown as equal is what made this comparator non-transitive:
+    // null-vs-measured fell through to pool index while measured-vs-measured
+    // did not, so A < C < B could coexist with A > B. Unknown sorts last, and
+    // two unknowns still compare equal and fall through to index below, which
+    // is what keeps the no-history case returning the input untouched.
     final am = a.r.responseMs, bm = b.r.responseMs;
-    if (am != null && bm != null && am != bm) return am.compareTo(bm);
+    if (am != bm) {
+      if (am == null) return 1;
+      if (bm == null) return -1;
+      return am.compareTo(bm);
+    }
     return a.at.compareTo(b.at);
   });
   final ranked = [for (final e in indexed) e.s];
-  if (trialSlots <= 0 || cap <= 0 || ranked.length <= cap) return ranked;
+  // cap < 2 leaves no room to insert a trial ahead of the top slot without
+  // evicting it — the top source keeps its place instead of being bumped.
+  if (trialSlots <= 0 || cap < 2 || ranked.length <= cap) return ranked;
 
   // Already an unproven source inside the cap? Then the slot is spent and
   // promoting another would push out a source that has earned its place.
   final inCap = ranked.take(cap);
   if (inCap.any((s) => recordOf(s.id).plays == 0)) return ranked;
 
-  final promote = ranked.skip(cap).firstWhere(
-    (s) {
-      final r = recordOf(s.id);
-      return r.plays == 0 && r.health != SourceHealth.dead;
-    },
-    orElse: () => (id: '', name: ''),
-  );
-  if (promote.id.isEmpty) return ranked;
+  ({String id, String name})? promote;
+  for (final s in ranked.skip(cap)) {
+    final r = recordOf(s.id);
+    if (r.plays == 0 && r.health != SourceHealth.dead) {
+      promote = s;
+      break;
+    }
+  }
+  if (promote == null) return ranked;
 
   // Into the LAST slot inside the cap: the trial is worth a try, not a
   // promotion over sources that have actually worked.

@@ -40,6 +40,21 @@ void main() {
     expect(ids(rankByRecord(p, r)), ['fast', 'slow']);
   });
 
+  test('a source with no timing does not break the ordering of ones that have',
+      () {
+    // The comparator used to skip the responseMs compare whenever either side
+    // was null, which made it non-transitive: A < C < B while A > B.
+    final p = pool(['a', 'c', 'b']);
+    final r = records({
+      'a': (plays: 5, health: SourceHealth.ok, responseMs: 100),
+      'c': (plays: 5, health: SourceHealth.ok, responseMs: null),
+      'b': (plays: 5, health: SourceHealth.ok, responseMs: 50),
+    });
+    // Measured sources rank among themselves by speed; the unmeasured one
+    // goes last. No cycle, and the result does not depend on sort internals.
+    expect(ids(rankByRecord(p, r)), ['b', 'a', 'c']);
+  });
+
   test('a dead source sinks below a working one that has never played', () {
     final p = pool(['dead', 'fresh']);
     final r = records({
@@ -63,15 +78,22 @@ void main() {
     final out = ids(rankByRecord(p, r, cap: 3));
     expect(out.take(3), contains('newbie'));
     expect(out.first, 'a', reason: 'the best source keeps the top slot');
+    expect(out.length, 4, reason: 'promotion moves an element, never copies it');
+    expect(out.toSet().length, 4, reason: 'and never duplicates one');
   });
 
   test('the trial slot is not spent when an unplayed source already qualifies',
       () {
-    final p = pool(['played', 'unplayed']);
+    // The pool must be bigger than the cap (so the length<=cap guard is
+    // passed) and the unplayed source must already sit inside the cap, so
+    // this actually exercises the "already spent" check instead of returning
+    // before ever reaching it.
+    final p = pool(['a', 'b', 'unplayed', 'extra']);
     final r = records({
-      'played': (plays: 9, health: SourceHealth.ok, responseMs: null),
+      'a': (plays: 9, health: SourceHealth.ok, responseMs: null),
+      'b': (plays: 8, health: SourceHealth.ok, responseMs: null),
     });
-    expect(ids(rankByRecord(p, r, cap: 3)), ['played', 'unplayed']);
+    expect(ids(rankByRecord(p, r, cap: 3)), ['a', 'b', 'unplayed', 'extra']);
   });
 
   test('a dead source is never promoted into the trial slot', () {
@@ -87,7 +109,14 @@ void main() {
 
   test('nothing is dropped — ranking reorders, the cap is applied elsewhere',
       () {
+    // The top `cap` sources need real plays, otherwise every one of them
+    // reads as unplayed and the "slot already spent" guard returns before
+    // the promotion (remove+insert) branch ever runs.
     final p = pool(['a', 'b', 'c', 'd', 'e']);
-    expect(rankByRecord(p, records({}), cap: 2).length, 5);
+    final r = records({
+      'a': (plays: 5, health: SourceHealth.ok, responseMs: null),
+      'b': (plays: 4, health: SourceHealth.ok, responseMs: null),
+    });
+    expect(rankByRecord(p, r, cap: 2).length, 5);
   });
 }
