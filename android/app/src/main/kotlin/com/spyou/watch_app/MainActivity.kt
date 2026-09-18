@@ -48,6 +48,7 @@ import java.util.concurrent.Executors
 /// native players (CloudStream etc.) use for seek-bar thumbnails. No second
 /// player, no video surface: just URL + time -> JPEG bytes.
 class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
+    private val betaRemote by lazy { BetaRemoteBridge.attach(this) }
 
     // Flutter runs in a fragment rather than us extending FlutterActivity,
     // because this activity has to BE an androidx AppCompatActivity.
@@ -161,6 +162,7 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
         // The manifest meta-data is unchanged; we just have to read it ourselves.
         switchLaunchThemeForNormalTheme()
         super.onCreate(savedInstanceState)
+        BetaVisibility.install(application)
         setContentView(R.layout.activity_main)
         // Survives configuration changes / process death: re-attaching a second
         // fragment would spin up a second FlutterEngine and run the app twice.
@@ -231,6 +233,7 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
     }
 
     override fun onPause() {
+        BetaRemoteBridge.shared?.releaseControl()
         if (current?.get() === this) current = null
         // Fail safe: never leave the volume rocker hijacked for an app that
         // isn't in front. Dart re-enables it when the reader resumes.
@@ -248,6 +251,7 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
     private var volumeKeyChannel: MethodChannel? = null
 
     override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        if (BetaRemoteBridge.shared?.hardwareVolume(event) == true) return true
         if (volumeKeyPaging) {
             val code = event.keyCode
             if (code == android.view.KeyEvent.KEYCODE_VOLUME_UP ||
@@ -352,6 +356,15 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
         // own, so without this line NO plugin (shared_preferences, path_provider,
         // media_kit …) would be attached and the app would come up dead.
         GeneratedPluginRegister.registerGeneratedPlugins(flutterEngine)
+        BetaLink.activity = this
+        BetaLink.channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "zangetsu/beta_companion").also { channel ->
+            channel.setMethodCallHandler { call, result ->
+                if (call.method == "playbackError") {
+                    BetaLink.catalogueError = call.arguments as? String
+                    result.success(null)
+                } else betaRemote.handle(call, result)
+            }
+        }
 
         // Bridge mega-repo plugins → our repo list: when a plugin's load() calls
         // RepositoryManager.addRepository(...), forward each URL to Dart so it
@@ -1747,6 +1760,12 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
     }
 
     override fun onDestroy() {
+        betaRemote.detach(this)
+        if (BetaLink.activity === this) {
+            BetaLink.activity = null
+            BetaLink.channel = null
+            BetaLink.stop()
+        }
         pip.unregister()
         releaseRetriever()
         executor.shutdown()

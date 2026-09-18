@@ -46,7 +46,8 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.spyou.watch_app"
+        applicationId = "com.serenity.zangetsu.beta"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
@@ -147,6 +148,9 @@ configurations.configureEach {
 // Bundles the CloudStream runtime so .cs3 plugins can be DexClassLoaded against
 // it. GPL-3.0 — see docs/cloudstream-integration-spec.md §7.
 dependencies {
+    implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
     implementation("com.github.recloudstream.cloudstream:library:v4.8.0")
     // Jackson is already on the RUNTIME classpath (CloudStream library transitive
     // dep). compileOnly lets our clean-room DataStore reference JsonMapper for the

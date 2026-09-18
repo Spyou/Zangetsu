@@ -98,6 +98,7 @@ import '../../core/ui/badge.dart';
 import '../../core/ui/route_observer.dart';
 import '../../core/ui/states.dart';
 import '../player/player_screen.dart';
+import '../companion/remote_session.dart';
 import '../player/tv_playback_launch.dart';
 import '../reader/manga_reader_screen.dart';
 import '../reader/novel_reader_screen.dart';
@@ -479,6 +480,14 @@ class _DetailViewState extends State<_DetailView>
   void initState() {
     super.initState();
     // Discord Rich Presence: "Looking at <title>" while this detail is open.
+    final remote = RemoteSession.instance;
+    if (remote.remoteMode && remote.connected) {
+      unawaited(
+        remote
+            .command('browseStatus', {'title': widget.item.title})
+            .catchError((_) => <String, dynamic>{}),
+      );
+    }
     if (sl.isRegistered<DiscordRpc>()) {
       sl<DiscordRpc>().setBrowsing(
         title: widget.item.title,
@@ -1069,9 +1078,7 @@ class _DetailViewState extends State<_DetailView>
     //
     // Every play path funnels through this method, so this one check covers
     // the row tap, the grid tile, the Play button and resume.
-    if (index >= 0 &&
-        index < episodes.length &&
-        !episodes[index].available) {
+    if (index >= 0 && index < episodes.length && !episodes[index].available) {
       final sweep = await showEpisodeUnavailable(
         context,
         episodes[index],

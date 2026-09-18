@@ -5,8 +5,26 @@
 	};
 	objectVersion = 54;
 	objects = {
+B37A00000000000000000023 = {isa = XCBuildConfiguration; baseConfigurationReference = B37A00000000000000000026; buildSettings = {APPLICATION_EXTENSION_API_ONLY = YES; CODE_SIGN_STYLE = Automatic; INFOPLIST_FILE = BetaRemoteActivity/Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 16.2; PRODUCT_BUNDLE_IDENTIFIER = com.serenity.zangetsu.beta.remoteactivity; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; SKIP_INSTALL = YES; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2"; }; name = Profile; };
+B37A00000000000000000022 = {isa = XCBuildConfiguration; baseConfigurationReference = B37A00000000000000000026; buildSettings = {APPLICATION_EXTENSION_API_ONLY = YES; CODE_SIGN_STYLE = Automatic; INFOPLIST_FILE = BetaRemoteActivity/Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 16.2; PRODUCT_BUNDLE_IDENTIFIER = com.serenity.zangetsu.beta.remoteactivity; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; SKIP_INSTALL = YES; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2"; }; name = Release; };
+B37A00000000000000000021 = {isa = XCBuildConfiguration; baseConfigurationReference = B37A00000000000000000026; buildSettings = {APPLICATION_EXTENSION_API_ONLY = YES; CODE_SIGN_STYLE = Automatic; INFOPLIST_FILE = BetaRemoteActivity/Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 16.2; PRODUCT_BUNDLE_IDENTIFIER = com.serenity.zangetsu.beta.remoteactivity; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; SKIP_INSTALL = YES; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2"; }; name = Debug; };
+B37A00000000000000000010 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BetaRemoteActivityAttributes.swift; path = ../apple/BetaRemoteActivityAttributes.swift; sourceTree = SOURCE_ROOT; };
+B37A00000000000000000011 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BetaRemoteActivity.swift; path = BetaRemoteActivity/BetaRemoteActivity.swift; sourceTree = SOURCE_ROOT; };
+B37A00000000000000000012 = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; path = BetaRemoteActivity.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+B37A00000000000000000013 = {isa = PBXBuildFile; fileRef = B37A00000000000000000010; };
+B37A00000000000000000014 = {isa = PBXBuildFile; fileRef = B37A00000000000000000010; };
+B37A00000000000000000015 = {isa = PBXBuildFile; fileRef = B37A00000000000000000011; };
+B37A00000000000000000016 = {isa = PBXBuildFile; fileRef = B37A00000000000000000012; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+B37A00000000000000000017 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (B37A00000000000000000014, B37A00000000000000000015, ); runOnlyForDeploymentPostprocessing = 0; };
+B37A00000000000000000018 = {isa = PBXCopyFilesBuildPhase; buildActionMask = 2147483647; dstPath = ""; dstSubfolderSpec = 13; files = (B37A00000000000000000016, ); name = "Embed Remote Live Activity"; runOnlyForDeploymentPostprocessing = 0; };
+B37A00000000000000000019 = {isa = PBXNativeTarget; buildConfigurationList = B37A00000000000000000020; buildPhases = (B37A00000000000000000017, ); buildRules = (); dependencies = (); name = BetaRemoteActivity; productName = BetaRemoteActivity; productReference = B37A00000000000000000012; productType = "com.apple.product-type.app-extension"; };
+B37A00000000000000000020 = {isa = XCConfigurationList; buildConfigurations = (B37A00000000000000000021, B37A00000000000000000022, B37A00000000000000000023, ); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+B37A00000000000000000024 = {isa = PBXContainerItemProxy; containerPortal = 97C146E61CF9000F007C117D; proxyType = 1; remoteGlobalIDString = B37A00000000000000000019; remoteInfo = BetaRemoteActivity; };
+B37A00000000000000000025 = {isa = PBXTargetDependency; target = B37A00000000000000000019; targetProxy = B37A00000000000000000024; };
+B37A00000000000000000026 = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = Config.xcconfig; path = BetaRemoteActivity/Config.xcconfig; sourceTree = SOURCE_ROOT; };
 
 /* Begin PBXBuildFile section */
+        B37A00000000000000000001 /* BetaAppleServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = B37A00000000000000000002 /* BetaAppleServices.swift */; };
 		1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */ = {isa = PBXBuildFile; fileRef = 1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */; };
 		331C808B294A63AB00263BE5 /* RunnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 331C807B294A618700263BE5 /* RunnerTests.swift */; };
 		3B3967161E833CAA004F5970 /* AppFrameworkInfo.plist in Resources */ = {isa = PBXBuildFile; fileRef = 3B3967151E833CAA004F5970 /* AppFrameworkInfo.plist */; };
@@ -45,6 +63,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+        B37A00000000000000000002 /* BetaAppleServices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BetaAppleServices.swift; path = ../apple/BetaAppleServices.swift; sourceTree = SOURCE_ROOT; };
 		13541DC85E9EC0ADF1E2E08E /* Pods-Runner.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.debug.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.debug.xcconfig"; sourceTree = "<group>"; };
 		1498D2321E8E86230040F4C2 /* GeneratedPluginRegistrant.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = GeneratedPluginRegistrant.h; sourceTree = "<group>"; };
 		1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = GeneratedPluginRegistrant.m; sourceTree = "<group>"; };
@@ -153,6 +172,7 @@
 			isa = PBXGroup;
 			children = (
 				97C146EE1CF9000F007C117D /* Runner.app */,
+                B37A00000000000000000012,
 				331C8081294A63A400263BE5 /* RunnerTests.xctest */,
 			);
 			name = Products;
@@ -169,6 +189,10 @@
 				1498D2321E8E86230040F4C2 /* GeneratedPluginRegistrant.h */,
 				1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */,
 				74858FAE1ED2DC5600515810 /* AppDelegate.swift */,
+                B37A00000000000000000002,
+                B37A00000000000000000010,
+                B37A00000000000000000011,
+                B37A00000000000000000026,
 				7884E8672EC3CC0400C636F2 /* SceneDelegate.swift */,
 				74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */,
 				FA60583E9333B80527B5E162 /* Runner.entitlements */,
@@ -206,6 +230,7 @@
 				9740EEB61CF901F6004384FC /* Run Script */,
 				97C146EA1CF9000F007C117D /* Sources */,
 				97C146EB1CF9000F007C117D /* Frameworks */,
+                B37A00000000000000000018,
 				97C146EC1CF9000F007C117D /* Resources */,
 				9705A1C41CF9048500538489 /* Embed Frameworks */,
 				3B06AD1E1E4923F5004D2608 /* Thin Binary */,
@@ -214,8 +239,7 @@
 			);
 			buildRules = (
 			);
-			dependencies = (
-			);
+			dependencies = (B37A00000000000000000025, );
 			name = Runner;
 			packageProductDependencies = (
 				78A3181F2AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage */,
@@ -260,6 +284,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
+                B37A00000000000000000019,
 				97C146ED1CF9000F007C117D /* Runner */,
 				331C8080294A63A400263BE5 /* RunnerTests */,
 			);
@@ -405,6 +430,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+
 				331C808B294A63AB00263BE5 /* RunnerTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -413,6 +439,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+                B37A00000000000000000001 /* BetaAppleServices.swift in Sources */,
+                B37A00000000000000000013,
 				74858FAF1ED2DC5600515810 /* AppDelegate.swift in Sources */,
 				1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */,
 				7884E8682EC3CC0700C636F2 /* SceneDelegate.swift in Sources */,
@@ -518,7 +546,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.spyou.zangetsu;
+				PRODUCT_BUNDLE_IDENTIFIER = com.serenity.zangetsu.beta;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_OBJC_BRIDGING_HEADER = "Runner/Runner-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
@@ -535,7 +563,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.spyou.zangetsu.RunnerTests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.serenity.zangetsu.beta.RunnerTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
@@ -553,7 +581,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.spyou.zangetsu.RunnerTests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.serenity.zangetsu.beta.RunnerTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Runner.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Runner";
@@ -569,7 +597,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.spyou.zangetsu.RunnerTests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.serenity.zangetsu.beta.RunnerTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Runner.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Runner";
@@ -704,7 +732,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.spyou.zangetsu;
+				PRODUCT_BUNDLE_IDENTIFIER = com.serenity.zangetsu.beta;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_OBJC_BRIDGING_HEADER = "Runner/Runner-Bridging-Header.h";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
@@ -730,7 +758,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.spyou.zangetsu;
+				PRODUCT_BUNDLE_IDENTIFIER = com.serenity.zangetsu.beta;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_OBJC_BRIDGING_HEADER = "Runner/Runner-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;

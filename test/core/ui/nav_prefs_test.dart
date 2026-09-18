@@ -16,9 +16,13 @@ void main() {
   group('NavPrefs invariants', () {
     test('the pinned tab is added back when missing', () {
       final out = sanitized([DockTab.home, DockTab.downloads, DockTab.myList]);
-      expect(out, contains(DockTab.profile),
-          reason: 'Profile is the only route into Settings — losing it would '
-              'strand the user with no way to fix their own dock');
+      expect(
+        out,
+        contains(DockTab.profile),
+        reason:
+            'Profile is the only route into Settings — losing it would '
+            'strand the user with no way to fix their own dock',
+      );
     });
 
     test('duplicates are collapsed', () {
@@ -26,6 +30,7 @@ void main() {
         DockTab.home,
         DockTab.home,
         DockTab.downloads,
+        DockTab.remote,
         DockTab.profile,
       ]);
       expect(out.where((t) => t == DockTab.home).length, 1);
@@ -46,6 +51,7 @@ void main() {
         DockTab.downloads,
         DockTab.history,
         DockTab.home,
+        DockTab.remote,
         DockTab.profile,
       ];
       expect(sanitized(wanted), wanted);
@@ -63,6 +69,7 @@ void main() {
         DockTab.home,
         DockTab.myList,
         DockTab.sources,
+        DockTab.remote,
         DockTab.profile,
       ]);
     });
@@ -71,7 +78,7 @@ void main() {
     // without being a DockTab, so the tab cap has to be four. Picking five
     // tabs used to draw a sixth icon and squeeze the row.
     test('the cap leaves a slot for the centre button', () {
-      expect(NavPrefs.maxTabs, 4);
+      expect(NavPrefs.maxTabs, 5);
       expect(NavPrefs.defaultTabs.length, NavPrefs.maxTabs);
     });
   });
@@ -96,36 +103,39 @@ void main() {
       await dir.delete(recursive: true);
     });
 
-    test('a saved list naming the old Search tab drops just that entry', () async {
-      // What NavPrefs.defaultTabs used to ship as, back when it had 5 slots.
-      // The box key ('tabs') is the persisted format itself — see _tabsKey.
-      await Hive.box(NavPrefs.boxName).put('tabs', [
-        'home',
-        'schedule',
-        'search',
-        'myList',
-        'profile',
-      ]);
-      final out = NavPrefs().tabs;
+    test(
+      'a saved list naming the old Search tab drops just that entry',
+      () async {
+        // What NavPrefs.defaultTabs used to ship as, back when it had 5 slots.
+        // The box key ('tabs') is the persisted format itself — see _tabsKey.
+        await Hive.box(
+          NavPrefs.boxName,
+        ).put('tabs', ['home', 'schedule', 'search', 'myList', 'profile']);
+        final out = NavPrefs().tabs;
 
-      expect(out, contains(DockTab.profile));
-      expect(out.length, greaterThanOrEqualTo(NavPrefs.minTabs));
-      // Downloads is in defaultTabs now, but this list was SAVED by the user
-      // and never had it — only the unknown 'search'/'schedule' entries drop.
-      expect(out, [
-        DockTab.home,
-        DockTab.myList,
-        DockTab.profile,
-      ]);
-    });
+        expect(out, contains(DockTab.profile));
+        expect(out.length, greaterThanOrEqualTo(NavPrefs.minTabs));
+        // Downloads is in defaultTabs now, but this list was SAVED by the user
+        // and never had it — only the unknown 'search'/'schedule' entries drop.
+        expect(out, [
+          DockTab.home,
+          DockTab.myList,
+          DockTab.remote,
+          DockTab.profile,
+        ]);
+      },
+    );
 
-    test('a saved list that is mostly just Search falls back to default', () async {
-      // Below minTabs once the unknown 'search' entry is stripped.
-      await Hive.box(NavPrefs.boxName).put('tabs', ['search', 'profile']);
-      final out = NavPrefs().tabs;
+    test(
+      'a saved list that is mostly just Search falls back to default',
+      () async {
+        // Below minTabs once the unknown 'search' entry is stripped.
+        await Hive.box(NavPrefs.boxName).put('tabs', ['search', 'profile']);
+        final out = NavPrefs().tabs;
 
-      expect(out, NavPrefs.defaultTabs);
-    });
+        expect(out, NavPrefs.defaultTabs);
+      },
+    );
 
     test('with nothing chosen, the app opens on the leftmost tab', () {
       expect(NavPrefs().startTab, NavPrefs.defaultTabs.first);
@@ -156,8 +166,11 @@ void main() {
   });
 
   group('DockTab', () {
-    test('only Profile is pinned', () {
-      expect(DockTab.values.where((t) => t.isPinned), [DockTab.profile]);
+    test('Remote and Profile stay available', () {
+      expect(DockTab.values.where((t) => t.isPinned), [
+        DockTab.remote,
+        DockTab.profile,
+      ]);
     });
 
     // isAnimeOnly went with Schedule: it was that tab's only subject, and

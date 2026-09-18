@@ -9,6 +9,106 @@ import UIKit
 /// Up Next content proposal). See Apple's "Customizing the tvOS Playback Experience".
 final class TvSystemPlayerViewController: AVPlayerViewController, AVPlayerViewControllerDelegate {
     static weak var active: TvSystemPlayerViewController?
+    private var companionOptionsVersion = 0
+    private var companionResolving = false
+
+    func companionState() -> [String: Any] {
+        let position = player?.currentTime().seconds ?? 0
+        let duration = player?.currentItem?.duration.seconds ?? 0
+        var tracks: [[String: Any]] = []
+        for (i, value) in availableCategories.enumerated() {
+            tracks.append(["type": 1, "group": 1, "track": i, "label": value])
+        }
+        for (i, value) in embeddedLegibleOptions.enumerated() {
+            tracks.append(["type": 3, "group": 3, "track": i, "label": value.label])
+        }
+        for (i, value) in subtitles.enumerated() {
+            tracks.append(["type": 3, "group": 4, "track": i, "label": value["label"] ?? value["lang"] ?? "Subtitle \(i + 1)"])
+        }
+        return ["active": true, "appForeground": UIApplication.shared.applicationState == .active,
+                "playerForeground": viewIfLoaded?.window != nil, "title": titleText,
+                "episodeLabel": episodeLabelText, "episodeIndex": episodeIndex,
+                "positionMs": position.isFinite ? Int64(position * 1000) : 0,
+                "durationMs": duration.isFinite ? Int64(duration * 1000) : 0,
+                "playing": (player?.rate ?? 0) > 0, "buffering": companionResolving || player?.timeControlStatus == .waitingToPlayAtSpecifiedRate,
+                "episodes": episodeLabels, "sources": cachedSources.enumerated().map { i, value in
+                    ["label": value["label"] as? String ?? value["quality"] as? String ?? "Source \(i + 1)"]
+                }, "tracks": tracks, "optionsVersion": companionOptionsVersion,
+                "canSkipIntro": skipIntro, "megaSkipEnabled": megaSkip, "megaSkipSeconds": megaSkipSeconds,
+                "systemControls": false, "navigationWhilePlaying": false,
+                "volumeLabel": "Player volume", "volume": Int((player?.volume ?? 0) * 100),
+                "volumeAvailable": true, "qualitySelection": false]
+    }
+    func companionStream() -> [String: Any] {
+        guard let asset = player?.currentItem?.asset as? AVURLAsset else { return [:] }
+        return ["index": episodeIndex, "url": asset.url.absoluteString, "headers": headers, "subtitles": subtitles]
+    }
+    func companionCommand(_ c: [String: Any], result: @escaping FlutterResult) {
+        let action = c["action"] as? String ?? ""
+        func fail(_ message: String) { result(FlutterError(code: "player", message: message, details: nil)) }
+        guard let player else { fail("Player is not ready"); return }
+        switch action {
+        case "state": break
+        case "toggle": player.rate > 0 ? player.pause() : player.play()
+        case "playing": (c["value"] as? Bool == true) ? player.play() : player.pause()
+        case "rewind": seekBy(-10000)
+        case "forward": seekBy(10000)
+        case "seek":
+            guard let position = c["positionMs"] as? NSNumber else { fail("Position required"); return }
+            let duration = player.currentItem?.duration.seconds ?? 0
+            let seconds = max(0, position.doubleValue / 1000)
+            player.seek(to: CMTime(seconds: duration.isFinite && duration > 0 ? min(seconds, duration) : seconds, preferredTimescale: 600))
+        case "next", "previous", "episode", "handoffResume":
+            let index = action == "next" ? episodeIndex + 1 : action == "previous" ? episodeIndex - 1 : (c["index"] as? Int ?? -1)
+            guard (0..<episodeCount).contains(index), !companionResolving else { fail("Episode unavailable or already loading"); return }
+            if action == "handoffResume" && index == episodeIndex {
+                let pos = (c["positionMs"] as? NSNumber)?.doubleValue ?? 0
+                player.seek(to: CMTime(seconds: max(0, pos / 1000), preferredTimescale: 600)); player.play()
+            } else if action == "handoffResume" {
+                resolveAndPlay(index: index, resumePosition: max(0, (c["positionMs"] as? NSNumber)?.int64Value ?? 0))
+            }
+            else { resolveAndPlay(index: index) }
+        case "source", "track":
+            guard !companionResolving else { fail("Wait for the episode to finish loading"); return }
+            guard c["episodeIndex"] as? Int == episodeIndex,
+                  c["optionsVersion"] as? Int == companionOptionsVersion else { fail("Episode options changed. Open them again."); return }
+            if action == "source" {
+                guard let index = c["index"] as? Int, cachedSources.indices.contains(index) else { fail("Source unavailable"); return }
+                playSource(cachedSources[index]); companionOptionsVersion += 1
+            } else {
+                let type = c["type"] as? Int ?? 0, group = c["group"] as? Int ?? -1, index = c["track"] as? Int ?? -1
+                if type == 1 && group == -1 { /* Keep AVKit's current audio category. */ }
+                else if type == 3 && group == -1 { clearSubtitles() }
+                else if type == 3 && group == 3 && embeddedLegibleOptions.indices.contains(index) { selectEmbeddedSubtitle(index: index) }
+                else if type == 3 && group == 4 && subtitles.indices.contains(index) { applyProviderSubtitle(subtitles[index], key: "provider:\(index)") }
+                else if type == 1 && availableCategories.indices.contains(index) {
+                    category = availableCategories[index]
+                    channel.invokeMethod("setCategory", arguments: ["category": category])
+                    resolveAndPlay(index: episodeIndex, forceReload: true)
+                } else { fail("This track option is unavailable on Apple TV"); return }
+            }
+        case "megaSkip":
+            guard megaSkip else { fail("Mega Skip is disabled in settings"); return }
+            seekBy(Int64(megaSkipSeconds) * 1000)
+        case "skipIntro":
+            guard skipIntro else { fail("Skip Intro is disabled in settings"); return }
+            let seconds = player.currentTime().seconds
+            guard seconds.isFinite else { fail("Playback is not ready"); return }
+            let position = Int64(seconds * 1000)
+            guard let interval = skipIntervals.first(where: { $0.type == "op" && $0.end > position }) else { fail("No intro timing is available"); return }
+            player.seek(to: CMTime(value: interval.end, timescale: 1000))
+        case "skipSettings":
+            skipIntro = c["skipIntro"] as? Bool ?? skipIntro
+            megaSkip = c["megaSkip"] as? Bool ?? megaSkip
+            megaSkipSeconds = min(600, max(1, c["megaSkipSeconds"] as? Int ?? megaSkipSeconds))
+            rebuildTransportMenus()
+        case "systemVolume": player.volume = min(1, max(0, player.volume + ((c["direction"] as? Int ?? 0) > 0 ? 0.05 : -0.05)))
+        case "systemMute": player.isMuted.toggle()
+        case "closePlayer": dismiss(animated: true); result(["ok": true]); return
+        default: fail("Unsupported playback command"); return
+        }
+        result(companionState())
+    }
 
     private var channel: FlutterMethodChannel!
     private var launchResult: FlutterResult?
@@ -1047,6 +1147,7 @@ final class TvSystemPlayerViewController: AVPlayerViewController, AVPlayerViewCo
         ) { [weak self] result in
             DispatchQueue.main.async {
                 self?.cachedSources = result as? [[String: Any]] ?? []
+                self?.companionOptionsVersion += 1
                 if rebuildMenus { self?.rebuildTransportMenus() }
             }
         }
@@ -1978,11 +2079,14 @@ final class TvSystemPlayerViewController: AVPlayerViewController, AVPlayerViewCo
     private func resolveAndPlay(
         index: Int,
         forceReload: Bool = false,
-        completed: Bool = false
+        completed: Bool = false,
+        resumePosition: Int64? = nil
     ) {
         if !forceReload && index == episodeIndex, player?.currentItem != nil {
             return
         }
+        guard !companionResolving, (0..<episodeCount).contains(index) else { return }
+        companionResolving = true
         persistProgress(completed: completed)
         channel.invokeMethod(
             "resolveEpisode",
@@ -1990,6 +2094,7 @@ final class TvSystemPlayerViewController: AVPlayerViewController, AVPlayerViewCo
         ) { [weak self] result in
             guard let self else { return }
             DispatchQueue.main.async {
+                self.companionResolving = false
                 guard let map = result as? [String: Any],
                       let url = map["url"] as? String else { return }
                 self.headers = Self.parseHeaders(map["headers"])
@@ -2005,7 +2110,7 @@ final class TvSystemPlayerViewController: AVPlayerViewController, AVPlayerViewCo
                 let skew = (map["subtitleSkewSeconds"] as? NSNumber)?.doubleValue ?? 0
                 self.providerSubtitleSkewApplied = abs(skew) >= 0.05
                 self.episodeIndex = index
-                let pos = (map["positionMs"] as? NSNumber)?.int64Value ?? 0
+                let pos = resumePosition ?? (map["positionMs"] as? NSNumber)?.int64Value ?? 0
                 let label = map["episodeLabel"] as? String
                     ?? (index < self.episodeLabels.count
                         ? self.episodeLabels[index]

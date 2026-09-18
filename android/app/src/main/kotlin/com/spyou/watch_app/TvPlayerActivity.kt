@@ -146,6 +146,109 @@ class TvPlayerActivity : Activity() {
     private var lastVideoRatio: Float? = null
 
     private var player: ExoPlayer? = null
+    private fun betaOptionsVersion() = "${System.identityHashCode(this)}:$currentIndex:${currentUrl?.hashCode()}:${player?.currentTracks?.hashCode()}"
+
+    /** Only called on the main thread by the authenticated companion receiver. */
+    fun betaStream(): Map<String, Any?> = mapOf("url" to currentUrl, "headers" to currentHeaders,
+        "index" to currentIndex, "drmKid" to currentDrmKid, "drmKey" to currentDrmKey,
+        "subtitles" to currentSubs.map { mapOf("url" to it.uri.toString(), "lang" to (it.language ?: "und"), "label" to it.label) })
+
+    fun betaState(): org.json.JSONObject {
+        val p = player
+        val tracks = org.json.JSONArray()
+        p?.currentTracks?.groups?.forEachIndexed { groupIndex, group ->
+            for (i in 0 until group.length) {
+                if (!group.isTrackSupported(i)) continue
+                val format = group.getTrackFormat(i)
+                val label = if (group.type == C.TRACK_TYPE_VIDEO && format.height > 0) "${format.height}p"
+                    else format.label ?: format.language ?: "Track ${i + 1}"
+                tracks.put(org.json.JSONObject().put("group", groupIndex).put("track", i)
+                    .put("type", group.type).put("label", label).put("selected", group.isTrackSelected(i)))
+            }
+        }
+        return org.json.JSONObject().put("active", p != null)
+            .put("appForeground", BetaVisibility.foreground).put("playerForeground", BetaVisibility.playerForeground)
+            .put("megaSkipEnabled", intent.getBooleanExtra(EXTRA_MEGASKIP, true)).put("megaSkipSeconds", megaSkipSecs)
+            .put("canSkipIntro", skipIntroEnabled && skipIntervals.any { (p?.currentPosition ?: -1) >= it.start && (p?.currentPosition ?: -1) < it.end })
+            .put("skipLabel", if (::skipButton.isInitialized) skipButton.text.toString() else "Skip Intro")
+            .put("title", intent.getStringExtra(EXTRA_TITLE) ?: "Zangetsu Beta")
+            .put("episodeLabel", episodeLabels.getOrNull(currentIndex) ?: intent.getStringExtra(EXTRA_EP_LABEL) ?: "")
+            .put("episodeIndex", currentIndex).put("episodes", org.json.JSONArray(episodeLabels.toList()))
+            .put("optionsVersion", betaOptionsVersion())
+            .put("positionMs", p?.currentPosition ?: 0).put("durationMs", (p?.duration ?: 0).coerceAtLeast(0))
+            .put("playing", p?.playWhenReady == true).put("buffering", switching || p?.playbackState == Player.STATE_BUFFERING)
+            .put("volume", ((p?.volume ?: 1f) * 100).toInt())
+            .put("playbackError", p?.playerError?.message ?: org.json.JSONObject.NULL)
+            .put("tracks", tracks).put("sources", org.json.JSONArray(episodeSources.mapIndexed { index, source ->
+                org.json.JSONObject().put("index", index).put("label", source["label"] ?: "Source ${index + 1}")
+            }))
+    }
+
+    fun betaCommand(command: org.json.JSONObject) {
+        val p = player ?: error("Player is not ready")
+        when (command.getString("action")) {
+            "toggle" -> { userPaused = p.playWhenReady; if (userPaused) p.pause() else p.play(); reportTiming(playing = !userPaused) }
+            "rewind", "forward" -> seekBy(if (command.getString("action") == "rewind") -10000 else 10000)
+            "previous", "next" -> {
+                check(!switching) { "An episode is already loading" }
+                val index = currentIndex + if(command.getString("action") == "previous") -1 else 1
+                require(index in 0 until episodeCount) { "No episode in that direction" }; loadEpisode(index)
+            }
+            "skipIntro" -> { check(skipIntroEnabled) { "Skip Intro is disabled in settings." }; performIntroSkip() }
+            "megaSkip" -> { check(intent.getBooleanExtra(EXTRA_MEGASKIP, true)) { "Mega Skip is disabled in settings." }; seekBy(megaSkipSecs * 1000L) }
+            "handoffResume" -> {
+                val index = command.getInt("index")
+                val position = command.getLong("positionMs").coerceAtLeast(0)
+                check(index in 0 until episodeCount && !switching) { "Wait for the TV episode to finish loading." }
+                userPaused = false
+                if (index == currentIndex) { p.seekTo(position); p.play() }
+                else loadEpisode(index, position)
+            }
+            "playing" -> {
+                val playing = command.getBoolean("value")
+                userPaused = !playing
+                if (playing) p.play() else p.pause()
+                reportTiming(playing = playing)
+            }
+            "seek", "seekBy" -> {
+                check(p.isCurrentMediaItemSeekable) { "This stream cannot seek" }
+                val target = if (command.getString("action") == "seek") command.getLong("positionMs")
+                    else p.currentPosition + command.getLong("deltaMs").coerceIn(-60000, 60000)
+                p.seekTo(target.coerceIn(0, p.duration.coerceAtLeast(0)))
+            }
+            "volume" -> p.volume = command.getInt("value").coerceIn(0, 100) / 100f
+            "episode" -> {
+                val index = command.getInt("index")
+                require(index in 0 until episodeCount) { "No episode in that direction" }
+                check(!switching) { "An episode is already loading" }
+                loadEpisode(index)
+            }
+            "source" -> {
+                check(command.optString("optionsVersion") == betaOptionsVersion()) { "Player options changed. Open the source list again." }
+                check(command.getInt("episodeIndex") == currentIndex && !switching) { "Episode changed. Refresh and try again." }
+                val index = command.getInt("index")
+                require(index in episodeSources.indices) { "Source unavailable" }
+                loadSource(index)
+            }
+            "track" -> {
+                check(command.optString("optionsVersion") == betaOptionsVersion()) { "Player options changed. Open the track list again." }
+                check(command.getInt("episodeIndex") == currentIndex && !switching) { "Episode changed. Refresh and try again." }
+                val type = command.getInt("type")
+                require(type in listOf(C.TRACK_TYPE_AUDIO, C.TRACK_TYPE_VIDEO, C.TRACK_TYPE_TEXT))
+                val index = command.getInt("group")
+                if (index < 0) {
+                    p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
+                        .clearOverridesOfType(type).setTrackTypeDisabled(type, type == C.TRACK_TYPE_TEXT).build()
+                } else {
+                    val group = p.currentTracks.groups.getOrNull(index) ?: error("Track list changed")
+                    val track = command.getInt("track")
+                    require(group.type == type && track in 0 until group.length && group.isTrackSupported(track))
+                    applyOverride(type, group, track)
+                }
+            }
+            else -> error("Unknown playback command")
+        }
+    }
     private var reported = false
     private var accent = DEFAULT_ACCENT
 
@@ -514,7 +617,7 @@ class TvPlayerActivity : Activity() {
     }
 
     // ── Episode switching (via the native→Dart bridge) ───────────────────────
-    private fun loadEpisode(index: Int) {
+    private fun loadEpisode(index: Int, resumeAt: Long? = null) {
         if (index < 0 || index >= episodeCount || switching) return
         val bridge = MainActivity.tvBridge ?: return
         // Persist the outgoing episode before leaving it.
@@ -540,7 +643,7 @@ class TvPlayerActivity : Activity() {
                     @Suppress("UNCHECKED_CAST")
                     val m = result as? Map<String, Any?>
                     if (m == null) { switching = false; loading.visibility = View.GONE; toastFail() }
-                    else applyResolved(index, m)
+                    else applyResolved(index, if (resumeAt == null) m else m + ("positionMs" to resumeAt))
                 }
                 override fun error(code: String, msg: String?, details: Any?) {
                     switching = false; loading.visibility = View.GONE; toastFail()
@@ -789,6 +892,23 @@ class TvPlayerActivity : Activity() {
             // and back — ▼ from the video reaches it, ▲ from the button row too.
             if (!rowFocused && !menuOpen) skipButton.requestFocus()
         }
+    }
+
+    fun betaSkipPrefs(settings: org.json.JSONObject) {
+        skipIntroEnabled = settings.optBoolean("skipIntro", true)
+        megaSkipSecs = settings.optInt("megaSkipSeconds", 85).coerceIn(5, 180)
+        intent.putExtra(EXTRA_MEGASKIP, settings.optBoolean("megaSkip", true))
+        if (::btnMegaskip.isInitialized) {
+            btnMegaskip.text = "+${megaSkipSecs}s"
+            btnMegaskip.visibility = if (intent.getBooleanExtra(EXTRA_MEGASKIP, true)) View.VISIBLE else View.GONE
+        }
+        if (::skipButton.isInitialized) updateSkip()
+    }
+
+    private fun performIntroSkip() {
+        val p = player ?: return
+        val interval = skipIntervals.firstOrNull { p.currentPosition >= it.start && p.currentPosition < it.end } ?: return
+        p.seekTo(interval.end); seekTarget = -1L; reportTiming(positionMs = interval.end); hideSkip()
     }
 
     private fun hideSkip() {
@@ -2186,13 +2306,7 @@ class TvPlayerActivity : Activity() {
         skipButton.onFocusChangeListener =
             View.OnFocusChangeListener { v, has -> applyPillFocus(v as TextView, has) }
         skipButton.bindSingleTapActivate {
-            if (activeSkipEnd > 0) {
-                val end = activeSkipEnd
-                player?.seekTo(end)
-                seekTarget = -1L
-                reportTiming(positionMs = end)
-            }
-            hideSkip()
+            performIntroSkip()
         }
 
         // Touchscreen TVs: tap empty video / chrome to show or hide controls.

@@ -38,11 +38,7 @@ String rewriteHlsPlaylist(
 }
 
 final _uriAttr = RegExp(r'URI="([^"]*)"');
-String _rewriteUriAttr(
-  String line,
-  Uri base,
-  String Function(Uri) proxify,
-) {
+String _rewriteUriAttr(String line, Uri base, String Function(Uri) proxify) {
   return line.replaceAllMapped(
     _uriAttr,
     (m) => 'URI="${proxify(base.resolve(m.group(1)!))}"',
@@ -62,6 +58,9 @@ String _rewriteUriAttr(
 // ponytail: proxying runs on the app isolate — fine for I/O-bound streaming;
 // move to a background isolate only if a 4K cast measurably janks the UI.
 class CastProxyServer {
+  CastProxyServer({this.restrictTargets = false});
+  final bool restrictTargets;
+  final Set<String> _targets = {};
   HttpServer? _server;
   String? _token;
   String? _basePrefix; // http://ip:port/p/<token>?u=
@@ -77,7 +76,10 @@ class CastProxyServer {
   /// proxy URL the Chromecast should load for [upstreamUrl]. Returns null when
   /// no usable LAN address is available (caller should fall back to the direct
   /// URL — casting will then only work for un-protected streams).
-  Future<String?> serve(String upstreamUrl, Map<String, String>? headers) async {
+  Future<String?> serve(
+    String upstreamUrl,
+    Map<String, String>? headers,
+  ) async {
     _headers = headers ?? const {};
     await _ensureStarted();
     final server = _server;
@@ -93,6 +95,7 @@ class CastProxyServer {
   String? proxify(String upstreamUrl) {
     final prefix = _basePrefix;
     if (prefix == null) return null;
+    _targets.add(upstreamUrl);
     return '$prefix${base64Url.encode(utf8.encode(upstreamUrl))}';
   }
 
@@ -107,6 +110,7 @@ class CastProxyServer {
   }
 
   Future<void> stop() async {
+    _targets.clear();
     _basePrefix = null;
     _token = null;
     final s = _server;
@@ -133,29 +137,43 @@ class CastProxyServer {
         return;
       }
       final target = Uri.parse(utf8.decode(base64Url.decode(u)));
+      if (!['http', 'https'].contains(target.scheme) ||
+          (restrictTargets && !_targets.contains(target.toString()))) {
+        res.statusCode = HttpStatus.forbidden;
+        await res.close();
+        return;
+      }
 
       final upReq = await _client.getUrl(target);
       _headers.forEach(upReq.headers.set);
+      upReq.headers.set(HttpHeaders.acceptEncodingHeader, 'identity');
       // Forward Range so the Chromecast can seek / byte-range segments + mp4.
       final range = req.headers.value(HttpHeaders.rangeHeader);
       if (range != null) upReq.headers.set(HttpHeaders.rangeHeader, range);
       final upRes = await upReq.close();
+      var effectiveTarget = target;
+      for (final redirect in upRes.redirects) {
+        effectiveTarget = effectiveTarget.resolveUri(redirect.location);
+      }
 
       final ctype = upRes.headers.contentType?.mimeType.toLowerCase() ?? '';
       final isHls =
-          target.path.toLowerCase().endsWith('.m3u8') ||
+          effectiveTarget.path.toLowerCase().endsWith('.m3u8') ||
           ctype.contains('mpegurl');
 
       res.headers.set('Access-Control-Allow-Origin', '*');
 
-      if (isHls) {
+      if (isHls && upRes.statusCode >= 200 && upRes.statusCode < 300) {
         final body = await upRes.transform(utf8.decoder).join();
         final rewritten = rewriteHlsPlaylist(
           body,
-          target,
+          effectiveTarget,
           // Relative form: the Chromecast resolves it against the playlist's
           // own proxied URL, so no host needed here.
-          (abs) => '/p/$_token?u=${base64Url.encode(utf8.encode(abs.toString()))}',
+          (abs) {
+            _targets.add(abs.toString());
+            return '/p/$_token?u=${base64Url.encode(utf8.encode(abs.toString()))}';
+          },
         );
         res.statusCode = HttpStatus.ok;
         res.headers.contentType = ContentType(
@@ -197,7 +215,8 @@ class CastProxyServer {
       );
       // Pass 1: a real Wi-Fi interface with a private LAN IP.
       for (final i in ifaces) {
-        if (!isUsableCastInterface(i.name) || !_isWifiInterface(i.name)) continue;
+        if (!isUsableCastInterface(i.name) || !_isWifiInterface(i.name))
+          continue;
         for (final a in i.addresses) {
           if (isPrivateLanIp(a.address)) return a.address;
         }
@@ -246,6 +265,16 @@ bool isPrivateLanIp(String ip) {
 /// whose address a Chromecast on the LAN can't reach. Pure/unit-testable.
 bool isUsableCastInterface(String name) {
   final n = name.toLowerCase();
-  const bad = ['tun', 'tap', 'ppp', 'rmnet', 'wg', 'utun', 'ipsec', 'vpn', 'pdp'];
+  const bad = [
+    'tun',
+    'tap',
+    'ppp',
+    'rmnet',
+    'wg',
+    'utun',
+    'ipsec',
+    'vpn',
+    'pdp',
+  ];
   return !bad.any(n.startsWith);
 }

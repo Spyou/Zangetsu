@@ -14,6 +14,7 @@ enum DockTab {
   downloads('Downloads'),
   history('History'),
   sources('Sources'),
+  remote('Remote'),
   profile('Profile');
 
   const DockTab(this.label);
@@ -24,7 +25,7 @@ enum DockTab {
   /// Profile is the only way into Settings — and Settings is where this very
   /// list is edited. Hiding it would strand the user with no way back, so it
   /// is pinned: always present, never reorderable off the end.
-  bool get isPinned => this == DockTab.profile;
+  bool get isPinned => this == DockTab.profile || this == DockTab.remote;
 }
 
 /// Which tabs the phone dock shows, and in what order.
@@ -36,25 +37,21 @@ class NavPrefs extends ChangeNotifier {
   static const String _tabsKey = 'tabs';
   static const String _startKey = 'start';
 
-  /// The dock is a fixed-width capsule that fits five icons; below three it
-  /// looks empty and above five the labels start colliding.
-  ///
-  /// The cap is four, not five, because the mode switcher is drawn between
-  /// the tabs as the dock's centre button and is not a [DockTab] — so the
-  /// bar always renders one more icon than there are tabs.
+  /// Five destinations plus the centre mode switcher.
   static const int minTabs = 3;
-  static const int maxTabs = 4;
+  static const int maxTabs = 5;
 
   /// What the dock shipped with, and what a corrupt or empty value falls back
   /// to. Search lives in the Home header and Schedule on the Home card row,
   /// so neither is here. Sources moved down from the Home header, where a
   /// small icon was doing the work of a destination; the mode switcher sits
   /// between My List and Sources as the dock's centre button rather than a
-  /// tab, so these four names fill all five icon slots.
+  /// tab. Remote sits immediately before Profile.
   static const List<DockTab> defaultTabs = [
     DockTab.home,
     DockTab.myList,
     DockTab.sources,
+    DockTab.remote,
     DockTab.profile,
   ];
 
@@ -133,9 +130,12 @@ class NavPrefs extends ChangeNotifier {
       for (final t in tabs)
         if (seen.add(t)) t,
     ];
+    if (out.length < 2) return defaultTabs;
     for (final pinned in DockTab.values.where((t) => t.isPinned)) {
       if (!out.contains(pinned)) out.add(pinned);
     }
+    out.remove(DockTab.remote);
+    out.insert(out.indexOf(DockTab.profile), DockTab.remote);
     if (out.length > maxTabs) {
       // Drop from the end, but never the pinned tab.
       while (out.length > maxTabs) {
