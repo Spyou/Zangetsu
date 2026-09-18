@@ -227,6 +227,19 @@ class PlaybackResolver {
   /// yes" cannot happen. Total sweep length is bounded by the source cap and
   /// the waves instead — by asking fewer sources and asking them together,
   /// rather than by giving up on each one early.
+  /// How many candidates a sweep asks at once.
+  ///
+  /// Three, not ten: the sweep stops at the first source that answers, so a
+  /// bigger wave spends requests on titles that were about to work anyway.
+  /// Three roughly thirds the wait when nothing has the episode while asking
+  /// at most two sources more than strictly needed when something does.
+  ///
+  /// Caveat worth knowing: the bundled JS providers share one QuickJS engine
+  /// (`_serialized` in provider_manager.dart), so several of THOSE in one wave
+  /// still run one after another. CloudStream, Aniyomi and Mihon sources are
+  /// native and genuinely overlap, and they are the bulk of a real library.
+  static const int sweepWaveSize = 3;
+
   static const Duration relaxedPerSourceBudget = Duration(seconds: 20);
   final Duration _relaxedBudget;
 
@@ -472,54 +485,13 @@ class PlaybackResolver {
     ));
 
     var hadTitleMatch = false;
-    for (final sourceId in ordered) {
-      // First thing in the loop, so leaving stops the very next candidate
-      // rather than one more source's worth of blocked UI. Throws instead of
-      // breaking: falling through to the bottom would record a miss, and a
-      // sweep that stopped after two of twenty candidates has no business
-      // telling the next tap that nothing has this episode.
-      if (accept == null && gen != _sweepGen) {
-        debugPrint(
-          '[playback] _resolve · abandoned at $sourceId — the viewer left',
-        );
-        throw const PlaybackAborted();
-      }
-      // Asked already this episode, and its links would not play. Handing
-      // them back a second time is how "every source failed (tried 1)"
-      // happened with twenty more sources sitting untouched.
-      if (dead.contains(sourceId)) {
-        debugPrint(
-          '[playback] _resolve · skip $sourceId (its links did not play)',
-        );
-        note(sourceId, SweepReason.streamsDead);
-        continue;
-      }
-      if (CfSolveNeeded.sourceFlagged(sourceId)) {
-        debugPrint(
-          '[playback] _resolve · skip $sourceId (CF blocked)',
-        );
-        note(sourceId, SweepReason.cloudflare);
-        continue;
-      }
-      if (_health.isSkippable(sourceId)) {
-        debugPrint(
-          '[playback] _resolve · skip $sourceId (unhealthy)',
-        );
-        note(sourceId, SweepReason.unhealthy);
-        continue;
-      }
-      if (_recentlyOverBudget(sourceId)) {
-        debugPrint(
-          '[playback] _resolve · skip $sourceId (over budget recently)',
-        );
-        note(sourceId, SweepReason.cooldown);
-        continue;
-      }
 
+    // One candidate, start to finish. Lifted out of the loop VERBATIM so the
+    // sweep can run several at once without the per-source rules changing: the
+    // try/catch is still per candidate, so one source throwing ("no sources in
+    // response") or hanging cannot kill the others.
+    Future<_Attempt?> ask(String sourceId) async {
       debugPrint('[playback] _resolve · trying $sourceId');
-      // The try/catch is per candidate, not around the sweep: one source
-      // throwing ("no sources in response") or hanging must not kill the
-      // others — fall through to the next candidate instead.
       _Attempt? attempt;
       final budget = _budgetFor(sourceId, chosen);
       try {
@@ -536,8 +508,6 @@ class PlaybackResolver {
           // Stop WAITING when the viewer leaves. The request underneath is not
           // cancellable, so it finishes in the background and its answer is
           // dropped — exactly what already happens to an over-budget one.
-          // A null here falls into the `attempt == null` continue below, and
-          // the top of the loop then throws PlaybackAborted as it always did.
           attempt = await Future.any<_Attempt?>([call, abortFuture]);
           // The loser still completes. Swallow it, or the TimeoutException
           // nobody is waiting for surfaces as an unhandled async error.
@@ -563,6 +533,92 @@ class PlaybackResolver {
           '[playback] _resolve · $sourceId → error during resolution: $e',
         );
       }
+      return attempt;
+    }
+    // Walked in WAVES rather than one at a time. A sweep that finds nothing
+    // used to be the sum of every candidate's wait; now it is the sum of each
+    // wave's slowest member, which is what a failing Play tap actually costs.
+    //
+    // Deliberately small. The sweep stops at the first source that answers, so
+    // a wave of ten would fire ten requests where one would have done on every
+    // title that works — paying on the common case to speed up the rare one.
+    // Three is enough to cut the wait meaningfully and small enough that the
+    // waste is a rounding error.
+    //
+    // Results are read back in CANDIDATE order, never completion order: the
+    // list is the viewer's own priority, and letting whichever source answers
+    // first win would quietly replace their ordering with a race.
+    outer:
+    for (var start = 0; start < ordered.length; start += sweepWaveSize) {
+      // Once per wave rather than once per candidate. A wave already in flight
+      // cannot be recalled — the requests underneath are not cancellable — so
+      // leaving stops the NEXT wave, not this one. That is the same bargain as
+      // before, just measured in threes.
+      if (accept == null && gen != _sweepGen) {
+        debugPrint(
+          '[playback] _resolve · abandoned before wave at $start — '
+          'the viewer left',
+        );
+        throw const PlaybackAborted();
+      }
+
+      // The cheap, synchronous rules first, so a skipped source never occupies
+      // a slot in the wave. Each still notes its own reason, and still only
+      // for candidates the sweep actually reached — pre-filtering the whole
+      // list would report sources it never got to.
+      final wave = <String>[];
+      for (final sourceId in ordered.skip(start).take(sweepWaveSize)) {
+        // Asked already this episode, and its links would not play. Handing
+        // them back a second time is how "every source failed (tried 1)"
+        // happened with twenty more sources sitting untouched.
+        if (dead.contains(sourceId)) {
+          debugPrint(
+            '[playback] _resolve · skip $sourceId (its links did not play)',
+          );
+          note(sourceId, SweepReason.streamsDead);
+          continue;
+        }
+        if (CfSolveNeeded.sourceFlagged(sourceId)) {
+          debugPrint('[playback] _resolve · skip $sourceId (CF blocked)');
+          note(sourceId, SweepReason.cloudflare);
+          continue;
+        }
+        if (_health.isSkippable(sourceId)) {
+          debugPrint('[playback] _resolve · skip $sourceId (unhealthy)');
+          note(sourceId, SweepReason.unhealthy);
+          continue;
+        }
+        if (_recentlyOverBudget(sourceId)) {
+          debugPrint(
+            '[playback] _resolve · skip $sourceId (over budget recently)',
+          );
+          note(sourceId, SweepReason.cooldown);
+          continue;
+        }
+        wave.add(sourceId);
+      }
+      if (wave.isEmpty) continue;
+
+      // `ask` never throws — every failure inside it is caught and returns
+      // null — so one bad source in a wave cannot take the others down.
+      final answers = await Future.wait([for (final id in wave) ask(id)]);
+
+      // Again on the way out, not only on the way in. Every candidate in the
+      // wave races the abort signal and comes back null the moment it fires,
+      // so the wave itself ends promptly — but if this was the LAST wave the
+      // loop would then fall through to the bottom and report "nothing has
+      // this episode", which is not what happened. The viewer left.
+      if (accept == null && gen != _sweepGen) {
+        debugPrint(
+          '[playback] _resolve · abandoned mid-wave at $start — '
+          'the viewer left',
+        );
+        throw const PlaybackAborted();
+      }
+
+      for (var i = 0; i < wave.length; i++) {
+        final sourceId = wave[i];
+        final attempt = answers[i];
       if (attempt == null) {
         // A source the viewer PICKED by hand is not a candidate among others.
         // Walking past it to whatever answers next meant pinning AnimePahe and
@@ -581,7 +637,10 @@ class PlaybackResolver {
             '[playback] _resolve · $sourceId was pinned by hand and did not '
             'answer — not substituting another source',
           );
-          break;
+          // The whole sweep, not just this wave: the point is that no OTHER
+          // source gets substituted, and the rest of the wave is other
+          // sources. Their answers are discarded with the loop.
+          break outer;
         }
         continue;
       }
@@ -631,13 +690,14 @@ class PlaybackResolver {
         '[playback] $zmEpisodeUrl -> ${attempt.match.sourceId} '
         '(${attempt.streams.length} streams)',
       );
-      return ResolvedPlayback(
-        match: attempt.match,
-        episodeUrl: attempt.episodeUrl,
-        streams: attempt.streams,
-        show: p.show,
-        episode: p.episode,
-      );
+        return ResolvedPlayback(
+          match: attempt.match,
+          episodeUrl: attempt.episodeUrl,
+          streams: attempt.streams,
+          show: p.show,
+          episode: p.episode,
+        );
+      }
     }
 
     final blocked = _matcher.cfBlockedUrl(p.show.kind);
