@@ -94,6 +94,7 @@ void _driftGuard() {
       // Icon URLs picked back up the next time a repo index is read.
       'source_icons': 'cache',
       'source_health': 'transient',
+      'zmode_source_score': 'derived play counts, rebuilt from use',
       'updates': 'transient',
       'announcements': 'transient',
       'search_history': 'transient',
