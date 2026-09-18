@@ -259,10 +259,19 @@ List<({String id, String name})> sweepCandidates(ZKind kind) {
     orderedCandidates(kind),
     {for (final s in sl<SourceRepository>().loadedSources) s.id},
   );
-  // A saved order is the user's takeover; ranking on top of it would undo the
-  // drag. The cap still applies either way, at the caller.
-  if (sl<SourceOrderPrefs>().get(kind).isNotEmpty) return narrowed;
-  return rankByRecord(narrowed, sourceRecordOf);
+  // Rank first, then put the sources the user placed by hand back on top.
+  //
+  // The two are not rival modes. Dragging one favourite used to switch the
+  // WHOLE list to manual and stop ranking everything else — so "keep AnimeCube
+  // first, sort the rest for me" was not expressible, which is the one thing
+  // someone opening this screen actually wants. Now a drag pins just that
+  // source; everything untouched stays ranked underneath.
+  //
+  // [applySourceOrder] already has exactly these semantics: listed ids first in
+  // the given order, everything else after in its incoming relative order —
+  // and that incoming order is now the ranking.
+  final ranked = rankByRecord(narrowed, sourceRecordOf);
+  return applySourceOrder(ranked, sl<SourceOrderPrefs>().get(kind));
 }
 
 /// What the ranker knows about one source: how often it has actually played,

@@ -12,6 +12,7 @@ List<String> ids(List<({String id, String name})> l) =>
     [for (final s in l) s.id];
 
 void main() {
+  _pinsOverRanking();
   // THE safety property. A fresh install has no plays and no health, so the
   // ranker must hand back exactly what it was given — which is the order the
   // app already ships. If this ever fails, the change is no longer safe to
@@ -118,5 +119,37 @@ void main() {
       'b': (plays: 4, health: SourceHealth.ok, responseMs: null),
     });
     expect(rankByRecord(p, r, cap: 2).length, 5);
+  });
+}
+
+// Dragging one favourite must not stop the app ranking everything else.
+// `sweepCandidates` composes these two: rank first, then lay the pins on top.
+void _pinsOverRanking() {
+  test('a pinned source leads while the rest stay ranked', () {
+    final p = pool(['a', 'b', 'c', 'fav']);
+    final r = records({
+      'a': (plays: 9, health: SourceHealth.ok, responseMs: null),
+      'b': (plays: 5, health: SourceHealth.ok, responseMs: null),
+      'c': (plays: 1, health: SourceHealth.ok, responseMs: null),
+      'fav': (plays: 0, health: SourceHealth.ok, responseMs: null),
+    });
+    // What sweepCandidates does, in the same order.
+    final ranked = rankByRecord(p, r);
+    final out = applySourceOrder(ranked, ['fav']);
+    expect(out.first.id, 'fav', reason: 'the drag wins');
+    expect(
+      [for (final s in out.skip(1)) s.id],
+      ['a', 'b', 'c'],
+      reason: 'everything untouched is still ranked, not frozen in pool order',
+    );
+  });
+
+  test('with nothing pinned the ranking is untouched', () {
+    final p = pool(['a', 'b']);
+    final r = records({
+      'b': (plays: 9, health: SourceHealth.ok, responseMs: null),
+    });
+    final out = applySourceOrder(rankByRecord(p, r), const []);
+    expect([for (final s in out) s.id], ['b', 'a']);
   });
 }

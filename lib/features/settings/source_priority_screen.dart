@@ -80,9 +80,11 @@ class _SourcePriorityScreenState extends State<SourcePriorityScreen> {
   List<({String id, String name})> _ordered(ZKind kind) =>
       sweepCandidates(kind);
 
-  /// True once the user has dragged: a saved order IS the takeover flag, so
-  /// there is no second piece of state to keep in step with it.
-  bool get _manual => _prefs.get(ZKind.anime).isNotEmpty;
+  /// True once the user has pinned at least one source by dragging it.
+  ///
+  /// NOT a mode: pinned sources sit on top and everything below them stays
+  /// auto-ranked. It only decides whether there is anything to undo.
+  bool get _hasPins => _prefs.get(ZKind.anime).isNotEmpty;
 
   /// Sources the USER switched off, kept visible so turning one back on is one
   /// tap rather than a hunt through the Sources screen.
@@ -242,8 +244,19 @@ class _SourcePriorityScreenState extends State<SourcePriorityScreen> {
     };
   }
 
-  Future<void> _save(ZKind kind, List<({String id, String name})> list) =>
-      _prefs.set(kind, [for (final s in list) s.id]);
+  /// Pin everything down to [placedAt], and leave the rest auto-ranked.
+  ///
+  /// Saving the WHOLE list would pin all of it, which is what made one drag
+  /// switch the entire screen to manual and stop ranking anything. Dropping a
+  /// source at position N says "it goes after these N" — so those N are pinned
+  /// with it, and everything below stays the app's to sort.
+  Future<void> _save(
+    ZKind kind,
+    List<({String id, String name})> list, {
+    required int placedAt,
+  }) => _prefs.set(kind, [
+    for (final s in list.take(placedAt + 1)) s.id,
+  ]);
 
   void _reorder(ZKind kind, int oldIndex, int newIndex) {
     final list = _sources;
@@ -251,7 +264,7 @@ class _SourcePriorityScreenState extends State<SourcePriorityScreen> {
       final item = list.removeAt(oldIndex);
       list.insert(newIndex, item);
     });
-    _save(kind, list);
+    _save(kind, list, placedAt: newIndex);
   }
 
   /// D-pad path: move one row up/down by exactly one slot. No off-by-one
@@ -264,7 +277,10 @@ class _SourcePriorityScreenState extends State<SourcePriorityScreen> {
       final item = list.removeAt(index);
       list.insert(target, item);
     });
-    _save(kind, list);
+    // Moving DOWN one slot places this row at `target`; moving UP places it
+    // there too, but the row it swapped with now sits at `index` and is
+    // equally placed, so pin through whichever is lower down the list.
+    _save(kind, list, placedAt: target > index ? target : index);
   }
 
   /// Hand ranking back to the app.
@@ -294,13 +310,15 @@ class _SourcePriorityScreenState extends State<SourcePriorityScreen> {
           Padding(
             padding: const EdgeInsets.fromLTRB(8, 4, 8, 12),
             child: Text(
-              _manual
-                  ? 'Your order. Auto Resolve tries the top $kAutoResolveCap '
-                        'and stops at the first hit.'
+              _hasPins
+                  ? 'Auto Resolve tries the top $kAutoResolveCap and stops at '
+                        'the first hit. The ones you dragged stay where you '
+                        'put them; the rest are sorted by what has actually '
+                        'worked for you.'
                   : 'Auto Resolve tries your best $kAutoResolveCap sources and '
                         'stops at the first one that has the title. Sorted by '
-                        'what has actually worked for you — drag any row to '
-                        'take over.',
+                        'what has actually worked for you — drag a source to '
+                        'keep it on top.',
               style: AppText.caption.copyWith(color: AppColors.textTertiary),
             ),
           ),
@@ -344,14 +362,14 @@ class _SourcePriorityScreenState extends State<SourcePriorityScreen> {
           ],
           // Only once you have actually dragged something. Someone who never
           // takes over never sees a control for a mode they were never in.
-          if (_manual)
+          if (_hasPins)
             Padding(
               padding: const EdgeInsets.fromLTRB(8, 12, 0, 0),
               child: Row(
                 children: [
                   Expanded(
                     child: Text(
-                      'You moved a source, so this order is yours now.',
+                      'Sources you dragged stay where you put them.',
                       style: AppText.caption.copyWith(
                         color: AppColors.textTertiary,
                       ),
@@ -383,12 +401,12 @@ class _SourcePriorityScreenState extends State<SourcePriorityScreen> {
     if (_isTv) {
       return TvListFocusable(
         onTap: () => _reset(kind),
-        semanticLabel: 'Reset to automatic',
+        semanticLabel: 'Unpin all',
         child: ExcludeSemantics(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             child: Text(
-              'Reset to automatic',
+              'Unpin all',
               style: AppText.caption.copyWith(color: AppColors.textSecondary),
             ),
           ),
@@ -397,7 +415,7 @@ class _SourcePriorityScreenState extends State<SourcePriorityScreen> {
     }
     return TextButton(
       onPressed: () => _reset(kind),
-      child: const Text('Reset to automatic'),
+      child: const Text('Unpin all'),
     );
   }
 
