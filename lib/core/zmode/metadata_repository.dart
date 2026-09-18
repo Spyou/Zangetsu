@@ -25,6 +25,7 @@ import 'video_catalogue.dart';
 import 'match_store.dart';
 import 'playback_resolver.dart';
 import 'source_matcher.dart';
+import 'source_score_store.dart';
 import 'tmdb_catalogue.dart';
 import 'zmode_ids.dart';
 import 'zmode_source_prefs.dart';
@@ -63,6 +64,7 @@ class MetadataRepository implements CatalogueRepository {
          prefs: sourcePrefs,
          health: health ?? (sl.isRegistered<SourceHealthStore>() ? sl<SourceHealthStore>() : SourceHealthStore()),
          candidates: candidates ?? _defaultCandidates(sources),
+         scores: sl.isRegistered<SourceScoreStore>() ? sl<SourceScoreStore>() : null,
        ) {
     _bindPlayback();
   }

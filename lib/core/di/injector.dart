@@ -55,6 +55,7 @@ import '../state/active_source_cubit.dart';
 import '../locale/locale_controller.dart';
 import '../zmode/genre_catalog.dart';
 import '../zmode/metadata_repository.dart';
+import '../zmode/source_score_store.dart';
 import '../zmode/zmode_module.dart';
 import '../zmode/zmode_ids.dart';
 import '../zmode/zmode_prefs.dart';
@@ -364,6 +365,8 @@ Future<void> initDependencies() async {
   // sources, and backs the "Source health" test screen.
   await SourceHealthStore.init();
   sl.registerSingleton<SourceHealthStore>(SourceHealthStore());
+  final sourceScores = await SourceScoreStore.open();
+  sl.registerSingleton<SourceScoreStore>(sourceScores);
 
   // Read by SourceRepository.baseUrlFor / cfSolveTargetFor, so it has to be
   // registered before that repository is used, not just before it is built.

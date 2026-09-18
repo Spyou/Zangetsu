@@ -12,6 +12,7 @@ import '../provider/provider_manager.dart';
 import '../repository/source_repository.dart';
 import 'match_store.dart';
 import 'source_matcher.dart';
+import 'source_score_store.dart';
 import 'zmode_ids.dart';
 import 'zmode_source_prefs.dart';
 
@@ -141,6 +142,10 @@ class PlaybackResolver {
 
     /// Likewise for [chosenSourceBudget].
     Duration? chosenBudget,
+
+    /// Counts a play against the source that served it. Optional — see
+    /// [_scores].
+    SourceScoreStore? scores,
   }) : _budget = perSourceBudget ?? defaultPerSourceBudget,
        _chosenBudget = chosenBudget ?? chosenSourceBudget,
        _matcher = matcher,
@@ -148,7 +153,8 @@ class PlaybackResolver {
        _store = store,
        _prefs = prefs,
        _health = health,
-       _candidates = candidates;
+       _candidates = candidates,
+       _scores = scores;
 
   final SourceMatcher _matcher;
   final SourceRepository _sources;
@@ -156,6 +162,11 @@ class PlaybackResolver {
   final ZSourcePrefs _prefs;
   final SourceHealthStore _health;
   final List<({String id, String name})> Function(ZKind) _candidates;
+
+  /// Counts a play against the source that served it, so Auto Resolve can rank
+  /// on what has actually worked. Optional: every existing test builds this
+  /// resolver without one, and a missing store simply means nothing is counted.
+  final SourceScoreStore? _scores;
   late Future<({String title, String? alt, int? malId})> Function(ZCanonical c)
   _titleLookup;
 
@@ -585,6 +596,7 @@ class PlaybackResolver {
       // the kind is exactly the bug this design fixes.
       if (!attempt.match.pinned) {
         await _store.rememberLastPlayed(p.show, attempt.match.sourceId);
+        await _scores?.bump(attempt.match.sourceId);
       }
       debugPrint(
         '[playback] $zmEpisodeUrl -> ${attempt.match.sourceId} '
@@ -1046,6 +1058,7 @@ class PlaybackResolver {
     final p = ZmodeIds.parseEpisode(zmEpisodeUrl);
     if (p != null && !m.pinned) {
       await _store.rememberLastPlayed(p.show, m.sourceId);
+      await _scores?.bump(m.sourceId);
     }
   }
 
