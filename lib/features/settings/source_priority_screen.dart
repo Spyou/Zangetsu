@@ -21,20 +21,13 @@ import '../../core/zmode/zmode_module.dart'
 /// Dead outranks a good history on purpose: 47 past plays do not help an
 /// episode that will not load today, and a row still reading "played 47 times"
 /// is what would keep a broken source at the top of the sweep.
-String reasonForSource({
-  required int plays,
-  required SourceHealth health,
-  bool tried = true,
-}) {
-  // Dead first, whether or not it is being tried: naming the actual problem
-  // beats "never used" on a source that is broken.
+String? reasonForSource({required int plays, required SourceHealth health}) {
+  // Dead first: naming the actual fault is the one thing worth the line.
   if (health == SourceHealth.dead) return "hasn't worked recently";
-  // A row below the cut, or one narrowed out, is not being tried — so it must
-  // not say it is. Same rule as the failure sheet: never claim something was
-  // attempted when it was not.
-  if (!tried && plays == 0) return 'never used';
-  if (plays == 0) return 'never used yet · trying it out';
-  return 'played $plays times';
+  // A source nobody has played yet says NOTHING. On a fresh install that was
+  // every row reading the same sentence — a wall of identical text carrying no
+  // information, which buries the two or three rows that do state a fact.
+  return plays == 0 ? null : 'played $plays times';
 }
 
 /// Reorder installed sources per content type. Auto Resolve (the default —
@@ -205,8 +198,7 @@ class _SourcePriorityScreenState extends State<SourcePriorityScreen> {
 
   /// Why this source is where it is. The thing the old screen could not say,
   /// and the reason nobody knew which ten to keep.
-  String _reasonFor(String id, {bool tried = true}) => reasonForSource(
-        tried: tried,
+  String? _reasonFor(String id) => reasonForSource(
     plays: sl<SourceScoreStore>().plays(id),
     health: sl<SourceHealthStore>().statusOf(id),
   );
@@ -320,12 +312,25 @@ class _SourcePriorityScreenState extends State<SourcePriorityScreen> {
   Widget _capControl(ZKind kind) => SettingsCard(
     children: [
       Padding(
-        padding: const EdgeInsets.fromLTRB(14, 12, 14, 4),
+        padding: const EdgeInsets.fromLTRB(16, 14, 12, 0),
         child: Row(
           children: [
             Expanded(
-              child: Text(
-                'Try the top $_cap sources',
+              child: Text.rich(
+                TextSpan(
+                  children: [
+                    const TextSpan(text: 'Try the top '),
+                    TextSpan(
+                      text: '$_cap',
+                      style: AppText.body.copyWith(
+                        color: AppColors.accent,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 16,
+                      ),
+                    ),
+                    TextSpan(text: _cap == 1 ? ' source' : ' sources'),
+                  ],
+                ),
                 style: AppText.body.copyWith(color: AppColors.textPrimary),
               ),
             ),
@@ -345,16 +350,41 @@ class _SourcePriorityScreenState extends State<SourcePriorityScreen> {
         ),
       ),
       if (!_isTv)
-        Slider(
-          value: _cap.toDouble(),
-          min: SourceOrderPrefs.minCap.toDouble(),
-          max: kAutoResolveCap.toDouble(),
-          divisions: kAutoResolveCap - SourceOrderPrefs.minCap,
-          label: '$_cap',
-          onChanged: (v) => _setCap(kind, v.round()),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 0),
+          child: Row(
+            children: [
+              // The ends of the range, said once, so nobody has to drag to
+              // the edges to discover what they are.
+              _sliderEnd('${SourceOrderPrefs.minCap}'),
+              Expanded(
+                child: SliderTheme(
+                  data: SliderTheme.of(context).copyWith(
+                    trackHeight: 3,
+                    overlayShape: const RoundSliderOverlayShape(
+                      overlayRadius: 16,
+                    ),
+                    thumbShape: const RoundSliderThumbShape(
+                      enabledThumbRadius: 8,
+                    ),
+                    activeTickMarkColor: Colors.transparent,
+                    inactiveTickMarkColor: Colors.transparent,
+                  ),
+                  child: Slider(
+                    value: _cap.toDouble(),
+                    min: SourceOrderPrefs.minCap.toDouble(),
+                    max: kAutoResolveCap.toDouble(),
+                    divisions: kAutoResolveCap - SourceOrderPrefs.minCap,
+                    onChanged: (v) => _setCap(kind, v.round()),
+                  ),
+                ),
+              ),
+              _sliderEnd('$kAutoResolveCap'),
+            ],
+          ),
         ),
       Padding(
-        padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+        padding: const EdgeInsets.fromLTRB(16, 2, 16, 14),
         child: Text(
           'Auto Resolve tries them in order and stops at the first one that '
           'has the title. Fewer means Play starts sooner when nothing has it.',
@@ -362,6 +392,14 @@ class _SourcePriorityScreenState extends State<SourcePriorityScreen> {
         ),
       ),
     ],
+  );
+
+  Widget _sliderEnd(String n) => Text(
+    n,
+    style: AppText.caption.copyWith(
+      color: AppColors.textTertiary,
+      fontFeatures: const [FontFeature.tabularFigures()],
+    ),
   );
 
   Future<void> _setCap(ZKind kind, int n) async {
@@ -451,40 +489,49 @@ class _SourcePriorityScreenState extends State<SourcePriorityScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(12, 9, 12, 9),
+          padding: const EdgeInsets.fromLTRB(10, 7, 8, 7),
           child: Row(
             children: [
-              SizedBox(
-                width: 20,
-                child: Text(
-                  '${index + 1}',
-                  textAlign: TextAlign.right,
-                  style: AppText.caption.copyWith(
-                    color: tried
-                        ? AppColors.textSecondary
-                        : AppColors.textTertiary,
-                    fontFeatures: const [FontFeature.tabularFigures()],
-                  ),
-                ),
-              ),
+              // Number and handle read as one left gutter: the handle is what
+              // you grab, the number is what you are moving it to.
               ReorderableDragStartListener(
                 index: index,
-                child: const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 8),
-                  child: Icon(
-                    Icons.drag_indicator_rounded,
-                    size: 19,
-                    color: AppColors.textTertiary,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(4, 6, 6, 6),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(
+                        width: 18,
+                        child: Text(
+                          '${index + 1}',
+                          textAlign: TextAlign.right,
+                          style: AppText.caption.copyWith(
+                            color: tried
+                                ? AppColors.textSecondary
+                                : AppColors.textTertiary,
+                            fontFeatures: const [FontFeature.tabularFigures()],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Icon(
+                        Icons.drag_indicator_rounded,
+                        size: 18,
+                        color: AppColors.textTertiary.withValues(alpha: 0.7),
+                      ),
+                    ],
                   ),
                 ),
               ),
+              const SizedBox(width: 2),
               Expanded(
                 child: Opacity(
                   opacity: tried ? 1 : 0.45,
                   child: _nameAndRepo(
                     s,
                     color: AppColors.textPrimary,
-                    reason: _reasonFor(s.id, tried: tried),
+                    reason: _reasonFor(s.id),
                   ),
                 ),
               ),
@@ -504,21 +551,32 @@ class _SourcePriorityScreenState extends State<SourcePriorityScreen> {
   }
 
   Widget _cutLine() => Padding(
-    padding: const EdgeInsets.fromLTRB(12, 2, 12, 6),
+    padding: const EdgeInsets.fromLTRB(14, 4, 14, 8),
     child: Row(
       children: [
-        Expanded(child: Divider(color: AppColors.accent, height: 1)),
+        Expanded(
+          child: Divider(
+            color: AppColors.accent.withValues(alpha: 0.35),
+            height: 1,
+          ),
+        ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8),
           child: Text(
-            'Auto Resolve stops here',
+            'stops here',
             style: AppText.caption.copyWith(
-              color: AppColors.accent,
-              fontSize: 10.5,
+              color: AppColors.accent.withValues(alpha: 0.9),
+              fontSize: 10,
+              letterSpacing: 0.6,
             ),
           ),
         ),
-        Expanded(child: Divider(color: AppColors.accent, height: 1)),
+        Expanded(
+          child: Divider(
+            color: AppColors.accent.withValues(alpha: 0.35),
+            height: 1,
+          ),
+        ),
       ],
     ),
   );
@@ -592,9 +650,7 @@ class _SourcePriorityScreenState extends State<SourcePriorityScreen> {
                   child: _nameAndRepo(
                     s,
                     color: textColor,
-                    reason: showReason
-                        ? _reasonFor(s.id, tried: false)
-                        : null,
+                    reason: showReason ? _reasonFor(s.id) : null,
                   ),
                 ),
                 if (_health(s.id) case final h?) _healthChip(h),

@@ -14,31 +14,14 @@ void main() {
     );
     expect(
       reasonForSource(plays: 0, health: SourceHealth.ok),
-      'never used yet · trying it out',
+      isNull,
+      reason: 'a source nobody has played gets no line at all — on a fresh '
+          'install that was every row saying the same thing',
     );
     expect(
       reasonForSource(plays: 99, health: SourceHealth.dead),
       "hasn't worked recently",
       reason: 'dead beats a good history — it cannot play right now',
-    );
-  });
-
-  test('a row that is not being tried does not claim it is', () {
-    // Below the cut, or narrowed out by language: Auto Resolve will not touch
-    // it, so "trying it out" would be a plain untruth on that row.
-    expect(
-      reasonForSource(plays: 0, health: SourceHealth.ok, tried: false),
-      'never used',
-    );
-    expect(
-      reasonForSource(plays: 0, health: SourceHealth.ok),
-      'never used yet · trying it out',
-      reason: 'inside the cap it really is being tried',
-    );
-    expect(
-      reasonForSource(plays: 0, health: SourceHealth.dead, tried: false),
-      "hasn't worked recently",
-      reason: 'naming the fault beats "never used" on a broken source',
     );
   });
 }
