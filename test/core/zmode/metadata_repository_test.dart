@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
@@ -216,6 +217,50 @@ void main() {
   tearDown(() async {
     await Hive.close();
     await dir.delete(recursive: true);
+  });
+
+  // The home banner's caption — genres, a count, a year — is drawn from
+  // detail(), and detail() also pairs the title with an installed source
+  // before it returns. That pairing searches sources one at a time; one
+  // report spent 18 seconds on a title nothing carried, with the caption
+  // blank the whole time. So the caption takes the PARTIAL, and this is the
+  // guarantee it rests on: everything the caption needs is handed over
+  // before the search starts, not after it finishes.
+  test('the partial carries genres, year and the count before any match',
+      () async {
+    kind = ZKind.anime;
+    // A source whose search never answers — the pairing hangs, exactly like
+    // the stall this was measured against.
+    final stuck = _StuckSrc();
+    final r = _metaRepo(
+      sources: stuck,
+      store: store,
+      prefs: prefs,
+      browseKind: () => ZKind.anime,
+      matcher: SourceMatcher(
+        sources: stuck,
+        store: store,
+        prefs: prefs,
+        candidates: (_) => [(id: 'allanime', name: 'AllAnime')],
+      ),
+    );
+
+    MediaDetail? partial;
+    var finished = false;
+    unawaited(
+      r
+          .detail('zm://anime/mal:100', onPartial: (d) => partial = d)
+          .then((_) => finished = true),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+
+    expect(partial, isNotNull, reason: 'the caption still has nothing to draw');
+    expect(partial!.episodes.length, 12);
+    expect(partial!.year, '2009');
+    expect(partial!.genres, isNotNull);
+    // And the point of all of it: the search it did not wait for is still
+    // going.
+    expect(finished, isFalse);
   });
 
   test('home follows browseKind', () async {
@@ -726,4 +771,28 @@ class _NoHits implements SourceRepository {
   bool hasSource(String sourceId) => true;
   @override
   Future<List<MediaItem>> search(String q, {String category = 'sub', String? sourceId}) async => const [];
+}
+
+/// Never answers a search, so `SourceMatcher.resolve` never returns — the
+/// stall the home banner used to sit through, in one class.
+class _StuckSrc implements SourceRepository {
+  @override
+  noSuchMethod(Invocation i) => super.noSuchMethod(i);
+  @override
+  Future<bool> ensureSourceLoaded(String sourceId) async => true;
+  @override
+  String displayName(String sourceId) => sourceId;
+  @override
+  List<({String id, String name})> get loadedSources =>
+      [(id: 'allanime', name: 'AllAnime')];
+  @override
+  List<({String id, String name})> get pickableSources => loadedSources;
+  @override
+  bool hasSource(String sourceId) => true;
+  @override
+  Future<List<MediaItem>> search(
+    String q, {
+    String category = 'sub',
+    String? sourceId,
+  }) => Completer<List<MediaItem>>().future;
 }

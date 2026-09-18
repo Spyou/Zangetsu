@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -250,9 +251,30 @@ class _HomeViewState extends State<_HomeView>
   }
 
   /// Genres + episode count for the hero banner (lazily fetched, cached).
+  ///
+  /// Settles on the FIRST of two answers: the partial a metadata title hands
+  /// over once its catalogue has replied, or the finished detail. A metadata
+  /// title's `detail()` also pairs the title with an installed source before
+  /// it returns, and that pairing searches every installed source in turn —
+  /// one report spent 18 seconds on a title no source carried, with the
+  /// banner's caption blank the whole time and the carousel rotating on. The
+  /// caption is genres, a count and a year; the catalogue supplies all three
+  /// up front, and the source is only needed for episode *urls*, which the
+  /// banner never reads. The match still finishes in the background, so the
+  /// title is already paired by the time anyone taps Play.
+  ///
+  /// A source-backed title never calls `onPartial` — it has nothing to search
+  /// for — and completes on the second branch exactly as it always did.
   Future<HeroMeta?> _heroMeta(MediaItem m) =>
       _metaCache.putIfAbsent('${m.sourceId}:${m.id}', () async {
-        final d = await _detailOf(m.url, m.sourceId);
+        final first = Completer<MediaDetail?>();
+        void settle(MediaDetail? d) {
+          if (!first.isCompleted) first.complete(d);
+        }
+
+        // _detailOf swallows its errors, so this always settles.
+        unawaited(_detailOf(m.url, m.sourceId, onPartial: settle).then(settle));
+        final d = await first.future;
         if (d == null) return null;
         return HeroMeta(
           genres: d.genres,
@@ -288,9 +310,13 @@ class _HomeViewState extends State<_HomeView>
   String _typeLabel(ProviderType t) =>
       t == ProviderType.movie ? 'Movie' : 'Anime';
 
-  Future<MediaDetail?> _detailOf(String url, String sourceId) async {
+  Future<MediaDetail?> _detailOf(
+    String url,
+    String sourceId, {
+    void Function(MediaDetail partial)? onPartial,
+  }) async {
     try {
-      return await _repo.detail(url, sourceId: sourceId);
+      return await _repo.detail(url, sourceId: sourceId, onPartial: onPartial);
     } catch (_) {
       return null;
     }
