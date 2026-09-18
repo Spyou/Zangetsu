@@ -435,6 +435,11 @@ class _SourcePriorityScreenState extends State<SourcePriorityScreen> {
     );
   }
 
+  Widget _listSurface(List<Widget> children) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+    child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: children),
+  );
+
   Widget _section(ZKind kind, List<({String id, String name})> list) {
     if (list.isEmpty) {
       return SettingsCard(
@@ -451,8 +456,7 @@ class _SourcePriorityScreenState extends State<SourcePriorityScreen> {
         ],
       );
     }
-    return SettingsCard(
-      children: [
+    return _listSurface([
         if (_isTv)
           Column(
             children: [
@@ -471,8 +475,7 @@ class _SourcePriorityScreenState extends State<SourcePriorityScreen> {
               for (var i = 0; i < list.length; i++) _row(kind, list[i], i),
             ],
           ),
-      ],
-    );
+    ]);
   }
 
   Widget _row(ZKind kind, ({String id, String name}) s, int index) {
@@ -488,7 +491,20 @@ class _SourcePriorityScreenState extends State<SourcePriorityScreen> {
       key: ValueKey(s.id),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Padding(
+        // Each row is its own rounded tile with a gap under it, rather than a
+        // band in one slab. A reorderable list should look like things you can
+        // pick up; run them together and there is nothing to suggest a row is
+        // a movable object at all.
+        Container(
+          decoration: BoxDecoration(
+            color: tried
+                ? AppColors.settingsCard
+                : Color.lerp(AppColors.bg, AppColors.settingsCard, 0.45),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: tried ? AppColors.hairline : Colors.transparent,
+            ),
+          ),
           padding: const EdgeInsets.fromLTRB(10, 7, 8, 7),
           child: Row(
             children: [
@@ -545,6 +561,7 @@ class _SourcePriorityScreenState extends State<SourcePriorityScreen> {
             ],
           ),
         ),
+        SizedBox(height: atCut ? 0 : 8),
         if (atCut) _cutLine(),
       ],
     );
