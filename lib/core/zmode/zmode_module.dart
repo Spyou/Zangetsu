@@ -42,52 +42,6 @@ Future<void> registerZangetsuMode(GetIt sl) async {
   final sourceOrderPrefs = await SourceOrderPrefs.open();
   sl.registerSingleton<SourceOrderPrefs>(sourceOrderPrefs);
 
-  // Shared by both the matcher (Detail's per-title resolve) and the playback
-  // resolver (via MetadataRepository below) so Auto Resolve sweeps — and
-  // playback's own health/pin tie-breaks — agree on the user's priority order.
-  List<({String id, String name})> orderedCandidates(ZKind kind) {
-    // Switched-off sources are dropped HERE and nowhere else: this is the
-    // sweep's list. `candidatesForKind` stays whole, so the per-title picker
-    // still offers every installed source — turning one off means "stop
-    // trying it automatically", not "hide it from me".
-    return activeSources(
-      sweepOrder(
-        candidatesForKind(sl<SourceRepository>(), kind),
-        kind,
-        sourceOrderPrefs.get(kind),
-      ),
-      excluded: sourceOrderPrefs.excluded(kind),
-    );
-  }
-
-  // What Auto Resolve actually searches. `orderedCandidates` is every
-  // installed source, because the per-title picker and pin lookups need to see
-  // all of them — but a sweep nobody asked for shouldn't be searching
-  // languages the user turned off. A library with the usual multi-language
-  // extensions installed hits 123 candidates that way, at up to 3s each, and
-  // the chapter list sits on a skeleton the whole time.
-  //
-  // Then two more things, both only for the sweep:
-  //
-  // RANKED, but only while the order is still ours to choose. A saved order
-  // means the user dragged something, and the promise of dragging is that the
-  // order stays put — so `SourceOrderPrefs.get` being non-empty is the whole
-  // automatic/manual switch, with no second flag to keep in step.
-  //
-  // CAPPED at [kAutoResolveCap]. A sweep stops at the first hit, so this costs
-  // nothing when a source has the title; it bounds the MISS, which is the case
-  // that used to walk every installed source one at a time.
-  List<({String id, String name})> sweepList(ZKind kind) {
-    final narrowed = languageNarrowedCandidates(
-      orderedCandidates(kind),
-      {for (final s in sl<SourceRepository>().loadedSources) s.id},
-    );
-    if (sourceOrderPrefs.get(kind).isNotEmpty) {
-      return narrowed.take(kAutoResolveCap).toList();
-    }
-    return rankByRecord(narrowed, sourceRecordOf).take(kAutoResolveCap).toList();
-  }
-
   sl.registerSingleton<SourceMatcher>(SourceMatcher(
     sources: sl<SourceRepository>(),
     store: matchStore,
@@ -245,6 +199,58 @@ List<({String id, String name})> byKindAffinity(
     ...pool.where((s) => declared.contains(s.id)),
     ...pool.where((s) => !declared.contains(s.id)),
   ];
+}
+
+/// Shared by both the matcher (Detail's per-title resolve) and the playback
+/// resolver (via MetadataRepository) so Auto Resolve sweeps — and playback's
+/// own health/pin tie-breaks — agree on the user's priority order.
+///
+/// A top-level function reading `sl` directly, not a closure inside
+/// [registerZangetsuMode]: a test can register fakes into `sl` and call this
+/// (and [sweepList]) exactly as production does, instead of reconstructing
+/// their composition by hand and testing that instead.
+List<({String id, String name})> orderedCandidates(ZKind kind) {
+  final prefs = sl<SourceOrderPrefs>();
+  // Switched-off sources are dropped HERE and nowhere else: this is the
+  // sweep's list. `candidatesForKind` stays whole, so the per-title picker
+  // still offers every installed source — turning one off means "stop
+  // trying it automatically", not "hide it from me".
+  return activeSources(
+    sweepOrder(
+      candidatesForKind(sl<SourceRepository>(), kind),
+      kind,
+      prefs.get(kind),
+    ),
+    excluded: prefs.excluded(kind),
+  );
+}
+
+/// What Auto Resolve actually searches. `orderedCandidates` is every
+/// installed source, because the per-title picker and pin lookups need to see
+/// all of them — but a sweep nobody asked for shouldn't be searching
+/// languages the user turned off. A library with the usual multi-language
+/// extensions installed hits 123 candidates that way, at up to 3s each, and
+/// the chapter list sits on a skeleton the whole time.
+///
+/// Then two more things, both only for the sweep:
+///
+/// RANKED, but only while the order is still ours to choose. A saved order
+/// means the user dragged something, and the promise of dragging is that the
+/// order stays put — so `SourceOrderPrefs.get` being non-empty is the whole
+/// automatic/manual switch, with no second flag to keep in step.
+///
+/// CAPPED at [kAutoResolveCap]. A sweep stops at the first hit, so this costs
+/// nothing when a source has the title; it bounds the MISS, which is the case
+/// that used to walk every installed source one at a time.
+List<({String id, String name})> sweepList(ZKind kind) {
+  final narrowed = languageNarrowedCandidates(
+    orderedCandidates(kind),
+    {for (final s in sl<SourceRepository>().loadedSources) s.id},
+  );
+  if (sl<SourceOrderPrefs>().get(kind).isNotEmpty) {
+    return narrowed.take(kAutoResolveCap).toList();
+  }
+  return rankByRecord(narrowed, sourceRecordOf).take(kAutoResolveCap).toList();
 }
 
 /// What the ranker knows about one source: how often it has actually played,
