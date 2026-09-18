@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:get_it/get_it.dart';
 
+import '../di/injector.dart';
 import '../mode/content_mode.dart';
 import '../mode/content_mode_cubit.dart';
 import '../playback/source_health_store.dart';
@@ -18,6 +19,7 @@ import '../ui/source_switcher.dart';
 import 'match_store.dart';
 import 'playback_resolver.dart';
 import 'source_order_prefs.dart';
+import 'source_score_store.dart';
 import 'zmode_source_prefs.dart';
 import 'metadata_repository.dart';
 import 'source_matcher.dart';
@@ -62,16 +64,29 @@ Future<void> registerZangetsuMode(GetIt sl) async {
   // installed source, because the per-title picker and pin lookups need to see
   // all of them — but a sweep nobody asked for shouldn't be searching
   // languages the user turned off. A library with the usual multi-language
-  // Mihon extensions installed hits 123 candidates that way, at up to 3s each,
-  // and the chapter list sits on a skeleton the whole time.
+  // extensions installed hits 123 candidates that way, at up to 3s each, and
+  // the chapter list sits on a skeleton the whole time.
   //
-  // Narrowed against `loadedSources`, which is where the language preference
-  // already lives — no second copy of that rule to drift.
-  List<({String id, String name})> sweepList(ZKind kind) =>
-      languageNarrowedCandidates(
-        orderedCandidates(kind),
-        {for (final s in sl<SourceRepository>().loadedSources) s.id},
-      );
+  // Then two more things, both only for the sweep:
+  //
+  // RANKED, but only while the order is still ours to choose. A saved order
+  // means the user dragged something, and the promise of dragging is that the
+  // order stays put — so `SourceOrderPrefs.get` being non-empty is the whole
+  // automatic/manual switch, with no second flag to keep in step.
+  //
+  // CAPPED at [kAutoResolveCap]. A sweep stops at the first hit, so this costs
+  // nothing when a source has the title; it bounds the MISS, which is the case
+  // that used to walk every installed source one at a time.
+  List<({String id, String name})> sweepList(ZKind kind) {
+    final narrowed = languageNarrowedCandidates(
+      orderedCandidates(kind),
+      {for (final s in sl<SourceRepository>().loadedSources) s.id},
+    );
+    if (sourceOrderPrefs.get(kind).isNotEmpty) {
+      return narrowed.take(kAutoResolveCap).toList();
+    }
+    return rankByRecord(narrowed, sourceRecordOf).take(kAutoResolveCap).toList();
+  }
 
   sl.registerSingleton<SourceMatcher>(SourceMatcher(
     sources: sl<SourceRepository>(),
@@ -230,6 +245,20 @@ List<({String id, String name})> byKindAffinity(
     ...pool.where((s) => declared.contains(s.id)),
     ...pool.where((s) => !declared.contains(s.id)),
   ];
+}
+
+/// What the ranker knows about one source: how often it has actually played,
+/// whether it is working now, and how fast it answered last time.
+///
+/// One definition, read by both the sweep and the Source Priority screen, so
+/// the screen cannot show an order the sweep does not walk.
+SourceRecord sourceRecordOf(String id) {
+  final health = sl<SourceHealthStore>();
+  return (
+    plays: sl<SourceScoreStore>().plays(id),
+    health: health.statusOf(id),
+    responseMs: health.recordOf(id)?.responseMs,
+  );
 }
 
 /// The catalogue kind to browse: the content mode, with Movie/TV split out of
