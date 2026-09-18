@@ -550,6 +550,9 @@ class _SourcePriorityScreenState extends State<SourcePriorityScreen> {
     required String Function(({String id, String name}) s) semanticLabel,
     required void Function(String id) onTap,
     bool showReason = false,
+    IconData? leadingIcon,
+    String Function(({String id, String name}) s)? leadingSemanticLabel,
+    void Function(String id)? leadingOnTap,
   }) {
     return SettingsCard(
       children: [
@@ -569,6 +572,14 @@ class _SourcePriorityScreenState extends State<SourcePriorityScreen> {
                 ),
                 if (_health(s.id) case final h?) _healthChip(h),
                 const SizedBox(width: 4),
+                if (leadingIcon != null && leadingOnTap != null) ...[
+                  _iconButton(
+                    icon: leadingIcon,
+                    semanticLabel: leadingSemanticLabel!(s),
+                    onTap: () => leadingOnTap(s.id),
+                  ),
+                  const SizedBox(width: 2),
+                ],
                 _iconButton(
                   icon: icon,
                   semanticLabel: semanticLabel(s),
@@ -593,7 +604,25 @@ class _SourcePriorityScreenState extends State<SourcePriorityScreen> {
         semanticLabel: (s) => 'Stop Auto Resolve using ${_labelFor(s)}',
         onTap: (id) => _turnOff(kind, id),
         showReason: true,
+        // Without this a source below the cut is stranded: these rows have no
+        // drag handle (their index is offset from `_sources`, so a drag would
+        // move the wrong row), and the ones you most want to promote are
+        // exactly the ones down here.
+        leadingIcon: Icons.vertical_align_top_rounded,
+        leadingSemanticLabel: (s) => 'Move ${_labelFor(s)} to the top',
+        leadingOnTap: (id) => _pinToTop(kind, id),
       );
+
+  /// Put [id] first and pin it there, leaving every other pin in its order.
+  ///
+  /// One tap instead of dragging a row up twenty positions — and the only way
+  /// a below-cut source can reach the sweep at all.
+  Future<void> _pinToTop(ZKind kind, String id) async {
+    final pins = [id, ..._prefs.get(kind).where((p) => p != id)];
+    await _prefs.set(kind, pins);
+    if (!mounted) return;
+    _refresh(kind);
+  }
 
   /// The switched-off list: no drag handles (order is meaningless here) and a
   /// + to put one back. Deliberately still on screen — a source that vanished
