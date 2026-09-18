@@ -72,6 +72,30 @@ class SourceOrderPrefs {
   // settings, and is still offered in the per-title picker — turning a source
   // off is not uninstalling it, and someone who picks it by hand for one show
   // should still get it.
+  // ── How many sources Auto Resolve is allowed to try ─────────────────────
+
+  static String _capKey(ZKind kind) => '${bucketOf(kind)}:cap';
+
+  /// Smallest useful sweep. Below three, one dead source and one slow one is
+  /// the whole budget and titles start failing that a fourth would have found.
+  static const int minCap = 3;
+
+  /// How many sources the sweep may walk. Defaults to [kAutoResolveCap].
+  ///
+  /// Stored as a one-element list because this box is a `Box<List>` — the same
+  /// box the orders live in, so there is one entry in settings backup rather
+  /// than two. Clamped on read as well as write: a value left by an older or
+  /// newer build must not be able to switch the cap off or shrink it to one.
+  int cap(ZKind kind) {
+    final raw = _box.get(_capKey(kind));
+    final first = (raw == null || raw.isEmpty) ? null : raw.first;
+    final n = first is int ? first : int.tryParse('$first');
+    return (n ?? kAutoResolveCap).clamp(minCap, kAutoResolveCap);
+  }
+
+  Future<void> setCap(ZKind kind, int n) =>
+      _box.put(_capKey(kind), [n.clamp(minCap, kAutoResolveCap)]);
+
   static String _offKey(ZKind kind) => '${bucketOf(kind)}:off';
 
   Set<String> excluded(ZKind kind) {

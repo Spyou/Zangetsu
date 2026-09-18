@@ -58,6 +58,17 @@ class _FakeOrderPrefs implements SourceOrderPrefs {
 
   @override
   Set<String> excluded(ZKind kind) => const {};
+
+  /// How many the sweep may try. Defaults to [kAutoResolveCap] like the real
+  /// store, so the existing cap tests keep asserting the shipped default; a
+  /// test that wants a smaller sweep sets it.
+  int _cap = kAutoResolveCap;
+  @override
+  int cap(ZKind kind) => _cap;
+  @override
+  Future<void> setCap(ZKind kind, int n) async {
+    _cap = n.clamp(SourceOrderPrefs.minCap, kAutoResolveCap);
+  }
 }
 
 void main() {
@@ -117,5 +128,22 @@ void main() {
 
   test('kAutoResolveCap is 10 — the number the screen has always advised', () {
     expect(kAutoResolveCap, 10);
+  });
+
+  test('the cap is adjustable: set it to 3 and only 3 are swept', () {
+    // 10 is the ceiling, not the rule. Someone who knows their top three
+    // should not wait on seven more before being told nothing has it.
+    orderPrefs.setCap(ZKind.anime, 3);
+    expect(sweepList(ZKind.anime).length, 3);
+    orderPrefs.setCap(ZKind.anime, 10);
+    expect(sweepList(ZKind.anime).length, 10);
+  });
+
+  test('a cap outside 3..10 is clamped, never honoured', () {
+    orderPrefs.setCap(ZKind.anime, 0);
+    expect(sweepList(ZKind.anime).length, SourceOrderPrefs.minCap,
+        reason: 'zero would mean Auto Resolve never tries anything');
+    orderPrefs.setCap(ZKind.anime, 999);
+    expect(sweepList(ZKind.anime).length, kAutoResolveCap);
   });
 }

@@ -59,8 +59,7 @@ class _SourcePriorityScreenState extends State<SourcePriorityScreen> {
   // distinction most people don't draw.
   late List<({String id, String name})> _sources = _ordered(ZKind.anime);
   late List<({String id, String name})> _sourcesOff = _off(ZKind.anime);
-  late List<({String id, String name})> _sourcesUnavailable =
-      _unavailable(ZKind.anime);
+  late int _cap = _prefs.cap(ZKind.anime);
 
   /// Everything installed for [kind], in the user's saved order.
   List<({String id, String name})> _all(ZKind kind) => applySourceOrder(
@@ -102,22 +101,6 @@ class _SourcePriorityScreenState extends State<SourcePriorityScreen> {
     ];
   }
 
-  /// Installed, not switched off, and still not swept — narrowed out by the
-  /// language filter, or its runtime is not loaded.
-  ///
-  /// Its own group because the fix is different: this one is reached from
-  /// Settings > Interface (language) or by the source loading, not by a toggle
-  /// on this screen. Folding it in with [_off] would offer a button that
-  /// cannot help.
-  List<({String id, String name})> _unavailable(ZKind kind) {
-    final swept = {for (final s in _ordered(kind)) s.id};
-    final excluded = _prefs.excluded(kind);
-    return [
-      for (final s in _all(kind))
-        if (!swept.contains(s.id) && !excluded.contains(s.id)) s,
-    ];
-  }
-
   /// Writing an explicit list the first time someone touches this: until then
   /// the default (top [kDefaultActiveSources]) applies, and flipping one row
   /// has to pin down everything else as it currently stands or the rest would
@@ -136,7 +119,7 @@ class _SourcePriorityScreenState extends State<SourcePriorityScreen> {
   void _refresh(ZKind kind) => setState(() {
     _sources = _ordered(ZKind.anime);
     _sourcesOff = _off(ZKind.anime);
-    _sourcesUnavailable = _unavailable(ZKind.anime);
+    _cap = _prefs.cap(ZKind.anime);
   });
 
   Future<void> _turnOff(ZKind kind, String id) => _setOn(kind, id, on: false);
@@ -303,94 +286,89 @@ class _SourcePriorityScreenState extends State<SourcePriorityScreen> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(12, 8, 12, 32),
         children: [
-          // What the sweep actually does, said plainly at the top. This used
-          // to be advice ("around 10 finds almost everything") that nothing
-          // enforced; the cap is real now, so the line states it rather than
-          // suggesting it.
-          Padding(
-            padding: const EdgeInsets.fromLTRB(8, 4, 8, 12),
-            child: Text(
-              _hasPins
-                  ? 'Auto Resolve tries the top $kAutoResolveCap and stops at '
-                        'the first hit. The ones you dragged stay where you '
-                        'put them; the rest are sorted by what has actually '
-                        'worked for you.'
-                  : 'Auto Resolve tries your best $kAutoResolveCap sources and '
-                        'stops at the first one that has the title. Sorted by '
-                        'what has actually worked for you — drag a source to '
-                        'keep it on top.',
-              style: AppText.caption.copyWith(color: AppColors.textTertiary),
-            ),
-          ),
-          const SettingsSectionLabel('USED AUTOMATICALLY', first: true),
-          _section(ZKind.anime, _sources.take(kAutoResolveCap).toList()),
-          if (_sources.length > kAutoResolveCap) ...[
-            const SettingsSectionLabel('NOT USED AUTOMATICALLY'),
-            _belowCutSection(
-              ZKind.anime,
-              _sources.skip(kAutoResolveCap).toList(),
-            ),
-          ],
+          _capControl(ZKind.anime),
+          _section(ZKind.anime, _sources),
           if (_sourcesOff.isNotEmpty) ...[
             const SettingsSectionLabel('SWITCHED OFF'),
             _offSection(ZKind.anime, _sourcesOff),
           ],
-          // Installed but not swept, and no toggle here will change that —
-          // say which knob actually applies instead of offering one that
-          // cannot help.
-          if (_sourcesUnavailable.isNotEmpty) ...[
-            const SettingsSectionLabel('NOT AVAILABLE RIGHT NOW'),
-            _plainSection(
-              ZKind.anime,
-              _sourcesUnavailable,
-              textColor: AppColors.textTertiary,
-              icon: Icons.do_not_disturb_on_outlined,
-              semanticLabel: (s) => '${_labelFor(s)} — not available right now',
-              // Nothing on this screen can change it, so the row does not
-              // pretend otherwise. The caption below says where the knob is.
-              onTap: (_) {},
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
-              child: Text(
-                'These are installed but Auto Resolve is not trying them — '
-                'their language is switched off in Settings > Interface, or '
-                'the source has not loaded yet.',
-                style: AppText.caption.copyWith(color: AppColors.textTertiary),
-              ),
-            ),
-          ],
-          // Only once you have actually dragged something. Someone who never
-          // takes over never sees a control for a mode they were never in.
-          if (_hasPins)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(8, 12, 0, 0),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'Sources you dragged stay where you put them.',
-                      style: AppText.caption.copyWith(
-                        color: AppColors.textTertiary,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  _resetButton(ZKind.anime),
-                ],
-              ),
-            ),
           Padding(
             padding: const EdgeInsets.fromLTRB(8, 14, 8, 0),
             child: Text(
-              'A title pinned to a source from its own Detail screen ignores '
-              'this list and always uses that one.',
+              'Drag a source to keep it where you put it. Everything else is '
+              'sorted by what has actually worked for you. A title pinned from '
+              'its own Detail screen ignores this list.',
               style: AppText.caption.copyWith(color: AppColors.textTertiary),
             ),
           ),
+          if (_hasPins)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 4, 0, 0),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: _resetButton(ZKind.anime),
+              ),
+            ),
         ],
       ),
     );
+  }
+
+  /// How many sources the sweep may try, and the one sentence explaining what
+  /// that costs. The number is the whole setting — everything below it is just
+  /// which sources, in what order.
+  Widget _capControl(ZKind kind) => SettingsCard(
+    children: [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 4),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Try the top $_cap sources',
+                style: AppText.body.copyWith(color: AppColors.textPrimary),
+              ),
+            ),
+            if (_isTv) ...[
+              _iconButton(
+                icon: Icons.remove_rounded,
+                semanticLabel: 'Try fewer sources',
+                onTap: () => _setCap(kind, _cap - 1),
+              ),
+              _iconButton(
+                icon: Icons.add_rounded,
+                semanticLabel: 'Try more sources',
+                onTap: () => _setCap(kind, _cap + 1),
+              ),
+            ],
+          ],
+        ),
+      ),
+      if (!_isTv)
+        Slider(
+          value: _cap.toDouble(),
+          min: SourceOrderPrefs.minCap.toDouble(),
+          max: kAutoResolveCap.toDouble(),
+          divisions: kAutoResolveCap - SourceOrderPrefs.minCap,
+          label: '$_cap',
+          onChanged: (v) => _setCap(kind, v.round()),
+        ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+        child: Text(
+          'Auto Resolve tries them in order and stops at the first one that '
+          'has the title. Fewer means Play starts sooner when nothing has it.',
+          style: AppText.caption.copyWith(color: AppColors.textTertiary),
+        ),
+      ),
+    ],
+  );
+
+  Future<void> _setCap(ZKind kind, int n) async {
+    final next = n.clamp(SourceOrderPrefs.minCap, kAutoResolveCap);
+    if (next == _cap) return;
+    setState(() => _cap = next);
+    await _prefs.setCap(kind, next);
   }
 
   /// TV gets the focus wrapper every other row on this screen already uses,
@@ -461,40 +439,89 @@ class _SourcePriorityScreenState extends State<SourcePriorityScreen> {
 
   Widget _row(ZKind kind, ({String id, String name}) s, int index) {
     final health = _health(s.id);
-    return Padding(
+    final tried = index < _cap;
+    // The cut is drawn UNDER the last tried row rather than as its own list
+    // entry: a divider child inside a ReorderableListView is itself draggable
+    // and shifts every index after it. Hanging it off the row keeps the list
+    // one flat reorderable range, which is what lets a drag start anywhere —
+    // including from below the cut, which is the whole point.
+    final atCut = index == _cap - 1;
+    return Column(
       key: ValueKey(s.id),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-      child: Row(
-        children: [
-          ReorderableDragStartListener(
-            index: index,
-            child: const Padding(
-              padding: EdgeInsets.only(right: 10),
-              child: Icon(
-                Icons.drag_indicator_rounded,
-                size: 19,
-                color: AppColors.textTertiary,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 9, 12, 9),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 20,
+                child: Text(
+                  '${index + 1}',
+                  textAlign: TextAlign.right,
+                  style: AppText.caption.copyWith(
+                    color: tried
+                        ? AppColors.textSecondary
+                        : AppColors.textTertiary,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
+                ),
               ),
-            ),
+              ReorderableDragStartListener(
+                index: index,
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 8),
+                  child: Icon(
+                    Icons.drag_indicator_rounded,
+                    size: 19,
+                    color: AppColors.textTertiary,
+                  ),
+                ),
+              ),
+              Expanded(
+                child: Opacity(
+                  opacity: tried ? 1 : 0.45,
+                  child: _nameAndRepo(
+                    s,
+                    color: AppColors.textPrimary,
+                    reason: _reasonFor(s.id, tried: tried),
+                  ),
+                ),
+              ),
+              if (health != null) _healthChip(health),
+              const SizedBox(width: 4),
+              _iconButton(
+                icon: Icons.close_rounded,
+                semanticLabel: 'Stop Auto Resolve using ${_labelFor(s)}',
+                onTap: () => _turnOff(kind, s.id),
+              ),
+            ],
           ),
-          Expanded(
-            child: _nameAndRepo(
-              s,
-              color: AppColors.textPrimary,
-              reason: _reasonFor(s.id),
-            ),
-          ),
-          if (health != null) _healthChip(health),
-          const SizedBox(width: 4),
-          _iconButton(
-            icon: Icons.close_rounded,
-            semanticLabel: 'Stop Auto Resolve using ${_labelFor(s)}',
-            onTap: () => _turnOff(kind, s.id),
-          ),
-        ],
-      ),
+        ),
+        if (atCut) _cutLine(),
+      ],
     );
   }
+
+  Widget _cutLine() => Padding(
+    padding: const EdgeInsets.fromLTRB(12, 2, 12, 6),
+    child: Row(
+      children: [
+        Expanded(child: Divider(color: AppColors.accent, height: 1)),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          child: Text(
+            'Auto Resolve stops here',
+            style: AppText.caption.copyWith(
+              color: AppColors.accent,
+              fontSize: 10.5,
+            ),
+          ),
+        ),
+        Expanded(child: Divider(color: AppColors.accent, height: 1)),
+      ],
+    ),
+  );
 
   Widget _healthChip(({String label, Color color}) h) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
@@ -592,37 +619,6 @@ class _SourcePriorityScreenState extends State<SourcePriorityScreen> {
     );
   }
 
-  /// Below the cap: still on, still eligible, just not among the top
-  /// [kAutoResolveCap] — so the action is still ✕ (exclude), same as the
-  /// ranked rows above, not the + that "switched off" gets.
-  Widget _belowCutSection(ZKind kind, List<({String id, String name})> list) =>
-      _plainSection(
-        kind,
-        list,
-        textColor: AppColors.textPrimary,
-        icon: Icons.close_rounded,
-        semanticLabel: (s) => 'Stop Auto Resolve using ${_labelFor(s)}',
-        onTap: (id) => _turnOff(kind, id),
-        showReason: true,
-        // Without this a source below the cut is stranded: these rows have no
-        // drag handle (their index is offset from `_sources`, so a drag would
-        // move the wrong row), and the ones you most want to promote are
-        // exactly the ones down here.
-        leadingIcon: Icons.vertical_align_top_rounded,
-        leadingSemanticLabel: (s) => 'Move ${_labelFor(s)} to the top',
-        leadingOnTap: (id) => _pinToTop(kind, id),
-      );
-
-  /// Put [id] first and pin it there, leaving every other pin in its order.
-  ///
-  /// One tap instead of dragging a row up twenty positions — and the only way
-  /// a below-cut source can reach the sweep at all.
-  Future<void> _pinToTop(ZKind kind, String id) async {
-    final pins = [id, ..._prefs.get(kind).where((p) => p != id)];
-    await _prefs.set(kind, pins);
-    if (!mounted) return;
-    _refresh(kind);
-  }
 
   /// The switched-off list: no drag handles (order is meaningless here) and a
   /// + to put one back. Deliberately still on screen — a source that vanished
