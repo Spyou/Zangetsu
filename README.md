@@ -94,7 +94,7 @@ Wi-Fi control is a local TCP prototype without TLS. Use a trusted local network 
 
 ## Credits and contributing
 
-The application, design and source ecosystem come from [Spyou/Zangetsu](https://github.com/Spyou/Zangetsu) and its contributors. Remote interaction was informed by the Drift/Sinotec prototype. Existing third-party notices and the [license](LICENSE) remain applicable.
+The application, design and source ecosystem come from [Spyou/Zangetsu](https://github.com/Spyou/Zangetsu) and its contributors. Existing third-party notices and the [license](LICENSE) remain applicable.
 
 Reports should include phone/TV OS, app version, transport and reproducible steps. Community help is especially needed with Apple builds, mixed-platform pairing and background media behaviour. Do not include pairing secrets, private stream URLs or signing material.
 

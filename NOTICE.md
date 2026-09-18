@@ -64,13 +64,12 @@ AndroidX Test runner 1.6.2 and ext:junit 1.2.1
   https://github.com/android/android-test
   License: Apache-2.0. Used for Android instrumentation tests.
 
-Drift / Sinotec remote prototype
-  BetaConnectionService.java includes HID behaviour adapted from the user-provided
-  Drift/Sinotec prototype. The source URL, copyright holder and applicable permission
-  have not been verified in this review. README credit does not resolve this gap.
-  Do not treat this code as cleared for upstream incorporation until its provenance
-  and compatible permission have been established or the affected code replaced.
-
+Android Bluetooth HID implementation
+  API reference: https://developer.android.com/reference/android/bluetooth/BluetoothHidDevice
+  The current BetaConnectionService.java was rewritten during review against the
+  public Android API and the application's control requirements. This statement
+  does not certify clean-room provenance or clear earlier implementations in Git
+  history. Maintainers should review retained history before incorporating it.
 Device-test media
   android/app/src/main/assets/beta-test.mp4 was included during prototype testing.
   Its origin and redistribution permission have not been established in this review.
