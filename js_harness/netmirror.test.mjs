@@ -72,3 +72,36 @@ live('prime: search returns a distinct catalog', async () => {
   assert.equal(overlap, 0, 'Netflix and Prime catalogs should not overlap');
   console.log('[netmirror pv] sample:', pv.slice(0, 3).map((r) => r.title));
 });
+
+// --- Offline: a browse feed that came back empty is a FAILURE, not a catalog -
+// Every seed query is individually tolerant (`_searchRaw` swallows its error
+// and yields []), so one cold start without a cookie makes `_browseFeed`
+// produce []. Caching that keeps Browse empty for the rest of the session.
+test('an empty browse feed is not cached for the session', async () => {
+  // Its own sourceId, so this gets its own module closure (and its own
+  // _cookie / _browse) instead of whatever the tests above left behind.
+  loadProvider('netmirror_hs', NM);
+  const real = globalThis.__fetch;
+  let online = false;
+  globalThis.__fetch = async (_src, url) => {
+    if (!online) throw new Error('offline');
+    if (url.indexOf('/verify.php') >= 0) {
+      return { ok: true, status: 200, url, body: '',
+               headers: { 'set-cookie': 't_hash_t=deadbeef; Path=/' } };
+    }
+    return { ok: true, status: 200, url, headers: {},
+             body: JSON.stringify({ searchResult: [
+               { id: '101', t: 'One' }, { id: '102', t: 'Two' }, { id: '103', t: 'Three' }] }) };
+  };
+  try {
+    const cold = JSON.parse(await callProvider('netmirror_hs', 'popular', [{ dateRange: 1 }]));
+    assert.deepEqual(cold, [], 'nothing reachable yet, so nothing to show');
+
+    online = true;
+    const warm = JSON.parse(await callProvider('netmirror_hs', 'popular', [{ dateRange: 1 }]));
+    assert.ok(warm.length > 0,
+      'browse should come back once the source answers again, got ' + JSON.stringify(warm));
+  } finally {
+    globalThis.__fetch = real;
+  }
+});
