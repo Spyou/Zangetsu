@@ -12,6 +12,7 @@ import '../provider/provider_manager.dart';
 import '../repository/source_repository.dart';
 import 'match_store.dart';
 import 'source_matcher.dart';
+import 'source_order_prefs.dart';
 import 'source_score_store.dart';
 import 'zmode_ids.dart';
 import 'zmode_source_prefs.dart';
@@ -1175,8 +1176,28 @@ class PlaybackResolver {
         final byRank = rank(a).compareTo(rank(b));
         return byRank != 0 ? byRank : position[a]!.compareTo(position[b]!);
       });
-    return sorted;
+    // Bounded by the SAME number the Source Priority screen shows. It used to
+    // cap only the title-match sweep, so "Try the top 3 sources" still asked
+    // all 32 here — the setting meant one thing on that screen and another in
+    // the player, which makes it not a setting.
+    //
+    // A pinned source and the last one that played rank 0 and 1 above, so the
+    // sources most likely to work are inside any cap, however small.
+    //
+    // The cost, deliberately taken: set it low and if those few serve dead
+    // links the episode does not play, even though a source further down
+    // would have. The failure sheet says only the top sources were checked,
+    // and the slider is the fix. A hidden floor here would put the lie back.
+    return sorted.take(_sweepCap(c.kind)).toList();
   }
+
+  /// How many sources a sweep may walk, from the user's Source Priority
+  /// setting. Falls back to the whole list where that store is not registered
+  /// — several tests build this resolver without DI, and bounding them to a
+  /// number they never set would change what they are testing.
+  int _sweepCap(ZKind kind) => sl.isRegistered<SourceOrderPrefs>()
+      ? sl<SourceOrderPrefs>().cap(kind)
+      : 1 << 30;
 
   int _healthRank(String id) => switch (_health.statusOf(id)) {
     SourceHealth.ok => 0,

@@ -146,4 +146,17 @@ void main() {
     orderPrefs.setCap(ZKind.anime, 999);
     expect(sweepList(ZKind.anime).length, kAutoResolveCap);
   });
+
+  // The player used to ignore this setting entirely: `sweepList` was capped,
+  // but PlaybackResolver walked `orderedCandidates`, all 32 of them. "Try the
+  // top 3 sources" meant 3 on the settings screen and 32 in the player, which
+  // is the definition of a setting that is not one.
+  test('the playback sweep is bounded by the same number, not the full list',
+      () {
+    orderPrefs.setCap(ZKind.anime, 3);
+    expect(sweepList(ZKind.anime).length, 3);
+    // orderedCandidates stays whole — the picker and pin lookups need it.
+    expect(orderedCandidates(ZKind.anime).length, greaterThan(3),
+        reason: 'only the SWEEP is capped; the pickable list must stay full');
+  });
 }
