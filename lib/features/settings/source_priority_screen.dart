@@ -10,8 +10,21 @@ import '../../core/tv/tv_focusable.dart';
 import '../../core/ui/settings_widgets.dart';
 import '../../core/ui/source_switcher.dart' show categorizedSources;
 import '../../core/zmode/source_order_prefs.dart';
+import '../../core/zmode/source_score_store.dart';
 import '../../core/zmode/zmode_ids.dart';
-import '../../core/zmode/zmode_module.dart' show candidatesForKind;
+import '../../core/zmode/zmode_module.dart'
+    show candidatesForKind, sourceRecordOf;
+
+/// Why a source sits where it does, in one short line.
+///
+/// Dead outranks a good history on purpose: 47 past plays do not help an
+/// episode that will not load today, and a row still reading "played 47 times"
+/// is what would keep a broken source at the top of the sweep.
+String reasonForSource({required int plays, required SourceHealth health}) {
+  if (health == SourceHealth.dead) return "hasn't worked recently";
+  if (plays == 0) return 'never used yet · trying it out';
+  return 'played $plays times';
+}
 
 /// Reorder installed sources per content type. Auto Resolve (the default —
 /// see `SourceMatcher`) sweeps sources in this order for every title that
@@ -42,10 +55,20 @@ class _SourcePriorityScreenState extends State<SourcePriorityScreen> {
     _prefs.get(kind),
   );
 
-  /// What Auto Resolve actually sweeps — the same call the resolver makes, so
-  /// this screen can't show one thing while the sweep does another.
-  List<({String id, String name})> _ordered(ZKind kind) =>
-      activeSources(_all(kind), excluded: _prefs.excluded(kind));
+  /// What Auto Resolve actually sweeps — ranked the same way, so this screen
+  /// can't show one thing while the sweep does another.
+  ///
+  /// Ranking is skipped once a saved order exists: dragging is a takeover, and
+  /// re-sorting on top of it would undo the drag the moment the screen rebuilt.
+  List<({String id, String name})> _ordered(ZKind kind) {
+    final on = activeSources(_all(kind), excluded: _prefs.excluded(kind));
+    if (_manual) return on;
+    return rankByRecord(on, sourceRecordOf);
+  }
+
+  /// True once the user has dragged: a saved order IS the takeover flag, so
+  /// there is no second piece of state to keep in step with it.
+  bool get _manual => _prefs.get(ZKind.anime).isNotEmpty;
 
   /// The rest, kept visible so turning one on is one tap rather than a hunt
   /// through the Sources screen.
@@ -114,7 +137,11 @@ class _SourcePriorityScreenState extends State<SourcePriorityScreen> {
   String _labelFor(({String id, String name}) s) =>
       _tags[s.id]?.label ?? s.name;
 
-  Widget _nameAndRepo(({String id, String name}) s, {required Color color}) {
+  Widget _nameAndRepo(
+    ({String id, String name}) s, {
+    required Color color,
+    String? reason,
+  }) {
     final repo = _tags[s.id]?.repo;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -138,9 +165,28 @@ class _SourcePriorityScreenState extends State<SourcePriorityScreen> {
             overflow: TextOverflow.ellipsis,
           ),
         ],
+        if (reason != null) ...[
+          const SizedBox(height: 2),
+          Text(
+            reason,
+            style: AppText.caption.copyWith(
+              color: AppColors.textTertiary,
+              fontSize: 11,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
       ],
     );
   }
+
+  /// Why this source is where it is. The thing the old screen could not say,
+  /// and the reason nobody knew which ten to keep.
+  String _reasonFor(String id) => reasonForSource(
+    plays: sl<SourceScoreStore>().plays(id),
+    health: sl<SourceHealthStore>().statusOf(id),
+  );
 
   // Same two colours the Source Health screen uses, so a source reads the
   // same in both places.
@@ -206,22 +252,25 @@ class _SourcePriorityScreenState extends State<SourcePriorityScreen> {
           Padding(
             padding: const EdgeInsets.fromLTRB(8, 4, 8, 12),
             child: Text(
-              _isTv
-                  ? 'Auto Resolve tries these in order until one has the '
-                        'title. Around 10 good sources finds almost '
-                        'everything — use the arrows to put yours first, and '
-                        '✕ to stop it trying the ones you never use. Fewer '
-                        'sources means Play starts sooner.'
-                  : 'Auto Resolve tries these in order until one has the '
-                        'title. Around 10 good sources finds almost '
-                        'everything — drag yours to the top, and ✕ to stop it '
-                        'trying the ones you never use. Fewer sources means '
-                        'Play starts sooner.',
+              _manual
+                  ? 'Your order. Auto Resolve tries the top $kAutoResolveCap '
+                        'and stops at the first hit.'
+                  : 'Auto Resolve tries your best $kAutoResolveCap sources and '
+                        'stops at the first one that has the title. Sorted by '
+                        'what has actually worked for you — drag any row to '
+                        'take over.',
               style: AppText.caption.copyWith(color: AppColors.textTertiary),
             ),
           ),
-          const SettingsSectionLabel('SOURCES', first: true),
-          _section(ZKind.anime, _sources),
+          const SettingsSectionLabel('USED AUTOMATICALLY', first: true),
+          _section(ZKind.anime, _sources.take(kAutoResolveCap).toList()),
+          if (_sources.length > kAutoResolveCap) ...[
+            const SettingsSectionLabel('NOT USED AUTOMATICALLY'),
+            _belowCutSection(
+              ZKind.anime,
+              _sources.skip(kAutoResolveCap).toList(),
+            ),
+          ],
           if (_sourcesOff.isNotEmpty) ...[
             const SettingsSectionLabel('NOT USED BY AUTO RESOLVE'),
             _offSection(ZKind.anime, _sourcesOff),
@@ -328,7 +377,13 @@ class _SourcePriorityScreenState extends State<SourcePriorityScreen> {
               ),
             ),
           ),
-          Expanded(child: _nameAndRepo(s, color: AppColors.textPrimary)),
+          Expanded(
+            child: _nameAndRepo(
+              s,
+              color: AppColors.textPrimary,
+              reason: _reasonFor(s.id),
+            ),
+          ),
           if (health != null) _healthChip(health),
           const SizedBox(width: 4),
           _iconButton(
@@ -382,10 +437,20 @@ class _SourcePriorityScreenState extends State<SourcePriorityScreen> {
     );
   }
 
-  /// The switched-off list: no drag handles (order is meaningless here) and a
-  /// + to put one back. Deliberately still on screen — a source that vanished
-  /// with no way back is how people end up reinstalling things.
-  Widget _offSection(ZKind kind, List<({String id, String name}) > list) {
+  /// A list with no drag handles or arrows — just each row's info and one
+  /// action icon. Used below the cap and for switched-off sources: neither
+  /// position is something a drag would move `_sources` to correctly, since
+  /// `_reorder`/`_move` index straight into the full list and these rows sit
+  /// at an offset from it.
+  Widget _plainSection(
+    ZKind kind,
+    List<({String id, String name})> list, {
+    required Color textColor,
+    required IconData icon,
+    required String Function(({String id, String name}) s) semanticLabel,
+    required void Function(String id) onTap,
+    bool showReason = false,
+  }) {
     return SettingsCard(
       children: [
         for (final s in list)
@@ -394,14 +459,18 @@ class _SourcePriorityScreenState extends State<SourcePriorityScreen> {
             child: Row(
               children: [
                 Expanded(
-                  child: _nameAndRepo(s, color: AppColors.textTertiary),
+                  child: _nameAndRepo(
+                    s,
+                    color: textColor,
+                    reason: showReason ? _reasonFor(s.id) : null,
+                  ),
                 ),
                 if (_health(s.id) case final h?) _healthChip(h),
                 const SizedBox(width: 4),
                 _iconButton(
-                  icon: Icons.add_rounded,
-                  semanticLabel: 'Let Auto Resolve use ${_labelFor(s)} again',
-                  onTap: () => _turnOn(kind, s.id),
+                  icon: icon,
+                  semanticLabel: semanticLabel(s),
+                  onTap: () => onTap(s.id),
                 ),
               ],
             ),
@@ -409,6 +478,33 @@ class _SourcePriorityScreenState extends State<SourcePriorityScreen> {
       ],
     );
   }
+
+  /// Below the cap: still on, still eligible, just not among the top
+  /// [kAutoResolveCap] — so the action is still ✕ (exclude), same as the
+  /// ranked rows above, not the + that "switched off" gets.
+  Widget _belowCutSection(ZKind kind, List<({String id, String name})> list) =>
+      _plainSection(
+        kind,
+        list,
+        textColor: AppColors.textPrimary,
+        icon: Icons.close_rounded,
+        semanticLabel: (s) => 'Stop Auto Resolve using ${_labelFor(s)}',
+        onTap: (id) => _turnOff(kind, id),
+        showReason: true,
+      );
+
+  /// The switched-off list: no drag handles (order is meaningless here) and a
+  /// + to put one back. Deliberately still on screen — a source that vanished
+  /// with no way back is how people end up reinstalling things.
+  Widget _offSection(ZKind kind, List<({String id, String name})> list) =>
+      _plainSection(
+        kind,
+        list,
+        textColor: AppColors.textTertiary,
+        icon: Icons.add_rounded,
+        semanticLabel: (s) => 'Let Auto Resolve use ${_labelFor(s)} again',
+        onTap: (id) => _turnOn(kind, id),
+      );
 
   /// TV row: up/down arrows instead of a drag handle — dragging isn't
   /// D-pad-drivable, so this is the only way to reorder with a remote.
@@ -431,7 +527,13 @@ class _SourcePriorityScreenState extends State<SourcePriorityScreen> {
             ),
           ),
           const SizedBox(width: 10),
-          Expanded(child: _nameAndRepo(s, color: AppColors.textPrimary)),
+          Expanded(
+            child: _nameAndRepo(
+              s,
+              color: AppColors.textPrimary,
+              reason: _reasonFor(s.id),
+            ),
+          ),
           if (_health(s.id) case final h?) ...[_healthChip(h), const SizedBox(width: 4)],
           _tvMoveButton(
             icon: Icons.keyboard_arrow_up_rounded,
