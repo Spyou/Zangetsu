@@ -5064,6 +5064,11 @@ class AppLocalizationsEs extends AppLocalizations {
   String get noSourceHasThisYet => 'No source has this yet';
 
   @override
+  String checkedTopSources(int count) {
+    return 'Checked your top $count sources — none had this';
+  }
+
+  @override
   String get pickTheRightTitle => 'Pick the right title';
 
   @override

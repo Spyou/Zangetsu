@@ -8672,6 +8672,12 @@ abstract class AppLocalizations {
   /// **'No source has this yet'**
   String get noSourceHasThisYet;
 
+  /// No description provided for @checkedTopSources.
+  ///
+  /// In en, this message translates to:
+  /// **'Checked your top {count} sources — none had this'**
+  String checkedTopSources(int count);
+
   /// No description provided for @pickTheRightTitle.
   ///
   /// In en, this message translates to:

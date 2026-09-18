@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter/material.dart';
+import '../zmode/source_order_prefs.dart' show kAutoResolveCap;
 
 import '../../features/sources/providers_hub_screen.dart';
 import '../../l10n/l10n.dart';
@@ -110,7 +111,7 @@ class _TvPlaybackLoadErrorDialog extends StatelessWidget {
         // When a source never actually answered, "none of them have this" is a
         // verdict we haven't earned — say what happened instead.
         title = failure.detail == null
-            ? l10n.noSourceHasThisYet
+            ? l10n.checkedTopSources(kAutoResolveCap)
             : "Couldn't check every source";
         body =
             failure.detail ??
