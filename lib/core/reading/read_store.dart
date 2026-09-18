@@ -35,9 +35,16 @@ class ReadStore {
     required int total,
   }) async {
     if (IncognitoMode.on) return; // incognito: don't remember reading position
-    await _box.put(_key(sourceId, showId, chapterId), {
+    final key = _key(sourceId, showId, chapterId);
+    // Carry a hand-set read flag across. This REPLACES the record, so without
+    // this, marking a chapter read and then scrolling a single pixel wiped the
+    // flag on the next autosave and the chapter quietly un-marked itself.
+    final prev = _box.get(key);
+    final wasMarkedRead = prev is Map && prev['read'] == true;
+    await _box.put(key, {
       'pos': pos,
       'total': total,
+      if (wasMarkedRead) 'read': true,
     });
   }
 

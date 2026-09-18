@@ -56,4 +56,31 @@ void main() {
     await store.save('s', 'show', 'c3', pos: 960, total: 1000);
     expect(store.finished('s', 'show', 'c3'), isTrue);
   });
+
+  test('reading on after marking read does NOT un-mark it', () async {
+    // save() replaces the record, so a hand-set flag has to be carried over —
+    // otherwise marking a chapter read and then scrolling one pixel silently
+    // undid it on the very next autosave.
+    await store.setRead('s', 'show', 'c4', read: true);
+    expect(store.finished('s', 'show', 'c4'), isTrue);
+
+    await store.save('s', 'show', 'c4', pos: 3, total: 100);
+
+    expect(store.finished('s', 'show', 'c4'), isTrue,
+        reason: 'still read after an autosave from page 3');
+    expect(store.get('s', 'show', 'c4')?.pos, 3,
+        reason: 'and the real position is still tracked');
+  });
+
+  test('unmarking then reading on behaves normally', () async {
+    await store.setRead('s', 'show', 'c5', read: true);
+    await store.setRead('s', 'show', 'c5', read: false);
+
+    await store.save('s', 'show', 'c5', pos: 10, total: 100);
+    expect(store.finished('s', 'show', 'c5'), isFalse);
+
+    await store.save('s', 'show', 'c5', pos: 99, total: 100);
+    expect(store.finished('s', 'show', 'c5'), isTrue,
+        reason: 'the 95% rule takes over once the flag is gone');
+  });
 }
