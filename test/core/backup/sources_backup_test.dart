@@ -98,6 +98,7 @@ class _StubProviderRegistry implements ProviderRegistry {
     String repoUrl = '',
     String displayName = '',
     String version = '1.0.0',
+    String logoUrl = '',
     bool force = false,
   }) async {
     installedIds.add(sourceId);

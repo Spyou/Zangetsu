@@ -66,6 +66,7 @@ class ExtensionAutoUpdater {
             await registry.install(
               sourceId: source.id,
               fileUrl: repos.resolveFileUrl(repo, source),
+              logoUrl: ProviderReposRegistry.resolveLogoUrl(repo, source) ?? '',
               repoUrl: repo.url,
               displayName: source.name,
               version: source.version,

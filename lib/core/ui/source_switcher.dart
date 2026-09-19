@@ -116,8 +116,18 @@ SourceBuckets categorizedSources() {
     final repo = _repoLabelFromUrl(e.originRepoUrl as String?);
     // No ecosystem tag: these ARE the app's own sources, and the repo line
     // underneath already says where they came from.
-    // icon: always null — a Zangetsu JS manifest carries no icon field.
-    return (id: e.name as String, label: base, repo: repo, icon: null);
+    //
+    // The logo is snapshotted on the registry entry at install time, the same
+    // way [displayName] is, so this costs no manifest read per row. Empty for
+    // every manifest that declares no `logo` — which is all of them today —
+    // and empty means the letter tile, exactly as before.
+    final logo = e.logoUrl as String? ?? '';
+    return (
+      id: e.name as String,
+      label: base,
+      repo: repo,
+      icon: logo.isEmpty ? null : logo,
+    );
   }
 
   int byLabel(a, b) => sourceRowName(

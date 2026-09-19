@@ -365,6 +365,9 @@ class SourcesBackup {
           repoUrl: (j['originRepoUrl'] as String?) ?? '',
           displayName: (j['displayName'] as String?) ?? '',
           version: (j['version'] as String?) ?? '1.0.0',
+          // Round-trips with toJson above; '' for a backup taken before the
+          // field existed, which is just the letter tile as before.
+          logoUrl: (j['logoUrl'] as String?) ?? '',
         );
       } catch (_) {
         failures.add('Provider: $sourceId');
