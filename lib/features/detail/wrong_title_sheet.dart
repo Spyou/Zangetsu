@@ -499,11 +499,20 @@ class _MatchLineState extends State<MatchLine> {
                       child: Row(
                         children: [
                           Expanded(
+                            // The 52 belongs INSIDE the InkWell, exactly as
+                            // _DownloadButton has it. A Row hands its children
+                            // a loose height, so an InkWell out here shrank to
+                            // the text's own ~20px and left a 52px-tall row
+                            // with a 20px-tall tap strip — miss the text line
+                            // and the tap did nothing.
                             child: InkWell(
                               onTap: () => _pickSource(state),
-                              child: Padding(
-                                padding: const EdgeInsets.only(left: 14),
-                                child: labelRow,
+                              child: SizedBox(
+                                height: 52,
+                                child: Padding(
+                                  padding: const EdgeInsets.only(left: 14),
+                                  child: labelRow,
+                                ),
                               ),
                             ),
                           ),
