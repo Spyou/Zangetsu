@@ -214,6 +214,103 @@ void main() {
       ),
     );
   });
+
+  // ── Home loading: no duplicate work, and a failure must not stick ────────
+  //
+  // Both measured in the field on 2026-09-19: a quarter of home loads were
+  // duplicates of one already running, and a quarter of the cache HITS were
+  // serving zero rows — a home that failed once stayed empty for the session.
+
+  /// A repo whose AniList home query is controlled by [gate] and counted.
+  ({MetadataRepository repo, List<int> calls}) gatedRepo(
+    Future<void> Function() gate,
+    bool Function() returnRows,
+  ) {
+    final calls = <int>[];
+    final r = _metaRepo(
+      sources: src,
+      store: store,
+      prefs: prefs,
+      browseKind: () => kind,
+      matcher: SourceMatcher(
+        sources: src, store: store, prefs: prefs,
+        candidates: (_) => [(id: 'allanime', name: 'AllAnime')],
+      ),
+      anilist: AniListCatalogue((q, v) async {
+        final aliases = RegExp(r'(r\d+):').allMatches(q).map((m) => m.group(1)!);
+        if (aliases.isEmpty) return {'Media': _al()};
+        calls.add(1);
+        await gate();
+        if (!returnRows()) return <String, dynamic>{}; // no rows -> empty home
+        return {for (final a in aliases) a: {'media': [_al()]}};
+      }),
+    );
+    return (repo: r, calls: calls);
+  }
+
+  test('an empty home is NOT cached — the next call retries', () async {
+    var ok = false;
+    final g = gatedRepo(() async {}, () => ok);
+
+    final first = await g.repo.home();
+    expect(first, isEmpty, reason: 'the catalogue gave nothing');
+
+    ok = true; // the network comes back
+    final second = await g.repo.home();
+    expect(second, isNotEmpty, reason: 'a failed home must not stick');
+    expect(g.calls.length, 2, reason: 'it must actually retry, not serve empty');
+  });
+
+  test('a successful home IS still cached — one fetch, not two', () async {
+    final g = gatedRepo(() async {}, () => true);
+    final a = await g.repo.home();
+    final b = await g.repo.home();
+    expect(a, isNotEmpty);
+    expect(b, same(a));
+    expect(g.calls.length, 1, reason: 'the second read came from the cache');
+  });
+
+  test('two callers during one load share it instead of both fetching',
+      () async {
+    final open = Completer<void>();
+    final g = gatedRepo(() => open.future, () => true);
+
+    final a = g.repo.home(); // starts the load
+    final b = g.repo.home(); // arrives while it is still running
+    open.complete();
+    final rowsA = await a;
+    final rowsB = await b;
+
+    expect(g.calls.length, 1, reason: 'the second caller must not refetch');
+    expect(rowsB, same(rowsA), reason: 'both get the one answer');
+    expect(rowsA, isNotEmpty);
+  });
+
+  test('a load that throws frees the slot, so the next call really retries',
+      () async {
+    var boom = true;
+    final calls = <int>[];
+    final r = _metaRepo(
+      sources: src, store: store, prefs: prefs, browseKind: () => kind,
+      matcher: SourceMatcher(
+        sources: src, store: store, prefs: prefs,
+        candidates: (_) => [(id: 'allanime', name: 'AllAnime')],
+      ),
+      anilist: AniListCatalogue((q, v) async {
+        final aliases = RegExp(r'(r\d+):').allMatches(q).map((m) => m.group(1)!);
+        if (aliases.isEmpty) return {'Media': _al()};
+        calls.add(1);
+        if (boom) throw StateError('network down');
+        return {for (final a in aliases) a: {'media': [_al()]}};
+      }),
+    );
+
+    await r.home().catchError((_) => <HomeSection>[]);
+    boom = false;
+    final after = await r.home();
+    expect(calls.length, 2, reason: 'a dead future must not be handed out again');
+    expect(after, isNotEmpty);
+  });
   tearDown(() async {
     await Hive.close();
     await dir.delete(recursive: true);
