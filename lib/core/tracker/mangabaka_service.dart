@@ -348,10 +348,10 @@ class MangaBakaService extends ChangeNotifier implements Tracker {
 
   /// MangaBaka's status strings ↔ [WatchStatus], in ONE place and both ways.
   ///
-  /// The exact spellings are UNCONFIRMED — MangaBaka publishes no schema for
-  /// `/v1/my/library`. These are the conventional ones; `_statusFrom` falls
-  /// back rather than throwing, and [Task 0] on the plan is what replaces the
-  /// guesswork with the real values.
+  /// All five spellings are confirmed against MangaBaka's published library
+  /// states (`completed`, `considering`, `dropped`, `paused`, `plan_to_read`,
+  /// `reading`, `rereading`). `statusFrom` still falls back rather than
+  /// throwing, so an unknown state reads as planning instead of crashing.
   @visibleForTesting
   static const Map<WatchStatus, String> statusOut = {
     WatchStatus.planning: 'plan_to_read',
@@ -619,25 +619,19 @@ class MangaBakaService extends ChangeNotifier implements Tracker {
     }
   }
 
-  /// One PATCH against `/v1/my/library/{seriesId}`.
+  /// One PATCH against `/v1/my/library/{seriesId}`, adding the series first
+  /// if it is not on the list yet.
   ///
   /// The route is keyed by SERIES id, not by the library entry's own `id` —
   /// confirmed on device: the entry id returns
   /// `404 User do not have the requested series in their library`.
-  /// One PATCH against `/v1/my/library/{seriesId}`.
   ///
-  /// The route is keyed by SERIES id, not by the library entry's own `id` —
-  /// confirmed on device: the entry id returns
-  /// `404 User do not have the requested series in their library`.
-  ///
-  /// **Known gap: this cannot ADD a title.** PATCH only modifies an entry that
-  /// already exists, and a series the user has never added answers 404. PUT on
-  /// the item, POST on the item and POST on the collection were all tried on a
-  /// real account and all failed the same way, so the create call is something
-  /// this build does not know — MangaBaka publishes no schema for `/my/*`.
-  /// Until it is known, reading a chapter of a title that is not already on
-  /// the user's MangaBaka list does nothing, which is at least honest: no
-  /// wrong entry is created. Ask in mangabaka.org/discord.
+  /// PATCH only edits an entry that already exists, so a title the user has
+  /// never added answers 404. The add is `POST /v1/my/library/batch` with a
+  /// **bare JSON array** of rows — confirmed on a real account:
+  /// `{"entries": [...]}` answers `400 expected array, received object`,
+  /// the array answers 200. It creates and patches in the one request, so
+  /// there is no second PATCH after it.
   Future<void> _patch(int seriesId, Map<String, dynamic> body) async {
     if (body.isEmpty || !isConnected) return;
     try {
@@ -650,10 +644,18 @@ class MangaBakaService extends ChangeNotifier implements Tracker {
         ),
       );
       if (r.statusCode == 401) await _onUnauthorized();
-      if (r.statusCode == 404) {
-        debugPrint('[mangabaka] $seriesId is not on the list; '
-            'adding is not implemented (see _patch)');
-      }
+      if (r.statusCode != 404) return;
+      final add = await _dio.post<dynamic>(
+        '${Environment.mangabakaApi}/v1/my/library/batch',
+        data: [
+          {'series_id': seriesId, ...body},
+        ],
+        options: Options(
+          headers: _headers,
+          validateStatus: (s) => s != null && s < 500,
+        ),
+      );
+      debugPrint('[mb] add $seriesId -> ${add.statusCode}');
     } catch (_) {
       // Best-effort, like every other tracker write.
     }
