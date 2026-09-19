@@ -1306,7 +1306,15 @@ class _DetailViewState extends State<_DetailView>
           peek: peek,
         ),
       ),
-    );
+      // Same reason as the reader's [_refreshAfterReading]: ResumeStore has no
+      // change notification and this push was fire-and-forget, so a finished
+      // episode stayed un-greyed until something else rebuilt the screen.
+      //
+      // Unlike the reader there is no key mismatch here — the player writes
+      // under (item.sourceId, item.url) and the list reads the same pair — so
+      // this is the whole fix. The list is a SliverList.builder, so the
+      // rebuild touches the visible rows, not the full episode count.
+    ).then(_refreshAfterReading);
   }
 
   /// Asks every installed source for this episode and shows them answering.
