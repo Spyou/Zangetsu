@@ -912,6 +912,7 @@
 	"builtInPlayer": "Eingebauter Player",
 	"otherApps": "Andere Apps",
 	"seeAll2": "Alle anzeigen",
+	"webView": "WebView",
 	"openInBrowser": "Im Browser öffnen",
 	"copyLink": "Link kopieren",
 	"removeTracking": "Tracking entfernen",

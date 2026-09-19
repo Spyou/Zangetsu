@@ -912,6 +912,7 @@
 	"builtInPlayer": "内置播放器",
 	"otherApps": "其他应用",
 	"seeAll2": "查看全部",
+	"webView": "WebView",
 	"openInBrowser": "在浏览器中打开",
 	"copyLink": "复制链接",
 	"removeTracking": "取消追番",

@@ -2573,6 +2573,9 @@ class AppLocalizationsJa extends AppLocalizations {
   String get seeAll2 => 'すべて見る';
 
   @override
+  String get webView => 'WebView';
+
+  @override
   String get openInBrowser => 'ブラウザで開く';
 
   @override

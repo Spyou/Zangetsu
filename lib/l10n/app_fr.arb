@@ -912,6 +912,7 @@
 	"builtInPlayer": "Lecteur intégré",
 	"otherApps": "Autres apps",
 	"seeAll2": "Tout voir",
+	"webView": "WebView",
 	"openInBrowser": "Ouvrir dans le navigateur",
 	"copyLink": "Copier le lien",
 	"removeTracking": "Retirer le suivi",

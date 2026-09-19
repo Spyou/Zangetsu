@@ -5036,6 +5036,12 @@ abstract class AppLocalizations {
   /// **'See All'**
   String get seeAll2;
 
+  /// No description provided for @webView.
+  ///
+  /// In en, this message translates to:
+  /// **'WebView'**
+  String get webView;
+
   /// No description provided for @openInBrowser.
   ///
   /// In en, this message translates to:

@@ -6,6 +6,7 @@ import 'dart:ui' as ui;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/reading/reader_image_budget.dart';
 import '../../core/reading/crop_borders.dart';
@@ -2478,7 +2479,11 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                       ),
                     ),
                     child: Text(
-                      context.l10n.openInBrowser,
+                      // The WebView, not the browser — this button has always
+                      // opened it in-app, and that is the right choice here:
+                      // a Cloudflare challenge can be solved in the WebView,
+                      // which is often exactly why the chapter would not load.
+                      context.l10n.webView,
                       style: AppText.body.copyWith(color: AppColors.accent),
                     ),
                   ),
@@ -2906,14 +2911,19 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
       items: [
         // Hidden rather than greyed when the source has no page for this
         // chapter — see source_actions.chapterWebUrl.
-        if (canBrowse)
+        if (canBrowse) ...[
+          PopupMenuItem(
+            value: _ReaderMenuAction.openInWebView,
+            child: _menuRow(Icons.public_rounded, context.l10n.webView),
+          ),
           PopupMenuItem(
             value: _ReaderMenuAction.openInBrowser,
             child: _menuRow(
-              Icons.public_rounded,
+              Icons.open_in_new_rounded,
               context.l10n.openInBrowser,
             ),
           ),
+        ],
         PopupMenuItem(
           value: _ReaderMenuAction.toggleRead,
           child: _menuRow(
@@ -2932,11 +2942,13 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
     if (!mounted || picked == null) return;
 
     switch (picked) {
-      case _ReaderMenuAction.openInBrowser:
+      case _ReaderMenuAction.openInWebView:
         await source_actions.openUrlInSourceWebView(
           source_actions.chapterWebUrl(widget.sourceId, chapter.url) ?? '',
           title: widget.showTitle,
         );
+      case _ReaderMenuAction.openInBrowser:
+        await _openChapterInBrowser(chapter);
       case _ReaderMenuAction.toggleRead:
         await _toggleReadFromMenu();
       case _ReaderMenuAction.settings:
@@ -3432,6 +3444,22 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
     }
   }
 
+  /// Hand the chapter's page to the system browser.
+  ///
+  /// `launchUrl` returns false rather than throwing when nothing can open the
+  /// link — no browser installed, which is normal on a TV box — so say so
+  /// instead of looking like the tap did nothing.
+  Future<void> _openChapterInBrowser(Episode chapter) async {
+    final url = source_actions.chapterWebUrl(widget.sourceId, chapter.url);
+    if (url == null || url.isEmpty) return;
+    final l10n = context.l10n;
+    final ok = await launchUrl(
+      Uri.parse(url),
+      mode: LaunchMode.externalApplication,
+    );
+    if (!ok) _toast(l10n.couldNotOpenSourceSite);
+  }
+
   void _toast(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
@@ -3686,4 +3714,7 @@ int estimateIndexFromScroll(double pixels, double maxExtent, int pageCount) {
 }
 
 /// What the reader's ⋮ popup can return.
-enum _ReaderMenuAction { openInBrowser, toggleRead, settings }
+/// [openInWebView] is the in-app WebView; [openInBrowser] leaves the app for
+/// the system browser. Both, and named apart, the way Mihon does it — one
+/// item called "Open in browser" that opened a WebView was the confusing part.
+enum _ReaderMenuAction { openInWebView, openInBrowser, toggleRead, settings }

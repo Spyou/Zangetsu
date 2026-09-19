@@ -2555,6 +2555,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get seeAll2 => '查看全部';
 
   @override
+  String get webView => 'WebView';
+
+  @override
   String get openInBrowser => '在浏览器中打开';
 
   @override
@@ -7601,6 +7604,9 @@ class AppLocalizationsZhTw extends AppLocalizationsZh {
 
   @override
   String get seeAll2 => '查看全部';
+
+  @override
+  String get webView => 'WebView';
 
   @override
   String get openInBrowser => '在瀏覽器開啟';

@@ -924,6 +924,7 @@
 	"builtInPlayer": "Built-in player",
 	"otherApps": "Other apps",
 	"seeAll2": "See All",
+	"webView": "WebView",
 	"openInBrowser": "Open in browser",
 	"markAsRead": "Mark as read",
 	"copyLink": "Copy link",

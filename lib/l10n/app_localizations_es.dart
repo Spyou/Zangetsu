@@ -2659,6 +2659,9 @@ class AppLocalizationsEs extends AppLocalizations {
   String get seeAll2 => 'Ver todo';
 
   @override
+  String get webView => 'WebView';
+
+  @override
   String get openInBrowser => 'Abrir en el navegador';
 
   @override
