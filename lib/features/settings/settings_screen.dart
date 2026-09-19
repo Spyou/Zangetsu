@@ -147,7 +147,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   ProviderRegistry get _registry => sl<ProviderRegistry>();
 
-  CloudStreamManager get _csManager => sl<CloudStreamManager>();
 
   Future<void> _push(Widget screen) => _pushBuilder((_) => screen);
 
@@ -626,68 +625,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (mounted) setState(() {});
   }
 
-  /// Prompts for a CloudStream repo URL, installs it via the native channel,
-  /// and reports how many sources are now available. Android-only.
-  Future<void> _addCloudStreamRepo() async {
-    final String? url;
-    if (_isTv) {
-      url = await showDialog<String>(
-        context: context,
-        builder: (_) => const _TvAddRepoDialog(),
-      );
-    } else {
-      final controller = TextEditingController();
-      url = await showDialog<String>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          backgroundColor: AppColors.surface,
-          title: Text(
-            ctx.l10n.addCloudStreamRepository,
-            style: AppText.headline,
-          ),
-          content: TextField(
-            controller: controller,
-            keyboardType: TextInputType.url,
-            cursorColor: AppColors.accent,
-            style: AppText.body.copyWith(color: AppColors.textPrimary),
-            decoration: InputDecoration(
-              labelText: ctx.l10n.repositoryUrlLabel,
-              hintText: 'https://.../repo.json',
-            ),
-            onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: Text(ctx.l10n.cancel),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(ctx, controller.text.trim()),
-              child: Text(ctx.l10n.add),
-            ),
-          ],
-        ),
-      );
-      controller.dispose();
-    }
-    if (url == null || url.isEmpty || !mounted) return;
-    final messenger = ScaffoldMessenger.of(context);
-    final l10n = context.l10n;
-    try {
-      final count = await _csManager.addRepo(url);
-      if (!mounted) return;
-      messenger.showSnackBar(
-        SnackBar(content: Text(l10n.addedCloudStreamSourcesCount(count))),
-      );
-      setState(() {});
-    } catch (e) {
-      if (!mounted) return;
-      messenger.showSnackBar(
-        SnackBar(content: Text(l10n.failedToAddRepository('$e'))),
-      );
-    }
-  }
-
   /// Account header — a single profile card at the top of Settings. Signed in:
   /// avatar + name + email → Profile. Signed out: an avatar placeholder + a
   /// clear "Sign in" call-to-action → Login (its own card, so it no longer
@@ -1036,14 +973,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       onTap: () => _push(const SourceHealthScreen()),
     ),
     if (Platform.isAndroid) ...[
-      _SettingsEntry(
-        section: SettingsSection.sources,
-        icon: Icons.extension_outlined,
-        title: l10n.addCloudStreamRepository,
-        subtitle: l10n.installCloudStreamSources,
-        keywords: 'cloudstream repository repo install sources extensions',
-        onTap: _addCloudStreamRepo,
-      ),
       _SettingsEntry(
         section: SettingsSection.sources,
         icon: Icons.update_rounded,
