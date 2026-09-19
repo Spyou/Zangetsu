@@ -74,10 +74,13 @@ class ListsHubScreen extends StatelessWidget {
   /// Which lists a tracker actually holds. AniList and MAL split light novels
   /// out of the manga list (by `format`/`media_type`), so a novel row there has
   /// real content rather than being a permanently empty tab. Simkl has no
-  /// reading side at all, so it gets the one row.
-  static List<ContentMode> _kindsFor(Tracker t) => t.supportsReading
-      ? const [ContentMode.anime, ContentMode.manga, ContentMode.novel]
-      : const [ContentMode.anime];
+  /// reading side at all and gets the one video row; MangaBaka is the mirror
+  /// of that and gets no video row, which is why this reads both flags rather
+  /// than treating an anime list as a given.
+  static List<ContentMode> _kindsFor(Tracker t) => [
+    if (trackerSupportsVideo(t)) ContentMode.anime,
+    if (t.supportsReading) ...[ContentMode.manga, ContentMode.novel],
+  ];
 
   static IconData _iconFor(ContentMode k) => switch (k) {
     ContentMode.anime => Icons.play_circle_outline_rounded,

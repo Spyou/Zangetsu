@@ -8,7 +8,11 @@ import 'package:hive/hive.dart';
 import 'package:watch_app/core/environment.dart';
 import 'package:watch_app/core/models/watch_status.dart';
 import 'package:watch_app/core/tracker/mangabaka_service.dart';
+import 'package:watch_app/core/mode/content_mode.dart';
 import 'package:watch_app/core/tracker/tracker.dart';
+import 'package:watch_app/core/tracker/tracker_hub.dart';
+import 'package:watch_app/core/zmode/zmode_ids.dart';
+import 'package:watch_app/features/home/cubit/tracker_home_rows.dart';
 
 /// MangaBaka is the only PUBLIC OAuth client of the four trackers — PKCE, no
 /// secret — so the verifier/challenge maths is ours to get right, not a
@@ -150,9 +154,27 @@ void main() {
     });
   });
 
-  test('it is reading-only — it has no anime library', () {
-    expect(svc.supportsReading, isTrue);
-    expect(svc.displayName, 'MangaBaka');
+  group('it is reading-only — it has no anime library', () {
+    test('it claims a reading library and no video one', () {
+      expect(svc.supportsReading, isTrue);
+      expect(trackerSupportsVideo(svc), isFalse);
+      expect(svc.displayName, 'MangaBaka');
+    });
+
+    test('a watching mode does not offer it; a reading mode does', () {
+      final hub = TrackerHub([svc]);
+      expect(hub.forMode(ContentMode.anime), isEmpty);
+      expect(hub.forMode(ContentMode.manga), [svc]);
+      expect(hub.forMode(ContentMode.novel), [svc]);
+    });
+
+    test('it answers no home row for anime, film or series', () {
+      expect(trackerServesKind(svc, ZKind.anime), isFalse);
+      expect(trackerServesKind(svc, ZKind.movie), isFalse);
+      expect(trackerServesKind(svc, ZKind.tv), isFalse);
+      expect(trackerServesKind(svc, ZKind.manga), isTrue);
+      expect(trackerServesKind(svc, ZKind.novel), isTrue);
+    });
   });
 
   test('the registered client is public: the id ships, no secret exists', () {
