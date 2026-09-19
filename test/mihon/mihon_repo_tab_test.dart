@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -174,6 +175,51 @@ void main() {
       await tester.pump();
 
       expect(find.text('No extensions found in this repo.'), findsOneWidget);
+    });
+
+    // The tester's real case: a slow repo download that fails AFTER the row has
+    // left the tree (they navigated away, or the list rebuilt). `_install` read
+    // `context.l10n` past the await, so State.context threw — and it threw
+    // inside the catch block too, so the failure was reported nowhere. 30 of
+    // these were logged from real devices; the user never saw a message.
+    testWidgets('an install that fails after the row is gone still reports it',
+        (tester) async {
+      final gate = Completer<void>();
+      final fakeEntry = _fakeEntry('Fake Manga', 'com.fake.manga');
+
+      await tester.pumpWidget(_wrap(
+        MihonRepoTab(
+          repoUrls: const ['https://repo.example.com'],
+          onRemoveRepo: (_) {},
+          fetchIndexFn: (_) async => [fakeEntry],
+          installFn: (_) => gate.future,
+          installedPkgsFn: (_) => false,
+        ),
+      ));
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+
+      await tester.tap(find.text('Install'));
+      await tester.pump(); // install is now in flight, awaiting `gate`
+
+      // The row leaves the tree while the download is still running. The
+      // MaterialApp is reused, so the app-level ScaffoldMessenger survives —
+      // exactly as it does when someone pops back out of the sources screen.
+      await tester.pumpWidget(_wrap(const SizedBox.shrink()));
+      expect(find.text('Install'), findsNothing);
+
+      gate.completeError(Exception('connection timeout'));
+      await tester.pump();
+      await tester.pump();
+
+      // Nothing thrown, and the user is actually told what went wrong.
+      expect(tester.takeException(), isNull);
+      expect(
+        find.textContaining('Install failed'),
+        findsOneWidget,
+        reason: 'the failure must reach the user, not die in the catch block',
+      );
     });
 
     testWidgets('calls installFn when Install button is tapped', (tester) async {

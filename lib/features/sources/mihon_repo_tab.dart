@@ -755,6 +755,13 @@ class _MihonExtensionRowState extends State<_MihonExtensionRow> {
 
   Future<void> _install() async {
     final messenger = ScaffoldMessenger.of(context);
+    // Captured BEFORE the download, alongside the messenger and for the same
+    // reason: the row can be gone by the time it finishes — the user leaves,
+    // or the list rebuilds — and [State.context] is `_element!`, which throws
+    // once it is. Reading `context.l10n` afterwards took out the catch block
+    // too, so a failed install said nothing at all instead of saying why.
+    // The messenger is the app-level one, so it still shows the snackbar.
+    final l10n = context.l10n;
     setState(() => _busy = true);
     try {
       if (widget.installFn != null) {
@@ -770,17 +777,17 @@ class _MihonExtensionRowState extends State<_MihonExtensionRow> {
         // installFromRepo never throws — it returns an empty list on failure.
         // Treat "no source loaded" as a failure so we don't mislabel context.l10n.installed.
         if (providers.isEmpty) {
-          throw Exception(context.l10n.noSourceLoaded);
+          throw Exception(l10n.noSourceLoaded);
         }
       }
       widget.onInstalled();
       messenger
         ..clearSnackBars()
-        ..showSnackBar(SnackBar(content: Text(context.l10n.installedName(_entry.name))));
+        ..showSnackBar(SnackBar(content: Text(l10n.installedName(_entry.name))));
     } catch (e) {
       messenger
         ..clearSnackBars()
-        ..showSnackBar(SnackBar(content: Text(context.l10n.installFailed('$e'))));
+        ..showSnackBar(SnackBar(content: Text(l10n.installFailed('$e'))));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
