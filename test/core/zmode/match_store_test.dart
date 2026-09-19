@@ -132,4 +132,53 @@ void main() {
     await box.put('sel:${fma.key}', {'sourceId': 42}); // wrong type
     expect(prefs.get(fma.kind), isNull);
   });
+
+  // The globe on a Z Mode detail screen asks "where does this title live?".
+  // SourceMatcher.saved() answers a narrower question (pin, else kind default)
+  // and returns null for an AUTO-resolved title — which is the common case and
+  // exactly why the globe only ever said "no web page for this source".
+  group('bestFor', () {
+    test('nothing matched yet is null — the honest answer', () async {
+      final store = await MatchStore.open();
+      expect(store.bestFor(fma), isNull);
+    });
+
+    test('an AUTO match with no pin and no play is still found', () async {
+      final store = await MatchStore.open();
+      await store.save(fma, allanime);
+      expect(store.bestFor(fma)?.sourceId, 'allanime');
+      expect(store.bestFor(fma)?.showUrl, 'https://a/fma');
+    });
+
+    test('a pin beats everything', () async {
+      final store = await MatchStore.open();
+      await store.save(fma, allanime);
+      await store.pin(fma, hianime);
+      expect(store.bestFor(fma)?.sourceId, 'hianime');
+    });
+
+    test('with no pin, what last played wins over a bare guess', () async {
+      final store = await MatchStore.open();
+      await store.save(fma, allanime);
+      await store.save(fma, hianime);
+      await store.rememberLastPlayed(fma, 'hianime');
+      expect(store.bestFor(fma)?.sourceId, 'hianime');
+    });
+
+    test('another title\'s matches are never returned', () async {
+      final store = await MatchStore.open();
+      await store.save(const ZCanonical(ZKind.anime, 'mal:999'), allanime);
+      expect(store.bestFor(fma), isNull);
+    });
+
+    test('works for manga and novel, not just anime', () async {
+      final store = await MatchStore.open();
+      const manga = ZCanonical(ZKind.manga, 'mal:1');
+      const m = SourceMatch(
+          sourceId: 'mihon:1', showUrl: '/series/x', showId: 'x',
+          showTitle: 'X', pinned: false);
+      await store.save(manga, m);
+      expect(store.bestFor(manga)?.showUrl, '/series/x');
+    });
+  });
 }

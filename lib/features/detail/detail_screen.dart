@@ -93,6 +93,7 @@ import '../../core/zmode/metadata_repository.dart';
 import '../../core/zmode/source_matcher.dart';
 import '../../core/ui/source_switcher.dart';
 import '../sources/zangetsu_sources_screen.dart';
+import '../../core/zmode/match_store.dart';
 import '../../core/zmode/zmode_ids.dart';
 import '../../core/aniyomi/aniyomi_image_provider.dart';
 import '../../core/mihon/mihon_image_provider.dart';
@@ -742,10 +743,34 @@ class _DetailViewState extends State<_DetailView>
     final u = widget.item.url.trim();
     if (u.isEmpty) return null;
     if (u.startsWith('http://') || u.startsWith('https://')) return u;
+    // Z Mode: the item is a metadata title (`zm://anime/mal:123`) and its
+    // sourceId is the pseudo id `zm`, so the join below found no base URL and
+    // the globe only ever said "no web page for this source". The title does
+    // live on a real source — the one Auto Resolve matched — so open that.
+    final c = ZmodeIds.parseShow(u);
+    if (c != null) return _matchedSourceWebUrl(c);
     final base = sl<SourceRepository>().baseUrlFor(widget.item.sourceId).trim();
     if (base.isEmpty) return null;
     if (base.endsWith('/') && u.startsWith('/')) return base + u.substring(1);
     return base + u;
+  }
+
+  /// The matched source's own page for a Z Mode title, or null when nothing
+  /// has matched it yet — in which case the existing snackbar is the honest
+  /// answer, because there genuinely is no page to open.
+  ///
+  /// The join is [source_actions.joinChapterUrl] rather than a second copy of
+  /// the one above: it is already tested, and it refuses a `showUrl` carrying
+  /// javascript:/file:/intent:, which matters because that value comes from a
+  /// third-party extension.
+  String? _matchedSourceWebUrl(ZCanonical c) {
+    if (!sl.isRegistered<MatchStore>()) return null;
+    final m = sl<MatchStore>().bestFor(c);
+    if (m == null) return null;
+    return source_actions.joinChapterUrl(
+      sl<SourceRepository>().baseUrlFor(m.sourceId),
+      m.showUrl,
+    );
   }
 
   bool get _subscribed =>

@@ -143,6 +143,33 @@ class MatchStore {
     return null;
   }
 
+  /// The best remembered match for this title, for UI that asks "where does
+  /// this live" rather than "what will play it": a pin first, then whatever
+  /// last played it, then any source that has matched it at all.
+  ///
+  /// [SourceMatcher.saved] answers the narrower question — a pin, else the
+  /// kind default — and returns null for an AUTO-resolved title, which is the
+  /// common case: Auto Resolve found a source, the user never pinned it and
+  /// may not have played it yet, and the match IS in this box the whole time.
+  ///
+  /// One pass over the title's own keys, same cheap prefix scan as
+  /// [pinnedFor].
+  SourceMatch? bestFor(ZCanonical c) {
+    final prefix = '${c.key}@';
+    final last = lastPlayed(c);
+    SourceMatch? played;
+    SourceMatch? any;
+    for (final k in _box.keys) {
+      if (k is! String || !k.startsWith(prefix)) continue;
+      final m = SourceMatch.fromMap(_box.get(k));
+      if (m == null) continue;
+      if (m.pinned) return m;
+      if (last != null && m.sourceId == last) played ??= m;
+      any ??= m;
+    }
+    return played ?? any;
+  }
+
   Future<void> forget(ZCanonical c, String sourceId) =>
       _box.delete(_key(c, sourceId));
 
