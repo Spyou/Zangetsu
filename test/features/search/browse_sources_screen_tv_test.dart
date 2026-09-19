@@ -25,6 +25,9 @@ class _FakeProviderRegistry implements ProviderRegistry {
 
   @override
   Map<String, String> typeMapOf() => const {};
+  @override
+  ({Map<String, String> types, Map<String, String> logos})
+  manifestMapsOf() => (types: const {}, logos: const {});
 }
 
 class _FakePlaybackPrefs extends PlaybackPrefs {

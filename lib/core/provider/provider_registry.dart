@@ -269,6 +269,36 @@ class ProviderRegistry {
     return out;
   }
 
+  /// [typeMapOf] and the logo map in ONE pass over the manifests.
+  ///
+  /// The row builder needs both, and a manifest pass is the expensive part —
+  /// `source_switcher_perf_test` pins the number of `getAll()` calls per
+  /// categorizedSources() run precisely so a second map cannot quietly double
+  /// it. Callers that need only types still use [typeMapOf].
+  ///
+  /// Logos come from the LIVE manifest, not [ProviderRegistryEntry.logoUrl]:
+  /// that snapshot is written only at install, so a provider installed before
+  /// the field existed would keep its letter tile forever. The index is
+  /// already fetched for browsing and update checks, so this backfills
+  /// everything on the device for free — the same way `SourceIconStore` has
+  /// always worked for Aniyomi and Mihon, without touching either.
+  ({Map<String, String> types, Map<String, String> logos}) manifestMapsOf() {
+    final repos = _repos;
+    if (repos == null) {
+      return (types: const <String, String>{}, logos: const <String, String>{});
+    }
+    final types = <String, String>{};
+    final logos = <String, String>{};
+    for (final repo in repos.getAll()) {
+      for (final s in repo.sources) {
+        types.putIfAbsent(s.id, () => s.type);
+        final url = ProviderReposRegistry.resolveLogoUrl(repo, s);
+        if (url != null && url.isNotEmpty) logos.putIfAbsent(s.id, () => url);
+      }
+    }
+    return (types: types, logos: logos);
+  }
+
   Stream<BoxEvent> watch() => _box.watch();
 
   /// Installs (or refreshes) a bundled provider straight from in-memory

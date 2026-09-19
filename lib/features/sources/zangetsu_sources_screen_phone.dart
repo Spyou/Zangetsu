@@ -441,15 +441,18 @@ class _ZInstalledRow extends StatelessWidget {
     final meta = hasUpdate
         ? 'repo • v${entry.version} → v$newVersion'
         : '${bundled ? 'built-in' : 'repo'} • v${entry.version}';
+    // Manifest first, install-time snapshot as the offline fallback.
+    final saved = entry.logoUrl;
+    final logo = state.manifestLogos[_key] ?? (saved.isEmpty ? null : saved);
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 6, 8),
       child: Row(
         children: [
-          // Letter only: the registry entry keeps no logo, so an installed JS
-          // provider has nothing to draw. The browse row below does.
+          // The repo manifest's `logo`, with the install-time snapshot as the
+          // offline fallback. Letter tile when neither has one.
           Padding(
             padding: const EdgeInsets.only(right: 12),
-            child: SourceIconTile(name: name),
+            child: SourceIconTile(name: name, icon: logo),
           ),
           Expanded(
             child: Column(
