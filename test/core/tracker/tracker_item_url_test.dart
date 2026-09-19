@@ -5,6 +5,7 @@ import 'package:watch_app/core/tracker/tracker_item_url.dart';
 
 MediaItem _stub({
   int? malId,
+  int? anilistId,
   int? tmdbId,
   bool tmdbIsTv = false,
   ProviderType type = ProviderType.anime,
@@ -16,6 +17,7 @@ MediaItem _stub({
   type: type,
   sourceId: '',
   malId: malId,
+  anilistId: anilistId,
   tmdbId: tmdbId,
   tmdbIsTv: tmdbIsTv,
 );
@@ -46,6 +48,29 @@ void main() {
     expect(
       trackerCanonical(_stub(tmdbId: 438631))!.key,
       'movie:tmdb:438631',
+    );
+  });
+
+  // The case that sent people to a search: a lot of manga on AniList have no
+  // MAL id at all, and the catalogue resolves `al:` perfectly well.
+  test('an AniList id stands in when there is no MAL one', () {
+    expect(
+      trackerCanonical(_stub(anilistId: 30013, type: ProviderType.manga))!.key,
+      'manga:al:30013',
+    );
+    final p = playableTrackerItem(
+      _stub(anilistId: 30013, type: ProviderType.manga),
+      savedFrom: 'AniList',
+    );
+    expect(p, isNotNull);
+    expect(p!.url, 'zm://manga/al:30013');
+    expect(p.anilistId, 30013);
+  });
+
+  test('a MAL id wins over an AniList one when both are present', () {
+    expect(
+      trackerCanonical(_stub(malId: 13, anilistId: 30013))!.key,
+      'anime:mal:13',
     );
   });
 
