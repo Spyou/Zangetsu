@@ -32,6 +32,54 @@ void main() {
     expect(ids(rankByRecord(p, r)), ['b', 'c', 'a']);
   });
 
+  // THE bug this saturation fixes. Two sources that have both clearly worked
+  // were ordered by a historical margin the user cannot see or change, and
+  // speed could never close it because only more plays moved the order — and
+  // the slower one was the one being tried.
+  test('past the proven line, the faster of two veterans wins', () {
+    final p = pool(['veteran', 'quick']);
+    final r = records({
+      'veteran': (plays: 50, health: SourceHealth.ok, responseMs: 9000),
+      'quick': (plays: 49, health: SourceHealth.ok, responseMs: 50),
+    });
+    expect(ids(rankByRecord(p, r)), ['quick', 'veteran']);
+  });
+
+  test('below the proven line the count still decides, not speed', () {
+    final p = pool(['once', 'never']);
+    final r = records({
+      'once': (plays: 1, health: SourceHealth.ok, responseMs: 9000),
+      'never': (plays: 0, health: SourceHealth.ok, responseMs: 80),
+    });
+    // 1 play against 0 is a real difference; the trial slot is what gives the
+    // unplayed one its turn, not the comparator.
+    expect(ids(rankByRecord(p, r)), ['once', 'never']);
+  });
+
+  test('saturation is a ceiling, not a reset: 9 still beats 4', () {
+    final p = pool(['four', 'nine']);
+    final r = records({
+      'four': (plays: 4, health: SourceHealth.ok, responseMs: null),
+      'nine': (plays: 9, health: SourceHealth.ok, responseMs: null),
+    });
+    expect(ids(rankByRecord(p, r)), ['nine', 'four']);
+  });
+
+  // Clamping must not reintroduce the non-transitivity that nulls-last fixed.
+  test('stays transitive across the proven line', () {
+    final p = pool(['a', 'b', 'c']);
+    final r = records({
+      'a': (plays: 99, health: SourceHealth.ok, responseMs: 500),
+      'b': (plays: 5, health: SourceHealth.ok, responseMs: 100),
+      'c': (plays: 6, health: SourceHealth.ok, responseMs: null),
+    });
+    final once = ids(rankByRecord(p, r));
+    // Same records, different input order -> same relative result.
+    final again = ids(rankByRecord(pool(['c', 'a', 'b']), r));
+    expect(again, once);
+    expect(once, ['b', 'a', 'c']); // fastest proven, then 500ms, unknown last
+  });
+
   test('same plays, the faster one wins', () {
     final p = pool(['slow', 'fast']);
     final r = records({

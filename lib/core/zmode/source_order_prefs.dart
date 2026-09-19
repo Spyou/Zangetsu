@@ -170,6 +170,17 @@ List<({String id, String name})> activeSources(
 /// the Source Priority screen has advised in prose since it was written.
 const int kAutoResolveCap = 10;
 
+/// Plays past this many stop separating two sources.
+///
+/// The tally only ever goes up, so comparing raw counts froze the order on
+/// historical margins that mean nothing today: a source played 50 times sat
+/// above one played 49 times forever, even when the 49 answered 180x faster,
+/// because only more plays could move it and the slower one was the one being
+/// tried. Once both have clearly worked, let today's speed decide. Below the
+/// line the count still counts — 1 play against 0 is a real difference, and
+/// that is what the trial slot exists to resolve.
+const int kProvenPlays = 5;
+
 /// One source's track record, as the ranker sees it.
 typedef SourceRecord = ({int plays, SourceHealth health, int? responseMs});
 
@@ -204,7 +215,12 @@ List<({String id, String name})> rankByRecord(
     final aDead = a.r.health == SourceHealth.dead;
     final bDead = b.r.health == SourceHealth.dead;
     if (aDead != bDead) return aDead ? 1 : -1;
-    if (a.r.plays != b.r.plays) return b.r.plays.compareTo(a.r.plays);
+    // Saturated at [kProvenPlays]: proven is proven, and the raw tally past
+    // that is history rather than information. Clamping is monotonic, so the
+    // comparator stays transitive.
+    final ap = a.r.plays.clamp(0, kProvenPlays);
+    final bp = b.r.plays.clamp(0, kProvenPlays);
+    if (ap != bp) return bp.compareTo(ap);
     // A source with no timing yet is not "equal speed" — it is unknown, and
     // treating unknown as equal is what made this comparator non-transitive:
     // null-vs-measured fell through to pool index while measured-vs-measured
