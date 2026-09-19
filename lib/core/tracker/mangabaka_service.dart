@@ -17,7 +17,15 @@ import '../models/watch_status.dart';
 import '../platform/apple_tv.dart';
 import 'tracker.dart';
 
-/// MangaBaka tracker — manga, manhwa and manhua only, no anime list.
+/// MangaBaka tracker — **manga, manhwa, manhua AND novels**. No anime: the
+/// site has /manga, /manhwa, /manhua and /novel sections and nothing else, and
+/// the API's `type` field returns exactly those (plus `other`).
+///
+/// Novels need no separate [MediaKind]: this app files them under
+/// `MediaKind.manga` with `novel: true`, the same way AniList does, so they
+/// sync through the identical path. The flag matters at resolution — a series
+/// that exists as both a light novel and a manga adaptation would otherwise
+/// write a novel's progress onto the manga entry.
 ///
 /// OAuth 2.0 authorization-code with **PKCE and no client secret**: an installed
 /// app cannot keep one, since anything shipped in the APK can be extracted.
@@ -60,8 +68,9 @@ class MangaBakaService extends ChangeNotifier implements Tracker {
   @override
   String get displayName => 'MangaBaka';
 
-  /// The only tracker that is reading-ONLY: MangaBaka has no anime library, so
-  /// every anime write here is a deliberate no-op rather than a wrong entry.
+  /// The only tracker that is reading-ONLY. MangaBaka has no anime library at
+  /// all, so every anime write here is a deliberate no-op rather than a write
+  /// onto some wrong entry. Covers manga/manhwa/manhua and novels alike.
   @override
   bool get supportsReading => true;
 
@@ -172,6 +181,7 @@ class MangaBakaService extends ChangeNotifier implements Tracker {
       );
       final stored = await _storeTokens(res.data);
       await _nameFromIdToken(res.data);
+      await _fetchUserInfo();
       if (!stored) {
         _resolvePending(false);
         return;
@@ -236,6 +246,37 @@ class MangaBakaService extends ChangeNotifier implements Tracker {
     if (p != null && !p.isCompleted) p.complete(ok);
   }
 
+  /// The OIDC userinfo endpoint — the only place MangaBaka exposes an avatar.
+  ///
+  /// The discovery document lists `picture` (and `name`, `given_name`,
+  /// `family_name`) under `claims_supported` and publishes
+  /// `userinfo_endpoint`, but `/v1/my/profile` carries none of them and the
+  /// id_token only carried `name`. Checking those two and concluding "this API
+  /// has no avatar" was wrong — it was in the standard place all along.
+  Future<void> _fetchUserInfo() async {
+    try {
+      final res = await _dio.get<dynamic>(
+        'https://mangabaka.org/auth/oauth2/userinfo',
+        options: Options(
+          headers: _headers,
+          validateStatus: (s) => s != null && s < 500,
+        ),
+      );
+      final d = res.data;
+      if (d is! Map) return;
+      final name = d['name'] ?? d['preferred_username'] ?? d['given_name'];
+      if (name is String && name.isNotEmpty) {
+        await _box.put('viewerName', name);
+      }
+      final pic = d['picture'];
+      if (pic is String && pic.isNotEmpty) {
+        await _box.put('viewerAvatar', pic);
+      }
+    } catch (_) {
+      // Cosmetic: a failure here must not fail the connect.
+    }
+  }
+
   Future<void> _fetchViewer() async {
     try {
       final res = await _dio.get<dynamic>(
@@ -260,10 +301,9 @@ class MangaBakaService extends ChangeNotifier implements Tracker {
           break;
         }
       }
-      // Last resort so the Connections row is never blank: MangaBaka only has
-      // a name if the user set one, and there is NO avatar field anywhere in
-      // its API — not on /my/profile and not as a `picture` claim on the
-      // id_token — so a connected account can legitimately have neither.
+      // Last resort so the Connections row is never blank. The avatar and the
+      // real name come from [_fetchUserInfo]; this only covers an account that
+      // has set neither.
       if ((viewerName ?? '').isEmpty) {
         await _box.put('viewerName', 'MangaBaka account');
       }
@@ -396,7 +436,12 @@ class MangaBakaService extends ChangeNotifier implements Tracker {
         title: title,
         url: '',
         sourceId: '',
-        type: ProviderType.manga,
+        // MangaBaka's own `type`: manga | manhwa | manhua | novel | other.
+        // Only novel is a different ProviderType here; the three comic kinds
+        // are all manga as far as this app is concerned.
+        type: '${series['type']}'.toLowerCase() == 'novel'
+            ? ProviderType.novel
+            : ProviderType.manga,
         cover: _coverUrl(series['cover']),
         // Free, and the whole reason tapping can now land on the right title:
         // MangaBaka aggregates the other sites' ids for every series.
@@ -469,7 +514,12 @@ class MangaBakaService extends ChangeNotifier implements Tracker {
     bool novel = false,
   }) async {
     if (!isConnected || kind != MediaKind.manga) return null;
-    final id = await _seriesIdFor(malId: malId, title: title, pinnedId: pinnedId);
+    final id = await _seriesIdFor(
+      malId: malId,
+      title: title,
+      pinnedId: pinnedId,
+      novel: novel,
+    );
     if (id == null) return null;
     try {
       final res = await _dio.get<dynamic>(
@@ -521,6 +571,7 @@ class MangaBakaService extends ChangeNotifier implements Tracker {
     int? malId,
     String? title,
     String? pinnedId,
+    bool novel = false,
   }) async {
     final pinned = int.tryParse(pinnedId ?? '');
     if (pinned != null) return pinned;
@@ -545,6 +596,18 @@ class MangaBakaService extends ChangeNotifier implements Tracker {
         // A malId was given and nothing carried it: better no write than a
         // write onto a same-named different series.
         return null;
+      }
+      // No malId to verify against, so the `type` is the only thing keeping a
+      // light novel apart from its own manga adaptation — plenty of series
+      // exist as both, and writing a novel's progress onto the manga entry is
+      // exactly the kind of silent wrong-entry write worth avoiding.
+      final wanted = novel ? 'novel' : null;
+      if (wanted != null) {
+        for (final r in rows) {
+          if (r is Map && '${r['type']}'.toLowerCase() == wanted) {
+            return r['id'] is int ? r['id'] as int : int.tryParse('${r['id']}');
+          }
+        }
       }
       final first = rows.first;
       if (first is! Map) return null;
@@ -632,7 +695,7 @@ class MangaBakaService extends ChangeNotifier implements Tracker {
     bool novel = false,
   }) async {
     if (!_canWrite(kind)) return;
-    final id = await _seriesIdFor(malId: malId, title: title);
+    final id = await _seriesIdFor(malId: malId, title: title, novel: novel);
     if (id == null) return;
     // `episode` is the chapter number for a reading kind — see the interface.
     await _patch(id, {
