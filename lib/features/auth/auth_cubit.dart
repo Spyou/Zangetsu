@@ -106,6 +106,46 @@ class AuthCubit extends Cubit<AuthState> {
     }
   }
 
+  bool _revalidating = false;
+  DateTime? _lastRevalidate;
+
+  /// How long to wait before re-testing a session that just failed the test.
+  /// Only ever reached when the banner is already up, so this is a cap on the
+  /// genuinely-dead-token case, not a delay anyone waits on.
+  static const Duration revalidateCooloff = Duration(seconds: 60);
+
+  /// Re-test a session we only ASSUMED was dead.
+  ///
+  /// [_validate] cannot tell "your session expired" from "there was no network
+  /// for a second" — both fail identically — so a moment offline raises
+  /// [AuthState.needsReconnect], and it then sat there until the next launch
+  /// because `restore()` only runs at startup. Call this when the app returns
+  /// to the foreground, and on an explicit pull-to-refresh ([force]).
+  ///
+  /// **Costs nothing in the normal case**: it returns before touching the
+  /// network unless the banner is actually showing. [ensureFreshSession] does
+  /// the rest — it clears the flag itself on success, and already treats a
+  /// network error as "keep what we have" rather than nagging for a password.
+  Future<void> revalidateIfFlagged({bool force = false}) async {
+    if (!state.needsReconnect || _revalidating) return;
+    final last = _lastRevalidate;
+    if (!force &&
+        last != null &&
+        DateTime.now().difference(last) < revalidateCooloff) {
+      // A token that really is dead would otherwise re-test on every single
+      // resume. An explicit refresh ([force]) is the user asking, so it skips
+      // this — waiting a minute after tapping refresh would look broken.
+      return;
+    }
+    _revalidating = true;
+    _lastRevalidate = DateTime.now();
+    try {
+      await ensureFreshSession();
+    } finally {
+      _revalidating = false;
+    }
+  }
+
   /// Hive box that caches the signed-in user (opened in [initDependencies]).
   static const String cacheBoxName = 'auth_cache';
   static const String _userKey = 'user';

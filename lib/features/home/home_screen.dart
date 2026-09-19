@@ -1518,7 +1518,18 @@ class _HomeViewState extends State<_HomeView>
           children: [
             RefreshIndicator(
               color: AppColors.accent,
-              onRefresh: () => context.read<HomeCubit>().load(),
+              onRefresh: () {
+                // Pull-to-refresh is the user saying "try again", so it also
+                // re-tests a session the startup check only assumed was dead
+                // (the "Reconnect to sync" banner). force: it must not sit out
+                // the cool-off when someone deliberately pulled.
+                if (sl.isRegistered<AuthCubit>()) {
+                  unawaited(
+                    sl<AuthCubit>().revalidateIfFlagged(force: true),
+                  );
+                }
+                return context.read<HomeCubit>().load();
+              },
               child: BlocBuilder<HomeCubit, HomeState>(
                 builder: (context, state) {
                   final sections = state.sections ?? const <HomeSection>[];
