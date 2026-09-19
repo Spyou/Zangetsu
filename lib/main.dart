@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:io' show Platform;
+import 'core/theme/app_colors.dart';
 import 'dart:ui' show PlatformDispatcher;
 
 import 'package:firebase_core/firebase_core.dart';
@@ -50,6 +52,8 @@ import 'features/onboarding/boot_error_screen.dart';
 import 'features/onboarding/onboarding_screen.dart';
 import 'features/shell/root_shell.dart';
 import 'features/watch_together/ui/party_bar.dart';
+import 'features/companion/beta_catalogue.dart';
+import 'features/companion/remote_session.dart';
 
 Future<void> main() async {
   // Run inside a guarded zone so uncaught async errors land in the shareable
@@ -428,6 +432,14 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
   Future<void> _run() async {
     final start = DateTime.now();
     await initDependencies();
+    BetaCatalogue.bind();
+    if (Platform.isAndroid || Platform.isIOS) {
+      if (sl<AppMode>().isTv) {
+        unawaited(BetaCatalogue.channel.invokeMethod<void>('restoreReceiver'));
+      } else {
+        unawaited(RemoteSession.instance.start());
+      }
+    }
     if (mounted) {
       setState(() => _depsReady = true);
       if (_bootReady) {
@@ -632,6 +644,48 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
             ? Stack(
                 children: [
                   ?child,
+                  if (sl.isRegistered<AppMode>() && sl<AppMode>().isTv)
+                    Positioned(
+                      bottom: 24,
+                      left: 48,
+                      right: 48,
+                      child: IgnorePointer(
+                        child: ValueListenableBuilder<String>(
+                          valueListenable: BetaCatalogue.browsing,
+                          builder: (context, title, _) => title.isEmpty
+                              ? const SizedBox.shrink()
+                              : Center(
+                                  child: Material(
+                                    color: AppColors.surface,
+                                    borderRadius: BorderRadius.circular(18),
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 20,
+                                        vertical: 12,
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          const Icon(
+                                            Icons.phonelink_rounded,
+                                            size: 20,
+                                          ),
+                                          const SizedBox(width: 12),
+                                          Flexible(
+                                            child: Text(
+                                              'On your phone · $title',
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                        ),
+                      ),
+                    ),
                   const Positioned(
                     top: 0,
                     left: 0,
