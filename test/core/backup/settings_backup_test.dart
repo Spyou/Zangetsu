@@ -57,6 +57,7 @@ void _driftGuard() {
       'anilist': 'oauth token',
       'mal': 'oauth token',
       'simkl': 'oauth token',
+      'mangabaka': 'oauth token',
       'discord': 'rpc token',
       'auth_cache': 'session cache',
       // Device-specific: holds a SAF content:// URI that is meaningless (and

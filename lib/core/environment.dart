@@ -85,5 +85,36 @@ class Environment {
   static String get simklRedirectUri => '$trackerRedirectScheme://$simklRedirectHost';
 
   // Back-compat alias (older AniList code referenced this name).
+  // ── MangaBaka ────────────────────────────────────────────────────────────
+  //
+  // Manga/manhwa/manhua only — no anime list, which is why `supportsReading`
+  // is the one thing it answers true to.
+  //
+  // A PUBLIC OAuth client: no secret, PKCE (S256) instead, which is the right
+  // shape for an installed app — anything shipped in the APK can be extracted.
+  // Endpoints come from https://mangabaka.org/.well-known/openid-configuration
+  // (the `.org` host; `api.mangabaka.org/.well-known/*` is 404). MangaBaka's
+  // own API docs mention neither OAuth nor tokens, so prefer the discovery
+  // document over the docs if they ever disagree.
+  static const String mangabakaClientId = 'EkBIEASsBsfRvPKGevUZIcRLSdubVHPK';
+  static const String mangabakaRedirectHost = 'mangabaka-auth';
+  static String get mangabakaRedirectUri =>
+      '$trackerRedirectScheme://$mangabakaRedirectHost';
+  static const String mangabakaAuthorizeUrl =
+      'https://mangabaka.org/auth/oauth2/authorize';
+  static const String mangabakaTokenUrl =
+      'https://mangabaka.org/auth/oauth2/token';
+  static const String mangabakaRevokeUrl =
+      'https://mangabaka.org/auth/oauth2/revoke';
+  static const String mangabakaApi = 'https://api.mangabaka.org';
+
+  /// `library.write` is an official scope — third-party writes are supported,
+  /// not a workaround. `offline_access` is what returns a refresh token.
+  /// `openid` is required by `/v1/my/profile`: with the other four granted it
+  /// still answered `BAD_REQUEST: Missing required scope`, which is the OIDC
+  /// identity scope missing rather than any library permission.
+  static const String mangabakaScopes =
+      'openid profile library.read library.write offline_access';
+
   static const String anilistRedirectScheme = trackerRedirectScheme;
 }

@@ -18,6 +18,7 @@ import '../../core/cache/media_cache.dart';
 import '../../core/logging/app_logger.dart';
 import '../../core/logging/log_report_service.dart';
 import '../../core/tracker/mal_service.dart';
+import '../../core/tracker/mangabaka_service.dart';
 import '../../core/tracker/simkl_service.dart';
 import '../../core/tracker/tracker.dart';
 import '../player/player_screen.dart' show openSubtitleStyleSheet;

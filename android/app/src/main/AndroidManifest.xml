@@ -94,6 +94,7 @@
                 <data android:scheme="zangetsu" android:host="anilist-auth"/>
                 <data android:scheme="zangetsu" android:host="mal-auth"/>
                 <data android:scheme="zangetsu" android:host="simkl-auth"/>
+                <data android:scheme="zangetsu" android:host="mangabaka-auth"/>
                 <!-- Shared-title deep link: zangetsu://open?d=…&t=… (see OpenLinkService). -->
                 <data android:scheme="zangetsu" android:host="open"/>
                 <data android:scheme="zangetsu" android:host="room"/>

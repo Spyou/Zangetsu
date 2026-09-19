@@ -75,6 +75,7 @@ import '../anilist/anilist_network_policy.dart';
 import '../anilist/anilist_service.dart';
 import '../anilist/anilist_store.dart';
 import '../tracker/mal_service.dart';
+import '../tracker/mangabaka_service.dart';
 import '../tracker/simkl_service.dart';
 import '../tracker/tracker_binding_store.dart';
 import '../tracker/tracker_hub.dart';
@@ -469,8 +470,18 @@ Future<void> initDependencies() async {
   sl.registerSingleton<MalService>(MalService(dio));
   await SimklService.init();
   sl.registerSingleton<SimklService>(SimklService(dio));
+  await MangaBakaService.init();
+  sl.registerSingleton<MangaBakaService>(MangaBakaService(dio));
   sl.registerSingleton<TrackerHub>(
-    TrackerHub([sl<AniListService>(), sl<MalService>(), sl<SimklService>()]),
+    TrackerHub([
+      sl<AniListService>(),
+      sl<MalService>(),
+      sl<SimklService>(),
+      // Reading-only: MangaBaka has no anime library, so TrackerHub.forMode
+      // keeps it out of anime contexts the way it already keeps Simkl out of
+      // reading ones.
+      sl<MangaBakaService>(),
+    ]),
   );
   // Manual match corrections (the sync sheet's "Change match"): show → chosen
   // tracker entry id, persisted so a fixed match sticks.
@@ -481,6 +492,7 @@ Future<void> initDependencies() async {
         'anilist': sl<AniListService>(),
         'mal': sl<MalService>(),
         'simkl': sl<SimklService>(),
+        'mangabaka': sl<MangaBakaService>(),
       }));
 
   // Share deep links (zangetsu://open?…): opens a shared title's Detail, or
