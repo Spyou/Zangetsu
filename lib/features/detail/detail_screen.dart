@@ -945,8 +945,12 @@ class _DetailViewState extends State<_DetailView>
     // chapter under the video key stored it somewhere nothing reads, so the
     // row never dimmed.
     final readShowId = widget.item.id;
+    // Same pairing as the chapter list: the real source, not `zm`.
+    final readSource = detail.sourceId.isNotEmpty
+        ? detail.sourceId
+        : widget.item.sourceId;
     bool markedDone(Episode e) => isReading
-        ? read.finished(widget.item.sourceId, readShowId, e.id)
+        ? read.finished(readSource, readShowId, e.id)
         : (resume.get(widget.item.sourceId, widget.item.url, e.id)?.finished ??
               false);
     final action = await showEpisodeActionSheet(
@@ -1327,6 +1331,22 @@ class _DetailViewState extends State<_DetailView>
   /// `widget.item.type` for the disagreeing-provider-JSON case the guard
   /// above also covers, so a mismatch still lands on the right reader
   /// instead of silently doing nothing.
+  /// Re-read the chapter list's state after the reader closes.
+  ///
+  /// [ReadStore] is a plain Hive box with no change notification, and the push
+  /// below was fire-and-forget, so a chapter finished in the reader stayed
+  /// un-dimmed until something else happened to rebuild this screen — leaving
+  /// on the app and coming back showed it correctly, which is what made it
+  /// look like the read was not being saved. It always was.
+  ///
+  /// Deliberately scoped to the READER only. The video player push has the
+  /// same shape, but episodes read their state from [ResumeStore] through a
+  /// different path; changing that is a separate job and not worth risking
+  /// here.
+  void _refreshAfterReading(Object? _) {
+    if (mounted) setState(() {});
+  }
+
   void _openReader(
     List<Episode> chapters,
     int index,
@@ -1343,7 +1363,13 @@ class _DetailViewState extends State<_DetailView>
           MaterialPageRoute(
             builder: (_) => NovelReaderScreen(
               sourceId: detail.sourceId,
-              showId: detail.id,
+              // item.id, NOT detail.id: the chapter list and the action
+              // sheet both read this title's marks under item.id, so writing
+              // them under the source's own id put them where nothing looks.
+              // In Z Mode the two differ (canonical `mal:…` vs the matched
+              // source's show id), which is why a chapter dimmed on some
+              // titles and never on others.
+              showId: widget.item.id,
               showTitle: detail.title,
               cover: detail.cover ?? widget.item.cover,
               chapters: chapters,
@@ -1352,14 +1378,20 @@ class _DetailViewState extends State<_DetailView>
               peek: peek,
             ),
           ),
-        );
+        ).then(_refreshAfterReading);
         return;
       case ProviderType.manga:
         Navigator.of(context).push(
           MaterialPageRoute(
             builder: (_) => MangaReaderScreen(
               sourceId: detail.sourceId,
-              showId: detail.id,
+              // item.id, NOT detail.id: the chapter list and the action
+              // sheet both read this title's marks under item.id, so writing
+              // them under the source's own id put them where nothing looks.
+              // In Z Mode the two differ (canonical `mal:…` vs the matched
+              // source's show id), which is why a chapter dimmed on some
+              // titles and never on others.
+              showId: widget.item.id,
               showTitle: detail.title,
               cover: detail.cover ?? widget.item.cover,
               chapters: chapters,
@@ -1368,7 +1400,7 @@ class _DetailViewState extends State<_DetailView>
               peek: peek,
             ),
           ),
-        );
+        ).then(_refreshAfterReading);
         return;
       case ProviderType.anime:
       case ProviderType.movie:

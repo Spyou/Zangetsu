@@ -179,8 +179,16 @@ class _EpisodesTabState extends State<_EpisodesTab> {
     Episode ep,
   ) {
     final store = sl<ReadStore>();
-    final mark = store.get(widget.sourceId, widget.showId, ep.id);
-    final done = store.finished(widget.sourceId, widget.showId, ep.id);
+    // Read marks are keyed by the SOURCE that owns the chapters, which is
+    // [downloadSourceId] (`detail.sourceId`) — not [sourceId], which for a
+    // metadata title is the `zm` pseudo-source. The reader writes under the
+    // real source for the same reason it fetches pages with it, so looking
+    // them up under `zm` found nothing and a finished chapter never dimmed.
+    final readSource = widget.downloadSourceId.isNotEmpty
+        ? widget.downloadSourceId
+        : widget.sourceId;
+    final mark = store.get(readSource, widget.showId, ep.id);
+    final done = store.finished(readSource, widget.showId, ep.id);
     final inProgress = mark != null && !done && mark.total > 0;
     final watched =
         done ||
