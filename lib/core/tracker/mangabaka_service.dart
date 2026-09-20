@@ -535,11 +535,25 @@ class MangaBakaService extends ChangeNotifier implements Tracker {
           ? res.data['data'] as Map
           : null;
       if (row == null) return null;
-      final series = row['Series'] is Map ? row['Series'] as Map : null;
+      // The LIST route (`/v1/my/library`) embeds the series under `Series`,
+      // capital S. This single-entry route does NOT embed it at all —
+      // confirmed on device, its keys are: note, read_link, rating, state,
+      // priority, is_private, number_of_rereads, progress_chapter,
+      // progress_volume, start_date, finish_date, id, series_id, user_id,
+      // Entries. So the title, chapter count and link have to be fetched
+      // separately. It read as a blank "Matched:" line rather than an error,
+      // which is why it went unnoticed.
+      final series = row['Series'] is Map
+          ? row['Series'] as Map
+          : await _series(id);
+      final seriesTitle = '${series?['title'] ?? ''}';
+      if (seriesTitle.isEmpty) {
+        debugPrint('[mb] entry $id still has no title; keys=${row.keys.toList()}');
+      }
       return TrackerEntry(
         trackerName: displayName,
         onList: true,
-        title: '${series?['title'] ?? ''}',
+        title: seriesTitle,
         status: statusFrom(row['state']),
         progress: row['progress_chapter'] is num
             ? (row['progress_chapter'] as num).round()
@@ -550,6 +564,32 @@ class MangaBakaService extends ChangeNotifier implements Tracker {
             : null,
         url: '${series?['canonical_url'] ?? ''}',
       );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// A series by id, from the PUBLIC catalogue route.
+  ///
+  /// Needed because `/v1/my/library/{id}` returns the entry alone — progress,
+  /// state, rating — and names the series only by `series_id`. Cached for the
+  /// session: the sync sheet reopens on the same handful of titles, and this
+  /// is a plain catalogue read that cannot go stale in a way that matters.
+  final Map<int, Map<dynamic, dynamic>> _seriesCache = {};
+
+  Future<Map<dynamic, dynamic>?> _series(int id) async {
+    final hit = _seriesCache[id];
+    if (hit != null) return hit;
+    try {
+      final r = await _dio.get<dynamic>(
+        '${Environment.mangabakaApi}/v1/series/$id',
+        options: Options(validateStatus: (s) => s != null && s < 500),
+      );
+      final d = (r.data is Map && r.data['data'] is Map)
+          ? r.data['data'] as Map
+          : null;
+      if (d != null) _seriesCache[id] = d;
+      return d;
     } catch (_) {
       return null;
     }
