@@ -6,6 +6,7 @@ import '../models/home_section.dart';
 import '../models/media_detail.dart';
 import '../models/media_item.dart';
 import '../models/provider_info.dart';
+import '../metadata/streaming_service.dart';
 import '../ui/streaming_prefs.dart';
 import 'video_catalogue.dart';
 import 'metadata_filters.dart';
@@ -39,7 +40,14 @@ class TmdbCatalogue implements VideoCatalogue {
   };
 
   /// Row titles without a fetch — see [AniListCatalogue.rowTitles].
-  static List<String> rowTitles() => [for (final r in _rows) r.$1];
+  ///
+  /// Pinned streaming services are appended, which is why this is no longer a
+  /// pure function of a const list. [StreamingPrefs] reads Hive synchronously,
+  /// so the Home-rows editor can still call this during build.
+  static List<String> rowTitles() => [
+    for (final r in _rows) r.$1,
+    for (final p in StreamingPrefs.pinned) p.name,
+  ];
 
   static const _rows = [
     // What's out right now leads (and feeds the hero banner, which Home
@@ -62,8 +70,34 @@ class TmdbCatalogue implements VideoCatalogue {
   /// keeps the results in the same order as [_rows] regardless of which
   /// finishes first.
   Future<List<HomeSection>> home() async {
-    final sections = await Future.wait(_rows.map(_fetchRow));
-    return [for (final s in sections) ?s];
+    final pins = StreamingPrefs.pinned;
+    // Both sets fire together: a pinned service must not make the shipped rows
+    // wait, and vice versa.
+    final results = await Future.wait([
+      Future.wait(_rows.map(_fetchRow)),
+      Future.wait(pins.map(_fetchServiceRow)),
+    ]);
+    return [
+      for (final s in results[0]) ?s,
+      for (final s in results[1]) ?s,
+    ];
+  }
+
+  /// One pinned service as a home row. Null when the service has nothing to
+  /// show in this region — a named row with no posters reads as broken.
+  Future<HomeSection?> _fetchServiceRow(StreamingPin pin) async {
+    final items = await _discoverProvider(pin.id, 1);
+    return items.isEmpty
+        ? null
+        : HomeSection(
+            title: pin.name,
+            items: items,
+            more: BrowseMore(
+              sourceId: ZmodeIds.sourceId,
+              kind: 'zm_video',
+              categoryId: wpRowId(pin.id),
+            ),
+          );
   }
 
   Future<HomeSection?> _fetchRow((String, String) row) async {
