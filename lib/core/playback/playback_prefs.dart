@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 import 'package:watch_app/core/hive/safe_box.dart';
@@ -55,6 +57,82 @@ String? resolveVideoOutput({
   if (isTv) return null;
   if (choice != 'auto') return choice;
   return shaderStyle != 'off' ? 'gpu-next' : null;
+}
+
+/// The family of hardware video decoder a platform exposes to mpv.
+///
+/// Every platform names its own video chip: Android `mediacodec`, Apple
+/// `videotoolbox`, Windows `d3d11va`, Linux `vaapi`. mpv only accepts the name
+/// its own build was compiled with.
+enum DecoderPlatform { android, apple, windows, linux, other }
+
+DecoderPlatform get currentDecoderPlatform {
+  if (Platform.isAndroid) return DecoderPlatform.android;
+  if (Platform.isIOS || Platform.isMacOS) return DecoderPlatform.apple;
+  if (Platform.isWindows) return DecoderPlatform.windows;
+  if (Platform.isLinux) return DecoderPlatform.linux;
+  return DecoderPlatform.other;
+}
+
+/// The mpv `hwdec` value for decoder [choice] on [platform].
+///
+/// This MUST branch per platform, and the failure it prevents is silent. mpv
+/// ACCEPTS any string here — the name is only looked up later, when the decoder
+/// is initialised. Handing an iPhone Android's name produced exactly this, read
+/// off a real iOS build:
+///
+///     Unsupported hwdec: mediacodec-copy
+///     Using software decoding.
+///
+/// No error, no exception, nothing the app could notice — just a phone quietly
+/// decoding 4K on its CPU and stuttering on hardware that handles 4K easily.
+/// With the right name the same build reports `hwdec-current =
+/// videotoolbox-copy` instead of `no`.
+///
+/// Pure so every platform's mapping is testable from one machine.
+String resolveHwdec({
+  required String choice,
+  required String videoOutput,
+  required DecoderPlatform platform,
+}) {
+  // mediacodec_embed keeps the frame on the Android surface, which only works
+  // with the non-copy mediacodec decoder — every other choice renders nothing
+  // at all, so the renderer pick wins over the decoder pick. It is an
+  // Android-only renderer, so the override is too.
+  if (platform == DecoderPlatform.android &&
+      videoOutput == 'mediacodec_embed') {
+    return 'mediacodec';
+  }
+  switch (choice) {
+    case 'sw':
+      return 'no';
+    case 'auto':
+      return 'auto-safe';
+    case 'direct':
+      return switch (platform) {
+        DecoderPlatform.android => 'mediacodec',
+        DecoderPlatform.apple => 'videotoolbox',
+        DecoderPlatform.windows => 'd3d11va',
+        DecoderPlatform.linux => 'vaapi',
+        DecoderPlatform.other => 'auto',
+      };
+    case 'copy':
+    default:
+      return switch (platform) {
+        DecoderPlatform.android => 'mediacodec-copy',
+        // `-copy` and not plain `videotoolbox`, measured rather than assumed:
+        // plain videotoolbox needs mpv's GL interop, and where that interop is
+        // unavailable mpv logs "Using software decoding" and silently drops to
+        // the CPU — the very failure this mapping exists to prevent. The copy
+        // variant needs no interop and logs "Trying hardware decoding". This
+        // is the default mode, so it takes the path that always decodes in
+        // hardware; 'direct' below is the no-readback option.
+        DecoderPlatform.apple => 'videotoolbox-copy',
+        DecoderPlatform.windows => 'd3d11va-copy',
+        DecoderPlatform.linux => 'vaapi-copy',
+        DecoderPlatform.other => 'auto-copy',
+      };
+  }
 }
 
 /// Persistent, app-wide playback preferences (default quality, sub/dub
@@ -334,24 +412,13 @@ class PlaybackPrefs {
       _box.get('videoOutput', defaultValue: 'auto') as String;
   Future<void> setVideoOutput(String value) => _box.put('videoOutput', value);
 
-  /// The mpv `hwdec` property value for the current [videoDecoder] choice.
-  String get hwdecValue {
-    // mediacodec_embed keeps the frame on the surface, which only works with
-    // the non-copy mediacodec decoder — every other choice renders nothing at
-    // all, so the renderer pick wins over the decoder pick here.
-    if (videoOutput == 'mediacodec_embed') return 'mediacodec';
-    switch (videoDecoder) {
-      case 'direct':
-        return 'mediacodec';
-      case 'sw':
-        return 'no';
-      case 'auto':
-        return 'auto-safe';
-      case 'copy':
-      default:
-        return 'mediacodec-copy';
-    }
-  }
+  /// The mpv `hwdec` property value for the current [videoDecoder] choice, for
+  /// the platform actually running. See [resolveHwdec].
+  String get hwdecValue => resolveHwdec(
+    choice: videoDecoder,
+    videoOutput: videoOutput,
+    platform: currentDecoderPlatform,
+  );
 
   // ── Anime4K enhancement (GLSL upscaling) ───────────────────────────────────
   // Real-time neural upscaling for low-res anime. STYLE = the filter: 'off'

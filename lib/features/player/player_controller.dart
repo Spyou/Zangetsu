@@ -63,6 +63,21 @@ String? _resolveVideoOutput() => resolveVideoOutput(
   shaderStyle: sl<PlaybackPrefs>().videoShaderStyle,
 );
 
+/// The decoder to hand media_kit at VideoController creation — Apple only.
+///
+/// media_kit applies its OWN default when this is null, and on Apple that
+/// default lands AFTER [_configureMpv]'s write and replaces it, so the decoder
+/// the user picked never reaches mpv. Passing it here makes our value the one
+/// that gets applied.
+///
+/// Null everywhere else ON PURPOSE. Android's media_kit default is `auto-safe`
+/// — and `no` when it detects an emulator, which is what keeps video working on
+/// emulators. Overriding that would take the emulator fallback away, so Android
+/// keeps exactly the behaviour it ships with today.
+String? _configHwdec() => currentDecoderPlatform == DecoderPlatform.apple
+    ? sl<PlaybackPrefs>().hwdecValue
+    : null;
+
 /// Immutable view-state for the player screen: exactly the fields the UI
 /// rebuilds on. These used to drive `notifyListeners()` on the old
 /// `ChangeNotifier`; they are now emitted by [PlayerCubit].
@@ -306,6 +321,9 @@ class PlayerCubit extends Cubit<PlayerState> {
       // high-res playback + less battery/heat. media_kit auto-falls back to
       // software decode if the device can't hardware-decode a codec.
       enableHardwareAcceleration: true,
+      // Apple only — see [_configHwdec]. Null on Android, which keeps
+      // media_kit's own default (and its emulator fallback) exactly as before.
+      hwdec: _configHwdec(),
       // Attach the Android render surface only once the video's dimensions are
       // known, so it isn't created then resized on the first frame — kills the
       // black-frame/resize hitch at playback start.
