@@ -1,5 +1,63 @@
 import 'tmdb.dart';
 
+/// The big services, in the order most people would expect to see them.
+///
+/// TMDB's own `display_priority` is per-region and mixes the majors in with
+/// long-tail catalogues — in India it puts FilmBox+, Cultpix and DOCSVILLE
+/// ahead of Crunchyroll — so the rail, which only shows the first handful,
+/// would bury the ones people actually have. These ids are pinned to the
+/// front in this order; everything else keeps TMDB's order behind them.
+///
+/// Every id below was read from the live API across IN/US/GB, not guessed.
+/// Amazon and Apple appear twice on purpose: TMDB uses a different id for the
+/// same service in different regions.
+const List<int> kPopularProviderIds = [
+  8, // Netflix
+  9, // Amazon Prime Video (US, GB)
+  119, // Amazon Prime Video (IN)
+  337, // Disney Plus
+  350, // Apple TV
+  283, // Crunchyroll
+  1899, // HBO Max
+  15, // Hulu
+  531, // Paramount Plus
+  386, // Peacock Premium
+  2336, // JioHotstar
+  232, // Zee5
+];
+
+/// Rent-and-buy stores and profile variants. Not services you subscribe to,
+/// and [2] in particular ships almost the same icon as Apple TV (350), so the
+/// rail showed what looked like Apple twice.
+const Set<int> _notASubscription = {
+  2, // Apple TV Store — rent/buy
+  3, // Google Play Movies — rent/buy
+  10, // Amazon Video — rent/buy
+  68, // Microsoft Store — rent/buy
+  192, // YouTube — free/rent, not a subscription catalogue
+  175, // Netflix Kids — a profile, not a service
+  2285, // JustWatch TV — the comparison site's own channel
+};
+
+/// Whether this entry is a streaming service someone can subscribe to.
+///
+/// TMDB's list is mostly resellers: of 92 entries in India, 38 are
+/// `<name> Amazon Channel`, `<name> Apple TV channel`, a rent/buy store, or
+/// an ad-supported duplicate of a service already in the list. In the US it is
+/// 163 of 333. They clutter the rail and, worse, duplicate the brands next to
+/// them with near-identical logos.
+///
+/// A service sold ONLY as an Amazon channel drops out with them. That is the
+/// accepted cost: the alternative is a rail where Apple appears twice.
+bool isSubscribableService(int id, String name) {
+  if (_notASubscription.contains(id)) return false;
+  final n = name.toLowerCase().trim();
+  return !n.endsWith('channel') &&
+      !n.endsWith('store') &&
+      !n.endsWith('kids') &&
+      !n.contains('with ads');
+}
+
 /// One streaming service as TMDB knows it in a given country.
 ///
 /// The logo is TMDB's own `logo_path`, served from its image CDN exactly like
@@ -41,30 +99,5 @@ class StreamingService {
       logoPath: logo is String && logo.isNotEmpty ? logo : null,
       priority: p is int ? p : 9999,
     );
-  }
-}
-
-/// A service the user pinned as a Home row.
-///
-/// The NAME is stored alongside the id on purpose: `TmdbCatalogue.rowTitles()`
-/// is synchronous (the Home-rows editor calls it during build) and the name
-/// only exists in a fetched list. Storing it keeps the editor working offline
-/// and before the provider list has loaded.
-class StreamingPin {
-  const StreamingPin({required this.id, required this.name});
-
-  final int id;
-  final String name;
-
-  /// `'<id>|<name>'`. `|` never appears in a TMDB provider name, and the id is
-  /// numeric, so the split is unambiguous.
-  String toEntry() => '$id|$name';
-
-  static StreamingPin? fromEntry(String entry) {
-    final i = entry.indexOf('|');
-    if (i <= 0 || i == entry.length - 1) return null;
-    final id = int.tryParse(entry.substring(0, i));
-    if (id == null) return null;
-    return StreamingPin(id: id, name: entry.substring(i + 1));
   }
 }

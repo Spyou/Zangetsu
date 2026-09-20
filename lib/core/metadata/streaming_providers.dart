@@ -34,12 +34,24 @@ class StreamingProvidersService {
         for (final r in results) {
           if (r is! Map) continue;
           final s = StreamingService.fromJson(Map<String, dynamic>.from(r));
+          if (s == null || !isSubscribableService(s.id, s.name)) continue;
           // First endpoint wins; the rows are identical where they overlap.
-          if (s != null) byId.putIfAbsent(s.id, () => s);
+          byId.putIfAbsent(s.id, () => s);
         }
       }
+      // Majors first (see [kPopularProviderIds]), then TMDB's own regional
+      // order. The rail shows only the first handful, so this is the
+      // difference between seeing Netflix and seeing a documentary catalogue
+      // nobody subscribes to.
+      int rank(StreamingService s) {
+        final i = kPopularProviderIds.indexOf(s.id);
+        return i < 0 ? kPopularProviderIds.length : i;
+      }
+
       final out = byId.values.toList()
         ..sort((a, b) {
+          final r = rank(a).compareTo(rank(b));
+          if (r != 0) return r;
           final p = a.priority.compareTo(b.priority);
           return p != 0 ? p : a.name.compareTo(b.name);
         });
