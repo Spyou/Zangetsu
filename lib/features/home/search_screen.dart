@@ -2469,7 +2469,7 @@ class _SearchViewState extends State<_SearchView>
 /// it anyway. Mirrors `_SourcePickerSheetState._grouped()`'s categories in
 /// source_switcher.dart. A top-level function (not inlined in
 /// [_SearchFilterSheet]) so it's unit-testable without a real [SearchBloc].
-List<({String title, List<({String id, String label, String? repo})> rows})>
+List<({String title, List<({String id, String label, String? repo, String? icon})> rows})>
 searchFilterSections(
   SourceBuckets buckets,
   ContentMode mode,
@@ -3048,7 +3048,7 @@ class _SearchFilterSheet extends StatelessWidget {
   /// short instead of listing every source inline.
   Widget _sourcesSummaryRow(
     BuildContext context,
-    List<({String title, List<({String id, String label, String? repo})> rows})>
+    List<({String title, List<({String id, String label, String? repo, String? icon})> rows})>
     sections,
     SearchSourcePrefs prefs,
     ContentMode mode,
@@ -3096,7 +3096,7 @@ class _SearchFilterSheet extends StatelessWidget {
   /// [ZangetsuSourcesScreen], same as it always has.
   void _openSourcesSheet(
     BuildContext filterSheetContext,
-    List<({String title, List<({String id, String label, String? repo})> rows})>
+    List<({String title, List<({String id, String label, String? repo, String? icon})> rows})>
     sections,
     SearchSourcePrefs prefs,
     ContentMode mode,
@@ -3197,7 +3197,7 @@ class _SearchFilterSheet extends StatelessWidget {
     BuildContext context,
     SearchSourcePrefs prefs,
     String title,
-    List<({String id, String label, String? repo})> rows,
+    List<({String id, String label, String? repo, String? icon})> rows,
   ) {
     final ids = rows.map((r) => r.id).toList();
     final onCount = ids.where(prefs.isIncluded).length;
@@ -3234,7 +3234,7 @@ class _SearchFilterSheet extends StatelessWidget {
 
   Widget _sourceRow(
     SearchSourcePrefs prefs,
-    ({String id, String label, String? repo}) r,
+    ({String id, String label, String? repo, String? icon}) r,
   ) {
     final on = prefs.isIncluded(r.id);
     return InkWell(

@@ -25,6 +25,7 @@ import 'video_catalogue.dart';
 import 'match_store.dart';
 import 'playback_resolver.dart';
 import 'source_matcher.dart';
+import 'source_score_store.dart';
 import 'tmdb_catalogue.dart';
 import 'zmode_ids.dart';
 import 'zmode_source_prefs.dart';
@@ -63,6 +64,7 @@ class MetadataRepository implements CatalogueRepository {
          prefs: sourcePrefs,
          health: health ?? (sl.isRegistered<SourceHealthStore>() ? sl<SourceHealthStore>() : SourceHealthStore()),
          candidates: candidates ?? _defaultCandidates(sources),
+         scores: sl.isRegistered<SourceScoreStore>() ? sl<SourceScoreStore>() : null,
        ) {
     _bindPlayback();
   }
@@ -109,6 +111,16 @@ class MetadataRepository implements CatalogueRepository {
   /// prefetched after each successful home fetch.
   final Map<ZKind, List<HomeSection>> _homeCache = {};
 
+  /// Home loads that are running RIGHT NOW, one per kind.
+  ///
+  /// [_homeCache] is only filled when a load finishes, so anything asking
+  /// during those seconds saw an empty cache and started its own copy — a
+  /// quarter of home loads in the field were duplicates of one already in
+  /// flight, and every slowest load had one. Twenty-one call sites reach this
+  /// (boot steps, refresh, retry buttons); only two of them check whether a
+  /// load is already running, so the guard belongs here, where they all meet.
+  final Map<ZKind, Future<List<HomeSection>>> _homeInFlight = {};
+
   /// Optional hook when anime/movie home rows land in [_homeCache] — wired in
   /// [initDependencies] so [HomeCubit] can mirror them for instant toggles.
   void Function(ZKind kind, List<HomeSection> rows)? onStreamHomeCached;
@@ -127,7 +139,7 @@ class MetadataRepository implements CatalogueRepository {
     final sw = Stopwatch()..start();
     debugPrint('[metadata] warm · kind=$kind · fetch');
     final rows = await _homeForKind(kind);
-    _homeCache[kind] = rows;
+    if (!_homeFailed(rows)) _homeCache[kind] = rows; // same rule as home()
     debugPrint(
       '[metadata] warm · kind=$kind · ${rows.length} rows · ${sw.elapsedMilliseconds}ms',
     );
@@ -376,6 +388,9 @@ class MetadataRepository implements CatalogueRepository {
   // ── browsing ─────────────────────────────────────────────────────────────
 
   @override
+  // Stays `async` on purpose. Dropping it would let a synchronous throw from
+  // [_browseKind] escape to the caller instead of arriving as a failed future,
+  // which is a different contract than every caller was written against.
   Future<List<HomeSection>> home({
     String category = 'sub',
     String? sourceId,
@@ -386,16 +401,39 @@ class MetadataRepository implements CatalogueRepository {
       debugPrint('[metadata] home · kind=$k · cache (${cached.length} rows)');
       return cached;
     }
+    final running = _homeInFlight[k];
+    if (running != null) {
+      debugPrint('[metadata] home · kind=$k · joined the load already running');
+      return running;
+    }
+    final started = _loadHome(k);
+    _homeInFlight[k] = started;
+    return started;
+  }
+
+  Future<List<HomeSection>> _loadHome(ZKind k) async {
     final sw = Stopwatch()..start();
     debugPrint('[metadata] home · kind=$k · fetch');
-    final rows = await _homeForKind(k);
-    _homeCache[k] = rows;
-    debugPrint(
-      '[metadata] home · kind=$k · ${rows.length} rows · ${sw.elapsedMilliseconds}ms',
-    );
-    _syncHomeCubitStreamCache(k, rows);
-    _prefetchStreamingCounterpart(k);
-    return rows;
+    try {
+      final rows = await _homeForKind(k);
+      // No rows is a FAILURE, not an answer — [_homeFailed] already says so,
+      // it just wasn't consulted here. Caching it stuck the user on an empty
+      // Home for the rest of the session: going back to Home re-read the
+      // cached emptiness instead of retrying, and a quarter of the cache hits
+      // in the field were serving zero rows. HomeCubit already refuses to
+      // remember empty rows for the same reason.
+      if (!_homeFailed(rows)) _homeCache[k] = rows;
+      debugPrint(
+        '[metadata] home · kind=$k · ${rows.length} rows · ${sw.elapsedMilliseconds}ms',
+      );
+      _syncHomeCubitStreamCache(k, rows);
+      _prefetchStreamingCounterpart(k);
+      return rows;
+    } finally {
+      // Always, including on a throw: the slot must not outlive the load, or
+      // every later caller joins a future that already failed.
+      _homeInFlight.remove(k);
+    }
   }
 
   static bool _homeFailed(List<HomeSection> rows) => rows.isEmpty;
@@ -421,7 +459,7 @@ class MetadataRepository implements CatalogueRepository {
       final sw = Stopwatch()..start();
       try {
         final rows = await _homeForKind(other);
-        _homeCache[other] = rows;
+        if (!_homeFailed(rows)) _homeCache[other] = rows; // same rule as home()
         _syncHomeCubitStreamCache(other, rows);
         debugPrint(
           '[metadata] prefetch · kind=$other · ${rows.length} rows · ${sw.elapsedMilliseconds}ms',

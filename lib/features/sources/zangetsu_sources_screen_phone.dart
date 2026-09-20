@@ -441,10 +441,19 @@ class _ZInstalledRow extends StatelessWidget {
     final meta = hasUpdate
         ? 'repo • v${entry.version} → v$newVersion'
         : '${bundled ? 'built-in' : 'repo'} • v${entry.version}';
+    // Manifest first, install-time snapshot as the offline fallback.
+    final saved = entry.logoUrl;
+    final logo = state.manifestLogos[_key] ?? (saved.isEmpty ? null : saved);
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 6, 8),
       child: Row(
         children: [
+          // The repo manifest's `logo`, with the install-time snapshot as the
+          // offline fallback. Letter tile when neither has one.
+          Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: SourceIconTile(name: name, icon: logo),
+          ),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -841,6 +850,14 @@ class _ZRepoSourceRow extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 10, 12, 10),
       child: Row(
         children: [
+          // The manifest may declare a `logo`, relative to itself.
+          Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: SourceIconTile(
+              name: source.name,
+              icon: ProviderReposRegistry.resolveLogoUrl(repo, source),
+            ),
+          ),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,

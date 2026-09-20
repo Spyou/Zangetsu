@@ -434,21 +434,38 @@ class _CsScreenTvSourceRow extends StatelessWidget {
               child: ExcludeSemantics(
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(0, 4, 8, 4),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  child: Row(
                     children: [
-                      Text(
-                        source.displayName,
-                        style: AppText.headline.copyWith(
-                          fontSize: 15,
-                          color: nameColor,
-                          fontWeight: active ? FontWeight.w600 : null,
+                      Padding(
+                        padding: const EdgeInsets.only(right: 14),
+                        child: SourceIconTile(
+                          size: 38,
+                          name: source.displayName,
+                          icon: cloudStreamIconUrls()[source.sourceId],
                         ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
                       ),
-                      const SizedBox(height: 2),
-                      Text(context.l10n.cloudstream, style: AppText.caption),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              source.displayName,
+                              style: AppText.headline.copyWith(
+                                fontSize: 15,
+                                color: nameColor,
+                                fontWeight: active ? FontWeight.w600 : null,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              context.l10n.cloudstream,
+                              style: AppText.caption,
+                            ),
+                          ],
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -1041,6 +1058,14 @@ class _CsScreenTvPluginRowState extends State<_CsScreenTvPluginRow> {
       padding: const EdgeInsets.fromLTRB(16, 8, 12, 8),
       child: Row(
         children: [
+          Padding(
+            padding: const EdgeInsets.only(right: 14),
+            child: SourceIconTile(
+              size: 38,
+              name: widget.plugin.name,
+              icon: widget.plugin.iconUrl,
+            ),
+          ),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,

@@ -6,6 +6,7 @@ import '../../core/mode/content_mode_cubit.dart';
 import '../../core/models/media_item.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
+import '../../core/tracker/tracker_item_url.dart';
 import '../../l10n/l10n.dart';
 import '../../core/tracker/tracker.dart';
 import '../../core/tracker/tracker_hub.dart';
@@ -42,7 +43,15 @@ class MyListScreenTv extends StatelessWidget {
     cubit.reload();
   }
 
+  /// TV used to send EVERY tracker entry to a search, even the ones carrying
+  /// the catalogue id that opens Detail directly. Same rule as the phone now:
+  /// open it if we can identify it, search only when we cannot.
   void _openTrackerItem(BuildContext context, MediaItem stub) {
+    final item = playableTrackerItem(stub);
+    if (item != null) {
+      _openOwnItem(context, item);
+      return;
+    }
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => SearchScreen(initialQuery: stub.title),

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../core/di/injector.dart';
+import '../../core/ui/source_icon_tile.dart';
 import '../../core/platform/apple_tv.dart';
 import '../../core/provider/provider_manager.dart';
 import '../../core/provider/provider_registry.dart';
@@ -53,11 +54,12 @@ class TvSourcePicker extends StatelessWidget {
     final rows = <_PickerRow>[];
 
     void addSection(
-        String header, List<({String id, String label, String? repo})> sources) {
+        String header,
+        List<({String id, String label, String? repo, String? icon})> sources) {
       if (sources.isEmpty) return;
       rows.add(_PickerRow.header(header));
       for (final s in sources) {
-        rows.add(_PickerRow.source(s.id, s.label, s.repo));
+        rows.add(_PickerRow.source(s.id, s.label, s.repo, s.icon));
       }
     }
 
@@ -179,6 +181,14 @@ class TvSourcePicker extends StatelessWidget {
                           horizontal: 24, vertical: 14),
                       child: Row(
                         children: [
+                          Padding(
+                            padding: const EdgeInsets.only(right: 14),
+                            child: SourceIconTile(
+                              size: 38,
+                              name: sourceRowName(row.label),
+                              icon: row.icon,
+                            ),
+                          ),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -249,18 +259,32 @@ class _PickerRow {
     required this.isHeader,
     this.sourceId,
     this.repo,
+    this.icon,
   });
 
   factory _PickerRow.header(String label) =>
       _PickerRow._(label: label, isHeader: true);
 
-  factory _PickerRow.source(String id, String label, String? repo) =>
-      _PickerRow._(label: label, isHeader: false, sourceId: id, repo: repo);
+  factory _PickerRow.source(
+    String id,
+    String label,
+    String? repo,
+    String? icon,
+  ) => _PickerRow._(
+    label: label,
+    isHeader: false,
+    sourceId: id,
+    repo: repo,
+    icon: icon,
+  );
 
   final String label;
   final bool isHeader;
 
   /// Non-null for source rows, null for headers.
   final String? sourceId;
+
+  /// The source's logo, when its catalogue or repo index named one.
+  final String? icon;
   final String? repo;
 }

@@ -6,6 +6,8 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:hive/hive.dart';
 
 import '../../core/aniyomi/aniyomi_extension_service.dart';
+import '../../core/hive/source_icon_store.dart';
+import '../../core/ui/source_icon_tile.dart';
 import '../../core/aniyomi/aniyomi_provider.dart';
 import '../../core/aniyomi/aniyomi_repo.dart';
 import '../../core/aniyomi/aniyomi_update.dart';

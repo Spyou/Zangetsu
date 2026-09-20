@@ -51,6 +51,26 @@ class SourcesState extends Equatable {
         ProviderRegistry.providerKey(repo.url, s.id): s.version,
   };
 
+  /// The logo each tracked manifest advertises, per composite key. Absent when
+  /// a manifest declares none — the row keeps its letter tile.
+  ///
+  /// Read from the manifest, not from [ProviderRegistryEntry.logoUrl], because
+  /// that snapshot is only written at install time: a source installed before
+  /// the field existed would otherwise never get an icon. Built the same way
+  /// as [manifestVersions], off the repos already parsed into this state.
+  Map<String, String> get manifestLogos {
+    final out = <String, String>{};
+    for (final repo in repos) {
+      for (final s in repo.sources) {
+        final url = ProviderReposRegistry.resolveLogoUrl(repo, s);
+        if (url != null && url.isNotEmpty) {
+          out[ProviderRegistry.providerKey(repo.url, s.id)] = url;
+        }
+      }
+    }
+    return out;
+  }
+
   /// Whether the installed source at [key] has a newer version available in
   /// its repo's current manifest.
   bool hasUpdate(String key) {

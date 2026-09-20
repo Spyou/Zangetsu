@@ -390,6 +390,37 @@ class AppLocalizationsIt extends AppLocalizations {
   String get activeSource => 'Sorgente attiva';
 
   @override
+  String get streamingServices => 'Streaming Services';
+
+  @override
+  String get streamingServicesSubtitle =>
+      'Browse what each service carries where you are';
+
+  @override
+  String get streamingServicesEmpty => 'No services listed for this country';
+
+  @override
+  String get streamingServicesMetadataNote =>
+      'Browsing only — titles still play through your own sources';
+
+  @override
+  String get pinAsHomeRow => 'Pin as home row';
+
+  @override
+  String get unpinHomeRow => 'Unpin';
+
+  @override
+  String pinLimitReached(int count) {
+    return 'You can pin up to $count services';
+  }
+
+  @override
+  String get streamingRegion => 'Streaming region';
+
+  @override
+  String get streamingRegionSubtitle => 'Which country\'s catalogue to show';
+
+  @override
   String get sourceHealth => 'Stato delle sorgenti';
 
   @override
@@ -2661,7 +2692,13 @@ class AppLocalizationsIt extends AppLocalizations {
   String get seeAll2 => 'Vedi tutto';
 
   @override
+  String get webView => 'WebView';
+
+  @override
   String get openInBrowser => 'Apri nel browser';
+
+  @override
+  String get markAsRead => 'Mark as read';
 
   @override
   String get copyLink => 'Copia link';
@@ -2909,6 +2946,24 @@ class AppLocalizationsIt extends AppLocalizations {
   @override
   String markedEpisodesAsWatched(int count) {
     return 'Sono stati contrassegnati $count episodi come visti.';
+  }
+
+  @override
+  String get openInBrowserSubtitle =>
+      'Read this chapter on the source\'s own site';
+
+  @override
+  String get readingSettings => 'Reading settings';
+
+  @override
+  String get markedAsRead => 'Marked as read';
+
+  @override
+  String get markedUnread => 'Marked unread';
+
+  @override
+  String markedChaptersAsRead(int count) {
+    return 'Marked $count chapters as read';
   }
 
   @override
@@ -5038,6 +5093,9 @@ class AppLocalizationsIt extends AppLocalizations {
 
   @override
   String get noSourceHasThisYet => 'No source has this yet';
+
+  @override
+  String get checkedTopSources => 'Checked your top sources — none had this';
 
   @override
   String get pickTheRightTitle => 'Pick the right title';

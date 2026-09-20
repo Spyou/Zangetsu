@@ -24,10 +24,17 @@
          (no PredictiveBackPageTransitionsBuilder), so this just uses the legacy
          back gesture, which works everywhere. Re-enabling needs both the theme
          transition builder AND a re-test on that device. -->
+    <!-- android:icon below is the brand mark, NOT whichever launcher icon is
+         selected. That one value is what the system shows in the installer,
+         Settings → Apps, notifications, recents and share sheets, and it cannot
+         follow the user's pick: Android resolves it at install time, while the
+         <activity-alias> icons further down only ever affect the home screen.
+         So it names the current mark and stays there — someone who picks Katana
+         or Classic changes their home screen, not this. -->
     <application
         android:label="Zangetsu"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher"
+        android:icon="@mipmap/ic_launcher_crescent"
         android:banner="@drawable/tv_banner"
         android:networkSecurityConfig="@xml/network_security_config"
         android:enableOnBackInvokedCallback="false">
@@ -94,6 +101,7 @@
                 <data android:scheme="zangetsu" android:host="anilist-auth"/>
                 <data android:scheme="zangetsu" android:host="mal-auth"/>
                 <data android:scheme="zangetsu" android:host="simkl-auth"/>
+                <data android:scheme="zangetsu" android:host="mangabaka-auth"/>
                 <!-- Shared-title deep link: zangetsu://open?d=…&t=… (see OpenLinkService). -->
                 <data android:scheme="zangetsu" android:host="open"/>
                 <data android:scheme="zangetsu" android:host="room"/>
@@ -135,6 +143,18 @@
              Renaming or removing an alias orphans it on users' home screens, so
              these names are permanent once shipped. -->
         <activity-alias
+            android:name=".MainActivityCrescent"
+            android:targetActivity=".MainActivity"
+            android:exported="true"
+            android:enabled="true"
+            android:icon="@mipmap/ic_launcher_crescent"
+            android:label="Zangetsu">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
             android:name=".MainActivityDefault"
             android:targetActivity=".MainActivity"
             android:exported="true"
@@ -150,7 +170,7 @@
             android:name=".MainActivityClassic"
             android:targetActivity=".MainActivity"
             android:exported="true"
-            android:enabled="true"
+            android:enabled="false"
             android:icon="@mipmap/ic_launcher_classic"
             android:label="Zangetsu">
             <intent-filter>

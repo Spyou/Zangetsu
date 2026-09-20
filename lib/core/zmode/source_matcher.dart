@@ -121,30 +121,78 @@ class SourceMatcher {
       return null;
     }
 
-    List<MediaItem> results;
-    try {
-      results = await _sources.search(title, sourceId: sourceId);
-    } catch (e) {
-      // Mihon/Aniyomi/LNReader report a challenge by THROWING, and this catch
-      // used to drop it on the floor — the source just vanished from matching
-      // with nothing recording why, and the solve action had nothing to gate
-      // on. Record it exactly as a suppressed JS search does, so the shield
-      // can be shown for the sources that actually need it and only those.
-      if (e is CloudflareRequiredException) {
-        final host = Uri.tryParse(e.url)?.host ?? '';
-        if (host.isNotEmpty) {
-          CfSolveNeeded.needsSolve(host, e.url, sourceId: sourceId);
+    // Searching one name is how a source that HAS the show still misses it.
+    //
+    // The catalogue hands over two: the romaji name and the English one. This
+    // asked only for the first, so a source indexing by the other came back
+    // with nothing and was recorded as not having the title at all. Measured
+    // on a real device: `animecube -> 0 results for "Otome Kaijuu Caraméliser"`
+    // — a show that source lists as "Kaiju Girl Caramelise".
+    //
+    // The second name is only asked for when the first FINDS NOTHING USABLE,
+    // so a title that already resolves costs exactly what it did before. The
+    // extra request is spent only where the alternative was a guaranteed miss.
+    Future<List<MediaItem>?> searchFor(String q) async {
+      try {
+        return await _sources.search(q, sourceId: sourceId);
+      } catch (e) {
+        // Mihon/Aniyomi/LNReader report a challenge by THROWING, and this
+        // catch used to drop it on the floor — the source just vanished from
+        // matching with nothing recording why, and the solve action had
+        // nothing to gate on. Record it exactly as a suppressed JS search
+        // does, so the shield can be shown for the sources that actually need
+        // it and only those.
+        if (e is CloudflareRequiredException) {
+          final host = Uri.tryParse(e.url)?.host ?? '';
+          if (host.isNotEmpty) {
+            CfSolveNeeded.needsSolve(host, e.url, sourceId: sourceId);
+          }
         }
+        debugPrint('[zmode] $sourceId search THREW for "$q": $e');
+        return null;
       }
-      debugPrint('[zmode] $sourceId search THREW for "$title": $e');
-      return null;
     }
+
+    var results = await searchFor(title);
+    if (results == null) return null;
     // A source that searched fine but title-missed and one that came back
     // empty because it was blocked both just vanish from matching, so say
     // which happened — otherwise "no source has this" is undebuggable.
     debugPrint('[zmode] $sourceId -> ${results.length} results for "$title"');
-    final hit = bestTitleMatch(results, title, altTitle: altTitle, wantedMalId: malId);
-    if (hit == null || !titleMatches(hit, title, altTitle: altTitle, wantedMalId: malId)) {
+    var hit = bestTitleMatch(results, title, altTitle: altTitle, wantedMalId: malId);
+    var matched =
+        hit != null &&
+        titleMatches(hit, title, altTitle: altTitle, wantedMalId: malId);
+
+    // Only worth a second request when there IS another name and it is
+    // actually different — "One Piece" twice is two round trips for one
+    // answer, and normalizeTitle is the same comparison the acceptance check
+    // uses, so "Re:Zero" and "rezero" count as the same name here too.
+    final alt = altTitle?.trim() ?? '';
+    if (!matched &&
+        alt.isNotEmpty &&
+        normalizeTitle(alt) != normalizeTitle(title)) {
+      debugPrint(
+        '[zmode] $sourceId · nothing for "$title", trying "$alt"',
+      );
+      final second = await searchFor(alt);
+      if (second == null) return null;
+      debugPrint('[zmode] $sourceId -> ${second.length} results for "$alt"');
+      final altHit = bestTitleMatch(
+        second,
+        title,
+        altTitle: altTitle,
+        wantedMalId: malId,
+      );
+      if (altHit != null &&
+          titleMatches(altHit, title, altTitle: altTitle, wantedMalId: malId)) {
+        results = second;
+        hit = altHit;
+        matched = true;
+      }
+    }
+
+    if (!matched) {
       // Remember the no, so the next open of this title skips this source
       // instead of paying for the same search again (see [MatchStore.missTtl])
       // — but "couldn't ask" is not "doesn't have it". A source whose search
@@ -159,12 +207,16 @@ class SourceMatcher {
       );
       return null;
     }
-    debugPrint('[zmode] $sourceId MATCHED "$title" -> "${hit.title}"');
+    // `matched` is only true when `hit` is non-null, but `hit` is reassignable
+    // now (the second search can replace it), so it does not promote — pin it
+    // to a final here rather than sprinkling `!` through the constructor.
+    final found = hit!;
+    debugPrint('[zmode] $sourceId MATCHED "$title" -> "${found.title}"');
     final m = SourceMatch(
-      sourceId: hit.sourceId,
-      showUrl: hit.url,
-      showId: hit.id,
-      showTitle: hit.title,
+      sourceId: found.sourceId,
+      showUrl: found.url,
+      showId: found.id,
+      showTitle: found.title,
       pinned: false,
     );
     await _store.save(c, m);

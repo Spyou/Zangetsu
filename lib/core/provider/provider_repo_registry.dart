@@ -280,5 +280,18 @@ class ProviderReposRegistry {
     return uri.replace(path: '/$dir${source.file}').toString();
   }
 
+  /// A source's optional `logo`, joined the same way [resolveFileUrl] joins
+  /// `file`. Null when the manifest declares none.
+  static String? resolveLogoUrl(ProviderRepo repo, RepoSource source) {
+    final logo = source.logo;
+    if (logo == null || logo.isEmpty) return null;
+    if (logo.startsWith('http://') || logo.startsWith('https://')) return logo;
+    final uri = Uri.parse(repo.url);
+    final segs = List<String>.from(uri.pathSegments);
+    if (segs.isNotEmpty) segs.removeLast(); // drop `index.json`
+    final dir = segs.isEmpty ? '' : '${segs.join('/')}/';
+    return uri.replace(path: '/$dir$logo').toString();
+  }
+
   Stream<BoxEvent> watch() => _box.watch();
 }

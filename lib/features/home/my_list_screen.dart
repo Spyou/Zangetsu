@@ -4,9 +4,8 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../core/tracker/tracker_item_url.dart';
 import '../../core/zmode/metadata_provider_prefs.dart';
-import '../../core/zmode/zmode_ids.dart';
-import '../../core/models/provider_info.dart';
 import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
 import '../../core/mode/content_mode.dart';
@@ -1063,31 +1062,23 @@ class _MyListViewState extends State<_MyListView> {
   /// Open a tracker entry.
   ///
   /// The stub carries no provider, but it does carry the id the metadata
-  /// catalogue is keyed by — a MAL id from AniList/MAL, a TMDB one from Simkl
-  /// — which is the same identity a `zm://` title uses. So the title can be
-  /// opened directly instead of dumping you into a search for its own name.
-  /// Search stays the fallback for an entry with no id to go on.
+  /// catalogue is keyed by, which is the same identity a `zm://` title uses.
+  /// So the title opens directly instead of dumping you into a search for its
+  /// own name. Search stays the fallback for an entry with no id to go on.
+  ///
+  /// This goes through the shared [playableTrackerItem] on purpose. A local
+  /// copy of that logic used to live here and fell behind it: the copy knew
+  /// only MAL and TMDB ids, so every AniList manga without a MAL id — which is
+  /// a lot of them — took the search fallback despite having an `al:` id the
+  /// catalogue resolves perfectly well.
   void _openTrackerItem(BuildContext context, MediaItem stub) {
-    final c = _canonicalOf(stub);
-    if (c != null) {
-      _openItem(
-        context,
-        prefer: _providerOf(widget.pinnedTracker),
-        MediaItem(
-          id: c.id,
-          title: stub.title,
-          englishTitle: stub.englishTitle,
-          cover: stub.cover,
-          url: ZmodeIds.showUrl(c),
-          type: stub.type,
-          sourceId: ZmodeIds.sourceId,
-          malId: stub.malId,
-          tmdbId: stub.tmdbId,
-          tmdbIsTv: stub.tmdbIsTv,
-          // Saved from here, it stays this tracker's title.
-          savedFrom: widget.pinnedTracker?.displayName,
-        ),
-      );
+    final item = playableTrackerItem(
+      stub,
+      // Saved from here, it stays this tracker's title.
+      savedFrom: widget.pinnedTracker?.displayName,
+    );
+    if (item != null) {
+      _openItem(context, prefer: _providerOf(widget.pinnedTracker), item);
       return;
     }
     Navigator.of(context).push(
@@ -1095,23 +1086,6 @@ class _MyListViewState extends State<_MyListView> {
         builder: (_) => SearchScreen(initialQuery: stub.title),
       ),
     );
-  }
-
-  /// The metadata identity of a tracker stub, or null when it has none.
-  ZCanonical? _canonicalOf(MediaItem stub) {
-    final mal = stub.malId;
-    if (mal != null) {
-      return ZCanonical(switch (stub.type) {
-        ProviderType.manga => ZKind.manga,
-        ProviderType.novel => ZKind.novel,
-        _ => ZKind.anime,
-      }, 'mal:$mal');
-    }
-    final tmdb = stub.tmdbId;
-    if (tmdb != null) {
-      return ZCanonical(stub.tmdbIsTv ? ZKind.tv : ZKind.movie, 'tmdb:$tmdb');
-    }
-    return null;
   }
 
   /// How many of [entries] — already narrowed to the kind on screen — are in

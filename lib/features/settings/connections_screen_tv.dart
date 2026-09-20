@@ -5,6 +5,7 @@ import '../../core/di/injector.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/tracker/mal_service.dart';
+import '../../core/tracker/mangabaka_service.dart';
 import '../../core/tracker/simkl_service.dart';
 import '../../core/tracker/tracker.dart';
 import '../../core/tv/tv_back_button.dart';
@@ -26,6 +27,7 @@ class _ConnectionsScreenTvState extends State<ConnectionsScreenTv> {
     (id: 'anilist', label: 'AniList', t: sl<AniListService>()),
     (id: 'mal', label: 'MyAnimeList', t: sl<MalService>()),
     (id: 'simkl', label: 'Simkl', t: sl<SimklService>()),
+    (id: 'mangabaka', label: 'MangaBaka', t: sl<MangaBakaService>()),
   ];
 
   Future<void> _connect(String id) async {

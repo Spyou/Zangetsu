@@ -63,6 +63,15 @@ String layoutKeyFor({
   return '$provider::${browseKind.name}';
 }
 
+/// Whether the streaming-services rail belongs on this layout.
+///
+/// TMDB only. `with_watch_providers` is a TMDB discover parameter, and the
+/// rail's rows page through the ACTIVE video catalogue — so on a Simkl layout
+/// the rail appeared but every logo opened an empty grid. Gating on the kind
+/// alone was not enough: TMDB and Simkl share [ZKind.movie], and only the
+/// layout key tells them apart.
+bool streamingRailForLayout(String layoutKey) => layoutKey.startsWith('tmdb::');
+
 /// Whether a Z Mode layout can have tracker rows. Reading works on AniList
 /// and MAL; anime additionally so; movies/series only Simkl. TMDB never does
 /// (there is no TMDB account in the app to read a library from), and a
@@ -97,8 +106,10 @@ List<String> availableRowIds(
   List<HomeSection> rowSections, {
   required bool withTrackerRows,
   ZKind? kind,
+  bool withStreamingRail = false,
 }) => [
   localContinueRowId,
+  if (withStreamingRail) streamingServicesRowId,
   if (withTrackerRows) ...trackerRowIdsFor(kind),
   for (final s in rowSections) 'section:${s.title}',
 ];
@@ -111,8 +122,12 @@ List<String> defaultLayout(
   List<String> sectionIds, {
   required bool withTrackerRows,
   ZKind? kind,
+  bool withStreamingRail = false,
 }) => [
   localContinueRowId,
+  // Shipped ON: it is the point of the feature, and it self-hides when the
+  // region lists no services.
+  if (withStreamingRail) streamingServicesRowId,
   if (withTrackerRows)
     for (final id in trackerRowIdsFor(kind)) '!$id',
   ...sectionIds,
@@ -124,28 +139,44 @@ List<String> defaultLayout(
 ///
 /// * unknown ids are dropped (renamed/removed catalogue rows),
 /// * duplicates collapse to the first occurrence,
-/// * missing ids re-enter at their DEFAULT visibility, structural rows
-///   (local/tracker) at the top, new sections at the end — so an upgrade adds
-///   rows without ever reshuffling the ones the user arranged.
+/// * missing ids re-enter at their DEFAULT visibility — a structural row in
+///   the slot [available] gives it relative to the rows already there, new
+///   sections at the end — so an upgrade adds rows without ever reshuffling
+///   the ones the user arranged.
+///
+/// Structural rows used to re-enter at the very top. That was invisible while
+/// every late-added one was hidden by default (the tracker rows), but a
+/// VISIBLE new row landed above the row the user thinks of as first. Slotting
+/// it after its predecessor puts it where [defaultLayout] says it belongs.
 List<HomeRowEntry> sanitizeLayout(List<String> stored, List<String> available) {
   bool defaultHidden(String id) => isTrackerRowId(id);
   final seen = <String>{};
-  var kept = <HomeRowEntry>[];
+  final out = <HomeRowEntry>[];
   for (final raw in stored) {
     final e = parseRowEntry(raw);
     if (!available.contains(e.id) || !seen.add(e.id)) continue;
-    kept.add(e);
+    out.add(e);
   }
-  final missing = available.where((id) => !seen.contains(id));
-  return [
-    // Structural rows re-enter at the top, in default order.
-    for (final id in missing.where((id) => !id.startsWith('section:')))
-      HomeRowEntry(id, defaultHidden(id)),
-    ...kept,
-    // New sections re-enter at the end, visible.
-    for (final id in missing.where((id) => id.startsWith('section:')))
-      HomeRowEntry(id, defaultHidden(id)),
-  ];
+  final missing = available.where((id) => !seen.contains(id)).toList();
+  // Structural rows first, in `available` order, each slotted after the last
+  // row already present that precedes it there. Nothing to anchor to (an empty
+  // or all-sections layout) means the top, which is the old behaviour.
+  for (final id in missing.where((id) => !id.startsWith('section:'))) {
+    final precede = available.take(available.indexOf(id)).toSet();
+    var at = 0;
+    for (var i = out.length - 1; i >= 0; i--) {
+      if (precede.contains(out[i].id)) {
+        at = i + 1;
+        break;
+      }
+    }
+    out.insert(at, HomeRowEntry(id, defaultHidden(id)));
+  }
+  // New sections re-enter at the end, visible.
+  for (final id in missing.where((id) => id.startsWith('section:'))) {
+    out.add(HomeRowEntry(id, defaultHidden(id)));
+  }
+  return out;
 }
 
 /// Emit the rows a screen renders: the layout's visible entries, in order.
@@ -167,6 +198,8 @@ List<HomeRow> mergeHomeRows({
     if (e.hidden) continue;
     if (e.id == localContinueRowId) {
       out.add(const LocalContinueHomeRow());
+    } else if (e.id == streamingServicesRowId) {
+      out.add(const StreamingServicesHomeRow());
     } else if (isTrackerRowId(e.id)) {
       final r = trackersById[e.id];
       if (r != null) out.add(r); // empty/offline → dropped silently

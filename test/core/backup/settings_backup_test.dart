@@ -57,6 +57,7 @@ void _driftGuard() {
       'anilist': 'oauth token',
       'mal': 'oauth token',
       'simkl': 'oauth token',
+      'mangabaka': 'oauth token',
       'discord': 'rpc token',
       'auth_cache': 'session cache',
       // Device-specific: holds a SAF content:// URI that is meaningless (and
@@ -91,7 +92,10 @@ void _driftGuard() {
       'episode_meta': 'cache',
       'cf_clearance': 'cache',
       'genre_catalog': 'cache',
+      // Icon URLs picked back up the next time a repo index is read.
+      'source_icons': 'cache',
       'source_health': 'transient',
+      'zmode_source_score': 'derived play counts, rebuilt from use',
       'updates': 'transient',
       'announcements': 'transient',
       'search_history': 'transient',

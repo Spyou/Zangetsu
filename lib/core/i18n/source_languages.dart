@@ -126,15 +126,79 @@ String sourceLangBase(String lang) {
 
 /// Whether an entry with this [lang] should show under the [enabled] set.
 ///
-/// Multi-language (`all`) and blank entries always show. A language the picker
-/// can't offer (not in [kSourceLanguages]) also always shows — otherwise it'd
-/// be permanently hidden with no toggle to bring it back. Everything else shows
-/// only when its base code is enabled.
-bool sourceLangVisible(String lang, Set<String> enabled) {
+/// Multi-language (`all`) and blank entries always show.
+///
+/// [offered] is the set of codes the language picker can actually toggle. A
+/// language outside it always shows — hiding one with no toggle would strand
+/// the source with no way to bring it back.
+///
+/// Pass [offered] wherever the full set of languages IS known (your installed
+/// sources, a repo index you just fetched). Leave it null and the fallback is
+/// [kSourceLanguages], a hand-written list — which is where this went wrong:
+/// 41 codes in the real Mihon catalogue aren't in it (`tl`, `gl`, `mo`, `gn`,
+/// `other`…), so MangaDot and friends ignored the filter completely. The list
+/// had already been extended once for MangaDex; it is not a list that can ever
+/// be finished, which is why callers should supply what they actually have.
+bool sourceLangVisible(
+  String lang,
+  Set<String> enabled, {
+  Set<String>? offered,
+}) {
   final base = sourceLangBase(lang);
   if (base.isEmpty) return true;
-  if (!kSourceLanguages.containsKey(base)) return true;
+  final toggleable = offered ?? kSourceLanguages.keys.toSet();
+  if (!toggleable.contains(base)) return true;
   return enabled.contains(base);
+}
+
+/// Every base language code present in [items] — what the picker must offer so
+/// that [sourceLangVisible] is allowed to filter them.
+Set<String> presentLangCodes<T>(
+  Iterable<T> items,
+  String Function(T) langOf,
+) {
+  final out = <String>{};
+  for (final i in items) {
+    final base = sourceLangBase(langOf(i));
+    // 'all' is not a language you can switch off.
+    if (base.isEmpty || base == 'all') continue;
+    out.add(base);
+  }
+  return out;
+}
+
+/// Narrows a list of INSTALLED sources to [enabled], without ever hiding an
+/// extension outright.
+///
+/// The installed list is also where you uninstall, open settings and sign in,
+/// so a source filtered out of sight is one you can no longer manage. An
+/// extension whose every language is filtered out therefore keeps all of its
+/// rows instead of vanishing — you still see it, you just don't get 60 rows of
+/// languages you don't read.
+///
+/// Grouped by [pkgOf] because that is what an "extension" is: MangaDex is one
+/// package yielding one source per language.
+List<T> visibleInstalledSources<T>(
+  Iterable<T> items,
+  Set<String> enabled, {
+  required String Function(T) pkgOf,
+  required String Function(T) langOf,
+}) {
+  // What's installed IS the full set here, so every one of these languages is
+  // offered in the picker and therefore fair game to filter.
+  final offered = presentLangCodes(items, langOf);
+  final byPkg = <String, List<T>>{};
+  for (final i in items) {
+    (byPkg[pkgOf(i)] ??= <T>[]).add(i);
+  }
+  final out = <T>[];
+  for (final group in byPkg.values) {
+    final keep = group
+        .where((i) => sourceLangVisible(langOf(i), enabled, offered: offered))
+        .toList();
+    out.addAll(keep.isEmpty ? group : keep);
+  }
+  return out;
 }
 
 /// Filterable language codes for the picker, English first then alphabetical by

@@ -164,9 +164,11 @@ class _HomeRowsScreenState extends State<HomeRowsScreen> {
           sectionIds,
           withTrackerRows: _withTrackerRows,
           kind: _kind,
+          withStreamingRail: streamingRailForLayout(_layoutKey),
         );
     _layout = sanitizeLayout(stored, [
       localContinueRowId,
+      if (streamingRailForLayout(_layoutKey)) streamingServicesRowId,
       if (_withTrackerRows) ...trackerRowIdsFor(_kind),
       ...sectionIds,
     ]);
@@ -471,6 +473,7 @@ class _HomeRowsScreenState extends State<HomeRowsScreen> {
       return l10n.homeRowTrackerContinue(_trackerName);
     }
     if (id == newEpisodesRowId) return l10n.homeRowNewEpisodes;
+    if (id == streamingServicesRowId) return l10n.streamingServices;
     if (id.startsWith('section:')) return id.substring('section:'.length);
     final status = WatchStatus.values.asNameMap()[id.substring(
       'tracker:'.length,

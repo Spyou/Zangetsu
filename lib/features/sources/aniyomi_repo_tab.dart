@@ -3,6 +3,7 @@ import 'package:get_it/get_it.dart';
 import 'package:hive/hive.dart';
 
 import '../../core/aniyomi/aniyomi_extension_service.dart';
+import '../../core/ui/source_icon_tile.dart';
 import '../../core/aniyomi/aniyomi_provider.dart';
 import '../../core/aniyomi/aniyomi_repo.dart';
 import '../../core/aniyomi/aniyomi_update.dart';
@@ -714,6 +715,13 @@ class _AniyomiExtensionRowState extends State<_AniyomiExtensionRow> {
 
   Future<void> _install() async {
     final messenger = ScaffoldMessenger.of(context);
+    // Captured BEFORE the download, alongside the messenger and for the same
+    // reason: the row can be gone by the time it finishes — the user leaves,
+    // or the list rebuilds — and [State.context] is `_element!`, which throws
+    // once it is. Reading `context.l10n` afterwards took out the catch block
+    // too, so a failed install said nothing at all instead of saying why.
+    // The messenger is the app-level one, so it still shows the snackbar.
+    final l10n = context.l10n;
     setState(() => _busy = true);
     try {
       if (widget.installFn != null) {
@@ -729,17 +737,17 @@ class _AniyomiExtensionRowState extends State<_AniyomiExtensionRow> {
         // installFromRepo never throws — it returns an empty list on failure.
         // Treat "no source loaded" as a failure so we don't mislabel context.l10n.installed.
         if (providers.isEmpty) {
-          throw Exception(context.l10n.noSourceLoaded);
+          throw Exception(l10n.noSourceLoaded);
         }
       }
       widget.onInstalled();
       messenger
         ..clearSnackBars()
-        ..showSnackBar(SnackBar(content: Text(context.l10n.installedName(_entry.name))));
+        ..showSnackBar(SnackBar(content: Text(l10n.installedName(_entry.name))));
     } catch (e) {
       messenger
         ..clearSnackBars()
-        ..showSnackBar(SnackBar(content: Text(context.l10n.installFailed('$e'))));
+        ..showSnackBar(SnackBar(content: Text(l10n.installFailed('$e'))));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -820,6 +828,12 @@ class _AniyomiExtensionRowState extends State<_AniyomiExtensionRow> {
       padding: const EdgeInsets.fromLTRB(16, 10, 12, 10),
       child: Row(
         children: [
+          // The index names the icon, so a browse row can show the real logo
+          // before anything is installed.
+          Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: SourceIconTile(name: _entry.name, icon: _entry.iconUrl),
+          ),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,

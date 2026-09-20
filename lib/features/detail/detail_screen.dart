@@ -81,6 +81,7 @@ import '../../core/reading/chapter_nav.dart';
 import '../../core/reading/read_history.dart';
 import '../../core/reading/read_store.dart';
 import '../../core/repository/catalogue_repository.dart';
+import '../../core/repository/source_actions.dart' as source_actions;
 import '../../core/repository/source_repository.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
@@ -92,6 +93,7 @@ import '../../core/zmode/metadata_repository.dart';
 import '../../core/zmode/source_matcher.dart';
 import '../../core/ui/source_switcher.dart';
 import '../sources/zangetsu_sources_screen.dart';
+import '../../core/zmode/match_store.dart';
 import '../../core/zmode/zmode_ids.dart';
 import '../../core/aniyomi/aniyomi_image_provider.dart';
 import '../../core/mihon/mihon_image_provider.dart';
@@ -741,10 +743,34 @@ class _DetailViewState extends State<_DetailView>
     final u = widget.item.url.trim();
     if (u.isEmpty) return null;
     if (u.startsWith('http://') || u.startsWith('https://')) return u;
+    // Z Mode: the item is a metadata title (`zm://anime/mal:123`) and its
+    // sourceId is the pseudo id `zm`, so the join below found no base URL and
+    // the globe only ever said "no web page for this source". The title does
+    // live on a real source — the one Auto Resolve matched — so open that.
+    final c = ZmodeIds.parseShow(u);
+    if (c != null) return _matchedSourceWebUrl(c);
     final base = sl<SourceRepository>().baseUrlFor(widget.item.sourceId).trim();
     if (base.isEmpty) return null;
     if (base.endsWith('/') && u.startsWith('/')) return base + u.substring(1);
     return base + u;
+  }
+
+  /// The matched source's own page for a Z Mode title, or null when nothing
+  /// has matched it yet — in which case the existing snackbar is the honest
+  /// answer, because there genuinely is no page to open.
+  ///
+  /// The join is [source_actions.joinChapterUrl] rather than a second copy of
+  /// the one above: it is already tested, and it refuses a `showUrl` carrying
+  /// javascript:/file:/intent:, which matters because that value comes from a
+  /// third-party extension.
+  String? _matchedSourceWebUrl(ZCanonical c) {
+    if (!sl.isRegistered<MatchStore>()) return null;
+    final m = sl<MatchStore>().bestFor(c);
+    if (m == null) return null;
+    return source_actions.joinChapterUrl(
+      sl<SourceRepository>().baseUrlFor(m.sourceId),
+      m.showUrl,
+    );
   }
 
   bool get _subscribed =>
@@ -886,10 +912,15 @@ class _DetailViewState extends State<_DetailView>
     );
   }
 
-  /// Long-press an episode → choose where it plays, this once. Settings keeps
-  /// owning the standing default, so trying VLC on one episode doesn't quietly
-  /// rewire every later tap. Dismissing plays nothing — a long-press that
-  /// started playback on its own would be a trap.
+  /// Long-press an episode or chapter → the actions menu.
+  ///
+  /// Streaming gets the player rows too (choosing where it plays, this once —
+  /// Settings keeps owning the standing default, so trying VLC on one episode
+  /// doesn't quietly rewire every later tap). Reading gets only the marking
+  /// rows, because a chapter resolves to the reader.
+  ///
+  /// Dismissing does nothing — a long-press that started playback on its own
+  /// would be a trap.
   Future<void> _pickPlayerFor(
     List<Episode> episodes,
     int index,
@@ -905,17 +936,39 @@ class _DetailViewState extends State<_DetailView>
 
     final resume = sl<ResumeStore>();
     final hub = sl<TrackerHub>();
+    final isReading =
+        detail.type == ProviderType.novel || detail.type == ProviderType.manga;
+    final read = sl<ReadStore>();
+    // Chapters keep their read state in ReadStore, episodes in ResumeStore —
+    // and the two are keyed DIFFERENTLY. Reading keys by item.id (what the
+    // chapter list and the reader both use), video by item.url. Writing a
+    // chapter under the video key stored it somewhere nothing reads, so the
+    // row never dimmed.
+    final readShowId = widget.item.id;
+    // Same pairing as the chapter list: the real source, not `zm`.
+    final readSource = detail.sourceId.isNotEmpty
+        ? detail.sourceId
+        : widget.item.sourceId;
+    bool markedDone(Episode e) => isReading
+        ? read.finished(readSource, readShowId, e.id)
+        : (resume.get(widget.item.sourceId, widget.item.url, e.id)?.finished ??
+              false);
     final action = await showEpisodeActionSheet(
       context,
+      reading: isReading,
+      canOpenInBrowser: isReading && source_actions.canOpenInBrowser(widget.item.sourceId, ep.url),
       episodeLabel: label,
-      currentPlayerLabel: prefs.externalPlayerPackage.isEmpty
-          ? context.l10n.builtIn
-          : (prefs.externalPlayerLabel.isEmpty
-                ? context.l10n.external
-                : prefs.externalPlayerLabel),
-      isWatched:
-          resume.get(widget.item.sourceId, widget.item.url, ep.id)?.finished ??
-          false,
+      // Only meaningful for streaming, and the reading sheet has no row to
+      // put it on — so don't go asking which external player is configured
+      // for something that opens the reader.
+      currentPlayerLabel: isReading
+          ? ''
+          : (prefs.externalPlayerPackage.isEmpty
+                ? context.l10n.builtIn
+                : (prefs.externalPlayerLabel.isEmpty
+                      ? context.l10n.external
+                      : prefs.externalPlayerLabel)),
+      isWatched: markedDone(ep),
       tracksToServices: hub.anyConnected,
       // Metadata titles only, and only when there is something to survey: a
       // source-backed title already IS one source, and a row that opens an
@@ -1001,18 +1054,29 @@ class _DetailViewState extends State<_DetailView>
         if (!mounted) return;
         await _openPlayer(episodes, index, detail, category);
 
-      case EpisodeAction.toggleWatched:
-        final nowWatched =
-            !(resume
-                    .get(widget.item.sourceId, widget.item.url, ep.id)
-                    ?.finished ??
-                false);
-        await resume.setWatched(
-          widget.item.sourceId,
-          widget.item.url,
-          ep.id,
-          watched: nowWatched,
+      case EpisodeAction.openInBrowser:
+        await source_actions.openUrlInSourceWebView(
+          source_actions.chapterWebUrl(widget.item.sourceId, ep.url) ?? '',
+          title: detail.title,
         );
+
+      case EpisodeAction.toggleWatched:
+        final nowWatched = !markedDone(ep);
+        if (isReading) {
+          await read.setRead(
+            widget.item.sourceId,
+            readShowId,
+            ep.id,
+            read: nowWatched,
+          );
+        } else {
+          await resume.setWatched(
+            widget.item.sourceId,
+            widget.item.url,
+            ep.id,
+            watched: nowWatched,
+          );
+        }
         // Only forward when marking. Trackers store a high-water mark, not a
         // set, so there's no "unwatch episode 12" to send — dropping progress
         // back would be a guess at what the user wanted their list to say.
@@ -1021,9 +1085,13 @@ class _DetailViewState extends State<_DetailView>
         setState(() {});
         showAppToast(
           context,
-          nowWatched
-              ? context.l10n.markedAsWatched
-              : context.l10n.markedUnwatched,
+          isReading
+              ? (nowWatched
+                    ? context.l10n.markedAsRead
+                    : context.l10n.markedUnread)
+              : (nowWatched
+                    ? context.l10n.markedAsWatched
+                    : context.l10n.markedUnwatched),
         );
 
       case EpisodeAction.markAboveWatched:
@@ -1031,12 +1099,21 @@ class _DetailViewState extends State<_DetailView>
         // mid-season and want the backlog cleared, and excluding the episode
         // you pressed would mean marking it separately every time.
         for (var i = 0; i <= index; i++) {
-          await resume.setWatched(
-            widget.item.sourceId,
-            widget.item.url,
-            episodes[i].id,
-            watched: true,
-          );
+          if (isReading) {
+            await read.setRead(
+              widget.item.sourceId,
+              readShowId,
+              episodes[i].id,
+              read: true,
+            );
+          } else {
+            await resume.setWatched(
+              widget.item.sourceId,
+              widget.item.url,
+              episodes[i].id,
+              watched: true,
+            );
+          }
         }
         // One tracker write for the highest episode, not one per episode —
         // progress is a high-water mark, so the rest are implied and firing
@@ -1044,7 +1121,12 @@ class _DetailViewState extends State<_DetailView>
         await _scrobbleUpTo(ep, detail);
         if (!mounted) return;
         setState(() {});
-        showAppToast(context, context.l10n.markedEpisodesAsWatched(index + 1));
+        showAppToast(
+          context,
+          isReading
+              ? context.l10n.markedChaptersAsRead(index + 1)
+              : context.l10n.markedEpisodesAsWatched(index + 1),
+        );
     }
   }
 
@@ -1224,7 +1306,15 @@ class _DetailViewState extends State<_DetailView>
           peek: peek,
         ),
       ),
-    );
+      // Same reason as the reader's [_refreshAfterReading]: ResumeStore has no
+      // change notification and this push was fire-and-forget, so a finished
+      // episode stayed un-greyed until something else rebuilt the screen.
+      //
+      // Unlike the reader there is no key mismatch here — the player writes
+      // under (item.sourceId, item.url) and the list reads the same pair — so
+      // this is the whole fix. The list is a SliverList.builder, so the
+      // rebuild touches the visible rows, not the full episode count.
+    ).then(_refreshAfterReading);
   }
 
   /// Asks every installed source for this episode and shows them answering.
@@ -1249,6 +1339,22 @@ class _DetailViewState extends State<_DetailView>
   /// `widget.item.type` for the disagreeing-provider-JSON case the guard
   /// above also covers, so a mismatch still lands on the right reader
   /// instead of silently doing nothing.
+  /// Re-read the chapter list's state after the reader closes.
+  ///
+  /// [ReadStore] is a plain Hive box with no change notification, and the push
+  /// below was fire-and-forget, so a chapter finished in the reader stayed
+  /// un-dimmed until something else happened to rebuild this screen — leaving
+  /// on the app and coming back showed it correctly, which is what made it
+  /// look like the read was not being saved. It always was.
+  ///
+  /// Deliberately scoped to the READER only. The video player push has the
+  /// same shape, but episodes read their state from [ResumeStore] through a
+  /// different path; changing that is a separate job and not worth risking
+  /// here.
+  void _refreshAfterReading(Object? _) {
+    if (mounted) setState(() {});
+  }
+
   void _openReader(
     List<Episode> chapters,
     int index,
@@ -1265,7 +1371,13 @@ class _DetailViewState extends State<_DetailView>
           MaterialPageRoute(
             builder: (_) => NovelReaderScreen(
               sourceId: detail.sourceId,
-              showId: detail.id,
+              // item.id, NOT detail.id: the chapter list and the action
+              // sheet both read this title's marks under item.id, so writing
+              // them under the source's own id put them where nothing looks.
+              // In Z Mode the two differ (canonical `mal:…` vs the matched
+              // source's show id), which is why a chapter dimmed on some
+              // titles and never on others.
+              showId: widget.item.id,
               showTitle: detail.title,
               cover: detail.cover ?? widget.item.cover,
               chapters: chapters,
@@ -1274,14 +1386,20 @@ class _DetailViewState extends State<_DetailView>
               peek: peek,
             ),
           ),
-        );
+        ).then(_refreshAfterReading);
         return;
       case ProviderType.manga:
         Navigator.of(context).push(
           MaterialPageRoute(
             builder: (_) => MangaReaderScreen(
               sourceId: detail.sourceId,
-              showId: detail.id,
+              // item.id, NOT detail.id: the chapter list and the action
+              // sheet both read this title's marks under item.id, so writing
+              // them under the source's own id put them where nothing looks.
+              // In Z Mode the two differ (canonical `mal:…` vs the matched
+              // source's show id), which is why a chapter dimmed on some
+              // titles and never on others.
+              showId: widget.item.id,
               showTitle: detail.title,
               cover: detail.cover ?? widget.item.cover,
               chapters: chapters,
@@ -1290,7 +1408,7 @@ class _DetailViewState extends State<_DetailView>
               peek: peek,
             ),
           ),
-        );
+        ).then(_refreshAfterReading);
         return;
       case ProviderType.anime:
       case ProviderType.movie:
@@ -2242,11 +2360,10 @@ class _DetailViewState extends State<_DetailView>
             nextAiringAt: _nextAiringAt,
             onOpen: (fullIndex) =>
                 _openPlayer(eps, fullIndex, detail, category),
-            // Reading types resolve to a reader, so there's no player to pick.
-            onPickPlayer: isReading
-                ? null
-                : (fullIndex) =>
-                      _pickPlayerFor(eps, fullIndex, detail, category),
+            // Reading has no player to pick, but it does have the marking
+            // rows — gating the whole menu on the player is what hid them.
+            onEpisodeMenu: (fullIndex) =>
+                _pickPlayerFor(eps, fullIndex, detail, category),
             onRefresh: cubit.refresh,
             onDownload: (ep) => isReading
                 ? _downloadChapter(ep, detail)

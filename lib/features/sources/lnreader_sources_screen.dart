@@ -3,6 +3,7 @@ import 'package:hive/hive.dart';
 import 'package:watch_app/core/hive/safe_box.dart';
 
 import '../../core/di/injector.dart';
+import '../../core/ui/source_icon_tile.dart';
 import '../../core/lnreader/lnreader_extension_service.dart';
 import '../../core/lnreader/lnreader_manager.dart';
 import '../../core/lnreader/novel_lang_prefs.dart';
@@ -883,6 +884,12 @@ class _LnReaderSourceRowState extends State<_LnReaderSourceRow> {
       padding: const EdgeInsets.fromLTRB(16, 10, 12, 10),
       child: Row(
         children: [
+          // One row widget serves both the installed tab and a repo's
+          // catalog, so this covers browsing as well as what's installed.
+          Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: SourceIconTile(name: meta.name, icon: meta.iconUrl),
+          ),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,

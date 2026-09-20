@@ -40,6 +40,12 @@ void main() {
     }
   });
 
+  test('@libs/fetch carries fetchText, not just fetchApi', () {
+    // Seven plugins (kakuyomu, lnori, linovelib, ...) call fetchText. It
+    // loaded fine without it and then threw "is not a function" on every call.
+    expect(eval("typeof __require('@libs/fetch').fetchText"), 'function');
+  });
+
   test('@/types/constants carries what the newer plugins read off it', () {
     expect(eval("__require('@/types/constants').NovelStatus.Ongoing"), 'Ongoing');
     expect(eval("typeof __require('@/types/constants').defaultCover"), 'string');
@@ -54,8 +60,9 @@ void main() {
   });
 
   test('browser globals plugins assume are present', () {
-    for (final g in const ['TextEncoder', 'TextDecoder', 'FormData', 'fetch',
-                           'Buffer', 'atob', 'btoa', 'URL', 'URLSearchParams']) {
+    for (final g in const ['TextEncoder', 'TextDecoder', 'FormData', 'Headers',
+                           'fetch', 'Buffer', 'atob', 'btoa', 'URL',
+                           'URLSearchParams']) {
       expect(eval('typeof $g'), 'function', reason: g);
     }
   });
@@ -90,6 +97,24 @@ void main() {
   test('a response with no headers reads null instead of throwing', () {
     expect(eval("String(__headers(undefined).get('content-type'))"), 'null');
     expect(eval("String(__headers({}).get('content-type'))"), 'null');
+  });
+
+  test('request headers built with new Headers() reach the outbox', () {
+    // The mtlnovel family calls `new Headers()` on every request, readfrom in
+    // its constructor. A Headers object would also serialise to {} on its way
+    // to Dart, so it has to arrive as a plain map, spelled as the plugin wrote
+    // it.
+    expect(
+      eval(
+        "__outbox = [];"
+        "var h = new Headers({'User-Agent': 'plug'});"
+        "h.append('Referer', 'https://a.b/');"
+        "fetchApi('https://a.b/c', {headers: h});"
+        "var q = JSON.parse(__drainOutbox())[0];"
+        "[h.get('referer'), JSON.stringify(q.init.headers)].join('|');",
+      ),
+      'https://a.b/|{"User-Agent":"plug","Referer":"https://a.b/"}',
+    );
   });
 
   test('AES-GCM decrypts what it encrypts, the way WTR-LAB drives it', () {

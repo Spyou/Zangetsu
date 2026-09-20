@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -8,6 +9,8 @@ import 'package:hive_flutter/hive_flutter.dart';
 import '../../core/app_mode.dart';
 import '../../core/aniyomi/aniyomi_image_provider.dart';
 import '../../core/di/injector.dart';
+import '../../core/metadata/streaming_service.dart';
+import '../../core/zmode/tmdb_catalogue.dart';
 import '../../core/platform/apple_tv.dart';
 import '../../core/mihon/mihon_extension_service.dart';
 import '../../core/mihon/mihon_image_provider.dart';
@@ -49,6 +52,7 @@ import '../downloads/downloads_screen.dart';
 import '../notify/subscriptions_screen.dart';
 import '../reader/manga_reader_screen.dart';
 import '../reader/novel_reader_screen.dart';
+import '../settings/streaming_services_screen.dart';
 import '../sources/aniyomi_repo_tab.dart' show kAniyomiReposBoxName;
 import '../sources/providers_hub_screen.dart';
 import '../sources/zangetsu_sources_screen.dart';
@@ -77,6 +81,7 @@ import '../shell/dock_icons.dart';
 import '../../core/zmode/source_matcher.dart';
 import '../../core/zmode/metadata_repository.dart';
 import '../../core/zmode/zmode_ids.dart';
+import 'streaming_services_row.dart';
 import 'cubit/home_cubit.dart';
 import 'home_screen_tv.dart';
 import 'lists_hub_screen.dart';
@@ -250,9 +255,30 @@ class _HomeViewState extends State<_HomeView>
   }
 
   /// Genres + episode count for the hero banner (lazily fetched, cached).
+  ///
+  /// Settles on the FIRST of two answers: the partial a metadata title hands
+  /// over once its catalogue has replied, or the finished detail. A metadata
+  /// title's `detail()` also pairs the title with an installed source before
+  /// it returns, and that pairing searches every installed source in turn —
+  /// one report spent 18 seconds on a title no source carried, with the
+  /// banner's caption blank the whole time and the carousel rotating on. The
+  /// caption is genres, a count and a year; the catalogue supplies all three
+  /// up front, and the source is only needed for episode *urls*, which the
+  /// banner never reads. The match still finishes in the background, so the
+  /// title is already paired by the time anyone taps Play.
+  ///
+  /// A source-backed title never calls `onPartial` — it has nothing to search
+  /// for — and completes on the second branch exactly as it always did.
   Future<HeroMeta?> _heroMeta(MediaItem m) =>
       _metaCache.putIfAbsent('${m.sourceId}:${m.id}', () async {
-        final d = await _detailOf(m.url, m.sourceId);
+        final first = Completer<MediaDetail?>();
+        void settle(MediaDetail? d) {
+          if (!first.isCompleted) first.complete(d);
+        }
+
+        // _detailOf swallows its errors, so this always settles.
+        unawaited(_detailOf(m.url, m.sourceId, onPartial: settle).then(settle));
+        final d = await first.future;
         if (d == null) return null;
         return HeroMeta(
           genres: d.genres,
@@ -288,9 +314,13 @@ class _HomeViewState extends State<_HomeView>
   String _typeLabel(ProviderType t) =>
       t == ProviderType.movie ? 'Movie' : 'Anime';
 
-  Future<MediaDetail?> _detailOf(String url, String sourceId) async {
+  Future<MediaDetail?> _detailOf(
+    String url,
+    String sourceId, {
+    void Function(MediaDetail partial)? onPartial,
+  }) async {
     try {
-      return await _repo.detail(url, sourceId: sourceId);
+      return await _repo.detail(url, sourceId: sourceId, onPartial: onPartial);
     } catch (_) {
       return null;
     }
@@ -689,6 +719,37 @@ class _HomeViewState extends State<_HomeView>
     );
   }
 
+  /// Open one streaming service's catalogue from the rail.
+  ///
+  /// Goes straight to the paginated grid rather than via the services screen —
+  /// the rail already IS the service picker, so a stop in between would be a
+  /// screen you pass through.
+  Future<void> _openStreamingService(StreamingService s) async {
+    final repo = sl<MetadataRepository>();
+    final more = BrowseMore(
+      sourceId: ZmodeIds.sourceId,
+      kind: 'zm_video',
+      categoryId: TmdbCatalogue.wpRowId(s.id),
+    );
+    List<MediaItem> first;
+    try {
+      first = await repo.browseMore(more, 1);
+    } catch (_) {
+      first = const [];
+    }
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => SeeAllScreen(
+          title: s.name,
+          items: first,
+          onTap: (m) => Navigator.push(context, DetailScreen.route(m)),
+          onLoadMore: (page) => repo.browseMore(more, page),
+        ),
+      ),
+    );
+  }
+
   /// One row of the merged home arrangement, as a sliver. Every [HomeRow]
   /// type maps to the widget that already renders that shape — the sealed
   /// switch makes a future row type a compile error here instead of a silent
@@ -702,6 +763,16 @@ class _HomeViewState extends State<_HomeView>
       onSeeAll: _openHistory,
       onResumeReading: _resumeReading,
       onLongPressReading: _showContinueReadingInfo,
+    ),
+    StreamingServicesHomeRow() => SliverToBoxAdapter(
+      child: StreamingServicesRow(
+        onOpen: _openStreamingService,
+        onSeeAll: () => Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => const StreamingServicesScreen(),
+          ),
+        ),
+      ),
     ),
     ProviderHomeRow(:final section) => SliverToBoxAdapter(
       child: _sectionRow(section),
@@ -1492,7 +1563,18 @@ class _HomeViewState extends State<_HomeView>
           children: [
             RefreshIndicator(
               color: AppColors.accent,
-              onRefresh: () => context.read<HomeCubit>().load(),
+              onRefresh: () {
+                // Pull-to-refresh is the user saying "try again", so it also
+                // re-tests a session the startup check only assumed was dead
+                // (the "Reconnect to sync" banner). force: it must not sit out
+                // the cool-off when someone deliberately pulled.
+                if (sl.isRegistered<AuthCubit>()) {
+                  unawaited(
+                    sl<AuthCubit>().revalidateIfFlagged(force: true),
+                  );
+                }
+                return context.read<HomeCubit>().load();
+              },
               child: BlocBuilder<HomeCubit, HomeState>(
                 builder: (context, state) {
                   final sections = state.sections ?? const <HomeSection>[];

@@ -6,6 +6,9 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:hive/hive.dart';
 
 import '../../core/di/injector.dart';
+import '../../core/hive/source_icon_store.dart';
+import '../../core/ui/source_icon_tile.dart';
+import '../../core/i18n/source_languages.dart';
 import '../../core/prefs/source_lang_prefs.dart';
 import '../../core/repository/source_actions.dart' as source_actions;
 import '../../core/mihon/mihon_extension_service.dart';
@@ -146,7 +149,17 @@ class _MihonScreenPhoneViewState extends State<_MihonScreenPhoneView> {
               tooltip: context.l10n.languages,
               icon: const Icon(Icons.language_rounded),
               onPressed: () =>
-                  showSourceLanguageSheet(context, sl<MangaLangPrefs>()),
+                  showSourceLanguageSheet(
+                    context,
+                    sl<MangaLangPrefs>(),
+                    // Offer what's installed, not just the built-in list —
+                    // otherwise a language this screen hides has no row to
+                    // turn it back on.
+                    present: presentLangCodes(
+                      sl<MihonManager>().all,
+                      (p) => p.info.lang,
+                    ),
+                  ),
             ),
           ],
           bottom: TabBar(
@@ -227,14 +240,31 @@ class _MihonInstalledGroupState extends State<_MihonInstalledGroup> {
 
   @override
   Widget build(BuildContext context) {
+    final langPrefs = sl.isRegistered<MangaLangPrefs>()
+        ? sl<MangaLangPrefs>()
+        : null;
     return ListenableBuilder(
-      listenable: sl<MihonManager>(),
+      // The language prefs too, not just the manager: the globe in this
+      // screen's app bar edits them, and without listening the list it edits
+      // sat unchanged until something else happened to rebuild it.
+      listenable: Listenable.merge([sl<MihonManager>(), langPrefs]),
       builder: (context, _) {
         final query = widget.query;
-        final sources = sl<MihonManager>()
+        var sources = sl<MihonManager>()
             .all
             .where((p) => sourceSearchMatches(query, p.displayName, p.info.lang))
             .toList();
+        // Respect the language filter here as well. It used to apply only in
+        // the picker and the browse list, so choosing English still left this
+        // screen showing MangaDex's 61 languages — with the button that sets
+        // the filter right at the top of it.
+        final langs = langPrefs?.enabled ?? defaultSourceLangs();
+        sources = visibleInstalledSources(
+          sources,
+          langs,
+          pkgOf: (p) => p.pkg,
+          langOf: (p) => p.info.lang,
+        );
         // Group by extension package so a multi-language extension (MangaDex is a
         // SourceFactory that yields one source PER LANGUAGE) collapses to ONE row
         // instead of ~40 — matching Mihon's Extensions list. Which languages you
@@ -378,6 +408,15 @@ class _MihonExtensionGroupState extends State<_MihonExtensionGroup> {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             child: Row(
               children: [
+                // Every language of a multi-language extension is one
+                // package, so the whole group shares one icon.
+                Padding(
+                  padding: const EdgeInsets.only(right: 12),
+                  child: SourceIconTile(
+                    name: name,
+                    icon: SourceIconStore.urlFor(rows.first.pkg),
+                  ),
+                ),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -601,18 +640,32 @@ class _MihonSourceRowState extends State<_MihonSourceRow> {
       if (update == null) return const SizedBox.shrink();
       return Padding(
         padding: const EdgeInsets.only(right: 4),
-        child: FilledButton(
-          onPressed: _busy ? null : () => _applyUpdate(update),
-          style: FilledButton.styleFrom(
-            backgroundColor: AppColors.accent,
-            foregroundColor: Colors.white,
-            elevation: 0,
-            visualDensity: VisualDensity.compact,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        // Capped width + an ellipsis, because this row also carries a
+        // settings, a sign-in and a delete button: the button's full label
+        // used to win the width fight outright and the source NAME was what
+        // got squeezed away. NOT a Flexible — that defaults to flex:1, so it
+        // claimed half the row's free space and, with no update to show, left
+        // it empty and dragged the trailing buttons into the middle.
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 148),
+          child: FilledButton(
+            onPressed: _busy ? null : () => _applyUpdate(update),
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.accent,
+              foregroundColor: Colors.white,
+              elevation: 0,
+              visualDensity: VisualDensity.compact,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            child: Text(
+              context.l10n.updateArrowVersion('${update.availableVersion}'),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
-          child: Text(context.l10n.updateArrowVersion('${update.availableVersion}')),
         ),
       );
     }
@@ -630,6 +683,13 @@ class _MihonSourceRowState extends State<_MihonSourceRow> {
         padding: const EdgeInsets.fromLTRB(16, 8, 6, 8),
         child: Row(
           children: [
+            Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: SourceIconTile(
+                name: source.displayName,
+                icon: SourceIconStore.urlFor(source.pkg),
+              ),
+            ),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -665,6 +725,15 @@ class _MihonSourceRowState extends State<_MihonSourceRow> {
                 icon: const Icon(Icons.tune_rounded, size: 20),
                 color: AppColors.textSecondary,
                 onPressed: _openSettings,
+                // Default IconButtons are 48x48 for a 20px glyph. Three of
+                // them ate the width the source NAME needed once the row
+                // grew an icon tile; 36 still clears the 36dp touch floor.
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints.tightFor(
+                  width: 36,
+                  height: 36,
+                ),
               ),
             if (source_actions.webViewUrlFor(source.sourceId) != null)
               IconButton(
@@ -673,12 +742,30 @@ class _MihonSourceRowState extends State<_MihonSourceRow> {
                 color: AppColors.textSecondary,
                 onPressed: () =>
                     source_actions.openSourceWebView(source.sourceId),
+                // Default IconButtons are 48x48 for a 20px glyph. Three of
+                // them ate the width the source NAME needed once the row
+                // grew an icon tile; 36 still clears the 36dp touch floor.
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints.tightFor(
+                  width: 36,
+                  height: 36,
+                ),
               ),
             IconButton(
               tooltip: context.l10n.uninstall,
               icon: const Icon(Icons.delete_outline_rounded, size: 20),
               color: AppColors.textSecondary,
               onPressed: () => _confirmUninstall(context),
+              // Default IconButtons are 48x48 for a 20px glyph. Three of
+              // them ate the width the source NAME needed once the row
+              // grew an icon tile; 36 still clears the 36dp touch floor.
+              visualDensity: VisualDensity.compact,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints.tightFor(
+                width: 36,
+                height: 36,
+              ),
             ),
           ],
         ),

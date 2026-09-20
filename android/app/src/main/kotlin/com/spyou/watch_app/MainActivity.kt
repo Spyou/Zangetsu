@@ -87,13 +87,14 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
     /// Keys are persisted in prefs and the alias names appear on users' home
     /// screens, so neither side may be renamed once shipped.
     private val ICON_ALIASES = linkedMapOf(
+        "crescent" to "com.spyou.watch_app.MainActivityCrescent",
         "default" to "com.spyou.watch_app.MainActivityDefault",
         "classic" to "com.spyou.watch_app.MainActivityClassic",
     )
 
-    /// The enabled alias, or "classic" when nothing has been set. A component
+    /// The enabled alias, or "crescent" when nothing has been set. A component
     /// left at COMPONENT_ENABLED_STATE_DEFAULT takes the manifest's
-    /// android:enabled, which is true only for the Classic alias — so that is
+    /// android:enabled, which is true only for the Crescent alias — so that is
     /// what an untouched install is really showing. Must match
     /// `AppIconService.defaultId` and the manifest.
     private fun currentIconAlias(): String {
@@ -102,7 +103,7 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
             val state = pm.getComponentEnabledSetting(ComponentName(this, cls))
             if (state == PackageManager.COMPONENT_ENABLED_STATE_ENABLED) return id
         }
-        return "classic"
+        return "crescent"
     }
 
     /// Enables [id]'s alias and disables the others.

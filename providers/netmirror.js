@@ -106,9 +106,13 @@ function _searchRaw(q) {
     .catch(function () { return []; });
 }
 function _browseFeed() {
-  if (_browse) return Promise.resolve(_browse);
+  // An empty feed means every seed query failed (no cookie, no network) — not
+  // that the platform has nothing to show: _searchRaw swallows its own error
+  // and yields []. Caching that would keep browse empty for the rest of the
+  // runtime session, so only a feed with something in it is remembered.
+  if (_browse && _browse.length) return Promise.resolve(_browse);
   if (OTT === 'nf') {
-    return _searchRaw('').then(function (feed) { _browse = feed; return feed; });
+    return _searchRaw('').then(function (feed) { if (feed.length) _browse = feed; return feed; });
   }
   var qs = ['the', 'a', 'man', 'love', 'star', 'life'];
   return Promise.all(qs.map(_searchRaw)).then(function (lists) {
@@ -119,7 +123,7 @@ function _browseFeed() {
         if (it && !seen[it.id]) { seen[it.id] = 1; out.push(it); }
       }
     }
-    _browse = out;
+    if (out.length) _browse = out;
     return out;
   });
 }

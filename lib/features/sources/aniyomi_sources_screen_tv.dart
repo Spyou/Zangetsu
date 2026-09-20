@@ -399,22 +399,43 @@ class _AniScreenTvSourceRowState extends State<_AniScreenTvSourceRow> {
                     vertical: 12,
                   ),
                   child: ExcludeSemantics(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                    child: Row(
                       children: [
-                        Text(
-                          source.displayName,
-                          style: AppText.headline.copyWith(
-                            color: active
-                                ? AppColors.accent
-                                : AppColors.textPrimary,
-                            fontWeight: active ? FontWeight.w600 : null,
+                        Padding(
+                          padding: const EdgeInsets.only(right: 14),
+                          // Bigger than the phone tile — this is read from
+                          // across a room.
+                          child: SourceIconTile(
+                            size: 38,
+                            name: source.displayName,
+                            icon: source is AniyomiProvider
+                                ? SourceIconStore.urlFor(source.info.pkg)
+                                : null,
                           ),
                         ),
-                        if (lang.isNotEmpty) ...[
-                          const SizedBox(height: 2),
-                          Text('aniyomi • $lang', style: AppText.caption),
-                        ],
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                source.displayName,
+                                style: AppText.headline.copyWith(
+                                  color: active
+                                      ? AppColors.accent
+                                      : AppColors.textPrimary,
+                                  fontWeight: active ? FontWeight.w600 : null,
+                                ),
+                              ),
+                              if (lang.isNotEmpty) ...[
+                                const SizedBox(height: 2),
+                                Text(
+                                  'aniyomi • $lang',
+                                  style: AppText.caption,
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -809,6 +830,14 @@ class _AniScreenTvExtensionRowState extends State<_AniScreenTvExtensionRow> {
             ),
             child: Row(
               children: [
+                Padding(
+                  padding: const EdgeInsets.only(right: 14),
+                  child: SourceIconTile(
+                    size: 38,
+                    name: entry.name,
+                    icon: entry.iconUrl,
+                  ),
+                ),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,

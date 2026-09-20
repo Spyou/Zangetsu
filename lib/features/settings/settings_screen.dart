@@ -12,12 +12,15 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/anilist/anilist_service.dart';
 import '../../core/app_config.dart';
 import '../../core/app_mode.dart';
+import '../../core/metadata/streaming_providers.dart';
 import '../../core/tracker/tracker_hub.dart';
+import '../../core/ui/streaming_prefs.dart';
 import '../../core/zmode/metadata_provider_prefs.dart';
 import '../../core/cache/media_cache.dart';
 import '../../core/logging/app_logger.dart';
 import '../../core/logging/log_report_service.dart';
 import '../../core/tracker/mal_service.dart';
+import '../../core/tracker/mangabaka_service.dart';
 import '../../core/tracker/simkl_service.dart';
 import '../../core/tracker/tracker.dart';
 import '../player/player_screen.dart' show openSubtitleStyleSheet;
@@ -146,7 +149,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   ProviderRegistry get _registry => sl<ProviderRegistry>();
 
-  CloudStreamManager get _csManager => sl<CloudStreamManager>();
 
   Future<void> _push(Widget screen) => _pushBuilder((_) => screen);
 
@@ -625,66 +627,41 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (mounted) setState(() {});
   }
 
-  /// Prompts for a CloudStream repo URL, installs it via the native channel,
-  /// and reports how many sources are now available. Android-only.
-  Future<void> _addCloudStreamRepo() async {
-    final String? url;
-    if (_isTv) {
-      url = await showDialog<String>(
-        context: context,
-        builder: (_) => const _TvAddRepoDialog(),
-      );
-    } else {
-      final controller = TextEditingController();
-      url = await showDialog<String>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          backgroundColor: AppColors.surface,
-          title: Text(
-            ctx.l10n.addCloudStreamRepository,
-            style: AppText.headline,
-          ),
-          content: TextField(
-            controller: controller,
-            keyboardType: TextInputType.url,
-            cursorColor: AppColors.accent,
-            style: AppText.body.copyWith(color: AppColors.textPrimary),
-            decoration: InputDecoration(
-              labelText: ctx.l10n.repositoryUrlLabel,
-              hintText: 'https://.../repo.json',
-            ),
-            onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: Text(ctx.l10n.cancel),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(ctx, controller.text.trim()),
-              child: Text(ctx.l10n.add),
-            ),
+  /// Which country's streaming catalogue to browse.
+  ///
+  /// A service's shelf differs per country, so the wrong region silently shows
+  /// titles the user cannot get — which is why this is a visible setting and
+  /// not only a locale guess.
+  Future<void> _pickStreamingRegion() async {
+    final current = StreamingPrefs.region;
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      isScrollControlled: true,
+      builder: (ctx) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            for (final code in kStreamingRegions)
+              ListTile(
+                title: Text(code, style: AppText.body),
+                trailing: code == current
+                    ? Icon(Icons.check_rounded, color: AppColors.accent)
+                    : null,
+                onTap: () => Navigator.pop(ctx, code),
+              ),
           ],
         ),
-      );
-      controller.dispose();
+      ),
+    );
+    if (picked == null || picked == current) return;
+    await StreamingPrefs.setRegion(picked);
+    // The cached provider list is per region; leaving it would show the old
+    // country's services under the new country's name.
+    if (sl.isRegistered<StreamingProvidersService>()) {
+      sl<StreamingProvidersService>().clearCache();
     }
-    if (url == null || url.isEmpty || !mounted) return;
-    final messenger = ScaffoldMessenger.of(context);
-    final l10n = context.l10n;
-    try {
-      final count = await _csManager.addRepo(url);
-      if (!mounted) return;
-      messenger.showSnackBar(
-        SnackBar(content: Text(l10n.addedCloudStreamSourcesCount(count))),
-      );
-      setState(() {});
-    } catch (e) {
-      if (!mounted) return;
-      messenger.showSnackBar(
-        SnackBar(content: Text(l10n.failedToAddRepository('$e'))),
-      );
-    }
+    if (mounted) setState(() {});
   }
 
   /// Account header — a single profile card at the top of Settings. Signed in:
@@ -1028,6 +1005,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
     ),
     _SettingsEntry(
       section: SettingsSection.sources,
+      icon: Icons.public_rounded,
+      title: l10n.streamingRegion,
+      subtitle: '${l10n.streamingRegionSubtitle} · ${StreamingPrefs.region}',
+      keywords: 'streaming region country provider watch service catalogue',
+      onTap: _pickStreamingRegion,
+    ),
+    _SettingsEntry(
+      section: SettingsSection.sources,
       icon: Icons.health_and_safety_outlined,
       title: l10n.sourceHealth,
       subtitle: l10n.sourceHealthSubtitle,
@@ -1035,14 +1020,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       onTap: () => _push(const SourceHealthScreen()),
     ),
     if (Platform.isAndroid) ...[
-      _SettingsEntry(
-        section: SettingsSection.sources,
-        icon: Icons.extension_outlined,
-        title: l10n.addCloudStreamRepository,
-        subtitle: l10n.installCloudStreamSources,
-        keywords: 'cloudstream repository repo install sources extensions',
-        onTap: _addCloudStreamRepo,
-      ),
       _SettingsEntry(
         section: SettingsSection.sources,
         icon: Icons.update_rounded,

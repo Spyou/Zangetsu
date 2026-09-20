@@ -363,10 +363,12 @@ class HomeCubit extends Cubit<HomeState> {
     final rowSections = providerRowSections(sections, isTv: isTv);
     final withTrackerRows = kind != null;
     final layoutKey = _layoutKey;
+    final withRail = streamingRailForLayout(layoutKey);
     final available = availableRowIds(
       rowSections,
       withTrackerRows: withTrackerRows,
       kind: kind,
+      withStreamingRail: withRail,
     );
     final saved = HomeRowsPrefs.savedFor(layoutKey);
     final layout = sanitizeLayout(
@@ -375,6 +377,7 @@ class HomeCubit extends Cubit<HomeState> {
             [for (final s in rowSections) 'section:${s.title}'],
             withTrackerRows: withTrackerRows,
             kind: kind,
+            withStreamingRail: withRail,
           ),
       available,
     );

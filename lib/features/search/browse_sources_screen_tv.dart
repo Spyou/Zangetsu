@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/mode/content_mode.dart';
+import '../../core/ui/source_icon_tile.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/tv/tv_back_button.dart';
@@ -201,7 +202,7 @@ class _BrowseSourcesListTv extends StatelessWidget {
   Widget build(BuildContext context) {
     final b = categorizedSources();
     final q = query.trim().toLowerCase();
-    bool matches(({String id, String label, String? repo}) s) =>
+    bool matches(({String id, String label, String? repo, String? icon}) s) =>
         q.isEmpty ||
         s.label.toLowerCase().contains(q) ||
         (s.repo?.toLowerCase().contains(q) ?? false);
@@ -210,7 +211,7 @@ class _BrowseSourcesListTv extends StatelessWidget {
     final showManga = kind == SourceListKind.manga;
     final showNovel = kind == SourceListKind.novel;
 
-    final groups = <(String, List<({String id, String label, String? repo})>)>[
+    final groups = <(String, List<({String id, String label, String? repo, String? icon})>)>[
       if (showStreaming) (context.l10n.anime, b.anime.where(matches).toList()),
       if (showStreaming)
         (context.l10n.moviesSeries, b.movies.where(matches).toList()),
@@ -265,6 +266,14 @@ class _BrowseSourcesListTv extends StatelessWidget {
                     ),
                     child: Row(
                       children: [
+                        Padding(
+                          padding: const EdgeInsets.only(right: 14),
+                          child: SourceIconTile(
+                            size: 38,
+                            name: sourceRowName(s.label),
+                            icon: s.icon,
+                          ),
+                        ),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,

@@ -8,15 +8,21 @@ import '../../core/tv/tv_list_focusable.dart';
 import '../../l10n/l10n.dart';
 
 /// Multi-select language picker for the Mihon/Aniyomi catalogs. One row per
-/// filterable language ([sortedSourceLangCodes]); toggling writes straight
-/// through to [prefs] so the repo lists (which listen to it) re-filter live.
+/// filterable language; toggling writes straight through to [prefs] so the
+/// lists that listen to it re-filter live.
 ///
-/// Unlike the LNReader picker, the list is a fixed set of languages rather than
-/// one derived from the catalog — Mihon's repos are fetched lazily per-repo, so
-/// the full set of languages present isn't known up front. Same reason there
-/// are no per-language counts here.
-Future<void> showSourceLanguageSheet(BuildContext context, LangPrefs prefs) {
-  final codes = sortedSourceLangCodes();
+/// [present] is the set of language codes your installed sources actually use.
+/// It is merged into the built-in list, because the built-in list cannot be
+/// finished: 41 codes in the real Mihon catalogue are missing from it (`tl`,
+/// `gl`, `mo`, `other`…), and a language with no row here is a language
+/// [sourceLangVisible] refuses to filter — which is exactly why MangaDot kept
+/// listing Moldovan and Guarani after you'd chosen English.
+Future<void> showSourceLanguageSheet(
+  BuildContext context,
+  LangPrefs prefs, {
+  Set<String> present = const {},
+}) {
+  final codes = _codesFor(present);
   return showModalBottomSheet<void>(
     context: context,
     backgroundColor: AppColors.surface,
@@ -83,8 +89,12 @@ Future<void> showSourceLanguageSheet(BuildContext context, LangPrefs prefs) {
 /// D-pad-navigable variant of [showSourceLanguageSheet] for the Aniyomi TV
 /// screen — each language is a [TvFocusable] row with an accent highlight and a
 /// checkbox that flips on OK.
-Future<void> showSourceLanguageSheetTv(BuildContext context, LangPrefs prefs) {
-  final codes = sortedSourceLangCodes();
+Future<void> showSourceLanguageSheetTv(
+  BuildContext context,
+  LangPrefs prefs, {
+  Set<String> present = const {},
+}) {
+  final codes = _codesFor(present);
   return showDialog<void>(
     context: context,
     barrierColor: Colors.black.withValues(alpha: 0.7),
@@ -184,4 +194,14 @@ Future<void> showSourceLanguageSheetTv(BuildContext context, LangPrefs prefs) {
       );
     },
   );
+}
+
+/// The built-in list plus anything your sources actually use, English first.
+/// An unknown code has no friendly name, so [sourceLangLabel] shows the code
+/// itself — better than the language being unfilterable.
+List<String> _codesFor(Set<String> present) {
+  final known = sortedSourceLangCodes();
+  final extra = present.where((c) => !kSourceLanguages.containsKey(c)).toList()
+    ..sort();
+  return [...known, ...extra];
 }

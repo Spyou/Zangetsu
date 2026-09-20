@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:hive/hive.dart';
 
@@ -35,30 +36,47 @@ class AppIconService {
 
   /// The icon a fresh install shows — i.e. the alias that ships
   /// `android:enabled="true"`. NOT the same thing as the option whose id
-  /// happens to be the string `'default'`: that id is the Zangetsu mark and is
-  /// persisted, so it can never be renamed. Keep this in step with the manifest
-  /// and with `MainActivity.currentIconAlias()`'s fallback — all three have to
-  /// name the same icon or the launcher shows one thing while Settings claims
-  /// another.
-  static const String defaultId = 'classic';
+  /// happens to be the string `'default'`: that id is the older Z-and-katana
+  /// mark and is persisted, so it can never be renamed — which is exactly why
+  /// the crescent got its own id rather than taking that slot. Anyone who had
+  /// picked an icon keeps the one they picked. Keep this in step with the
+  /// manifest and with `MainActivity.currentIconAlias()`'s fallback — all three
+  /// have to name the same icon, or the launcher shows one thing while Settings
+  /// claims another.
+  static const String defaultId = 'crescent';
 
   /// [defaultId] first — the picker leads with what a fresh install is
   /// actually wearing.
   static const List<AppIconOption> options = [
     AppIconOption(
+      id: 'crescent',
+      label: 'Zangetsu',
+      asset: 'assets/icon/preview_crescent.png',
+    ),
+    AppIconOption(
+      id: 'default',
+      label: 'Katana',
+      asset: 'assets/icon/preview_default.png',
+    ),
+    AppIconOption(
       id: 'classic',
       label: 'Classic',
       asset: 'assets/icon/preview_classic.png',
     ),
-    AppIconOption(
-      id: 'default',
-      label: 'Zangetsu',
-      asset: 'assets/icon/preview_default.png',
-    ),
   ];
 
   /// Icon switching only exists on Android.
-  bool get supported => Platform.isAndroid;
+  ///
+  /// A function rather than a plain getter so tests can reach the logic behind
+  /// it — everything here is gated on this, so on a test host the whole service
+  /// would otherwise be unreachable. Mirrors `StreamingPrefs.deviceRegion`.
+  static bool Function() isSupported = _isSupported;
+  static bool _isSupported() => Platform.isAndroid;
+
+  @visibleForTesting
+  static void resetSupportedForTest() => isSupported = _isSupported;
+
+  bool get supported => isSupported();
 
   Box get _box => Hive.box(boxName);
 
@@ -93,5 +111,30 @@ class AppIconService {
     } catch (_) {
       return null;
     }
+  }
+
+  /// [selectedId], corrected against what PackageManager actually has enabled,
+  /// and the stored pref rewritten to match.
+  ///
+  /// The pref alone is not the truth. It can disagree with the launcher in ways
+  /// the user never did anything to cause:
+  ///
+  ///  * a switch was interrupted — Android kills the app mid-switch by design,
+  ///    and the pref is deliberately written first so the *intent* survives;
+  ///  * an update changed which alias ships enabled, while the pref still names
+  ///    the icon the previous build shipped.
+  ///
+  /// Either way Settings would show a tick next to an icon that is not on the
+  /// home screen. PackageManager wins, because it is what the user can see.
+  ///
+  /// Returns [selectedId] unchanged when the native side can't be read, so a
+  /// failure here never rewrites a good preference.
+  Future<String> reconciledId() async {
+    final actual = await nativeCurrent();
+    if (actual == null || !options.any((o) => o.id == actual)) {
+      return selectedId;
+    }
+    if (_box.get(_key) != actual) await _box.put(_key, actual);
+    return actual;
   }
 }

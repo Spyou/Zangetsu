@@ -91,6 +91,14 @@ class MyListStore {
     if (!Hive.isBoxOpen(syncMetaBox)) {
       await openBoxSafely(syncMetaBox);
     }
+    // An unreadable list box reopens EMPTY, but the pull throttle lives in
+    // [syncMetaBox] and survives — so the next launch would see a fresh
+    // timestamp, skip the pull, and leave the list empty for up to 12 hours
+    // even though the cloud still has every item. Drop the timestamp so the
+    // next [pullFromCloudIfStale] actually pulls.
+    if (quarantinedBoxes.contains(boxName) && Hive.isBoxOpen(syncMetaBox)) {
+      await Hive.box(syncMetaBox).delete(_syncMetaKey);
+    }
   }
 
   Box<Map> get _box => Hive.box<Map>(boxName);

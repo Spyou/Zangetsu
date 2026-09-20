@@ -119,6 +119,12 @@ class WatchHistory {
     if (!Hive.isBoxOpen(syncMetaBox)) {
       await openBoxSafely(syncMetaBox);
     }
+    // Same reasoning as MyListStore.init: an unreadable history box reopens
+    // empty while the pull throttle in [syncMetaBox] survives, which would
+    // skip the very pull that puts the history back. Drop it.
+    if (quarantinedBoxes.contains(boxName) && Hive.isBoxOpen(syncMetaBox)) {
+      await Hive.box(syncMetaBox).delete(_syncMetaKey);
+    }
   }
 
   Box<Map> get _box => Hive.box<Map>(boxName);

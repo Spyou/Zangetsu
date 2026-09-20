@@ -3,6 +3,7 @@ import '../mode/content_mode.dart';
 import '../models/watch_status.dart';
 import '../playback/playback_prefs.dart';
 import '../privacy/incognito_mode.dart';
+import 'mangabaka_service.dart';
 import 'tracker.dart';
 
 /// Fans every list/progress write out to all connected trackers at once
@@ -17,15 +18,17 @@ class TrackerHub {
   Iterable<Tracker> get connected => trackers.where((t) => t.isConnected);
   bool get anyConnected => connected.isNotEmpty;
 
-  /// Trackers that can actually sync in [mode]. In a reading mode this drops
-  /// video-only trackers (Simkl), which would otherwise be offered as an
-  /// account that can never sync a single title there. Anime mode returns
-  /// every tracker, so today's behaviour is unchanged.
+  /// Trackers that can actually sync in [mode]. A reading mode drops
+  /// video-only trackers (Simkl), and a watching mode drops reading-only ones
+  /// — either way the point is not to offer an account that can never sync a
+  /// single title there.
   ///
   /// Display/selection only — the write paths already self-gate per
-  /// [MediaKind], so this never changes what gets synced.
-  Iterable<Tracker> forMode(ContentMode mode) =>
-      mode.isReading ? trackers.where((t) => t.supportsReading) : trackers;
+  /// [MediaKind] (see `MangaBakaService._canWrite`), so this never changes
+  /// what gets synced.
+  Iterable<Tracker> forMode(ContentMode mode) => mode.isReading
+      ? trackers.where((t) => t.supportsReading)
+      : trackers.where(trackerSupportsVideo);
 
   /// [forMode], narrowed to the ones the user has actually connected.
   Iterable<Tracker> connectedForMode(ContentMode mode) =>
@@ -260,3 +263,12 @@ class TrackerHub {
     );
   }
 }
+
+/// Whether this tracker has an anime/film library at all. The mirror of
+/// [Tracker.supportsReading]: false for MangaBaka, which is reading-only.
+///
+/// A function rather than another getter on [Tracker] on purpose — the
+/// interface is `implements`-only, so a new member would force every other
+/// tracker and every test fake to declare it, for one exception. If a second
+/// reading-only tracker ever lands, add it here.
+bool trackerSupportsVideo(Tracker t) => t is! MangaBakaService;

@@ -435,12 +435,21 @@ class _ZTvInstalledRow extends StatelessWidget {
     final meta = hasUpdate
         ? 'repo • v${entry.version} → v$newVersion'
         : '${bundled ? 'built-in' : 'repo'} • v${entry.version}';
+    // Manifest first, install-time snapshot as the offline fallback.
+    final saved = entry.logoUrl;
+    final logo = state.manifestLogos[_key] ?? (saved.isEmpty ? null : saved);
 
     return _ZRowFocusHalo(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 8, 6, 8),
         child: Row(
           children: [
+            // The repo manifest's `logo`, falling back to the install-time
+            // snapshot. Letter tile when neither has one.
+            Padding(
+              padding: const EdgeInsets.only(right: 14),
+              child: SourceIconTile(size: 38, name: name, icon: logo),
+            ),
             // Source name + meta (non-interactive label).
             Expanded(
               child: Column(
@@ -928,6 +937,14 @@ class _ZTvRepoSourceRow extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 10, 12, 10),
       child: Row(
         children: [
+          Padding(
+            padding: const EdgeInsets.only(right: 14),
+            child: SourceIconTile(
+              size: 38,
+              name: source.name,
+              icon: ProviderReposRegistry.resolveLogoUrl(repo, source),
+            ),
+          ),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,

@@ -5,7 +5,7 @@ import 'package:watch_app/features/search/browse_sources_list.dart';
 // the source switcher. Pure ordering, so it needs neither Hive nor a widget
 // tree — the widget test that tried was fighting the fake clock.
 
-SourceRow _row(String id) => (id: id, label: id, repo: null);
+SourceRow _row(String id) => (id: id, label: id, repo: null, icon: null);
 
 List<(String, List<SourceRow>)> _groups() => [
   ('Anime', [_row('a1'), _row('a2')]),

@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 2.1.2+11400
+version: 2.1.3+11401
 
 environment:
   sdk: ^3.11.5
@@ -283,6 +283,7 @@ flutter:
     - assets/icon/app_icon.png
     # Launcher-icon previews for the Appearance picker (mipmaps are not
     # reachable from Dart, so the choices are bundled as normal assets).
+    - assets/icon/preview_crescent.png
     - assets/icon/preview_default.png
     - assets/icon/preview_classic.png
     # New Zangetsu mark (black bg keyed out) — for the mode-switch transition.

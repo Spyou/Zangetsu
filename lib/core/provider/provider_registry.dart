@@ -45,6 +45,7 @@ class ProviderRegistryEntry {
     this.enabled = true,
     this.originRepoUrl = '',
     this.displayName = '',
+    this.logoUrl = '',
   });
 
   /// The sourceId — used to key the runtime slot (`__providers[name]`).
@@ -64,6 +65,15 @@ class ProviderRegistryEntry {
   /// label rows without re-resolving the repo manifest.
   final String displayName;
 
+  /// Absolute logo URL, snapshotted at install time for the same reason as
+  /// [displayName] — the picker must not re-read a repo manifest per row.
+  ///
+  /// Empty when the manifest declares no `logo`, which is every Zangetsu source
+  /// today: the field has existed on [RepoSource] all along and simply had no
+  /// caller, so the app had no way to show an icon for its own sources while
+  /// Aniyomi, Mihon and CloudStream all did. Empty keeps the letter tile.
+  final String logoUrl;
+
   Map<String, dynamic> toJson() => {
     'name': name,
     'url': url,
@@ -71,6 +81,7 @@ class ProviderRegistryEntry {
     'enabled': enabled,
     if (originRepoUrl.isNotEmpty) 'originRepoUrl': originRepoUrl,
     if (displayName.isNotEmpty) 'displayName': displayName,
+    if (logoUrl.isNotEmpty) 'logoUrl': logoUrl,
   };
 
   factory ProviderRegistryEntry.fromJson(Map<String, dynamic> j) =>
@@ -81,6 +92,7 @@ class ProviderRegistryEntry {
         enabled: j['enabled'] as bool? ?? true,
         originRepoUrl: (j['originRepoUrl'] as String?) ?? '',
         displayName: (j['displayName'] as String?) ?? '',
+        logoUrl: (j['logoUrl'] as String?) ?? '',
       );
 
   ProviderRegistryEntry copyWith({
@@ -89,6 +101,7 @@ class ProviderRegistryEntry {
     String? url,
     String? originRepoUrl,
     String? displayName,
+    String? logoUrl,
   }) => ProviderRegistryEntry(
     name: name,
     url: url ?? this.url,
@@ -96,6 +109,7 @@ class ProviderRegistryEntry {
     enabled: enabled ?? this.enabled,
     originRepoUrl: originRepoUrl ?? this.originRepoUrl,
     displayName: displayName ?? this.displayName,
+    logoUrl: logoUrl ?? this.logoUrl,
   );
 
   bool get isBundled => url.startsWith(kBundledRepoUrl);
@@ -255,6 +269,36 @@ class ProviderRegistry {
     return out;
   }
 
+  /// [typeMapOf] and the logo map in ONE pass over the manifests.
+  ///
+  /// The row builder needs both, and a manifest pass is the expensive part —
+  /// `source_switcher_perf_test` pins the number of `getAll()` calls per
+  /// categorizedSources() run precisely so a second map cannot quietly double
+  /// it. Callers that need only types still use [typeMapOf].
+  ///
+  /// Logos come from the LIVE manifest, not [ProviderRegistryEntry.logoUrl]:
+  /// that snapshot is written only at install, so a provider installed before
+  /// the field existed would keep its letter tile forever. The index is
+  /// already fetched for browsing and update checks, so this backfills
+  /// everything on the device for free — the same way `SourceIconStore` has
+  /// always worked for Aniyomi and Mihon, without touching either.
+  ({Map<String, String> types, Map<String, String> logos}) manifestMapsOf() {
+    final repos = _repos;
+    if (repos == null) {
+      return (types: const <String, String>{}, logos: const <String, String>{});
+    }
+    final types = <String, String>{};
+    final logos = <String, String>{};
+    for (final repo in repos.getAll()) {
+      for (final s in repo.sources) {
+        types.putIfAbsent(s.id, () => s.type);
+        final url = ProviderReposRegistry.resolveLogoUrl(repo, s);
+        if (url != null && url.isNotEmpty) logos.putIfAbsent(s.id, () => url);
+      }
+    }
+    return (types: types, logos: logos);
+  }
+
   Stream<BoxEvent> watch() => _box.watch();
 
   /// Installs (or refreshes) a bundled provider straight from in-memory
@@ -302,6 +346,7 @@ class ProviderRegistry {
     String repoUrl = '',
     String displayName = '',
     String version = '1.0.0',
+    String logoUrl = '',
     bool force = false,
   }) async {
     final resolvedRepo = repoUrl.isEmpty ? kBundledRepoUrl : repoUrl;
@@ -311,6 +356,7 @@ class ProviderRegistry {
       version: version,
       originRepoUrl: resolvedRepo,
       displayName: displayName,
+      logoUrl: logoUrl,
     );
     await _box.put(providerKey(resolvedRepo, sourceId), entry.toJson());
     // Logged because installing was previously silent: a shared log showed the

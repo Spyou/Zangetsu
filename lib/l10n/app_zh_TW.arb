@@ -912,6 +912,7 @@
 	"builtInPlayer": "內建播放器",
 	"otherApps": "其他 App",
 	"seeAll2": "查看全部",
+	"webView": "WebView",
 	"openInBrowser": "在瀏覽器開啟",
 	"copyLink": "複製連結",
 	"removeTracking": "取消追蹤",

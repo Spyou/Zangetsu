@@ -85,6 +85,7 @@ class SourcesBloc extends Bloc<SourcesEvent, SourcesState> {
       await _registry.install(
         sourceId: source.id,
         fileUrl: _repos.resolveFileUrl(repo, source),
+        logoUrl: ProviderReposRegistry.resolveLogoUrl(repo, source) ?? '',
         repoUrl: repo.url,
         displayName: source.name,
         version: source.version,
@@ -124,6 +125,7 @@ class SourcesBloc extends Bloc<SourcesEvent, SourcesState> {
       await _registry.install(
         sourceId: source.id,
         fileUrl: _repos.resolveFileUrl(repo, source),
+        logoUrl: ProviderReposRegistry.resolveLogoUrl(repo, source) ?? '',
         repoUrl: repo.url,
         displayName: source.name,
         version: source.version,
@@ -156,6 +158,7 @@ class SourcesBloc extends Bloc<SourcesEvent, SourcesState> {
         await _registry.install(
           sourceId: source.id,
           fileUrl: _repos.resolveFileUrl(repo, source),
+          logoUrl: ProviderReposRegistry.resolveLogoUrl(repo, source) ?? '',
           repoUrl: repo.url,
           displayName: source.name,
           version: source.version,

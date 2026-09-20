@@ -391,7 +391,7 @@ class _MatchLineState extends State<MatchLine> {
           final semanticLabel = state.auto
               ? (autoHint == null ? 'Auto Resolve' : 'Auto Resolve ($autoHint)')
               : selectedId == null
-              ? l10n.noSourceHasThisYet
+              ? l10n.checkedTopSources
               : sl<SourceRepository>().taggedName(selectedId);
           // Sized and filled like _DownloadButton directly above, so Play,
           // Download and Source read as one stack. The row body opens the
@@ -414,7 +414,7 @@ class _MatchLineState extends State<MatchLine> {
                   state.auto
                       ? 'Auto Resolve'
                       : selectedId == null
-                      ? l10n.noSourceHasThisYet
+                      ? l10n.checkedTopSources
                       : sl<SourceRepository>().taggedName(selectedId),
                   style: AppText.button.copyWith(
                     // Dimmed only when there is no source to name at all; a
@@ -499,11 +499,20 @@ class _MatchLineState extends State<MatchLine> {
                       child: Row(
                         children: [
                           Expanded(
+                            // The 52 belongs INSIDE the InkWell, exactly as
+                            // _DownloadButton has it. A Row hands its children
+                            // a loose height, so an InkWell out here shrank to
+                            // the text's own ~20px and left a 52px-tall row
+                            // with a 20px-tall tap strip — miss the text line
+                            // and the tap did nothing.
                             child: InkWell(
                               onTap: () => _pickSource(state),
-                              child: Padding(
-                                padding: const EdgeInsets.only(left: 14),
-                                child: labelRow,
+                              child: SizedBox(
+                                height: 52,
+                                child: Padding(
+                                  padding: const EdgeInsets.only(left: 14),
+                                  child: labelRow,
+                                ),
                               ),
                             ),
                           ),

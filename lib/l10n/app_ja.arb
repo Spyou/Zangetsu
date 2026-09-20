@@ -912,6 +912,7 @@
 	"builtInPlayer": "内蔵プレーヤー",
 	"otherApps": "ほかのアプリ",
 	"seeAll2": "すべて見る",
+	"webView": "WebView",
 	"openInBrowser": "ブラウザで開く",
 	"copyLink": "リンクをコピー",
 	"removeTracking": "トラッキングを解除",

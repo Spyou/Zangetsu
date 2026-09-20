@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:get_it/get_it.dart';
 
 import '../aniyomi/aniyomi_repo.dart';
+import '../hive/source_icon_store.dart';
 import 'mihon_extension_service.dart' show githubMirrors;
 import 'mihon_pb_index.dart';
 
@@ -116,6 +117,9 @@ class MihonRepo {
       (raw['resources'] is Map ? (raw['resources'] as Map)['apkUrl'] : null),
     );
     final apk = apkUrl.split('?').first.split('/').last;
+    final iconUrl = _str(
+      (raw['resources'] is Map ? (raw['resources'] as Map)['iconUrl'] : null),
+    );
     if (pkg.isEmpty || apk.isEmpty) return null;
 
     final sources = <AniyomiRepoSource>[];
@@ -158,6 +162,7 @@ class MihonRepo {
       sources: sources,
       repoBaseUrl: base,
       absoluteApkUrl: apkUrl,
+      absoluteIconUrl: iconUrl,
     );
   }
 
@@ -227,7 +232,11 @@ class MihonRepo {
           // repo: it's just a smaller mirror of the identical index.json, so on
           // any decode error (schema drift, corrupt gzip) fall through to JSON.
           try {
-            return parsePbIndex(bytes, repoBaseUrl: base);
+            final entries = parsePbIndex(bytes, repoBaseUrl: base);
+            // Same reason as the Aniyomi fetcher: the index is the only place
+            // that names an extension's logo.
+            SourceIconStore.recordAll(entries);
+            return entries;
           } catch (e) {
             lastError = e;
             break; // give up on pb mirrors; move on to index.json
@@ -248,7 +257,9 @@ class MihonRepo {
         // index.min.json here would hide the next schema change behind
         // whatever legacy stub the repo still serves — which is exactly how
         // the two "Outdated App" rows got shipped in the first place.
-        return parseIndex(body, repoBaseUrl: base);
+        final entries = parseIndex(body, repoBaseUrl: base);
+        SourceIconStore.recordAll(entries);
+        return entries;
       }
     }
 

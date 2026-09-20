@@ -143,6 +143,16 @@
 		}
 	},
 	"activeSource": "Active source",
+	"streamingServices": "Streaming Services",
+	"streamingServicesSubtitle": "Browse what each service carries where you are",
+	"streamingServicesEmpty": "No services listed for this country",
+	"streamingServicesMetadataNote": "Browsing only — titles still play through your own sources",
+	"pinAsHomeRow": "Pin as home row",
+	"unpinHomeRow": "Unpin",
+	"pinLimitReached": "You can pin up to {count} services",
+	"@pinLimitReached": { "placeholders": { "count": { "type": "int" } } },
+	"streamingRegion": "Streaming region",
+	"streamingRegionSubtitle": "Which country's catalogue to show",
 	"sourceHealth": "Source health",
 	"sourceHealthSubtitle": "Test which sources are working",
 	"sourceUpdates": "Source updates",
@@ -924,7 +934,9 @@
 	"builtInPlayer": "Built-in player",
 	"otherApps": "Other apps",
 	"seeAll2": "See All",
+	"webView": "WebView",
 	"openInBrowser": "Open in browser",
+	"markAsRead": "Mark as read",
 	"copyLink": "Copy link",
 	"removeTracking": "Remove tracking",
 	"noTrackersConnectedNConnectOneInSettingsConnections": "No trackers connected.\\nConnect one in Settings → Connections.",
@@ -1095,6 +1107,19 @@
 	"markedUnwatched": "Marked unwatched",
 	"markedEpisodesAsWatched": "Marked {count} episodes as watched",
 	"@markedEpisodesAsWatched": {
+		"placeholders": {
+			"count": {
+				"type": "int"
+			}
+		}
+	},
+	"openInBrowser": "Open in browser",
+	"openInBrowserSubtitle": "Read this chapter on the source's own site",
+	"readingSettings": "Reading settings",
+	"markedAsRead": "Marked as read",
+	"markedUnread": "Marked unread",
+	"markedChaptersAsRead": "Marked {count} chapters as read",
+	"@markedChaptersAsRead": {
 		"placeholders": {
 			"count": {
 				"type": "int"
@@ -2917,6 +2942,7 @@
 	"@sourceLabel": {"placeholders": {"name": {"type": "String"}}},
 	"wrongTitle": "Wrong title?",
 	"noSourceHasThisYet": "No source has this yet",
+  "checkedTopSources": "Checked your top sources — none had this",
 	"pickTheRightTitle": "Pick the right title",
 	"searchThisSource": "Search this source",
 	"matchSaved": "Saved. Matched to {name} now.",

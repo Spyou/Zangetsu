@@ -392,6 +392,12 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
     final discord = sl.isRegistered<DiscordRpc>() ? sl<DiscordRpc>() : null;
     if (state == AppLifecycleState.resumed) {
       discord?.onForeground();
+      // A blink of no network makes the startup session check fail, which
+      // raises the "Reconnect to sync" banner — and nothing re-tested it,
+      // because restore() only runs at launch. No-op unless that banner is up.
+      if (sl.isRegistered<AuthCubit>()) {
+        unawaited(sl<AuthCubit>().revalidateIfFlagged());
+      }
       _syncOnResume();
       // The wallpaper may have changed while we were away. No-op unless
       // Material You is on, and only rebuilds if the colours actually moved.

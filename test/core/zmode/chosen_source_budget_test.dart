@@ -115,7 +115,10 @@ void main() {
     await dir.delete(recursive: true);
   });
 
-  ({PlaybackResolver r, SourceMatcher m}) build(_SlowSrc src) {
+  ({PlaybackResolver r, SourceMatcher m}) build(
+    _SlowSrc src, {
+    Duration? relaxedBudget,
+  }) {
     final matcher = SourceMatcher(
       sources: src,
       store: store,
@@ -129,8 +132,9 @@ void main() {
       prefs: prefs,
       health: health,
       candidates: (_) => src.loadedSources,
-      // Scaled-down stand-ins for 8s and 25s.
+      // Scaled-down stand-ins for 8s, 20s and 25s.
       perSourceBudget: const Duration(milliseconds: 60),
+      relaxedBudget: relaxedBudget ?? const Duration(milliseconds: 60),
       chosenBudget: const Duration(milliseconds: 600),
     );
     r.bindTitleLookup((_) async => (title: 'FMA', alt: null, malId: 100));
@@ -394,5 +398,44 @@ void main() {
       expect(b.r.unplayableCount(_ep2), 0);
       expect((await b.r.resolveForPlayback(_ep2)).match.sourceId, 'src-a');
     });
+  });
+
+  // THE REPORTED BUG, as a test.
+  //
+  // "Auto fetch source showing no streams found while searching on all source,
+  // then select one individual source and it shows streams." That was not a
+  // mystery: an un-chosen source got 8s while a hand-picked one got 25s, so a
+  // source answering in ~12s was thrown away by Auto Resolve and kept by a
+  // manual pick. Same source, same episode, different patience.
+  test('a slow source Auto Resolve used to drop now plays without being picked',
+      () async {
+    JsEngine.debugRunsOffUiIsolateOverride = true;
+    // Answers well past the tight 60ms stand-in for 8s, comfortably inside the
+    // 300ms stand-in for the relaxed budget.
+    final src = _SlowSrc(aDelay: const Duration(milliseconds: 150));
+    final b = build(src, relaxedBudget: const Duration(milliseconds: 300));
+    // Nothing pinned, no kind default — this is a plain Auto Resolve sweep.
+    final out = await b.r.sources('zm://anime/mal:100/ep/2');
+    expect(out, isNotEmpty,
+        reason: 'the slow source answered inside the relaxed budget, so Auto '
+            'Resolve must accept it — being picked by hand is not what makes '
+            'a source work');
+  });
+
+  // The other half of the same rule: where provider JS still runs on the UI
+  // isolate, waiting really does cost frames, so the tight budget stands and a
+  // slow source is still dropped. Patience is only free where it is free.
+  test('where JS is on the UI isolate the tight budget still applies', () async {
+    JsEngine.debugRunsOffUiIsolateOverride = false;
+    final src = _SlowSrc(aDelay: const Duration(milliseconds: 150));
+    final b = build(src, relaxedBudget: const Duration(milliseconds: 300));
+    // A sweep with nothing left to offer throws rather than returning an
+    // empty list — that is how the failure sheet gets a reason to show.
+    await expectLater(
+      b.r.sources('zm://anime/mal:100/ep/2'),
+      throwsA(isA<Exception>()),
+      reason: '8s bounded UI freeze, and on that platform it still does, so '
+          'the slow source is still dropped',
+    );
   });
 }

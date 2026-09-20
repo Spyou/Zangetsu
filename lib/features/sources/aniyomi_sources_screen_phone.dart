@@ -44,7 +44,14 @@ class _AniScreenPhoneViewState extends State<_AniScreenPhoneView> {
               tooltip: context.l10n.languages,
               icon: const Icon(Icons.language_rounded),
               onPressed: () =>
-                  showSourceLanguageSheet(context, sl<AnimeLangPrefs>()),
+                  showSourceLanguageSheet(
+                    context,
+                    sl<AnimeLangPrefs>(),
+                    present: presentLangCodes(
+                      sl<AniyomiManager>().all,
+                      (p) => p is AniyomiProvider ? p.info.lang : '',
+                    ),
+                  ),
             ),
           ],
           bottom: TabBar(
@@ -125,17 +132,30 @@ class _AniyomiInstalledGroupState extends State<_AniyomiInstalledGroup> {
 
   @override
   Widget build(BuildContext context) {
+    final langPrefs = sl.isRegistered<AnimeLangPrefs>()
+        ? sl<AnimeLangPrefs>()
+        : null;
     return ListenableBuilder(
-      listenable: sl<AniyomiManager>(),
+      // The language prefs too: the globe in this screen's app bar edits them,
+      // and without listening the list it edits sat unchanged.
+      listenable: Listenable.merge([sl<AniyomiManager>(), langPrefs]),
       builder: (context, _) {
         final query = widget.query;
-        final sources = sl<AniyomiManager>()
+        var sources = sl<AniyomiManager>()
             .all
             .where((p) => sourceSearchMatches(
                 query,
                 p.displayName,
                 p is AniyomiProvider ? p.info.lang : null))
             .toList();
+        // Same filter the picker and the browse list use. Without it, picking
+        // English left this screen listing every language anyway.
+        sources = visibleInstalledSources(
+          sources,
+          langPrefs?.enabled ?? defaultSourceLangs(),
+          pkgOf: (p) => p is AniyomiProvider ? p.info.pkg : p.sourceId,
+          langOf: (p) => p is AniyomiProvider ? p.info.lang : '',
+        );
         if (sources.isEmpty) {
           return EmptyState(
             icon: Icons.extension_outlined,
@@ -399,18 +419,32 @@ class _AniSourceRowState extends State<_AniSourceRow> {
       if (update == null) return const SizedBox.shrink();
       return Padding(
         padding: const EdgeInsets.only(right: 4),
-        child: FilledButton(
-          onPressed: _busy ? null : () => _applyUpdate(update),
-          style: FilledButton.styleFrom(
-            backgroundColor: AppColors.accent,
-            foregroundColor: Colors.white,
-            elevation: 0,
-            visualDensity: VisualDensity.compact,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        // Capped width + an ellipsis, because this row also carries a
+        // settings, a sign-in and a delete button: the button's full label
+        // used to win the width fight outright and the source NAME was what
+        // got squeezed away. NOT a Flexible — that defaults to flex:1, so it
+        // claimed half the row's free space and, with no update to show, left
+        // it empty and dragged the trailing buttons into the middle.
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 148),
+          child: FilledButton(
+            onPressed: _busy ? null : () => _applyUpdate(update),
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.accent,
+              foregroundColor: Colors.white,
+              elevation: 0,
+              visualDensity: VisualDensity.compact,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            child: Text(
+              context.l10n.updateArrowVersion('${update.availableVersion}'),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
-          child: Text(context.l10n.updateArrowVersion('${update.availableVersion}')),
         ),
       );
     }
@@ -428,6 +462,15 @@ class _AniSourceRowState extends State<_AniSourceRow> {
         padding: const EdgeInsets.fromLTRB(16, 8, 6, 8),
         child: Row(
           children: [
+            Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: SourceIconTile(
+                name: source.displayName,
+                icon: aniProvider == null
+                    ? null
+                    : SourceIconStore.urlFor(aniProvider.info.pkg),
+              ),
+            ),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -463,6 +506,15 @@ class _AniSourceRowState extends State<_AniSourceRow> {
                 icon: const Icon(Icons.tune_rounded, size: 20),
                 color: AppColors.textSecondary,
                 onPressed: _openSettings,
+                // Default IconButtons are 48x48 for a 20px glyph. Three of
+                // them ate the width the source NAME needed once the row
+                // grew an icon tile; 36 still clears the 36dp touch floor.
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints.tightFor(
+                  width: 36,
+                  height: 36,
+                ),
               ),
             if (source_actions.webViewUrlFor(source.sourceId) != null)
               IconButton(
@@ -471,12 +523,30 @@ class _AniSourceRowState extends State<_AniSourceRow> {
                 color: AppColors.textSecondary,
                 onPressed: () =>
                     source_actions.openSourceWebView(source.sourceId),
+                // Default IconButtons are 48x48 for a 20px glyph. Three of
+                // them ate the width the source NAME needed once the row
+                // grew an icon tile; 36 still clears the 36dp touch floor.
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints.tightFor(
+                  width: 36,
+                  height: 36,
+                ),
               ),
             IconButton(
               tooltip: context.l10n.uninstall,
               icon: const Icon(Icons.delete_outline_rounded, size: 20),
               color: AppColors.textSecondary,
               onPressed: () => _confirmUninstall(context),
+              // Default IconButtons are 48x48 for a 20px glyph. Three of
+              // them ate the width the source NAME needed once the row
+              // grew an icon tile; 36 still clears the 36dp touch floor.
+              visualDensity: VisualDensity.compact,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints.tightFor(
+                width: 36,
+                height: 36,
+              ),
             ),
           ],
         ),

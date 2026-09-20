@@ -1,6 +1,8 @@
 import 'package:dio/dio.dart';
 import 'package:get_it/get_it.dart';
 
+import '../di/injector.dart';
+import '../metadata/streaming_providers.dart';
 import '../mode/content_mode.dart';
 import '../mode/content_mode_cubit.dart';
 import '../playback/source_health_store.dart';
@@ -18,6 +20,7 @@ import '../ui/source_switcher.dart';
 import 'match_store.dart';
 import 'playback_resolver.dart';
 import 'source_order_prefs.dart';
+import 'source_score_store.dart';
 import 'zmode_source_prefs.dart';
 import 'metadata_repository.dart';
 import 'source_matcher.dart';
@@ -40,39 +43,6 @@ Future<void> registerZangetsuMode(GetIt sl) async {
   final sourceOrderPrefs = await SourceOrderPrefs.open();
   sl.registerSingleton<SourceOrderPrefs>(sourceOrderPrefs);
 
-  // Shared by both the matcher (Detail's per-title resolve) and the playback
-  // resolver (via MetadataRepository below) so Auto Resolve sweeps — and
-  // playback's own health/pin tie-breaks — agree on the user's priority order.
-  List<({String id, String name})> orderedCandidates(ZKind kind) {
-    // Switched-off sources are dropped HERE and nowhere else: this is the
-    // sweep's list. `candidatesForKind` stays whole, so the per-title picker
-    // still offers every installed source — turning one off means "stop
-    // trying it automatically", not "hide it from me".
-    return activeSources(
-      sweepOrder(
-        candidatesForKind(sl<SourceRepository>(), kind),
-        kind,
-        sourceOrderPrefs.get(kind),
-      ),
-      excluded: sourceOrderPrefs.excluded(kind),
-    );
-  }
-
-  // What Auto Resolve actually searches. `orderedCandidates` is every
-  // installed source, because the per-title picker and pin lookups need to see
-  // all of them — but a sweep nobody asked for shouldn't be searching
-  // languages the user turned off. A library with the usual multi-language
-  // Mihon extensions installed hits 123 candidates that way, at up to 3s each,
-  // and the chapter list sits on a skeleton the whole time.
-  //
-  // Narrowed against `loadedSources`, which is where the language preference
-  // already lives — no second copy of that rule to drift.
-  List<({String id, String name})> sweepList(ZKind kind) =>
-      languageNarrowedCandidates(
-        orderedCandidates(kind),
-        {for (final s in sl<SourceRepository>().loadedSources) s.id},
-      );
-
   sl.registerSingleton<SourceMatcher>(SourceMatcher(
     sources: sl<SourceRepository>(),
     store: matchStore,
@@ -83,6 +53,12 @@ Future<void> registerZangetsuMode(GetIt sl) async {
 
   final providerPrefs = await MetadataProviderPrefs.open();
   sl.registerSingleton<MetadataProviderPrefs>(providerPrefs);
+
+  // Shares the catalogue's transport: the API key is attached by the Dio
+  // interceptor, so neither of them ever passes `api_key` by hand.
+  sl.registerLazySingleton<StreamingProvidersService>(
+    () => StreamingProvidersService(TmdbCatalogue.dioGet(sl<Dio>())),
+  );
 
   sl.registerSingleton<MetadataRepository>(MetadataRepository(
     anilist: AniListCatalogue(AniListCatalogue.dioGql(sl<Dio>())),
@@ -230,6 +206,99 @@ List<({String id, String name})> byKindAffinity(
     ...pool.where((s) => declared.contains(s.id)),
     ...pool.where((s) => !declared.contains(s.id)),
   ];
+}
+
+/// Shared by both the matcher (Detail's per-title resolve) and the playback
+/// resolver (via MetadataRepository) so Auto Resolve sweeps — and playback's
+/// own health/pin tie-breaks — agree on the user's priority order.
+///
+/// A top-level function reading `sl` directly, not a closure inside
+/// [registerZangetsuMode]: a test can register fakes into `sl` and call this
+/// (and [sweepList]) exactly as production does, instead of reconstructing
+/// their composition by hand and testing that instead.
+List<({String id, String name})> orderedCandidates(ZKind kind) {
+  final prefs = sl<SourceOrderPrefs>();
+  // Switched-off sources are dropped HERE and nowhere else: this is the
+  // sweep's list. `candidatesForKind` stays whole, so the per-title picker
+  // still offers every installed source — turning one off means "stop
+  // trying it automatically", not "hide it from me".
+  // No exclude set any more. Switching a source off was the only way to keep
+  // it out of the sweep before there was a limit; now the limit and the order
+  // do that job, and a source below the cut is simply not tried. Keeping a
+  // second, invisible way to disable a source — with the UI for it gone —
+  // would leave anyone who had used it with sources silently off and no way
+  // to find them.
+  //
+  // `SourceOrderPrefs.excluded` still exists and still holds whatever was
+  // saved; nothing reads it, so it is inert rather than lost.
+  return sweepOrder(
+    candidatesForKind(sl<SourceRepository>(), kind),
+    kind,
+    prefs.get(kind),
+  );
+}
+
+/// What Auto Resolve actually searches. `orderedCandidates` is every
+/// installed source, because the per-title picker and pin lookups need to see
+/// all of them — but a sweep nobody asked for shouldn't be searching
+/// languages the user turned off. A library with the usual multi-language
+/// extensions installed hits 123 candidates that way, at up to 3s each, and
+/// the chapter list sits on a skeleton the whole time.
+///
+/// Then two more things, both only for the sweep:
+///
+/// RANKED, but only while the order is still ours to choose. A saved order
+/// means the user dragged something, and the promise of dragging is that the
+/// order stays put — so `SourceOrderPrefs.get` being non-empty is the whole
+/// automatic/manual switch, with no second flag to keep in step.
+///
+/// CAPPED at [kAutoResolveCap]. A sweep stops at the first hit, so this costs
+/// nothing when a source has the title; it bounds the MISS, which is the case
+/// that used to walk every installed source one at a time.
+List<({String id, String name})> sweepList(ZKind kind) =>
+    sweepCandidates(kind).take(sl<SourceOrderPrefs>().cap(kind)).toList();
+
+/// [sweepList] without the cap: every source the sweep is willing to walk, in
+/// the order it would walk them.
+///
+/// Split out so the Source Priority screen can render the SAME list the sweep
+/// uses instead of building its own. It used to rank a wider pool — one that
+/// still holds sources the language filter narrows out and, on TV, sources
+/// whose runtime was never loaded — so the screen could put a source in its
+/// top ten that the sweep would never attempt, under a heading claiming it was
+/// used automatically. One function, one answer.
+List<({String id, String name})> sweepCandidates(ZKind kind) {
+  final narrowed = languageNarrowedCandidates(
+    orderedCandidates(kind),
+    {for (final s in sl<SourceRepository>().loadedSources) s.id},
+  );
+  // Rank first, then put the sources the user placed by hand back on top.
+  //
+  // The two are not rival modes. Dragging one favourite used to switch the
+  // WHOLE list to manual and stop ranking everything else — so "keep AnimeCube
+  // first, sort the rest for me" was not expressible, which is the one thing
+  // someone opening this screen actually wants. Now a drag pins just that
+  // source; everything untouched stays ranked underneath.
+  //
+  // [applySourceOrder] already has exactly these semantics: listed ids first in
+  // the given order, everything else after in its incoming relative order —
+  // and that incoming order is now the ranking.
+  final ranked = rankByRecord(narrowed, sourceRecordOf);
+  return applySourceOrder(ranked, sl<SourceOrderPrefs>().get(kind));
+}
+
+/// What the ranker knows about one source: how often it has actually played,
+/// whether it is working now, and how fast it answered last time.
+///
+/// One definition, read by both the sweep and the Source Priority screen, so
+/// the screen cannot show an order the sweep does not walk.
+SourceRecord sourceRecordOf(String id) {
+  final health = sl<SourceHealthStore>();
+  return (
+    plays: sl<SourceScoreStore>().plays(id),
+    health: health.statusOf(id),
+    responseMs: health.recordOf(id)?.responseMs,
+  );
 }
 
 /// The catalogue kind to browse: the content mode, with Movie/TV split out of
