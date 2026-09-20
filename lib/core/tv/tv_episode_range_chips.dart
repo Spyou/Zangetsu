@@ -5,10 +5,9 @@ import '../theme/app_colors.dart';
 import '../theme/app_text.dart';
 import 'tv_focusable.dart';
 
-/// D-pad focusable episode-range chips (`1–50`, `51–100`, …).
-///
-/// [axis] is [Axis.horizontal] for the detail tab row, or [Axis.vertical]
-/// for the player overlay's left rail.
+/// D-pad focusable horizontal chip row — episode ranges (`1–50`, `51–100`, …),
+/// TV detail season picker (`Season 1`, `Season 2`, …), and the player overlay
+/// episode rail (vertical [axis]).
 class TvEpisodeRangeChips extends StatelessWidget {
   const TvEpisodeRangeChips({
     super.key,
@@ -19,6 +18,7 @@ class TvEpisodeRangeChips extends StatelessWidget {
     this.axis = Axis.horizontal,
     this.selectedChipFocusNode,
     this.episodeReturnFocusNode,
+    this.chipKey,
   });
 
   final int count;
@@ -35,6 +35,9 @@ class TvEpisodeRangeChips extends StatelessWidget {
   /// current episode row).
   final FocusNode? episodeReturnFocusNode;
 
+  /// Optional stable keys (e.g. `ValueKey('tv-season-2')` for season numbers).
+  final Key Function(int index)? chipKey;
+
   static const double _chipHeight = 32;
   static const double _chipRadius = 20;
 
@@ -44,9 +47,10 @@ class TvEpisodeRangeChips extends StatelessWidget {
 
     final list = ListView.separated(
       primary: false,
+      clipBehavior: Clip.none,
       scrollDirection: axis,
       padding: axis == Axis.horizontal
-          ? const EdgeInsets.symmetric(horizontal: 16)
+          ? const EdgeInsets.fromLTRB(16, 10, 16, 10)
           : const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
       itemCount: count,
       separatorBuilder: (_, _) => axis == Axis.horizontal
@@ -56,7 +60,7 @@ class TvEpisodeRangeChips extends StatelessWidget {
     );
 
     return axis == Axis.horizontal
-        ? SizedBox(height: 48, child: list)
+        ? SizedBox(height: 56, child: list)
         : SizedBox(
             width: 96,
             child: list,
@@ -67,7 +71,7 @@ class TvEpisodeRangeChips extends StatelessWidget {
     final label = labelFor(i);
     final isSelected = i == selected;
     final chip = TvFocusable(
-      key: ValueKey('tv-range-$i'),
+      key: chipKey?.call(i) ?? ValueKey('tv-range-$i'),
       variant: TvFocusVariant.box,
       scale: 1.0,
       borderRadius: _chipRadius,
@@ -85,13 +89,15 @@ class TvEpisodeRangeChips extends StatelessWidget {
           color: isSelected ? AppColors.accent : AppColors.surface2,
           borderRadius: BorderRadius.circular(_chipRadius),
         ),
-        child: Text(
-          label,
-          textAlign: TextAlign.center,
-          style: AppText.caption.copyWith(
-            color: isSelected ? Colors.white : AppColors.textPrimary,
-            fontWeight: FontWeight.w600,
-            height: 1.0,
+        child: ExcludeSemantics(
+          child: Text(
+            label,
+            textAlign: TextAlign.center,
+            style: AppText.caption.copyWith(
+              color: isSelected ? Colors.white : AppColors.textPrimary,
+              fontWeight: FontWeight.w600,
+              height: 1.0,
+            ),
           ),
         ),
       ),

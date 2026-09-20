@@ -1010,12 +1010,14 @@ class JsProvider implements BaseProvider, ReadingProvider {
   @override
   Future<List<VideoSource>> getVideoSources(
     String episodeUrl, {
-    bool fast = false, // JS providers resolve in one call; no incremental mode.
+    bool fast = false,
   }) async {
     // Video source resolution makes several network hops (decrypt + multiple
     // embed/clock resolves), so it needs a longer ceiling than the 15s default.
+    // TorBox and similar debrid sources use [fast] to parallelize unlocks.
     final raw = await _call('getVideoSources', [
       episodeUrl,
+      fast,
     ], timeout: const Duration(seconds: 60));
     final list = (jsonDecode(raw) as List).cast<Map<String, dynamic>>();
     return list.map(VideoSource.fromJson).toList();

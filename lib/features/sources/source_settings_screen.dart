@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
 import '../../core/models/provider_setting_schema.dart';
 import '../../core/provider/cloudstream_provider.dart';
@@ -10,6 +11,8 @@ import '../../core/provider/provider_registry.dart';
 import '../../core/repository/provider_settings_repository.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
+import '../../core/tv/tv_list_focusable.dart';
+import '../../core/tv/tv_text_field.dart';
 import '../../core/ui/settings_widgets.dart';
 import '../../core/ui/states.dart';
 import '../../l10n/l10n.dart';
@@ -56,6 +59,8 @@ class _SourceSettingsScreenState extends State<SourceSettingsScreen> {
   String get _key =>
       ProviderRegistry.providerKey(widget.repoUrl, widget.sourceId);
 
+  bool get _isTv => sl.isRegistered<AppMode>() && sl<AppMode>().isTv;
+
   @override
   void initState() {
     super.initState();
@@ -75,6 +80,19 @@ class _SourceSettingsScreenState extends State<SourceSettingsScreen> {
   }
 
   Future<List<ProviderSettingSchema>?> _loadSchema() async {
+    // TV skips loadAll at boot; open settings before playback and the JS
+    // provider may not be in the runtime yet.
+    if (_manager.get(widget.sourceId) == null) {
+      final loaded = await sl<ProviderRegistry>().ensureRuntimeLoaded(
+        widget.sourceId,
+      );
+      if (!loaded) {
+        throw StateError(
+          'Could not load ${widget.displayName ?? widget.sourceId}. '
+          'Try again or check that the source is enabled.',
+        );
+      }
+    }
     final provider = _manager.get(widget.sourceId);
     if (provider == null) return null;
     final raw = await provider.getSettingsSchema();
@@ -153,6 +171,82 @@ class _SourceSettingsScreenState extends State<SourceSettingsScreen> {
   }
 
   Future<void> _pickEnum(ProviderSettingSchema schema) async {
+    if (_isTv) {
+      final current = _values[schema.key] as String?;
+      final selected = await showDialog<String>(
+        context: context,
+        barrierColor: Colors.black54,
+        builder: (ctx) => Dialog(
+          backgroundColor: AppColors.surface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          insetPadding: const EdgeInsets.symmetric(horizontal: 80, vertical: 48),
+          child: SizedBox(
+            width: 460,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 20, 24, 12),
+                  child: Text(schema.label, style: AppText.title),
+                ),
+                const Divider(height: 1, color: AppColors.hairline),
+                Flexible(
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxHeight: MediaQuery.of(context).size.height * 0.6,
+                    ),
+                    child: ListView(
+                      shrinkWrap: true,
+                      clipBehavior: Clip.none,
+                      padding: const EdgeInsets.only(bottom: 12),
+                      children: [
+                        for (var i = 0; i < schema.options.length; i++)
+                          TvListFocusable(
+                            autofocus: schema.options[i].value == current,
+                            semanticLabel: schema.options[i].label,
+                            onTap: () =>
+                                Navigator.pop(ctx, schema.options[i].value),
+                            child: ExcludeSemantics(
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 24,
+                                  vertical: 14,
+                                ),
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        schema.options[i].label,
+                                        style: AppText.headline,
+                                      ),
+                                    ),
+                                    if (schema.options[i].value == current)
+                                      Icon(
+                                        Icons.check,
+                                        color: AppColors.accent,
+                                        size: 20,
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      if (selected != null) _updateImmediate(schema.key, selected);
+      return;
+    }
+
     final selected = await showModalBottomSheet<String>(
       context: context,
       backgroundColor: AppColors.surface,
@@ -204,6 +298,258 @@ class _SourceSettingsScreenState extends State<SourceSettingsScreen> {
     if (selected != null) _updateImmediate(schema.key, selected);
   }
 
+  Future<void> _editText(ProviderSettingSchema schema) async {
+    final current = _values[schema.key] as String? ?? '';
+    final controller = TextEditingController(text: current);
+    final saved = await showDialog<bool>(
+      context: context,
+      barrierColor: Colors.black54,
+      builder: (ctx) => Dialog(
+        backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        insetPadding: const EdgeInsets.symmetric(horizontal: 80, vertical: 48),
+        child: SizedBox(
+          width: 520,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(24, 20, 24, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(schema.label, style: AppText.title),
+                const SizedBox(height: 16),
+                TvTextField(
+                  controller: controller,
+                  autofocus: true,
+                  decoration: const InputDecoration(
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TvListFocusable(
+                      semanticLabel: context.l10n.cancel,
+                      onTap: () => Navigator.pop(ctx, false),
+                      child: ExcludeSemantics(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 10,
+                          ),
+                          child: Text(context.l10n.cancel, style: AppText.body),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    TvListFocusable(
+                      semanticLabel: context.l10n.save,
+                      onTap: () => Navigator.pop(ctx, true),
+                      child: ExcludeSemantics(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 10,
+                          ),
+                          child: Text(
+                            context.l10n.save,
+                            style: AppText.body.copyWith(
+                              color: AppColors.accent,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    if (saved == true) {
+      _updateImmediate(schema.key, controller.text);
+    }
+    controller.dispose();
+  }
+
+  Future<void> _pickMultiEnum(ProviderSettingSchema schema) async {
+    final raw = _values[schema.key];
+    final chosen = raw is List
+        ? raw.whereType<String>().toSet()
+        : <String>{};
+    if (_isTv) {
+      final saved = await showDialog<bool>(
+        context: context,
+        barrierColor: Colors.black54,
+        builder: (ctx) => Dialog(
+          backgroundColor: AppColors.surface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          insetPadding: const EdgeInsets.symmetric(horizontal: 80, vertical: 48),
+          child: SizedBox(
+            width: 460,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 20, 24, 12),
+                  child: Text(schema.label, style: AppText.title),
+                ),
+                const Divider(height: 1, color: AppColors.hairline),
+                Flexible(
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxHeight: MediaQuery.of(context).size.height * 0.55,
+                    ),
+                    child: StatefulBuilder(
+                      builder: (ctx2, setInner) => ListView(
+                        shrinkWrap: true,
+                        clipBehavior: Clip.none,
+                        padding: const EdgeInsets.only(bottom: 8),
+                        children: [
+                          for (var j = 0; j < schema.options.length; j++)
+                            TvListFocusable(
+                              autofocus: j == 0,
+                              semanticLabel: schema.options[j].label,
+                              onTap: () => setInner(() {
+                                final v = schema.options[j].value;
+                                chosen.contains(v)
+                                    ? chosen.remove(v)
+                                    : chosen.add(v);
+                              }),
+                              child: ExcludeSemantics(
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 24,
+                                    vertical: 14,
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          schema.options[j].label,
+                                          style: AppText.headline,
+                                        ),
+                                      ),
+                                      if (chosen.contains(schema.options[j].value))
+                                        Icon(
+                                          Icons.check,
+                                          color: AppColors.accent,
+                                          size: 20,
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                const Divider(height: 1, color: AppColors.hairline),
+                TvListFocusable(
+                  semanticLabel: context.l10n.save,
+                  onTap: () => Navigator.pop(ctx, true),
+                  child: ExcludeSemantics(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 24,
+                        vertical: 14,
+                      ),
+                      child: Text(
+                        context.l10n.save,
+                        style: AppText.body.copyWith(
+                          color: AppColors.accent,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+              ],
+            ),
+          ),
+        ),
+      );
+      if (saved == true) {
+        _updateImmediate(schema.key, chosen.toList());
+      }
+    }
+  }
+
+  List<Widget> _buildSchemaList(List<ProviderSettingSchema> schema, bool hasNative) {
+    if (_isTv) {
+      return [
+        SettingsCard(
+          children: [
+            for (var i = 0; i < schema.length; i++)
+              _buildEntry(
+                schema[i],
+                autofocus: !hasNative && i == 0,
+              ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        TvListFocusable(
+          semanticLabel: context.l10n.resetToDefaults,
+          onTap: () => _resetDefaults(schema),
+          child: ExcludeSemantics(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(28, 8, 20, 8),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.restore_rounded,
+                    color: AppColors.textSecondary,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    context.l10n.resetToDefaults,
+                    style: AppText.body.copyWith(
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ];
+    }
+    return [
+      for (final entry in schema) _buildEntry(entry),
+      const SizedBox(height: 16),
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        child: TextButton.icon(
+          onPressed: () => _resetDefaults(schema),
+          icon: const Icon(
+            Icons.restore_rounded,
+            color: AppColors.textSecondary,
+            size: 20,
+          ),
+          label: Text(
+            context.l10n.resetToDefaults,
+            style: AppText.body.copyWith(
+              color: AppColors.textSecondary,
+            ),
+          ),
+        ),
+      ),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -236,33 +582,17 @@ class _SourceSettingsScreenState extends State<SourceSettingsScreen> {
                 );
               }
               return ListView(
-                padding: const EdgeInsets.fromLTRB(12, 8, 12, 24),
+                clipBehavior: _isTv ? Clip.none : Clip.hardEdge,
+                padding: EdgeInsets.fromLTRB(
+                  _isTv ? 0 : 12,
+                  8,
+                  _isTv ? 0 : 12,
+                  24,
+                ),
                 children: [
-                  // The plugin's OWN settings UI (e.g. server picker), opened
-                  // natively. Shown above the app-side schema settings.
-                  if (hasNative) _providerSettingsCard(),
+                  if (hasNative) _providerSettingsCard(autofocus: true),
                   if (hasNative && schema != null) const SizedBox(height: 8),
-                  if (schema != null) ...[
-                    for (final entry in schema) _buildEntry(entry),
-                    const SizedBox(height: 16),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 4),
-                      child: TextButton.icon(
-                        onPressed: () => _resetDefaults(schema),
-                        icon: const Icon(
-                          Icons.restore_rounded,
-                          color: AppColors.textSecondary,
-                          size: 20,
-                        ),
-                        label: Text(
-                          context.l10n.resetToDefaults,
-                          style: AppText.body.copyWith(
-                            color: AppColors.textSecondary,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
+                  if (schema != null) ..._buildSchemaList(schema, hasNative),
                 ],
               );
             },
@@ -273,25 +603,45 @@ class _SourceSettingsScreenState extends State<SourceSettingsScreen> {
   }
 
   /// Tile that opens the CloudStream plugin's OWN settings UI (native sheet).
-  Widget _providerSettingsCard() => _card(
-    child: ListTile(
-      leading: Icon(Icons.tune_rounded, color: AppColors.accent),
-      title: Text(context.l10n.providerSettings, style: AppText.body),
-      subtitle: Text(
-        context.l10n.openThisSourceSOwnSettingsEGServerLanguage,
-        style: AppText.caption,
+  Widget _providerSettingsCard({bool autofocus = false}) {
+    if (_isTv) {
+      return SettingsCard(
+        children: [
+          SettingsTile(
+            icon: Icons.tune_rounded,
+            iconAccent: true,
+            autofocus: autofocus,
+            title: context.l10n.providerSettings,
+            subtitle: context.l10n.openThisSourceSOwnSettingsEGServerLanguage,
+            subtitleMaxLines: null,
+            onTap: () {
+              final api = _csApiName;
+              if (api != null) csPluginOpenSettings(api);
+            },
+          ),
+        ],
+      );
+    }
+    return _card(
+      child: ListTile(
+        leading: Icon(Icons.tune_rounded, color: AppColors.accent),
+        title: Text(context.l10n.providerSettings, style: AppText.body),
+        subtitle: Text(
+          context.l10n.openThisSourceSOwnSettingsEGServerLanguage,
+          style: AppText.caption,
+        ),
+        trailing: const Icon(
+          Icons.open_in_new_rounded,
+          size: 18,
+          color: AppColors.textSecondary,
+        ),
+        onTap: () {
+          final api = _csApiName;
+          if (api != null) csPluginOpenSettings(api);
+        },
       ),
-      trailing: const Icon(
-        Icons.open_in_new_rounded,
-        size: 18,
-        color: AppColors.textSecondary,
-      ),
-      onTap: () {
-        final api = _csApiName;
-        if (api != null) csPluginOpenSettings(api);
-      },
-    ),
-  );
+    );
+  }
 
   Widget _card({required Widget child, EdgeInsets? padding}) => Container(
     margin: const EdgeInsets.symmetric(vertical: 4),
@@ -303,7 +653,10 @@ class _SourceSettingsScreenState extends State<SourceSettingsScreen> {
     child: child,
   );
 
-  Widget _buildEntry(ProviderSettingSchema schema) {
+  Widget _buildEntry(ProviderSettingSchema schema, {bool autofocus = false}) {
+    if (_isTv) {
+      return _buildEntryTv(schema, autofocus: autofocus);
+    }
     switch (schema.type) {
       case ProviderSettingType.bool_:
         final v = _values[schema.key] as bool? ?? false;
@@ -410,6 +763,66 @@ class _SourceSettingsScreenState extends State<SourceSettingsScreen> {
             ),
             onChanged: (next) => _updateDebounced(schema.key, next),
           ),
+        );
+    }
+  }
+
+  Widget _buildEntryTv(ProviderSettingSchema schema, {bool autofocus = false}) {
+    switch (schema.type) {
+      case ProviderSettingType.bool_:
+        final v = _values[schema.key] as bool? ?? false;
+        return SettingsTile(
+          icon: Icons.toggle_on_outlined,
+          title: schema.label,
+          autofocus: autofocus,
+          trailing: Switch.adaptive(
+            value: v,
+            activeThumbColor: AppColors.accent,
+            onChanged: (next) => _updateImmediate(schema.key, next),
+          ),
+          onTap: () => _updateImmediate(schema.key, !v),
+        );
+      case ProviderSettingType.enum_:
+        final current = _values[schema.key] as String?;
+        final label = schema.options
+            .firstWhere(
+              (o) => o.value == current,
+              orElse: () => ProviderSettingOption(
+                value: current ?? '',
+                label: current ?? '',
+              ),
+            )
+            .label;
+        return SettingsTile(
+          icon: Icons.list_rounded,
+          title: schema.label,
+          subtitle: label,
+          autofocus: autofocus,
+          onTap: () => _pickEnum(schema),
+        );
+      case ProviderSettingType.multiEnum:
+        final raw = _values[schema.key];
+        final selected = raw is List
+            ? raw.whereType<String>().toSet()
+            : <String>{};
+        return SettingsTile(
+          icon: Icons.checklist_rounded,
+          title: schema.label,
+          subtitle: selected.isEmpty
+              ? null
+              : '${selected.length} selected',
+          autofocus: autofocus,
+          onTap: () => _pickMultiEnum(schema),
+        );
+      case ProviderSettingType.text:
+        final v = _values[schema.key] as String? ?? '';
+        return SettingsTile(
+          icon: Icons.edit_rounded,
+          title: schema.label,
+          subtitle: v.isEmpty ? null : v,
+          subtitleMaxLines: 2,
+          autofocus: autofocus,
+          onTap: () => _editText(schema),
         );
     }
   }
