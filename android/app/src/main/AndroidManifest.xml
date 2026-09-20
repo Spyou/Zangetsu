@@ -4,7 +4,15 @@
          declared here or release builds have no network at all (streaming,
          providers, downloads). -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE"/>
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30"/>
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30"/>
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>
+    <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE"/>
+    <uses-feature android:name="android.hardware.bluetooth" android:required="false"/>
     <!-- Download progress notification (Android 13+). -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <!-- In-app update: install the downloaded APK via the system installer. -->
@@ -30,7 +38,11 @@
         android:icon="@mipmap/ic_launcher"
         android:banner="@drawable/tv_banner"
         android:networkSecurityConfig="@xml/network_security_config"
+        android:fullBackupContent="@xml/beta_backup_rules"
+        android:dataExtractionRules="@xml/beta_extraction_rules"
         android:enableOnBackInvokedCallback="false">
+        <service android:name=".BetaConnectionService" android:exported="false" android:foregroundServiceType="connectedDevice"/>
+        <meta-data android:name="com.google.mlkit.vision.DEPENDENCIES" android:value="barcode_ui"/>
         <!-- flutter_background_service declares this service but without a
              foregroundServiceType, which Android 14+ requires for dataSync.
              Same attrs as the plugin + the type (merged, no conflict). -->
@@ -100,6 +112,7 @@
                 <data android:scheme="zangetsu" android:host="room"/>
                 <!-- TV pairing QR: zangetsu://pair?code=… (see OpenLinkService). -->
                 <data android:scheme="zangetsu" android:host="pair"/>
+                <data android:scheme="zangetsu-beta" android:host="remote"/>
             </intent-filter>
             <!-- "Open with" for local video files, so a file manager / Downloads
                  offers Zangetsu the way it offers any other player.

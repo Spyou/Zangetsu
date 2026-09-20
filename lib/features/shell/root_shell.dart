@@ -8,6 +8,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 
 import '../search/browse_sources_screen.dart';
+import '../companion/companion_settings_screen.dart';
 import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
 import '../../core/mode/content_mode.dart';
@@ -209,6 +210,7 @@ class _RootShellState extends State<RootShell>
           DockTab.downloads => const DownloadsScreen(showBack: false),
           DockTab.history => const HistoryScreen(showBack: false),
           DockTab.sources => const BrowseSourcesScreen(),
+          DockTab.remote => CompanionSettingsScreen(showBack: false, active: _tab == DockTab.remote),
         },
     ];
   }
@@ -591,6 +593,10 @@ class _FloatingDock extends StatelessWidget {
   DockTab.downloads => (Icons.download_outlined, Icons.download_rounded),
   DockTab.history => (Icons.history_outlined, Icons.history_rounded),
   DockTab.sources => (Icons.extension_outlined, Icons.extension_rounded),
+  DockTab.remote => (
+    Icons.settings_remote_outlined,
+    Icons.settings_remote_rounded,
+  ),
   _ => null,
 };
 

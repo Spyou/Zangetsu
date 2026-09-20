@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+        B37A00000000000000000001 /* BetaAppleServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = B37A00000000000000000002 /* BetaAppleServices.swift */; };
 		1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */ = {isa = PBXBuildFile; fileRef = 1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */; };
 		2B44C126E7469A9996814265 /* Pods_Runner.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D5B54B831B9FA8B9B8627B31 /* Pods_Runner.framework */; };
 		97C146FB1CF9000082B4168C /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97C146FA1CF9000082B4168C /* AppDelegate.swift */; };
@@ -19,6 +20,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+        B37A00000000000000000002 /* BetaAppleServices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BetaAppleServices.swift; path = ../apple/BetaAppleServices.swift; sourceTree = SOURCE_ROOT; };
 		1498D2321E8E86230040F4C2 /* GeneratedPluginRegistrant.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = GeneratedPluginRegistrant.h; sourceTree = "<group>"; };
 		1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = GeneratedPluginRegistrant.m; sourceTree = "<group>"; };
 		33693F3A102AE7F17674C59D /* GoogleService-Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
@@ -292,6 +294,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+                B37A00000000000000000001 /* BetaAppleServices.swift in Sources */,
 				97C146FB1CF9000082B4168C /* AppDelegate.swift in Sources */,
 				AAF40000000000000000TSVC /* TvSystemPlayerViewController.swift in Sources */,
 				1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */,
