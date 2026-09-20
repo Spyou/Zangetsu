@@ -3300,6 +3300,20 @@ class PlayerCubit extends Cubit<PlayerState> {
     // Before _persist, which doesn't consult _gen — the resume mark is still
     // written on the way out.
     _gen++;
+    // SILENCE FIRST, then do the bookkeeping.
+    //
+    // Everything below can wait on the network — _persist's exit flush forces a
+    // cloud upsert past its throttle — and mpv keeps playing for as long as any
+    // of it takes. A signed-in user on a slow connection hears the episode for
+    // another 5-10 seconds after leaving. (Signed out there is no upsert at
+    // all, which is why this never shows up in local testing.)
+    //
+    // Nothing after this reads live player state: _persist saves _lastPos /
+    // _lastDur, which the position stream already filled, so pausing changes
+    // what the user HEARS and nothing about what gets SAVED. Deliberately not
+    // awaited — a wedged player must not be able to delay teardown, which is
+    // the very thing being fixed.
+    unawaited(player.pause().catchError((_) {}));
     await _persist(flush: true);
     // Leaving the player → drop Watching. Do not immediately restore a
     // "Playing" browse status; that is what kept the profile occupied after
