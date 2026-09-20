@@ -385,6 +385,37 @@ class AppLocalizationsEn extends AppLocalizations {
   String get activeSource => 'Active source';
 
   @override
+  String get streamingServices => 'Streaming Services';
+
+  @override
+  String get streamingServicesSubtitle =>
+      'Browse what each service carries where you are';
+
+  @override
+  String get streamingServicesEmpty => 'No services listed for this country';
+
+  @override
+  String get streamingServicesMetadataNote =>
+      'Browsing only — titles still play through your own sources';
+
+  @override
+  String get pinAsHomeRow => 'Pin as home row';
+
+  @override
+  String get unpinHomeRow => 'Unpin';
+
+  @override
+  String pinLimitReached(int count) {
+    return 'You can pin up to $count services';
+  }
+
+  @override
+  String get streamingRegion => 'Streaming region';
+
+  @override
+  String get streamingRegionSubtitle => 'Which country\'s catalogue to show';
+
+  @override
   String get sourceHealth => 'Source health';
 
   @override

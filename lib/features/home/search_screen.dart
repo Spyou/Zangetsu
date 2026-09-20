@@ -48,6 +48,7 @@ import '../mihon/mihon_filter_sheet.dart';
 import '../auth/auth_screens.dart';
 import '../detail/detail_screen.dart';
 import '../player/player_screen.dart';
+import '../settings/streaming_services_screen.dart';
 import '../sources/zangetsu_sources_screen.dart';
 import 'search_screen_tv.dart';
 import 'see_all_screen.dart';
@@ -2145,6 +2146,58 @@ class _SearchViewState extends State<_SearchView>
   static TextStyle get _idleSectionTitle => AppText.overline;
 
   // ── Idle view: recent searches + trending ─────────────────────────────────
+  /// Browse by streaming service, from Search's idle body.
+  ///
+  /// Hidden unless the video catalogue is live: `with_watch_providers` is a
+  /// TMDB parameter, so on an anime/manga layout this would open a grid that
+  /// cannot answer.
+  Widget _streamingServicesCard() {
+    final kind = browseKindFor(
+      sl<ContentModeCubit>().state,
+      ZModePrefs.streamKind,
+    );
+    if (kind != ZKind.movie && kind != ZKind.tv) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Material(
+        color: AppColors.surface2,
+        borderRadius: BorderRadius.circular(12),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => const StreamingServicesScreen(),
+            ),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+            child: Row(
+              children: [
+                const Icon(Icons.live_tv_rounded, size: 20),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(context.l10n.streamingServices, style: AppText.body),
+                      Text(
+                        context.l10n.streamingServicesSubtitle,
+                        style: AppText.caption.copyWith(
+                          color: AppColors.textTertiary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(Icons.chevron_right_rounded, size: 20),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _idleView(SearchState state) {
     // Recent searches are hidden during a filtered browse — the screen is
     // showing filter results, not a search landing page, and the chips would
@@ -2208,6 +2261,7 @@ class _SearchViewState extends State<_SearchView>
         ),
         keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         children: [
+          _streamingServicesCard(),
           if (recent.isNotEmpty) ...[
             Row(
               children: [
