@@ -18,9 +18,6 @@ import '../../core/tv/tv_shell_tab_scope.dart';
 import '../../core/ui/states.dart';
 import '../../core/zmode/metadata_filters.dart';
 import '../../core/zmode/metadata_repository.dart';
-import '../../core/mode/content_mode_cubit.dart';
-import '../../core/zmode/zmode_ids.dart';
-import '../../core/zmode/zmode_module.dart';
 import '../../core/zmode/zmode_prefs.dart';
 import '../detail/detail_screen.dart';
 import 'genres_screen_tv.dart';
@@ -28,7 +25,6 @@ import '../search/bloc/search_bloc.dart';
 import '../search/bloc/search_event.dart';
 import '../search/bloc/search_state.dart';
 import '../search/search_meta_filter_helpers.dart';
-import '../settings/streaming_services_screen_tv.dart';
 
 /// TV Search: D-pad-navigable layout backed by the same [SearchBloc] provided
 /// by the parent [SearchScreen].
@@ -515,61 +511,6 @@ class _SearchScreenTvState extends State<SearchScreenTv> {
   /// Idle body: recent terms with a D-pad-focusable Clear, matching the phone
   /// landing page. Falls back to the empty prompt when there's nothing stored
   /// (tests that omit [SearchScreenTv.history] hit this path too).
-  /// Browse by streaming service, from Search's idle body — the same home as
-  /// the genre entry, and for the same reason: the rail cannot take another
-  /// item, and browsing by service IS a search.
-  ///
-  /// Hidden unless the video catalogue is live: `with_watch_providers` is a
-  /// TMDB parameter, so on an anime/manga layout this would open a grid that
-  /// cannot answer.
-  Widget _streamingServicesEntry() {
-    // Defensive like [_genresEntry]: a context without the mode cubit (tests,
-    // early startup) must render nothing rather than throw during build.
-    if (!sl.isRegistered<ContentModeCubit>()) return const SizedBox.shrink();
-    final kind = browseKindFor(
-      sl<ContentModeCubit>().state,
-      ZModePrefs.streamKind,
-    );
-    if (kind != ZKind.movie && kind != ZKind.tv) return const SizedBox.shrink();
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(48, 4, 48, 4),
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: TvFocusable(
-          key: const ValueKey('tv-search-streaming'),
-          variant: TvFocusVariant.pill,
-          semanticLabel: context.l10n.streamingServices,
-          onTap: () => Navigator.of(context).push(
-            MaterialPageRoute<void>(
-              builder: (_) => const StreamingServicesScreenTv(),
-            ),
-          ),
-          builder: (focused) {
-            final fg = focused ? Colors.black : AppColors.accent;
-            return Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.live_tv_rounded, size: 16, color: fg),
-                  const SizedBox(width: 8),
-                  Text(
-                    context.l10n.streamingServices,
-                    style: TextStyle(
-                      color: fg,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ],
-              ),
-            );
-          },
-        ),
-      ),
-    );
-  }
-
   /// Browse by genre, from Search's idle body.
   ///
   /// The rail cannot take a seventh item — at 960x540 a seventh pushes
@@ -627,7 +568,6 @@ class _SearchScreenTvState extends State<SearchScreenTv> {
       return Column(
         children: [
           _genresEntry(),
-          _streamingServicesEntry(),
           Expanded(
             child: EmptyState(
               icon: Icons.search_rounded,
@@ -643,7 +583,6 @@ class _SearchScreenTvState extends State<SearchScreenTv> {
         // Also above the recents. main only put it on the empty branch, which
         // made Genres unreachable the moment you had searched once.
         _genresEntry(),
-        _streamingServicesEntry(),
         Padding(
           padding: const EdgeInsets.fromLTRB(48, 8, 48, 12),
           child: Row(

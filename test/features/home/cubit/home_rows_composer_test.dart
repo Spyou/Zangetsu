@@ -156,15 +156,40 @@ void main() {
         'section:Popular',
         'section:Trending',
       ], available);
+      // A missing structural row re-enters hidden, in the slot `available`
+      // gives it relative to the rows already there — NOT at the very top.
+      // Landing everything on top was invisible while every late-added
+      // structural row was hidden; a VISIBLE one (the streaming rail) then
+      // appeared above Continue Watching, which is not where it belongs.
+      // The user's own arrangement is still untouched: local:continue stays
+      // first and their hidden tracker:watching keeps its place in the group.
       expect(out.map(encodeRowEntry), [
-        '!tracker:continue', // missing structural rows re-enter hidden, on top
+        'local:continue',
+        '!tracker:continue',
         '!tracker:new-episodes',
+        '!tracker:watching',
         '!tracker:planning',
         '!tracker:paused',
         '!tracker:dropped',
-        'local:continue',
-        '!tracker:watching',
         'section:Popular',
+        'section:Trending',
+      ]);
+    });
+
+    // The bug this ordering rule exists for, pinned directly.
+    test('a NEW visible structural row lands under the one it follows', () {
+      final withRail = [
+        'local:continue',
+        'local:streaming-services',
+        'section:Trending',
+      ];
+      final out = sanitizeLayout(
+        ['local:continue', 'section:Trending'],
+        withRail,
+      );
+      expect(out.map(encodeRowEntry), [
+        'local:continue',
+        'local:streaming-services',
         'section:Trending',
       ]);
     });

@@ -90,6 +90,19 @@ class TrackerListHomeRow extends HomeRow {
   String get id => 'tracker:${status.name}';
 }
 
+/// The streaming-service rail: a horizontal strip of service logos (Netflix,
+/// Prime Video, Crunchyroll …) for the user's country, each opening that
+/// service's catalogue.
+///
+/// Carries no items — the rail fetches its own list, because the services
+/// available in a country are not a [HomeSection] and do not page.
+class StreamingServicesHomeRow extends HomeRow {
+  const StreamingServicesHomeRow();
+
+  @override
+  String get id => streamingServicesRowId;
+}
+
 // ── Fixed row ids ───────────────────────────────────────────────────────────
 // Constants (not getters on the classes) so the composer and editor can build
 // the available-id list without instantiating rows.
@@ -97,6 +110,10 @@ class TrackerListHomeRow extends HomeRow {
 const String localContinueRowId = 'local:continue';
 const String trackerContinueRowId = 'tracker:continue';
 const String newEpisodesRowId = 'tracker:new-episodes';
+
+/// Video layouts only — `with_watch_providers` is a TMDB parameter, so the
+/// rail has nothing to show on an anime/manga layout.
+const String streamingServicesRowId = 'local:streaming-services';
 
 /// Statuses that get a row, in default order. Completed is deliberately not
 /// one of them: it's the whole backlog, unbounded and rarely browsed from a

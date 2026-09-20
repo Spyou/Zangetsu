@@ -9,6 +9,8 @@ import 'package:hive_flutter/hive_flutter.dart';
 import '../../core/app_mode.dart';
 import '../../core/aniyomi/aniyomi_image_provider.dart';
 import '../../core/di/injector.dart';
+import '../../core/metadata/streaming_service.dart';
+import '../../core/zmode/tmdb_catalogue.dart';
 import '../../core/platform/apple_tv.dart';
 import '../../core/mihon/mihon_extension_service.dart';
 import '../../core/mihon/mihon_image_provider.dart';
@@ -50,6 +52,7 @@ import '../downloads/downloads_screen.dart';
 import '../notify/subscriptions_screen.dart';
 import '../reader/manga_reader_screen.dart';
 import '../reader/novel_reader_screen.dart';
+import '../settings/streaming_services_screen.dart';
 import '../sources/aniyomi_repo_tab.dart' show kAniyomiReposBoxName;
 import '../sources/providers_hub_screen.dart';
 import '../sources/zangetsu_sources_screen.dart';
@@ -78,6 +81,7 @@ import '../shell/dock_icons.dart';
 import '../../core/zmode/source_matcher.dart';
 import '../../core/zmode/metadata_repository.dart';
 import '../../core/zmode/zmode_ids.dart';
+import 'streaming_services_row.dart';
 import 'cubit/home_cubit.dart';
 import 'home_screen_tv.dart';
 import 'lists_hub_screen.dart';
@@ -715,6 +719,37 @@ class _HomeViewState extends State<_HomeView>
     );
   }
 
+  /// Open one streaming service's catalogue from the rail.
+  ///
+  /// Goes straight to the paginated grid rather than via the services screen —
+  /// the rail already IS the service picker, so a stop in between would be a
+  /// screen you pass through.
+  Future<void> _openStreamingService(StreamingService s) async {
+    final repo = sl<MetadataRepository>();
+    final more = BrowseMore(
+      sourceId: ZmodeIds.sourceId,
+      kind: 'zm_video',
+      categoryId: TmdbCatalogue.wpRowId(s.id),
+    );
+    List<MediaItem> first;
+    try {
+      first = await repo.browseMore(more, 1);
+    } catch (_) {
+      first = const [];
+    }
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => SeeAllScreen(
+          title: s.name,
+          items: first,
+          onTap: (m) => Navigator.push(context, DetailScreen.route(m)),
+          onLoadMore: (page) => repo.browseMore(more, page),
+        ),
+      ),
+    );
+  }
+
   /// One row of the merged home arrangement, as a sliver. Every [HomeRow]
   /// type maps to the widget that already renders that shape — the sealed
   /// switch makes a future row type a compile error here instead of a silent
@@ -728,6 +763,16 @@ class _HomeViewState extends State<_HomeView>
       onSeeAll: _openHistory,
       onResumeReading: _resumeReading,
       onLongPressReading: _showContinueReadingInfo,
+    ),
+    StreamingServicesHomeRow() => SliverToBoxAdapter(
+      child: StreamingServicesRow(
+        onOpen: _openStreamingService,
+        onSeeAll: () => Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => const StreamingServicesScreen(),
+          ),
+        ),
+      ),
     ),
     ProviderHomeRow(:final section) => SliverToBoxAdapter(
       child: _sectionRow(section),
