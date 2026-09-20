@@ -6,6 +6,7 @@ import '../models/home_section.dart';
 import '../models/media_detail.dart';
 import '../models/media_item.dart';
 import '../models/provider_info.dart';
+import '../ui/streaming_prefs.dart';
 import 'video_catalogue.dart';
 import 'metadata_filters.dart';
 import 'zmode_ids.dart';
@@ -93,6 +94,12 @@ class TmdbCatalogue implements VideoCatalogue {
 
   @override
   Future<List<MediaItem>> browseRow(String rowId, int page) async {
+    if (rowId.startsWith(wpPrefix)) {
+      final id = int.tryParse(rowId.substring(wpPrefix.length));
+      // No id means nothing to query — return empty rather than asking TMDB
+      // for provider "abc" and getting an unrelated unfiltered page back.
+      return id == null ? const [] : _discoverProvider(id, page);
+    }
     final forcedTv = rowId.startsWith('/tv/')
         ? true
         : rowId.startsWith('/movie/')
@@ -103,6 +110,56 @@ class TmdbCatalogue implements VideoCatalogue {
     } catch (_) {
       return const [];
     }
+  }
+
+  /// Row-id prefix for a streaming-service row. A service row is an ordinary
+  /// paginable home row; only its id shape is new, so [BrowseMore], the
+  /// "See all" grid and the Home-rows editor need no changes.
+  static const String wpPrefix = 'wp:';
+
+  static String wpRowId(int providerId) => '$wpPrefix$providerId';
+
+  /// One page of what [providerId] carries in the user's region.
+  ///
+  /// Films and series are separate endpoints on TMDB, and a service's shelf is
+  /// both, so this asks for the same page of each and interleaves them. Two
+  /// calls per page is the cost of a mixed grid; it is why pins are capped.
+  Future<List<MediaItem>> _discoverProvider(int providerId, int page) async {
+    final params = <String, dynamic>{
+      'with_watch_providers': '$providerId',
+      'watch_region': StreamingPrefs.region,
+      'sort_by': 'popularity.desc',
+      'page': page,
+    };
+    // Each side is caught on its own: one endpoint failing must not lose the
+    // other's results, which is what a single try around Future.wait would do.
+    final both = await Future.wait([
+      _safe(() => _get('/discover/tv', params), forcedTv: true),
+      _safe(() => _get('/discover/movie', params), forcedTv: false),
+    ]);
+    return _interleave(both[0], both[1]);
+  }
+
+  Future<List<MediaItem>> _safe(
+    Future<Map<String, dynamic>?> Function() call, {
+    required bool forcedTv,
+  }) async {
+    try {
+      return _items(await call(), forcedTv: forcedTv);
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  /// Alternate a, b, a, b… then append whatever is left of the longer list.
+  static List<MediaItem> _interleave(List<MediaItem> a, List<MediaItem> b) {
+    final out = <MediaItem>[];
+    final n = a.length > b.length ? a.length : b.length;
+    for (var i = 0; i < n; i++) {
+      if (i < a.length) out.add(a[i]);
+      if (i < b.length) out.add(b[i]);
+    }
+    return out;
   }
 
   Future<List<MediaItem>> search(String q) async =>
