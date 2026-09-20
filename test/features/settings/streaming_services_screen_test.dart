@@ -192,6 +192,22 @@ void main() {
     expect(find.textContaining('No services listed'), findsOneWidget);
   });
 
+  // The provider list is cached per region. Changing the region without
+  // clearing it would show the old country's services under the new name.
+  test('clearCache drops the cached list so a new region refetches', () async {
+    var hits = 0;
+    final svc = StreamingProvidersService((path, params) async {
+      hits++;
+      return _providers();
+    });
+    await svc.list('IN');
+    await svc.list('IN');
+    expect(hits, 2);
+    svc.clearCache();
+    await svc.list('IN');
+    expect(hits, 4);
+  });
+
   testWidgets('the grid asks for the stored region, not the device one',
       (t) async {
     await t.runAsync(() => StreamingPrefs.setRegion('GB'));

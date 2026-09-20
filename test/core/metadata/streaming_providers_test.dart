@@ -119,7 +119,7 @@ void main() {
   });
 
   test('a failed fetch is an empty list, never a throw', () async {
-    Future<Map<String, dynamic>?> boom(String _, Map<String, dynamic> __) async {
+    Future<Map<String, dynamic>?> boom(String _, Map<String, dynamic> _) async {
       throw StateError('network down');
     }
 

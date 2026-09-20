@@ -12,7 +12,9 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/anilist/anilist_service.dart';
 import '../../core/app_config.dart';
 import '../../core/app_mode.dart';
+import '../../core/metadata/streaming_providers.dart';
 import '../../core/tracker/tracker_hub.dart';
+import '../../core/ui/streaming_prefs.dart';
 import '../../core/zmode/metadata_provider_prefs.dart';
 import '../../core/cache/media_cache.dart';
 import '../../core/logging/app_logger.dart';
@@ -625,6 +627,43 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (mounted) setState(() {});
   }
 
+  /// Which country's streaming catalogue to browse.
+  ///
+  /// A service's shelf differs per country, so the wrong region silently shows
+  /// titles the user cannot get — which is why this is a visible setting and
+  /// not only a locale guess.
+  Future<void> _pickStreamingRegion() async {
+    final current = StreamingPrefs.region;
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      isScrollControlled: true,
+      builder: (ctx) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            for (final code in kStreamingRegions)
+              ListTile(
+                title: Text(code, style: AppText.body),
+                trailing: code == current
+                    ? Icon(Icons.check_rounded, color: AppColors.accent)
+                    : null,
+                onTap: () => Navigator.pop(ctx, code),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (picked == null || picked == current) return;
+    await StreamingPrefs.setRegion(picked);
+    // The cached provider list is per region; leaving it would show the old
+    // country's services under the new country's name.
+    if (sl.isRegistered<StreamingProvidersService>()) {
+      sl<StreamingProvidersService>().clearCache();
+    }
+    if (mounted) setState(() {});
+  }
+
   /// Account header — a single profile card at the top of Settings. Signed in:
   /// avatar + name + email → Profile. Signed out: an avatar placeholder + a
   /// clear "Sign in" call-to-action → Login (its own card, so it no longer
@@ -963,6 +1002,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
       subtitle: 'Order Auto Resolve tries sources in',
       keywords: 'source priority order auto resolve sweep anime movies tv',
       onTap: () => _push(const SourcePriorityScreen()),
+    ),
+    _SettingsEntry(
+      section: SettingsSection.sources,
+      icon: Icons.public_rounded,
+      title: l10n.streamingRegion,
+      subtitle: '${l10n.streamingRegionSubtitle} · ${StreamingPrefs.region}',
+      keywords: 'streaming region country provider watch service catalogue',
+      onTap: _pickStreamingRegion,
     ),
     _SettingsEntry(
       section: SettingsSection.sources,
