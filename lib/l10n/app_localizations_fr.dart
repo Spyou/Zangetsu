@@ -222,6 +222,9 @@ class AppLocalizationsFr extends AppLocalizations {
   String get testing => 'Test…';
 
   @override
+  String get searchOk => 'Search OK';
+
+  @override
   String get working => 'En ligne';
 
   @override

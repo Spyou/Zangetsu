@@ -1,5 +1,6 @@
 {
   "de": [
+    "searchOk",
     "streamingServices",
     "streamingServicesSubtitle",
     "streamingServicesEmpty",
@@ -112,6 +113,7 @@
   ],
 
   "es": [
+    "searchOk",
     "streamingServices",
     "streamingServicesSubtitle",
     "streamingServicesEmpty",
@@ -224,6 +226,7 @@
   ],
 
   "fr": [
+    "searchOk",
     "streamingServices",
     "streamingServicesSubtitle",
     "streamingServicesEmpty",
@@ -336,6 +339,7 @@
   ],
 
   "it": [
+    "searchOk",
     "streamingServices",
     "streamingServicesSubtitle",
     "streamingServicesEmpty",
@@ -448,6 +452,7 @@
   ],
 
   "ja": [
+    "searchOk",
     "streamingServices",
     "streamingServicesSubtitle",
     "streamingServicesEmpty",
@@ -560,6 +565,7 @@
   ],
 
   "zh": [
+    "searchOk",
     "streamingServices",
     "streamingServicesSubtitle",
     "streamingServicesEmpty",
@@ -672,6 +678,7 @@
   ],
 
   "zh_TW": [
+    "searchOk",
     "streamingServices",
     "streamingServicesSubtitle",
     "streamingServicesEmpty",

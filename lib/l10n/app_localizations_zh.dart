@@ -222,6 +222,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get testing => '测试中…';
 
   @override
+  String get searchOk => 'Search OK';
+
+  @override
   String get working => '正常';
 
   @override

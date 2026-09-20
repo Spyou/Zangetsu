@@ -535,6 +535,12 @@ abstract class AppLocalizations {
   /// **'Testing…'**
   String get testing;
 
+  /// No description provided for @searchOk.
+  ///
+  /// In en, this message translates to:
+  /// **'Search OK'**
+  String get searchOk;
+
   /// No description provided for @working.
   ///
   /// In en, this message translates to:

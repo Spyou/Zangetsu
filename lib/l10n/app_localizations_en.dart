@@ -222,6 +222,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get testing => 'Testing…';
 
   @override
+  String get searchOk => 'Search OK';
+
+  @override
   String get working => 'Working';
 
   @override

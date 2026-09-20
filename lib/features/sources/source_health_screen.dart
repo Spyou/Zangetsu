@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+
+import 'manage_source_route.dart';
 import '../../core/ui/settings_widgets.dart';
 
 import '../../core/app_mode.dart';
@@ -387,6 +389,15 @@ class _SourceHealthScreenState extends State<SourceHealthScreen> {
                                 : () => _disableForSearch(_results[i]),
                             searchIncluded:
                                 _searchPrefs.isIncluded(_results[i].id),
+                            playbackFails: _health.playbackFailures(
+                              _results[i].id,
+                            ),
+                            onManage: canManageSource(_results[i].id)
+                                ? () => openManageSource(
+                                    context,
+                                    _results[i].id,
+                                  )
+                                : null,
                           ),
                         ],
                       ],
@@ -421,6 +432,8 @@ class _HealthRow extends StatelessWidget {
     required this.present,
     required this.searchIncluded,
     this.onDisable,
+    this.playbackFails = 0,
+    this.onManage,
   });
 
   final _ProbeResult result;
@@ -429,8 +442,27 @@ class _HealthRow extends StatelessWidget {
   final bool searchIncluded;
   final VoidCallback? onDisable;
 
+  /// Distinct titles that recently failed to produce a playable link. This is
+  /// the one thing the probe cannot see: a source whose search and episode
+  /// lists are perfect, but whose embed host moved, so nothing plays.
+  final int playbackFails;
+
+  /// Opens the Sources screen that owns this source, where uninstalling lives.
+  /// Null when the source has no such screen (Z-Mode).
+  final VoidCallback? onManage;
+
+  bool get _playbackDead =>
+      playbackFails >= SourceHealthStore.deadAfterTitles;
+
   String? get _meta {
     if (result.running) return null;
+    // Real playback attempts outrank the probe: the probe only opens a title,
+    // it never asks for a playable link.
+    if (_playbackDead) {
+      // Short on purpose: this shares one line with the status pill, and the
+      // longer phrasing truncated to "No video from 6 recent ti…" on a phone.
+      return 'No video · $playbackFails titles';
+    }
     // The deep check answers the question the search probe can't ("can I
     // actually open anything?"), so when it ran it's the more useful line.
     final note = result.deepNote;
@@ -456,6 +488,16 @@ class _HealthRow extends StatelessWidget {
         icon: Icons.error_outline_rounded,
         label: context.l10n.notUsable,
       );
+    } else if (p != null &&
+        result.deepOk == null &&
+        o == SourceOutcome.ok) {
+      // Only the SEARCH probe has run — the deep check is opt-in behind the
+      // microscope because it runs the JS engine on the UI isolate. So all this
+      // green actually proves is that search answered. Saying "Working" claims
+      // the source plays, which is precisely the thing it has not tested, and
+      // is how a rotted source keeps a green tick. Stays green: search really
+      // did work. Upgrades to the full label once the deep check has run.
+      p = (color: p.color, icon: p.icon, label: context.l10n.searchOk);
     }
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
@@ -540,6 +582,34 @@ class _HealthRow extends StatelessWidget {
                     style: TextButton.styleFrom(
                         foregroundColor: AppColors.accent),
                     child: Text(context.l10n.navTabsRemove),
+                  )
+          // Anything dead that the branch above could not offer an action for.
+          // Two cases land here and both used to show NOTHING: a CloudStream
+          // source (no search-disable to offer, so a red "Dead" row sat there
+          // inert), and a source whose search is fine but whose playback is
+          // broken — the rot the probe never sees.
+          //
+          // Routes to the source's own screen rather than deleting here: there
+          // is one uninstall path in the app and it stays that way.
+          else if ((_isDead || _playbackDead) && onManage != null)
+            (sl.isRegistered<AppMode>() && sl<AppMode>().isTv)
+                ? TvListFocusable(
+                    semanticLabel: 'Manage ${result.name}',
+                    onTap: onManage!,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
+                      child: Text(
+                        context.l10n.uninstall,
+                        style: AppText.body.copyWith(color: AppColors.accent),
+                      ),
+                    ),
+                  )
+                : TextButton(
+                    onPressed: onManage,
+                    style: TextButton.styleFrom(
+                        foregroundColor: AppColors.accent),
+                    child: Text(context.l10n.uninstall),
                   ),
         ],
       ),

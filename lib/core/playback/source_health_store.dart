@@ -157,7 +157,95 @@ class SourceHealthStore extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Drops the record for [id] so it's treated as healthy/unknown again.
+  // ── Playback health ────────────────────────────────────────────────────────
+  //
+  // Deliberately a SEPARATE record from the search one above, under its own
+  // key, because the two fail independently and the interesting case is a
+  // source where search is perfect and playback is dead: the site is up and the
+  // pages parse, but the embed host moved and no playable link comes out. One
+  // flag cannot say that, and collapsing them would report such a source as
+  // healthy — which is exactly how a source quietly rots in someone's list.
+  //
+  // Nothing reads these yet except the health screen. Search ordering and
+  // [isSkippable] stay on the search record alone, so a playback strike can
+  // never make a source disappear from search.
+
+  static String _playKey(String id) => 'play::$id';
+
+  /// How many DISTINCT titles must fail to resolve before playback is called
+  /// dead. Per-title, not per-attempt: retrying the same broken title five
+  /// times is one piece of evidence, not five, and a title genuinely missing
+  /// from a source is not the source's fault.
+  static const int deadAfterTitles = 6;
+
+  /// Evidence older than this is dropped. A source that broke months ago and
+  /// was fixed should not still be carrying strikes.
+  static const Duration playbackWindow = Duration(days: 14);
+
+  /// Records that [id] was asked for playable links for [titleKey].
+  ///
+  /// [ok] true the moment it returns any link — that clears the source outright,
+  /// because one success proves the path works. A failure is remembered per
+  /// title so repeated attempts at one broken title cannot convict a source.
+  Future<void> recordPlayback(
+    String id,
+    String titleKey, {
+    required bool ok,
+  }) async {
+    final box = _box;
+    if (box == null) return;
+    final key = _playKey(id);
+    if (ok) {
+      if (box.get(key) == null) return;
+      await box.delete(key);
+      notifyListeners();
+      return;
+    }
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final cutoff = now - playbackWindow.inMilliseconds;
+    final raw = box.get(key);
+    final titles = <String, int>{
+      if (raw is Map)
+        for (final e in Map<String, dynamic>.from(raw).entries)
+          if (e.value is num && (e.value as num).toInt() >= cutoff)
+            e.key: (e.value as num).toInt(),
+    };
+    titles[titleKey] = now;
+    await box.put(key, titles);
+    notifyListeners();
+  }
+
+  /// Distinct titles that failed to produce a playable link recently.
+  int playbackFailures(String id) {
+    final raw = _box?.get(_playKey(id));
+    if (raw is! Map) return 0;
+    final cutoff =
+        DateTime.now().millisecondsSinceEpoch - playbackWindow.inMilliseconds;
+    return Map<String, dynamic>.from(raw).values
+        .where((v) => v is num && v.toInt() >= cutoff)
+        .length;
+  }
+
+  /// True when enough DIFFERENT titles have failed that the source is very
+  /// likely broken for playback. Advisory only — it drives what the health
+  /// screen offers, never anything automatic.
+  bool playbackLooksDead(String id) =>
+      playbackFailures(id) >= deadAfterTitles;
+
+  /// Forgets playback evidence for [id] — after a reinstall, or when the user
+  /// decides to keep the source anyway.
+  Future<void> clearPlayback(String id) async {
+    await _box?.delete(_playKey(id));
+    notifyListeners();
+  }
+
+  /// Drops the SEARCH record for [id] so it's treated as healthy/unknown again.
+  ///
+  /// Deliberately leaves the playback record alone. Search calls this when the
+  /// user retries a failed source, and a retried search says nothing about
+  /// whether that source can still produce a video — wiping it there would
+  /// quietly reset the evidence for anyone who ever hits retry, and the
+  /// playback signal would never accumulate. [clearPlayback] is the other half.
   Future<void> clear(String id) async {
     await _box?.delete(id);
     notifyListeners();

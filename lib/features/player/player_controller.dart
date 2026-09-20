@@ -24,6 +24,7 @@ import '../../core/models/provider_info.dart';
 import '../../core/models/video_source.dart';
 import '../../core/playback/hls.dart';
 import '../../core/playback/playback_prefs.dart';
+import '../../core/playback/source_health_store.dart';
 import '../../core/playback/filler_service.dart';
 import '../../core/playback/skip_service.dart';
 import '../../core/playback/subtitle_language.dart';
@@ -590,7 +591,7 @@ class PlayerCubit extends Cubit<PlayerState> {
           epUrl = catEps[state.currentIndex].url;
         }
       }
-      final resolved = await _resolveSources(epUrl);
+      final resolved = await _resolveNoted(epUrl);
       if (gen != _gen) return;
       emit(state.copyWith(sources: resolved, loadingSources: false));
       _buildQualityMenu(gen);
@@ -1872,7 +1873,7 @@ class PlayerCubit extends Cubit<PlayerState> {
       sl<PlaybackResolver>().invalidateWinner(_episodeUrl(currentEpisode));
     }
     try {
-      final resolved = await _resolveSources(_episodeUrl(currentEpisode));
+      final resolved = await _resolveNoted(_episodeUrl(currentEpisode));
       if (gen != _gen) return; // superseded by a newer open
       emit(state.copyWith(sources: resolved, loadingSources: false));
       _buildQualityMenu(
@@ -2625,7 +2626,7 @@ class PlayerCubit extends Cubit<PlayerState> {
     resolver.markSourceUnplayable(epUrl, winner, category: _activeCategory);
     _toast('That one didn\'t cut. Trying another source.');
     try {
-      final resolved = await _resolveSources(epUrl);
+      final resolved = await _resolveNoted(epUrl);
       if (gen != _gen) return true; // superseded; leaving is not a dead end
       final fresh = resolved.where((s) => !_tried.contains(s.url)).toList();
       if (fresh.isEmpty) return false;
@@ -2646,6 +2647,43 @@ class PlayerCubit extends Cubit<PlayerState> {
       debugPrint('[player] source failover · no next source: $e');
       return false;
     }
+  }
+
+  /// [_resolveSources], plus a note on whether this source could produce any
+  /// playable link for this title.
+  ///
+  /// This is the ONLY signal that catches the common way a source rots: search
+  /// and the episode list keep working — the site is up, the pages parse — but
+  /// the embed host moved and nothing playable comes out. Health recorded from
+  /// search alone calls such a source perfectly healthy forever.
+  ///
+  /// Advisory only. It feeds the health screen; it never affects search order,
+  /// never skips a source, and never removes anything.
+  Future<List<VideoSource>> _resolveNoted(String epUrl) async {
+    try {
+      final out = await _resolveSources(epUrl);
+      _notePlayback(ok: out.isNotEmpty);
+      return out;
+    } catch (_) {
+      _notePlayback(ok: false);
+      rethrow;
+    }
+  }
+
+  void _notePlayback({required bool ok}) {
+    final url = showUrl;
+    // Z-Mode resolves across many sources behind one pseudo id, so an outcome
+    // there says nothing about any particular source — attributing it would
+    // convict whichever source happened to be asked last.
+    if (url == null || url.isEmpty || ZmodeIds.isZ(url)) return;
+    if (!sl.isRegistered<SourceHealthStore>()) return;
+    // Keyed by TITLE: retrying one broken title must count once, not once per
+    // attempt. Fire-and-forget — playback must never wait on bookkeeping.
+    unawaited(
+      sl<SourceHealthStore>()
+          .recordPlayback(sourceId, url, ok: ok)
+          .catchError((_) {}),
+    );
   }
 
   /// Headline plus the plain fact, on the second line the error view styles
