@@ -2152,6 +2152,9 @@ class _SearchViewState extends State<_SearchView>
   /// TMDB parameter, so on an anime/manga layout this would open a grid that
   /// cannot answer.
   Widget _streamingServicesCard() {
+    // Defensive like [_genresEntry]: a context without the mode cubit (tests,
+    // early startup) must render nothing rather than throw during build.
+    if (!sl.isRegistered<ContentModeCubit>()) return const SizedBox.shrink();
     final kind = browseKindFor(
       sl<ContentModeCubit>().state,
       ZModePrefs.streamKind,
