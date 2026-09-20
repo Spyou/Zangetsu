@@ -410,7 +410,7 @@ class MangaBakaService extends ChangeNotifier implements Tracker {
   /// Field names are from the LIVE API, not from a schema — MangaBaka
   /// publishes none. A row looks like:
   ///
-  ///   state=reading | progress_chapter=12 | progress_volume=2 | rating=8
+  ///   state=reading | progress_chapter=12 | progress_volume=2 | rating=80
   ///   id=2300879 | series_id=725 | Series={...} | start_date=... | note=...
   ///
   /// Note `Series` is capitalised and the status field is `state`; guessing
@@ -452,7 +452,7 @@ class MangaBakaService extends ChangeNotifier implements Tracker {
       progress: raw['progress_chapter'] is num
           ? (raw['progress_chapter'] as num).round()
           : null,
-      score: raw['rating'] is num ? (raw['rating'] as num).toDouble() : null,
+      score: raw['rating'] is num ? ratingIn(raw['rating'] as num) : null,
       totalEpisodes: series['total_chapters'] is int
           ? series['total_chapters'] as int
           : null,
@@ -544,7 +544,7 @@ class MangaBakaService extends ChangeNotifier implements Tracker {
         progress: row['progress_chapter'] is num
             ? (row['progress_chapter'] as num).round()
             : null,
-        score: row['rating'] is num ? (row['rating'] as num).toDouble() : null,
+        score: row['rating'] is num ? ratingIn(row['rating'] as num) : null,
         chapters: series?['total_chapters'] is int
             ? series!['total_chapters'] as int
             : null,
@@ -556,6 +556,23 @@ class MangaBakaService extends ChangeNotifier implements Tracker {
   }
 
   // ── resolution ───────────────────────────────────────────────────────────
+
+  /// MangaBaka rates 0-100; this app's sheet is 0-10 ("$_score / 10").
+  ///
+  /// Confirmed on the live API — series 725 (ONE-PUNCH MAN) reads
+  /// `rating: 86.62`, not 8.66 — and the published API client declares the
+  /// library field as `minValue: 0, maxValue: 100`. An earlier comment here
+  /// claimed the scales matched, so a 7 was written as 7/100 and a site score
+  /// of 86 read back as "86 / 10".
+  ///
+  /// Both directions go through these two, deliberately: fixing one half alone
+  /// is worse than the bug — write-only puts 86/10 on screen, read-only lands
+  /// every new score at 0.8/10.
+  static int ratingOut(double appScore) =>
+      (appScore * 10).round().clamp(0, 100);
+
+  static double ratingIn(num mangabakaRating) =>
+      (mangabakaRating / 10).clamp(0, 10).toDouble();
 
   /// The MangaBaka series id for a title, or null when it cannot be resolved.
   ///
@@ -743,9 +760,7 @@ class MangaBakaService extends ChangeNotifier implements Tracker {
     await _patch(id, {
       if (status != null) 'state': statusOut[status]!,
       'progress_chapter': ?progress,
-      // `rating_steps: 1` from the profile: whole numbers, same 0-10 scale the
-      // app uses, so no rescaling.
-      if (score != null) 'rating': score.round(),
+      if (score != null) 'rating': ratingOut(score),
     });
   }
 

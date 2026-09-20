@@ -177,6 +177,38 @@ void main() {
     });
   });
 
+  // MangaBaka rates 0-100, the sheet is 0-10. The two halves have to agree or
+  // the bug gets worse, not better: write-only shows 86/10, read-only stores
+  // every score at 0.8/10.
+  group('rating scale', () {
+    test('the app score is scaled up on the way out', () {
+      expect(MangaBakaService.ratingOut(8), 80);
+      expect(MangaBakaService.ratingOut(10), 100);
+      expect(MangaBakaService.ratingOut(0), 0);
+      expect(MangaBakaService.ratingOut(7.5), 75);
+    });
+
+    test("MangaBaka's rating is scaled down on the way in", () {
+      // The real value the live API returns for ONE-PUNCH MAN.
+      expect(MangaBakaService.ratingIn(86.6237142857143), closeTo(8.66, 0.01));
+      expect(MangaBakaService.ratingIn(100), 10);
+      expect(MangaBakaService.ratingIn(0), 0);
+    });
+
+    test('a round trip returns the score it started with', () {
+      for (var i = 0; i <= 10; i++) {
+        expect(MangaBakaService.ratingIn(MangaBakaService.ratingOut(i.toDouble())),
+            i.toDouble());
+      }
+    });
+
+    test('a value outside the scale is clamped, never sent wild', () {
+      expect(MangaBakaService.ratingOut(99), 100);
+      expect(MangaBakaService.ratingOut(-3), 0);
+      expect(MangaBakaService.ratingIn(9999), 10);
+    });
+  });
+
   test('the registered client is public: the id ships, no secret exists', () {
     expect(Environment.mangabakaClientId, isNotEmpty);
     expect(Environment.mangabakaRedirectUri, 'zangetsu://mangabaka-auth');
