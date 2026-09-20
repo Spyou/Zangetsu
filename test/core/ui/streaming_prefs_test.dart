@@ -2,7 +2,6 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
-import 'package:watch_app/core/metadata/streaming_service.dart';
 import 'package:watch_app/core/ui/streaming_prefs.dart';
 
 void main() {
@@ -36,29 +35,6 @@ void main() {
     expect(StreamingPrefs.region, 'IN');
   });
 
-  test('pins round-trip in order', () async {
-    await StreamingPrefs.setPinned(const [
-      StreamingPin(id: 8, name: 'Netflix'),
-      StreamingPin(id: 283, name: 'Crunchyroll'),
-    ]);
-    expect(StreamingPrefs.pinned.map((p) => p.id).toList(), [8, 283]);
-    expect(StreamingPrefs.pinned.first.name, 'Netflix');
-  });
-
-  test('pins are capped — each one costs two calls on every Home load', () async {
-    await StreamingPrefs.setPinned([
-      for (var i = 0; i < 20; i++) StreamingPin(id: i, name: 'S$i'),
-    ]);
-    expect(StreamingPrefs.pinned.length, StreamingPrefs.maxPinned);
-    expect(StreamingPrefs.pinned.first.id, 0, reason: 'keeps the first N');
-  });
-
-  test('an unparseable stored pin is dropped, not rendered as a blank row',
-      () async {
-    Hive.box(StreamingPrefs.boxName).put('pinned', ['8|Netflix', 'junk', '']);
-    expect(StreamingPrefs.pinned.map((p) => p.id).toList(), [8]);
-  });
-
   test('writing bumps the revision so Home can reload', () async {
     final before = StreamingPrefs.revision.value;
     await StreamingPrefs.setRegion('GB');
@@ -74,7 +50,6 @@ void main() {
   test('reads before init() do not throw', () async {
     await Hive.close();
     expect(StreamingPrefs.region, 'IN');
-    expect(StreamingPrefs.pinned, isEmpty);
   });
 
   test('every shipped region code is one the store will accept', () async {

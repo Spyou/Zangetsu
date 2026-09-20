@@ -2,7 +2,6 @@ import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 
 import '../hive/safe_box.dart';
-import '../metadata/streaming_service.dart';
 
 /// `watch_region` codes TMDB accepts, common markets first. A short fixed list
 /// rather than a fetch: it changes about once a year, and a picker that needs
@@ -12,8 +11,7 @@ const List<String> kStreamingRegions = [
   'MX', 'JP', 'KR', 'SG', 'AE', 'ZA', 'NL', 'SE', 'PL', 'ID',
 ];
 
-/// Which country's streaming catalogue to show, and which services the user
-/// pinned as Home rows.
+/// Which country's streaming catalogue to show.
 ///
 /// Deliberately dumb storage, same shape as `HomeRowsPrefs`: every read is
 /// synchronous and tolerant, because `TmdbCatalogue.rowTitles()` is called
@@ -23,12 +21,6 @@ class StreamingPrefs {
 
   static const String boxName = 'streaming_prefs';
   static const String _regionKey = 'region';
-  static const String _pinnedKey = 'pinned';
-
-  /// Each pinned service adds two TMDB calls to every Home load. Five is the
-  /// point where that stops being free.
-  static const int maxPinned = 5;
-
   /// Bumped on every write so Home reloads without resetting its scroll — same
   /// contract as `HomeRowsPrefs.revision`.
   static final ValueNotifier<int> revision = ValueNotifier<int>(0);
@@ -67,22 +59,6 @@ class StreamingPrefs {
     final box = _boxOrNull;
     if (box == null || !_valid(r)) return Future.value();
     box.put(_regionKey, r.toUpperCase());
-    revision.value++;
-    return Future.value();
-  }
-
-  /// Services pinned as Home rows, in the order they were pinned. Unparseable
-  /// entries are dropped — a blank home row is worse than a missing one.
-  static List<StreamingPin> get pinned {
-    final raw = (_boxOrNull?.get(_pinnedKey) as List?)?.cast<String>();
-    if (raw == null) return const [];
-    return [for (final e in raw) ?StreamingPin.fromEntry(e)];
-  }
-
-  static Future<void> setPinned(List<StreamingPin> pins) {
-    final box = _boxOrNull;
-    if (box == null) return Future.value();
-    box.put(_pinnedKey, [for (final p in pins.take(maxPinned)) p.toEntry()]);
     revision.value++;
     return Future.value();
   }

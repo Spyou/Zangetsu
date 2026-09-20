@@ -146,39 +146,6 @@ void main() {
     );
   });
 
-  testWidgets('pinning a service persists it as a home row', (t) async {
-    await t.pumpWidget(harness());
-    await t.pumpAndSettle();
-
-    // runAsync: pinning writes to Hive, and a real Hive write never drains
-    // under the pump-driven testWidgets binding — the same trap
-    // wrong_title_sheet_test.dart documents. Without it the tap hangs.
-    await t.runAsync(() async {
-      await t.tap(find.byKey(const ValueKey('pin-8')));
-      await Future<void>.delayed(const Duration(milliseconds: 50));
-    });
-    await t.pump();
-
-    expect(StreamingPrefs.pinned.map((p) => p.id).toList(), [8]);
-    expect(StreamingPrefs.pinned.single.name, 'Netflix');
-  });
-
-  testWidgets('pinning again unpins', (t) async {
-    await t.pumpWidget(harness());
-    await t.pumpAndSettle();
-    await t.runAsync(() async {
-      await t.tap(find.byKey(const ValueKey('pin-8')));
-      await Future<void>.delayed(const Duration(milliseconds: 50));
-    });
-    await t.pump();
-    await t.runAsync(() async {
-      await t.tap(find.byKey(const ValueKey('pin-8')));
-      await Future<void>.delayed(const Duration(milliseconds: 50));
-    });
-    await t.pump();
-    expect(StreamingPrefs.pinned, isEmpty);
-  });
-
   testWidgets('an empty provider list shows the empty state, not a blank page',
       (t) async {
     await sl.reset();
