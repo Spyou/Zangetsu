@@ -3522,6 +3522,12 @@ class AppLocalizationsEs extends AppLocalizations {
   String get appIcon => 'Icono de la aplicación';
 
   @override
+  String get splashStyle => 'Splash';
+
+  @override
+  String get splashStyleBlurb => 'What plays while the app starts up.';
+
+  @override
   String get currentLocation => 'Ubicación actual';
 
   @override

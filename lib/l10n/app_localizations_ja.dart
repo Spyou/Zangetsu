@@ -3428,6 +3428,12 @@ class AppLocalizationsJa extends AppLocalizations {
   String get appIcon => 'アプリのアイコン';
 
   @override
+  String get splashStyle => 'Splash';
+
+  @override
+  String get splashStyleBlurb => 'What plays while the app starts up.';
+
+  @override
   String get currentLocation => '現在位置';
 
   @override

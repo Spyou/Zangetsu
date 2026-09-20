@@ -3405,6 +3405,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get appIcon => '应用程序图标';
 
   @override
+  String get splashStyle => 'Splash';
+
+  @override
+  String get splashStyleBlurb => 'What plays while the app starts up.';
+
+  @override
   String get currentLocation => '当前位置';
 
   @override

@@ -6350,6 +6350,18 @@ abstract class AppLocalizations {
   /// **'App icon'**
   String get appIcon;
 
+  /// No description provided for @splashStyle.
+  ///
+  /// In en, this message translates to:
+  /// **'Splash'**
+  String get splashStyle;
+
+  /// No description provided for @splashStyleBlurb.
+  ///
+  /// In en, this message translates to:
+  /// **'What plays while the app starts up.'**
+  String get splashStyleBlurb;
+
   /// No description provided for @currentLocation.
   ///
   /// In en, this message translates to:

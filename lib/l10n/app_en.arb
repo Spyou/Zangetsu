@@ -1663,6 +1663,8 @@
 	"accentColour": "Accent colour",
 	"display": "Display",
 	"appIcon": "App icon",
+	"splashStyle": "Splash",
+	"splashStyleBlurb": "What plays while the app starts up.",
 	"currentLocation": "Current location",
 	"availableDrives": "Available drives",
 	"dataSection": "Data",

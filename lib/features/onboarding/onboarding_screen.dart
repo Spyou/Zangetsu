@@ -1,4 +1,9 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+
+import '../../core/ui/splash_style.dart';
+import 'bankai_splash.dart';
 import 'package:hive/hive.dart';
 
 import '../../core/app_mode.dart';
@@ -14,8 +19,10 @@ import '../../l10n/l10n.dart';
 /// [initDependencies]). True once the user has completed onboarding.
 bool isOnboarded() {
   if (!Hive.isBoxOpen(ActiveSourceCubit.boxName)) return false;
-  return Hive.box(ActiveSourceCubit.boxName)
-      .get('onboarded', defaultValue: false) as bool;
+  return Hive.box(
+        ActiveSourceCubit.boxName,
+      ).get('onboarded', defaultValue: false)
+      as bool;
 }
 
 Future<void> _markOnboarded() =>
@@ -41,18 +48,28 @@ class _SplashScreenState extends State<SplashScreen>
 
   // Glow eases in; the wordmark fades in and "draws" left→right (wipe reveal)
   // while settling up to full scale; the loader appears last.
-  late final Animation<double> _glow =
-      CurvedAnimation(parent: _c, curve: const Interval(0.0, 0.55, curve: Curves.easeOut));
-  late final Animation<double> _fade =
-      CurvedAnimation(parent: _c, curve: const Interval(0.12, 0.5, curve: Curves.easeOut));
-  late final Animation<double> _reveal =
-      CurvedAnimation(parent: _c, curve: const Interval(0.12, 1.0, curve: Curves.easeOutCubic));
+  late final Animation<double> _glow = CurvedAnimation(
+    parent: _c,
+    curve: const Interval(0.0, 0.55, curve: Curves.easeOut),
+  );
+  late final Animation<double> _fade = CurvedAnimation(
+    parent: _c,
+    curve: const Interval(0.12, 0.5, curve: Curves.easeOut),
+  );
+  late final Animation<double> _reveal = CurvedAnimation(
+    parent: _c,
+    curve: const Interval(0.12, 1.0, curve: Curves.easeOutCubic),
+  );
 
   @override
   void dispose() {
     _c.dispose();
     super.dispose();
   }
+
+  /// Read once, at the start of the animation — the picker writes the box, and
+  /// re-reading mid-build would let a change take effect halfway through a run.
+  late final bool _bankai = SplashStyle.selectedId == 'bankai';
 
   @override
   Widget build(BuildContext context) {
@@ -61,6 +78,18 @@ class _SplashScreenState extends State<SplashScreen>
       body: AnimatedBuilder(
         animation: _c,
         builder: (context, _) {
+          // The mark being cut in, driven by the same controller — one ticker
+          // either way, so picking it costs nothing the wordmark did not.
+          if (_bankai) {
+            return Center(
+              child: LayoutBuilder(
+                builder: (context, box) => BankaiSplash(
+                  progress: _c.value,
+                  size: math.min(box.maxWidth * 0.62, 320),
+                ),
+              ),
+            );
+          }
           final r = _reveal.value;
           return Stack(
             children: [
@@ -173,9 +202,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     await _markOnboarded();
     if (!mounted) return;
     widget.onDone();
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => const ProvidersHubScreen()),
-    );
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute<void>(builder: (_) => const ProvidersHubScreen()));
   }
 
   Future<void> _later() async {
@@ -424,7 +453,10 @@ class _HowItWorksPage extends StatelessWidget {
                   icon: Icons.movie_filter_outlined,
                   label: context.l10n.modeStreaming,
                 ),
-                _EcosystemTile(icon: Icons.menu_book_outlined, label: context.l10n.modeManga),
+                _EcosystemTile(
+                  icon: Icons.menu_book_outlined,
+                  label: context.l10n.modeManga,
+                ),
                 _EcosystemTile(
                   icon: Icons.auto_stories_outlined,
                   label: context.l10n.modeNovel,
@@ -439,7 +471,10 @@ class _HowItWorksPage extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _Step(number: 1, label: context.l10n.openProviders),
-                _Step(number: 2, label: context.l10n.pickStreamingMangaOrNovels),
+                _Step(
+                  number: 2,
+                  label: context.l10n.pickStreamingMangaOrNovels,
+                ),
                 _Step(number: 3, label: context.l10n.pasteInARepositoryLink),
                 _Step(number: 4, label: context.l10n.browseAndGrab),
               ],

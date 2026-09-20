@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../onboarding/bankai_splash.dart';
+import '../../core/ui/splash_style.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import '../../core/ui/settings_widgets.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
@@ -234,6 +236,13 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
             const SizedBox(height: 10),
             _iconPicker(),
           ],
+
+          // ── Splash ────────────────────────────────────────────────────────
+          // Every platform: this one is drawn by us, with no OS involvement.
+          SettingsSectionLabel(context.l10n.splashStyle),
+          _blurb(context.l10n.splashStyleBlurb),
+          const SizedBox(height: 10),
+          _splashPicker(),
         ],
       ),
     );
@@ -469,6 +478,38 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
             option: o,
             selected: o.id == current,
             onTap: o.id == current ? null : () => _pickIcon(o),
+          );
+        },
+      ),
+    );
+  }
+
+  /// Row of splash animations, each card playing its own live preview — the
+  /// choice only shows itself at launch, so a still would tell you nothing.
+  ///
+  /// No confirm dialog, unlike the icon picker: nothing is torn down, and the
+  /// next launch simply plays the other one.
+  Widget _splashPicker() {
+    final current = SplashStyle.selectedId;
+    return SizedBox(
+      height: 112,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        clipBehavior: Clip.none,
+        itemCount: SplashStyle.options.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 10),
+        itemBuilder: (_, i) {
+          final o = SplashStyle.options[i];
+          return _SplashCard(
+            option: o,
+            selected: o.id == current,
+            onTap: o.id == current
+                ? null
+                : () async {
+                    await SplashStyle.select(o.id);
+                    if (mounted) setState(() {});
+                  },
           );
         },
       ),
@@ -766,6 +807,101 @@ class _AppIconCard extends StatelessWidget {
               style: AppText.caption.copyWith(
                 color: selected ? AppColors.accent : AppColors.textSecondary,
                 fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// One splash choice, previewing itself on a loop.
+///
+/// A still frame would be useless here — the whole difference between the two
+/// is motion, and the user only ever sees it at launch. So each card runs the
+/// real animation, at the real timings, on a slow repeat.
+class _SplashCard extends StatefulWidget {
+  const _SplashCard({
+    required this.option,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final SplashStyleOption option;
+  final bool selected;
+  final VoidCallback? onTap;
+
+  @override
+  State<_SplashCard> createState() => _SplashCardState();
+}
+
+class _SplashCardState extends State<_SplashCard>
+    with SingleTickerProviderStateMixin {
+  // Real duration plus a pause, so the finished mark is readable between runs
+  // instead of the loop reading as a flicker.
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 2600),
+  )..repeat();
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  /// Maps the looping controller onto the animation, holding at the end.
+  double get _t => (_c.value / 0.62).clamp(0.0, 1.0);
+
+  @override
+  Widget build(BuildContext context) {
+    final sel = widget.selected;
+    return GestureDetector(
+      onTap: widget.onTap,
+      child: SizedBox(
+        width: 100,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 84,
+              height: 84,
+              decoration: BoxDecoration(
+                color: AppColors.bg,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(
+                  color: sel ? AppColors.accent : AppColors.hairline,
+                  width: sel ? 2 : 1,
+                ),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: AnimatedBuilder(
+                animation: _c,
+                builder: (context, _) => widget.option.id == 'bankai'
+                    ? Center(child: BankaiSplash(progress: _t, size: 72))
+                    : Center(
+                        child: Opacity(
+                          opacity: _t.clamp(0.0, 1.0),
+                          child: FractionallySizedBox(
+                            widthFactor: 0.82,
+                            child: Image.asset(
+                              'assets/icon/wordmark.png',
+                              fit: BoxFit.contain,
+                            ),
+                          ),
+                        ),
+                      ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              widget.option.label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppText.caption.copyWith(
+                color: sel ? AppColors.accent : AppColors.textSecondary,
+                fontWeight: sel ? FontWeight.w700 : FontWeight.w500,
               ),
             ),
           ],

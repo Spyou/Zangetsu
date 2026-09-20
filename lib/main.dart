@@ -14,6 +14,8 @@ import 'core/analytics/analytics.dart';
 import 'core/app_config.dart';
 import 'core/app_mode.dart';
 import 'core/di/injector.dart';
+import 'core/ui/splash_style.dart';
+import 'core/hive/safe_box.dart';
 import 'core/discord/discord_rpc.dart';
 import 'core/environment.dart';
 import 'core/logging/app_logger.dart';
@@ -140,6 +142,21 @@ Future<void> main() async {
         } catch (e, st) {
           AppLogger.instance.logError(e, st);
         }
+      }
+      // The splash is drawn while initDependencies() is still opening boxes,
+      // so the one box it reads (which animation to play) has to be open
+      // before that. Tiny local file; bounded and swallowed like everything
+      // else out here, because a splash preference is never worth delaying or
+      // failing boot over — SplashStyle falls back to the default if this
+      // didn't land. initDependencies re-opens it, which Hive serves from
+      // cache.
+      try {
+        await initHiveForApp();
+        await openBoxSafely(
+          SplashStyle.boxName,
+        ).timeout(const Duration(seconds: 2));
+      } catch (e, st) {
+        AppLogger.instance.logError(e, st);
       }
       // Dependency init happens inside the boot gate so the splash shows
       // immediately instead of a blank screen.
