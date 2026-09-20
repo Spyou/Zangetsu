@@ -92,6 +92,11 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
         "classic" to "com.spyou.watch_app.MainActivityClassic",
     )
 
+    /// The one alias carrying android:enabled="true". Named because two places
+    /// below have to reason about "enabled because the manifest says so"
+    /// separately from "enabled because the user chose it".
+    private val MANIFEST_ICON = "crescent"
+
     /// The enabled alias, or "crescent" when nothing has been set. A component
     /// left at COMPONENT_ENABLED_STATE_DEFAULT takes the manifest's
     /// android:enabled, which is true only for the Crescent alias — so that is
@@ -132,6 +137,43 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
         }
     }
 
+    /// Collapses the home screen back to ONE icon after an update that adds an
+    /// alias.
+    ///
+    /// An alias the user explicitly picked stays explicitly enabled across an
+    /// app update — that persistence is the entire reason the icon switcher
+    /// works at all. A newly shipped alias, though, arrives untouched, so it
+    /// takes the manifest's android:enabled, which is true for [MANIFEST_ICON].
+    /// Both carry a LAUNCHER intent-filter, so on the update that introduced
+    /// the crescent, everyone who had ever picked an icon got TWO Zangetsu
+    /// entries on their home screen. (Verified on device: component overrides
+    /// survive an upgrade, and an untouched alias is live from the manifest.)
+    ///
+    /// The one we keep is the one they just tapped. That is not only the least
+    /// surprising answer, it is the only one that cannot kill the app —
+    /// disabling the component a task was launched from tears that task down,
+    /// and DONT_KILL_APP is a request launchers are free to ignore.
+    ///
+    /// Nothing happens unless there really are two, so a fresh install and an
+    /// already-settled one both fall straight through. A launch that did not
+    /// come from an icon (a share, a notification) leaves it for next time
+    /// rather than guessing.
+    private fun reconcileIconAliases() {
+        val pm = packageManager
+        val live = ICON_ALIASES.filter { (id, cls) ->
+            when (pm.getComponentEnabledSetting(ComponentName(this, cls))) {
+                PackageManager.COMPONENT_ENABLED_STATE_ENABLED -> true
+                PackageManager.COMPONENT_ENABLED_STATE_DEFAULT -> id == MANIFEST_ICON
+                else -> false
+            }
+        }
+        if (live.size < 2) return
+        val launched = intent?.component?.className ?: return
+        val keep = live.entries.firstOrNull { it.value == launched } ?: return
+        Log.i(TAG, "Two launcher icons after update; keeping ${keep.key}")
+        applyIconAlias(keep.key)
+    }
+
     companion object {
         private const val TAG = "SeekPreview"
         private const val EXT_PLAYER_REQUEST = 7001
@@ -163,6 +205,7 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
         // The manifest meta-data is unchanged; we just have to read it ourselves.
         switchLaunchThemeForNormalTheme()
         super.onCreate(savedInstanceState)
+        reconcileIconAliases()
         setContentView(R.layout.activity_main)
         // Survives configuration changes / process death: re-attaching a second
         // fragment would spin up a second FlutterEngine and run the app twice.
