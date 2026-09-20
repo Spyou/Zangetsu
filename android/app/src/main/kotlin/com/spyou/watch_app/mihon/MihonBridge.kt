@@ -454,6 +454,52 @@ class MihonBridge(
                     result.success(headers)
                 }
 
+                // The web page for a chapter (or, with no chapter url, the manga)
+                // — ASKED OF THE SOURCE rather than derived by gluing its stored
+                // url onto baseUrl.
+                //
+                // Those are not always the same string, and a source is entitled
+                // to that: Asura stores `/series/<slug>` as a stable key because
+                // its real slugs carry a rotating hash, and overrides
+                // getChapterUrl to hand back the real `/comics/<slug>-<hash>`
+                // page. Joining by hand yields a 404 there, and will on any
+                // source that overrides these.
+                //
+                // HttpSource's defaults are the same join the Dart side does, so
+                // for every source that does NOT override, this returns exactly
+                // what the old path did.
+                "webUrl" -> {
+                    val sourceId = call.sourceId(result) ?: return@setMethodCallHandler
+                    val mangaUrl = call.argument<String>("mangaUrl")
+                    val chapterUrl = call.argument<String>("chapterUrl")
+                    val src = MihonSourceManager.get(sourceId) ?: run {
+                        result.error("NO_SOURCE", "Source $sourceId not found", null)
+                        return@setMethodCallHandler
+                    }
+                    val http = src as? HttpSource ?: run {
+                        // Not an HttpSource: no baseUrl, nothing to resolve. Null
+                        // rather than an error — the caller falls back to its own
+                        // join, which is what it did before this method existed.
+                        result.success(null); return@setMethodCallHandler
+                    }
+                    scope.runReporting(result, "WEB_URL") {
+                        if (!chapterUrl.isNullOrBlank()) {
+                            // Prefer the real chapter object when we have it: an
+                            // override may read fields a bare url-stub lacks.
+                            val cached = mihonChapterCache["$sourceId:$chapterUrl"]
+                            val chapter = cached?.chapter ?: SChapterImpl().apply {
+                                this.url = chapterUrl
+                                this.name = ""
+                            }
+                            http.getChapterUrl(chapter)
+                        } else if (!mangaUrl.isNullOrBlank()) {
+                            http.getMangaUrl(SMangaImpl().apply { this.url = mangaUrl })
+                        } else {
+                            throw IllegalArgumentException("mangaUrl or chapterUrl required")
+                        }
+                    }
+                }
+
                 "hasSourceSettings" -> {
                     val sourceId = call.sourceId(result) ?: return@setMethodCallHandler
                     result.success(MihonSourceManager.get(sourceId) is ConfigurableSource)

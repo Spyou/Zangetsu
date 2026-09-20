@@ -194,6 +194,29 @@ Future<void> openUrlInSourceWebView(String url, {String? title}) async {
 String? chapterWebUrl(String sourceId, String chapterUrl) =>
     joinChapterUrl(webViewUrlFor(sourceId), chapterUrl);
 
+/// The page to actually OPEN for a chapter — the source's answer where it has
+/// one, else [chapterWebUrl]'s join.
+///
+/// A source's stored url is a key, not necessarily a page. Asura keeps
+/// `/series/<slug>` because its real slugs carry a rotating hash, and overrides
+/// the extension-side URL methods to build the real `/comics/<slug>-<hash>`
+/// page; joining by hand lands on a 404. Mihon itself never joins — it asks the
+/// source — and this is that call.
+///
+/// Falls back on any failure, and the fallback is exactly the old behaviour, so
+/// a source that can't answer (or isn't Mihon) opens what it always did.
+Future<String?> resolveChapterWebUrl(String sourceId, String chapterUrl) async {
+  final fallback = chapterWebUrl(sourceId, chapterUrl);
+  if (!sourceId.startsWith('mihon:')) return fallback;
+  final raw = int.tryParse(sourceId.substring(6));
+  if (raw == null) return fallback;
+  final asked = await MihonExtensionService().webUrl(
+    raw,
+    chapterUrl: chapterUrl,
+  );
+  return asked ?? fallback;
+}
+
 /// The join itself, with [base] passed in — pure, so the rules that matter
 /// (which schemes are refused, how a relative key is joined) can be tested
 /// without standing up a SourceRepository.

@@ -2470,14 +2470,23 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                     style: AppText.body.copyWith(color: AppColors.accent),
                   ),
                 ),
-                if (source_actions.canOpenInBrowser(widget.sourceId, _chapter.url))
+                if (source_actions.canOpenInBrowser(
+                  widget.sourceId,
+                  _chapter.url,
+                ))
                   TextButton(
-                    onPressed: () => unawaited(
-                      source_actions.openUrlInSourceWebView(
-                        source_actions.chapterWebUrl(widget.sourceId, _chapter.url) ?? '',
+                    onPressed: () => unawaited(() async {
+                      // Ask the source, same as the overflow menu — a stored
+                      // chapter key is not always the page (resolveChapterWebUrl).
+                      final url = await source_actions.resolveChapterWebUrl(
+                        widget.sourceId,
+                        _chapter.url,
+                      );
+                      await source_actions.openUrlInSourceWebView(
+                        url ?? '',
                         title: widget.showTitle,
-                      ),
-                    ),
+                      );
+                    }()),
                     child: Text(
                       // The WebView, not the browser — this button has always
                       // opened it in-app, and that is the right choice here:
@@ -2944,7 +2953,11 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
     switch (picked) {
       case _ReaderMenuAction.openInWebView:
         await source_actions.openUrlInSourceWebView(
-          source_actions.chapterWebUrl(widget.sourceId, chapter.url) ?? '',
+          await source_actions.resolveChapterWebUrl(
+                widget.sourceId,
+                chapter.url,
+              ) ??
+              '',
           title: widget.showTitle,
         );
       case _ReaderMenuAction.openInBrowser:
@@ -3450,8 +3463,14 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
   /// link — no browser installed, which is normal on a TV box — so say so
   /// instead of looking like the tap did nothing.
   Future<void> _openChapterInBrowser(Episode chapter) async {
-    final url = source_actions.chapterWebUrl(widget.sourceId, chapter.url);
+    // Ask the source where this chapter actually lives; falls back to the
+    // plain join when it can't say (see resolveChapterWebUrl).
+    final url = await source_actions.resolveChapterWebUrl(
+      widget.sourceId,
+      chapter.url,
+    );
     if (url == null || url.isEmpty) return;
+    if (!mounted) return;
     final l10n = context.l10n;
     final ok = await launchUrl(
       Uri.parse(url),

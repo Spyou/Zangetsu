@@ -79,10 +79,48 @@ class MihonExtensionService {
   /// null when the source has no filters or any channel error occurs.
   Future<String?> getFilterList(int sourceId) async {
     try {
-      return await _channel.invokeMethod<String>(
-        'getFilterList',
-        {'sourceId': sourceId},
-      );
+      return await _channel.invokeMethod<String>('getFilterList', {
+        'sourceId': sourceId,
+      });
+    } on PlatformException {
+      return null;
+    } on MissingPluginException {
+      return null;
+    }
+  }
+
+  /// The source's own web page for a chapter (or the manga, when
+  /// [chapterUrl] is null) — asked of the extension instead of derived.
+  ///
+  /// Null when the source can't answer, so callers keep their existing
+  /// baseUrl + url join as the fallback and nothing regresses if this fails.
+  ///
+  /// Worth the round trip because the stored url is not always the page: a
+  /// source whose real slugs carry a rotating hash keeps a stable key instead
+  /// and overrides the URL methods to build the real one. Joining by hand
+  /// gives a 404 there.
+  Future<String?> webUrl(
+    int sourceId, {
+    String? mangaUrl,
+    String? chapterUrl,
+  }) async {
+    if ((mangaUrl == null || mangaUrl.isEmpty) &&
+        (chapterUrl == null || chapterUrl.isEmpty)) {
+      return null;
+    }
+    try {
+      final result = await _channel.invokeMethod<String>('webUrl', {
+        'sourceId': sourceId,
+        'mangaUrl': mangaUrl,
+        'chapterUrl': chapterUrl,
+      });
+      final u = result?.trim();
+      // Only an http(s) page is useful to a browser, and this string comes
+      // from a third-party extension — the same rule joinChapterUrl applies.
+      if (u == null || !(u.startsWith('http://') || u.startsWith('https://'))) {
+        return null;
+      }
+      return u;
     } on PlatformException {
       return null;
     } on MissingPluginException {
@@ -96,10 +134,9 @@ class MihonExtensionService {
   /// Returns false on any channel error (source not found, not configurable).
   Future<bool> hasSourceSettings(int sourceId) async {
     try {
-      final result = await _channel.invokeMethod<bool>(
-        'hasSourceSettings',
-        {'sourceId': sourceId},
-      );
+      final result = await _channel.invokeMethod<bool>('hasSourceSettings', {
+        'sourceId': sourceId,
+      });
       return result ?? false;
     } on PlatformException {
       return false;
@@ -111,7 +148,9 @@ class MihonExtensionService {
   /// No-op (returns without error) when the source has no settings.
   Future<void> openSourceSettings(int sourceId) async {
     try {
-      await _channel.invokeMethod<void>('openSourceSettings', {'sourceId': sourceId});
+      await _channel.invokeMethod<void>('openSourceSettings', {
+        'sourceId': sourceId,
+      });
     } on PlatformException catch (e) {
       debugPrint('[mihon] openSourceSettings($sourceId) failed: $e');
     }
@@ -273,7 +312,8 @@ class MihonExtensionService {
       }
 
       // 5. Register in the MihonManager.
-      final effectiveManager = manager ??
+      final effectiveManager =
+          manager ??
           (GetIt.instance.isRegistered<MihonManager>()
               ? GetIt.instance.get<MihonManager>()
               : null);

@@ -956,7 +956,9 @@ class _DetailViewState extends State<_DetailView>
     final action = await showEpisodeActionSheet(
       context,
       reading: isReading,
-      canOpenInBrowser: isReading && source_actions.canOpenInBrowser(widget.item.sourceId, ep.url),
+      canOpenInBrowser:
+          isReading &&
+          source_actions.canOpenInBrowser(widget.item.sourceId, ep.url),
       episodeLabel: label,
       // Only meaningful for streaming, and the reading sheet has no row to
       // put it on — so don't go asking which external player is configured
@@ -1055,8 +1057,14 @@ class _DetailViewState extends State<_DetailView>
         await _openPlayer(episodes, index, detail, category);
 
       case EpisodeAction.openInBrowser:
+        // Ask the source where this chapter lives; falls back to the plain
+        // join when it can't say (see resolveChapterWebUrl).
         await source_actions.openUrlInSourceWebView(
-          source_actions.chapterWebUrl(widget.item.sourceId, ep.url) ?? '',
+          await source_actions.resolveChapterWebUrl(
+                widget.item.sourceId,
+                ep.url,
+              ) ??
+              '',
           title: detail.title,
         );
 
@@ -1152,9 +1160,7 @@ class _DetailViewState extends State<_DetailView>
     //
     // Every play path funnels through this method, so this one check covers
     // the row tap, the grid tile, the Play button and resume.
-    if (index >= 0 &&
-        index < episodes.length &&
-        !episodes[index].available) {
+    if (index >= 0 && index < episodes.length && !episodes[index].available) {
       final sweep = await showEpisodeUnavailable(
         context,
         episodes[index],
@@ -1270,51 +1276,53 @@ class _DetailViewState extends State<_DetailView>
     }
     if (!mounted) return;
 
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => PlayerScreen(
-          playerOverride: playerOverride?.package,
-          initialSource: initialSource,
-          sourceId: widget.item.sourceId,
-          episodes: episodes,
-          startIndex: index,
-          resume: sl<ResumeStore>(),
-          resolveSources: (u) => sl<CatalogueRepository>().sources(
-            u,
-            sourceId: widget.item.sourceId,
-            fast: true,
+    Navigator.of(context)
+        .push(
+          MaterialPageRoute(
+            builder: (_) => PlayerScreen(
+              playerOverride: playerOverride?.package,
+              initialSource: initialSource,
+              sourceId: widget.item.sourceId,
+              episodes: episodes,
+              startIndex: index,
+              resume: sl<ResumeStore>(),
+              resolveSources: (u) => sl<CatalogueRepository>().sources(
+                u,
+                sourceId: widget.item.sourceId,
+                fast: true,
+              ),
+              // The resolve above returns on the first usable link so playback
+              // starts fast; the remaining mirrors keep resolving natively. This
+              // lets the Sources sheet pick them up once they land.
+              pollSources: (u) => sl<CatalogueRepository>().polledSources(
+                u,
+                sourceId: widget.item.sourceId,
+              ),
+              history: sl<WatchHistory>(),
+              showTitle: detail.title,
+              cover: detail.cover ?? widget.item.cover,
+              coverHeaders: detail.coverHeaders ?? widget.item.coverHeaders,
+              showUrl: widget.item.url,
+              category: launchCategory,
+              malId: malId,
+              scrobbleTitle: scrobbleTitle,
+              tmdbId: detail.tmdbId ?? widget.item.tmdbId,
+              tmdbIsTv: detail.tmdbIsTv,
+              imdbId: detail.imdbId ?? widget.item.imdbId,
+              availableCategories: availableCategories,
+              peek: peek,
+            ),
           ),
-          // The resolve above returns on the first usable link so playback
-          // starts fast; the remaining mirrors keep resolving natively. This
-          // lets the Sources sheet pick them up once they land.
-          pollSources: (u) => sl<CatalogueRepository>().polledSources(
-            u,
-            sourceId: widget.item.sourceId,
-          ),
-          history: sl<WatchHistory>(),
-          showTitle: detail.title,
-          cover: detail.cover ?? widget.item.cover,
-          coverHeaders: detail.coverHeaders ?? widget.item.coverHeaders,
-          showUrl: widget.item.url,
-          category: launchCategory,
-          malId: malId,
-          scrobbleTitle: scrobbleTitle,
-          tmdbId: detail.tmdbId ?? widget.item.tmdbId,
-          tmdbIsTv: detail.tmdbIsTv,
-          imdbId: detail.imdbId ?? widget.item.imdbId,
-          availableCategories: availableCategories,
-          peek: peek,
-        ),
-      ),
-      // Same reason as the reader's [_refreshAfterReading]: ResumeStore has no
-      // change notification and this push was fire-and-forget, so a finished
-      // episode stayed un-greyed until something else rebuilt the screen.
-      //
-      // Unlike the reader there is no key mismatch here — the player writes
-      // under (item.sourceId, item.url) and the list reads the same pair — so
-      // this is the whole fix. The list is a SliverList.builder, so the
-      // rebuild touches the visible rows, not the full episode count.
-    ).then(_refreshAfterReading);
+          // Same reason as the reader's [_refreshAfterReading]: ResumeStore has no
+          // change notification and this push was fire-and-forget, so a finished
+          // episode stayed un-greyed until something else rebuilt the screen.
+          //
+          // Unlike the reader there is no key mismatch here — the player writes
+          // under (item.sourceId, item.url) and the list reads the same pair — so
+          // this is the whole fix. The list is a SliverList.builder, so the
+          // rebuild touches the visible rows, not the full episode count.
+        )
+        .then(_refreshAfterReading);
   }
 
   /// Asks every installed source for this episode and shows them answering.
@@ -1367,48 +1375,52 @@ class _DetailViewState extends State<_DetailView>
         : widget.item.type;
     switch (readingType) {
       case ProviderType.novel:
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => NovelReaderScreen(
-              sourceId: detail.sourceId,
-              // item.id, NOT detail.id: the chapter list and the action
-              // sheet both read this title's marks under item.id, so writing
-              // them under the source's own id put them where nothing looks.
-              // In Z Mode the two differ (canonical `mal:…` vs the matched
-              // source's show id), which is why a chapter dimmed on some
-              // titles and never on others.
-              showId: widget.item.id,
-              showTitle: detail.title,
-              cover: detail.cover ?? widget.item.cover,
-              chapters: chapters,
-              startIndex: index,
-              malId: detail.malId ?? widget.item.malId,
-              peek: peek,
-            ),
-          ),
-        ).then(_refreshAfterReading);
+        Navigator.of(context)
+            .push(
+              MaterialPageRoute(
+                builder: (_) => NovelReaderScreen(
+                  sourceId: detail.sourceId,
+                  // item.id, NOT detail.id: the chapter list and the action
+                  // sheet both read this title's marks under item.id, so writing
+                  // them under the source's own id put them where nothing looks.
+                  // In Z Mode the two differ (canonical `mal:…` vs the matched
+                  // source's show id), which is why a chapter dimmed on some
+                  // titles and never on others.
+                  showId: widget.item.id,
+                  showTitle: detail.title,
+                  cover: detail.cover ?? widget.item.cover,
+                  chapters: chapters,
+                  startIndex: index,
+                  malId: detail.malId ?? widget.item.malId,
+                  peek: peek,
+                ),
+              ),
+            )
+            .then(_refreshAfterReading);
         return;
       case ProviderType.manga:
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => MangaReaderScreen(
-              sourceId: detail.sourceId,
-              // item.id, NOT detail.id: the chapter list and the action
-              // sheet both read this title's marks under item.id, so writing
-              // them under the source's own id put them where nothing looks.
-              // In Z Mode the two differ (canonical `mal:…` vs the matched
-              // source's show id), which is why a chapter dimmed on some
-              // titles and never on others.
-              showId: widget.item.id,
-              showTitle: detail.title,
-              cover: detail.cover ?? widget.item.cover,
-              chapters: chapters,
-              startIndex: index,
-              malId: detail.malId ?? widget.item.malId,
-              peek: peek,
-            ),
-          ),
-        ).then(_refreshAfterReading);
+        Navigator.of(context)
+            .push(
+              MaterialPageRoute(
+                builder: (_) => MangaReaderScreen(
+                  sourceId: detail.sourceId,
+                  // item.id, NOT detail.id: the chapter list and the action
+                  // sheet both read this title's marks under item.id, so writing
+                  // them under the source's own id put them where nothing looks.
+                  // In Z Mode the two differ (canonical `mal:…` vs the matched
+                  // source's show id), which is why a chapter dimmed on some
+                  // titles and never on others.
+                  showId: widget.item.id,
+                  showTitle: detail.title,
+                  cover: detail.cover ?? widget.item.cover,
+                  chapters: chapters,
+                  startIndex: index,
+                  malId: detail.malId ?? widget.item.malId,
+                  peek: peek,
+                ),
+              ),
+            )
+            .then(_refreshAfterReading);
         return;
       case ProviderType.anime:
       case ProviderType.movie:
