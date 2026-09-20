@@ -136,6 +136,18 @@
              Renaming or removing an alias orphans it on users' home screens, so
              these names are permanent once shipped. -->
         <activity-alias
+            android:name=".MainActivityCrescent"
+            android:targetActivity=".MainActivity"
+            android:exported="true"
+            android:enabled="true"
+            android:icon="@mipmap/ic_launcher_crescent"
+            android:label="Zangetsu">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
             android:name=".MainActivityDefault"
             android:targetActivity=".MainActivity"
             android:exported="true"
@@ -151,7 +163,7 @@
             android:name=".MainActivityClassic"
             android:targetActivity=".MainActivity"
             android:exported="true"
-            android:enabled="true"
+            android:enabled="false"
             android:icon="@mipmap/ic_launcher_classic"
             android:label="Zangetsu">
             <intent-filter>

@@ -38,6 +38,7 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
     ThemeController.supported().then((ok) {
       if (mounted && ok) setState(() => _wallpaperSupported = true);
     });
+    _reconcileIcon();
   }
 
   bool get _accentIsCustom => !ThemeController.accentPresets.any(
@@ -434,10 +435,24 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
 
   final _icons = AppIconService();
 
+  /// What PackageManager actually has enabled, once [_reconcileIcon] has asked.
+  /// Null until then, so the first frame falls back to the stored pref rather
+  /// than flickering through "nothing selected".
+  String? _iconActual;
+
+  /// The stored preference can name a different icon than the one on the home
+  /// screen — an interrupted switch, or an update that changed which alias
+  /// ships enabled. Ask Android and correct the pref, so the tick here matches
+  /// what the user is actually looking at.
+  Future<void> _reconcileIcon() async {
+    final id = await _icons.reconciledId();
+    if (mounted && id != _iconActual) setState(() => _iconActual = id);
+  }
+
   /// Row of selectable launcher icons. Confirms before switching, because
   /// Android tears the task down when the live launcher component is disabled.
   Widget _iconPicker() {
-    final current = _icons.selectedId;
+    final current = _iconActual ?? _icons.selectedId;
     return SizedBox(
       height: 100,
       child: ListView.separated(

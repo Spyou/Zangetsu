@@ -283,6 +283,7 @@ flutter:
     - assets/icon/app_icon.png
     # Launcher-icon previews for the Appearance picker (mipmaps are not
     # reachable from Dart, so the choices are bundled as normal assets).
+    - assets/icon/preview_crescent.png
     - assets/icon/preview_default.png
     - assets/icon/preview_classic.png
     # New Zangetsu mark (black bg keyed out) — for the mode-switch transition.
