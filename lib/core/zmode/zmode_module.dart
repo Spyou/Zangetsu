@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:get_it/get_it.dart';
 
 import '../di/injector.dart';
+import '../metadata/streaming_providers.dart';
 import '../mode/content_mode.dart';
 import '../mode/content_mode_cubit.dart';
 import '../playback/source_health_store.dart';
@@ -52,6 +53,12 @@ Future<void> registerZangetsuMode(GetIt sl) async {
 
   final providerPrefs = await MetadataProviderPrefs.open();
   sl.registerSingleton<MetadataProviderPrefs>(providerPrefs);
+
+  // Shares the catalogue's transport: the API key is attached by the Dio
+  // interceptor, so neither of them ever passes `api_key` by hand.
+  sl.registerLazySingleton<StreamingProvidersService>(
+    () => StreamingProvidersService(TmdbCatalogue.dioGet(sl<Dio>())),
+  );
 
   sl.registerSingleton<MetadataRepository>(MetadataRepository(
     anilist: AniListCatalogue(AniListCatalogue.dioGql(sl<Dio>())),

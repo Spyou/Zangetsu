@@ -44,6 +44,7 @@ class SettingsBackup {
     'metadata_provider', // AniList vs MAL for anime metadata
     'app_font_prefs', // the UI font
     'home_rows_prefs', // per-layout home row order + visibility
+    'streaming_prefs', // streaming-service region + pinned service rows
     'zmode_source_order', // Source Priority: which source Auto Resolve tries first
   ];
 
