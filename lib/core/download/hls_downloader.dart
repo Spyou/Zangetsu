@@ -1,10 +1,11 @@
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:pointycastle/export.dart';
 
 import '../playback/hls.dart';
+import 'webvtt_merge.dart';
 
 /// Downloads an HLS (m3u8) stream to a single local file by fetching every
 /// segment, decrypting AES-128 if needed, and concatenating into one .mp4.
@@ -95,7 +96,21 @@ class HlsDownloader {
         }
         if (key != null) {
           final iv = pl.explicitIv ?? hlsSeqIv(pl.mediaSequence + i);
-          bytes = hlsAesCbcDecrypt(bytes, key, iv);
+          // Off the main isolate. AES-128-CBC here is pure Dart (PointyCastle),
+          // so a few MB per segment is real CPU work on the thread that draws
+          // frames — with up to 16 of these in flight, downloading an encrypted
+          // stream visibly stutters the UI. Decrypting is the only part heavy
+          // enough to be worth moving; fetching and writing are I/O and already
+          // yield.
+          //
+          // One isolate per segment is the right trade here: spawning costs a
+          // few ms against tens of ms of decryption, and only encrypted streams
+          // pay it at all — an unencrypted download never reaches this branch.
+          bytes = await compute(_decryptSegment, (
+            data: bytes,
+            key: key,
+            iv: iv,
+          ));
         }
         // TS segments only (fMP4 has an init header and no 0x47 sync): drop any
         // decoy prefix so the saved file is clean TS external players can demux.
@@ -146,6 +161,103 @@ class HlsDownloader {
   /// Follow a master playlist to a media playlist, choosing the variant closest
   /// to [preferredQuality] (or the highest for 'best'/unknown). Returns
   /// (mediaUrl, playlistText).
+  /// The subtitle renditions [masterUrl] offers, each merged into one WebVTT
+  /// document ready to save beside the video.
+  ///
+  /// Subtitles inside an HLS stream had nowhere to survive a download: the
+  /// master's `#EXT-X-MEDIA:TYPE=SUBTITLES` entries were never read, and
+  /// [TsRemuxer] cannot put a subtitle track in an MP4 — MediaMuxer refuses
+  /// the format, so it logs "unsupported" and drops it. Pulling the rendition
+  /// out as a sidecar is what keeps it.
+  ///
+  /// Best-effort from end to end: a master that is really a media playlist, an
+  /// unreachable rendition, or a segment that fails all return what was
+  /// gathered so far rather than failing the download. Subtitles are a bonus
+  /// on top of a video that already downloaded fine.
+  Future<List<({String lang, String label, bool isDefault, String vtt})>>
+  fetchSubtitleTracks(
+    String masterUrl,
+    Map<String, String> headers, {
+    bool Function()? canceled,
+  }) async {
+    final out = <({String lang, String label, bool isDefault, String vtt})>[];
+    try {
+      final master = await _fetchText(masterUrl, headers);
+      if (master == null) return out;
+      for (final track in parseHlsSubtitles(master, masterUrl)) {
+        if (canceled?.call() ?? false) return out;
+        final vtt = await _mergeRendition(track.url, headers, canceled);
+        if (vtt == null) continue;
+        out.add((
+          lang: track.lang,
+          label: track.label,
+          isDefault: track.isDefault,
+          vtt: vtt,
+        ));
+      }
+    } catch (_) {
+      // Never surfaced: the video is already downloaded.
+    }
+    return out;
+  }
+
+  /// Download every `.vtt` segment of one rendition and join them.
+  ///
+  /// Sequential on purpose: a subtitle rendition is a handful of small text
+  /// files, and this runs after the video is already on disk, so there is
+  /// nothing to be gained by competing with anything for bandwidth.
+  Future<String?> _mergeRendition(
+    String playlistUrl,
+    Map<String, String> headers,
+    bool Function()? canceled,
+  ) async {
+    final text = await _fetchText(playlistUrl, headers);
+    if (text == null) return null;
+    final segs = <VttSegment>[];
+    var start = 0.0;
+    for (final entry in _timedSegments(text, playlistUrl)) {
+      if (canceled?.call() ?? false) break;
+      final body = await _fetchText(entry.url, headers);
+      // A missing segment is a gap, not a failure — keep the rest of the
+      // track rather than throwing away subtitles that did arrive.
+      if (body != null && body.isNotEmpty) {
+        segs.add(VttSegment(text: body, startSeconds: start));
+      }
+      start += entry.seconds;
+    }
+    if (segs.isEmpty) return null;
+    return mergeWebVtt(segs);
+  }
+
+  /// Segment urls of a media playlist paired with their `#EXTINF` duration.
+  ///
+  /// Read here rather than from [_parseMedia] because only this path needs the
+  /// durations — they are what place a segment on the media timeline when its
+  /// cues turn out to be segment-relative.
+  List<({String url, double seconds})> _timedSegments(
+    String text,
+    String playlistUrl,
+  ) {
+    final out = <({String url, double seconds})>[];
+    var pending = 0.0;
+    for (final raw in text.split(RegExp(r'\r?\n'))) {
+      final line = raw.trim();
+      if (line.isEmpty) continue;
+      if (line.startsWith('#EXTINF:')) {
+        pending =
+            double.tryParse(
+              line.substring(8).split(',').first.trim(),
+            ) ??
+            0.0;
+        continue;
+      }
+      if (line.startsWith('#')) continue;
+      out.add((url: _resolveRef(line, playlistUrl), seconds: pending));
+      pending = 0.0;
+    }
+    return out;
+  }
+
   Future<(String, String)?> _resolveMediaPlaylist(
     String url,
     Map<String, String> headers,
@@ -284,6 +396,12 @@ class _MediaPlaylist {
   /// the `.m4s` fragments lack. Null for plain TS playlists.
   String? initUrl;
 }
+
+/// [hlsAesCbcDecrypt] shaped for [compute] — one argument, top-level, so it can
+/// cross an isolate boundary.
+Uint8List _decryptSegment(
+  ({Uint8List data, Uint8List key, Uint8List iv}) m,
+) => hlsAesCbcDecrypt(m.data, m.key, m.iv);
 
 // ── Crypto helpers (top-level so they're unit-testable) ──────────────────────
 

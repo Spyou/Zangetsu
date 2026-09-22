@@ -22,6 +22,7 @@ import '../torrent/torrent_prefs.dart';
 import '../zmode/metadata_repository.dart';
 import '../zmode/zmode_ids.dart';
 import 'download_prefs.dart';
+import 'hls_downloader.dart';
 import 'download_record.dart';
 import 'download_service.dart';
 
@@ -813,12 +814,21 @@ class DownloadManager extends ChangeNotifier {
     return '$base.$ext';
   }
 
-  /// Download the soft-subtitle sidecar files a [source] advertises and record
-  /// their local paths on [rec], so soft-subbed sources keep subtitles offline.
+  /// Save this download's subtitles beside it, from both places they come in:
+  /// the sidecar files a [source] advertises, and — for HLS — the subtitle
+  /// renditions named in the master playlist.
+  ///
+  /// The second is why a downloaded episode could come back with none. An HLS
+  /// stream carries its subtitles as their own rendition, nothing read the
+  /// master's `#EXT-X-MEDIA:TYPE=SUBTITLES` lines, and the remux to MP4 cannot
+  /// carry a subtitle track anyway — MediaMuxer refuses the format and
+  /// [TsRemuxer] logs it as unsupported. Pulled out as a sidecar they survive.
+  ///
   /// Best-effort: stored in private app storage, idempotent (skips if already
   /// saved), and any failure just leaves the download without sidecar subs.
   Future<void> _fetchSubtitles(DownloadRecord rec, VideoSource source) async {
-    if (source.subtitles.isEmpty) return;
+    final fromHls = _isHls(source);
+    if (source.subtitles.isEmpty && !fromHls) return;
     final live = _records[rec.id];
     if (live == null || live.status == DownloadStatus.canceled) return;
     if (live.subtitles.isNotEmpty) return; // already saved (e.g. a retry mirror)
@@ -855,6 +865,32 @@ class DownloadManager extends ChangeNotifier {
             ),
           );
         } catch (_) {/* skip this track */}
+      }
+      // HLS renditions, merged into one .vtt each. After the sidecars so an
+      // explicitly advertised track wins when a stream offers both.
+      if (fromHls) {
+        final seen = saved.map((s) => '${s.lang}|${s.label}').toSet();
+        final tracks = await HlsDownloader(_dio).fetchSubtitleTracks(
+          source.url,
+          source.headers ?? const {},
+          canceled: () => _records[rec.id]?.status == DownloadStatus.canceled,
+        );
+        for (final t in tracks) {
+          if (!seen.add('${t.lang}|${t.label}')) continue;
+          idx++;
+          try {
+            final path = '${dir.path}/${safeShow}_${epTag}_$idx.vtt';
+            await File(path).writeAsString(t.vtt, flush: true);
+            saved.add(
+              OfflineSubtitle(
+                lang: t.lang,
+                label: t.label,
+                path: path,
+                isDefault: t.isDefault,
+              ),
+            );
+          } catch (_) {/* skip this track */}
+        }
       }
       if (saved.isEmpty) return;
       // Re-read: the download may have been canceled/deleted while we fetched.

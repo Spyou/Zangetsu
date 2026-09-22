@@ -210,3 +210,61 @@ Future<List<HlsVariant>> fetchHlsVariants(
     return const [];
   }
 }
+
+/// A subtitle rendition named by an HLS master playlist.
+///
+/// These live in `#EXT-X-MEDIA:TYPE=SUBTITLES`, which [parseHlsMaster] skips —
+/// it only reads `#EXT-X-STREAM-INF` video variants. That is why a downloaded
+/// episode came back with no subtitles even when the stream had them: nothing
+/// ever looked at this tag, and Android's MediaMuxer cannot carry a subtitle
+/// track inside the MP4 either, so there was nowhere for them to survive.
+class HlsSubtitleTrack {
+  const HlsSubtitleTrack({
+    required this.url,
+    required this.lang,
+    required this.label,
+    this.isDefault = false,
+  });
+
+  /// The rendition's own playlist (absolute), itself a list of .vtt segments.
+  final String url;
+  final String lang;
+  final String label;
+  final bool isDefault;
+}
+
+/// Reads an attribute out of an `#EXT-X-MEDIA:` line. Values may be quoted;
+/// unquoted ones (YES/NO, plain tokens) are returned as-is.
+String? _attr(String line, String name) {
+  final m = RegExp('$name=(?:"([^"]*)"|([^,]*))').firstMatch(line);
+  if (m == null) return null;
+  return (m.group(1) ?? m.group(2))?.trim();
+}
+
+/// The subtitle renditions a master playlist offers, in playlist order.
+///
+/// Returns `[]` for a media playlist, a master with no subtitles, or any entry
+/// missing a URI — a rendition we cannot fetch is not worth reporting.
+List<HlsSubtitleTrack> parseHlsSubtitles(String playlist, String masterUrl) {
+  final out = <HlsSubtitleTrack>[];
+  for (final raw in playlist.split(RegExp(r'\r?\n'))) {
+    final line = raw.trim();
+    if (!line.startsWith('#EXT-X-MEDIA:')) continue;
+    if (_attr(line, 'TYPE') != 'SUBTITLES') continue;
+    final uri = _attr(line, 'URI');
+    if (uri == null || uri.isEmpty) continue;
+    final lang = _attr(line, 'LANGUAGE') ?? '';
+    final name = _attr(line, 'NAME') ?? '';
+    out.add(
+      HlsSubtitleTrack(
+        url: _resolve(uri, masterUrl),
+        lang: lang,
+        // NAME is what the site shows a viewer; fall back to the language code
+        // so a track is never nameless in the picker.
+        label: name.isNotEmpty ? name : lang,
+        isDefault: (_attr(line, 'DEFAULT') ?? 'NO').toUpperCase() == 'YES',
+      ),
+    );
+  }
+  return out;
+}
