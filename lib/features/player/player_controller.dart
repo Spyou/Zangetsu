@@ -1520,13 +1520,23 @@ class PlayerCubit extends Cubit<PlayerState> {
   /// sub (the tracks-stream re-arm) doesn't re-download it. Cleared per episode.
   final Map<String, String> _localSubCache = {};
 
-  /// Load an EXTERNAL subtitle [url]. With styled subtitles (libass) on, mpv
-  /// would fetch the URL itself and fail on Cloudflare-protected sub hosts (no
-  /// clearance cookie reaches mpv). So we download it in Dart WITH the source's
-  /// headers, write a temp file, and hand mpv the local path — libass then
-  /// renders it with no CF involvement. Off → the plain remote-uri path,
-  /// byte-identical to before. Best-effort: any download failure falls back to
-  /// the remote uri (no worse than today) and never throws.
+  /// Load an EXTERNAL subtitle [url], fetching it ourselves rather than letting
+  /// mpv do it.
+  ///
+  /// mpv's own fetch carries none of the source's headers — no Referer, no
+  /// User-Agent, no clearance cookie — so a sub host that checks any of them
+  /// answers 403/404 and the track never appears. That is the
+  /// `Can not open external file` in the reports, and it is silent: playback
+  /// carries on with no subtitles and nothing says why.
+  ///
+  /// So download it in Dart WITH [VideoSource.headers], write a temp file, and
+  /// hand mpv the local path. This used to happen only when styled subtitles
+  /// (libass) were on — but that setting is about RENDERING and is off by
+  /// default, so the common case was the broken one. Fetching and styling are
+  /// unrelated; the track is identical either way.
+  ///
+  /// Best-effort throughout: an empty body or any error falls back to the plain
+  /// remote uri, which is exactly what it did before, and never throws.
   ///
   /// Owns `_wantedSubId` (the LOCAL path when downloaded, else the url) so the
   /// sub-preference watcher matches the applied track's id and can't stomp it —
@@ -1543,10 +1553,6 @@ class PlayerCubit extends Cubit<PlayerState> {
       _wantedSubId = url;
     }
 
-    if (!sl<PlaybackPrefs>().styledSubtitles) {
-      await loadRemote();
-      return;
-    }
     try {
       var local = _localSubCache[url];
       if (local == null || !File(local).existsSync()) {
