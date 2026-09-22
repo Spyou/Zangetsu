@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Paths a downloaded episode can live in, so an external player can be
+     handed a content:// URI for one. Downloads default to external storage;
+     the app-scoped dirs cover a custom download location that resolves
+     inside them. -->
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <external-path name="external" path="." />
+    <external-files-path name="external_files" path="." />
+    <external-media-path name="external_media" path="." />
+    <files-path name="files" path="." />
+    <cache-path name="cache" path="." />
+</paths>

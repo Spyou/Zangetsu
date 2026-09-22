@@ -246,6 +246,23 @@
              renderer this device handles (1.8.0 shipped with no flag and worked).
              Forcing EnableImpeller=false here black-screened it, so we match
              1.8.0 exactly and leave the default. mpv gpu-next video is separate. -->
+
+        <!-- Lets an external player read a DOWNLOADED episode. A download
+             arrives as a bare filesystem path, which is a URI with no scheme
+             at all: lenient players guess it is a file, a strict one resolves
+             nothing and the launch fails. Android 7+ refuses a file:// handed
+             to another app, so content:// is the only form left. Used ONLY as
+             a fallback after a direct launch finds no activity, so every
+             launch that works today is untouched. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.videoprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/video_paths" />
+        </provider>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

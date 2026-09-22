@@ -1431,6 +1431,23 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
         return out
     }
 
+    /// A content:// URI another app may read for [path], or null when the
+    /// file is outside the dirs res/xml/video_paths.xml covers (or is gone).
+    ///
+    /// Android 7+ throws FileUriExposedException for a file:// handed to
+    /// another app, so a FileProvider is the only way to pass a downloaded
+    /// episode to an external player.
+    private fun sharableUri(path: String): android.net.Uri? = try {
+        androidx.core.content.FileProvider.getUriForFile(
+            this,
+            "$packageName.videoprovider",
+            java.io.File(path),
+        )
+    } catch (e: Exception) {
+        Log.w(TAG, "no content uri for a downloaded file: ${e.message}")
+        null
+    }
+
     @Suppress("UNCHECKED_CAST")
     private fun launchExternal(call: MethodCall, result: MethodChannel.Result) {
         try {
@@ -1484,6 +1501,26 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
             try {
                 startActivityForResult(intent, EXT_PLAYER_REQUEST)
             } catch (e: android.content.ActivityNotFoundException) {
+                // A DOWNLOADED episode arrives as a bare filesystem path, which
+                // is a URI with no scheme at all. Most players guess it is a
+                // file; a strict one (com.ttee.leeplayer in the reports)
+                // resolves nothing and dies right here — every launched=false
+                // in the logs is a local .mp4, never a stream. Re-offer it as
+                // content://, the only form Android has let us hand another app
+                // since API 24. Streams are untouched: they already have a
+                // scheme, so this branch skips them.
+                val shared = if (Uri.parse(url).scheme == null) sharableUri(url) else null
+                if (shared != null) {
+                    Log.w(TAG, "no activity for a bare path in $pkg — retrying as content://")
+                    intent.setDataAndType(shared, mime)
+                    intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    try {
+                        startActivityForResult(intent, EXT_PLAYER_REQUEST)
+                        return
+                    } catch (_: android.content.ActivityNotFoundException) {
+                        // Still nothing — fall through to the mime retry.
+                    }
+                }
                 // The precise mime above is a hint, not a requirement: plenty of
                 // players advertise video/* and nothing else, so an HLS stream
                 // sent as application/x-mpegURL resolves to no activity and the
