@@ -42,7 +42,16 @@ void showAppToastIn(OverlayState overlay, String message) {
       right: 24,
       bottom: kDockClearance + MediaQuery.paddingOf(context).bottom,
       // Never eat a tap: this is a notice, and it floats over live content.
-      child: IgnorePointer(child: Center(child: _pill(message))),
+      child: IgnorePointer(
+        // An overlay entry has no Material above it, and text without one
+        // renders in Flutter's debug style — monospace with a yellow
+        // underline. [showAppToast] never hit this because FToast wraps its
+        // own child.
+        child: Material(
+          type: MaterialType.transparency,
+          child: Center(child: _pill(message)),
+        ),
+      ),
     ),
   );
   overlay.insert(entry);

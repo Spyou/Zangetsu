@@ -32,6 +32,24 @@ void main() {
     expect(find.text('Showing results from AniList'), findsNothing);
   });
 
+  testWidgets('renders in the app font, not Flutter debug text', (t) async {
+    // Without a Material ancestor an overlay entry draws text in monospace
+    // with a yellow underline. It shipped looking exactly like that once.
+    await t.pumpWidget(app());
+
+    showAppToastIn(rootNavigatorKey.currentState!.overlay!, 'notice');
+    await t.pump();
+
+    expect(
+      find.ancestor(of: find.text('notice'), matching: find.byType(Material)),
+      findsAtLeastNWidgets(1),
+    );
+    final style = t.widget<Text>(find.text('notice')).style;
+    expect(style?.decoration ?? TextDecoration.none, TextDecoration.none);
+
+    await t.pump(const Duration(seconds: 3));
+  });
+
   testWidgets('never swallows a tap while it is up', (t) async {
     await t.pumpWidget(app());
 
