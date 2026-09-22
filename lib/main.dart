@@ -611,6 +611,9 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
       ),
     );
     _shellRoutePushed = true;
+    // The shell is up, so a link held since boot can finally navigate without
+    // the pushReplacement above throwing its route away.
+    markAppShellReady();
     if (mounted) setState(() {});
   }
 
