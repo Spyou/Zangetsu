@@ -1028,11 +1028,20 @@ class PlayerCubit extends Cubit<PlayerState> {
             _lastDur > Duration.zero &&
             p >= _lastDur * 0.85) {
           _prefetchedNextForIndex = idx;
-          // SourceRepository.prefetch has no metadata-catalogue equivalent and
-          // throws for the zm pseudo source, so skip it there.
-          if (sourceId != ZmodeIds.sourceId) {
-            sl<SourceRepository>()
-                .prefetch(_episodeUrl(episodes[idx + 1]), sourceId: sourceId);
+          final nextUrl = _episodeUrl(episodes[idx + 1]);
+          if (sourceId == ZmodeIds.sourceId) {
+            // Z Mode used to skip this entirely, because SourceRepository's
+            // own prefetch throws for the zm pseudo source — so every episode
+            // of a binge paid the full resolve again (7.3s median across 139
+            // plays, 20s at p90). The catalogue resolves it the same way Play
+            // will, and the winning source is already known here: we are
+            // playing from it. Fire-and-forget; a failure just means the next
+            // Play does the work itself, exactly as it did before.
+            sl<CatalogueRepository>()
+                .sources(nextUrl, sourceId: sourceId, fast: true)
+                .catchError((_) => <VideoSource>[]);
+          } else {
+            sl<SourceRepository>().prefetch(nextUrl, sourceId: sourceId);
           }
         }
       }),
