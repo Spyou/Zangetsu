@@ -1,4 +1,5 @@
 import 'package:hive/hive.dart';
+import 'package:watch_app/core/hive/hive_key.dart';
 
 /// Backs up the user's library — My List, watch history, and manga/novel
 /// reading progress — and merges it back in on restore. Never deletes:
@@ -83,7 +84,7 @@ class LibraryBackup {
     if (asMap) {
       final b = Hive.box<Map>(box);
       for (final e in raw.entries) {
-        final key = e.key.toString();
+        final key = hiveKey(e.key.toString());
         if (b.containsKey(key)) continue;
         final v = e.value;
         if (v is Map) await b.put(key, Map<String, dynamic>.from(v));
@@ -92,7 +93,7 @@ class LibraryBackup {
     }
     final b = Hive.box(box);
     for (final e in raw.entries) {
-      final key = e.key.toString();
+      final key = hiveKey(e.key.toString());
       if (!b.containsKey(key)) await b.put(key, e.value);
     }
   }

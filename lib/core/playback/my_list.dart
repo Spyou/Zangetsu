@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:watch_app/core/hive/safe_box.dart';
+import 'package:watch_app/core/hive/hive_key.dart';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -103,7 +104,7 @@ class MyListStore {
 
   Box<Map> get _box => Hive.box<Map>(boxName);
 
-  String _key(MediaItem m) => '${m.sourceId}::${m.id}';
+  String _key(MediaItem m) => hiveKey('${m.sourceId}::${m.id}');
 
   bool contains(MediaItem m) => _box.containsKey(_key(m));
 
@@ -126,7 +127,7 @@ class MyListStore {
     var readOk = true;
     try {
       for (final r in await _remote.listFor(uid)) {
-        cloudKeys.add('${r['source_id']}::${r['item_id']}');
+        cloudKeys.add(hiveKey('${r['source_id']}::${r['item_id']}'));
       }
     } catch (_) {
       readOk = false;
@@ -373,7 +374,7 @@ class MyListStore {
         } catch (_) {
           continue;
         }
-        final key = '${item.sourceId}::${item.id}';
+        final key = hiveKey('${item.sourceId}::${item.id}');
         await _box.put(key, item.toJson());
         _clearPending(key); // it's in the cloud now — no longer needs retrying
         // Watch status: hydrate the local mirror from the cloud when the cloud

@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:watch_app/core/hive/safe_box.dart';
+import 'package:watch_app/core/hive/hive_key.dart';
 import 'package:hive/hive.dart';
 
 import '../models/media_item.dart';
@@ -22,7 +23,7 @@ class ListStatusStore {
   /// Bumped on every change so My List can rebuild.
   final ValueNotifier<int> revision = ValueNotifier<int>(0);
 
-  String keyOf(MediaItem m) => '${m.sourceId}::${m.id}';
+  String keyOf(MediaItem m) => hiveKey('${m.sourceId}::${m.id}');
 
   WatchStatus? statusOf(MediaItem m) =>
       watchStatusFromName(_box.get(keyOf(m)) as String?);

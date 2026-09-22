@@ -1,5 +1,6 @@
 import 'package:hive/hive.dart';
 import 'package:watch_app/core/hive/safe_box.dart';
+import 'package:watch_app/core/hive/hive_key.dart';
 
 /// Remembers per-title user choices (currently the sub/dub category), keyed by
 /// `"<sourceId>::<showUrl>"`. Netflix-style "remember my choice for this title".
@@ -12,7 +13,8 @@ class TitlePrefsStore {
   }
 
   Box<Map> get _box => Hive.box<Map>(boxName);
-  String _key(String sourceId, String showUrl) => '$sourceId::$showUrl';
+  String _key(String sourceId, String showUrl) =>
+      hiveKey('$sourceId::$showUrl');
 
   String? category(String sourceId, String showUrl) {
     final m = _box.get(_key(sourceId, showUrl));
