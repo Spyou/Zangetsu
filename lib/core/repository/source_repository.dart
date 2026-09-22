@@ -584,14 +584,35 @@ class SourceRepository implements CatalogueRepository {
     return p;
   }
 
+  /// [_providerFor], but gives a JS provider that is not in the runtime yet a
+  /// chance to load before we give up on it.
+  ///
+  /// On phone every provider is loaded at boot, so this costs nothing —
+  /// [ensureSourceLoaded] returns straight away for a provider already in the
+  /// runtime and for every non-JS ecosystem. On TV `loadAll` is skipped and
+  /// providers load on demand, so opening a title before anything else had
+  /// touched its source (straight into a show from Continue Watching, rather
+  /// than via the home rail) threw `Provider not loaded` for a source that was
+  /// installed the whole time.
+  ///
+  /// A source that still will not load falls through to [_providerFor] and
+  /// throws exactly as it did before.
+  Future<BaseProvider> _providerReady(String? id) async {
+    final resolved = id ?? _active.state;
+    await ensureSourceLoaded(resolved);
+    return _providerFor(resolved);
+  }
+
   Future<List<MediaItem>> popular({
     String category = 'sub',
     int dateRange = 7,
     int page = 1,
     String? sourceId,
-  }) => _providerFor(
-    sourceId,
-  ).popular(category: category, dateRange: dateRange, page: page);
+  }) async => (await _providerReady(sourceId)).popular(
+    category: category,
+    dateRange: dateRange,
+    page: page,
+  );
 
   /// CloudStream-style Home: the active provider's own named rows. When the
   /// provider defines `getHome` we render exactly what it returns (empty rows
@@ -603,7 +624,7 @@ class SourceRepository implements CatalogueRepository {
     String category = 'sub',
     String? sourceId,
   }) async {
-    final provider = _providerFor(sourceId);
+    final provider = await _providerReady(sourceId);
 
     final sections = await provider.getHome(category: category);
     if (sections != null) {
@@ -643,7 +664,7 @@ class SourceRepository implements CatalogueRepository {
   /// error) degrades to an empty list so the caller just stops the scroll.
   Future<List<MediaItem>> browseMore(BrowseMore more, int page) async {
     try {
-      final p = _providerFor(more.sourceId);
+      final p = await _providerReady(more.sourceId);
       switch (more.kind) {
         case 'ani_popular':
           return p.popular(page: page);
@@ -672,7 +693,8 @@ class SourceRepository implements CatalogueRepository {
     String query, {
     String category = 'sub',
     String? sourceId,
-  }) => _providerFor(sourceId).search(query, 1, category: category);
+  }) async =>
+      (await _providerReady(sourceId)).search(query, 1, category: category);
 
   /// Status-reporting search for the source-health feature (search ordering +
   /// the "Test sources" screen). Unlike [search] it surfaces whether a source
@@ -771,7 +793,7 @@ class SourceRepository implements CatalogueRepository {
           outcome: r.items.isEmpty ? SourceOutcome.empty : SourceOutcome.ok,
         );
       }
-      final provider = _providerFor(resolved);
+      final provider = await _providerReady(resolved);
       final items = (_isAniyomi(resolved) && provider is AniyomiProvider)
           ? await provider.search(
               query,
@@ -849,7 +871,7 @@ class SourceRepository implements CatalogueRepository {
     final sid = sourceId ?? _active.state;
     AppLogger.instance.log('[detail] source fetch start sourceId=$sid url=$url');
     try {
-      final p = _providerFor(sourceId);
+      final p = await _providerReady(sourceId);
       // Only the JS providers share the serialized call queue this is meant to
       // unblock; the native ecosystems each run their own calls, so there is
       // nothing for them to wait behind and nothing to pass on.
@@ -881,7 +903,8 @@ class SourceRepository implements CatalogueRepository {
     String url, {
     String category = 'sub',
     String? sourceId,
-  }) => _providerFor(sourceId).getEpisodes(url, category: category);
+  }) async =>
+      (await _providerReady(sourceId)).getEpisodes(url, category: category);
 
   /// The links resolved SO FAR for [episodeUrl], plus whether more may arrive.
   ///
@@ -939,15 +962,17 @@ class SourceRepository implements CatalogueRepository {
         return hit.sources;
       }
       // 3. Fresh resolve → cache it for the next re-open.
-      final fresh = await _providerFor(
-        sourceId,
-      ).getVideoSources(episodeUrl, fast: true);
+      final provider = await _providerReady(sourceId);
+      final fresh = await provider.getVideoSources(episodeUrl, fast: true);
       if (fresh.isNotEmpty) {
         _resolved[key] = (at: DateTime.now(), sources: fresh);
       }
       return fresh;
     }
-    return _providerFor(sourceId).getVideoSources(episodeUrl, fast: fast);
+    return (await _providerReady(sourceId)).getVideoSources(
+      episodeUrl,
+      fast: fast,
+    );
   }
 
   /// Manga leaf — ordered page images for [chapterUrl]. No expiry cache here:
@@ -974,10 +999,15 @@ class SourceRepository implements CatalogueRepository {
     // chapter again while the first request was still in the air. Both waited
     // the full time; one of them was pure waste. A finished-result cache can't
     // help here, because neither request has finished yet.
+    // Resolved BEFORE the in-flight check on purpose: this can await (a TV
+    // loads a provider on demand), and an await between that check and the
+    // registration below would let a second caller slip past it and fetch the
+    // same chapter twice — the exact waste the check exists to stop.
+    final p = await _providerReady(sourceId);
+
     final inFlight = _pageFetches[key];
     if (inFlight != null) return inFlight;
 
-    final p = _providerFor(sourceId);
     if (p is! ReadingProvider) {
       throw UnsupportedError('${p.sourceId} does not support reading content');
     }
@@ -1094,7 +1124,7 @@ class SourceRepository implements CatalogueRepository {
         // fall through to the network
       }
     }
-    final p = _providerFor(sourceId);
+    final p = await _providerReady(sourceId);
     if (p is! ReadingProvider) {
       throw UnsupportedError('${p.sourceId} does not support reading content');
     }

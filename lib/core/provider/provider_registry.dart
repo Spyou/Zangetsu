@@ -457,13 +457,31 @@ class ProviderRegistry {
     return loaded;
   }
 
+  /// Loads in flight, so one source is never loaded twice at the same time.
+  final Map<String, Future<bool>> _loading = {};
+
   /// Loads [sourceId] into the JS runtime when it is installed+enabled but not
   /// yet evaluated (e.g. a prior boot timed it out). Returns false on failure.
   Future<bool> ensureRuntimeLoaded(
     String sourceId, {
     Duration timeout = const Duration(seconds: 8),
-  }) async {
-    if (_manager.get(sourceId) != null) return true;
+  }) {
+    if (_manager.get(sourceId) != null) return Future.value(true);
+    // One load per source at a time. On TV nothing is loaded at boot, so
+    // opening a title fires several calls that all want the same provider
+    // (detail, episodes, the playback prefetch). Without this each one would
+    // re-download it and evaluate it into the SHARED QuickJS runtime again.
+    //
+    // The callback body is a BLOCK on purpose: `Map.remove` hands back the
+    // future being removed, and an arrow body would return it to
+    // `whenComplete`, which then waits for the very future it is completing.
+    return _loading[sourceId] ??= _loadIntoRuntime(sourceId, timeout)
+        .whenComplete(() {
+          _loading.remove(sourceId);
+        });
+  }
+
+  Future<bool> _loadIntoRuntime(String sourceId, Duration timeout) async {
     final entry = entryFor(sourceId);
     if (entry == null || !entry.enabled) return false;
     try {
