@@ -61,6 +61,8 @@ import 'continue_section.dart';
 import 'my_list_screen.dart';
 import 'tracker_continue_section.dart';
 import '../../core/ui/content_row.dart';
+import '../../core/ui/banner_style.dart';
+import '../../core/ui/featured_banner_panels.dart';
 import '../../core/ui/featured_carousel.dart';
 import '../../core/ui/featured_hero.dart';
 import '../../core/metadata/title_logo_service.dart';
@@ -625,6 +627,49 @@ class _HomeViewState extends State<_HomeView>
         ),
       ),
     );
+  }
+
+  /// The banner for [bannerId], with the same items and the same callbacks
+  /// whichever one is showing.
+  ///
+  /// [BannerStyle.defaultId] returns the carousel exactly as it was written —
+  /// this switch is the only thing standing between Home and the banner every
+  /// install already has, and the other branch is a separate widget that never
+  /// runs unless someone opts in.
+  Widget _featuredBanner(String bannerId, List<MediaItem> heroItems) {
+    final reading = sl<ContentModeCubit>().state.isReading;
+    void toggleList(MediaItem m) => showListStatusSheet(
+      context,
+      item: m,
+      onChanged: () {
+        if (mounted) setState(() {});
+      },
+    );
+
+    switch (bannerId) {
+      case BannerStyle.panelsId:
+        return FeaturedBannerPanels(
+          items: heroItems,
+          reading: reading,
+          inList: (m) => _myList.contains(m),
+          onPlay: _playFeatured,
+          onInfo: _openDetail,
+          onToggleList: toggleList,
+          meta: _heroMeta,
+        );
+      default:
+        // Auto-rotating carousel (up to 6 trending items)
+        return FeaturedCarousel(
+          items: heroItems,
+          reading: reading,
+          inList: (m) => _myList.contains(m),
+          onPlay: _playFeatured,
+          onInfo: _openDetail,
+          onToggleList: toggleList,
+          meta: _heroMeta,
+          style: HeroTransition.cinematic,
+        );
+    }
   }
 
   /// Header download shortcut → [DownloadsScreen]. Same shape as
@@ -1569,9 +1614,7 @@ class _HomeViewState extends State<_HomeView>
                 // (the "Reconnect to sync" banner). force: it must not sit out
                 // the cool-off when someone deliberately pulled.
                 if (sl.isRegistered<AuthCubit>()) {
-                  unawaited(
-                    sl<AuthCubit>().revalidateIfFlagged(force: true),
-                  );
+                  unawaited(sl<AuthCubit>().revalidateIfFlagged(force: true));
                 }
                 return context.read<HomeCubit>().load();
               },
@@ -1622,34 +1665,23 @@ class _HomeViewState extends State<_HomeView>
                             if (hasHero) _prewarmHeroMeta(heroItems);
 
                             if (hasHero && !noSourceForMode) {
-                              return Stack(
-                                children: [
-                                  // Auto-rotating carousel (up to 6 trending items)
-                                  FeaturedCarousel(
-                                    items: heroItems,
-                                    reading:
-                                        sl<ContentModeCubit>().state.isReading,
-                                    inList: (m) => _myList.contains(m),
-                                    onPlay: _playFeatured,
-                                    onInfo: _openDetail,
-                                    onToggleList: (m) => showListStatusSheet(
-                                      context,
-                                      item: m,
-                                      onChanged: () {
-                                        if (mounted) setState(() {});
-                                      },
+                              // Which banner is drawn is a Settings choice, and
+                              // it can change while Home is already built — so
+                              // listen rather than read once.
+                              return ValueListenableBuilder<String>(
+                                valueListenable: BannerStyle.current,
+                                builder: (context, bannerId, _) => Stack(
+                                  children: [
+                                    _featuredBanner(bannerId, heroItems),
+                                    // Floating header sits on top
+                                    Positioned(
+                                      top: 0,
+                                      left: 0,
+                                      right: 0,
+                                      child: _buildHeader(),
                                     ),
-                                    meta: _heroMeta,
-                                    style: HeroTransition.cinematic,
-                                  ),
-                                  // Floating header sits on top
-                                  Positioned(
-                                    top: 0,
-                                    left: 0,
-                                    right: 0,
-                                    child: _buildHeader(),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               );
                             }
 

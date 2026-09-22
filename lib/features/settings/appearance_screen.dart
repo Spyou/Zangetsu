@@ -1,12 +1,8 @@
 import 'package:flutter/material.dart';
-import '../onboarding/bankai_splash.dart';
-import '../../core/ui/splash_style.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import '../../core/ui/settings_widgets.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 
-import '../../core/app_icon/app_icon_service.dart';
-import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
 import '../../core/playback/playback_prefs.dart';
 import '../../core/theme/app_colors.dart';
@@ -16,12 +12,14 @@ import '../../core/theme/app_font_prefs.dart';
 import '../../core/theme/theme_controller.dart';
 import '../../l10n/l10n.dart';
 import '../../core/ui/animation_prefs.dart';
-import 'home_rows_screen.dart';
 
-/// Dedicated Appearance page (Aniyomi-style): accent colour as preview cards
-/// (+ a Custom colour picker), a pure-black AMOLED toggle, and the Home banner
-/// animation style. Every option defaults to the current look, so an untouched
-/// install is unchanged.
+/// Theme and colour: accent as preview cards (+ a Custom colour picker), the
+/// pure-black AMOLED toggle, the app font and how lists animate.
+///
+/// The app icon, splash and Home banner pickers used to live at the bottom of
+/// this page, below four other sections. They answer a different question —
+/// which face the app wears — so they have their own page now
+/// ([AppFaceScreen]); nothing about what they do changed in the move.
 class AppearanceScreen extends StatefulWidget {
   const AppearanceScreen({super.key});
 
@@ -40,7 +38,6 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
     ThemeController.supported().then((ok) {
       if (mounted && ok) setState(() => _wallpaperSupported = true);
     });
-    _reconcileIcon();
   }
 
   bool get _accentIsCustom => !ThemeController.accentPresets.any(
@@ -94,7 +91,8 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
     final presets = ThemeController.accentPresets;
     return Scaffold(
       backgroundColor: AppColors.bg,
-      appBar: settingsAppBar(context.l10n.appearance),
+      // Matches the row that opens it in Interface → Look.
+      appBar: settingsAppBar('Theme & colour'),
       body: ListView(
         padding: const EdgeInsets.only(top: 4, bottom: 32),
         children: [
@@ -212,37 +210,8 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
                   ),
                   onTap: _pickAnimStyle,
                 ),
-              // Phone-only: TV mirrors the saved arrangement but has no
-              // editor of its own.
-              if (!sl<AppMode>().isTv)
-                SettingsTile(
-                  icon: Icons.view_agenda_outlined,
-                  title: context.l10n.homeRows,
-                  subtitle: context.l10n.homeRowsSubtitle,
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => const HomeRowsScreen(),
-                    ),
-                  ),
-                ),
             ],
           ),
-
-          // ── App icon ──────────────────────────────────────────────────────
-          // Android-only: iOS has an unrelated API and TV has no icon picker.
-          if (_icons.supported) ...[
-            SettingsSectionLabel(context.l10n.appIcon),
-            _blurb(context.l10n.appIconBlurb),
-            const SizedBox(height: 10),
-            _iconPicker(),
-          ],
-
-          // ── Splash ────────────────────────────────────────────────────────
-          // Every platform: this one is drawn by us, with no OS involvement.
-          SettingsSectionLabel(context.l10n.splashStyle),
-          _blurb(context.l10n.splashStyleBlurb),
-          const SizedBox(height: 10),
-          _splashPicker(),
         ],
       ),
     );
@@ -439,107 +408,6 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
     );
     if (picked == null) return;
     await AnimationPrefs.setStyle(picked);
-    if (mounted) setState(() {});
-  }
-
-  final _icons = AppIconService();
-
-  /// What PackageManager actually has enabled, once [_reconcileIcon] has asked.
-  /// Null until then, so the first frame falls back to the stored pref rather
-  /// than flickering through "nothing selected".
-  String? _iconActual;
-
-  /// The stored preference can name a different icon than the one on the home
-  /// screen — an interrupted switch, or an update that changed which alias
-  /// ships enabled. Ask Android and correct the pref, so the tick here matches
-  /// what the user is actually looking at.
-  Future<void> _reconcileIcon() async {
-    final id = await _icons.reconciledId();
-    if (mounted && id != _iconActual) setState(() => _iconActual = id);
-  }
-
-  /// Row of selectable launcher icons. Confirms before switching, because
-  /// Android tears the task down when the live launcher component is disabled.
-  Widget _iconPicker() {
-    final current = _iconActual ?? _icons.selectedId;
-    return SizedBox(
-      height: 100,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        // Same inset as SettingsCard's margin, so the row lines up with the
-        // cards and section labels above it.
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        clipBehavior: Clip.none,
-        itemCount: AppIconService.options.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 10),
-        itemBuilder: (_, i) {
-          final o = AppIconService.options[i];
-          return _AppIconCard(
-            option: o,
-            selected: o.id == current,
-            onTap: o.id == current ? null : () => _pickIcon(o),
-          );
-        },
-      ),
-    );
-  }
-
-  /// Row of splash animations, each card playing its own live preview — the
-  /// choice only shows itself at launch, so a still would tell you nothing.
-  ///
-  /// No confirm dialog, unlike the icon picker: nothing is torn down, and the
-  /// next launch simply plays the other one.
-  Widget _splashPicker() {
-    final current = SplashStyle.selectedId;
-    return SizedBox(
-      height: 112,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        clipBehavior: Clip.none,
-        itemCount: SplashStyle.options.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 10),
-        itemBuilder: (_, i) {
-          final o = SplashStyle.options[i];
-          return _SplashCard(
-            option: o,
-            selected: o.id == current,
-            onTap: o.id == current
-                ? null
-                : () async {
-                    await SplashStyle.select(o.id);
-                    if (mounted) setState(() {});
-                  },
-          );
-        },
-      ),
-    );
-  }
-
-  Future<void> _pickIcon(AppIconOption o) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        title: Text(context.l10n.useTheIcon(o.label), style: AppText.title),
-        content: Text(context.l10n.useTheIconBody, style: AppText.body),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text(context.l10n.cancel),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(
-              context.l10n.change,
-              style: TextStyle(color: AppColors.accent),
-            ),
-          ),
-        ],
-      ),
-    );
-    if (ok != true) return;
-    await _icons.select(o.id);
     if (mounted) setState(() {});
   }
 }
@@ -760,153 +628,3 @@ Widget _preview(Color color, bool selected) => Stack(
       ),
   ],
 );
-
-/// A launcher-icon choice: preview, name, and a tick when it's the active one.
-/// Mirrors [_AccentCard]'s shape so the two pickers read as one screen.
-class _AppIconCard extends StatelessWidget {
-  const _AppIconCard({
-    required this.option,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final AppIconOption option;
-  final bool selected;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: SizedBox(
-        width: 92,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 72,
-              height: 72,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(
-                  color: selected ? AppColors.accent : AppColors.hairline,
-                  width: selected ? 2 : 1,
-                ),
-              ),
-              padding: const EdgeInsets.all(3),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(15),
-                child: Image.asset(option.asset, fit: BoxFit.cover),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              option.label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: AppText.caption.copyWith(
-                color: selected ? AppColors.accent : AppColors.textSecondary,
-                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// One splash choice, previewing itself on a loop.
-///
-/// A still frame would be useless here — the whole difference between the two
-/// is motion, and the user only ever sees it at launch. So each card runs the
-/// real animation, at the real timings, on a slow repeat.
-class _SplashCard extends StatefulWidget {
-  const _SplashCard({
-    required this.option,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final SplashStyleOption option;
-  final bool selected;
-  final VoidCallback? onTap;
-
-  @override
-  State<_SplashCard> createState() => _SplashCardState();
-}
-
-class _SplashCardState extends State<_SplashCard>
-    with SingleTickerProviderStateMixin {
-  // Real duration plus a pause, so the finished mark is readable between runs
-  // instead of the loop reading as a flicker.
-  late final AnimationController _c = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 2600),
-  )..repeat();
-
-  @override
-  void dispose() {
-    _c.dispose();
-    super.dispose();
-  }
-
-  /// Maps the looping controller onto the animation, holding at the end.
-  double get _t => (_c.value / 0.62).clamp(0.0, 1.0);
-
-  @override
-  Widget build(BuildContext context) {
-    final sel = widget.selected;
-    return GestureDetector(
-      onTap: widget.onTap,
-      child: SizedBox(
-        width: 100,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 84,
-              height: 84,
-              decoration: BoxDecoration(
-                color: AppColors.bg,
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(
-                  color: sel ? AppColors.accent : AppColors.hairline,
-                  width: sel ? 2 : 1,
-                ),
-              ),
-              clipBehavior: Clip.antiAlias,
-              child: AnimatedBuilder(
-                animation: _c,
-                builder: (context, _) => widget.option.id == 'bankai'
-                    ? Center(child: BankaiSplash(progress: _t, size: 72))
-                    : Center(
-                        child: Opacity(
-                          opacity: _t.clamp(0.0, 1.0),
-                          child: FractionallySizedBox(
-                            widthFactor: 0.82,
-                            child: Image.asset(
-                              'assets/icon/wordmark.png',
-                              fit: BoxFit.contain,
-                            ),
-                          ),
-                        ),
-                      ),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              widget.option.label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: AppText.caption.copyWith(
-                color: sel ? AppColors.accent : AppColors.textSecondary,
-                fontWeight: sel ? FontWeight.w700 : FontWeight.w500,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
