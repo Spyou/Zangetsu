@@ -71,8 +71,16 @@ Future<void> registerZangetsuMode(GetIt sl) async {
     onProviderFallback: (name) {
       // A toast, not a SnackBar: the app uses toasts everywhere else, and a
       // SnackBar shoves the layout up and sits under the floating dock.
-      final ctx = rootNavigatorKey.currentContext;
-      if (ctx != null) showAppToast(ctx, 'Showing results from $name');
+      //
+      // Straight into the overlay, because there is no screen context here:
+      // `showAppToast` resolves one with `Overlay.of`, and every context a
+      // navigator key can hand back is either above the overlay or is the
+      // overlay itself. Both threw "Overlay is null", so the warning never
+      // actually reached anyone.
+      final overlay = rootNavigatorKey.currentState?.overlay;
+      if (overlay != null) {
+        showAppToastIn(overlay, 'Showing results from $name');
+      }
     },
     sources: sl<SourceRepository>(),
     matcher: sl<SourceMatcher>(),
