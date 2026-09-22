@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:hive/hive.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:watch_app/core/backup/library_backup.dart';
+import 'package:watch_app/core/hive/hive_key.dart';
 
 void main() {
   late Directory dir;
@@ -95,6 +96,75 @@ void main() {
     expect(Hive.box<Map>('read_history').isEmpty, isTrue);
     expect(Hive.box<Map>('read_positions').isEmpty, isTrue);
     expect(Hive.box('list_status').isEmpty, isTrue);
+  });
+
+  test('merge hashes oversized keys the same way the stores do', () async {
+    // A source URL carrying a multi-kilobyte ?data={…} blob — the exact
+    // scenario hiveKey() was introduced for. Without hiveKey() in merge(),
+    // the raw >255-byte key would (a) miss the hashed entry already in the
+    // box, and (b) be written as-is, corrupting the Hive file.
+    final longUrl = 'https://example.test/e?data=${'x' * 600}';
+    final hashedKey = hiveKey('src::$longUrl');
+
+    // ── My List: write the way MyList._key does (hashed) ──
+    await Hive.box<Map>('my_list').put(hashedKey, {
+      'id': longUrl,
+      'sourceId': 'src',
+      'title': 'Big URL show',
+    });
+
+    // ── Watch History: write the way WatchHistory._key does (hashed) ──
+    await Hive.box<Map>('watch_history').put(hashedKey, {
+      'sourceId': 'src',
+      'showId': longUrl,
+      'positionMs': 42000,
+      'updatedAt': 100,
+    });
+
+    // Build a backup whose payload carries the FIELD values (not the keys).
+    // A real backup is built from _dump which iterates .values, so the
+    // payload has sourceId + id / showId as plain fields — merge() must
+    // rebuild the key through hiveKey() to match what the stores wrote.
+    final backup = {
+      'myList': [
+        {'id': longUrl, 'sourceId': 'src', 'title': 'Big URL show'},
+      ],
+      'history': [
+        {
+          'sourceId': 'src',
+          'showId': longUrl,
+          'positionMs': 99000,
+          'updatedAt': 200,
+        },
+      ],
+    };
+
+    // Clear and re-merge — the My List union check and the Watch History
+    // keep-newer lookup must both find the existing row by its hashed key.
+    await Hive.box<Map>('my_list').clear();
+    await Hive.box<Map>('watch_history').clear();
+
+    // Seed a NEWER local history entry so keep-newer has something to keep.
+    await Hive.box<Map>('watch_history').put(hashedKey, {
+      'sourceId': 'src',
+      'showId': longUrl,
+      'positionMs': 55000,
+      'updatedAt': 500,
+    });
+
+    await LibraryBackup().merge(backup);
+
+    // My List: the entry should land under the hashed key, not a raw one.
+    expect(Hive.box<Map>('my_list').containsKey(hashedKey), isTrue,
+        reason: 'My List entry should be stored under the hashed key');
+    expect(Hive.box<Map>('my_list').length, 1,
+        reason: 'no duplicate under a raw key');
+
+    // Watch History: the newer local entry must survive the merge.
+    expect(Hive.box<Map>('watch_history').get(hashedKey)!['updatedAt'], 500,
+        reason: 'keep-newer must find the existing row by hashed key');
+    expect(Hive.box<Map>('watch_history').length, 1,
+        reason: 'no duplicate under a raw key');
   });
 
   test('merge is a no-op when a box is closed', () async {
