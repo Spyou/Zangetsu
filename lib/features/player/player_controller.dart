@@ -2490,6 +2490,18 @@ class PlayerCubit extends Cubit<PlayerState> {
     _tryApplySubPref(); // apply the global subtitle preference (off / lang / auto)
   }
 
+  /// Stop playback, swallowing anything the platform throws.
+  ///
+  /// Only called on the paths that have already given up, where a failure to
+  /// stop must not replace the error the user is about to read.
+  Future<void> _stopQuietly() async {
+    try {
+      await player.stop();
+    } catch (_) {
+      /* already gone */
+    }
+  }
+
   /// Try the next source after the current one fails (dead/DRM/unsupported),
   /// preserving the live position and the audio kind.
   Future<void> _onPlaybackError(String e) async {
@@ -2566,7 +2578,23 @@ class PlayerCubit extends Cubit<PlayerState> {
     } else if (!await _tryNextSource()) {
       // Guarded, not returned: _recovering still has to drop, or a player that
       // outlives this (a newer open on the same cubit) can never recover again.
-      if (gen == _gen) emit(state.copyWith(error: () => _deadEndMessage()));
+      if (gen == _gen) {
+        // Stop the player before saying so.
+        //
+        // Left running, it fetches the NEXT piece of the stream that just
+        // failed, fails on that too, and re-enters this whole path — about
+        // once a second, for as long as the screen is open. A device log of
+        // this shows 31 identical errors in 44 seconds behind a message that
+        // had already given up. From the outside that is a frozen app: the
+        // dialog is right there, and underneath the player is still grinding.
+        //
+        // Safe by construction: everything above has already established that
+        // this source never produced a frame, that there is nothing left to
+        // fail over to, and the user is about to be told so. "Try again"
+        // re-opens the episode from scratch, which works on a stopped player.
+        await _stopQuietly();
+        emit(state.copyWith(error: () => _deadEndMessage()));
+      }
     }
     _recovering = false;
   }
@@ -2742,6 +2770,9 @@ class PlayerCubit extends Cubit<PlayerState> {
       // A source whose every mirror stalls is as unplayable as one whose links
       // 404 — same fallthrough to the next source rather than ending here.
       if (!await _tryNextSource()) {
+        // Same reason as the dead end above: a stalled player left running
+        // keeps retrying behind the message.
+        await _stopQuietly();
         emit(
           state.copyWith(
             error: () =>
