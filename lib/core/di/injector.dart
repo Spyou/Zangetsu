@@ -68,6 +68,7 @@ import '../metadata/people_service.dart';
 import '../app_config.dart';
 import '../environment.dart';
 import '../metadata/tmdb.dart';
+import 'package:watch_app/core/metadata/tmdb_fallback.dart';
 import '../metadata/title_logo_service.dart';
 import '../mode/content_mode_cubit.dart';
 import '../trailer/trailer_service.dart';
@@ -397,7 +398,8 @@ Future<void> initDependencies() async {
         if (options.uri.host == AniListGraphql.host) {
           options.headers.addAll(AniListGraphql.headers);
         }
-        if (options.uri.host == Tmdb.host) {
+        if (options.uri.host == Tmdb.host ||
+            options.uri.host == Tmdb.fallbackHost) {
           options.queryParameters = {
             ...options.queryParameters,
             'api_key': Tmdb.apiKey,
@@ -408,6 +410,8 @@ Future<void> initDependencies() async {
       },
     ),
   );
+  // One retry on TMDB's other host when a network blocks the usual one.
+  dio.interceptors.add(TmdbFallbackInterceptor(dio));
   // AniList gets a longer read than the 8s above and honours 429 — see
   // AniListNetworkPolicy. Registered so the UI can ask how long the wait is.
   final aniListPolicy = AniListNetworkPolicy();
