@@ -195,6 +195,10 @@ Future<T?> showTvAlertDialog<T>(
   );
 }
 
+/// Shared by the button fill and the [TvFocusable] outline so the ring hugs
+/// the chrome instead of painting a tighter pill on top.
+const _kActionRadius = 24.0;
+
 class _TvAlertButton extends StatelessWidget {
   const _TvAlertButton({
     required this.action,
@@ -214,31 +218,30 @@ class _TvAlertButton extends StatelessWidget {
           : (action.primary ? 24 : 20),
       vertical: isTv ? 14 : 12,
     );
-    final labelStyle = AppText.headline.copyWith(fontSize: isTv ? 18 : 16);
+    final Color bg = action.primary ? AppColors.accent : AppColors.surface2;
+    final Color fg = Colors.white;
 
     Widget chrome(bool focused) {
-      final Color bg;
-      final Color fg;
-      Border? border;
-      if (action.primary) {
-        bg = focused ? Colors.white : AppColors.accent;
-        fg = focused ? Colors.black : Colors.white;
-      } else {
-        bg = focused ? Colors.white24 : AppColors.surface2;
-        fg = Colors.white;
-        border = Border.all(
-          color: focused ? Colors.white54 : AppColors.hairline,
-        );
-      }
+      // Outline only — the box variant also tints and drop-shadows, which
+      // reads as a wash over these filled pills.
+      final borderColor = focused
+          ? Colors.white
+          : (action.primary ? Colors.transparent : AppColors.hairline);
       return DecoratedBox(
         decoration: BoxDecoration(
           color: bg,
-          borderRadius: BorderRadius.circular(24),
-          border: border,
+          borderRadius: BorderRadius.circular(_kActionRadius),
+          border: Border.all(color: borderColor, width: 2.5),
         ),
         child: Padding(
           padding: pad,
-          child: Text(action.label, style: labelStyle.copyWith(color: fg)),
+          child: Text(
+            action.label,
+            style: AppText.headline.copyWith(
+              fontSize: isTv ? 18 : 16,
+              color: fg,
+            ),
+          ),
         ),
       );
     }
@@ -249,7 +252,7 @@ class _TvAlertButton extends StatelessWidget {
     return TvFocusable(
       focusNode: focusNode,
       autofocus: action.autofocus,
-      variant: TvFocusVariant.pill,
+      variant: TvFocusVariant.none,
       onTap: action.onTap,
       semanticLabel: action.label,
       builder: chrome,

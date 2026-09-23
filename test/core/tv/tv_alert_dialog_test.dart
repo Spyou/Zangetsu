@@ -104,4 +104,53 @@ void main() {
       expect(find.text('Restore complete'), findsNothing);
     },
   );
+
+  testWidgets(
+    'dialog actions draw their own outline and skip TvFocusable shading',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1280, 720));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: TextButton(
+                onPressed: () {
+                  showTvAlertDialog<void>(
+                    context,
+                    title: 'Restore complete',
+                    body: const Text('Library restored'),
+                    actions: const [
+                      TvAlertAction(label: 'Cancel', onTap: _noop),
+                      TvAlertAction(
+                        label: 'OK',
+                        primary: true,
+                        autofocus: true,
+                        onTap: _noop,
+                      ),
+                    ],
+                  );
+                },
+                child: const Text('Open'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('Open'));
+      await tester.pumpAndSettle();
+
+      final actions = tester
+          .widgetList<TvFocusable>(find.byType(TvFocusable))
+          .where((w) => w.semanticLabel == 'Cancel' || w.semanticLabel == 'OK')
+          .toList();
+      expect(actions, hasLength(2));
+      for (final action in actions) {
+        expect(action.variant, TvFocusVariant.none);
+      }
+    },
+  );
 }
+
+void _noop() {}
