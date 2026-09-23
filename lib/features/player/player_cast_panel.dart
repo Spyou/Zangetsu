@@ -8,6 +8,8 @@ class _CastRemotePanel extends StatefulWidget {
     required this.cover,
     required this.onBack,
     required this.onStop,
+    required this.onSources,
+    required this.onAudioSubs,
     this.loadError,
   });
 
@@ -17,6 +19,8 @@ class _CastRemotePanel extends StatefulWidget {
   final String? loadError;
   final VoidCallback onBack;
   final VoidCallback onStop;
+  final VoidCallback onSources;
+  final VoidCallback onAudioSubs;
 
   @override
   State<_CastRemotePanel> createState() => _CastRemotePanelState();
@@ -76,7 +80,9 @@ class _CastRemotePanelState extends State<_CastRemotePanel> {
                         if (widget.showTitle != null)
                           Text(
                             widget.showTitle!,
-                            style: AppText.headline.copyWith(color: Colors.white),
+                            style: AppText.headline.copyWith(
+                              color: Colors.white,
+                            ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -87,121 +93,145 @@ class _CastRemotePanelState extends State<_CastRemotePanel> {
               ),
             ),
 
-            // Poster art (optional) + centre transport controls (or error).
+            // Poster + transport (or error). Landscape + the extra source /
+            // caption buttons leave ~195px here — hide the poster then, and
+            // scroll if even the controls don't fit.
             Expanded(
-              child: widget.loadError != null
-                  // ── Load-error state ──────────────────────────────────────
-                  ? Center(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 32),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(
-                              Icons.cast_connected,
-                              color: Colors.white38,
-                              size: 56,
-                            ),
-                            const SizedBox(height: 20),
-                            const Text(
-                              "This source can't be cast — try another source.",
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                color: Colors.white70,
-                                fontSize: 16,
-                              ),
-                            ),
-                          ],
-                        ),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  return SingleChildScrollView(
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        minHeight: constraints.maxHeight,
                       ),
-                    )
-                  // ── Normal playback state ─────────────────────────────────
-                  : AnimatedBuilder(
-                      animation: sl<CastController>(),
-                      builder: (context, _) {
-                        final castCtrl = sl<CastController>();
-                        final isPlaying = castCtrl.isPlaying;
-                        return Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            // Optional poster thumbnail.
-                            if (widget.cover != null && widget.cover!.isNotEmpty)
-                              Padding(
-                                padding: const EdgeInsets.only(bottom: 24),
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(12),
-                                  child: CachedNetworkImage(
-                                    imageUrl: widget.cover!,
-                                    height: 120,
-                                    fit: BoxFit.contain,
-                                    errorWidget: (_, _, _) =>
-                                        const SizedBox.shrink(),
-                                  ),
+                      child: widget.loadError != null
+                          ? Center(
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 32,
+                                ),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(
+                                      Icons.cast_connected,
+                                      color: Colors.white38,
+                                      size: 56,
+                                    ),
+                                    const SizedBox(height: 20),
+                                    const Text(
+                                      "This source can't be cast — try another source.",
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        color: Colors.white70,
+                                        fontSize: 16,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
-
-                            // Transport: −10s / play-pause / +10s.
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                IconButton(
-                                  iconSize: 40,
-                                  icon: const Icon(
-                                    Icons.replay_10,
-                                    color: Colors.white,
-                                  ),
-                                  tooltip: context.l10n.rewind10Seconds,
-                                  onPressed: () {
-                                    final target =
-                                        castCtrl.position -
-                                        const Duration(seconds: 10);
-                                    castCtrl.seek(
-                                      target < Duration.zero
-                                          ? Duration.zero
-                                          : target,
-                                    );
-                                  },
-                                ),
-                                const SizedBox(width: 24),
-                                IconButton(
-                                  iconSize: 56,
-                                  icon: Icon(
-                                    isPlaying
-                                        ? Icons.pause_circle_filled
-                                        : Icons.play_circle_filled,
-                                    color: Colors.white,
-                                  ),
-                                  tooltip: isPlaying ? 'Pause' : 'Play',
-                                  onPressed: () => isPlaying
-                                      ? castCtrl.pause()
-                                      : castCtrl.play(),
-                                ),
-                                const SizedBox(width: 24),
-                                IconButton(
-                                  iconSize: 40,
-                                  icon: const Icon(
-                                    Icons.forward_10,
-                                    color: Colors.white,
-                                  ),
-                                  tooltip: context.l10n.forward10Seconds,
-                                  onPressed: () {
-                                    final dur = castCtrl.duration;
-                                    final target =
-                                        castCtrl.position +
-                                        const Duration(seconds: 10);
-                                    castCtrl.seek(
-                                      dur > Duration.zero && target > dur
-                                          ? dur
-                                          : target,
-                                    );
-                                  },
-                                ),
-                              ],
+                            )
+                          : AnimatedBuilder(
+                              animation: sl<CastController>(),
+                              builder: (context, _) {
+                                final castCtrl = sl<CastController>();
+                                final isPlaying = castCtrl.isPlaying;
+                                // Poster (120) + gap (24) + transport (72).
+                                final showPoster =
+                                    widget.cover != null &&
+                                    widget.cover!.isNotEmpty &&
+                                    constraints.maxHeight >= 280;
+                                return Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    if (showPoster)
+                                      Padding(
+                                        padding: const EdgeInsets.only(
+                                          bottom: 24,
+                                        ),
+                                        child: ClipRRect(
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                          child: CachedNetworkImage(
+                                            imageUrl: widget.cover!,
+                                            height: 120,
+                                            fit: BoxFit.contain,
+                                            errorWidget: (_, _, _) =>
+                                                const SizedBox.shrink(),
+                                          ),
+                                        ),
+                                      ),
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        IconButton(
+                                          iconSize: 40,
+                                          icon: const Icon(
+                                            Icons.replay_10,
+                                            color: Colors.white,
+                                          ),
+                                          tooltip:
+                                              context.l10n.rewind10Seconds,
+                                          onPressed: () {
+                                            final target =
+                                                castCtrl.position -
+                                                const Duration(seconds: 10);
+                                            castCtrl.seek(
+                                              target < Duration.zero
+                                                  ? Duration.zero
+                                                  : target,
+                                            );
+                                          },
+                                        ),
+                                        const SizedBox(width: 24),
+                                        IconButton(
+                                          iconSize: 56,
+                                          icon: Icon(
+                                            isPlaying
+                                                ? Icons.pause_circle_filled
+                                                : Icons.play_circle_filled,
+                                            color: Colors.white,
+                                          ),
+                                          tooltip: isPlaying
+                                              ? 'Pause'
+                                              : 'Play',
+                                          onPressed: () => isPlaying
+                                              ? castCtrl.pause()
+                                              : castCtrl.play(),
+                                        ),
+                                        const SizedBox(width: 24),
+                                        IconButton(
+                                          iconSize: 40,
+                                          icon: const Icon(
+                                            Icons.forward_10,
+                                            color: Colors.white,
+                                          ),
+                                          tooltip:
+                                              context.l10n.forward10Seconds,
+                                          onPressed: () {
+                                            final dur = castCtrl.duration;
+                                            final target =
+                                                castCtrl.position +
+                                                const Duration(seconds: 10);
+                                            castCtrl.seek(
+                                              dur > Duration.zero &&
+                                                      target > dur
+                                                  ? dur
+                                                  : target,
+                                            );
+                                          },
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                );
+                              },
                             ),
-                          ],
-                        );
-                      },
                     ),
+                  );
+                },
+              ),
             ),
 
             // Seek bar + stop button at the bottom.
@@ -213,8 +243,9 @@ class _CastRemotePanelState extends State<_CastRemotePanel> {
                   final castCtrl = sl<CastController>();
                   final pos = castCtrl.position;
                   final dur = castCtrl.duration;
-                  final totalMs =
-                      dur.inMilliseconds > 0 ? dur.inMilliseconds.toDouble() : 1.0;
+                  final totalMs = dur.inMilliseconds > 0
+                      ? dur.inMilliseconds.toDouble()
+                      : 1.0;
                   final posMs = pos.inMilliseconds
                       .clamp(0, totalMs.toInt())
                       .toDouble();
@@ -229,7 +260,9 @@ class _CastRemotePanelState extends State<_CastRemotePanel> {
                           children: [
                             Text(
                               _fmt(Duration(milliseconds: value.round())),
-                              style: AppText.caption.copyWith(color: Colors.white),
+                              style: AppText.caption.copyWith(
+                                color: Colors.white,
+                              ),
                             ),
                             Expanded(
                               child: SliderTheme(
@@ -269,12 +302,69 @@ class _CastRemotePanelState extends State<_CastRemotePanel> {
                             ),
                             Text(
                               _fmt(dur),
-                              style: AppText.caption.copyWith(color: Colors.white),
+                              style: AppText.caption.copyWith(
+                                color: Colors.white,
+                              ),
                             ),
                           ],
                         ),
                         const SizedBox(height: 12),
                       ],
+
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextButton.icon(
+                              onPressed: widget.onSources,
+                              icon: const Icon(
+                                Icons.dns_outlined,
+                                color: Colors.white70,
+                                size: 18,
+                              ),
+                              label: Text(
+                                context.l10n.sources,
+                                style: const TextStyle(color: Colors.white70),
+                              ),
+                              style: TextButton.styleFrom(
+                                backgroundColor: Colors.white12,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 8,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: TextButton.icon(
+                              onPressed: widget.onAudioSubs,
+                              icon: const Icon(
+                                Icons.subtitles_outlined,
+                                color: Colors.white70,
+                                size: 18,
+                              ),
+                              label: Text(
+                                context.l10n.audioSubs,
+                                style: const TextStyle(color: Colors.white70),
+                              ),
+                              style: TextButton.styleFrom(
+                                backgroundColor: Colors.white12,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 8,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
 
                       // Stop casting button — always visible.
                       TextButton.icon(
@@ -315,4 +405,3 @@ class _CastRemotePanelState extends State<_CastRemotePanel> {
 // top, a vertical fill track and an icon at the bottom, pinned to the half being
 // swiped while the user drags (MX Player / CloudStream-style).
 // ─────────────────────────────────────────────────────────────────────────────
-

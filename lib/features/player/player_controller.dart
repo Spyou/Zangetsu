@@ -1126,6 +1126,30 @@ class PlayerCubit extends Cubit<PlayerState> {
   /// start the Cast receiver at the exact position local playback left off.
   Duration get currentPosition => _lastPos;
 
+  /// Chromecast (and similar) progress while local mpv is paused. Updates
+  /// resume / Continue Watching on the same path as the position stream.
+  void syncExternalProgress(Duration position, Duration duration) {
+    if (position <= Duration.zero) return;
+    if (duration > Duration.zero) _lastDur = duration;
+    final jumped = (position - _lastPos).abs() > const Duration(seconds: 3);
+    if (jumped) _markUserSeek(position);
+    _lastPos = position;
+    if (position > Duration.zero) {
+      _startedThisSource = true;
+      _everStarted = true;
+      if (!_markedWatching) {
+        _markedWatching = true;
+        _markWatching();
+      }
+    }
+    if (jumped) _pushDiscordWatching();
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (now - _lastHistoryMs >= 5000) {
+      _lastHistoryMs = now;
+      unawaited(_persist());
+    }
+  }
+
   void setRate(double r) => player.setRate(r);
 
   /// Current video-decoder mode ('hw'|'hw+'|'sw'|'auto') — drives the in-player

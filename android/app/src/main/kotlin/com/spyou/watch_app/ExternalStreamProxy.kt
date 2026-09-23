@@ -12,11 +12,18 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
 /**
- * Localhost HTTP proxy for handing header-gated streams to EXTERNAL players
- * (VLC, SPlayer, LeePlayer, …) that ignore intent header extras. The player is
- * given `http://127.0.0.1:<port>/s/<token>`; this proxy re-issues the real
- * request with the source's headers (Referer/Origin/Cookie/User-Agent) so the
- * CDN returns the stream instead of 403.
+ * LAN HTTP proxy for handing header-gated streams to EXTERNAL players
+ * (VLC, SPlayer, LeePlayer, Web Video Cast, …) that ignore intent header extras.
+ * The player is given `http://<lan-ip>:<port>/s/<token>` (loopback if the phone
+ * has no usable LAN address); this proxy re-issues the real request with the
+ * source's headers (Referer/Origin/Cookie/User-Agent) so the CDN returns the
+ * stream instead of 403.
+ *
+ * Bound on all interfaces so a Cast receiver (Chromecast, NVIDIA Shield) can
+ * fetch the URL a cast app handed it. Playlists are stored with a 127.0.0.1
+ * host and rewritten to the incoming `Host` on serve — otherwise the receiver
+ * would try to pull segments from itself. CORS is added because the Cast
+ * default receiver fetches via XHR.
  *
  * Generic (unlike AniyomiVideoProxy, which uses an Aniyomi source client): it
  * forwards through a single plain OkHttpClient with the caller-supplied headers.
@@ -52,19 +59,33 @@ object ExternalStreamProxy {
     private fun ensureStarted() {
         val s = server
         if (s != null && s.isAlive) return
-        val newServer = object : NanoHTTPD("127.0.0.1", 0) {
+        // null hostname → all interfaces. Loopback-only binding made cast
+        // apps (Web Video Cast → Shield/Chromecast) hand the receiver a URL
+        // it could never reach.
+        val newServer = object : NanoHTTPD(null, 0) {
             override fun serve(session: IHTTPSession): Response =
-                this@ExternalStreamProxy.serve(session)
+                withCors(this@ExternalStreamProxy.serve(session))
         }
         newServer.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false)
         server = newServer
     }
 
-    /** Registers (url, headers) and returns http://127.0.0.1:<port>/s/<token>.
+    /** Registers (url, headers) and returns a player-facing proxy URL.
      *  HLS upstreams get a `.m3u8` suffix so the external player (and the intent
      *  mime detection) probes the top-level URL as HLS; segment/key URLs (non-
-     *  m3u8 upstreams) get no suffix. serve() strips any extension. */
+     *  m3u8 upstreams) get no suffix. serve() strips any extension.
+     *
+     *  Advertises the phone's LAN IPv4 when one is available so a Cast
+     *  receiver can fetch it; falls back to 127.0.0.1 for on-device players. */
     fun proxyUrl(url: String, headers: Map<String, String>): String {
+        val loopback = register(url, headers)
+        val ip = LanAddress.ipv4() ?: return loopback
+        return loopback.replaceFirst("127.0.0.1", ip)
+    }
+
+    /** Canonical loopback form used inside rewritten playlists / the cache.
+     *  [advertiseForRequest] swaps the host to match how the client reached us. */
+    private fun register(url: String, headers: Map<String, String>): String {
         ensureStarted()
         val token = UUID.randomUUID().toString().replace("-", "")
         sessions[token] = Session(url, headers)
@@ -72,7 +93,29 @@ object ExternalStreamProxy {
         return "http://127.0.0.1:${server!!.listeningPort}/s/$token$suffix"
     }
 
+    private fun withCors(resp: NanoHTTPD.Response): NanoHTTPD.Response {
+        resp.addHeader("Access-Control-Allow-Origin", "*")
+        resp.addHeader("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS")
+        resp.addHeader("Access-Control-Allow-Headers", "Range, Origin, Accept, Content-Type")
+        resp.addHeader(
+            "Access-Control-Expose-Headers",
+            "Content-Length, Content-Range, Accept-Ranges, Content-Type",
+        )
+        return resp
+    }
+
+    private fun advertiseForRequest(body: String, httpSession: NanoHTTPD.IHTTPSession): String {
+        val host = httpSession.headers["host"] ?: return body
+        val port = server?.listeningPort ?: return body
+        return LanAddress.rewriteLoopbackHost(body, port, host)
+    }
+
     private fun serve(httpSession: NanoHTTPD.IHTTPSession): NanoHTTPD.Response {
+        if (httpSession.method == NanoHTTPD.Method.OPTIONS) {
+            return NanoHTTPD.newFixedLengthResponse(
+                NanoHTTPD.Response.Status.OK, "text/plain", "",
+            )
+        }
         // Token is a dot-free UUID hex; strip the query and any `.m3u8` suffix.
         val token = httpSession.uri.removePrefix("/s/").substringBefore("?")
             .substringBefore(".")
@@ -85,7 +128,8 @@ object ExternalStreamProxy {
         if (urlPathEarly.endsWith(".m3u8") || urlPathEarly.endsWith(".m3u")) {
             playlistCache[ps.url]?.let { cached ->
                 return NanoHTTPD.newFixedLengthResponse(
-                    NanoHTTPD.Response.Status.OK, "application/vnd.apple.mpegurl", cached,
+                    NanoHTTPD.Response.Status.OK, "application/vnd.apple.mpegurl",
+                    advertiseForRequest(cached, httpSession),
                 )
             }
         }
@@ -112,11 +156,12 @@ object ExternalStreamProxy {
 
         if (isHlsByUrl || isHlsByCt) {
             val text = upstream.body?.string() ?: ""
-            val rewritten = HlsRewriter.rewrite(text, ps.url) { abs -> proxyUrl(abs, ps.headers) }
+            val rewritten = HlsRewriter.rewrite(text, ps.url) { abs -> register(abs, ps.headers) }
             upstream.close()
             playlistCache[ps.url] = rewritten
             return NanoHTTPD.newFixedLengthResponse(
-                NanoHTTPD.Response.Status.OK, "application/vnd.apple.mpegurl", rewritten,
+                NanoHTTPD.Response.Status.OK, "application/vnd.apple.mpegurl",
+                advertiseForRequest(rewritten, httpSession),
             )
         }
 
@@ -130,11 +175,12 @@ object ExternalStreamProxy {
         if (n > 0 && String(peek, 0, n, Charsets.US_ASCII).startsWith("#EXTM3U")) {
             val rest = bodyStream.readBytes()
             val fullText = String(peek, 0, n, Charsets.UTF_8) + String(rest, Charsets.UTF_8)
-            val rewritten = HlsRewriter.rewrite(fullText, ps.url) { abs -> proxyUrl(abs, ps.headers) }
+            val rewritten = HlsRewriter.rewrite(fullText, ps.url) { abs -> register(abs, ps.headers) }
             upstream.close()
             playlistCache[ps.url] = rewritten
             return NanoHTTPD.newFixedLengthResponse(
-                NanoHTTPD.Response.Status.OK, "application/vnd.apple.mpegurl", rewritten,
+                NanoHTTPD.Response.Status.OK, "application/vnd.apple.mpegurl",
+                advertiseForRequest(rewritten, httpSession),
             )
         }
 

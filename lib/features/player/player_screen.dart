@@ -387,6 +387,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   // ── Chromecast ────────────────────────────────────────────────────────────
   CastState _prevCastState = CastState.unavailable;
+  // Soft-sub the user picked for the receiver. Null = no captions on the TV.
+  Subtitle? _castSubtitle;
 
   // TV bar visibility — only used when [AppMode.isTv] is true.
   // Stored here so [PopScope] can gate it at the Scaffold level.
@@ -589,6 +591,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
       if (resumePos > Duration.zero) _c.seekTo(resumePos);
       _c.player.play();
       if (mounted) setState(() {}); // restore the normal player UI
+      return;
+    }
+
+    // ProgressListener ticks ~1s while playing so resume keeps up.
+    if (newState == CastState.connected) {
+      _c.syncExternalProgress(castCtrl.position, castCtrl.duration);
     }
   }
 
@@ -600,32 +608,42 @@ class _PlayerScreenState extends State<PlayerScreen> {
   Future<void> _castHandoff(VideoSource active) async {
     final castCtrl = sl<CastController>();
     final proxy = sl<CastProxyServer>();
-    final startAt = _c.currentPosition;
+    // Prefer the TV's clock once a session is live (source/caption recast).
+    final startAt = castCtrl.position > Duration.zero
+        ? castCtrl.position
+        : _c.currentPosition;
+    final duration = castCtrl.duration > Duration.zero
+        ? castCtrl.duration
+        : _c.player.state.duration;
     // The proxy URL carries no extension, so send the real mime explicitly.
     final mime = castMimeFor(active.container, active.url);
 
     var url = active.url;
-    var subs = active.subtitles;
     try {
       final proxied = await proxy.serve(active.url, active.headers);
-      if (proxied != null) {
-        url = proxied;
-        // Header-locked subtitle tracks need proxying too.
-        subs = [
-          for (final s in active.subtitles)
-            Subtitle(
-              url: proxy.proxify(s.url) ?? s.url,
-              lang: s.lang,
-              label: s.label,
-              format: s.format,
-              isDefault: s.isDefault,
-            ),
-        ];
-      }
+      if (proxied != null) url = proxied;
     } catch (_) {
       // Proxy failed to start — fall through with the direct URL.
     }
     if (!mounted) return;
+
+    // One VTT track, or none. DMR rejects SRT/ASS/untyped tracks with
+    // Invalid Request / 2001; the proxy converts SRT → VTT.
+    final chosen = _matchCastSub(active.subtitles);
+    _castSubtitle = chosen;
+    final tracks = <Subtitle>[];
+    if (chosen != null && canCastSubtitle(chosen)) {
+      final proxiedSub = proxy.proxify(chosen.url);
+      tracks.add(
+        Subtitle(
+          url: proxiedSub ?? chosen.url,
+          lang: chosen.lang,
+          label: chosen.label,
+          format: 'vtt',
+        ),
+      );
+    }
+
     castCtrl.loadCurrent(
       url: url,
       container: active.container,
@@ -633,9 +651,35 @@ class _PlayerScreenState extends State<PlayerScreen> {
       // Headers are injected by the proxy now (the native side ignores them).
       title: widget.showTitle,
       poster: widget.cover,
-      subtitles: subs,
+      subtitles: tracks,
       startAt: startAt,
+      duration: duration,
+      hlsSegmentFormat: proxy.lastHlsSegmentFormat,
+      hlsVideoSegmentFormat: proxy.lastHlsVideoSegmentFormat,
     );
+  }
+
+  /// Soft-sub intended for the receiver, rematched after a source change.
+  Subtitle? _matchCastSub(List<Subtitle> list) {
+    final want = _castSubtitle;
+    if (want == null) return null;
+    for (final s in list) {
+      if (s.url == want.url) return s;
+    }
+    for (final s in list) {
+      if (s.lang == want.lang) return s;
+    }
+    return want;
+  }
+
+  /// Re-send the active stream after the user picks a source or caption.
+  Future<void> _maybeRecast() async {
+    final castCtrl = sl<CastController>();
+    if (castCtrl.state != CastState.connected) return;
+    final active = _c.state.active;
+    if (active == null) return;
+    if (_c.player.state.playing) _c.player.pause();
+    await _castHandoff(active);
   }
 
   // ── Picture-in-Picture ────────────────────────────────────────────────────
@@ -2068,7 +2112,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   /// Netflix-style combined Audio | Subtitles panel (two columns, live
   /// selection without closing).
-  void _openAudioSubsSheet() {
+  void _openAudioSubsSheet({bool castMode = false}) {
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
@@ -2082,6 +2126,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
           child: _AudioSubsSheet(
             controller: _c,
             onInteract: _bumpControls,
+            castMode: castMode,
+            onSoftSubPicked: (s) => _castSubtitle = s,
+            onSubtitlesOff: () => _castSubtitle = null,
+            onAfterChange: () {
+              unawaited(_maybeRecast());
+            },
             onLoadFile: () {
               Navigator.pop(context);
               _loadSubtitleFromFile();
@@ -2258,9 +2308,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     : '${k != AudioKind.unknown ? '${k.name.toUpperCase()} • ' : ''}'
                           '${s.quality?.isNotEmpty == true ? s.quality : s.container.name}',
                 active: s == _c.state.active,
-                onTap: () {
+                onTap: () async {
                   Navigator.pop(context);
-                  _c.selectSource(s); // remembers this source for the title
+                  await _c.selectSource(s); // remembers this source for the title
+                  await _maybeRecast();
                   _bumpControls();
                 },
               ),
@@ -3098,6 +3149,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       loadError: castCtrl.loadError,
                       onBack: () => Navigator.of(context).maybePop(),
                       onStop: () => castCtrl.stop(),
+                      onSources: _openSourceSheet,
+                      onAudioSubs: () => _openAudioSubsSheet(castMode: true),
                     ),
                   );
                 },

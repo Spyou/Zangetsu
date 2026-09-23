@@ -54,17 +54,22 @@ class ExternalPlayer {
     }
   }
 
-  /// Registers [url] + [headers] with the native localhost proxy and returns a
-  /// `http://127.0.0.1/...` URL the external player can play WITHOUT headers
-  /// (the proxy injects them upstream). Returns null on non-Android or any
-  /// failure, so the caller can fall back to the built-in player.
-  Future<String?> proxyStreamUrl(String url, Map<String, String> headers) async {
+  /// Registers [url] + [headers] with the native stream proxy and returns a
+  /// URL the external player can play WITHOUT headers (the proxy injects them
+  /// upstream). Advertises the phone's LAN IP when available so a Cast
+  /// receiver (Shield / Chromecast) can fetch it; otherwise `127.0.0.1`.
+  /// Returns null on non-Android or any failure, so the caller can fall back
+  /// to the built-in player.
+  Future<String?> proxyStreamUrl(
+    String url,
+    Map<String, String> headers,
+  ) async {
     if (!Platform.isAndroid) return null;
     try {
-      final local = await _ch.invokeMethod<String?>('proxyUrl', <String, dynamic>{
-        'url': url,
-        'headers': headers,
-      });
+      final local = await _ch.invokeMethod<String?>(
+        'proxyUrl',
+        <String, dynamic>{'url': url, 'headers': headers},
+      );
       AppLogger.instance.log(
         '[ext-player] proxyUrl ${local == null ? "failed (null)" : "ok"} '
         'for ${_safeUrl(url)}',
@@ -134,7 +139,7 @@ class ExternalPlayer {
         '[ext-player] result launched=$launched played=$played '
         'pos=${(m['positionMs'] as num?)?.toInt() ?? 0}'
         '${launched && !played ? " — handed off; the player reports no "
-            "progress of its own, which is normal" : ""}',
+                  "progress of its own, which is normal" : ""}',
         level: launched ? 'I' : 'E',
       );
       return (
