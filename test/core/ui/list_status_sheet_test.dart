@@ -72,6 +72,7 @@ class _FakeTracker extends ChangeNotifier implements Tracker {
 
   MediaKind? lastSetStatusKind;
   MediaKind? lastRemoveKind;
+  int? lastRemoveMalId;
 
   @override
   String get displayName => 'Fake';
@@ -139,6 +140,7 @@ class _FakeTracker extends ChangeNotifier implements Tracker {
     MediaKind kind = MediaKind.anime,
   }) async {
     lastRemoveKind = kind;
+    lastRemoveMalId = malId;
   }
 
   @override
@@ -248,28 +250,26 @@ void main() {
     },
   );
 
-  testWidgets(
-    'a manga item shows Reading / Plan to Read instead',
-    (tester) async {
-      await pumpSheet(tester, _mangaItem);
+  testWidgets('a manga item shows Reading / Plan to Read instead', (
+    tester,
+  ) async {
+    await pumpSheet(tester, _mangaItem);
 
-      expect(find.text('Reading'), findsOneWidget);
-      expect(find.text('Plan to Read'), findsOneWidget);
-      expect(find.text('Watching'), findsNothing);
-      expect(find.text('Plan to Watch'), findsNothing);
-    },
-  );
+    expect(find.text('Reading'), findsOneWidget);
+    expect(find.text('Plan to Read'), findsOneWidget);
+    expect(find.text('Watching'), findsNothing);
+    expect(find.text('Plan to Watch'), findsNothing);
+  });
 
-  testWidgets(
-    'Completed/Paused/Dropped are unchanged for a manga item',
-    (tester) async {
-      await pumpSheet(tester, _mangaItem);
+  testWidgets('Completed/Paused/Dropped are unchanged for a manga item', (
+    tester,
+  ) async {
+    await pumpSheet(tester, _mangaItem);
 
-      expect(find.text('Completed'), findsOneWidget);
-      expect(find.text('Paused'), findsOneWidget);
-      expect(find.text('Dropped'), findsOneWidget);
-    },
-  );
+    expect(find.text('Completed'), findsOneWidget);
+    expect(find.text('Paused'), findsOneWidget);
+    expect(find.text('Dropped'), findsOneWidget);
+  });
 
   // ── Findings 1+4: tracker kind forwarding ─────────────────────────────
 
@@ -288,39 +288,59 @@ void main() {
     },
   );
 
+  testWidgets('setting a status on an anime item forwards kind: anime', (
+    tester,
+  ) async {
+    final fake = _FakeTracker();
+    sl.registerSingleton<TrackerHub>(TrackerHub([fake]));
+
+    await pumpSheet(tester, _animeItem);
+    await tester.tap(find.text('Watching'));
+    await tester.pumpAndSettle();
+
+    expect(fake.lastSetStatusKind, MediaKind.anime);
+  });
+
+  testWidgets('removing a manga item from the list forwards kind: manga to '
+      'removeFromList — the exact write this fix stops from landing on the '
+      'wrong (anime) list', (tester) async {
+    final fake = _FakeTracker();
+    sl.registerSingleton<TrackerHub>(TrackerHub([fake]));
+
+    // First add it, so "Remove from list" is offered.
+    await pumpSheet(tester, _mangaItem);
+    await tester.tap(find.text('Reading'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Remove from list'));
+    await tester.pumpAndSettle();
+
+    expect(fake.lastRemoveKind, MediaKind.manga);
+  });
+
   testWidgets(
-    'setting a status on an anime item forwards kind: anime',
+    'removing a zm title without malId still sends the parsed MAL id — '
+    'Simkl cannot remove by title',
     (tester) async {
       final fake = _FakeTracker();
       sl.registerSingleton<TrackerHub>(TrackerHub([fake]));
+      const zm = MediaItem(
+        id: 'mal:21',
+        title: 'One Piece',
+        url: 'zm://anime/mal:21',
+        type: ProviderType.anime,
+        sourceId: 'zm',
+      );
+      await sl<MyListStore>().add(zm);
 
-      await pumpSheet(tester, _animeItem);
-      await tester.tap(find.text('Watching'));
-      await tester.pumpAndSettle();
-
-      expect(fake.lastSetStatusKind, MediaKind.anime);
-    },
-  );
-
-  testWidgets(
-    'removing a manga item from the list forwards kind: manga to '
-    'removeFromList — the exact write this fix stops from landing on the '
-    'wrong (anime) list',
-    (tester) async {
-      final fake = _FakeTracker();
-      sl.registerSingleton<TrackerHub>(TrackerHub([fake]));
-
-      // First add it, so "Remove from list" is offered.
-      await pumpSheet(tester, _mangaItem);
-      await tester.tap(find.text('Reading'));
-      await tester.pumpAndSettle();
-
-      await tester.tap(find.text('open'));
-      await tester.pumpAndSettle();
+      await pumpSheet(tester, zm);
       await tester.tap(find.text('Remove from list'));
       await tester.pumpAndSettle();
 
-      expect(fake.lastRemoveKind, MediaKind.manga);
+      expect(fake.lastRemoveMalId, 21);
+      expect(fake.lastRemoveKind, MediaKind.anime);
     },
   );
 
@@ -339,8 +359,7 @@ void main() {
           home: Scaffold(
             body: Builder(
               builder: (context) => ElevatedButton(
-                onPressed: () =>
-                    showListStatusSheet(context, item: _animeItem),
+                onPressed: () => showListStatusSheet(context, item: _animeItem),
                 child: const Text('open'),
               ),
             ),

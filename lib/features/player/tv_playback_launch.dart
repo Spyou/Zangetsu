@@ -4,8 +4,10 @@ import 'package:flutter/material.dart';
 import '../../core/di/injector.dart';
 import '../../l10n/l10n.dart';
 import '../../core/models/episode.dart';
+import '../../core/models/media_item.dart';
 import '../../core/models/video_source.dart';
 import '../../core/platform/apple_tv.dart';
+import '../../core/playback/tv_playback_helpers.dart';
 import '../../core/playback/playback_prefs.dart';
 import '../../core/playback/resume_store.dart';
 import '../../core/repository/source_repository.dart';
@@ -88,7 +90,9 @@ Future<void> launchTvPlayback({
   int? tmdbId,
   bool tmdbIsTv = false,
   String? imdbId,
+  MediaItem? listItem,
   bool skipOverlay = false,
+
   /// How many dead sources this attempt has already walked past. 0 is a fresh
   /// play; anything higher is an automatic hop and must NOT reset what we
   /// just learned. See the invalidateWinner guard below.
@@ -117,6 +121,24 @@ Future<void> launchTvPlayback({
   final mode = playbackContentMode(showUrl: showUrl);
   if (!await ensureTvPlaybackSourcesOrPrompt(context, showUrl: showUrl)) {
     return;
+  }
+
+  // First hop only — a source retry is the same play, not a new title.
+  if (sourceHop == 0) {
+    final item =
+        listItem ??
+        mediaItemForPlayback(
+          sourceId: sourceId,
+          showUrl: showUrl,
+          showTitle: showTitle,
+          cover: cover,
+          coverHeaders: coverHeaders,
+          malId: malId,
+          tmdbId: tmdbId,
+          tmdbIsTv: tmdbIsTv,
+          imdbId: imdbId,
+        );
+    if (item != null) maybeAutoAddToMyList(item);
   }
 
   final prefs = sl<PlaybackPrefs>();
@@ -185,6 +207,7 @@ Future<void> launchTvPlayback({
         scrobbleTitle: scrobbleTitle,
         tmdbId: tmdbId,
         tmdbIsTv: tmdbIsTv,
+        imdbId: imdbId,
       );
       if (!started && context.mounted) {
         // Dismiss the loading overlay BEFORE showing the error dialog so
@@ -192,9 +215,13 @@ Future<void> launchTvPlayback({
         dismissLoading?.call();
         await showTvPlaybackLoadError(
           context,
-          failure: TvAvNativePlayer.lastFailure ??
+          failure:
+              TvAvNativePlayer.lastFailure ??
               resolveFailure ??
-              TvPlaybackLoadFailure(TvPlaybackLoadFailureKind.generic, mode: mode),
+              TvPlaybackLoadFailure(
+                TvPlaybackLoadFailureKind.generic,
+                mode: mode,
+              ),
         );
       }
       return;
@@ -219,14 +246,19 @@ Future<void> launchTvPlayback({
         scrobbleTitle: scrobbleTitle,
         tmdbId: tmdbId,
         tmdbIsTv: tmdbIsTv,
+        imdbId: imdbId,
       );
       if (!started && context.mounted) {
         dismissLoading?.call();
         await showTvPlaybackLoadError(
           context,
-          failure: TvNativePlayer.lastFailure ??
+          failure:
+              TvNativePlayer.lastFailure ??
               resolveFailure ??
-              TvPlaybackLoadFailure(TvPlaybackLoadFailureKind.generic, mode: mode),
+              TvPlaybackLoadFailure(
+                TvPlaybackLoadFailureKind.generic,
+                mode: mode,
+              ),
         );
         return;
       }
@@ -268,6 +300,7 @@ Future<void> launchTvPlayback({
             tmdbId: tmdbId,
             tmdbIsTv: tmdbIsTv,
             imdbId: imdbId,
+            listItem: listItem,
             sourceHop: sourceHop + 1,
           );
           return;
@@ -304,6 +337,7 @@ Future<void> launchTvPlayback({
               tmdbId: tmdbId,
               tmdbIsTv: tmdbIsTv,
               imdbId: imdbId,
+              listItem: listItem,
               skipOverlay: true,
             ),
           );
@@ -381,7 +415,9 @@ Future<void> _handleTvPlaybackFailure(
   debugPrint('[tv-playback] _handleTvPlaybackFailure · action=$action');
   switch (action) {
     case TvPlaybackErrorAction.tryNext:
-      debugPrint('[tv-playback] _handleTvPlaybackFailure → relaunch (next source)');
+      debugPrint(
+        '[tv-playback] _handleTvPlaybackFailure → relaunch (next source)',
+      );
       await launchAgain();
     case TvPlaybackErrorAction.selectSource:
       await _pickSourceAndRelaunch(context, showUrl, launchAgain);
@@ -399,8 +435,9 @@ Future<void> _pickSourceAndRelaunch(
   Future<void> Function() launchAgain,
 ) async {
   if (!context.mounted) return;
-  final currentId =
-      sl.isRegistered<SourceRepository>() ? sl<SourceRepository>().sourceId : '';
+  final currentId = sl.isRegistered<SourceRepository>()
+      ? sl<SourceRepository>().sourceId
+      : '';
   await showDialog<void>(
     context: context,
     barrierColor: Colors.black54,

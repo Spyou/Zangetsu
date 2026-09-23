@@ -13,6 +13,7 @@ import '../tv/tv_focusable.dart';
 import '../tv/tv_list_focusable.dart';
 import 'anilist_custom_lists_sheet.dart';
 import '../tracker/tracker.dart';
+import '../tracker/tracker_item_url.dart';
 
 /// Per-card editor for ONE tracker's library entry (AniList / MAL). Unlike the
 /// own-list sheet ([showListStatusSheet]) — which mirrors a change to every
@@ -109,8 +110,7 @@ class _TrackerEntrySheetState extends State<_TrackerEntrySheet> {
     // score or progress. If nothing changed, don't write at all.
     final statusChanged = _status != widget.status;
     final progressChanged = _progress != (widget.progress ?? 0);
-    final scoreChanged =
-        _score != (widget.score ?? 0).round().clamp(0, 10);
+    final scoreChanged = _score != (widget.score ?? 0).round().clamp(0, 10);
     if (!statusChanged && !progressChanged && !scoreChanged) {
       Navigator.pop(context);
       return;
@@ -134,20 +134,20 @@ class _TrackerEntrySheetState extends State<_TrackerEntrySheet> {
   Future<void> _remove() async {
     if (_busy) return;
     setState(() => _busy = true);
+    final ids = trackerIdsFromItem(widget.item);
     await widget.tracker.removeFromList(
-      malId: widget.item.malId,
-      tmdbId: widget.item.tmdbId,
+      malId: ids.malId,
+      tmdbId: ids.tmdbId,
       imdbId: widget.item.imdbId,
       title: widget.item.title,
-      tmdbIsTv: widget.tmdbIsTv,
+      tmdbIsTv: ids.tmdbIsTv || widget.tmdbIsTv,
       kind: _kind,
     );
     widget.onChanged?.call();
     if (mounted) Navigator.pop(context);
   }
 
-  bool get _isTv =>
-      sl.isRegistered<AppMode>() && sl<AppMode>().isTv;
+  bool get _isTv => sl.isRegistered<AppMode>() && sl<AppMode>().isTv;
 
   @override
   Widget build(BuildContext context) {
@@ -180,7 +180,10 @@ class _TrackerEntrySheetState extends State<_TrackerEntrySheet> {
                 ),
                 _header(),
                 const Divider(
-                    height: 1, thickness: 1, color: AppColors.hairline),
+                  height: 1,
+                  thickness: 1,
+                  color: AppColors.hairline,
+                ),
                 const SizedBox(height: 18),
                 _statusChips(),
                 _customListsRow(context),
@@ -197,10 +200,8 @@ class _TrackerEntrySheetState extends State<_TrackerEntrySheet> {
                 _stepperRow(
                   'Score',
                   _score == 0 ? 'Not rated' : '$_score / 10',
-                  onMinus:
-                      _score > 0 ? () => setState(() => _score--) : null,
-                  onPlus:
-                      _score < 10 ? () => setState(() => _score++) : null,
+                  onMinus: _score > 0 ? () => setState(() => _score--) : null,
+                  onPlus: _score < 10 ? () => setState(() => _score++) : null,
                 ),
                 const SizedBox(height: 24),
                 _applyButton(),
@@ -232,8 +233,12 @@ class _TrackerEntrySheetState extends State<_TrackerEntrySheet> {
     );
   }
 
-  Widget _actionRow(IconData icon, String label,
-      {required Color color, required VoidCallback? onTap}) {
+  Widget _actionRow(
+    IconData icon,
+    String label, {
+    required Color color,
+    required VoidCallback? onTap,
+  }) {
     final row = InkWell(
       onTap: onTap,
       child: Padding(
@@ -247,10 +252,7 @@ class _TrackerEntrySheetState extends State<_TrackerEntrySheet> {
         ),
       ),
     );
-    return _tvRow(
-      onTap: onTap ?? () {},
-      child: row,
-    );
+    return _tvRow(onTap: onTap ?? () {}, child: row);
   }
 
   /// Phone keeps InkWell/ListTile as-is. TV wraps so D-pad OK can activate
@@ -302,14 +304,19 @@ class _TrackerEntrySheetState extends State<_TrackerEntrySheet> {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(widget.item.title,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppText.headline),
+                Text(
+                  widget.item.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppText.headline,
+                ),
                 const SizedBox(height: 3),
-                Text('on ${widget.tracker.displayName}',
-                    style: AppText.caption
-                        .copyWith(color: AppColors.textTertiary)),
+                Text(
+                  'on ${widget.tracker.displayName}',
+                  style: AppText.caption.copyWith(
+                    color: AppColors.textTertiary,
+                  ),
+                ),
               ],
             ),
           ),
@@ -344,8 +351,10 @@ class _TrackerEntrySheetState extends State<_TrackerEntrySheet> {
     return _tvRow(
       onTap: openLists,
       child: ListTile(
-        leading: const Icon(Icons.playlist_add_rounded,
-            color: AppColors.textSecondary),
+        leading: const Icon(
+          Icons.playlist_add_rounded,
+          color: AppColors.textSecondary,
+        ),
         title: const Text('Custom lists'),
         subtitle: Text(
           n == 0 ? 'Not in any' : widget.customLists.join(', '),
@@ -353,8 +362,11 @@ class _TrackerEntrySheetState extends State<_TrackerEntrySheet> {
           overflow: TextOverflow.ellipsis,
           style: AppText.caption,
         ),
-        trailing: const Icon(Icons.chevron_right_rounded,
-            color: AppColors.textSecondary, size: 20),
+        trailing: const Icon(
+          Icons.chevron_right_rounded,
+          color: AppColors.textSecondary,
+          size: 20,
+        ),
         onTap: openLists,
       ),
     );
@@ -366,18 +378,19 @@ class _TrackerEntrySheetState extends State<_TrackerEntrySheet> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('STATUS',
-              style: AppText.caption.copyWith(
-                  color: AppColors.textTertiary,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.6)),
+          Text(
+            'STATUS',
+            style: AppText.caption.copyWith(
+              color: AppColors.textTertiary,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.6,
+            ),
+          ),
           const SizedBox(height: 10),
           Wrap(
             spacing: 8,
             runSpacing: 8,
-            children: [
-              for (final s in WatchStatus.values) _statusChip(s),
-            ],
+            children: [for (final s in WatchStatus.values) _statusChip(s)],
           ),
         ],
       ),
@@ -418,8 +431,12 @@ class _TrackerEntrySheetState extends State<_TrackerEntrySheet> {
     );
   }
 
-  Widget _stepperRow(String label, String value,
-      {VoidCallback? onMinus, VoidCallback? onPlus}) {
+  Widget _stepperRow(
+    String label,
+    String value, {
+    VoidCallback? onMinus,
+    VoidCallback? onPlus,
+  }) {
     Widget btn(IconData icon, VoidCallback? onTap, String semantic) {
       final face = Container(
         width: 34,
@@ -428,9 +445,11 @@ class _TrackerEntrySheetState extends State<_TrackerEntrySheet> {
           color: AppColors.surface2,
           shape: BoxShape.circle,
         ),
-        child: Icon(icon,
-            size: 18,
-            color: onTap == null ? AppColors.textTertiary : AppColors.accent),
+        child: Icon(
+          icon,
+          size: 18,
+          color: onTap == null ? AppColors.textTertiary : AppColors.accent,
+        ),
       );
       if (!_isTv) {
         return GestureDetector(onTap: onTap, child: face);
@@ -450,17 +469,22 @@ class _TrackerEntrySheetState extends State<_TrackerEntrySheet> {
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Row(
         children: [
-          Text(label,
-              style: AppText.body.copyWith(color: AppColors.textPrimary)),
+          Text(
+            label,
+            style: AppText.body.copyWith(color: AppColors.textPrimary),
+          ),
           const Spacer(),
           btn(Icons.remove_rounded, onMinus, 'Decrease $label'),
           SizedBox(
             width: 92,
-            child: Text(value,
-                textAlign: TextAlign.center,
-                style: AppText.body.copyWith(
-                    color: AppColors.textPrimary,
-                    fontWeight: FontWeight.w700)),
+            child: Text(
+              value,
+              textAlign: TextAlign.center,
+              style: AppText.body.copyWith(
+                color: AppColors.textPrimary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
           ),
           btn(Icons.add_rounded, onPlus, 'Increase $label'),
         ],
@@ -485,11 +509,17 @@ class _TrackerEntrySheetState extends State<_TrackerEntrySheet> {
               width: 20,
               height: 20,
               child: CircularProgressIndicator(
-                  strokeWidth: 2, color: Colors.white),
+                strokeWidth: 2,
+                color: Colors.white,
+              ),
             )
-          : Text('Apply changes',
+          : Text(
+              'Apply changes',
               style: AppText.body.copyWith(
-                  color: Colors.white, fontWeight: FontWeight.w700)),
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
     );
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),

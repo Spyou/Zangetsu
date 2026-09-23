@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' show ImageFilter;
 
@@ -10,6 +11,7 @@ import 'package:fluttertoast/fluttertoast.dart';
 import '../search/browse_sources_screen.dart';
 import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
+import '../../core/playback/my_list.dart';
 import '../../core/mode/content_mode.dart';
 import '../../core/mode/content_mode_cubit.dart';
 import '../../core/theme/app_colors.dart';
@@ -150,6 +152,9 @@ class _RootShellState extends State<RootShell>
     DockScrollCollapse.reset();
     setState(() => _tab = tab);
     _switchCtrl.forward(from: 0);
+    if (tab == DockTab.myList && sl.isRegistered<MyListStore>()) {
+      unawaited(sl<MyListStore>().pullFromCloud());
+    }
   }
 
   /// Root-level Back: the first press shows a toast, a second within 2s exits.

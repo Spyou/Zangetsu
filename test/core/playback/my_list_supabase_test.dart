@@ -12,6 +12,7 @@ import 'package:watch_app/core/supabase/supabase_service.dart';
 class FakeMyListRemote implements MyListRemote {
   final List<Map<String, dynamic>> rows = [];
   bool failNext = false;
+  bool failNextDelete = false;
 
   @override
   Future<void> upsert(Map<String, dynamic> row) async {
@@ -19,19 +20,27 @@ class FakeMyListRemote implements MyListRemote {
       failNext = false;
       throw Exception('network down');
     }
-    rows.removeWhere((r) =>
-        r['user_key'] == row['user_key'] &&
-        r['source_id'] == row['source_id'] &&
-        r['item_id'] == row['item_id']);
+    rows.removeWhere(
+      (r) =>
+          r['user_key'] == row['user_key'] &&
+          r['source_id'] == row['source_id'] &&
+          r['item_id'] == row['item_id'],
+    );
     rows.add(row);
   }
 
   @override
   Future<void> deleteRow(String userKey, String sourceId, String itemId) async {
-    rows.removeWhere((r) =>
-        r['user_key'] == userKey &&
-        r['source_id'] == sourceId &&
-        r['item_id'] == itemId);
+    if (failNextDelete) {
+      failNextDelete = false;
+      throw Exception('network down');
+    }
+    rows.removeWhere(
+      (r) =>
+          r['user_key'] == userKey &&
+          r['source_id'] == sourceId &&
+          r['item_id'] == itemId,
+    );
   }
 
   @override
@@ -41,13 +50,13 @@ class FakeMyListRemote implements MyListRemote {
 }
 
 MediaItem _item({String sourceId = 'src', String id = 'id'}) => MediaItem(
-      id: id,
-      sourceId: sourceId,
-      title: 'Title',
-      cover: 'cover.png',
-      url: 'https://x/$id',
-      type: ProviderType.anime,
-    );
+  id: id,
+  sourceId: sourceId,
+  title: 'Title',
+  cover: 'cover.png',
+  url: 'https://x/$id',
+  type: ProviderType.anime,
+);
 
 void main() {
   late Directory tmpDir;
@@ -79,58 +88,63 @@ void main() {
     expect(row['url'], 'https://x/id');
   });
 
-  test('failed upsert enqueues pending key; retryPending() re-sends it', () async {
-    fake.failNext = true;
-    await store.add(_item());
+  test(
+    'failed upsert enqueues pending key; retryPending() re-sends it',
+    () async {
+      fake.failNext = true;
+      await store.add(_item());
 
-    expect(fake.rows, isEmpty); // cloud write failed
-    expect(store.pendingKeys(), contains('src::id'));
+      expect(fake.rows, isEmpty); // cloud write failed
+      expect(store.pendingKeys(), contains('src::id'));
 
-    await store.retryPending();
+      await store.retryPending();
 
-    expect(fake.rows, hasLength(1));
-    expect(store.pendingKeys(), isNot(contains('src::id')));
-  });
-
-  test('pullFromCloud() replaces local with remote rows, preserving pending adds',
-      () async {
-    // A synced item already known to the cloud.
-    await store.add(_item(id: 'synced'));
-
-    // A local add whose upload failed — must survive the pull.
-    fake.failNext = true;
-    await store.add(_item(id: 'unsynced'));
-    expect(store.pendingKeys(), contains('src::unsynced'));
-
-    // A brand-new item that showed up on the cloud from another device.
-    fake.rows.add({
-      'user_key': 'user1',
-      'source_id': 'src',
-      'item_id': 'fromCloud',
-      'title': 'Cloud Title',
-      'cover': 'c.png',
-      'cover_headers': null,
-      'url': 'https://x/fromCloud',
-      'type': 'anime',
-      'added_at': 0,
-    });
-
-    await store.pullFromCloud();
-
-    final all = store.all().map((m) => m.id).toSet();
-    expect(all, containsAll(['synced', 'fromCloud', 'unsynced']));
-    expect(store.pendingKeys(), contains('src::unsynced'));
-  });
+      expect(fake.rows, hasLength(1));
+      expect(store.pendingKeys(), isNot(contains('src::id')));
+    },
+  );
 
   test(
-    'all() survives a row whose coverHeaders is Map<dynamic,dynamic> '
-    '(the After-restart My List grey-screen crash)',
-    () {
-      // On a cold read from disk Hive returns nested maps as
-      // Map<dynamic,dynamic>, which MediaItem.fromJson used to reject with a
-      // cast error — crashing the whole My List body into a grey error box.
-      // Reproduce that exact runtime type here.
-      Hive.box<Map>(MyListStore.boxName).put('src::withHeaders', <String, dynamic>{
+    'pullFromCloud() replaces local with remote rows, preserving pending adds',
+    () async {
+      // A synced item already known to the cloud.
+      await store.add(_item(id: 'synced'));
+
+      // A local add whose upload failed — must survive the pull.
+      fake.failNext = true;
+      await store.add(_item(id: 'unsynced'));
+      expect(store.pendingKeys(), contains('src::unsynced'));
+
+      // A brand-new item that showed up on the cloud from another device.
+      fake.rows.add({
+        'user_key': 'user1',
+        'source_id': 'src',
+        'item_id': 'fromCloud',
+        'title': 'Cloud Title',
+        'cover': 'c.png',
+        'cover_headers': null,
+        'url': 'https://x/fromCloud',
+        'type': 'anime',
+        'added_at': 0,
+      });
+
+      await store.pullFromCloud();
+
+      final all = store.all().map((m) => m.id).toSet();
+      expect(all, containsAll(['synced', 'fromCloud', 'unsynced']));
+      expect(store.pendingKeys(), contains('src::unsynced'));
+    },
+  );
+
+  test('all() survives a row whose coverHeaders is Map<dynamic,dynamic> '
+      '(the After-restart My List grey-screen crash)', () {
+    // On a cold read from disk Hive returns nested maps as
+    // Map<dynamic,dynamic>, which MediaItem.fromJson used to reject with a
+    // cast error — crashing the whole My List body into a grey error box.
+    // Reproduce that exact runtime type here.
+    Hive.box<Map>(MyListStore.boxName).put(
+      'src::withHeaders',
+      <String, dynamic>{
         'id': 'withHeaders',
         'title': 'Renegade Immortal',
         'cover': 'c.png',
@@ -141,15 +155,15 @@ void main() {
         'url': 'https://x/withHeaders',
         'type': 'anime',
         'sourceId': 'src',
-      });
+      },
+    );
 
-      late List<MediaItem> items;
-      expect(() => items = store.all(), returnsNormally);
-      final item = items.firstWhere((m) => m.id == 'withHeaders');
-      expect(item.coverHeaders?['Referer'], 'https://anikototv.to/');
-      expect(item.coverHeaders?['User-Agent'], 'Mozilla/5.0');
-    },
-  );
+    late List<MediaItem> items;
+    expect(() => items = store.all(), returnsNormally);
+    final item = items.firstWhere((m) => m.id == 'withHeaders');
+    expect(item.coverHeaders?['Referer'], 'https://anikototv.to/');
+    expect(item.coverHeaders?['User-Agent'], 'Mozilla/5.0');
+  });
 
   // ── Watch-status cloud sync ───────────────────────────────────────────────
 
@@ -170,59 +184,65 @@ void main() {
     expect(fake.rows.single['status'], 'completed');
   });
 
-  test('status sync: pullFromCloud hydrates the local status from the cloud',
-      () async {
-    final hydrated = <String, String?>{};
-    final store2 = MyListStore(
-      SupabaseService(),
-      () => 'user1',
-      remote: fake,
-      onStatusPulled: (key, name) => hydrated[key] = name,
-    );
-    fake.rows.add({
-      'user_key': 'user1',
-      'source_id': 'src',
-      'item_id': 'c',
-      'title': 'T',
-      'cover': null,
-      'cover_headers': null,
-      'url': 'https://x/c',
-      'type': 'anime',
-      'status': 'watching',
-      'added_at': 0,
-    });
+  test(
+    'status sync: pullFromCloud hydrates the local status from the cloud',
+    () async {
+      final hydrated = <String, String?>{};
+      final store2 = MyListStore(
+        SupabaseService(),
+        () => 'user1',
+        remote: fake,
+        onStatusPulled: (key, name) => hydrated[key] = name,
+      );
+      fake.rows.add({
+        'user_key': 'user1',
+        'source_id': 'src',
+        'item_id': 'c',
+        'title': 'T',
+        'cover': null,
+        'cover_headers': null,
+        'url': 'https://x/c',
+        'type': 'anime',
+        'status': 'watching',
+        'added_at': 0,
+      });
 
-    await store2.pullFromCloud();
-    expect(hydrated['src::c'], 'watching');
-  });
+      await store2.pullFromCloud();
+      expect(hydrated['src::c'], 'watching');
+    },
+  );
 
-  test('status sync: pullFromCloud back-fills a local status the cloud lacks',
-      () async {
-    final localStatus = <String, String?>{'src::d': 'completed'};
-    final store2 = MyListStore(
-      SupabaseService(),
-      () => 'user1',
-      remote: fake,
-      statusOf: (m) => localStatus['${m.sourceId}::${m.id}'],
-    );
-    fake.rows.add({
-      'user_key': 'user1',
-      'source_id': 'src',
-      'item_id': 'd',
-      'title': 'T',
-      'cover': null,
-      'cover_headers': null,
-      'url': 'https://x/d',
-      'type': 'anime',
-      'status': null, // cloud has no status yet
-      'added_at': 0,
-    });
+  test(
+    'status sync: pullFromCloud back-fills a local status the cloud lacks',
+    () async {
+      final localStatus = <String, String?>{'src::d': 'completed'};
+      final store2 = MyListStore(
+        SupabaseService(),
+        () => 'user1',
+        remote: fake,
+        statusOf: (m) => localStatus['${m.sourceId}::${m.id}'],
+      );
+      fake.rows.add({
+        'user_key': 'user1',
+        'source_id': 'src',
+        'item_id': 'd',
+        'title': 'T',
+        'cover': null,
+        'cover_headers': null,
+        'url': 'https://x/d',
+        'type': 'anime',
+        'status': null, // cloud has no status yet
+        'added_at': 0,
+      });
 
-    await store2.pullFromCloud();
-    await Future<void>.delayed(const Duration(milliseconds: 10)); // let backfill run
-    final row = fake.rows.firstWhere((r) => r['item_id'] == 'd');
-    expect(row['status'], 'completed');
-  });
+      await store2.pullFromCloud();
+      await Future<void>.delayed(
+        const Duration(milliseconds: 10),
+      ); // let backfill run
+      final row = fake.rows.firstWhere((r) => r['item_id'] == 'd');
+      expect(row['status'], 'completed');
+    },
+  );
 
   // ── Backfill / cross-device seed ──────────────────────────────────────────
 
@@ -231,9 +251,16 @@ void main() {
     // Cloud already has "shared" with a status; local has a status-less copy
     // plus a local-only item.
     fake.rows.add({
-      'user_key': 'user1', 'source_id': 'src', 'item_id': 'shared',
-      'title': 'T', 'cover': null, 'cover_headers': null, 'url': 'u',
-      'type': 'anime', 'status': 'completed', 'added_at': 0,
+      'user_key': 'user1',
+      'source_id': 'src',
+      'item_id': 'shared',
+      'title': 'T',
+      'cover': null,
+      'cover_headers': null,
+      'url': 'u',
+      'type': 'anime',
+      'status': 'completed',
+      'added_at': 0,
     });
     final loggedOut = MyListStore(SupabaseService(), () => null, remote: fake);
     await loggedOut.add(_item(id: 'shared'));
@@ -244,42 +271,97 @@ void main() {
     expect(r.failed, 0);
     expect(r.pushed, 1); // only localOnly
     // "shared" untouched — its cloud status survives.
-    expect(fake.rows.firstWhere((r) => r['item_id'] == 'shared')['status'],
-        'completed');
+    expect(
+      fake.rows.firstWhere((r) => r['item_id'] == 'shared')['status'],
+      'completed',
+    );
     expect(fake.rows.any((r) => r['item_id'] == 'localOnly'), isTrue);
   });
 
-  test('pullFromCloud() with an EMPTY cloud does NOT wipe a local-only item',
-      () async {
-    // Add an item while logged-out so it never reaches the fake cloud, then pull
-    // against the empty cloud — a merge must keep it (replace used to wipe it).
-    final loggedOut = MyListStore(SupabaseService(), () => null, remote: fake);
-    await loggedOut.add(_item(id: 'localOnly'));
-    expect(fake.rows.where((r) => r['user_key'] == 'user1'), isEmpty);
+  test('failed delete is retried and is not resurrected by a pull', () async {
+    await store.add(_item(id: 'x'));
+    await store.seedCloudIfNeeded();
+    fake.failNextDelete = true;
+    await store.remove(_item(id: 'x'));
+
+    expect(store.all().map((m) => m.id), isNot(contains('x')));
+    expect(store.pendingDeleteKeys(), contains('src::x'));
+    expect(fake.rows.any((r) => r['item_id'] == 'x'), isTrue);
+
+    await store.pullFromCloud();
+    expect(store.all().map((m) => m.id), isNot(contains('x')));
+
+    await store.retryPending();
+    expect(fake.rows.any((r) => r['item_id'] == 'x'), isFalse);
+    expect(store.pendingDeleteKeys(), isEmpty);
+  });
+
+  test('after seed, a remote delete is applied locally', () async {
+    await store.add(_item(id: 'keep'));
+    await store.add(_item(id: 'gone'));
+    await store.seedCloudIfNeeded();
+    fake.rows.removeWhere((r) => r['item_id'] == 'gone');
 
     await store.pullFromCloud();
 
-    expect(store.all().map((m) => m.id), contains('localOnly'));
+    expect(store.all().map((m) => m.id).toSet(), {'keep'});
   });
 
-  test('seedCloudIfNeeded() backfills once, then a pull keeps everything',
-      () async {
-    final loggedOut = MyListStore(SupabaseService(), () => null, remote: fake);
-    await loggedOut.add(_item(id: 'a'));
-    await loggedOut.add(_item(id: 'b'));
-    expect(fake.rows.where((r) => r['user_key'] == 'user1'), isEmpty);
-
+  test('after seed, a pending local add survives a pull', () async {
+    await store.add(_item(id: 'synced'));
     await store.seedCloudIfNeeded();
-    expect(fake.rows.where((r) => r['user_key'] == 'user1'), hasLength(2));
+    fake.failNext = true;
+    await store.add(_item(id: 'unsynced'));
 
     await store.pullFromCloud();
-    expect(store.all().map((m) => m.id).toSet(), {'a', 'b'});
 
-    // Runs once — a second call makes no new writes.
-    final before = fake.rows.length;
-    await store.seedCloudIfNeeded();
-    expect(fake.rows.length, before);
+    expect(store.all().map((m) => m.id).toSet(), {'synced', 'unsynced'});
+    expect(store.pendingKeys(), contains('src::unsynced'));
   });
+
+  test(
+    'pullFromCloud() with an EMPTY cloud does NOT wipe a local-only item',
+    () async {
+      // Add an item while logged-out so it never reaches the fake cloud, then pull
+      // against the empty cloud — a merge must keep it (replace used to wipe it).
+      final loggedOut = MyListStore(
+        SupabaseService(),
+        () => null,
+        remote: fake,
+      );
+      await loggedOut.add(_item(id: 'localOnly'));
+      expect(fake.rows.where((r) => r['user_key'] == 'user1'), isEmpty);
+
+      await store.pullFromCloud();
+
+      expect(store.all().map((m) => m.id), contains('localOnly'));
+    },
+  );
+
+  test(
+    'seedCloudIfNeeded() backfills once, then a pull keeps everything',
+    () async {
+      final loggedOut = MyListStore(
+        SupabaseService(),
+        () => null,
+        remote: fake,
+      );
+      await loggedOut.add(_item(id: 'a'));
+      await loggedOut.add(_item(id: 'b'));
+      expect(fake.rows.where((r) => r['user_key'] == 'user1'), isEmpty);
+
+      await store.seedCloudIfNeeded();
+      expect(fake.rows.where((r) => r['user_key'] == 'user1'), hasLength(2));
+
+      await store.pullFromCloud();
+      expect(store.all().map((m) => m.id).toSet(), {'a', 'b'});
+
+      // Runs once — a second call makes no new writes.
+      final before = fake.rows.length;
+      await store.seedCloudIfNeeded();
+      expect(fake.rows.length, before);
+    },
+  );
 
   // A list written by a build with extra ProviderType values (the manga branch
   // adds `manga` and `novel`) must not take down the whole screen on a build
@@ -290,29 +372,31 @@ void main() {
     Future<void> putRaw(String key, Map<String, dynamic> row) =>
         Hive.box<Map>(MyListStore.boxName).put(key, row);
 
-    test('all() skips an unreadable row and still returns the good ones',
-        () async {
-      await store.add(_item(id: 'good1'));
-      await store.add(_item(id: 'good2'));
-      await putRaw('src::mangaone', {
-        'id': 'mangaone',
-        'sourceId': 'src',
-        'title': 'Blue Lock',
-        'cover': 'c.png',
-        'url': 'https://x/mangaone',
-        'type': 'unknownfuturetype', // not a ProviderType on this build
-      });
+    test(
+      'all() skips an unreadable row and still returns the good ones',
+      () async {
+        await store.add(_item(id: 'good1'));
+        await store.add(_item(id: 'good2'));
+        await putRaw('src::mangaone', {
+          'id': 'mangaone',
+          'sourceId': 'src',
+          'title': 'Blue Lock',
+          'cover': 'c.png',
+          'url': 'https://x/mangaone',
+          'type': 'unknownfuturetype', // not a ProviderType on this build
+        });
 
-      final all = store.all();
+        final all = store.all();
 
-      expect(
-        all.map((i) => i.id),
-        containsAll(['good1', 'good2']),
-        reason: 'valid rows must survive an undecodable neighbour',
-      );
-      expect(all.map((i) => i.id), isNot(contains('mangaone')));
-      expect(all, hasLength(2));
-    });
+        expect(
+          all.map((i) => i.id),
+          containsAll(['good1', 'good2']),
+          reason: 'valid rows must survive an undecodable neighbour',
+        );
+        expect(all.map((i) => i.id), isNot(contains('mangaone')));
+        expect(all, hasLength(2));
+      },
+    );
 
     test('the unreadable row is kept on disk, not deleted', () async {
       await putRaw('src::mangaone', {

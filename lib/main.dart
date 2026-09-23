@@ -331,6 +331,13 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
   /// debounce app-switching so the DB isn't hammered.
   static const Duration _syncFreshness = Duration(minutes: 2);
 
+  /// TV (and a phone left on My List) stays in [AppLifecycleState.resumed]
+  /// for hours, so [_syncOnResume] never fires again. Poll while foregrounded
+  /// so a watch/add/remove on another device lands without relaunching.
+  static const Duration _foregroundPoll = Duration(seconds: 30);
+
+  Timer? _foregroundSync;
+
   void _onThemeChanged() {
     if (mounted) {
       setState(() {}); // accent changed → rebuild so the app recolours
@@ -400,6 +407,7 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
     MetadataProviderPrefs.revision.removeListener(_onMetadataProviderChanged);
     HomeRowsPrefs.revision.removeListener(_onHomeRowsChanged);
     WidgetsBinding.instance.removeObserver(this);
+    _foregroundSync?.cancel();
     _tvShellGate.dispose();
     super.dispose();
   }
@@ -416,14 +424,19 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
         unawaited(sl<AuthCubit>().revalidateIfFlagged());
       }
       _syncOnResume();
+      _startForegroundSync();
       // The wallpaper may have changed while we were away. No-op unless
       // Material You is on, and only rebuilds if the colours actually moved.
       ThemeController.refresh();
     } else if (state == AppLifecycleState.paused) {
+      _foregroundSync?.cancel();
+      _foregroundSync = null;
       // Opening the in-app player (native surface / immersive) fires paused
       // even though the user is still watching. Do not drop Rich Presence.
       discord?.onPaused();
     } else if (state == AppLifecycleState.detached) {
+      _foregroundSync?.cancel();
+      _foregroundSync = null;
       discord?.onDetached();
     }
   }
@@ -432,13 +445,30 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
   /// library if it's older than [_syncFreshness] (debounced inside
   /// [MyListStore.pullFromCloudIfStale], so rapid app-switching doesn't hammer
   /// the DB). Also flushes any un-synced My List adds.
-  void _syncOnResume() {
+  void _syncOnResume() =>
+      _syncLibrary(maxAge: _syncFreshness, forceMyList: true);
+
+  void _startForegroundSync() {
+    _foregroundSync?.cancel();
+    // Don't wait for the first period — TV sits in resumed and phone
+    // app-switch used to skip a pull for two minutes.
+    _syncLibrary(maxAge: _foregroundPoll, forceMyList: true);
+    _foregroundSync = Timer.periodic(_foregroundPoll, (_) {
+      _syncLibrary(maxAge: _foregroundPoll, forceMyList: true);
+    });
+  }
+
+  void _syncLibrary({required Duration maxAge, bool forceMyList = false}) {
     if (!sl.isRegistered<AuthCubit>() || !sl<AuthCubit>().state.isLoggedIn) {
       return;
     }
-    unawaited(sl<MyListStore>().pullFromCloudIfStale(maxAge: _syncFreshness));
-    unawaited(sl<WatchHistory>().pullFromCloudIfStale(maxAge: _syncFreshness));
-    unawaited(sl<ReadHistory>().pullFromCloudIfStale(maxAge: _syncFreshness));
+    if (forceMyList) {
+      unawaited(sl<MyListStore>().pullFromCloud());
+    } else {
+      unawaited(sl<MyListStore>().pullFromCloudIfStale(maxAge: maxAge));
+    }
+    unawaited(sl<WatchHistory>().pullFromCloudIfStale(maxAge: maxAge));
+    unawaited(sl<ReadHistory>().pullFromCloudIfStale(maxAge: maxAge));
     // My List categories ride the same trigger — two small SELECTs, and they
     // have to arrive with the list they label.
     unawaited(sl<CategoryStore>().pullFromCloud());
@@ -495,6 +525,9 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
         } else {
           await cloudSync();
         }
+        // Launch never delivers [AppLifecycleState.resumed] if the app started
+        // in the foreground (TV sits there all day). Start the poll now.
+        _startForegroundSync();
       }
     } catch (_) {}
     // Rows saved under a source before the browse screen started resolving
