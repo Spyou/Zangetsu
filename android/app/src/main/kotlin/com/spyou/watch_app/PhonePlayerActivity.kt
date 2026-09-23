@@ -50,6 +50,25 @@ class PhonePlayerActivity : Activity() {
     private lateinit var playerView: PlayerView
     private lateinit var loading: ProgressBar
 
+    private lateinit var controls: android.widget.FrameLayout
+    private lateinit var btnPlay: android.widget.ImageView
+    private lateinit var seek: android.widget.SeekBar
+    private lateinit var positionText: android.widget.TextView
+    private lateinit var durationText: android.widget.TextView
+    private lateinit var titleText: android.widget.TextView
+    private lateinit var episodeText: android.widget.TextView
+
+    private val handler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val hideRunnable = Runnable { hideControls() }
+    private var scrubbing = false
+
+    private val ticker = object : Runnable {
+        override fun run() {
+            syncProgress()
+            handler.postDelayed(this, 500L)
+        }
+    }
+
     private var currentIndex = 0
     private var playbackError = false
     private var reported = false
@@ -65,6 +84,73 @@ class PhonePlayerActivity : Activity() {
         setContentView(R.layout.phone_player)
         playerView = findViewById(R.id.player_view)
         loading = findViewById(R.id.loading)
+        controls = findViewById(R.id.controls)
+        btnPlay = findViewById(R.id.btn_play)
+        seek = findViewById(R.id.seek)
+        positionText = findViewById(R.id.position)
+        durationText = findViewById(R.id.duration)
+        titleText = findViewById(R.id.title)
+        episodeText = findViewById(R.id.episode_label)
+
+        titleText.text = intent.getStringExtra(PhonePlayerIntent.EXTRA_TITLE) ?: ""
+        episodeText.text = intent.getStringExtra(PhonePlayerIntent.EXTRA_EP_LABEL) ?: ""
+
+        findViewById<View>(R.id.btn_back).setOnClickListener { finish() }
+        btnPlay.setOnClickListener { togglePlay() }
+        findViewById<View>(R.id.btn_rewind).setOnClickListener { seekBy(-10_000L) }
+        findViewById<View>(R.id.btn_forward).setOnClickListener { seekBy(10_000L) }
+
+        seek.setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(sb: android.widget.SeekBar, value: Int, fromUser: Boolean) {
+                if (!fromUser) return
+                val d = player?.duration ?: 0L
+                if (d > 0) positionText.text = fmt(d * value / 1000)
+            }
+
+            override fun onStartTrackingTouch(sb: android.widget.SeekBar) {
+                scrubbing = true
+                // Cancel the auto-hide: a slow scrub must not lose the bar.
+                handler.removeCallbacks(hideRunnable)
+            }
+
+            override fun onStopTrackingTouch(sb: android.widget.SeekBar) {
+                scrubbing = false
+                val d = player?.duration ?: 0L
+                if (d > 0) player?.seekTo(d * sb.progress / 1000)
+                bumpControls()
+            }
+        })
+
+        val taps = android.view.GestureDetector(
+            this,
+            object : android.view.GestureDetector.SimpleOnGestureListener() {
+                override fun onSingleTapConfirmed(e: android.view.MotionEvent): Boolean {
+                    if (controls.visibility == View.VISIBLE) hideControls() else showControls()
+                    return true
+                }
+
+                override fun onDoubleTap(e: android.view.MotionEvent): Boolean {
+                    // Left third back, right third forward; the middle is the
+                    // play button's territory and is left alone.
+                    val third = playerView.width / 3f
+                    when {
+                        e.x < third -> seekBy(-10_000L)
+                        e.x > third * 2 -> seekBy(10_000L)
+                        else -> togglePlay()
+                    }
+                    return true
+                }
+            },
+        )
+        findViewById<View>(R.id.player_root).setOnTouchListener { v, ev ->
+            taps.onTouchEvent(ev)
+            v.performClick()
+            true
+        }
+
+        showControls()
+        handler.post(ticker)
+
         playerView.useController = false
         active = this
 
@@ -97,6 +183,11 @@ class PhonePlayerActivity : Activity() {
                 // Task 8 turns this into a real failover; for now the session
                 // ends and Dart is told why.
                 finish()
+            }
+
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                syncPlayIcon()
+                bumpControls()
             }
         })
 
@@ -134,6 +225,65 @@ class PhonePlayerActivity : Activity() {
         if (positionMs > 0) p.seekTo(positionMs)
         p.prepare()
         p.playWhenReady = true
+    }
+
+    private fun togglePlay() {
+        val p = player ?: return
+        if (p.isPlaying) p.pause() else p.play()
+        syncPlayIcon()
+        bumpControls()
+    }
+
+    private fun seekBy(deltaMs: Long) {
+        val p = player ?: return
+        p.seekTo((p.currentPosition + deltaMs).coerceAtLeast(0L))
+        bumpControls()
+    }
+
+    private fun syncPlayIcon() {
+        btnPlay.setImageResource(
+            if (player?.isPlaying == true) R.drawable.ic_pip_pause else R.drawable.ic_pip_play,
+        )
+    }
+
+    private fun syncProgress() {
+        val p = player ?: return
+        val d = p.duration
+        if (d > 0) {
+            durationText.text = fmt(d)
+            if (!scrubbing) {
+                seek.progress = (p.currentPosition * 1000 / d).toInt().coerceIn(0, 1000)
+                positionText.text = fmt(p.currentPosition)
+            }
+        }
+    }
+
+    private fun showControls() {
+        controls.visibility = View.VISIBLE
+        syncPlayIcon()
+        syncProgress()
+        bumpControls()
+    }
+
+    private fun hideControls() {
+        controls.visibility = View.GONE
+        handler.removeCallbacks(hideRunnable)
+    }
+
+    /** Restart the auto-hide countdown; paused playback keeps the bar up. */
+    private fun bumpControls() {
+        handler.removeCallbacks(hideRunnable)
+        if (player?.isPlaying == true) handler.postDelayed(hideRunnable, 4_000L)
+    }
+
+    private fun fmt(ms: Long): String {
+        if (ms <= 0) return "0:00"
+        val total = ms / 1000
+        val s = total % 60
+        val m = (total / 60) % 60
+        val h = total / 3600
+        return if (h > 0) String.format("%d:%02d:%02d", h, m, s)
+        else String.format("%d:%02d", m, s)
     }
 
     private fun subtitlesFromIntent(): List<MediaItem.SubtitleConfiguration> {
@@ -196,10 +346,18 @@ class PhonePlayerActivity : Activity() {
 
     override fun onDestroy() {
         reportClosed()
+        handler.removeCallbacksAndMessages(null)
         active = null
         player?.release()
         player = null
         super.onDestroy()
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() {
+        if (controls.visibility == View.VISIBLE) { hideControls(); return }
+        @Suppress("DEPRECATION")
+        super.onBackPressed()
     }
 
     private fun goImmersive() {
