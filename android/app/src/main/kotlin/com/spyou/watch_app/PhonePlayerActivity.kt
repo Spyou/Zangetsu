@@ -140,12 +140,20 @@ class PhonePlayerActivity : Activity() {
         val urls = intent.getStringArrayExtra(PhonePlayerIntent.EXTRA_SUB_URLS) ?: return emptyList()
         val langs = intent.getStringArrayExtra(PhonePlayerIntent.EXTRA_SUB_LANGS) ?: emptyArray()
         val labels = intent.getStringArrayExtra(PhonePlayerIntent.EXTRA_SUB_LABELS) ?: emptyArray()
-        return urls.mapIndexedNotNull { i, u ->
-            if (u.isEmpty()) return@mapIndexedNotNull null
-            MediaItem.SubtitleConfiguration.Builder(android.net.Uri.parse(u))
+        return urls.mapIndexedNotNull { i, rawUrl ->
+            if (rawUrl.isEmpty()) return@mapIndexedNotNull null
+            val u = rawUrl.lowercase()
+            MediaItem.SubtitleConfiguration.Builder(android.net.Uri.parse(rawUrl))
                 .setMimeType(
-                    if (u.lowercase().contains(".srt")) MimeTypes.APPLICATION_SUBRIP
-                    else MimeTypes.TEXT_VTT,
+                    // An ASS/SSA track handed to the WebVTT parser throws
+                    // (ParserException: "Expected WEBVTT. Got [Script Info]")
+                    // and takes the whole text renderer down with it, so it
+                    // needs its own branch rather than falling into TEXT_VTT.
+                    when {
+                        u.contains(".ass") || u.contains(".ssa") -> MimeTypes.TEXT_SSA
+                        u.contains(".srt") -> MimeTypes.APPLICATION_SUBRIP
+                        else -> MimeTypes.TEXT_VTT
+                    },
                 )
                 .setLanguage(langs.getOrNull(i))
                 .setLabel(labels.getOrNull(i))
