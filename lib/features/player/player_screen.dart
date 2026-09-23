@@ -20,6 +20,8 @@ import '../../core/repository/source_repository.dart';
 import '../../core/zmode/playback_resolver.dart';
 import '../../core/tracker/tracker_hub.dart';
 import '../../core/playback/external_player.dart';
+import '../../core/logging/app_logger.dart';
+import 'tv_playback_launch.dart';
 import '../../core/playback/playback_prefs.dart';
 import 'subtitle_style.dart';
 import 'subtitle_font_service.dart';
@@ -445,6 +447,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
       _launchExternalThenPop();
       return;
     }
+    // Experimental ExoPlayer. Checked before _initInApp because that builds a
+    // PlayerCubit, which constructs a media_kit Player — the exact thing that
+    // throws on a device where libmpv never loaded.
+    if (Platform.isAndroid && sl<PlaybackPrefs>().experimentalExoPlayer) {
+      _launchExoThenPop();
+      return;
+    }
     _initInApp();
   }
 
@@ -740,6 +749,65 @@ class _PlayerScreenState extends State<PlayerScreen> {
   /// Resolve the start episode + its best source and open it in the user's
   /// chosen external player, then pop. The branded loader shows briefly while
   /// resolving. Any failure falls back to the in-app player.
+  /// Play through the native ExoPlayer activity instead of mpv, then leave
+  /// this screen — the same shape as [_launchExternalThenPop].
+  ///
+  /// Uses the very player the TV build ships ([launchTvPlayback] →
+  /// TvPlayerActivity): a separate Activity with its own SurfaceView, so there
+  /// is no media_kit, no libmpv and no Flutter platform view involved. It
+  /// carries resume, history, the episode list, the server picker and
+  /// subtitles, so switching to it gives up far less than embedding a view
+  /// here would.
+  ///
+  /// Runs INSTEAD of [_initInApp], never after it: that builds a [PlayerCubit]
+  /// whose constructor makes a media_kit `Player`, which is exactly what throws
+  /// on a device where libmpv never loaded.
+  ///
+  /// Falls back to the in-app player on any failure, so turning this on can
+  /// never leave someone worse off than before.
+  Future<void> _launchExoThenPop() async {
+    try {
+      var eps = widget.episodes;
+      if (eps.isEmpty && widget.episodesResolver != null) {
+        eps = await widget.episodesResolver!();
+      }
+      if (eps.isEmpty) throw StateError('no episodes');
+      var idx = widget.startIndex;
+      if (widget.resumeEpisodeId != null) {
+        var i = eps.indexWhere((e) => e.id == widget.resumeEpisodeId);
+        if (i < 0 && widget.resumeEpisodeNumber != null) {
+          i = eps.indexWhere((e) => e.number == widget.resumeEpisodeNumber);
+        }
+        if (i >= 0) idx = i;
+      }
+      if (!mounted) return;
+      await launchTvPlayback(
+        context: context,
+        sourceId: widget.sourceId,
+        episodes: eps,
+        startIndex: idx.clamp(0, eps.length - 1),
+        resume: widget.resume,
+        resolveSources: widget.resolveSources,
+        showUrl: widget.showUrl,
+        showTitle: widget.showTitle,
+        cover: widget.cover,
+        coverHeaders: widget.coverHeaders,
+        category: widget.category ?? 'sub',
+        malId: widget.malId,
+        scrobbleTitle: widget.scrobbleTitle,
+        tmdbId: widget.tmdbId,
+        tmdbIsTv: widget.tmdbIsTv,
+        imdbId: widget.imdbId,
+      );
+      _leavePlayer(); // the player closed — leave this screen too
+    } catch (e, st) {
+      AppLogger.instance.logError(e, st);
+      if (!mounted) return;
+      _initInApp();
+      setState(() {});
+    }
+  }
+
   Future<void> _launchExternalThenPop() async {
     try {
       var eps = widget.episodes;

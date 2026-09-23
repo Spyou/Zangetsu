@@ -1782,6 +1782,13 @@ class AppLocalizationsIt extends AppLocalizations {
   String get audioDelay => 'Ritardo audio';
 
   @override
+  String get experimentalExoPlayer => 'ExoPlayer (experimental)';
+
+  @override
+  String get experimentalExoPlayerSubtitle =>
+      'Play with Android\'s ExoPlayer instead of the built-in player';
+
+  @override
   String get audioNormalization => 'Normalizzazione audio';
 
   @override

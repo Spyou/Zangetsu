@@ -370,6 +370,24 @@ class PlaybackPrefs {
   Future<void> setVolumeBoost(int value) =>
       _box.put('volumeBoost', value.clamp(0, 200));
 
+  /// Play through the native ExoPlayer screen instead of mpv.
+  ///
+  /// For devices where libmpv does not load at all: every Android 8 and older
+  /// device in the reports fails `MediaKit.ensureInitialized` at boot, so the
+  /// player screen comes up white and nothing plays. mpv links against
+  /// libvulkan/libmediandk and friends, and if any of those will not resolve
+  /// the whole library fails to load — media_kit then reports the misleading
+  /// "Cannot find libmpv.so", which is why this looked like a packaging bug.
+  ///
+  /// Off by default and labelled experimental because the ExoPlayer screen is
+  /// a mirror-switching player, not the full one: no resume mark, no history,
+  /// no next episode, no subtitle picker. On a phone with no playback at all
+  /// that is worth having; anywhere else it is a downgrade.
+  bool get experimentalExoPlayer =>
+      _box.get('experimentalExoPlayer', defaultValue: false) as bool;
+  Future<void> setExperimentalExoPlayer(bool value) =>
+      _box.put('experimentalExoPlayer', value);
+
   /// Whether to apply dynamic audio normalization (mpv 'dynaudnorm' filter) so
   /// quiet/loud passages are levelled out.
   bool get audioNormalize =>

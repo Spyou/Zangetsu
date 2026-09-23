@@ -100,6 +100,11 @@ final settingsLeaves = <SettingsLeaf>[
   ),
   SettingsLeaf(
     LeafParent.playback,
+    (l) => l.experimentalExoPlayer,
+    keywords: 'exoplayer experimental blank white screen android 8 mpv',
+  ),
+  SettingsLeaf(
+    LeafParent.playback,
     (l) => l.playerControls,
     keywords: 'buttons reorder hide bar',
   ),

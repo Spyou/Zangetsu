@@ -1716,6 +1716,13 @@ class AppLocalizationsZh extends AppLocalizations {
   String get audioDelay => '音频延迟';
 
   @override
+  String get experimentalExoPlayer => 'ExoPlayer (experimental)';
+
+  @override
+  String get experimentalExoPlayerSubtitle =>
+      'Play with Android\'s ExoPlayer instead of the built-in player';
+
+  @override
   String get audioNormalization => '音频响度均衡';
 
   @override

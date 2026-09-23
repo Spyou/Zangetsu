@@ -669,6 +669,16 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                       : (_prefs.externalPlayerLabel.isNotEmpty ? _prefs.externalPlayerLabel : context.l10n.externalApp),
                   onTap: _pickPlayer,
                 ),
+                _toggleRow(
+                  icon: Icons.science_outlined,
+                  title: context.l10n.experimentalExoPlayer,
+                  subtitle: context.l10n.experimentalExoPlayerSubtitle,
+                  value: _prefs.experimentalExoPlayer,
+                  onChanged: (v) async {
+                    await _prefs.setExperimentalExoPlayer(v);
+                    if (mounted) setState(() {});
+                  },
+                ),
                 SettingsTile(
                   icon: Icons.tune_rounded,
                   title: context.l10n.playerControls,

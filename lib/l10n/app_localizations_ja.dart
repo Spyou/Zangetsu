@@ -1728,6 +1728,13 @@ class AppLocalizationsJa extends AppLocalizations {
   String get audioDelay => '音声の遅延';
 
   @override
+  String get experimentalExoPlayer => 'ExoPlayer (experimental)';
+
+  @override
+  String get experimentalExoPlayerSubtitle =>
+      'Play with Android\'s ExoPlayer instead of the built-in player';
+
+  @override
   String get audioNormalization => '音量の正規化';
 
   @override
