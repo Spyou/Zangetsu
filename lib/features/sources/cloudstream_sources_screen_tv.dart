@@ -1134,84 +1134,14 @@ Future<bool> _csScreenTvConfirm(
   required String title,
   required String body,
   required String confirmLabel,
-}) async {
-  final ok = await showDialog<bool>(
-    context: context,
-    barrierColor: Colors.black54,
-    builder: (ctx) => Dialog(
-      backgroundColor: AppColors.surface,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      insetPadding: const EdgeInsets.symmetric(horizontal: 80, vertical: 48),
-      child: SizedBox(
-        width: 440,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 20, 24, 8),
-              child: Text(title, style: AppText.headline),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
-              child: Text(
-                body,
-                style: AppText.body.copyWith(color: AppColors.textSecondary),
-              ),
-            ),
-            const Divider(height: 1, color: AppColors.hairline),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  // Cancel — autofocused so D-pad lands here first.
-                  TvListFocusable(
-                    autofocus: true,
-                    onTap: () => Navigator.pop(ctx, false),
-                    semanticLabel: context.l10n.cancel,
-                    child: ExcludeSemantics(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 20,
-                          vertical: 12,
-                        ),
-                        child: Text(
-                          context.l10n.cancel,
-                          style: AppText.body.copyWith(
-                            color: AppColors.textSecondary,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  // Confirm action.
-                  TvListFocusable(
-                    onTap: () => Navigator.pop(ctx, true),
-                    semanticLabel: confirmLabel,
-                    child: ExcludeSemantics(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 20,
-                          vertical: 12,
-                        ),
-                        child: Text(
-                          confirmLabel,
-                          style: AppText.body.copyWith(color: AppColors.accent),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    ),
+}) {
+  return AppDialog.confirm(
+    context,
+    title: title,
+    message: body,
+    confirmLabel: confirmLabel,
+    destructive: true,
   );
-  return ok == true;
 }
 
 // ---------------------------------------------------------------------------

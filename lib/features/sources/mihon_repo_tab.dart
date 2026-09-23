@@ -13,6 +13,7 @@ import '../../core/mihon/mihon_update.dart';
 import '../../core/prefs/source_lang_prefs.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
+import '../../core/ui/app_dialog.dart';
 import '../../core/ui/states.dart';
 import 'sources_search_field.dart';
 import '../../l10n/l10n.dart';
@@ -316,33 +317,13 @@ class _MihonRepoSectionState extends State<_MihonRepoSection> {
   }
 
   Future<void> _confirmRemove(BuildContext context) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        title: Text(context.l10n.removeRepo, style: AppText.headline),
-        content: Text(
-          context.l10n.alreadyInstalledExtensionsStay +
-              context.l10n.youCanAddRepoBackLater,
-          style: AppText.body,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text(
-              context.l10n.cancel,
-              style: AppText.body.copyWith(color: AppColors.textSecondary),
-            ),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(
-              context.l10n.removeDownloadTooltip,
-              style: AppText.body.copyWith(color: AppColors.accent),
-            ),
-          ),
-        ],
-      ),
+    final ok = await AppDialog.confirm(
+      context,
+      title: context.l10n.removeRepo,
+      message: context.l10n.alreadyInstalledExtensionsStay +
+          context.l10n.youCanAddRepoBackLater,
+      confirmLabel: context.l10n.removeDownloadTooltip,
+      destructive: true,
     );
     if (ok == true) widget.onRemove();
   }
@@ -794,32 +775,12 @@ class _MihonExtensionRowState extends State<_MihonExtensionRow> {
   }
 
   Future<void> _uninstall() async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        title: Text(ctx.l10n.uninstallNameQuestion(_entry.name), style: AppText.headline),
-        content: Text(
-          context.l10n.thisRemovesTheExtensionFromYourInstalledSources,
-          style: AppText.body,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text(
-              context.l10n.cancel,
-              style: AppText.body.copyWith(color: AppColors.textSecondary),
-            ),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(
-              context.l10n.uninstall,
-              style: AppText.body.copyWith(color: AppColors.accent),
-            ),
-          ),
-        ],
-      ),
+    final ok = await AppDialog.confirm(
+      context,
+      title: context.l10n.uninstallNameQuestion(_entry.name),
+      message: context.l10n.thisRemovesTheExtensionFromYourInstalledSources,
+      confirmLabel: context.l10n.uninstall,
+      destructive: true,
     );
     if (ok != true) return;
     if (!mounted) return;

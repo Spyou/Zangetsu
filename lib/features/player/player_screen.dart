@@ -35,6 +35,7 @@ import '../../core/playback/subtitle_search_service.dart';
 import '../../core/playback/watch_history.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
+import '../../core/ui/app_dialog.dart';
 import '../../core/ui/episode_unavailable_dialog.dart';
 import '../../core/ui/badge.dart';
 import '../../core/ui/brand_loader.dart';
@@ -1078,22 +1079,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
   Future<void> _handleCloseRequest() async {
     switch (sl<PlaybackPrefs>().closeConfirmation) {
       case 'confirm':
-        final ok = await showDialog<bool>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: Text(ctx.l10n.closeVideo),
-            content: Text(ctx.l10n.areYouSureYouWantToCloseTheVideo),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: Text(ctx.l10n.cancel),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                child: Text(ctx.l10n.close),
-              ),
-            ],
-          ),
+        final ok = await AppDialog.confirm(
+          context,
+          title: context.l10n.closeVideo,
+          message: context.l10n.areYouSureYouWantToCloseTheVideo,
+          confirmLabel: context.l10n.close,
         );
         if (ok == true) _leavePlayer();
       case 'direct':

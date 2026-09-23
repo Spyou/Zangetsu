@@ -6,6 +6,7 @@ import '../../core/discord/discord_rpc.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../l10n/l10n.dart';
+import '../../core/ui/app_dialog.dart';
 import '../../core/ui/settings_widgets.dart';
 import 'discord_login_screen.dart';
 
@@ -39,26 +40,12 @@ class _DiscordSettingsScreenState extends State<DiscordSettingsScreen> {
   }
 
   Future<void> _disconnect() async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (c) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        title: Text(context.l10n.disconnectDiscord),
-        content: Text(context.l10n.disconnectDiscordBody),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(c, false),
-            child: Text(context.l10n.cancel),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(c, true),
-            child: Text(
-              context.l10n.disconnect,
-              style: TextStyle(color: AppColors.accent),
-            ),
-          ),
-        ],
-      ),
+    final ok = await AppDialog.confirm(
+      context,
+      title: context.l10n.disconnectDiscord,
+      message: context.l10n.disconnectDiscordBody,
+      confirmLabel: context.l10n.disconnect,
+      destructive: true,
     );
     if (ok != true) return;
     await _rpc.setEnabled(false);

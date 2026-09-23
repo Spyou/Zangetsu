@@ -6,6 +6,7 @@ import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
+import '../../core/ui/app_dialog.dart';
 import '../../core/ui/banner_style.dart';
 import '../../core/ui/settings_widgets.dart';
 import '../../core/ui/splash_style.dart';
@@ -181,26 +182,11 @@ class _AppFaceScreenState extends State<AppFaceScreen> {
   }
 
   Future<void> _pickIcon(AppIconOption o) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        title: Text(context.l10n.useTheIcon(o.label), style: AppText.title),
-        content: Text(context.l10n.useTheIconBody, style: AppText.body),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text(context.l10n.cancel),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(
-              context.l10n.change,
-              style: TextStyle(color: AppColors.accent),
-            ),
-          ),
-        ],
-      ),
+    final ok = await AppDialog.confirm(
+      context,
+      title: context.l10n.useTheIcon(o.label),
+      message: context.l10n.useTheIconBody,
+      confirmLabel: context.l10n.change,
     );
     if (ok != true) return;
     await _icons.select(o.id);

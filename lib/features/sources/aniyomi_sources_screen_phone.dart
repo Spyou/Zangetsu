@@ -312,32 +312,12 @@ class _AniSourceRowState extends State<_AniSourceRow> {
   /// Shows a confirm dialog then uninstalls the source.
   Future<void> _confirmUninstall(BuildContext context) async {
     final name = widget.source.displayName;
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        title: Text(context.l10n.uninstallNameQuestion(name), style: AppText.headline),
-        content: Text(
-          context.l10n.thisRemovesTheSourceFromYourInstalledList,
-          style: AppText.body,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text(
-              context.l10n.cancel,
-              style: AppText.body.copyWith(color: AppColors.textSecondary),
-            ),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(
-              context.l10n.uninstall,
-              style: AppText.body.copyWith(color: AppColors.accent),
-            ),
-          ),
-        ],
-      ),
+    final ok = await AppDialog.confirm(
+      context,
+      title: context.l10n.uninstallNameQuestion(name),
+      message: context.l10n.thisRemovesTheSourceFromYourInstalledList,
+      confirmLabel: context.l10n.uninstall,
+      destructive: true,
     );
     if (ok != true) return;
 

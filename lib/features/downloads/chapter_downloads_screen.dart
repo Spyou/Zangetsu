@@ -12,6 +12,7 @@ import '../../core/models/episode.dart';
 import '../../core/mode/content_mode.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
+import '../../core/ui/app_dialog.dart';
 import '../../core/ui/settings_widgets.dart';
 import '../../core/ui/states.dart';
 import '../../l10n/l10n.dart';
@@ -202,32 +203,13 @@ class _ChapterDownloadsScreenState extends State<ChapterDownloadsScreen> {
   );
 
   Future<void> _confirmStopAll(int n, AppLocalizations l10n) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (dctx) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        title: Text(l10n.stopDownloading, style: AppText.headline),
-        content: Text(
-          l10n.stopDownloadingBody(n),
-          style: AppText.body,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dctx, false),
-            child: Text(
-              l10n.keepGoing,
-              style: AppText.button.copyWith(color: AppColors.textSecondary),
-            ),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(dctx, true),
-            child: Text(
-              l10n.stopAll,
-              style: AppText.button.copyWith(color: AppColors.accent),
-            ),
-          ),
-        ],
-      ),
+    final ok = await AppDialog.confirm(
+      context,
+      title: l10n.stopDownloading,
+      message: l10n.stopDownloadingBody(n),
+      cancelLabel: l10n.keepGoing,
+      confirmLabel: l10n.stopAll,
+      destructive: true,
     );
     if (ok != true) return;
     await sl<ChapterDownloader>().cancelAll();
@@ -506,32 +488,12 @@ class _ChapterGroup extends StatelessWidget {
     AppLocalizations l10n,
   ) async {
     final n = chapters.length;
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (dctx) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        title: Text(l10n.deleteAllChapters2, style: AppText.headline),
-        content: Text(
-          l10n.removeAllChaptersOfShow(n, chapters.first.showTitle),
-          style: AppText.body,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dctx, false),
-            child: Text(
-              l10n.cancel,
-              style: AppText.button.copyWith(color: AppColors.textSecondary),
-            ),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(dctx, true),
-            child: Text(
-              l10n.deleteAll,
-              style: AppText.button.copyWith(color: AppColors.accent),
-            ),
-          ),
-        ],
-      ),
+    final ok = await AppDialog.confirm(
+      context,
+      title: l10n.deleteAllChapters2,
+      message: l10n.removeAllChaptersOfShow(n, chapters.first.showTitle),
+      confirmLabel: l10n.deleteAll,
+      destructive: true,
     );
     if (ok != true) return;
     final store = sl<ChapterDownloadStore>();
