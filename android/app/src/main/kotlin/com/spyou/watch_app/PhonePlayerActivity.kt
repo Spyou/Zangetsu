@@ -73,6 +73,10 @@ class PhonePlayerActivity : Activity() {
     private var playbackError = false
     private var reported = false
 
+    private var episodeCount = 1
+    private var episodeLabels: Array<String> = emptyArray()
+    private var switching = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -95,10 +99,19 @@ class PhonePlayerActivity : Activity() {
         titleText.text = intent.getStringExtra(PhonePlayerIntent.EXTRA_TITLE) ?: ""
         episodeText.text = intent.getStringExtra(PhonePlayerIntent.EXTRA_EP_LABEL) ?: ""
 
+        currentIndex = intent.getIntExtra(PhonePlayerIntent.EXTRA_START_INDEX, 0)
+        episodeCount = intent.getIntExtra(PhonePlayerIntent.EXTRA_EP_COUNT, 1)
+        episodeLabels = intent.getStringArrayExtra(PhonePlayerIntent.EXTRA_EP_LABELS) ?: emptyArray()
+
         findViewById<View>(R.id.btn_back).setOnClickListener { finish() }
         btnPlay.setOnClickListener { togglePlay() }
         findViewById<View>(R.id.btn_rewind).setOnClickListener { seekBy(-10_000L) }
         findViewById<View>(R.id.btn_forward).setOnClickListener { seekBy(10_000L) }
+        findViewById<View>(R.id.btn_episodes).setOnClickListener { showEpisodeMenu() }
+        findViewById<View>(R.id.btn_next).apply {
+            visibility = if (currentIndex + 1 < episodeCount) View.VISIBLE else View.GONE
+            setOnClickListener { loadEpisode(currentIndex + 1) }
+        }
 
         seek.setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(sb: android.widget.SeekBar, value: Int, fromUser: Boolean) {
@@ -156,8 +169,6 @@ class PhonePlayerActivity : Activity() {
 
         playerView.useController = false
         active = this
-
-        currentIndex = intent.getIntExtra(PhonePlayerIntent.EXTRA_START_INDEX, 0)
 
         val exo = ExoPlayer.Builder(this, renderersFactory())
             .setLoadControl(
@@ -230,6 +241,84 @@ class PhonePlayerActivity : Activity() {
         p.playWhenReady = true
     }
 
+    private fun showEpisodeMenu() {
+        if (episodeLabels.isEmpty()) return
+        handler.removeCallbacks(hideRunnable) // a dialog must not race the auto-hide
+        android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle("Episodes")
+            .setSingleChoiceItems(episodeLabels, currentIndex) { dialog, which ->
+                dialog.dismiss()
+                if (which != currentIndex) loadEpisode(which)
+            }
+            .setOnDismissListener { bumpControls() }
+            .show()
+    }
+
+    /** Ask Dart for [index]'s stream, then play it. */
+    private fun loadEpisode(index: Int) {
+        if (index < 0 || index >= episodeCount || switching) return
+        val ch = PhonePlayerBridge.channel ?: return
+        val p = player
+        // Persist the outgoing episode before leaving it.
+        if (p != null && p.duration > 0) {
+            ch.invokeMethod(
+                "saveProgress",
+                mapOf(
+                    "index" to currentIndex,
+                    "positionMs" to p.currentPosition,
+                    "durationMs" to p.duration,
+                ),
+            )
+        }
+        p?.pause() // don't leave the old episode running under the spinner
+        switching = true
+        loading.visibility = View.VISIBLE
+        ch.invokeMethod(
+            "resolveEpisode",
+            mapOf("index" to index),
+            object : io.flutter.plugin.common.MethodChannel.Result {
+                override fun success(result: Any?) {
+                    @Suppress("UNCHECKED_CAST")
+                    val m = result as? Map<String, Any?>
+                    if (m == null) failSwitch() else applyResolved(index, m)
+                }
+                override fun error(code: String, msg: String?, details: Any?) = failSwitch()
+                override fun notImplemented() = failSwitch()
+            },
+        )
+    }
+
+    private fun failSwitch() {
+        switching = false
+        loading.visibility = View.GONE
+        android.widget.Toast
+            .makeText(this, "Couldn't load that episode", android.widget.Toast.LENGTH_SHORT)
+            .show()
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun applyResolved(index: Int, m: Map<String, Any?>) {
+        val url = m["url"] as? String
+        if (url.isNullOrEmpty()) { failSwitch(); return }
+        currentIndex = index
+        episodeText.text = m["episodeLabel"] as? String ?: episodeLabels.getOrNull(index) ?: ""
+        findViewById<View>(R.id.btn_next).visibility =
+            if (currentIndex + 1 < episodeCount) View.VISIBLE else View.GONE
+        loadStream(
+            url = url,
+            headers = (m["headers"] as? Map<String, String>) ?: emptyMap(),
+            subs = subtitlesFrom(
+                (m["subUrls"] as? List<String>) ?: emptyList(),
+                (m["subLangs"] as? List<String>) ?: emptyList(),
+                (m["subLabels"] as? List<String>) ?: emptyList(),
+            ),
+            mime = m["mimeType"] as? String,
+            positionMs = (m["positionMs"] as? Number)?.toLong() ?: 0L,
+        )
+        switching = false // the new media's buffering drives the spinner now
+        bumpControls()
+    }
+
     private fun togglePlay() {
         val p = player ?: return
         if (p.isPlaying) p.pause() else p.play()
@@ -289,30 +378,35 @@ class PhonePlayerActivity : Activity() {
         else String.format("%d:%02d", m, s)
     }
 
-    private fun subtitlesFromIntent(): List<MediaItem.SubtitleConfiguration> {
-        val urls = intent.getStringArrayExtra(PhonePlayerIntent.EXTRA_SUB_URLS) ?: return emptyList()
-        val langs = intent.getStringArrayExtra(PhonePlayerIntent.EXTRA_SUB_LANGS) ?: emptyArray()
-        val labels = intent.getStringArrayExtra(PhonePlayerIntent.EXTRA_SUB_LABELS) ?: emptyArray()
-        return urls.mapIndexedNotNull { i, rawUrl ->
-            if (rawUrl.isEmpty()) return@mapIndexedNotNull null
-            val u = rawUrl.lowercase()
-            MediaItem.SubtitleConfiguration.Builder(android.net.Uri.parse(rawUrl))
-                .setMimeType(
-                    // An ASS/SSA track handed to the WebVTT parser throws
-                    // (ParserException: "Expected WEBVTT. Got [Script Info]")
-                    // and takes the whole text renderer down with it, so it
-                    // needs its own branch rather than falling into TEXT_VTT.
-                    when {
-                        u.contains(".ass") || u.contains(".ssa") -> MimeTypes.TEXT_SSA
-                        u.contains(".srt") -> MimeTypes.APPLICATION_SUBRIP
-                        else -> MimeTypes.TEXT_VTT
-                    },
-                )
-                .setLanguage(langs.getOrNull(i))
-                .setLabel(labels.getOrNull(i))
-                .setSelectionFlags(if (i == 0) C.SELECTION_FLAG_DEFAULT else 0)
-                .build()
-        }
+    private fun subtitlesFromIntent(): List<MediaItem.SubtitleConfiguration> = subtitlesFrom(
+        (intent.getStringArrayExtra(PhonePlayerIntent.EXTRA_SUB_URLS) ?: emptyArray()).toList(),
+        (intent.getStringArrayExtra(PhonePlayerIntent.EXTRA_SUB_LANGS) ?: emptyArray()).toList(),
+        (intent.getStringArrayExtra(PhonePlayerIntent.EXTRA_SUB_LABELS) ?: emptyArray()).toList(),
+    )
+
+    private fun subtitlesFrom(
+        urls: List<String>,
+        langs: List<String>,
+        labels: List<String>,
+    ): List<MediaItem.SubtitleConfiguration> = urls.mapIndexedNotNull { i, rawUrl ->
+        if (rawUrl.isEmpty()) return@mapIndexedNotNull null
+        val u = rawUrl.lowercase()
+        MediaItem.SubtitleConfiguration.Builder(android.net.Uri.parse(rawUrl))
+            .setMimeType(
+                // An ASS/SSA track handed to the WebVTT parser throws
+                // (ParserException: "Expected WEBVTT. Got [Script Info]")
+                // and takes the whole text renderer down with it, so it
+                // needs its own branch rather than falling into TEXT_VTT.
+                when {
+                    u.contains(".ass") || u.contains(".ssa") -> MimeTypes.TEXT_SSA
+                    u.contains(".srt") -> MimeTypes.APPLICATION_SUBRIP
+                    else -> MimeTypes.TEXT_VTT
+                },
+            )
+            .setLanguage(langs.getOrNull(i))
+            .setLabel(labels.getOrNull(i))
+            .setSelectionFlags(if (i == 0) C.SELECTION_FLAG_DEFAULT else 0)
+            .build()
     }
 
     private fun renderersFactory(): RenderersFactory =

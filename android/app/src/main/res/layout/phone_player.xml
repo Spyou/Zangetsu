@@ -129,13 +129,42 @@
                 android:src="@drawable/ic_pip_forward" />
         </LinearLayout>
 
+        <LinearLayout
+            android:id="@+id/button_row"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom|start"
+            android:layout_marginStart="14dp"
+            android:layout_marginBottom="14dp"
+            android:orientation="horizontal">
+
+            <ImageView
+                android:id="@+id/btn_episodes"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Episodes"
+                android:padding="9dp"
+                android:src="@drawable/ic_tv_episodes" />
+
+            <ImageView
+                android:id="@+id/btn_next"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_marginStart="10dp"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Next episode"
+                android:padding="9dp"
+                android:src="@drawable/ic_tv_next" />
+        </LinearLayout>
+
         <!-- Bottom bar: elapsed / seek / total -->
         <LinearLayout
             android:id="@+id/bottom_bar"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_gravity="bottom"
-            android:layout_marginBottom="16dp"
+            android:layout_marginBottom="54dp"
             android:gravity="center_vertical"
             android:orientation="horizontal"
             android:paddingHorizontal="16dp">

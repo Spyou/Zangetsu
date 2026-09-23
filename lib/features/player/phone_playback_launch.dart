@@ -213,6 +213,24 @@ class PhoneNativePlayer {
 
   static Future<dynamic> _onNativeCall(MethodCall call) async {
     switch (call.method) {
+      case 'resolveEpisode':
+        final args = (call.arguments as Map).cast<String, dynamic>();
+        final index = (args['index'] as num?)?.toInt() ?? -1;
+        if (index < 0 || index >= _episodes.length) return null;
+        final ep = _episodes[index];
+        final src = await _resolveSource(ep);
+        if (src == null) return null;
+        final mark = _resume?.get(_sourceId, _showId, ep.id);
+        return {
+          'url': src.url,
+          'headers': src.headers ?? const <String, String>{},
+          'mimeType': ?phoneMimeFor(src),
+          'positionMs': mark?.position.inMilliseconds ?? 0,
+          'episodeLabel': _episodeLabel(ep),
+          'subUrls': [for (final s in src.subtitles) s.url],
+          'subLangs': [for (final s in src.subtitles) s.lang],
+          'subLabels': [for (final s in src.subtitles) s.label ?? s.lang],
+        };
       case 'playerClosed':
         final args = (call.arguments as Map?)?.cast<String, dynamic>();
         _closed?.complete(args);
