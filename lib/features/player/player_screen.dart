@@ -21,7 +21,7 @@ import '../../core/zmode/playback_resolver.dart';
 import '../../core/tracker/tracker_hub.dart';
 import '../../core/playback/external_player.dart';
 import '../../core/logging/app_logger.dart';
-import 'tv_playback_launch.dart';
+import 'phone_playback_launch.dart';
 import '../../core/playback/playback_prefs.dart';
 import 'subtitle_style.dart';
 import 'subtitle_font_service.dart';
@@ -781,7 +781,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
         if (i >= 0) idx = i;
       }
       if (!mounted) return;
-      await launchTvPlayback(
+      await launchPhonePlayback(
         context: context,
         sourceId: widget.sourceId,
         episodes: eps,
