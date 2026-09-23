@@ -144,12 +144,15 @@ class PhonePlayerActivity : Activity() {
         )
         findViewById<View>(R.id.player_root).setOnTouchListener { v, ev ->
             taps.onTouchEvent(ev)
-            v.performClick()
+            // Only a real release is a "click"; firing on every ACTION_MOVE
+            // spams TalkBack with a click event per drag sample.
+            if (ev.action == android.view.MotionEvent.ACTION_UP) v.performClick()
             true
         }
 
         showControls()
-        handler.post(ticker)
+        // onResume (always called right after onCreate) starts the ticker;
+        // starting it here too would double-post it.
 
         playerView.useController = false
         active = this
@@ -342,6 +345,15 @@ class PhonePlayerActivity : Activity() {
     override fun onPause() {
         super.onPause()
         player?.pause()
+        handler.removeCallbacks(ticker)
+    }
+
+    // The ticker is stopped in onPause so it doesn't keep polling a paused
+    // player and writing to invisible views while backgrounded; restart it
+    // here rather than in onCreate.
+    override fun onResume() {
+        super.onResume()
+        handler.post(ticker)
     }
 
     override fun onDestroy() {
