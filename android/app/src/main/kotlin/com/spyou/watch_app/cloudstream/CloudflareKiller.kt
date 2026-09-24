@@ -159,7 +159,7 @@ class CloudflareKiller : Interceptor {
 /** Loads a URL in a hidden WebView and waits for Cloudflare's `cf_clearance`
  * cookie. WebView work runs on the main thread; the (background) caller blocks
  * on a latch with a timeout. */
-internal object CfWebViewSolver {
+object CfWebViewSolver {
     data class Result(val cookie: String, val userAgent: String)
 
     /** How long to let a self-clearing challenge finish before we start asking
