@@ -156,6 +156,26 @@
                 android:contentDescription="Next episode"
                 android:padding="9dp"
                 android:src="@drawable/ic_tv_next" />
+
+            <ImageView
+                android:id="@+id/btn_sources"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_marginStart="10dp"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Sources and quality"
+                android:padding="9dp"
+                android:src="@drawable/ic_tv_sources" />
+
+            <ImageView
+                android:id="@+id/btn_subs"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_marginStart="10dp"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Subtitles"
+                android:padding="9dp"
+                android:src="@drawable/ic_tv_captions" />
         </LinearLayout>
 
         <!-- Bottom bar: elapsed / seek / total -->

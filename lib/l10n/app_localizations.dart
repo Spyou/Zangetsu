@@ -3386,17 +3386,17 @@ abstract class AppLocalizations {
   /// **'Audio delay'**
   String get audioDelay;
 
-  /// No description provided for @experimentalExoPlayer.
+  /// No description provided for @androidPlayer.
   ///
   /// In en, this message translates to:
-  /// **'ExoPlayer (experimental)'**
-  String get experimentalExoPlayer;
+  /// **'Android Player'**
+  String get androidPlayer;
 
-  /// No description provided for @experimentalExoPlayerSubtitle.
+  /// No description provided for @androidPlayerUnavailable.
   ///
   /// In en, this message translates to:
-  /// **'Play with Android\'s ExoPlayer instead of the built-in player'**
-  String get experimentalExoPlayerSubtitle;
+  /// **'Android Player could not start'**
+  String get androidPlayerUnavailable;
 
   /// No description provided for @audioNormalization.
   ///

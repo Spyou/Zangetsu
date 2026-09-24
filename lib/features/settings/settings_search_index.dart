@@ -96,12 +96,7 @@ final settingsLeaves = <SettingsLeaf>[
   SettingsLeaf(
     LeafParent.playback,
     (l) => l.defaultPlayer,
-    keywords: 'external mpv exoplayer vlc',
-  ),
-  SettingsLeaf(
-    LeafParent.playback,
-    (l) => l.experimentalExoPlayer,
-    keywords: 'exoplayer experimental blank white screen android 8 mpv',
+    keywords: 'external mpv android native vlc',
   ),
   SettingsLeaf(
     LeafParent.playback,

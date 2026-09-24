@@ -439,19 +439,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
     // Refresh the "enhancement shaders downloaded?" flag so the in-player picker
     // gates correctly (they're fetched on demand from Settings). Fire-and-forget.
     unawaited(ShaderPresets.refreshDownloaded());
-    // Default external player: hand the stream off to the chosen app and close
-    // this screen instead of starting the in-app player. Falls back to in-app
-    // if the launch can't be set up, so playback never silently dies.
-    if (Platform.isAndroid &&
-        _chosenPlayer.isNotEmpty) {
-      _launchExternalThenPop();
+    if (Platform.isAndroid && _chosenPlayer == PlaybackPrefs.androidPlayerId) {
+      _launchExoThenPop();
       return;
     }
-    // Experimental ExoPlayer. Checked before _initInApp because that builds a
-    // PlayerCubit, which constructs a media_kit Player — the exact thing that
-    // throws on a device where libmpv never loaded.
-    if (Platform.isAndroid && sl<PlaybackPrefs>().experimentalExoPlayer) {
-      _launchExoThenPop();
+    if (Platform.isAndroid && _chosenPlayer.isNotEmpty) {
+      _launchExternalThenPop();
       return;
     }
     _initInApp();
@@ -781,30 +774,42 @@ class _PlayerScreenState extends State<PlayerScreen> {
         if (i >= 0) idx = i;
       }
       if (!mounted) return;
-      await launchPhonePlayback(
+      final opened = await launchPhonePlayback(
         context: context,
         sourceId: widget.sourceId,
         episodes: eps,
         startIndex: idx.clamp(0, eps.length - 1),
         resume: widget.resume,
         resolveSources: widget.resolveSources,
+        pollSources: widget.pollSources,
+        resumePosition: widget.resumePosition.inMilliseconds,
+        peek: widget.peek,
         showUrl: widget.showUrl,
         showTitle: widget.showTitle,
         cover: widget.cover,
         coverHeaders: widget.coverHeaders,
         category: widget.category ?? 'sub',
+        availableCategories: widget.availableCategories,
+        history: widget.history,
+        initialSource: widget.initialSource,
         malId: widget.malId,
         scrobbleTitle: widget.scrobbleTitle,
         tmdbId: widget.tmdbId,
         tmdbIsTv: widget.tmdbIsTv,
         imdbId: widget.imdbId,
       );
-      _leavePlayer(); // the player closed — leave this screen too
+      if (!opened) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(context.l10n.androidPlayerUnavailable)),
+        );
+        return;
+      }
+      _leavePlayer();
     } catch (e, st) {
       AppLogger.instance.logError(e, st);
       if (!mounted) return;
-      _initInApp();
-      setState(() {});
+      Navigator.of(context).maybePop();
     }
   }
 

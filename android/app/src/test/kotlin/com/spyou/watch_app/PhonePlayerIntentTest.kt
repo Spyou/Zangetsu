@@ -36,5 +36,13 @@ class PhonePlayerIntentTest {
         // coupling the two players.
         assertEquals("url", PhonePlayerIntent.EXTRA_URL)
         assertEquals("positionMs", PhonePlayerIntent.RESULT_POSITION)
+        assertEquals("autoResume", PhonePlayerIntent.EXTRA_AUTO_RESUME)
+        assertEquals("keepScreenOn", PhonePlayerIntent.EXTRA_KEEP_SCREEN_ON)
+        assertEquals("autoplayNext", PhonePlayerIntent.EXTRA_AUTOPLAY_NEXT)
+        assertEquals("seekSeconds", PhonePlayerIntent.EXTRA_SEEK_SECONDS)
+        assertEquals("subFormats", PhonePlayerIntent.EXTRA_SUB_FORMATS)
+        assertEquals("subDefaults", PhonePlayerIntent.EXTRA_SUB_DEFAULTS)
+        assertEquals("subtitleEdgeColor", PhonePlayerIntent.EXTRA_SUB_EDGE_COLOR)
+        assertEquals("subtitlePreference", PhonePlayerIntent.EXTRA_SUB_PREFERENCE)
     }
 }

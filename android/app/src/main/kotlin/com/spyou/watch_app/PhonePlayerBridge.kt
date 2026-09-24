@@ -78,6 +78,10 @@ object PhonePlayerBridge {
                 ?.let { i.putExtra(PhonePlayerIntent.EXTRA_SUB_LANGS, it.toTypedArray()) }
             call.argument<List<String>>("subLabels")
                 ?.let { i.putExtra(PhonePlayerIntent.EXTRA_SUB_LABELS, it.toTypedArray()) }
+            call.argument<List<String>>("subFormats")
+                ?.let { i.putExtra(PhonePlayerIntent.EXTRA_SUB_FORMATS, it.toTypedArray()) }
+            call.argument<List<Boolean>>("subDefaults")
+                ?.let { defaults -> i.putExtra(PhonePlayerIntent.EXTRA_SUB_DEFAULTS, defaults.toBooleanArray()) }
             i.putExtra(
                 PhonePlayerIntent.EXTRA_ACCENT,
                 (call.argument<Number>("accentColor") ?: 0xFFFF4D5E.toInt()).toInt(),
@@ -89,6 +93,22 @@ object PhonePlayerBridge {
             i.putExtra(
                 PhonePlayerIntent.EXTRA_SPEED,
                 (call.argument<Number>("defaultSpeed") ?: 1.0).toFloat(),
+            )
+            i.putExtra(
+                PhonePlayerIntent.EXTRA_AUTO_RESUME,
+                call.argument<Boolean>("autoResume") ?: true,
+            )
+            i.putExtra(
+                PhonePlayerIntent.EXTRA_KEEP_SCREEN_ON,
+                call.argument<Boolean>("keepScreenOn") ?: true,
+            )
+            i.putExtra(
+                PhonePlayerIntent.EXTRA_AUTOPLAY_NEXT,
+                call.argument<Boolean>("autoplayNext") ?: true,
+            )
+            i.putExtra(
+                PhonePlayerIntent.EXTRA_SEEK_SECONDS,
+                (call.argument<Number>("seekSeconds") ?: 10).toInt(),
             )
             i.putExtra(
                 PhonePlayerIntent.EXTRA_BUF_MIN_MS,
@@ -121,6 +141,14 @@ object PhonePlayerBridge {
             i.putExtra(
                 PhonePlayerIntent.EXTRA_SUB_EDGE_TYPE,
                 (call.argument<Number>("subtitleEdgeType") ?: 1).toInt(),
+            )
+            i.putExtra(
+                PhonePlayerIntent.EXTRA_SUB_EDGE_COLOR,
+                (call.argument<Number>("subtitleEdgeColor") ?: android.graphics.Color.BLACK).toInt(),
+            )
+            i.putExtra(
+                PhonePlayerIntent.EXTRA_SUB_PREFERENCE,
+                call.argument<String>("subtitlePreference") ?: "",
             )
             call.argument<String>("subtitleFontPath")
                 ?.let { i.putExtra(PhonePlayerIntent.EXTRA_SUB_FONT, it) }

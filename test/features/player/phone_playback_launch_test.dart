@@ -66,6 +66,12 @@ void main() {
           subtitleFgColor: 0xFFFFFFFF,
           subtitleBgColor: 0x00000000,
           subtitleEdgeType: 1,
+          subtitleEdgeColor: 0xFF000000,
+          subtitlePreference: '',
+          autoResume: true,
+          keepScreenOn: false,
+          autoplayNext: true,
+          seekSeconds: 15,
         );
 
     test('carries the stream, the resume position and the episode list', () {
@@ -102,11 +108,109 @@ void main() {
     });
 
     test('buffer params are spread in, not nested', () {
-      // BufferPresets.loadControl reads them off the top level of the call.
       final a = args();
       expect(a['minBufferMs'], 15000);
       expect(a['maxBufferMs'], 50000);
       expect(a['backBufferMs'], 30000);
+    });
+
+    test('carries phone playback settings and subtitle metadata', () {
+      final a = args(
+        source: _src(
+          subtitles: const [
+            Subtitle(
+              url: 'https://a/en',
+              lang: 'en',
+              format: 'srt',
+              isDefault: true,
+            ),
+            Subtitle(url: 'https://a/es', lang: 'es'),
+          ],
+        ),
+      );
+
+      expect(a['autoResume'], isTrue);
+      expect(a['keepScreenOn'], isFalse);
+      expect(a['autoplayNext'], isTrue);
+      expect(a['seekSeconds'], 15);
+      expect(a['subtitleEdgeColor'], 0xFF000000);
+      expect(a['subtitlePreference'], '');
+      expect(a['subFormats'], ['srt', '']);
+      expect(a['subDefaults'], [true, false]);
+    });
+  });
+
+  group('phoneSourceMap', () {
+    test('carries source and subtitle metadata for the native picker', () {
+      final map = phoneSourceMap(
+        _src(
+          subtitles: const [
+            Subtitle(
+              url: 'https://a/en',
+              lang: 'en',
+              format: 'srt',
+              isDefault: true,
+            ),
+          ],
+        ),
+        3,
+      );
+
+      expect(map['label'], 'Server 4');
+      expect(map['subFormats'], ['srt']);
+      expect(map['subDefaults'], [true]);
+    });
+  });
+
+  group('phoneSubtitleMime', () {
+    test('prefers provider format over the URL', () {
+      expect(
+        phoneSubtitleMime('srt', 'https://a/subtitle.vtt'),
+        'application/x-subrip',
+      );
+      expect(phoneSubtitleMime('ass', 'https://a/subtitle.vtt'), 'text/x-ssa');
+      expect(
+        phoneSubtitleMime('dfxp', 'https://a/subtitle.vtt'),
+        'application/ttml+xml',
+      );
+    });
+
+    test('falls back to the URL extension', () {
+      expect(phoneSubtitleMime(null, 'https://a/subtitle.vtt'), 'text/vtt');
+      expect(phoneSubtitleMime(null, 'https://a/subtitle.ssa'), 'text/x-ssa');
+      expect(
+        phoneSubtitleMime(null, 'https://a/subtitle.dfxp'),
+        'application/ttml+xml',
+      );
+      expect(phoneSubtitleMime(null, 'https://a/subtitle'), 'text/vtt');
+    });
+  });
+
+  group('phoneMirrorLabel', () {
+    test('prefers the provider name', () {
+      final s = VideoSource(
+        url: 'https://a/1',
+        container: SourceContainer.mp4,
+        label: 'Vidhide',
+        quality: '1080p',
+      );
+      expect(phoneMirrorLabel(s, 0), 'Vidhide');
+    });
+
+    test('falls back to the quality when there is no name', () {
+      final s = VideoSource(
+        url: 'https://a/2',
+        container: SourceContainer.mp4,
+        quality: '720p',
+      );
+      expect(phoneMirrorLabel(s, 1), '720p');
+    });
+
+    test('never returns blank — an unnamed mirror gets its number', () {
+      // A blank row in the picker is unpickable; the index is 0-based and the
+      // label is 1-based, so index 2 reads "Server 3".
+      final s = VideoSource(url: 'https://a/3', container: SourceContainer.mp4);
+      expect(phoneMirrorLabel(s, 2), 'Server 3');
     });
   });
 }

@@ -459,6 +459,7 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
     // extras they read, so external subtitles and the resume position may be
     // dropped. Flagged rather than hidden: it's a real caveat, not a blocker.
     final options = <(String, String)>[
+      (PlaybackPrefs.androidPlayerId, context.l10n.androidPlayer),
       ('', context.l10n.builtInPlayer),
       for (final p in players) (p.package, p.known ? p.label : '${p.label}${context.l10n.noSubsResumeSuffix}'),
     ];
@@ -477,7 +478,11 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
     // hint, which belongs in the picker but not in the saved name shown on the
     // settings row afterwards.
     final match = players.where((p) => p.package == picked);
-    final label = match.isEmpty ? '' : match.first.label;
+    final label = picked == PlaybackPrefs.androidPlayerId
+        ? 'Android Player'
+        : match.isEmpty
+            ? ''
+            : match.first.label;
     await _prefs.setExternalPlayer(picked, picked.isEmpty ? '' : label);
     if (mounted) setState(() {});
   }
@@ -664,20 +669,12 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                 SettingsTile(
                   icon: Icons.smart_display_outlined,
                   title: context.l10n.defaultPlayer,
-                  subtitle: _prefs.externalPlayerPackage.isEmpty
-                      ? context.l10n.builtIn
-                      : (_prefs.externalPlayerLabel.isNotEmpty ? _prefs.externalPlayerLabel : context.l10n.externalApp),
+                  subtitle: _prefs.externalPlayerPackage == PlaybackPrefs.androidPlayerId
+                      ? context.l10n.androidPlayer
+                      : _prefs.externalPlayerPackage.isEmpty
+                          ? context.l10n.builtIn
+                          : (_prefs.externalPlayerLabel.isNotEmpty ? _prefs.externalPlayerLabel : context.l10n.externalApp),
                   onTap: _pickPlayer,
-                ),
-                _toggleRow(
-                  icon: Icons.science_outlined,
-                  title: context.l10n.experimentalExoPlayer,
-                  subtitle: context.l10n.experimentalExoPlayerSubtitle,
-                  value: _prefs.experimentalExoPlayer,
-                  onChanged: (v) async {
-                    await _prefs.setExperimentalExoPlayer(v);
-                    if (mounted) setState(() {});
-                  },
                 ),
                 SettingsTile(
                   icon: Icons.tune_rounded,

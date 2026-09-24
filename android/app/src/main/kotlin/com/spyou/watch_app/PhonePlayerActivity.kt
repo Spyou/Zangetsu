@@ -11,6 +11,8 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
+import androidx.media3.common.TrackSelectionOverride
+import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
@@ -20,6 +22,7 @@ import androidx.media3.exoplayer.RenderersFactory
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
 import io.github.anilbeesetti.nextlib.media3ext.ffdecoder.NextRenderersFactory
+import java.util.Locale
 
 /**
  * The phone's own native video player.
@@ -76,10 +79,27 @@ class PhonePlayerActivity : Activity() {
     private var episodeCount = 1
     private var episodeLabels: Array<String> = emptyArray()
     private var switching = false
+    private var mediaGeneration = 0
+    private var failoverInFlight = false
+    private var currentUrl = ""
+    private val attemptedUrls = mutableSetOf<String>()
+    private var autoplayNext = true
+    private var seekMs = 10_000L
+    private var keepScreenOn = true
+    private var subtitlePreference = ""
+    private var subtitlePreferenceApplied = false
+    private var playbackStarted = false
+
+    private var mirrors: List<Map<String, Any?>> = emptyList()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        keepScreenOn = intent.getBooleanExtra(PhonePlayerIntent.EXTRA_KEEP_SCREEN_ON, true)
+        if (keepScreenOn) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } else {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
         goImmersive()
 
         val url = intent.getStringExtra(PhonePlayerIntent.EXTRA_URL)
@@ -102,16 +122,22 @@ class PhonePlayerActivity : Activity() {
         currentIndex = intent.getIntExtra(PhonePlayerIntent.EXTRA_START_INDEX, 0)
         episodeCount = intent.getIntExtra(PhonePlayerIntent.EXTRA_EP_COUNT, 1)
         episodeLabels = intent.getStringArrayExtra(PhonePlayerIntent.EXTRA_EP_LABELS) ?: emptyArray()
+        autoplayNext = intent.getBooleanExtra(PhonePlayerIntent.EXTRA_AUTOPLAY_NEXT, true)
+        seekMs = (intent.getIntExtra(PhonePlayerIntent.EXTRA_SEEK_SECONDS, 10) * 1000L)
+            .coerceAtLeast(1_000L)
+        subtitlePreference = intent.getStringExtra(PhonePlayerIntent.EXTRA_SUB_PREFERENCE).orEmpty()
 
         findViewById<View>(R.id.btn_back).setOnClickListener { finish() }
         btnPlay.setOnClickListener { togglePlay() }
-        findViewById<View>(R.id.btn_rewind).setOnClickListener { seekBy(-10_000L) }
-        findViewById<View>(R.id.btn_forward).setOnClickListener { seekBy(10_000L) }
+        findViewById<View>(R.id.btn_rewind).setOnClickListener { seekBy(-seekMs) }
+        findViewById<View>(R.id.btn_forward).setOnClickListener { seekBy(seekMs) }
         findViewById<View>(R.id.btn_episodes).setOnClickListener { showEpisodeMenu() }
         findViewById<View>(R.id.btn_next).apply {
             visibility = if (currentIndex + 1 < episodeCount) View.VISIBLE else View.GONE
             setOnClickListener { loadEpisode(currentIndex + 1) }
         }
+        findViewById<View>(R.id.btn_sources).setOnClickListener { showSourceMenu() }
+        findViewById<View>(R.id.btn_subs).setOnClickListener { showSubtitleMenu() }
 
         seek.setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(sb: android.widget.SeekBar, value: Int, fromUser: Boolean) {
@@ -147,8 +173,8 @@ class PhonePlayerActivity : Activity() {
                     // play button's territory and is left alone.
                     val third = playerView.width / 3f
                     when {
-                        e.x < third -> seekBy(-10_000L)
-                        e.x > third * 2 -> seekBy(10_000L)
+                        e.x < third -> seekBy(-seekMs)
+                        e.x > third * 2 -> seekBy(seekMs)
                         else -> togglePlay()
                     }
                     return true
@@ -182,24 +208,64 @@ class PhonePlayerActivity : Activity() {
             .build()
         player = exo
         playerView.player = exo
+        playerView.subtitleView?.apply {
+            setStyle(
+                androidx.media3.ui.CaptionStyleCompat(
+                    intent.getIntExtra(PhonePlayerIntent.EXTRA_SUB_FG, android.graphics.Color.WHITE),
+                    intent.getIntExtra(PhonePlayerIntent.EXTRA_SUB_BG_COLOR, android.graphics.Color.TRANSPARENT),
+                    android.graphics.Color.TRANSPARENT, // window colour: never drawn
+                    intent.getIntExtra(
+                        PhonePlayerIntent.EXTRA_SUB_EDGE_TYPE,
+                        androidx.media3.ui.CaptionStyleCompat.EDGE_TYPE_OUTLINE,
+                    ),
+                    intent.getIntExtra(
+                        PhonePlayerIntent.EXTRA_SUB_EDGE_COLOR,
+                        android.graphics.Color.BLACK,
+                    ),
+                    intent.getStringExtra(PhonePlayerIntent.EXTRA_SUB_FONT)
+                        ?.let { runCatching { android.graphics.Typeface.createFromFile(it) }.getOrNull() },
+                ),
+            )
+            // FRACTION_TEXT_SIZE, not absolute: the same setting has to read
+            // the same on a small phone and a tablet.
+            setFractionalTextSize(0.0533f * intent.getFloatExtra(PhonePlayerIntent.EXTRA_SUB_SCALE, 1f))
+            setApplyEmbeddedStyles(false)
+            setApplyEmbeddedFontSizes(false)
+            invalidate()
+        }
         exo.playbackParameters =
             PlaybackParameters(intent.getFloatExtra(PhonePlayerIntent.EXTRA_SPEED, 1f))
 
         exo.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
+                updateKeepScreenOn()
                 loading.visibility =
                     if (state == Player.STATE_BUFFERING) View.VISIBLE else View.GONE
+                if (state == Player.STATE_READY) {
+                    playbackError = false
+                    playbackStarted = true
+                }
+                if (state == Player.STATE_ENDED &&
+                    autoplayNext &&
+                    !switching &&
+                    currentIndex + 1 < episodeCount
+                ) {
+                    loadEpisode(currentIndex + 1)
+                }
+            }
+
+            override fun onTracksChanged(tracks: Tracks) {
+                applySubtitlePreference(tracks)
             }
 
             override fun onPlayerError(error: PlaybackException) {
                 playbackError = true
                 loading.visibility = View.GONE
-                // Task 8 turns this into a real failover; for now the session
-                // ends and Dart is told why.
-                finish()
+                failover()
             }
 
             override fun onIsPlayingChanged(isPlaying: Boolean) {
+                updateKeepScreenOn()
                 syncPlayIcon()
                 bumpControls()
             }
@@ -224,6 +290,11 @@ class PhonePlayerActivity : Activity() {
         positionMs: Long,
     ) {
         val p = player ?: return
+        p.pause()
+        playbackStarted = false
+        subtitlePreferenceApplied = false
+        currentUrl = url
+        attemptedUrls.add(url)
         val httpFactory = DefaultHttpDataSource.Factory()
             .setAllowCrossProtocolRedirects(true)
         if (headers.isNotEmpty()) httpFactory.setDefaultRequestProperties(headers)
@@ -257,19 +328,11 @@ class PhonePlayerActivity : Activity() {
     /** Ask Dart for [index]'s stream, then play it. */
     private fun loadEpisode(index: Int) {
         if (index < 0 || index >= episodeCount || switching) return
+        val generation = ++mediaGeneration
+        attemptedUrls.clear()
         val ch = PhonePlayerBridge.channel ?: return
         val p = player
-        // Persist the outgoing episode before leaving it.
-        if (p != null && p.duration > 0) {
-            ch.invokeMethod(
-                "saveProgress",
-                mapOf(
-                    "index" to currentIndex,
-                    "positionMs" to p.currentPosition,
-                    "durationMs" to p.duration,
-                ),
-            )
-        }
+        sendProgress()
         p?.pause() // don't leave the old episode running under the spinner
         switching = true
         loading.visibility = View.VISIBLE
@@ -280,10 +343,15 @@ class PhonePlayerActivity : Activity() {
                 override fun success(result: Any?) {
                     @Suppress("UNCHECKED_CAST")
                     val m = result as? Map<String, Any?>
-                    if (m == null) failSwitch() else applyResolved(index, m)
+                    if (generation != mediaGeneration) return
+                    if (m == null) failSwitch() else applyResolved(index, m, generation)
                 }
-                override fun error(code: String, msg: String?, details: Any?) = failSwitch()
-                override fun notImplemented() = failSwitch()
+                override fun error(code: String, msg: String?, details: Any?) {
+                    if (generation == mediaGeneration) failSwitch()
+                }
+                override fun notImplemented() {
+                    if (generation == mediaGeneration) failSwitch()
+                }
             },
         )
     }
@@ -296,8 +364,18 @@ class PhonePlayerActivity : Activity() {
             .show()
     }
 
+    private fun headersFrom(raw: Any?): Map<String, String> {
+        val map = raw as? Map<*, *> ?: return emptyMap()
+        val out = LinkedHashMap<String, String>()
+        for ((key, value) in map) {
+            if (key is String && value is String) out[key] = value
+        }
+        return out
+    }
+
     @Suppress("UNCHECKED_CAST")
-    private fun applyResolved(index: Int, m: Map<String, Any?>) {
+    private fun applyResolved(index: Int, m: Map<String, Any?>, generation: Int) {
+        if (generation != mediaGeneration) return
         val url = m["url"] as? String
         if (url.isNullOrEmpty()) { failSwitch(); return }
         currentIndex = index
@@ -306,17 +384,261 @@ class PhonePlayerActivity : Activity() {
             if (currentIndex + 1 < episodeCount) View.VISIBLE else View.GONE
         loadStream(
             url = url,
-            headers = (m["headers"] as? Map<String, String>) ?: emptyMap(),
+            headers = headersFrom(m["headers"]),
             subs = subtitlesFrom(
                 (m["subUrls"] as? List<String>) ?: emptyList(),
                 (m["subLangs"] as? List<String>) ?: emptyList(),
                 (m["subLabels"] as? List<String>) ?: emptyList(),
+                (m["subFormats"] as? List<String>) ?: emptyList(),
+                (m["subDefaults"] as? List<Boolean>) ?: emptyList(),
             ),
             mime = m["mimeType"] as? String,
             positionMs = (m["positionMs"] as? Number)?.toLong() ?: 0L,
         )
         switching = false // the new media's buffering drives the spinner now
         bumpControls()
+    }
+
+    private fun showSourceMenu() {
+        val ch = PhonePlayerBridge.channel ?: return
+        handler.removeCallbacks(hideRunnable)
+        loading.visibility = View.VISIBLE
+        ch.invokeMethod(
+            "sourcesFor",
+            mapOf("index" to currentIndex),
+            object : io.flutter.plugin.common.MethodChannel.Result {
+                override fun success(result: Any?) {
+                    loading.visibility = View.GONE
+                    mirrors = mapList(result)
+                    if (mirrors.isEmpty()) {
+                        toast("Couldn't load sources")
+                        bumpControls()
+                        return
+                    }
+                    val labels = mirrors.mapIndexed { i, source ->
+                        val label = (source["label"] as? String).orEmpty()
+                            .ifBlank { "Server ${i + 1}" }
+                        val quality = (source["quality"] as? String).orEmpty()
+                        if (quality.isEmpty() || label.contains(quality)) label
+                        else "$label · $quality"
+                    }.toTypedArray()
+                    val selected = mirrors.indexOfFirst { it["url"] == currentUrl }
+                    android.app.AlertDialog.Builder(
+                        this@PhonePlayerActivity,
+                        android.R.style.Theme_DeviceDefault_Dialog_Alert,
+                    )
+                        .setTitle("Sources")
+                        .setSingleChoiceItems(labels, selected) { dialog, which ->
+                            dialog.dismiss()
+                            if (which != selected) playMirror(mirrors[which])
+                        }
+                        .setOnDismissListener { bumpControls() }
+                        .show()
+                }
+
+                override fun error(code: String, msg: String?, details: Any?) {
+                    loading.visibility = View.GONE
+                    toast("Couldn't load sources")
+                    bumpControls()
+                }
+
+                override fun notImplemented() {
+                    loading.visibility = View.GONE
+                    toast("Couldn't load sources")
+                    bumpControls()
+                }
+            },
+        )
+    }
+
+    private fun failover() {
+        if (failoverInFlight) return
+        val ch = PhonePlayerBridge.channel ?: run { finish(); return }
+        failoverInFlight = true
+        loading.visibility = View.VISIBLE
+        val requestedIndex = currentIndex
+        val requestedUrl = currentUrl
+        val generation = mediaGeneration
+        val position = player?.currentPosition ?: 0L
+        ch.invokeMethod(
+            "sourcesFor",
+            mapOf("index" to currentIndex),
+            object : io.flutter.plugin.common.MethodChannel.Result {
+                override fun success(result: Any?) {
+                    if (generation != mediaGeneration ||
+                        requestedIndex != currentIndex ||
+                        requestedUrl != currentUrl
+                    ) {
+                        failoverInFlight = false
+                        return
+                    }
+                    failoverInFlight = false
+                    mirrors = mapList(result)
+                    val next = mirrors.firstOrNull { source ->
+                        val url = source["url"] as? String
+                        url != null && url !in attemptedUrls
+                    }
+                    if (next == null) {
+                        toast("All sources failed")
+                        finish()
+                    } else {
+                        playMirror(next, position, generation)
+                    }
+                }
+
+                override fun error(code: String, msg: String?, details: Any?) {
+                    if (generation != mediaGeneration) return
+                    failoverInFlight = false
+                    toast("All sources failed")
+                    finish()
+                }
+
+                override fun notImplemented() {
+                    if (generation != mediaGeneration) return
+                    failoverInFlight = false
+                    toast("All sources failed")
+                    finish()
+                }
+            },
+        )
+    }
+
+    private fun mapList(result: Any?): List<Map<String, Any?>> {
+        val list = result as? List<*> ?: return emptyList()
+        return list.mapNotNull { item ->
+            val map = item as? Map<*, *> ?: return@mapNotNull null
+            map.entries.associate { (key, value) -> key.toString() to value }
+        }
+    }
+
+    private fun toast(message: String) {
+        android.widget.Toast.makeText(this, message, android.widget.Toast.LENGTH_SHORT).show()
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun playMirror(
+        m: Map<String, Any?>,
+        positionMs: Long? = null,
+        generation: Int? = null,
+    ) {
+        val url = m["url"] as? String ?: return
+        if (generation == null) mediaGeneration++
+        val keep = positionMs ?: (player?.currentPosition ?: 0L)
+        loadStream(
+            url = url,
+            headers = headersFrom(m["headers"]),
+            subs = subtitlesFrom(
+                (m["subUrls"] as? List<String>) ?: emptyList(),
+                (m["subLangs"] as? List<String>) ?: emptyList(),
+                (m["subLabels"] as? List<String>) ?: emptyList(),
+                (m["subFormats"] as? List<String>) ?: emptyList(),
+                (m["subDefaults"] as? List<Boolean>) ?: emptyList(),
+            ),
+            mime = m["mimeType"] as? String,
+            positionMs = keep,
+        )
+    }
+
+    /** Built from the player's own tracks: by now it knows about embedded
+     *  text tracks Dart never saw. */
+    private fun applySubtitlePreference(tracks: Tracks) {
+        if (subtitlePreferenceApplied) return
+        val p = player ?: return
+        if (subtitlePreference.isEmpty()) {
+            subtitlePreferenceApplied = true
+            return
+        }
+        if (subtitlePreference == "off") {
+            p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
+                .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+                .build()
+            subtitlePreferenceApplied = true
+            return
+        }
+        for (group in tracks.groups.filter { it.type == C.TRACK_TYPE_TEXT }) {
+            for (index in 0 until group.length) {
+                val language = group.getTrackFormat(index).language
+                if (languageMatches(language)) {
+                    p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
+                        .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+                        .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                        .addOverride(TrackSelectionOverride(group.mediaTrackGroup, index))
+                        .build()
+                    subtitlePreferenceApplied = true
+                    return
+                }
+            }
+        }
+    }
+
+    private fun languageMatches(language: String?): Boolean {
+        val candidate = language?.replace('_', '-')?.lowercase() ?: return false
+        val wanted = subtitlePreference.replace('_', '-').lowercase()
+        if (candidate == wanted || candidate.startsWith("$wanted-")) return true
+        val wantedName = Locale.forLanguageTag(wanted)
+            .getDisplayLanguage(Locale.getDefault())
+        val candidateName = Locale.forLanguageTag(candidate)
+            .getDisplayLanguage(Locale.getDefault())
+        return wantedName.isNotEmpty() && candidateName.equals(wantedName, ignoreCase = true)
+    }
+
+    private fun showSubtitleMenu() {
+        val p = player ?: return
+        handler.removeCallbacks(hideRunnable)
+        val groups = p.currentTracks.groups.filter { it.type == C.TRACK_TYPE_TEXT }
+        val labels = mutableListOf("Off")
+        val picks = mutableListOf<TrackSelectionOverride?>(null)
+        for (g in groups) {
+            for (i in 0 until g.length) {
+                val f = g.getTrackFormat(i)
+                labels += f.label ?: f.language ?: "Track ${labels.size}"
+                picks += TrackSelectionOverride(g.mediaTrackGroup, i)
+            }
+        }
+        if (labels.size == 1) {
+            android.widget.Toast
+                .makeText(this, "No subtitles in this stream", android.widget.Toast.LENGTH_SHORT)
+                .show()
+            bumpControls()
+            return
+        }
+        android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle("Subtitles")
+            .setItems(labels.toTypedArray()) { _, which ->
+                val pick = picks[which]
+                p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
+                    .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, pick == null)
+                    .apply { if (pick != null) addOverride(pick) }
+                    .build()
+            }
+            .setOnDismissListener { bumpControls() }
+            .show()
+    }
+
+    private fun updateKeepScreenOn() {
+        val active = player?.let {
+            it.isPlaying || it.playbackState == Player.STATE_BUFFERING
+        } == true
+        if (keepScreenOn && active) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } else {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+    }
+
+    private fun sendProgress() {
+        val p = player ?: return
+        if (!playbackStarted || p.duration <= 0) return
+        PhonePlayerBridge.channel?.invokeMethod(
+            "saveProgress",
+            mapOf(
+                "index" to currentIndex,
+                "positionMs" to p.currentPosition.coerceAtLeast(0L),
+                "durationMs" to p.duration.coerceAtLeast(0L),
+            ),
+        )
     }
 
     private fun togglePlay() {
@@ -382,31 +704,46 @@ class PhonePlayerActivity : Activity() {
         (intent.getStringArrayExtra(PhonePlayerIntent.EXTRA_SUB_URLS) ?: emptyArray()).toList(),
         (intent.getStringArrayExtra(PhonePlayerIntent.EXTRA_SUB_LANGS) ?: emptyArray()).toList(),
         (intent.getStringArrayExtra(PhonePlayerIntent.EXTRA_SUB_LABELS) ?: emptyArray()).toList(),
+        (intent.getStringArrayExtra(PhonePlayerIntent.EXTRA_SUB_FORMATS) ?: emptyArray()).toList(),
+        (intent.getBooleanArrayExtra(PhonePlayerIntent.EXTRA_SUB_DEFAULTS) ?: BooleanArray(0)).toList(),
     )
 
     private fun subtitlesFrom(
         urls: List<String>,
         langs: List<String>,
         labels: List<String>,
-    ): List<MediaItem.SubtitleConfiguration> = urls.mapIndexedNotNull { i, rawUrl ->
-        if (rawUrl.isEmpty()) return@mapIndexedNotNull null
-        val u = rawUrl.lowercase()
-        MediaItem.SubtitleConfiguration.Builder(android.net.Uri.parse(rawUrl))
-            .setMimeType(
-                // An ASS/SSA track handed to the WebVTT parser throws
-                // (ParserException: "Expected WEBVTT. Got [Script Info]")
-                // and takes the whole text renderer down with it, so it
-                // needs its own branch rather than falling into TEXT_VTT.
-                when {
-                    u.contains(".ass") || u.contains(".ssa") -> MimeTypes.TEXT_SSA
-                    u.contains(".srt") -> MimeTypes.APPLICATION_SUBRIP
-                    else -> MimeTypes.TEXT_VTT
-                },
-            )
-            .setLanguage(langs.getOrNull(i))
-            .setLabel(labels.getOrNull(i))
-            .setSelectionFlags(if (i == 0) C.SELECTION_FLAG_DEFAULT else 0)
-            .build()
+        formats: List<String>,
+        defaults: List<Boolean>,
+    ): List<MediaItem.SubtitleConfiguration> {
+        val defaultIndex = defaults.indexOfFirst { it }
+        val fallbackIndex = if (urls.isEmpty()) -1 else 0
+        val selectedDefault = if (defaultIndex >= 0) defaultIndex else fallbackIndex
+        return urls.mapIndexedNotNull { i, rawUrl ->
+            if (rawUrl.isEmpty()) return@mapIndexedNotNull null
+            val format = formats.getOrNull(i).orEmpty()
+            MediaItem.SubtitleConfiguration.Builder(android.net.Uri.parse(rawUrl))
+                .setMimeType(subtitleMime(format, rawUrl))
+                .setLanguage(langs.getOrNull(i))
+                .setLabel(labels.getOrNull(i))
+                .setSelectionFlags(if (i == selectedDefault) C.SELECTION_FLAG_DEFAULT else 0)
+                .build()
+        }
+    }
+
+    private fun subtitleMime(format: String, url: String): String {
+        val f = format.lowercase()
+        val u = url.lowercase()
+        return when {
+            f == "vtt" || f == "webvtt" -> MimeTypes.TEXT_VTT
+            f == "ass" || f == "ssa" -> MimeTypes.TEXT_SSA
+            f == "ttml" || f == "dfxp" -> "application/ttml+xml"
+            f == "srt" || f == "subrip" -> MimeTypes.APPLICATION_SUBRIP
+            u.contains(".vtt") -> MimeTypes.TEXT_VTT
+            u.contains(".ass") || u.contains(".ssa") -> MimeTypes.TEXT_SSA
+            u.contains(".ttml") || u.contains(".dfxp") -> "application/ttml+xml"
+            u.contains(".srt") -> MimeTypes.APPLICATION_SUBRIP
+            else -> MimeTypes.TEXT_VTT
+        }
     }
 
     private fun renderersFactory(): RenderersFactory =
@@ -438,7 +775,9 @@ class PhonePlayerActivity : Activity() {
     // had to handle this. Pause on the way out and leave resuming to the user.
     override fun onPause() {
         super.onPause()
+        sendProgress()
         player?.pause()
+        updateKeepScreenOn()
         handler.removeCallbacks(ticker)
     }
 
@@ -447,6 +786,7 @@ class PhonePlayerActivity : Activity() {
     // here rather than in onCreate.
     override fun onResume() {
         super.onResume()
+        updateKeepScreenOn()
         handler.post(ticker)
     }
 

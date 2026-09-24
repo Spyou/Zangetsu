@@ -1781,11 +1781,10 @@ class AppLocalizationsDe extends AppLocalizations {
   String get audioDelay => 'Audio-Delay';
 
   @override
-  String get experimentalExoPlayer => 'ExoPlayer (experimental)';
+  String get androidPlayer => 'Android Player';
 
   @override
-  String get experimentalExoPlayerSubtitle =>
-      'Play with Android\'s ExoPlayer instead of the built-in player';
+  String get androidPlayerUnavailable => 'Android Player could not start';
 
   @override
   String get audioNormalization => 'Audio-Normalisierung';

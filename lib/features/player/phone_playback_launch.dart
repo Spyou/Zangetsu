@@ -9,8 +9,13 @@ import '../../core/models/video_source.dart';
 import '../../core/playback/playback_prefs.dart';
 import '../../core/playback/resume_store.dart';
 import '../../core/playback/source_selection.dart';
+import '../../core/playback/subtitle_encode_skew.dart';
+import '../../core/playback/subtitle_font_stage.dart';
 import '../../core/playback/tv_track_helpers.dart';
+import '../../core/playback/watch_history.dart';
 import '../../core/theme/app_colors.dart';
+import 'subtitle_font_service.dart';
+import 'subtitle_style.dart';
 
 /// Container → MIME hint. A tokenised url carries no extension, so without an
 /// explicit MIME ExoPlayer builds the wrong MediaSource and never starts.
@@ -22,6 +27,54 @@ String? phoneMimeFor(VideoSource source) {
   if (u.contains('.mpd')) return 'application/dash+xml';
   if (u.contains('.mp4')) return 'video/mp4';
   return null;
+}
+
+String phoneSubtitleMime(String? format, String url) {
+  final f = (format ?? '').toLowerCase();
+  final u = url.toLowerCase();
+  if (f == 'vtt' || f == 'webvtt') return 'text/vtt';
+  if (f == 'ass' || f == 'ssa') return 'text/x-ssa';
+  if (f == 'ttml' || f == 'dfxp') return 'application/ttml+xml';
+  if (f == 'srt' || f == 'subrip') return 'application/x-subrip';
+  if (u.contains('.vtt')) return 'text/vtt';
+  if (u.contains('.ass') || u.contains('.ssa')) return 'text/x-ssa';
+  if (u.contains('.ttml') || u.contains('.dfxp')) {
+    return 'application/ttml+xml';
+  }
+  if (u.contains('.srt')) return 'application/x-subrip';
+  return 'text/vtt';
+}
+
+/// The provider's own name, else the quality, else a number — never blank.
+String phoneMirrorLabel(VideoSource src, int i) {
+  final l = src.label?.trim();
+  if (l != null && l.isNotEmpty) return l;
+  final q = src.quality?.trim();
+  if (q != null && q.isNotEmpty) return q;
+  return 'Server ${i + 1}';
+}
+
+Map<String, dynamic> _phoneSubtitlePayload(VideoSource source) {
+  return <String, dynamic>{
+    'subUrls': [for (final s in source.subtitles) s.url],
+    'subLangs': [for (final s in source.subtitles) s.lang],
+    'subLabels': [for (final s in source.subtitles) s.label ?? s.lang],
+    'subFormats': [for (final s in source.subtitles) s.format ?? ''],
+    'subDefaults': [for (final s in source.subtitles) s.isDefault],
+  };
+}
+
+Map<String, dynamic> phoneSourceMap(VideoSource source, int index) {
+  return <String, dynamic>{
+    'label': phoneMirrorLabel(source, index),
+    'url': source.url,
+    'headers': source.headers ?? const <String, String>{},
+    'mimeType': ?phoneMimeFor(source),
+    'quality': source.quality ?? '',
+    'kind': source.kind.name,
+    'audioLang': source.audioLang ?? '',
+    ..._phoneSubtitlePayload(source),
+  };
 }
 
 /// Everything [PhonePlayerActivity] needs for one launch, as a flat map.
@@ -44,6 +97,12 @@ Map<String, dynamic> phonePlayerArgs({
   required int subtitleFgColor,
   required int subtitleBgColor,
   required int subtitleEdgeType,
+  required int subtitleEdgeColor,
+  required String subtitlePreference,
+  required bool autoResume,
+  required bool keepScreenOn,
+  required bool autoplayNext,
+  required int seekSeconds,
   String? subtitleFontPath,
 }) {
   final mime = phoneMimeFor(source);
@@ -57,58 +116,76 @@ Map<String, dynamic> phonePlayerArgs({
     'episodeLabels': episodeLabels,
     'episodeCount': episodeLabels.length,
     'startIndex': startIndex,
-    'subUrls': [for (final s in source.subtitles) s.url],
-    'subLangs': [for (final s in source.subtitles) s.lang],
-    // Fall back to the language so the picker never shows a blank row.
-    'subLabels': [for (final s in source.subtitles) s.label ?? s.lang],
+    ..._phoneSubtitlePayload(source),
     'accentColor': accentColor,
     'softwareDecoding': softwareDecoding,
     'defaultSpeed': defaultSpeed,
     ...bufferParams,
+    'autoResume': autoResume,
+    'keepScreenOn': keepScreenOn,
+    'autoplayNext': autoplayNext,
+    'seekSeconds': seekSeconds,
     'subtitleScale': subtitleScale,
     'subtitleFgColor': subtitleFgColor,
     'subtitleBgColor': subtitleBgColor,
     'subtitleEdgeType': subtitleEdgeType,
+    'subtitleEdgeColor': subtitleEdgeColor,
+    'subtitlePreference': subtitlePreference,
     'subtitleFontPath': ?subtitleFontPath,
   };
 }
+
+typedef PhoneSourcesPoll =
+    Future<({List<VideoSource> sources, bool done})> Function(
+      String episodeUrl,
+    );
 
 /// Opens the native phone player for [episodes] starting at [startIndex].
 ///
 /// Same argument list as the TV launcher so the call site barely changes, but
 /// a separate function with its own behaviour: it is laid out for touch, it
 /// rotates, and it says so on screen when it has to change source.
-Future<void> launchPhonePlayback({
+Future<bool> launchPhonePlayback({
   required BuildContext context,
   required String sourceId,
   required List<Episode> episodes,
   required int startIndex,
   required ResumeStore resume,
   required Future<List<VideoSource>> Function(String episodeUrl) resolveSources,
+  PhoneSourcesPoll? pollSources,
+  int resumePosition = 0,
+  bool peek = false,
   String? showUrl,
   String? showTitle,
   String? cover,
   Map<String, String>? coverHeaders,
   String category = 'sub',
   List<String> availableCategories = const [],
+  WatchHistory? history,
+  VideoSource? initialSource,
   int? malId,
   String? scrobbleTitle,
   int? tmdbId,
   bool tmdbIsTv = false,
   String? imdbId,
 }) async {
-  await PhoneNativePlayer.play(
+  return PhoneNativePlayer.play(
     sourceId: sourceId,
     episodes: episodes,
     startIndex: startIndex,
     resume: resume,
     resolveSources: resolveSources,
+    pollSources: pollSources,
+    resumePosition: resumePosition,
+    peek: peek,
     showUrl: showUrl,
     showTitle: showTitle,
     cover: cover,
     coverHeaders: coverHeaders,
     category: category,
     availableCategories: availableCategories,
+    history: history,
+    initialSource: initialSource,
     malId: malId,
     scrobbleTitle: scrobbleTitle,
     tmdbId: tmdbId,
@@ -129,6 +206,7 @@ class PhoneNativePlayer {
   static Completer<Map<String, dynamic>?>? _closed;
 
   static Future<List<VideoSource>> Function(String episodeUrl)? _resolve;
+  static PhoneSourcesPoll? _pollSources;
   static List<Episode> _episodes = const [];
   static String _sourceId = '';
   static String _showId = '';
@@ -139,6 +217,9 @@ class PhoneNativePlayer {
   static int? _malId;
   static String _category = 'sub';
   static ResumeStore? _resume;
+  static WatchHistory? _history;
+  static bool _autoResume = true;
+  static bool _peek = false;
 
   /// Returns false when the episode could not be resolved or the Activity
   /// would not start. No UI of its own — the caller surfaces that.
@@ -149,12 +230,17 @@ class PhoneNativePlayer {
     required ResumeStore resume,
     required Future<List<VideoSource>> Function(String episodeUrl)
     resolveSources,
+    PhoneSourcesPoll? pollSources,
+    int resumePosition = 0,
+    bool peek = false,
     String? showUrl,
     String? showTitle,
     String? cover,
     Map<String, String>? coverHeaders,
     String category = 'sub',
     List<String> availableCategories = const [],
+    WatchHistory? history,
+    VideoSource? initialSource,
     int? malId,
     String? scrobbleTitle,
     int? tmdbId,
@@ -162,6 +248,8 @@ class PhoneNativePlayer {
   }) async {
     if (startIndex < 0 || startIndex >= episodes.length) return false;
     _resolve = resolveSources;
+    _pollSources = pollSources;
+    _peek = peek;
     _episodes = episodes;
     _sourceId = sourceId;
     _showUrl = showUrl;
@@ -172,32 +260,59 @@ class PhoneNativePlayer {
     _malId = malId;
     _category = category;
     _resume = resume;
+    _history = history;
     if (!_handlerBound) {
       _ch.setMethodCallHandler(_onNativeCall);
       _handlerBound = true;
     }
 
     final ep = _episodes[startIndex];
-    final src = await _resolveSource(ep);
-    if (src == null) return false;
-
     final prefs = sl<PlaybackPrefs>();
-    final mark = resume.get(sourceId, _showId, ep.id);
+    _autoResume = prefs.autoResume;
+    final sources = initialSource == null
+        ? await _resolveSources(ep)
+        : [initialSource];
+    if (sources.isEmpty) return false;
+    final preparedSources = await _prepareSources(sources);
+    if (preparedSources.isEmpty) return false;
+    final src = initialSource == null
+        ? _pickSource(preparedSources)
+        : preparedSources.first;
+    if (src == null) return false;
+    final subFontPath = await _stageSubtitleFont(prefs.subtitleFont);
+    final startPosition = _autoResume
+        ? (resumePosition > 0 ? resumePosition : _resumePosition(ep))
+        : 0;
     final args = phonePlayerArgs(
       source: src,
-      positionMs: mark?.position.inMilliseconds ?? 0,
+      positionMs: startPosition,
       title: _showTitle,
       episodeLabel: _episodeLabel(ep),
       episodeLabels: [for (final e in _episodes) _episodeLabel(e)],
       startIndex: startIndex,
       accentColor: AppColors.accent.toARGB32(),
-      softwareDecoding: false,
+      softwareDecoding: prefs.videoDecoder == 'sw',
       defaultSpeed: prefs.defaultSpeed,
       bufferParams: prefs.exoBufferParams,
       subtitleScale: prefs.subtitleScale,
-      subtitleFgColor: 0xFFFFFFFF,
-      subtitleBgColor: 0x00000000,
-      subtitleEdgeType: 1,
+      subtitleFgColor: parseSubtitleHex(
+        prefs.subtitleColorHex,
+        opacity: prefs.subtitleTextOpacity,
+      ).toARGB32(),
+      subtitleBgColor: parseSubtitleHex(
+        '#000000',
+        opacity: prefs.subtitleBgOpacity,
+      ).toARGB32(),
+      subtitleEdgeType: tvEdgeTypeFromOutlinePref(prefs.subtitleOutlineType),
+      subtitleEdgeColor: parseSubtitleHex(
+        prefs.subtitleOutlineColorHex,
+      ).toARGB32(),
+      subtitlePreference: prefs.subtitlePreference,
+      autoResume: prefs.autoResume,
+      keepScreenOn: prefs.keepScreenOn,
+      autoplayNext: prefs.autoplayNext,
+      seekSeconds: prefs.seekSeconds,
+      subtitleFontPath: subFontPath,
     );
 
     _closed = Completer<Map<String, dynamic>?>();
@@ -206,7 +321,6 @@ class PhoneNativePlayer {
       _closed = null;
       return false;
     }
-    // Resolves when the Activity is destroyed; Task 7 uses the payload.
     await _closed!.future;
     return true;
   }
@@ -214,46 +328,166 @@ class PhoneNativePlayer {
   static Future<dynamic> _onNativeCall(MethodCall call) async {
     switch (call.method) {
       case 'resolveEpisode':
-        final args = (call.arguments as Map).cast<String, dynamic>();
-        final index = (args['index'] as num?)?.toInt() ?? -1;
+        final args = _callArgs(call);
+        final index = (args?['index'] as num?)?.toInt() ?? -1;
         if (index < 0 || index >= _episodes.length) return null;
-        final ep = _episodes[index];
-        final src = await _resolveSource(ep);
-        if (src == null) return null;
-        final mark = _resume?.get(_sourceId, _showId, ep.id);
-        return {
-          'url': src.url,
-          'headers': src.headers ?? const <String, String>{},
-          'mimeType': ?phoneMimeFor(src),
-          'positionMs': mark?.position.inMilliseconds ?? 0,
-          'episodeLabel': _episodeLabel(ep),
-          'subUrls': [for (final s in src.subtitles) s.url],
-          'subLangs': [for (final s in src.subtitles) s.lang],
-          'subLabels': [for (final s in src.subtitles) s.label ?? s.lang],
-        };
+        return _resolveEpisode(index);
+      case 'sourcesFor':
+        final args = _callArgs(call);
+        final index = (args?['index'] as num?)?.toInt() ?? -1;
+        if (index < 0 || index >= _episodes.length) return const <Map>[];
+        final sources = await _resolveSources(
+          _episodes[index],
+          preferPolled: true,
+        );
+        final prepared = await _prepareSources(sources);
+        return [
+          for (var i = 0; i < prepared.length; i++)
+            phoneSourceMap(prepared[i], i),
+        ];
+      case 'saveProgress':
+        await _saveProgress(_callArgs(call), flush: true);
+        return null;
       case 'playerClosed':
-        final args = (call.arguments as Map?)?.cast<String, dynamic>();
-        _closed?.complete(args);
+        final args = _callArgs(call);
+        await _saveProgress(args, flush: true);
+        if (_closed?.isCompleted == false) _closed!.complete(args);
         _closed = null;
         return null;
     }
     return null;
   }
 
-  static Future<VideoSource?> _resolveSource(
+  static Map<String, dynamic>? _callArgs(MethodCall call) {
+    final raw = call.arguments;
+    return raw is Map ? raw.cast<String, dynamic>() : null;
+  }
+
+  static Future<Map<String, dynamic>?> _resolveEpisode(int index) async {
+    final ep = _episodes[index];
+    final sources = await _resolveSources(ep);
+    final prepared = await _prepareSources(sources);
+    final src = _pickSource(prepared);
+    if (src == null) return null;
+    return {
+      ...phoneSourceMap(src, _indexOfSource(prepared, src)),
+      'positionMs': _resumePosition(ep),
+      'episodeLabel': _episodeLabel(ep),
+    };
+  }
+
+  static VideoSource? _pickSource(List<VideoSource> sources) => pickDefault(
+    sources,
+    prefer: _category == 'dub' ? AudioKind.dub : AudioKind.sub,
+  );
+
+  static int _indexOfSource(List<VideoSource> sources, VideoSource target) {
+    final index = sources.indexWhere((source) => source.url == target.url);
+    return index < 0 ? 0 : index;
+  }
+
+  static Future<List<VideoSource>> _resolveSources(
     Episode ep, {
-    String? category,
+    bool preferPolled = false,
   }) async {
-    final cat = category ?? _category;
+    final url = tvEpisodeUrl(ep.url, _category);
+    if (preferPolled && _pollSources != null) {
+      try {
+        final deadline = DateTime.now().add(const Duration(seconds: 3));
+        var latest = const <VideoSource>[];
+        while (true) {
+          final polled = await _pollSources!(url);
+          latest = polled.sources;
+          if (polled.done || DateTime.now().isAfter(deadline)) {
+            if (latest.isNotEmpty) return latest;
+            break;
+          }
+          await Future<void>.delayed(const Duration(milliseconds: 150));
+        }
+      } catch (e) {
+        debugPrint('[PhoneNativePlayer] poll failed · $e');
+      }
+    }
     try {
-      final sources = await _resolve!(tvEpisodeUrl(ep.url, cat));
-      return pickDefault(
-        sources,
-        prefer: cat == 'dub' ? AudioKind.dub : AudioKind.sub,
-      );
+      return await _resolve!(url);
     } catch (e) {
       debugPrint('[PhoneNativePlayer] resolve failed · $e');
-      return null;
+      return const [];
+    }
+  }
+
+  static Future<List<VideoSource>> _prepareSources(
+    List<VideoSource> sources,
+  ) async {
+    final prepared = <VideoSource>[];
+    for (final source in sources) {
+      if ((source.subtitleSkewSeconds ?? 0).abs() < 0.05) {
+        prepared.add(source);
+      } else {
+        prepared.add(await materializeSkewedSubtitles(source));
+      }
+    }
+    return prepared;
+  }
+
+  static Future<String?> _stageSubtitleFont(String family) async {
+    if (family.isEmpty) return null;
+    if (!await SubtitleFontService.instance.ensure(family)) return null;
+    return stageSubtitleFont(family);
+  }
+
+  static int _resumePosition(Episode ep) {
+    if (!_autoResume) return 0;
+    return _resume?.get(_sourceId, _showId, ep.id)?.position.inMilliseconds ??
+        0;
+  }
+
+  static Future<void> _saveProgress(
+    Map<String, dynamic>? args, {
+    required bool flush,
+  }) async {
+    if (args == null || _peek) return;
+    final index = (args['index'] ?? args['episodeIndex']) as num?;
+    final position = args['positionMs'] as num?;
+    final duration = args['durationMs'] as num?;
+    if (index == null || position == null) return;
+    final i = index.toInt();
+    if (i < 0 || i >= _episodes.length) return;
+    final positionMs = position.toInt().clamp(0, 1 << 62);
+    final durationMs = duration?.toInt().clamp(0, 1 << 62) ?? 0;
+    if (durationMs <= 0 && positionMs <= 0) return;
+    final ep = _episodes[i];
+    await _resume?.save(
+      _sourceId,
+      _showId,
+      ep.id,
+      Duration(milliseconds: positionMs),
+      Duration(milliseconds: durationMs),
+    );
+    final history = _history;
+    if (history != null && _showTitle.isNotEmpty) {
+      unawaited(
+        history.save(
+          HistoryEntry(
+            sourceId: _sourceId,
+            showId: _showId,
+            showTitle: _showTitle,
+            cover: _cover,
+            coverHeaders: _coverHeaders,
+            thumbnail: ep.thumbnail,
+            showUrl: _showUrl ?? '',
+            category: _category,
+            episodeId: ep.id,
+            episodeNumber: ep.number,
+            episodeUrl: ep.url,
+            position: Duration(milliseconds: positionMs),
+            duration: Duration(milliseconds: durationMs),
+            updatedAt: DateTime.now().millisecondsSinceEpoch,
+            malId: _malId,
+          ),
+          flush: flush,
+        ),
+      );
     }
   }
 
