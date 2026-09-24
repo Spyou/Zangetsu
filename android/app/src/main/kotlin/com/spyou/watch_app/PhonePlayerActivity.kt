@@ -1,6 +1,7 @@
 package com.spyou.watch_app
 
 import android.app.Activity
+import android.content.pm.ActivityInfo
 import android.os.Bundle
 import android.view.View
 import android.view.WindowManager
@@ -20,7 +21,9 @@ import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.RenderersFactory
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import com.spyou.watch_app.cast.CastManager
 import io.github.anilbeesetti.nextlib.media3ext.ffdecoder.NextRenderersFactory
 import java.util.Locale
 
@@ -64,6 +67,7 @@ class PhonePlayerActivity : Activity() {
     private val handler = android.os.Handler(android.os.Looper.getMainLooper())
     private val hideRunnable = Runnable { hideControls() }
     private var scrubbing = false
+    private var controlsHiding = false
 
     private val ticker = object : Runnable {
         override fun run() {
@@ -89,8 +93,11 @@ class PhonePlayerActivity : Activity() {
     private var subtitlePreference = ""
     private var subtitlePreferenceApplied = false
     private var playbackStarted = false
+    private var resizeIndex = 0
 
     private var mirrors: List<Map<String, Any?>> = emptyList()
+    private var castManager: CastManager? = null
+    private var castSupported = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -129,15 +136,22 @@ class PhonePlayerActivity : Activity() {
 
         findViewById<View>(R.id.btn_back).setOnClickListener { finish() }
         btnPlay.setOnClickListener { togglePlay() }
-        findViewById<View>(R.id.btn_rewind).setOnClickListener { seekBy(-seekMs) }
-        findViewById<View>(R.id.btn_forward).setOnClickListener { seekBy(seekMs) }
-        findViewById<View>(R.id.btn_episodes).setOnClickListener { showEpisodeMenu() }
-        findViewById<View>(R.id.btn_next).apply {
-            visibility = if (currentIndex + 1 < episodeCount) View.VISIBLE else View.GONE
-            setOnClickListener { loadEpisode(currentIndex + 1) }
+        findViewById<View>(R.id.btn_previous).setOnClickListener {
+            bumpControls()
+            if (currentIndex > 0) loadEpisode(currentIndex - 1)
         }
-        findViewById<View>(R.id.btn_sources).setOnClickListener { showSourceMenu() }
-        findViewById<View>(R.id.btn_subs).setOnClickListener { showSubtitleMenu() }
+        findViewById<View>(R.id.btn_next).setOnClickListener {
+            bumpControls()
+            loadEpisode(currentIndex + 1)
+        }
+        findViewById<View>(R.id.btn_more).setOnClickListener {
+            bumpControls()
+            showMoreMenu()
+        }
+        val cast = CastManager(this)
+        castManager = cast
+        castSupported = runCatching { cast.init() }.getOrDefault(false)
+        updateEpisodeNavigation()
 
         seek.setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(sb: android.widget.SeekBar, value: Int, fromUser: Boolean) {
@@ -149,6 +163,7 @@ class PhonePlayerActivity : Activity() {
             override fun onStartTrackingTouch(sb: android.widget.SeekBar) {
                 scrubbing = true
                 // Cancel the auto-hide: a slow scrub must not lose the bar.
+                restoreControls()
                 handler.removeCallbacks(hideRunnable)
             }
 
@@ -282,6 +297,13 @@ class PhonePlayerActivity : Activity() {
         )
     }
 
+    private fun updateEpisodeNavigation() {
+        findViewById<View>(R.id.btn_previous).visibility =
+            if (currentIndex > 0) View.VISIBLE else View.INVISIBLE
+        findViewById<View>(R.id.btn_next).visibility =
+            if (currentIndex + 1 < episodeCount) View.VISIBLE else View.INVISIBLE
+    }
+
     private fun loadStream(
         url: String,
         headers: Map<String, String>,
@@ -380,8 +402,7 @@ class PhonePlayerActivity : Activity() {
         if (url.isNullOrEmpty()) { failSwitch(); return }
         currentIndex = index
         episodeText.text = m["episodeLabel"] as? String ?: episodeLabels.getOrNull(index) ?: ""
-        findViewById<View>(R.id.btn_next).visibility =
-            if (currentIndex + 1 < episodeCount) View.VISIBLE else View.GONE
+        updateEpisodeNavigation()
         loadStream(
             url = url,
             headers = headersFrom(m["headers"]),
@@ -606,13 +627,215 @@ class PhonePlayerActivity : Activity() {
         android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
             .setTitle("Subtitles")
             .setItems(labels.toTypedArray()) { _, which ->
+                selectTextTrack(picks[which])
+            }
+            .setOnDismissListener { bumpControls() }
+            .show()
+    }
+
+    private fun showSpeedMenu() {
+        val p = player ?: return
+        handler.removeCallbacks(hideRunnable)
+        val rates = floatArrayOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f)
+        val checked = rates.indexOfFirst { kotlin.math.abs(it - p.playbackParameters.speed) < 0.001f }
+        val labels = rates.map { "${it}x" }.toTypedArray()
+        android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle(getString(R.string.phone_player_title_speed))
+            .setSingleChoiceItems(labels, checked) { dialog, which ->
+                dialog.dismiss()
+                p.playbackParameters = PlaybackParameters(rates[which])
+                bumpControls()
+            }
+            .setOnDismissListener { bumpControls() }
+            .show()
+    }
+
+    private fun selectAudioTrack(pick: TrackSelectionOverride?) {
+        val p = player ?: return
+        p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
+            .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+            .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
+            .apply { if (pick != null) addOverride(pick) }
+            .build()
+        bumpControls()
+    }
+
+    private fun selectTextTrack(pick: TrackSelectionOverride?) {
+        val p = player ?: return
+        p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
+            .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, pick == null)
+            .apply { if (pick != null) addOverride(pick) }
+            .build()
+        bumpControls()
+    }
+
+    private fun showTracksMenu() {
+        val p = player ?: return
+        handler.removeCallbacks(hideRunnable)
+        val tracks = p.currentTracks
+        val audio = tracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }
+        val text = tracks.groups.filter { it.type == C.TRACK_TYPE_TEXT }
+        val audioTracks = audio.flatMap { g -> (0 until g.length).map { g to it } }
+        val textTracks = text.flatMap { g -> (0 until g.length).map { g to it } }
+        if (audioTracks.size + textTracks.size < 2) {
+            toast(getString(R.string.phone_player_toast_no_tracks))
+            bumpControls()
+            return
+        }
+        val labels = mutableListOf("Audio: Auto")
+        val audioPicks = mutableListOf<TrackSelectionOverride?>(null)
+        for ((g, i) in audioTracks) {
+            val f = g.getTrackFormat(i)
+            labels += "Audio: ${f.label ?: f.language ?: "Track ${labels.size}"}"
+            audioPicks += TrackSelectionOverride(g.mediaTrackGroup, i)
+        }
+        val textBase = labels.size
+        labels += "Subtitles: Off"
+        val textPicks = mutableListOf<TrackSelectionOverride?>(null)
+        for ((g, i) in textTracks) {
+            val f = g.getTrackFormat(i)
+            labels += "Subtitles: ${f.label ?: f.language ?: "Track ${labels.size}"}"
+            textPicks += TrackSelectionOverride(g.mediaTrackGroup, i)
+        }
+        android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle(getString(R.string.phone_player_title_tracks))
+            .setItems(labels.toTypedArray()) { _, which ->
+                if (which < textBase) {
+                    selectAudioTrack(audioPicks[which])
+                } else {
+                    selectTextTrack(textPicks[which - textBase])
+                }
+            }
+            .setOnDismissListener { bumpControls() }
+            .show()
+    }
+
+    private fun showQualityMenu() {
+        val p = player ?: return
+        handler.removeCallbacks(hideRunnable)
+        val video = p.currentTracks.groups.filter { it.type == C.TRACK_TYPE_VIDEO }
+        val videoTracks = video.flatMap { g -> (0 until g.length).map { g to it } }
+        if (videoTracks.size < 2) {
+            toast(getString(R.string.phone_player_toast_single_quality))
+            bumpControls()
+            return
+        }
+        val labels = mutableListOf("Auto")
+        val picks = mutableListOf<TrackSelectionOverride?>(null)
+        for ((g, i) in videoTracks.sortedByDescending { (g, i) -> g.getTrackFormat(i).height }) {
+            val h = g.getTrackFormat(i).height
+            labels += if (h > 0) "${h}p" else "Track ${labels.size}"
+            picks += TrackSelectionOverride(g.mediaTrackGroup, i)
+        }
+        android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle(getString(R.string.phone_player_title_quality))
+            .setItems(labels.toTypedArray()) { _, which ->
                 val pick = picks[which]
                 p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
-                    .clearOverridesOfType(C.TRACK_TYPE_TEXT)
-                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, pick == null)
+                    .clearOverridesOfType(C.TRACK_TYPE_VIDEO)
+                    .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, false)
                     .apply { if (pick != null) addOverride(pick) }
                     .build()
+                bumpControls()
             }
+            .setOnDismissListener { bumpControls() }
+            .show()
+    }
+
+    private fun toggleRotation() {
+        requestedOrientation = if (requestedOrientation == ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE) {
+            ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        } else {
+            ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        }
+        bumpControls()
+    }
+
+    private fun cycleDisplayMode() {
+        val modes = intArrayOf(
+            AspectRatioFrameLayout.RESIZE_MODE_FIT,
+            AspectRatioFrameLayout.RESIZE_MODE_FILL,
+            AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+        )
+        val labels = arrayOf(
+            getString(R.string.phone_player_mode_fit),
+            getString(R.string.phone_player_mode_fill),
+            getString(R.string.phone_player_mode_zoom)
+        )
+        resizeIndex = (resizeIndex + 1) % modes.size
+        playerView.resizeMode = modes[resizeIndex]
+        toast(labels[resizeIndex])
+        bumpControls()
+    }
+
+    private fun pickCast() {
+        castManager?.pickDevice()
+        bumpControls()
+    }
+
+    private fun showMoreMenu() {
+        handler.removeCallbacks(hideRunnable)
+        val labels = mutableListOf(
+            getString(R.string.phone_player_title_speed),
+            getString(R.string.phone_player_title_tracks),
+            getString(R.string.phone_player_title_quality),
+            getString(R.string.phone_player_menu_sources),
+            getString(R.string.phone_player_menu_episodes),
+            getString(R.string.phone_player_menu_display),
+            getString(R.string.phone_player_menu_rotate)
+        )
+        val actions = mutableListOf<() -> Unit>(
+            { showSpeedMenu() },
+            { showTracksMenu() },
+            { showQualityMenu() },
+            { showSourceMenu() },
+            { showEpisodeMenu() },
+            { cycleDisplayMode() },
+            { toggleRotation() }
+        )
+        if (castSupported) {
+            labels += getString(R.string.phone_player_menu_cast)
+            actions += { pickCast() }
+        }
+        labels += getString(R.string.phone_player_menu_info)
+        actions += { showInfo() }
+        android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle(getString(R.string.phone_player_title_more))
+            .setItems(labels.toTypedArray()) { dialog, which ->
+                dialog.dismiss()
+                actions[which]()
+            }
+            .setOnDismissListener { bumpControls() }
+            .show()
+    }
+
+    private fun showInfo() {
+        handler.removeCallbacks(hideRunnable)
+        val p = player
+        val pos = p?.currentPosition ?: 0L
+        val dur = p?.duration ?: 0L
+        val speed = p?.playbackParameters?.speed
+            ?: intent.getFloatExtra(PhonePlayerIntent.EXTRA_SPEED, 1f)
+        val mirrorLabel = mirrors.firstOrNull { it["url"] == currentUrl }
+            ?.get("label") as? String
+        val source = if (!mirrorLabel.isNullOrBlank()) {
+            mirrorLabel
+        } else {
+            runCatching { android.net.Uri.parse(currentUrl).host ?: currentUrl }
+                .getOrDefault(currentUrl)
+        }
+        val message = listOf(
+            titleText.text.toString(),
+            episodeText.text.toString(),
+            "${fmt(pos)} / ${fmt(dur)}",
+            source,
+            "${speed}x",
+        ).filter { it.isNotEmpty() }.joinToString("\n")
+        android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle(getString(R.string.phone_player_title_playback_info))
+            .setMessage(message)
+            .setPositiveButton(android.R.string.ok, null)
             .setOnDismissListener { bumpControls() }
             .show()
     }
@@ -655,9 +878,28 @@ class PhonePlayerActivity : Activity() {
     }
 
     private fun syncPlayIcon() {
-        btnPlay.setImageResource(
-            if (player?.isPlaying == true) R.drawable.ic_pip_pause else R.drawable.ic_pip_play,
-        )
+        val playing = player?.isPlaying == true
+        btnPlay.contentDescription = if (playing) getString(R.string.phone_player_state_pause) else getString(R.string.phone_player_state_play)
+        val resource = if (playing) R.drawable.ic_pip_pause else R.drawable.ic_pip_play
+        if (btnPlay.tag == resource) return
+        btnPlay.tag = resource
+        btnPlay.animate().cancel()
+        btnPlay.animate()
+            .alpha(0f)
+            .scaleX(0.86f)
+            .scaleY(0.86f)
+            .setDuration(90L)
+            .withEndAction {
+                if (btnPlay.tag != resource) return@withEndAction
+                btnPlay.setImageResource(resource)
+                btnPlay.animate()
+                    .alpha(1f)
+                    .scaleX(1f)
+                    .scaleY(1f)
+                    .setDuration(90L)
+                    .start()
+            }
+            .start()
     }
 
     private fun syncProgress() {
@@ -672,20 +914,55 @@ class PhonePlayerActivity : Activity() {
         }
     }
 
-    private fun showControls() {
+    private fun restoreControls() {
+        controlsHiding = false
+        controls.animate().cancel()
         controls.visibility = View.VISIBLE
+        controls.alpha = 1f
+        controls.scaleX = 1f
+        controls.scaleY = 1f
+    }
+
+    private fun showControls() {
+        controlsHiding = false
+        controls.animate().cancel()
+        controls.visibility = View.VISIBLE
+        controls.alpha = 0.98f
+        controls.scaleX = 0.98f
+        controls.scaleY = 0.98f
+        controls.animate()
+            .alpha(1f)
+            .scaleX(1f)
+            .scaleY(1f)
+            .setDuration(220L)
+            .start()
         syncPlayIcon()
         syncProgress()
         bumpControls()
     }
 
     private fun hideControls() {
-        controls.visibility = View.GONE
+        if (scrubbing) return
+        controlsHiding = true
+        controls.animate().cancel()
+        controls.animate()
+            .alpha(0f)
+            .scaleX(0.98f)
+            .scaleY(0.98f)
+            .setDuration(180L)
+            .withEndAction {
+                if (controlsHiding && controls.alpha == 0f) {
+                    controls.visibility = View.GONE
+                    controlsHiding = false
+                }
+            }
+            .start()
         handler.removeCallbacks(hideRunnable)
     }
 
     /** Restart the auto-hide countdown; paused playback keeps the bar up. */
     private fun bumpControls() {
+        if (controlsHiding) restoreControls()
         handler.removeCallbacks(hideRunnable)
         if (player?.isPlaying == true) handler.postDelayed(hideRunnable, 4_000L)
     }
@@ -794,6 +1071,8 @@ class PhonePlayerActivity : Activity() {
         reportClosed()
         handler.removeCallbacksAndMessages(null)
         active = null
+        castManager?.release()
+        castManager = null
         player?.release()
         player = null
         super.onDestroy()
