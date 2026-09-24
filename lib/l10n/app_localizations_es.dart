@@ -1781,7 +1781,7 @@ class AppLocalizationsEs extends AppLocalizations {
   String get audioDelay => 'Retraso de audio';
 
   @override
-  String get androidPlayer => 'Android Player';
+  String get androidPlayer => 'Android Player (Experimental)';
 
   @override
   String get androidPlayerUnavailable => 'Android Player could not start';

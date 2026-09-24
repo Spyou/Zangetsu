@@ -3389,7 +3389,7 @@ abstract class AppLocalizations {
   /// No description provided for @androidPlayer.
   ///
   /// In en, this message translates to:
-  /// **'Android Player'**
+  /// **'Android Player (Experimental)'**
   String get androidPlayer;
 
   /// No description provided for @androidPlayerUnavailable.

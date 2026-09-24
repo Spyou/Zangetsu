@@ -643,7 +643,7 @@
 	"tapToUnlock": "Tap to unlock",
 	"subtitleDelay": "Subtitle delay",
 	"audioDelay": "Audio delay",
-	"androidPlayer": "Android Player",
+	"androidPlayer": "Android Player (Experimental)",
 	"androidPlayerUnavailable": "Android Player could not start",
 	"audioNormalization": "Audio normalization",
 	"searchSubtitlesOnline": "Search subtitles online",

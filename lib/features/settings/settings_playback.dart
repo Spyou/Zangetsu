@@ -458,9 +458,10 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
     // local proxy for any player that isn't MX/Just — but we don't know which
     // extras they read, so external subtitles and the resume position may be
     // dropped. Flagged rather than hidden: it's a real caveat, not a blocker.
+    final androidPlayerLabel = context.l10n.androidPlayer;
     final options = <(String, String)>[
-      (PlaybackPrefs.androidPlayerId, context.l10n.androidPlayer),
       ('', context.l10n.builtInPlayer),
+      (PlaybackPrefs.androidPlayerId, androidPlayerLabel),
       for (final p in players) (p.package, p.known ? p.label : '${p.label}${context.l10n.noSubsResumeSuffix}'),
     ];
     if (players.isEmpty) {
@@ -479,7 +480,7 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
     // settings row afterwards.
     final match = players.where((p) => p.package == picked);
     final label = picked == PlaybackPrefs.androidPlayerId
-        ? 'Android Player'
+        ? androidPlayerLabel
         : match.isEmpty
             ? ''
             : match.first.label;

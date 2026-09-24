@@ -185,6 +185,15 @@ void main() {
     expect(find.text('About'), findsNothing);
   });
 
+  test(
+    'Android Player is marked experimental in the player settings label',
+    () {
+      final l10n = lookupAppLocalizations(const Locale('en'));
+
+      expect(l10n.androidPlayer, 'Android Player (Experimental)');
+    },
+  );
+
   testWidgets('Reading section has a Reader entry that opens reader defaults',
       (tester) async {
     await _pumpSettings(tester);
