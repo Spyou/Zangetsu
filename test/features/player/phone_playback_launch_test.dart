@@ -1,6 +1,49 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:watch_app/core/di/injector.dart';
+import 'package:watch_app/core/models/episode.dart';
 import 'package:watch_app/core/models/video_source.dart';
+import 'package:watch_app/core/tracker/tracker.dart';
+import 'package:watch_app/core/tracker/tracker_hub.dart';
 import 'package:watch_app/features/player/phone_playback_launch.dart';
+
+class _RecordingTrackerHub extends TrackerHub {
+  _RecordingTrackerHub() : super(const []);
+
+  int calls = 0;
+  int? malId;
+  String? title;
+  int? tmdbId;
+  bool? tmdbIsTv;
+  String? imdbId;
+  int? episode;
+  int? season;
+  int? seasonEpisode;
+
+  @override
+  Future<void> scrobble({
+    int? malId,
+    String? title,
+    int? tmdbId,
+    bool tmdbIsTv = false,
+    String? imdbId,
+    required int episode,
+    int? season,
+    int? seasonEpisode,
+    MediaKind kind = MediaKind.anime,
+    bool novel = false,
+    bool auto = true,
+  }) async {
+    calls++;
+    this.malId = malId;
+    this.title = title;
+    this.tmdbId = tmdbId;
+    this.tmdbIsTv = tmdbIsTv;
+    this.imdbId = imdbId;
+    this.episode = episode;
+    this.season = season;
+    this.seasonEpisode = seasonEpisode;
+  }
+}
 
 VideoSource _src({
   String url = 'https://cdn.test/ep1.mp4',
@@ -184,6 +227,124 @@ void main() {
       );
       expect(phoneSubtitleMime(null, 'https://a/subtitle'), 'text/vtt');
     });
+  });
+
+  group('phoneScrobbleOnLaunch', () {
+    late _RecordingTrackerHub hub;
+
+    setUp(() {
+      hub = _RecordingTrackerHub();
+      sl.registerSingleton<TrackerHub>(hub);
+      addTearDown(() async {
+        if (sl.isRegistered<TrackerHub>()) {
+          await sl.unregister<TrackerHub>();
+        }
+      });
+    });
+
+    test(
+      'forwards tracker metadata for a positive whole episode number',
+      () async {
+        const episode = Episode(
+          id: 'e1',
+          title: 'Episode 1',
+          number: 1,
+          url: '/e1',
+          season: 2,
+        );
+
+        await phoneScrobbleOnLaunch(
+          episode: episode,
+          episodes: const [episode],
+          malId: 123,
+          scrobbleTitle: 'Tracked Show',
+          tmdbId: 456,
+          tmdbIsTv: true,
+          imdbId: 'tt1234567',
+        );
+
+        expect(hub.calls, 1);
+        expect(hub.malId, 123);
+        expect(hub.title, 'Tracked Show');
+        expect(hub.tmdbId, 456);
+        expect(hub.tmdbIsTv, isTrue);
+        expect(hub.imdbId, 'tt1234567');
+        expect(hub.episode, 1);
+        expect(hub.season, 2);
+        expect(hub.seasonEpisode, 1);
+      },
+    );
+
+    test(
+      'does not scrobble non-positive or non-whole episode numbers',
+      () async {
+        for (final number in <double>[0, 1.5]) {
+          final episode = Episode(
+            id: 'e$number',
+            title: 'Episode $number',
+            number: number,
+            url: '/e$number',
+            season: 2,
+          );
+          await phoneScrobbleOnLaunch(
+            episode: episode,
+            episodes: [episode],
+            malId: 123,
+            scrobbleTitle: 'Tracked Show',
+            tmdbId: 456,
+            tmdbIsTv: true,
+            imdbId: 'tt1234567',
+          );
+        }
+
+        expect(hub.calls, 0);
+      },
+    );
+
+    test('does not scrobble an infinite episode number', () async {
+      const episode = Episode(
+        id: 'e∞',
+        title: 'Episode infinity',
+        number: double.infinity,
+        url: '/e∞',
+      );
+
+      await phoneScrobbleOnLaunch(episode: episode, episodes: const [episode]);
+
+      expect(hub.calls, 0);
+    });
+
+    test('does not scrobble a peek episode', () async {
+      const episode = Episode(
+        id: 'e1',
+        title: 'Episode 1',
+        number: 1,
+        url: '/e1',
+      );
+
+      await phoneScrobbleOnLaunch(
+        episode: episode,
+        episodes: const [episode],
+        peek: true,
+      );
+
+      expect(hub.calls, 0);
+    });
+  });
+
+  test('returns normally without a registered TrackerHub', () async {
+    const episode = Episode(
+      id: 'e1',
+      title: 'Episode 1',
+      number: 1,
+      url: '/e1',
+    );
+
+    expect(sl.isRegistered<TrackerHub>(), isFalse);
+    await expectLater(
+      phoneScrobbleOnLaunch(episode: episode, episodes: const [episode]),
+      completes,
+    );
   });
 
   group('phoneMirrorLabel', () {

@@ -14,6 +14,7 @@ import '../../core/playback/subtitle_font_stage.dart';
 import '../../core/playback/tv_track_helpers.dart';
 import '../../core/playback/watch_history.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/tracker/tracker_hub.dart';
 import 'subtitle_font_service.dart';
 import 'subtitle_style.dart';
 
@@ -135,6 +136,39 @@ Map<String, dynamic> phonePlayerArgs({
   };
 }
 
+Future<void> phoneScrobbleOnLaunch({
+  required Episode episode,
+  required List<Episode> episodes,
+  int? malId,
+  String? scrobbleTitle,
+  int? tmdbId,
+  bool tmdbIsTv = false,
+  String? imdbId,
+  bool peek = false,
+}) async {
+  if (peek) return;
+  final number = episode.number;
+  if (number == null ||
+      !number.isFinite ||
+      number <= 0 ||
+      number != number.truncateToDouble()) {
+    return;
+  }
+  if (!sl.isRegistered<TrackerHub>()) return;
+  unawaited(
+    sl<TrackerHub>().scrobble(
+      malId: malId,
+      title: scrobbleTitle,
+      tmdbId: tmdbId,
+      tmdbIsTv: tmdbIsTv,
+      imdbId: imdbId,
+      episode: number.toInt(),
+      season: episode.season,
+      seasonEpisode: seasonEpisodeOf(episodes, episode),
+    ),
+  );
+}
+
 typedef PhoneSourcesPoll =
     Future<({List<VideoSource> sources, bool done})> Function(
       String episodeUrl,
@@ -190,6 +224,7 @@ Future<bool> launchPhonePlayback({
     scrobbleTitle: scrobbleTitle,
     tmdbId: tmdbId,
     tmdbIsTv: tmdbIsTv,
+    imdbId: imdbId,
   );
 }
 
@@ -215,6 +250,10 @@ class PhoneNativePlayer {
   static String? _cover;
   static Map<String, String>? _coverHeaders;
   static int? _malId;
+  static String? _scrobbleTitle;
+  static int? _tmdbId;
+  static bool _tmdbIsTv = false;
+  static String? _imdbId;
   static String _category = 'sub';
   static ResumeStore? _resume;
   static WatchHistory? _history;
@@ -245,6 +284,7 @@ class PhoneNativePlayer {
     String? scrobbleTitle,
     int? tmdbId,
     bool tmdbIsTv = false,
+    String? imdbId,
   }) async {
     if (startIndex < 0 || startIndex >= episodes.length) return false;
     _resolve = resolveSources;
@@ -258,6 +298,10 @@ class PhoneNativePlayer {
     _cover = cover;
     _coverHeaders = coverHeaders;
     _malId = malId;
+    _scrobbleTitle = scrobbleTitle;
+    _tmdbId = tmdbId;
+    _tmdbIsTv = tmdbIsTv;
+    _imdbId = imdbId;
     _category = category;
     _resume = resume;
     _history = history;
@@ -321,6 +365,18 @@ class PhoneNativePlayer {
       _closed = null;
       return false;
     }
+    unawaited(
+      phoneScrobbleOnLaunch(
+        episode: ep,
+        episodes: _episodes,
+        malId: _malId,
+        scrobbleTitle: _scrobbleTitle,
+        tmdbId: _tmdbId,
+        tmdbIsTv: _tmdbIsTv,
+        imdbId: _imdbId,
+        peek: _peek,
+      ),
+    );
     await _closed!.future;
     return true;
   }
