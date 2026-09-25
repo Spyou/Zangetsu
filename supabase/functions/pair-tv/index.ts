@@ -42,7 +42,7 @@ Deno.serve(async (req) => {
       await admin.from("tv_pairings").update({
         status: "approved",
         tracker_blob: body.trackerBlob,
-      }).eq("code", body.code);
+      }).eq("id", row.id).eq("status", "pending");
       return json({ ok: true });
     }
 
@@ -203,7 +203,7 @@ Deno.serve(async (req) => {
         app_user_id: user.id,
         app_secret: appSecret,
         tracker_blob: body.trackerBlob ?? null,
-      }).eq("code", body.code);
+      }).eq("id", row.id).eq("status", "pending");
       return json({ ok: true });
     }
 
