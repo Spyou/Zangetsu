@@ -20,6 +20,7 @@
         android:layout_width="48dp"
         android:layout_height="48dp"
         android:layout_gravity="center"
+        android:contentDescription="@string/phone_player_desc_loading"
         android:indeterminate="true"
         android:indeterminateTint="@color/phone_player_accent" />
 
@@ -61,7 +62,10 @@
                 android:clickable="true"
                 android:contentDescription="@string/phone_player_desc_back"
                 android:focusable="true"
-                android:src="@drawable/phone_player_back" />
+                android:padding="12dp"
+                android:scaleType="centerInside"
+                android:src="@drawable/phone_player_back"
+                android:tint="@color/phone_player_on_surface" />
 
             <LinearLayout
                 android:layout_width="0dp"
@@ -149,7 +153,6 @@
                 android:id="@+id/btn_next"
                 android:layout_width="56dp"
                 android:layout_height="56dp"
-                android:layout_marginStart="12dp"
                 android:background="?android:attr/selectableItemBackgroundBorderless"
                 android:clickable="true"
                 android:contentDescription="@string/phone_player_desc_next"
@@ -165,9 +168,9 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_gravity="bottom"
-            android:layout_marginStart="24dp"
+            android:layout_marginStart="16dp"
             android:layout_marginEnd="16dp"
-            android:layout_marginBottom="24dp"
+            android:layout_marginBottom="16dp"
             android:orientation="vertical"
             android:paddingHorizontal="8dp"
             android:paddingVertical="8dp">
@@ -184,6 +187,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:fontFamily="monospace"
+                    android:importantForAccessibility="no"
                     android:minWidth="48dp"
                     android:text="0:00"
                     android:textColor="@color/phone_player_on_surface"
@@ -195,6 +199,7 @@
                     android:layout_height="48dp"
                     android:layout_marginHorizontal="12dp"
                     android:layout_weight="1"
+                    android:contentDescription="@string/phone_player_desc_seek"
                     android:max="1000"
                     android:progressBackgroundTint="@color/phone_player_outline"
                     android:progressTint="@color/phone_player_accent"
@@ -206,6 +211,7 @@
                     android:layout_height="wrap_content"
                     android:fontFamily="monospace"
                     android:gravity="end"
+                    android:importantForAccessibility="no"
                     android:minWidth="46dp"
                     android:text="0:00"
                     android:textColor="@color/phone_player_on_surface"

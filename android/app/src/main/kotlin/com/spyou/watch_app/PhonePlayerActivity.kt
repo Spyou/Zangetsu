@@ -72,7 +72,7 @@ class PhonePlayerActivity : Activity() {
     private val ticker = object : Runnable {
         override fun run() {
             syncProgress()
-            handler.postDelayed(this, 500L)
+            handler.postDelayed(this, 250L)
         }
     }
 
@@ -157,7 +157,11 @@ class PhonePlayerActivity : Activity() {
             override fun onProgressChanged(sb: android.widget.SeekBar, value: Int, fromUser: Boolean) {
                 if (!fromUser) return
                 val d = player?.duration ?: 0L
-                if (d > 0) positionText.text = fmt(d * value / 1000)
+                if (d > 0) {
+                    val pos = d * value / 1000
+                    positionText.text = fmt(pos)
+                    sb.contentDescription = getString(R.string.phone_player_desc_seek) + ", " + fmt(pos) + " of " + fmt(d)
+                }
             }
 
             override fun onStartTrackingTouch(sb: android.widget.SeekBar) {
@@ -298,10 +302,18 @@ class PhonePlayerActivity : Activity() {
     }
 
     private fun updateEpisodeNavigation() {
-        findViewById<View>(R.id.btn_previous).visibility =
-            if (currentIndex > 0) View.VISIBLE else View.INVISIBLE
-        findViewById<View>(R.id.btn_next).visibility =
-            if (currentIndex + 1 < episodeCount) View.VISIBLE else View.INVISIBLE
+        val prev = findViewById<View>(R.id.btn_previous)
+        val next = findViewById<View>(R.id.btn_next)
+        val hasPrev = currentIndex > 0
+        val hasNext = currentIndex + 1 < episodeCount
+        prev.visibility = if (hasPrev) View.VISIBLE else View.INVISIBLE
+        next.visibility = if (hasNext) View.VISIBLE else View.INVISIBLE
+        prev.isEnabled = hasPrev
+        next.isEnabled = hasNext
+        prev.alpha = if (hasPrev) 1f else 0.4f
+        next.alpha = if (hasNext) 1f else 0.4f
+        prev.isFocusable = hasPrev
+        next.isFocusable = hasNext
     }
 
     private fun loadStream(
@@ -337,8 +349,8 @@ class PhonePlayerActivity : Activity() {
     private fun showEpisodeMenu() {
         if (episodeLabels.isEmpty()) return
         handler.removeCallbacks(hideRunnable) // a dialog must not race the auto-hide
-        android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-            .setTitle("Episodes")
+        android.app.AlertDialog.Builder(this, R.style.PhonePlayerDialog)
+            .setTitle(getString(R.string.phone_player_title_episodes))
             .setSingleChoiceItems(episodeLabels, currentIndex) { dialog, which ->
                 dialog.dismiss()
                 if (which != currentIndex) loadEpisode(which)
@@ -429,6 +441,7 @@ class PhonePlayerActivity : Activity() {
             mapOf("index" to currentIndex),
             object : io.flutter.plugin.common.MethodChannel.Result {
                 override fun success(result: Any?) {
+                    if (!uiAlive()) return
                     loading.visibility = View.GONE
                     mirrors = mapList(result)
                     if (mirrors.isEmpty()) {
@@ -446,9 +459,9 @@ class PhonePlayerActivity : Activity() {
                     val selected = mirrors.indexOfFirst { it["url"] == currentUrl }
                     android.app.AlertDialog.Builder(
                         this@PhonePlayerActivity,
-                        android.R.style.Theme_DeviceDefault_Dialog_Alert,
+                        R.style.PhonePlayerDialog,
                     )
-                        .setTitle("Sources")
+                        .setTitle(getString(R.string.phone_player_title_sources))
                         .setSingleChoiceItems(labels, selected) { dialog, which ->
                             dialog.dismiss()
                             if (which != selected) playMirror(mirrors[which])
@@ -458,12 +471,14 @@ class PhonePlayerActivity : Activity() {
                 }
 
                 override fun error(code: String, msg: String?, details: Any?) {
+                    if (!uiAlive()) return
                     loading.visibility = View.GONE
                     toast("Couldn't load sources")
                     bumpControls()
                 }
 
                 override fun notImplemented() {
+                    if (!uiAlive()) return
                     loading.visibility = View.GONE
                     toast("Couldn't load sources")
                     bumpControls()
@@ -486,6 +501,7 @@ class PhonePlayerActivity : Activity() {
             mapOf("index" to currentIndex),
             object : io.flutter.plugin.common.MethodChannel.Result {
                 override fun success(result: Any?) {
+                    if (!uiAlive()) return
                     if (generation != mediaGeneration ||
                         requestedIndex != currentIndex ||
                         requestedUrl != currentUrl
@@ -508,6 +524,7 @@ class PhonePlayerActivity : Activity() {
                 }
 
                 override fun error(code: String, msg: String?, details: Any?) {
+                    if (!uiAlive()) return
                     if (generation != mediaGeneration) return
                     failoverInFlight = false
                     toast("All sources failed")
@@ -515,6 +532,7 @@ class PhonePlayerActivity : Activity() {
                 }
 
                 override fun notImplemented() {
+                    if (!uiAlive()) return
                     if (generation != mediaGeneration) return
                     failoverInFlight = false
                     toast("All sources failed")
@@ -531,6 +549,8 @@ class PhonePlayerActivity : Activity() {
             map.entries.associate { (key, value) -> key.toString() to value }
         }
     }
+
+    private fun uiAlive(): Boolean = !isFinishing && !isDestroyed
 
     private fun toast(message: String) {
         android.widget.Toast.makeText(this, message, android.widget.Toast.LENGTH_SHORT).show()
@@ -624,8 +644,8 @@ class PhonePlayerActivity : Activity() {
             bumpControls()
             return
         }
-        android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-            .setTitle("Subtitles")
+        android.app.AlertDialog.Builder(this, R.style.PhonePlayerDialog)
+            .setTitle(getString(R.string.phone_player_title_subtitles))
             .setItems(labels.toTypedArray()) { _, which ->
                 selectTextTrack(picks[which])
             }
@@ -639,7 +659,7 @@ class PhonePlayerActivity : Activity() {
         val rates = floatArrayOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f)
         val checked = rates.indexOfFirst { kotlin.math.abs(it - p.playbackParameters.speed) < 0.001f }
         val labels = rates.map { "${it}x" }.toTypedArray()
-        android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+        android.app.AlertDialog.Builder(this, R.style.PhonePlayerDialog)
             .setTitle(getString(R.string.phone_player_title_speed))
             .setSingleChoiceItems(labels, checked) { dialog, which ->
                 dialog.dismiss()
@@ -698,7 +718,7 @@ class PhonePlayerActivity : Activity() {
             labels += "Subtitles: ${f.label ?: f.language ?: "Track ${labels.size}"}"
             textPicks += TrackSelectionOverride(g.mediaTrackGroup, i)
         }
-        android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+        android.app.AlertDialog.Builder(this, R.style.PhonePlayerDialog)
             .setTitle(getString(R.string.phone_player_title_tracks))
             .setItems(labels.toTypedArray()) { _, which ->
                 if (which < textBase) {
@@ -728,7 +748,7 @@ class PhonePlayerActivity : Activity() {
             labels += if (h > 0) "${h}p" else "Track ${labels.size}"
             picks += TrackSelectionOverride(g.mediaTrackGroup, i)
         }
-        android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+        android.app.AlertDialog.Builder(this, R.style.PhonePlayerDialog)
             .setTitle(getString(R.string.phone_player_title_quality))
             .setItems(labels.toTypedArray()) { _, which ->
                 val pick = picks[which]
@@ -785,6 +805,15 @@ class PhonePlayerActivity : Activity() {
             getString(R.string.phone_player_menu_display),
             getString(R.string.phone_player_menu_rotate)
         )
+        val icons = mutableListOf(
+            R.drawable.phone_player_speed,
+            R.drawable.phone_player_tracks,
+            R.drawable.phone_player_quality,
+            R.drawable.phone_player_sources,
+            R.drawable.phone_player_episodes,
+            R.drawable.phone_player_display,
+            R.drawable.phone_player_rotate
+        )
         val actions = mutableListOf<() -> Unit>(
             { showSpeedMenu() },
             { showTracksMenu() },
@@ -796,13 +825,59 @@ class PhonePlayerActivity : Activity() {
         )
         if (castSupported) {
             labels += getString(R.string.phone_player_menu_cast)
+            icons += R.drawable.phone_player_cast
             actions += { pickCast() }
         }
         labels += getString(R.string.phone_player_menu_info)
+        icons += R.drawable.phone_player_info
         actions += { showInfo() }
-        android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+        val density = resources.displayMetrics.density
+        val rowColor = androidx.core.content.ContextCompat.getColor(
+            this,
+            R.color.phone_player_on_surface
+        )
+        val adapter = object : android.widget.BaseAdapter() {
+            override fun getCount(): Int = labels.size
+            override fun getItem(position: Int): Any = labels[position]
+            override fun getItemId(position: Int): Long = position.toLong()
+            override fun getView(position: Int, convertView: View?, parent: android.view.ViewGroup?): View {
+                val row = android.widget.LinearLayout(this@PhonePlayerActivity).apply {
+                    orientation = android.widget.LinearLayout.HORIZONTAL
+                    gravity = android.view.Gravity.CENTER_VERTICAL
+                    minimumHeight = (48 * density).toInt()
+                    setPadding(
+                        (24 * density).toInt(),
+                        (12 * density).toInt(),
+                        (24 * density).toInt(),
+                        (12 * density).toInt()
+                    )
+                }
+                val icon = android.widget.ImageView(this@PhonePlayerActivity).apply {
+                    setImageResource(icons[position])
+                    imageTintList = android.content.res.ColorStateList.valueOf(rowColor)
+                    contentDescription = null
+                    val size = (24 * density).toInt()
+                    layoutParams = android.widget.LinearLayout.LayoutParams(size, size)
+                }
+                val text = android.widget.TextView(this@PhonePlayerActivity).apply {
+                    text = labels[position]
+                    textSize = 16f
+                    setTextColor(rowColor)
+                    val params = android.widget.LinearLayout.LayoutParams(
+                        android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
+                        android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+                    )
+                    params.marginStart = (16 * density).toInt()
+                    layoutParams = params
+                }
+                row.addView(icon)
+                row.addView(text)
+                return row
+            }
+        }
+        android.app.AlertDialog.Builder(this, R.style.PhonePlayerDialog)
             .setTitle(getString(R.string.phone_player_title_more))
-            .setItems(labels.toTypedArray()) { dialog, which ->
+            .setAdapter(adapter) { dialog, which ->
                 dialog.dismiss()
                 actions[which]()
             }
@@ -832,7 +907,7 @@ class PhonePlayerActivity : Activity() {
             source,
             "${speed}x",
         ).filter { it.isNotEmpty() }.joinToString("\n")
-        android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+        android.app.AlertDialog.Builder(this, R.style.PhonePlayerDialog)
             .setTitle(getString(R.string.phone_player_title_playback_info))
             .setMessage(message)
             .setPositiveButton(android.R.string.ok, null)
@@ -883,12 +958,17 @@ class PhonePlayerActivity : Activity() {
         val resource = if (playing) R.drawable.ic_pip_pause else R.drawable.ic_pip_play
         if (btnPlay.tag == resource) return
         btnPlay.tag = resource
+        val interpolator = android.view.animation.AnimationUtils.loadInterpolator(
+            this,
+            android.R.interpolator.fast_out_slow_in
+        )
         btnPlay.animate().cancel()
         btnPlay.animate()
             .alpha(0f)
-            .scaleX(0.86f)
-            .scaleY(0.86f)
-            .setDuration(90L)
+            .scaleX(0.7f)
+            .scaleY(0.7f)
+            .setDuration(120L)
+            .setInterpolator(interpolator)
             .withEndAction {
                 if (btnPlay.tag != resource) return@withEndAction
                 btnPlay.setImageResource(resource)
@@ -896,7 +976,8 @@ class PhonePlayerActivity : Activity() {
                     .alpha(1f)
                     .scaleX(1f)
                     .scaleY(1f)
-                    .setDuration(90L)
+                    .setDuration(150L)
+                    .setInterpolator(interpolator)
                     .start()
             }
             .start()
@@ -906,10 +987,17 @@ class PhonePlayerActivity : Activity() {
         val p = player ?: return
         val d = p.duration
         if (d > 0) {
+            val pos = p.currentPosition
             durationText.text = fmt(d)
             if (!scrubbing) {
-                seek.progress = (p.currentPosition * 1000 / d).toInt().coerceIn(0, 1000)
-                positionText.text = fmt(p.currentPosition)
+                val progress = (pos * 1000 / d).toInt().coerceIn(0, 1000)
+                if (android.os.Build.VERSION.SDK_INT >= 24) {
+                    seek.setProgress(progress, true)
+                } else {
+                    seek.progress = progress
+                }
+                positionText.text = fmt(pos)
+                seek.contentDescription = getString(R.string.phone_player_desc_seek) + ", " + fmt(pos) + " of " + fmt(d)
             }
         }
     }
@@ -927,14 +1015,24 @@ class PhonePlayerActivity : Activity() {
         controlsHiding = false
         controls.animate().cancel()
         controls.visibility = View.VISIBLE
-        controls.alpha = 0.98f
-        controls.scaleX = 0.98f
-        controls.scaleY = 0.98f
+        if (controls.width > 0 && controls.height > 0) {
+            controls.pivotX = controls.width / 2f
+            controls.pivotY = controls.height / 2f
+        }
+        controls.alpha = 0f
+        controls.scaleX = 0.96f
+        controls.scaleY = 0.96f
         controls.animate()
             .alpha(1f)
             .scaleX(1f)
             .scaleY(1f)
-            .setDuration(220L)
+            .setDuration(250L)
+            .setInterpolator(
+                android.view.animation.AnimationUtils.loadInterpolator(
+                    this,
+                    android.R.interpolator.fast_out_slow_in
+                )
+            )
             .start()
         syncPlayIcon()
         syncProgress()
@@ -945,11 +1043,21 @@ class PhonePlayerActivity : Activity() {
         if (scrubbing) return
         controlsHiding = true
         controls.animate().cancel()
+        if (controls.width > 0 && controls.height > 0) {
+            controls.pivotX = controls.width / 2f
+            controls.pivotY = controls.height / 2f
+        }
         controls.animate()
             .alpha(0f)
-            .scaleX(0.98f)
-            .scaleY(0.98f)
-            .setDuration(180L)
+            .scaleX(0.96f)
+            .scaleY(0.96f)
+            .setDuration(200L)
+            .setInterpolator(
+                android.view.animation.AnimationUtils.loadInterpolator(
+                    this,
+                    android.R.interpolator.linear_out_slow_in
+                )
+            )
             .withEndAction {
                 if (controlsHiding && controls.alpha == 0f) {
                     controls.visibility = View.GONE

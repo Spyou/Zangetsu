@@ -5,12 +5,17 @@
     <string name="phone_player_desc_previous">Previous episode</string>
     <string name="phone_player_desc_play">Play or pause</string>
     <string name="phone_player_desc_next">Next episode</string>
+    <string name="phone_player_desc_seek">Seek</string>
+    <string name="phone_player_desc_loading">Loading video</string>
     <string name="phone_player_state_play">Play</string>
     <string name="phone_player_state_pause">Pause</string>
     <string name="phone_player_title_speed">Playback speed</string>
     <string name="phone_player_title_tracks">Audio &amp; subtitles</string>
     <string name="phone_player_title_quality">Video quality</string>
     <string name="phone_player_title_more">More options</string>
+    <string name="phone_player_title_episodes">Episodes</string>
+    <string name="phone_player_title_sources">Sources</string>
+    <string name="phone_player_title_subtitles">Subtitles</string>
     <string name="phone_player_title_playback_info">Playback info</string>
     <string name="phone_player_menu_sources">Sources</string>
     <string name="phone_player_menu_episodes">Episodes</string>

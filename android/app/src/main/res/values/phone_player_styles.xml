@@ -11,4 +11,12 @@
         <item name="android:tint">@color/phone_player_on_surface</item>
     </style>
     <style name="PhonePlayerActionButton.Transport" parent="PhonePlayerActionButton" />
+    <style name="PhonePlayerDialog" parent="android:Theme.DeviceDefault.Dialog.Alert">
+        <item name="android:dialogCornerRadius">28dp</item>
+        <item name="android:windowBackground">@color/phone_player_surface</item>
+        <item name="android:textColor">@color/phone_player_on_surface</item>
+        <item name="android:textColorPrimary">@color/phone_player_on_surface</item>
+        <item name="android:windowMinWidthMajor">80%</item>
+        <item name="android:windowMinWidthMinor">80%</item>
+    </style>
 </resources>
