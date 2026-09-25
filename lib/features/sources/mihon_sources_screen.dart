@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:watch_app/core/hive/safe_box.dart';
 
 import 'package:flutter/material.dart';
@@ -566,27 +565,25 @@ class _MihonSourceRowState extends State<_MihonSourceRow> {
 
     final pkg = widget.source.pkg;
 
-    if (Hive.isBoxOpen(MihonExtensionService.installedBoxName)) {
-      final box = Hive.box<dynamic>(MihonExtensionService.installedBoxName);
-      final apkPath = box.get(pkg) as String?;
-      if (apkPath != null) {
-        try {
-          final f = File(apkPath);
-          if (await f.exists()) await f.delete();
-        } catch (_) {}
-      }
-      await box.delete(pkg);
-    }
+    // Removes the box entry and the APK (see MihonExtensionService.uninstall
+    // for why the order matters). Returns a reason instead of swallowing it —
+    // the APK outliving the uninstall is what made sources reappear after a
+    // restart, silently.
+    final failure = await MihonExtensionService.uninstall(pkg);
 
     sl<MihonManager>().removeWhere((p) => p.pkg == pkg);
 
-    if (context.mounted) {
-      ScaffoldMessenger.of(context)
-        ..clearSnackBars()
-        ..showSnackBar(
-          SnackBar(content: Text(context.l10n.uninstalledName(name))),
-        );
-    }
+    if (!context.mounted) return;
+    final messenger = ScaffoldMessenger.of(context)..clearSnackBars();
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          failure == null
+              ? context.l10n.uninstalledName(name)
+              : context.l10n.uninstallFailed(failure),
+        ),
+      ),
+    );
   }
 
   Future<void> _applyUpdate(MihonUpdate update) async {

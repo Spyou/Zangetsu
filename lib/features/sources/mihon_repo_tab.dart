@@ -806,14 +806,11 @@ class _MihonExtensionRowState extends State<_MihonExtensionRow> {
   }
 
   Future<void> _defaultUninstall() async {
-    // Remove from installed box.
-    try {
-      if (Hive.isBoxOpen(MihonExtensionService.installedBoxName)) {
-        await Hive.box<dynamic>(
-          MihonExtensionService.installedBoxName,
-        ).delete(_entry.pkg);
-      }
-    } catch (_) {}
+    // Same helper as the source tile: box entry AND the APK. The APK is what
+    // actually resurrects the source — `loadInstalled` re-reads the directory
+    // on every cold start — so deleting only the box entry left the extension
+    // to come back on the next launch.
+    final failure = await MihonExtensionService.uninstall(_entry.pkg);
     // Remove from the manager so the source disappears from the picker.
     // Unlike AniyomiManager (whose store is Map<String, BaseProvider> and so
     // needs an `is AniyomiProvider` narrowing check), MihonManager._sources is
@@ -823,6 +820,9 @@ class _MihonExtensionRowState extends State<_MihonExtensionRow> {
       GetIt.instance.get<MihonManager>().removeWhere(
         (p) => p.pkg == _entry.pkg,
       );
+    }
+    if (failure != null) {
+      debugPrint('[mihon] repo-tab uninstall ${_entry.pkg}: $failure');
     }
   }
 
