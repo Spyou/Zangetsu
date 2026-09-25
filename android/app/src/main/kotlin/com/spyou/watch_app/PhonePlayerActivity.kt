@@ -656,7 +656,7 @@ class PhonePlayerActivity : Activity() {
     private fun showSpeedMenu() {
         val p = player ?: return
         handler.removeCallbacks(hideRunnable)
-        val rates = floatArrayOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f)
+        val rates = floatArrayOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f, 2.5f, 3f, 4f, 5f)
         val checked = rates.indexOfFirst { kotlin.math.abs(it - p.playbackParameters.speed) < 0.001f }
         val labels = rates.map { "${it}x" }.toTypedArray()
         android.app.AlertDialog.Builder(this, R.style.PhonePlayerDialog)

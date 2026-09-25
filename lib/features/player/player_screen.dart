@@ -2101,7 +2101,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   void _openSpeedSheet() {
-    const rates = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
+    const rates = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0];
     final current = _c.player.state.rate;
     // Chips, not a list. Six rows at 52px each came to 388 — on a 393px-tall
     // landscape phone that's the entire screen, so you were picking a speed
