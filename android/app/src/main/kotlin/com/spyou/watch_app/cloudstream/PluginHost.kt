@@ -889,6 +889,17 @@ class PluginHost(private val context: Context) {
         return sessionResult(session, done = session.done)
     }
 
+    /** Stops a resolve the viewer walked away from (back during "Finding…").
+     *  The session is dropped so its pollers read done, and its job is
+     *  cancelled so dead servers stop holding a pool thread to their cap.
+     *  Idempotent: unknown/already-finished keys are a no-op. */
+    fun cancelSession(apiName: String, data: String) {
+        val session =
+            synchronized(linkSessions) { linkSessions.remove("$apiName|$data") }
+        session?.job?.cancel()
+        if (session != null) session.done = true
+    }
+
     fun loadLinks(apiName: String, data: String, fast: Boolean = false): Map<String, Any?> {
         val empty = mapOf("sources" to emptyList<Any?>(), "subtitles" to emptyList<Any?>())
         val api = apiByName(apiName) ?: return empty

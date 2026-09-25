@@ -7,6 +7,7 @@ import '../models/video_source.dart';
 import '../playback/source_health_store.dart';
 import '../di/injector.dart';
 import '../provider/cf_solve_needed.dart';
+import '../provider/cloudstream_provider.dart';
 import '../provider/js_engine.dart';
 import '../provider/provider_manager.dart';
 import '../repository/source_repository.dart';
@@ -361,6 +362,10 @@ class PlaybackResolver {
     if (!_abortSignal.isCompleted) _abortSignal.complete();
     // Fresh signal, so a sweep started after this one isn't born aborted.
     _abortSignal = Completer<void>();
+    // The native hunt behind the in-flight candidate is uncancellable from
+    // here by waiting — tell it to stop so dead servers stop holding a pool
+    // thread to their cap after the screen is gone.
+    unawaited(CloudStreamProvider.cancelInFlightLinks());
   }
 
   /// Completed by [abortSweeps] to wake a sweep blocked on a candidate.

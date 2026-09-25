@@ -1194,6 +1194,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
   // here (PopScope lets it pop straight through); 'confirm' asks first;
   // 'double_back' (default) needs a second back within 2s.
   Future<void> _handleCloseRequest() async {
+    // Nothing playing yet — the "Finding…" spinner has no close to confirm.
+    // Leaving must be instant, not gated behind double-back/confirm.
+    if (_c.state.loadingSources) {
+      _leavePlayer();
+      return;
+    }
     switch (sl<PlaybackPrefs>().closeConfirmation) {
       case 'confirm':
         final ok = await AppDialog.confirm(

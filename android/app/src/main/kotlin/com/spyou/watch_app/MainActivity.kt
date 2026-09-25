@@ -1079,6 +1079,21 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
                             }
                         }
                     }
+                    // A hunt the viewer walked away from (back during "Finding…").
+                    // Stops it natively instead of letting dead servers hold a
+                    // pool thread to their cap.
+                    "cancelLinks" -> {
+                        val name = call.argument<String>("name")
+                        val data = call.argument<String>("data")
+                        csReadPool.execute {
+                            try {
+                                host.cancelSession(name ?: "", data ?: "")
+                                runOnUiThread { result.success(null) }
+                            } catch (e: Exception) {
+                                runOnUiThread { result.error("cs_error", e.message, null) }
+                            }
+                        }
+                    }
                     // Links gathered so far for an episode whose resolve is still
                     // running in the background (see PluginHost.polledLinks).
                     // Read-only and cheap — it never starts a resolve.

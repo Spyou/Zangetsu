@@ -431,11 +431,43 @@ class CloudStreamProvider implements BaseProvider {
     bool fast = false,
   }) async {
     if (!Platform.isAndroid) return const [];
-    final raw = await _csChannel.invokeMethod<Map<dynamic, dynamic>>(
-      'loadLinks',
-      {'name': hostKey, 'data': episodeUrl, 'fast': fast},
-    );
-    return _sourcesFromResult(raw);
+    final key = '$hostKey|$episodeUrl';
+    _inFlightLinks.add(key);
+    try {
+      final raw = await _csChannel.invokeMethod<Map<dynamic, dynamic>>(
+        'loadLinks',
+        {'name': hostKey, 'data': episodeUrl, 'fast': fast},
+      );
+      return _sourcesFromResult(raw);
+    } finally {
+      _inFlightLinks.remove(key);
+    }
+  }
+
+  /// Hunts this provider started that haven't answered yet. The viewer walking
+  /// away (back during "Finding…") cancels them natively — otherwise dead
+  /// servers hold pool threads to their cap long after the screen is gone.
+  static final Set<String> _inFlightLinks = {};
+
+  /// Tells native to drop every in-flight links hunt. Best-effort and
+  /// idempotent: unknown/finished keys are a no-op there, and a hunt that
+  /// answers between the send and the cancel simply resolves normally.
+  static Future<void> cancelInFlightLinks() async {
+    if (!Platform.isAndroid || _inFlightLinks.isEmpty) return;
+    final keys = _inFlightLinks.toList();
+    _inFlightLinks.clear();
+    for (final key in keys) {
+      final sep = key.indexOf('|');
+      if (sep <= 0) continue;
+      try {
+        await _csChannel.invokeMethod(
+          'cancelLinks',
+          {'name': key.substring(0, sep), 'data': key.substring(sep + 1)},
+        );
+      } catch (_) {
+        // Best-effort: a failed cancel just lets that hunt run its cap out.
+      }
+    }
   }
 
   /// The links resolved so far for [episodeUrl], plus whether more may still
