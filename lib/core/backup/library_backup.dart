@@ -55,7 +55,7 @@ class LibraryBackup {
       final box = Hive.box<Map>(_myListBox);
       for (final raw in (data['myList'] as List? ?? const [])) {
         final m = Map<String, dynamic>.from(raw as Map);
-        final key = '${m['sourceId']}::${m['id']}';
+        final key = hiveKey('${m['sourceId']}::${m['id']}');
         if (!box.containsKey(key)) await box.put(key, m); // union, never overwrite
       }
     }
@@ -63,7 +63,7 @@ class LibraryBackup {
       final box = Hive.box<Map>(_historyBox);
       for (final raw in (data['history'] as List? ?? const [])) {
         final h = Map<String, dynamic>.from(raw as Map);
-        final key = '${h['sourceId']}::${h['showId']}';
+        final key = hiveKey('${h['sourceId']}::${h['showId']}');
         final cur = box.get(key);
         final curTs = cur == null ? -1 : (cur['updatedAt'] as num? ?? -1).toInt();
         final newTs = (h['updatedAt'] as num? ?? 0).toInt();
