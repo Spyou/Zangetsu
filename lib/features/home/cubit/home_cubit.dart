@@ -27,6 +27,7 @@ import '../../../core/zmode/metadata_repository.dart';
 import '../../../core/zmode/zmode_ids.dart';
 import '../../../core/zmode/zmode_module.dart' show browseKindFor;
 import '../../../core/zmode/zmode_prefs.dart';
+import 'home_cache.dart';
 import 'home_rows_composer.dart';
 import 'tracker_home_rows.dart';
 
@@ -219,13 +220,28 @@ class HomeCubit extends Cubit<HomeState> {
     // to invalidate it.
     if (reset) _trackerCache = null;
     final sourceId = _repo.sourceId;
+    final kind = _browseKind;
+    final cacheKey = kind?.name ?? 'all';
+    // Cold start with a remembered home: paint it on the first frame and
+    // refresh silently underneath. Same rows, same order — only the wait is
+    // gone. A miss simply keeps the normal loading state.
+    final remembered = state.sections == null
+        ? HomeCache.read(sourceId, cacheKey)
+        : null;
     emit(
-      reset ? const HomeState(loading: true) : state.copyWith(loading: true),
+      reset
+          ? const HomeState(loading: true)
+          : state.copyWith(
+              loading: true,
+              sections: remembered ?? state.sections,
+              rows: remembered != null
+                  ? _mergedRows(remembered, kind, null, null)
+                  : state.rows,
+            ),
     );
 
     // Tracker pick + fetch start alongside the provider fetch, so the two
     // never serialize. Best-effort throughout: no tracker, no rows.
-    final kind = _browseKind;
     final hub = kind != null ? _hubOrNull : null;
     Tracker? tracker;
     Future<List<TrackerListItem>>? libraryFuture;
@@ -302,6 +318,10 @@ class HomeCubit extends Cubit<HomeState> {
 
     // A newer load started while we were fetching — discard this stale result.
     if (isClosed || gen != _gen) return;
+    // Remember the good load so the next cold start paints instantly.
+    if (sections.isNotEmpty) {
+      unawaited(HomeCache.write(sourceId, cacheKey, sections));
+    }
     emit(
       HomeState(
         sections: sections,
