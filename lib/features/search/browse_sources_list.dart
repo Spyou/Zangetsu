@@ -463,7 +463,12 @@ class _SourceListViewState extends State<_SourceListView> {
     contentPadding: const EdgeInsets.fromLTRB(16, 0, 8, 0),
     // sourceRowName strips the ecosystem tag so the letter fallback is the
     // source's own initial, not "C" for every CloudStream row.
-    leading: SourceIconTile(name: sourceRowName(s.label), icon: s.icon),
+    // Hero-shared with the source screen's header tile (same tag there), so
+    // opening a source zooms its logo instead of cutting to it.
+    leading: Hero(
+      tag: 'source-icon:${s.id}',
+      child: SourceIconTile(name: sourceRowName(s.label), icon: s.icon),
+    ),
     title: Text(
       s.label,
       style: AppText.body,
