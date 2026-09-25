@@ -6,10 +6,12 @@ import com.spyou.watch_app.R
 import androidx.mediarouter.app.MediaRouteChooserDialog
 import androidx.mediarouter.media.MediaRouteSelector
 import androidx.mediarouter.media.MediaRouter
+import com.google.android.gms.cast.Cast
 import com.google.android.gms.cast.CastStatusCodes
 import com.google.android.gms.cast.MediaInfo
 import com.google.android.gms.cast.MediaLoadRequestData
 import com.google.android.gms.cast.MediaMetadata
+import com.google.android.gms.cast.MediaStatus
 import com.google.android.gms.cast.MediaTrack
 import com.google.android.gms.cast.framework.CastContext
 import com.google.android.gms.cast.framework.CastSession
@@ -133,7 +135,8 @@ class CastManager(private val activity: Activity) : EventChannel.StreamHandler {
     /**
      * Load media on the currently-connected Cast receiver.
      * args keys: url, mime, headers (ignored — Cast SDK fetches directly),
-     *            title, poster, subtitles (List<Map>), startMs.
+     *            title, poster, subtitles (List<Map>), startMs, durationMs,
+     *            hlsSegmentFormat, hlsVideoSegmentFormat.
      */
     @Suppress("UNCHECKED_CAST")
     fun loadMedia(args: Map<String, Any?>) {
@@ -150,35 +153,60 @@ class CastManager(private val activity: Activity) : EventChannel.StreamHandler {
 
         val metadata = MediaMetadata(MediaMetadata.MEDIA_TYPE_MOVIE).apply {
             putString(MediaMetadata.KEY_TITLE, title)
-            poster?.let {
-                addImage(com.google.android.gms.common.images.WebImage(android.net.Uri.parse(it)))
+            if (poster != null && poster.startsWith("http")) {
+                addImage(com.google.android.gms.common.images.WebImage(android.net.Uri.parse(poster)))
             }
         }
 
-        // Build subtitle tracks.
+        // Build subtitle tracks. Only WebVTT with an explicit content type —
+        // SRT / untyped tracks make the Default Media Receiver reject the
+        // whole LOAD with Invalid Request / 2001.
         val tracks = subtitleList.mapIndexedNotNull { index, sub ->
             val trackUrl = sub["url"] as? String ?: return@mapIndexedNotNull null
+            val format = (sub["format"] as? String)?.lowercase() ?: ""
+            val looksVtt = format == "vtt" || trackUrl.lowercase().contains(".vtt")
+            if (!looksVtt) return@mapIndexedNotNull null
             val lang = sub["lang"] as? String ?: "en"
             val label = sub["label"] as? String ?: lang
             MediaTrack.Builder(index.toLong() + 1, MediaTrack.TYPE_TEXT)
                 .setSubtype(MediaTrack.SUBTYPE_SUBTITLES)
                 .setContentId(trackUrl)
+                .setContentType("text/vtt")
                 .setLanguage(lang)
                 .setName(label)
                 .build()
         }
 
-        val mediaInfo = MediaInfo.Builder(url)
+        val hlsSegmentFormat = args["hlsSegmentFormat"] as? String
+        val hlsVideoSegmentFormat = args["hlsVideoSegmentFormat"] as? String
+        val durationMs = (args["durationMs"] as? Number)?.toLong() ?: 0L
+        val isHls = mime.contains("mpegurl", ignoreCase = true) ||
+            mime.contains("m3u8", ignoreCase = true)
+
+        val builder = MediaInfo.Builder(url)
             .setStreamType(MediaInfo.STREAM_TYPE_BUFFERED)
             .setContentType(mime)
+            .setContentUrl(url)
             .setMetadata(metadata)
             .setMediaTracks(tracks)
-            .build()
+        if (durationMs > 0) builder.setStreamDuration(durationMs)
+        // CAF requires these on HLS. Unset → receiver assumes MPEG-TS, so an
+        // fMP4/CMAF playlist shows a title + spinner then Invalid Request / 2001.
+        if (isHls && !hlsSegmentFormat.isNullOrEmpty()) {
+            builder.setHlsSegmentFormat(hlsSegmentFormat)
+        }
+        if (isHls && !hlsVideoSegmentFormat.isNullOrEmpty()) {
+            builder.setHlsVideoSegmentFormat(hlsVideoSegmentFormat)
+        }
+        val mediaInfo = builder.build()
 
+        val firstTrack = tracks.firstOrNull()
+        val activeIds = if (firstTrack != null) longArrayOf(firstTrack.id) else longArrayOf()
         val request = MediaLoadRequestData.Builder()
             .setMediaInfo(mediaInfo)
             .setAutoplay(true)
             .setCurrentTime(startMs)
+            .setActiveTrackIds(activeIds)
             .build()
 
         val client = session.remoteMediaClient
@@ -186,18 +214,57 @@ class CastManager(private val activity: Activity) : EventChannel.StreamHandler {
             // Clear any previous error on a fresh load attempt.
             pendingLoadError = null
             client.load(request).setResultCallback { result ->
-                if (!result.status.isSuccess) {
-                    val code = result.status.statusCode
-                    Log.w(TAG, "loadMedia: load failed statusCode=$code")
+                if (result.status.isSuccess) return@setResultCallback
+                val code = result.status.statusCode
+                Log.w(TAG, "loadMedia: load failed statusCode=$code")
+                if (!isHls) {
                     pendingLoadError = "load_failed"
                     pushCurrentState()
+                    return@setResultCallback
+                }
+                // First guess (often defaulted TS) is wrong for fMP4 CDNs.
+                // Retry once with the other container and no mid-stream seek.
+                val flipSeg = if (hlsSegmentFormat == "fmp4") "ts" else "fmp4"
+                val flipVid = if (flipSeg == "fmp4") "fmp4" else "mpeg2_ts"
+                val retryInfo = MediaInfo.Builder(url)
+                    .setStreamType(MediaInfo.STREAM_TYPE_BUFFERED)
+                    .setContentType(mime)
+                    .setContentUrl(url)
+                    .setMetadata(metadata)
+                    .setMediaTracks(tracks)
+                    .setHlsSegmentFormat(flipSeg)
+                    .setHlsVideoSegmentFormat(flipVid)
+                    .build()
+                val retry = MediaLoadRequestData.Builder()
+                    .setMediaInfo(retryInfo)
+                    .setAutoplay(true)
+                    .setCurrentTime(0)
+                    .setActiveTrackIds(activeIds)
+                    .build()
+                Log.d(TAG, "loadMedia: retry hlsSeg=$flipSeg hlsVid=$flipVid startMs=0")
+                client.load(retry).setResultCallback { retryResult ->
+                    if (!retryResult.status.isSuccess) {
+                        Log.w(
+                            TAG,
+                            "loadMedia: retry failed statusCode=${retryResult.status.statusCode}",
+                        )
+                        pendingLoadError = "load_failed"
+                        pushCurrentState()
+                    }
                 }
             }
             // Register a callback so position/duration updates flow to the event sink.
             // Unregister first so a second loadMedia (e.g. next episode) never accumulates duplicates.
             client.unregisterCallback(mediaClientCallback)
             client.registerCallback(mediaClientCallback)
-            Log.d(TAG, "loadMedia: sent load request url=$url startMs=$startMs")
+            client.removeProgressListener(progressListener)
+            client.addProgressListener(progressListener, 1000)
+            Log.d(
+                TAG,
+                "loadMedia: sent load request url=$url startMs=$startMs " +
+                    "durMs=$durationMs mime=$mime hlsSeg=$hlsSegmentFormat " +
+                    "hlsVid=$hlsVideoSegmentFormat tracks=${tracks.size}",
+            )
         } else {
             Log.w(TAG, "loadMedia: remoteMediaClient is null")
         }
@@ -287,7 +354,7 @@ class CastManager(private val activity: Activity) : EventChannel.StreamHandler {
             sessionListener,
             CastSession::class.java,
         )
-        currentSession?.remoteMediaClient?.unregisterCallback(mediaClientCallback)
+        detachSession(currentSession)
         eventSink = null
         castContext = null
         currentSession = null
@@ -305,8 +372,9 @@ class CastManager(private val activity: Activity) : EventChannel.StreamHandler {
             else -> "unavailable"
         }
         val client = currentSession?.remoteMediaClient
+        val status = client?.mediaStatus
         val posMs = client?.approximateStreamPosition ?: 0L
-        val durMs = client?.mediaStatus?.mediaInfo?.streamDuration ?: 0L
+        val durMs = status?.mediaInfo?.streamDuration ?: 0L
         val playing = client?.isPlaying ?: false
         val deviceName = currentSession?.castDevice?.friendlyName
 
@@ -316,11 +384,63 @@ class CastManager(private val activity: Activity) : EventChannel.StreamHandler {
             "positionMs" to posMs.toInt(),
             "durationMs" to durMs.toInt(),
             "playing" to playing,
+            // CAF ints — Dart logs them on change so a shared zangetsu.log
+            // shows play/pause/idle without a native logcat.
+            "playerState" to (status?.playerState ?: MediaStatus.PLAYER_STATE_UNKNOWN),
+            "idleReason" to (status?.idleReason ?: MediaStatus.IDLE_REASON_NONE),
         )
         if (error != null) {
             event["error"] = error
         }
         activity.runOnUiThread { sink.success(event) }
+    }
+
+    private fun attachSession(session: CastSession) {
+        try {
+            session.removeCastListener(castAppListener)
+            session.addCastListener(castAppListener)
+        } catch (e: Exception) {
+            Log.w(TAG, "addCastListener failed: ${e.message}")
+        }
+        session.remoteMediaClient?.unregisterCallback(mediaClientCallback)
+        session.remoteMediaClient?.registerCallback(mediaClientCallback)
+        session.remoteMediaClient?.removeProgressListener(progressListener)
+        session.remoteMediaClient?.addProgressListener(progressListener, 1000)
+    }
+
+    private fun detachSession(session: CastSession?) {
+        if (session == null) return
+        try {
+            session.removeCastListener(castAppListener)
+        } catch (_: Exception) {}
+        session.remoteMediaClient?.removeProgressListener(progressListener)
+        session.remoteMediaClient?.unregisterCallback(mediaClientCallback)
+    }
+
+    private fun endSessionFromReceiver(why: String) {
+        Log.d(TAG, "ending session ($why)")
+        pendingLoadError = null
+        activity.runOnUiThread {
+            try {
+                castContext?.sessionManager?.endCurrentSession(true)
+            } catch (e: Exception) {
+                Log.w(TAG, "end session ($why) failed: ${e.message}")
+                detachSession(currentSession)
+                currentSession = null
+                pushCurrentState(error = null)
+            }
+        }
+    }
+
+    private val castAppListener = object : Cast.Listener() {
+        override fun onApplicationDisconnected(statusCode: Int) {
+            Log.d(
+                TAG,
+                "onApplicationDisconnected statusCode=$statusCode " +
+                    "(${CastStatusCodes.getStatusCodeString(statusCode)})",
+            )
+            endSessionFromReceiver("application disconnected")
+        }
     }
 
     private val castStateListener = CastStateListener { _ ->
@@ -329,6 +449,20 @@ class CastManager(private val activity: Activity) : EventChannel.StreamHandler {
 
     private val mediaClientCallback = object : RemoteMediaClient.Callback() {
         override fun onStatusUpdated() {
+            val client = currentSession?.remoteMediaClient
+            val status = client?.mediaStatus
+            val playerState = status?.playerState ?: MediaStatus.PLAYER_STATE_UNKNOWN
+            val idleReason = status?.idleReason ?: MediaStatus.IDLE_REASON_NONE
+
+            // Receiver quit / Back that cancels media without ending the session.
+            // INTERRUPTED is a new load (source/caption recast) — leave it.
+            if (playerState == MediaStatus.PLAYER_STATE_IDLE &&
+                idleReason == MediaStatus.IDLE_REASON_CANCELED
+            ) {
+                endSessionFromReceiver("media canceled")
+                return
+            }
+
             // A successful status update means media loaded; clear any prior load error.
             pendingLoadError = null
             pushCurrentState(error = null)
@@ -338,26 +472,30 @@ class CastManager(private val activity: Activity) : EventChannel.StreamHandler {
         }
     }
 
+    // CAF only emits onStatusUpdated on play/pause/seek. ProgressListener
+    // ticks while playing so the phone can persist resume / Continue Watching.
+    private val progressListener = RemoteMediaClient.ProgressListener { _, _ ->
+        pushCurrentState()
+    }
+
     private val sessionListener = object : SessionManagerListener<CastSession> {
         override fun onSessionStarted(session: CastSession, sessionId: String) {
             Log.d(TAG, "Cast session started: $sessionId device=${session.castDevice?.friendlyName}")
             currentSession = session
-            session.remoteMediaClient?.unregisterCallback(mediaClientCallback)
-            session.remoteMediaClient?.registerCallback(mediaClientCallback)
+            attachSession(session)
             pushCurrentState()
         }
 
         override fun onSessionResumed(session: CastSession, wasSuspended: Boolean) {
             Log.d(TAG, "Cast session resumed wasSuspended=$wasSuspended")
             currentSession = session
-            session.remoteMediaClient?.unregisterCallback(mediaClientCallback)
-            session.remoteMediaClient?.registerCallback(mediaClientCallback)
+            attachSession(session)
             pushCurrentState()
         }
 
         override fun onSessionEnded(session: CastSession, error: Int) {
             Log.d(TAG, "Cast session ended error=$error (${CastStatusCodes.getStatusCodeString(error)})")
-            session.remoteMediaClient?.unregisterCallback(mediaClientCallback)
+            detachSession(session)
             currentSession = null
             pushCurrentState()
         }

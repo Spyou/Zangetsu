@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
+import '../logging/app_logger.dart';
 import '../models/video_source.dart';
 
 // ---------------------------------------------------------------------------
@@ -11,9 +12,55 @@ import '../models/video_source.dart';
 
 enum CastState { unavailable, available, connecting, connected }
 
+/// CAF [MediaStatus.playerState] names for shared logs.
+String castPlayerStateName(int state) => switch (state) {
+  1 => 'idle',
+  2 => 'playing',
+  3 => 'paused',
+  4 => 'buffering',
+  5 => 'loading',
+  _ => 'unknown($state)',
+};
+
+/// CAF [MediaStatus.idleReason] names for shared logs.
+String castIdleReasonName(int reason) => switch (reason) {
+  0 => 'none',
+  1 => 'finished',
+  2 => 'canceled',
+  3 => 'interrupted',
+  4 => 'error',
+  _ => 'unknown($reason)',
+};
+
 // ---------------------------------------------------------------------------
 // Mime mapping
 // ---------------------------------------------------------------------------
+
+/// Maps a [Subtitle] to the payload [CastController.loadCurrent] sends
+/// natively. Chromecast's Default Media Receiver only accepts WebVTT; SRT is
+/// advertised as `vtt` because the LAN proxy converts it on the way out.
+List<Map<String, String>> castSubtitleMaps(List<Subtitle> subtitles) {
+  return [
+    for (final s in subtitles)
+      if (canCastSubtitle(s))
+        {
+          'url': s.url,
+          'lang': s.lang,
+          'label': s.label ?? s.lang,
+          'format': 'vtt',
+        },
+  ];
+}
+
+/// Soft-subs the Default Media Receiver can actually load. ASS/SSA are
+/// rejected (Invalid Request / 2001); SRT is converted to VTT in the proxy.
+bool canCastSubtitle(Subtitle s) {
+  final format = (s.format ?? '').toLowerCase();
+  final path = (Uri.tryParse(s.url)?.path ?? s.url).toLowerCase();
+  if (format == 'ass' || format == 'ssa') return false;
+  if (path.endsWith('.ass') || path.endsWith('.ssa')) return false;
+  return true;
+}
 
 /// Maps a [SourceContainer] + URL to the MIME type expected by Chromecast.
 ///
@@ -59,6 +106,12 @@ class CastController extends ChangeNotifier {
   Duration position = Duration.zero;
   Duration duration = Duration.zero;
   bool isPlaying = false;
+
+  /// CAF [MediaStatus.playerState] / [idleReason]. Logged on change so a
+  /// shared `zangetsu.log` can show play/pause/idle without native logcat.
+  int playerState = 0;
+  int idleReason = 0;
+
   /// Non-null when the last `loadMedia` call failed on the receiver side
   /// (e.g. header-locked streams the default receiver can't play).
   /// Cleared to null on the next successful status update or new load.
@@ -98,6 +151,11 @@ class CastController extends ChangeNotifier {
     if (raw is! Map) return;
     final map = Map<String, dynamic>.from(raw);
 
+    final prevState = state;
+    final prevPlayer = playerState;
+    final prevIdle = idleReason;
+    final prevError = loadError;
+
     final stateStr = map['state'] as String?;
     switch (stateStr) {
       case 'available':
@@ -119,8 +177,22 @@ class CastController extends ChangeNotifier {
     position = Duration(milliseconds: posMs);
     duration = Duration(milliseconds: durMs);
     isPlaying = (map['playing'] as bool?) ?? false;
+    playerState = (map['playerState'] as num?)?.toInt() ?? 0;
+    idleReason = (map['idleReason'] as num?)?.toInt() ?? 0;
     // Optional error field — present only on load failure, absent on success.
     loadError = map.containsKey('error') ? (map['error'] as String?) : null;
+
+    if (state != prevState ||
+        playerState != prevPlayer ||
+        idleReason != prevIdle ||
+        loadError != prevError) {
+      AppLogger.instance.log(
+        '[cast] ${state.name} player=${castPlayerStateName(playerState)} '
+        'idle=${castIdleReasonName(idleReason)}'
+        '${deviceName != null ? ' · $deviceName' : ''}'
+        '${loadError != null ? ' · error=$loadError' : ''}',
+      );
+    }
 
     notifyListeners();
   }
@@ -141,6 +213,9 @@ class CastController extends ChangeNotifier {
     String? poster,
     List<Subtitle> subtitles = const [],
     required Duration startAt,
+    Duration duration = Duration.zero,
+    String? hlsSegmentFormat,
+    String? hlsVideoSegmentFormat,
   }) async {
     // Optimistically clear any prior error so the UI doesn't flash stale state.
     if (loadError != null) {
@@ -156,16 +231,12 @@ class CastController extends ChangeNotifier {
         'headers': ?headers,
         'title': ?title,
         'poster': ?poster,
-        'subtitles': subtitles
-            .map(
-              (s) => {
-                'url': s.url,
-                'lang': s.lang,
-                'label': s.label ?? s.lang,
-              },
-            )
-            .toList(),
+        'subtitles': castSubtitleMaps(subtitles),
         'startMs': startAt.inMilliseconds,
+        if (duration > Duration.zero) 'durationMs': duration.inMilliseconds,
+        if (hlsSegmentFormat != null) 'hlsSegmentFormat': hlsSegmentFormat,
+        if (hlsVideoSegmentFormat != null)
+          'hlsVideoSegmentFormat': hlsVideoSegmentFormat,
       });
     } catch (_) {}
   }
