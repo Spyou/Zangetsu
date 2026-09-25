@@ -27,6 +27,9 @@ class TvExoController {
   final playing = ValueNotifier<bool>(false);
   final buffering = ValueNotifier<bool>(false);
   final ended = ValueNotifier<bool>(false);
+  /// Last native player error (e.g. a dead mirror's 403). Null when healthy.
+  /// The screen shows it with a next-mirror action instead of spinning forever.
+  final playerError = ValueNotifier<String?>(null);
   final audioTracks = ValueNotifier<List<TvTrack>>(const []);
   final textTracks = ValueNotifier<List<TvTrack>>(const []);
 
@@ -50,6 +53,8 @@ class TvExoController {
     playing.value = e['playing'] == true;
     buffering.value = e['buffering'] == true;
     ended.value = e['ended'] == true;
+    final err = e['error'];
+    playerError.value = err is String && err.isNotEmpty ? err : null;
     if (e.containsKey('audioTracks')) {
       final a = _parseTracks(e['audioTracks']);
       if (!_tracksEqual(audioTracks.value, a)) audioTracks.value = a;

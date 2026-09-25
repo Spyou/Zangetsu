@@ -511,6 +511,12 @@ class PlayerCubit extends Cubit<PlayerState> {
   // "· proxy" version of the same quality. Aniyomi-only + direct-only, so
   // CloudStream / JS / torrent sources are completely unaffected.
   Timer? _startTimer;
+  // Never-started watchdog (all sources): same hole as the Aniyomi one above,
+  // but general — a dead playlist mpv retries without erroring and the stall
+  // watchdog needs a started source, so without this nothing ever fires and
+  // the spinner sits forever. 30s (generous: normal starts take seconds),
+  // cancelled by the first frame like every other watchdog here.
+  Timer? _neverStartedTimer;
   // Fired once per session: mark the anime CURRENT on AniList as soon as
   // playback starts (so "started watching" shows immediately, not only after
   // an episode crosses the 92% scrobble threshold).
@@ -1001,6 +1007,8 @@ class PlayerCubit extends Cubit<PlayerState> {
           _everStarted = true; // ...and something has played at least once
           _startTimer?.cancel();
           _startTimer = null;
+          _neverStartedTimer?.cancel();
+          _neverStartedTimer = null;
           if (!_markedWatching) {
             _markedWatching = true;
             _markWatching(); // "started watching" → CURRENT on AniList now
@@ -2361,6 +2369,23 @@ class PlayerCubit extends Cubit<PlayerState> {
     }
     _startTimer?.cancel();
     _startedThisSource = false; // reset; set true once this source plays
+    // A source that never produces a frame and emits no error (a 403 HLS
+    // playlist mpv retries forever) used to spin forever: the error listener
+    // needs an error event and the stall watchdog needs a started source, so
+    // neither fired. Arm the same failover for the never-started case — a
+    // first frame within the window cancels it, exactly like the stall path.
+    // Torrents excluded (pieces take a while — same rule as the stall path).
+    _neverStartedTimer?.cancel();
+    final openGen = g;
+    _neverStartedTimer = Timer(const Duration(seconds: 30), () {
+      if (openGen != _gen ||
+          _startedThisSource ||
+          _recovering ||
+          _activeTorrentId != null) {
+        return;
+      }
+      _failoverFromStall();
+    });
     emit(state.copyWith(active: () => s, error: () => null));
     // When auto-resume is off, ignore the saved resume mark and start from the
     // explicit seek (a mid-session source/quality switch) or the very start.
@@ -3433,6 +3458,7 @@ class PlayerCubit extends Cubit<PlayerState> {
       s.cancel();
     }
     _stallTimer?.cancel();
+    _neverStartedTimer?.cancel();
     _toastTimer?.cancel();
     _discordPauseTimer?.cancel();
     // Stop any active torrent stream + delete its buffered pieces.

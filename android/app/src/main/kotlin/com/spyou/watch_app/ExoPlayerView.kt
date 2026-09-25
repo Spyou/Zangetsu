@@ -14,6 +14,7 @@ import androidx.media3.common.Format
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackParameters
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.text.Cue
@@ -80,6 +81,9 @@ class ExoPlayerView(
     private val events = EventChannel(messenger, "zangetsu/exoplayer_events_$id")
     private var sink: EventChannel.EventSink? = null
 
+    /** Last player error, cleared on every new setSource. Null = no error. */
+    private var lastError: String? = null
+
     private val handler = Handler(Looper.getMainLooper())
     /** PlaybackPrefs subtitlePosition 0=top … 100=bottom; drives cue line remapping. */
     private var captionPositionPref = 95
@@ -102,6 +106,13 @@ class ExoPlayerView(
         player.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) { syncKeepScreenOn(); emitState() }
             override fun onIsPlayingChanged(isPlaying: Boolean) { syncKeepScreenOn(); emitState() }
+            // Surfaced to Dart so the screen shows an error + next-mirror
+            // action instead of spinning forever on a dead mirror.
+            override fun onPlayerError(error: PlaybackException) {
+                lastError = (error.message ?: "playback error").take(160)
+                syncKeepScreenOn()
+                emitState()
+            }
             override fun onTracksChanged(tracks: androidx.media3.common.Tracks) = emitState()
             override fun onCues(cueGroup: CueGroup) {
                 playerView.subtitleView?.setCues(repositionCues(cueGroup.cues))
@@ -171,6 +182,9 @@ class ExoPlayerView(
                 "audioTracks" to audio,
                 "textTracks" to text,
                 "videoTracks" to video,
+                // Last player error (null when healthy). Lets Dart show an
+                // error + next-mirror action instead of spinning forever.
+                "error" to lastError,
                 // Null until the first frame is decoded; lets the menu show what
                 // is actually on screen when there is nothing to switch.
                 "videoHeight" to (player.videoFormat?.height ?: 0),
@@ -258,6 +272,7 @@ class ExoPlayerView(
                 val drmKid = call.argument<String>("drmKid")
                 val drmKey = call.argument<String>("drmKey")
                 if (url != null) {
+                    lastError = null
                     try {
                         val httpFactory = DefaultHttpDataSource.Factory()
                             .setAllowCrossProtocolRedirects(true)

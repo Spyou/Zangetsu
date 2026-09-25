@@ -496,6 +496,18 @@ class CloudStreamProvider implements BaseProvider {
     );
   }
 
+  /// True when [url] is an address mpv (or the native players) can open:
+  /// http(s), magnet, torrent file, local file. Rejects junk bodies plugins
+  /// sometimes return instead of a link (e.g. the literal "Ok").
+  static bool _isPlayableUrl(String url) {
+    final lower = url.toLowerCase();
+    return lower.startsWith('http://') ||
+        lower.startsWith('https://') ||
+        lower.startsWith('magnet:') ||
+        lower.startsWith('file:') ||
+        lower.endsWith('.torrent');
+  }
+
   /// Maps a native links payload into [VideoSource]s. Shared by the one-shot
   /// resolve and the poll above so the two can never drift apart.
   @visibleForTesting
@@ -525,6 +537,10 @@ class CloudStreamProvider implements BaseProvider {
         final sm = _asMap(s);
         final streamUrl = (sm['url'] ?? '').toString();
         if (streamUrl.isEmpty) continue;
+        // A plugin sometimes answers with a junk body ("Ok") instead of a
+        // link. Only real addresses pass — bare words would otherwise ride all
+        // the way to mpv ("No host specified in URI Ok") and stall playback.
+        if (!_isPlayableUrl(streamUrl)) continue;
         // Torrents / magnet links now stream via the native engine (Phase 1),
         // so keep them — tagged as torrent so the player routes them there.
         final lower = streamUrl.toLowerCase();

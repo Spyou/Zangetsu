@@ -39,6 +39,25 @@ void main() {
       expect(c.playing.value, isFalse);
       c.dispose();
     });
+
+    test('carries a native player error, cleared by a healthy event', () {
+      final c = TvExoController(0);
+      expect(c.playerError.value, isNull);
+      c.applyEvent({'error': 'Source error'});
+      expect(c.playerError.value, 'Source error');
+      c.applyEvent({'positionMs': 1000});
+      expect(c.playerError.value, isNull);
+      c.dispose();
+    });
+
+    test('garbage error values read as no error', () {
+      final c = TvExoController(0);
+      c.applyEvent({'error': ''});
+      expect(c.playerError.value, isNull);
+      c.applyEvent({'error': 403});
+      expect(c.playerError.value, isNull);
+      c.dispose();
+    });
   });
 
   group('TvExoController.applyEvent (tracks)', () {

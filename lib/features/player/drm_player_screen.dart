@@ -80,6 +80,7 @@ class _DrmPlayerScreenState extends State<DrmPlayerScreen> {
     c.playing.addListener(_rebuild);
     c.position.addListener(_rebuild);
     c.duration.addListener(_rebuild);
+    c.playerError.addListener(_rebuild);
     _play(_current);
     _bumpControls();
   }
@@ -90,6 +91,7 @@ class _DrmPlayerScreenState extends State<DrmPlayerScreen> {
 
   Future<void> _play(VideoSource s) async {
     _current = s;
+    _c?.playerError.value = null;
     await _c?.setSource(
       s.url,
       s.headers ?? const {},
@@ -139,6 +141,21 @@ class _DrmPlayerScreenState extends State<DrmPlayerScreen> {
     final mm = h > 0 ? m.toString().padLeft(2, '0') : m.toString();
     final ss = sec.toString().padLeft(2, '0');
     return h > 0 ? '$h:$mm:$ss' : '$mm:$ss';
+  }
+
+  /// The current mirror failed — play the next one in the list. Last one
+  /// just closes: there is nothing left to try.
+  void _playNextMirror() {
+    final others = [
+      for (final s in widget.sources)
+        if (s.url != _current.url) s,
+    ];
+    if (others.isEmpty) {
+      Navigator.of(context).maybePop();
+      return;
+    }
+    _play(others.first);
+    _bumpControls();
   }
 
   void _openSources() {
@@ -209,6 +226,7 @@ class _DrmPlayerScreenState extends State<DrmPlayerScreen> {
     final c = _c;
     final buffering = c?.buffering.value ?? true;
     final playing = c?.playing.value ?? false;
+    final error = c?.playerError.value;
     final pos = c?.position.value ?? 0;
     final dur = c?.duration.value ?? 0;
     final isLive = dur <= 0;
@@ -248,9 +266,58 @@ class _DrmPlayerScreenState extends State<DrmPlayerScreen> {
             ),
 
             // Buffering spinner (until the first frame decodes).
-            if (buffering && !playing)
+            if (buffering && !playing && error == null)
               const Center(
                 child: CircularProgressIndicator(color: Colors.white),
+              ),
+
+            // A dead mirror (403, gone event, bad key) used to spin forever.
+            // Say so, with one tap to the next mirror.
+            if (error != null)
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 32),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.error_outline_rounded,
+                        color: Colors.white70,
+                        size: 48,
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        error,
+                        textAlign: TextAlign.center,
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          TextButton(
+                            onPressed: () =>
+                                Navigator.of(context).maybePop(),
+                            child: Text(
+                              context.l10n.close,
+                              style: const TextStyle(color: Colors.white70),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          FilledButton(
+                            onPressed: _playNextMirror,
+                            child: Text(context.l10n.tryAgain),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
               ),
 
             // Control overlay.

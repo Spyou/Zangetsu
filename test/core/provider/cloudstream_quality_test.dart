@@ -38,4 +38,20 @@ void main() {
     expect(out.single.url, 'https://x/a.mp4');
     expect(out.single.label, 'HubCloud');
   });
+
+  test('a junk body ("Ok") is dropped instead of stalling the player', () {
+    final out = cs.sourcesFromResult({
+      'sources': [
+        {'url': 'Ok', 'name': 'PlayZ TV Live'},
+        {'url': '', 'name': 'Empty'},
+        {'url': 'https://x/a.m3u8', 'name': 'Good', 'isM3u8': true},
+        {'url': 'magnet:?xt=urn:btih:abc', 'name': 'Torrent'},
+      ],
+      'subtitles': const [],
+    });
+    expect(out.map((s) => s.url), [
+      'https://x/a.m3u8',
+      'magnet:?xt=urn:btih:abc',
+    ]);
+  });
 }
