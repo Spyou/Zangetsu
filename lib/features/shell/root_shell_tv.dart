@@ -7,6 +7,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
+import '../../core/playback/my_list.dart';
 import '../../core/platform/apple_tv.dart';
 import '../../core/provider/provider_manager.dart';
 import '../../core/provider/provider_registry.dart';
@@ -74,6 +75,7 @@ class _RailItem {
 
 /// Nav item definitions (label + icons). Order matches [_RootShellTvState._pages].
 const int _kRailItemCount = 6;
+const int _kMyListRailItem = 2;
 
 List<_RailItem> _railItems(BuildContext context) {
   final l = context.l10n;
@@ -367,6 +369,9 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
       _index = i;
       if (isAppleTv) _mountedPages.add(i);
     });
+    if (i == _kMyListRailItem && sl.isRegistered<MyListStore>()) {
+      unawaited(sl<MyListStore>().pullFromCloud());
+    }
     if (i == _searchRailItem) _searchFocusSignal.value++;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;

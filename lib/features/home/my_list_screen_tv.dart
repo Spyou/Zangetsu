@@ -1,9 +1,16 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../core/di/injector.dart';
+import '../../core/mode/content_mode.dart';
 import '../../core/mode/content_mode_cubit.dart';
 import '../../core/models/media_item.dart';
+import '../../core/models/watch_status.dart';
+import '../../core/playback/category_store.dart';
+import '../../core/playback/my_list.dart';
+import '../../core/prefs/list_sort.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/tracker/tracker_item_url.dart';
@@ -18,6 +25,7 @@ import '../../core/ui/tracker_entry_sheet.dart';
 import '../detail/detail_screen.dart';
 import 'cubit/my_list_cubit.dart';
 import 'cubit/tracker_list_cubit.dart';
+import 'library_filter.dart';
 import 'search_screen.dart';
 
 /// TV My List: a full-screen focusable poster grid backed by [MyListCubit]
@@ -28,14 +36,33 @@ import 'search_screen.dart';
 /// opens Detail (or Search for tracker stubs), and a held OK opens the same
 /// status/remove sheet as the phone long-press. A chip row switches between
 /// My List and each connected tracker — same sources as the phone segmented
-/// control. The rail↔content focus bridge in [RootShellTv] already handles
-/// LEFT-at-edge → rail.
-class MyListScreenTv extends StatelessWidget {
-  const MyListScreenTv({super.key});
+/// control. A second row filters by status / custom list and sorts, matching
+/// the phone tabs. The rail↔content focus bridge in [RootShellTv] already
+/// handles LEFT-at-edge → rail.
+class MyListScreenTv extends StatefulWidget {
+  const MyListScreenTv({super.key, this.initialStatus});
+
+  /// Land on one status chip instead of All — same contract as the phone
+  /// screen's [MyListScreen.initialStatus].
+  final WatchStatus? initialStatus;
 
   /// 6 columns keeps the cards near the home-rail ~140 dp scale on a 1080p TV
   /// (matches the see-all grid; 5 rendered them oversized).
-  static const int _crossAxisCount = 6;
+  static const int crossAxisCount = 6;
+
+  @override
+  State<MyListScreenTv> createState() => _MyListScreenTvState();
+}
+
+class _MyListScreenTvState extends State<MyListScreenTv> {
+  late WatchStatus? _statusFilter = widget.initialStatus;
+  String? _customListFilter;
+  String? _categoryFilter;
+  ListSort? _sort = ListSortPrefs.sortBy;
+  bool _sortDesc = ListSortPrefs.descending;
+
+  CategoryStore? get _cats =>
+      sl.isRegistered<CategoryStore>() ? sl<CategoryStore>() : null;
 
   Future<void> _openOwnItem(BuildContext context, MediaItem item) async {
     final cubit = context.read<MyListCubit>();
@@ -57,6 +84,51 @@ class MyListScreenTv extends StatelessWidget {
         builder: (_) => SearchScreen(initialQuery: stub.title),
       ),
     );
+  }
+
+  ListSort _sortFor({required bool isMyList}) {
+    final chosen = _sort;
+    if (chosen != null && optionsFor(isMyList: isMyList).contains(chosen)) {
+      return chosen;
+    }
+    return defaultSortFor(isMyList: isMyList);
+  }
+
+  void _cycleSort({required bool isMyList}) {
+    final options = optionsFor(isMyList: isMyList);
+    final current = _sortFor(isMyList: isMyList);
+    final i = options.indexOf(current);
+    final next = options[(i + 1) % options.length];
+    setState(() => _sort = next);
+    ListSortPrefs.save(next, _sortDesc);
+  }
+
+  void _toggleSortDir({required bool isMyList}) {
+    setState(() => _sortDesc = !_sortDesc);
+    ListSortPrefs.save(_sortFor(isMyList: isMyList), _sortDesc);
+  }
+
+  void _selectFilter(String id) {
+    setState(() {
+      _statusFilter = null;
+      _customListFilter = null;
+      _categoryFilter = null;
+      if (id.startsWith('status:')) {
+        final name = id.substring(7);
+        _statusFilter = WatchStatus.values.firstWhere((s) => s.name == name);
+      } else if (id.startsWith('cat:')) {
+        _categoryFilter = id.substring(4);
+      } else if (id.startsWith('list:')) {
+        _customListFilter = id.substring(5);
+      }
+    });
+  }
+
+  String get _selectedFilterId {
+    if (_categoryFilter != null) return 'cat:$_categoryFilter';
+    if (_customListFilter != null) return 'list:$_customListFilter';
+    if (_statusFilter != null) return 'status:${_statusFilter!.name}';
+    return 'all';
   }
 
   @override
@@ -100,17 +172,21 @@ class MyListScreenTv extends StatelessWidget {
             message: context.l10n.titlesYouAddAppearHere,
           );
         }
-        // Chips take autofocus when present; otherwise first poster.
-        final chipsVisible = _connectedTrackers().isNotEmpty;
-        return _posterGrid(
+        return _filteredGrid(
+          context,
           entries: entries,
-          autofocusFirst: !chipsVisible,
+          isMyList: true,
+          autofocusFirst: false,
           onTap: (item) => _openOwnItem(context, item),
           onLongPress: (entry) {
             final cubit = context.read<MyListCubit>();
             showListStatusSheet(
               context,
               item: entry.item,
+              malId: entry.item.malId,
+              tmdbId: entry.item.tmdbId,
+              tmdbIsTv: entry.item.tmdbIsTv,
+              imdbId: entry.item.imdbId,
               onChanged: cubit.reload,
             );
           },
@@ -139,8 +215,11 @@ class MyListScreenTv extends StatelessWidget {
           );
         }
         final tracker = tlState.tracker!;
-        return _posterGrid(
+        return _filteredGrid(
+          context,
           entries: tlState.entries,
+          isMyList: false,
+          customListNames: tlState.customListNames,
           autofocusFirst: false,
           onTap: (item) => _openTrackerItem(context, item),
           onLongPress: (entry) {
@@ -161,6 +240,81 @@ class MyListScreenTv extends StatelessWidget {
     }
   }
 
+  Widget _filteredGrid(
+    BuildContext context, {
+    required List<MyListEntry> entries,
+    required bool isMyList,
+    required bool autofocusFirst,
+    required void Function(MediaItem) onTap,
+    required void Function(MyListEntry) onLongPress,
+    List<String> customListNames = const [],
+  }) {
+    final statuses = presentLibraryStatuses(entries);
+    final customLists = <String>[...customListNames];
+    if (!isMyList) {
+      for (final e in entries) {
+        for (final name in e.customLists) {
+          if (!customLists.contains(name)) customLists.add(name);
+        }
+      }
+      customLists.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    }
+    final categories = isMyList
+        ? (_cats?.all() ?? const <ListCategory>[])
+        : const <ListCategory>[];
+
+    final shown = sortLibrary(
+      filterLibraryEntries(
+        entries,
+        status: (_customListFilter == null && _categoryFilter == null)
+            ? _statusFilter
+            : null,
+        customList: _customListFilter,
+        inCategory: _categoryFilter == null
+            ? null
+            : (e) => _cats?.isIn(e.item, _categoryFilter!) ?? false,
+      ),
+      _sortFor(isMyList: isMyList),
+      _sortDesc,
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _FilterChips(
+          statuses: statuses,
+          customLists: isMyList ? const [] : customLists,
+          categories: categories,
+          selectedId: _selectedFilterId,
+          sortLabel: _sortChipLabel(isMyList: isMyList),
+          autofocusAll: _connectedTrackers().isEmpty,
+          onSelect: _selectFilter,
+          onCycleSort: () => _cycleSort(isMyList: isMyList),
+          onToggleSortDir: () => _toggleSortDir(isMyList: isMyList),
+        ),
+        const SizedBox(height: 8),
+        Expanded(
+          child: shown.isEmpty
+              ? EmptyState(
+                  icon: Icons.filter_list_off_rounded,
+                  message: context.l10n.noTitlesInThisList,
+                )
+              : _posterGrid(
+                  entries: shown,
+                  autofocusFirst: autofocusFirst,
+                  onTap: onTap,
+                  onLongPress: onLongPress,
+                ),
+        ),
+      ],
+    );
+  }
+
+  String _sortChipLabel({required bool isMyList}) {
+    final by = _sortFor(isMyList: isMyList);
+    return '${listSortLabel(by)} · ${listSortDirectionLabel(by, _sortDesc)}';
+  }
+
   Widget _posterGrid({
     required List<MyListEntry> entries,
     required bool autofocusFirst,
@@ -172,7 +326,7 @@ class MyListScreenTv extends StatelessWidget {
       // of sliding up under the source-chip row (which paints beneath us).
       padding: const EdgeInsets.fromLTRB(40, 12, 40, 40),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: _crossAxisCount,
+        crossAxisCount: MyListScreenTv.crossAxisCount,
         childAspectRatio: 0.56,
         crossAxisSpacing: 18,
         mainAxisSpacing: 22,
@@ -244,7 +398,12 @@ class _SourceChips extends StatelessWidget {
                   variant: TvFocusVariant.float,
                   scale: 1.0,
                   borderRadius: 20,
-                  onTap: cubit.selectMyList,
+                  onTap: () {
+                    cubit.selectMyList();
+                    if (sl.isRegistered<MyListStore>()) {
+                      unawaited(sl<MyListStore>().pullFromCloud());
+                    }
+                  },
                   child: _Chip(
                     label: context.l10n.myList,
                     selected: tlState.isMyList,
@@ -270,6 +429,100 @@ class _SourceChips extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+/// Status / custom-list / category chips plus a sort chip. One row so D-pad
+/// focus stays a single left-right pass under the source chips.
+class _FilterChips extends StatelessWidget {
+  const _FilterChips({
+    required this.statuses,
+    required this.customLists,
+    required this.categories,
+    required this.selectedId,
+    required this.sortLabel,
+    required this.autofocusAll,
+    required this.onSelect,
+    required this.onCycleSort,
+    required this.onToggleSortDir,
+  });
+
+  final List<WatchStatus> statuses;
+  final List<String> customLists;
+  final List<ListCategory> categories;
+  final String selectedId;
+  final String sortLabel;
+  final bool autofocusAll;
+  final void Function(String id) onSelect;
+  final VoidCallback onCycleSort;
+  final VoidCallback onToggleSortDir;
+
+  @override
+  Widget build(BuildContext context) {
+    final reading =
+        sl.isRegistered<ContentModeCubit>() &&
+        sl<ContentModeCubit>().state.isReading;
+    final chips = <Widget>[
+      TvFocusable(
+        autofocus: autofocusAll,
+        variant: TvFocusVariant.float,
+        scale: 1.0,
+        borderRadius: 20,
+        onTap: () => onSelect('all'),
+        child: _Chip(label: context.l10n.all, selected: selectedId == 'all'),
+      ),
+      for (final st in statuses) ...[
+        const SizedBox(width: 12),
+        TvFocusable(
+          variant: TvFocusVariant.float,
+          scale: 1.0,
+          borderRadius: 20,
+          onTap: () => onSelect('status:${st.name}'),
+          child: _Chip(
+            label: shortLabelFor(st, reading: reading),
+            selected: selectedId == 'status:${st.name}',
+          ),
+        ),
+      ],
+      for (final c in categories) ...[
+        const SizedBox(width: 12),
+        TvFocusable(
+          variant: TvFocusVariant.float,
+          scale: 1.0,
+          borderRadius: 20,
+          onTap: () => onSelect('cat:${c.id}'),
+          child: _Chip(label: c.name, selected: selectedId == 'cat:${c.id}'),
+        ),
+      ],
+      for (final name in customLists) ...[
+        const SizedBox(width: 12),
+        TvFocusable(
+          variant: TvFocusVariant.float,
+          scale: 1.0,
+          borderRadius: 20,
+          onTap: () => onSelect('list:$name'),
+          child: _Chip(label: name, selected: selectedId == 'list:$name'),
+        ),
+      ],
+      const SizedBox(width: 20),
+      TvFocusable(
+        variant: TvFocusVariant.float,
+        scale: 1.0,
+        borderRadius: 20,
+        onTap: onCycleSort,
+        onLongPress: onToggleSortDir,
+        child: _Chip(label: sortLabel, selected: false),
+      ),
+    ];
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(40, 0, 40, 4),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        clipBehavior: Clip.none,
+        child: Row(children: chips),
+      ),
     );
   }
 }

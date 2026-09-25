@@ -25,6 +25,7 @@ import '../../core/tv/tv_playback_failure.dart';
 import '../../core/zmode/playback_resolver.dart';
 import '../../core/zmode/source_matcher.dart';
 import '../../core/zmode/zmode_ids.dart';
+import '../../core/playback/tv_playback_tracker.dart';
 import '../../core/playback/tv_track_helpers.dart';
 import '../../core/playback/watch_history.dart';
 import '../../core/theme/app_colors.dart';
@@ -75,7 +76,9 @@ class TvNativePlayer {
   static Map<String, String>? _coverHeaders;
   static int? _malId;
   static String? _skipTitle; // anime title for AniSkip (null = no skips)
-  static List<SubtitleSearchResult> _subResults = const []; // last online search
+  static TvPlaybackTracker? _tracker;
+  static List<SubtitleSearchResult> _subResults =
+      const []; // last online search
   static String _category = 'sub';
   static ResumeStore? _resume;
   static String? _torrentId; // active torrent stream (stopped on switch/close)
@@ -88,7 +91,8 @@ class TvNativePlayer {
     required List<Episode> episodes,
     required int startIndex,
     required ResumeStore resume,
-    required Future<List<VideoSource>> Function(String episodeUrl) resolveSources,
+    required Future<List<VideoSource>> Function(String episodeUrl)
+    resolveSources,
     String? showUrl,
     String? showTitle,
     String? cover,
@@ -99,6 +103,7 @@ class TvNativePlayer {
     String? scrobbleTitle,
     int? tmdbId,
     bool tmdbIsTv = false,
+    String? imdbId,
   }) async {
     if (startIndex < 0 || startIndex >= episodes.length) return false;
     lastFailure = null;
@@ -122,6 +127,13 @@ class TvNativePlayer {
     _skipTitle = scrobbleTitle;
     _category = category;
     _resume = resume;
+    _tracker = TvPlaybackTracker(
+      malId: malId,
+      scrobbleTitle: scrobbleTitle,
+      tmdbId: tmdbId,
+      tmdbIsTv: tmdbIsTv,
+      imdbId: imdbId,
+    );
     if (!_handlerBound) {
       _ch.setMethodCallHandler(_onNativeCall);
       _handlerBound = true;
@@ -165,12 +177,11 @@ class TvNativePlayer {
       positionMs: mark?.position.inMilliseconds ?? 0,
       durationMs: mark?.duration.inMilliseconds ?? 0,
     );
+    _tracker?.maybeMarkWatching();
 
     // Filler flags: use warm cache immediately so launch isn't blocked; push an
     // update over the channel if the Jikan fetch lands after the player is up.
-    final warm = malId != null
-        ? FillerService.instance.peekCache(malId)
-        : null;
+    final warm = malId != null ? FillerService.instance.peekCache(malId) : null;
     final fillerFlags = _fillerFlags(_episodes, warm ?? const {});
     if (malId != null) {
       unawaited(
@@ -286,7 +297,8 @@ class TvNativePlayer {
         final index = (args['index'] as num?)?.toInt() ?? -1;
         final posMs = (args['positionMs'] as num?)?.toInt() ?? 0;
         final durMs = (args['durationMs'] as num?)?.toInt() ?? 0;
-        _saveProgress(index, posMs, durMs);
+        final completed = args['completed'] as bool? ?? false;
+        _saveProgress(index, posMs, durMs, completed: completed);
         if (index >= 0 && index < _episodes.length) {
           _announceWatching(
             _episodes[index],
@@ -361,7 +373,10 @@ class TvNativePlayer {
         final pref = sl<PlaybackPrefs>().subtitlePreference;
         final lang = (pref.isEmpty || pref == 'off') ? 'en' : pref;
         try {
-          _subResults = await SubtitleSearchService().search(_showTitle, language: lang);
+          _subResults = await SubtitleSearchService().search(
+            _showTitle,
+            language: lang,
+          );
         } catch (_) {
           _subResults = const [];
         }
@@ -394,7 +409,9 @@ class TvNativePlayer {
         final category = (args['category'] as String?) ?? _category;
         if (index < 0 || index >= _episodes.length) return const <Map>[];
         try {
-          final sources = await _resolve!(tvEpisodeUrl(_episodes[index].url, category));
+          final sources = await _resolve!(
+            tvEpisodeUrl(_episodes[index].url, category),
+          );
           return [
             for (var i = 0; i < sources.length; i++)
               {..._srcMap(sources[i]), 'label': _srcLabel(sources[i], i)},
@@ -438,7 +455,9 @@ class TvNativePlayer {
           final code = args['errorCode'] as String? ?? '';
           final msg = args['message'] as String? ?? '';
           final index = (args['index'] as num?)?.toInt() ?? -1;
-          debugPrint('[TvNativePlayer] playbackError · code=$code msg=$msg index=$index');
+          debugPrint(
+            '[TvNativePlayer] playbackError · code=$code msg=$msg index=$index',
+          );
           lastPlaybackErrorCode = code.isEmpty ? 'PLAYBACK_FAILED' : code;
           unawaited(_handlePlaybackError(code, msg, index));
           return null;
@@ -503,27 +522,30 @@ class TvNativePlayer {
   }
 
   static Map<String, dynamic> _srcMap(VideoSource src) => {
-        'url': src.url,
-        'headers': src.headers ?? const <String, String>{},
-        'mimeType': _mimeFor(src),
-        // The mobile Quality menu keys off per-source quality; carry it through so
-        // the native Quality menu can list distinct resolutions.
-        'quality': src.quality ?? '',
-        'subtitleSkewSeconds': src.subtitleSkewSeconds ?? 0.0,
-        'subtitleSkewAfterSeconds': src.subtitleSkewAfterSeconds ?? 0.0,
-        // ClearKey DRM (base64url kid/key) for encrypted CENC/DASH channels; the
-        // native TV player builds an ExoPlayer clearkey session when present.
-        if (src.isDrm) 'drmKid': src.drmKid,
-        if (src.isDrm) 'drmKey': src.drmKey,
-        'subtitles': [
-          for (final s in src.subtitles)
-            {'url': s.url, 'lang': s.lang, 'label': s.label ?? s.lang},
-        ],
-      };
+    'url': src.url,
+    'headers': src.headers ?? const <String, String>{},
+    'mimeType': _mimeFor(src),
+    // The mobile Quality menu keys off per-source quality; carry it through so
+    // the native Quality menu can list distinct resolutions.
+    'quality': src.quality ?? '',
+    'subtitleSkewSeconds': src.subtitleSkewSeconds ?? 0.0,
+    'subtitleSkewAfterSeconds': src.subtitleSkewAfterSeconds ?? 0.0,
+    // ClearKey DRM (base64url kid/key) for encrypted CENC/DASH channels; the
+    // native TV player builds an ExoPlayer clearkey session when present.
+    if (src.isDrm) 'drmKid': src.drmKid,
+    if (src.isDrm) 'drmKey': src.drmKey,
+    'subtitles': [
+      for (final s in src.subtitles)
+        {'url': s.url, 'lang': s.lang, 'label': s.label ?? s.lang},
+    ],
+  };
 
   /// Swap `_episodes` to [category] when URL rewrite can't express the cut.
   /// Returns the index to resolve (clamped if the other list is shorter).
-  static Future<int> _ensureEpisodesForCategory(int index, String category) async {
+  static Future<int> _ensureEpisodesForCategory(
+    int index,
+    String category,
+  ) async {
     if (index < 0 || index >= _episodes.length) return index;
     final current = _episodes[index];
     if (!categorySwitchNeedsEpisodeRefetch(current.url, category)) {
@@ -544,7 +566,10 @@ class TvNativePlayer {
     }
   }
 
-  static Future<VideoSource?> _resolveSource(Episode ep, {String? category}) async {
+  static Future<VideoSource?> _resolveSource(
+    Episode ep, {
+    String? category,
+  }) async {
     final cat = category ?? _category;
     try {
       final sources = await _resolve!(tvEpisodeUrl(ep.url, cat));
@@ -606,13 +631,17 @@ class TvNativePlayer {
     }
   }
 
-  static Map<String, dynamic> _streamPayload(VideoSource src, int positionMs) => {
-        ..._srcMap(src),
-        'positionMs': positionMs,
-      };
+  static Map<String, dynamic> _streamPayload(VideoSource src, int positionMs) =>
+      {..._srcMap(src), 'positionMs': positionMs};
 
-  static void _saveProgress(int index, int posMs, int durMs) {
-    if (index < 0 || index >= _episodes.length || durMs <= 0 || posMs <= 0) return;
+  static void _saveProgress(
+    int index,
+    int posMs,
+    int durMs, {
+    bool completed = false,
+  }) {
+    if (index < 0 || index >= _episodes.length || durMs <= 0 || posMs <= 0)
+      return;
     final ep = _episodes[index];
     _resume?.save(
       _sourceId,
@@ -639,6 +668,13 @@ class TvNativePlayer {
         malId: _malId,
       ),
       flush: true,
+    );
+    _tracker?.maybeScrobble(
+      index: index,
+      episode: ep,
+      positionMs: posMs,
+      durationMs: durMs,
+      force: completed,
     );
     debugPrint('[TvNativePlayer] saved ep=${ep.id} pos=$posMs');
   }
@@ -676,17 +712,14 @@ class TvNativePlayer {
   }
 
   /// Top-left label under the show title, e.g. "Episode 3 · Real Name".
-  static String _episodeLabel(Episode ep) =>
-      episodePresenceDetails(ep) ?? '';
+  static String _episodeLabel(Episode ep) => episodePresenceDetails(ep) ?? '';
 
   /// Per-index filler flags for the native player (Jikan episode numbers).
   static List<bool> _fillerFlags(List<Episode> episodes, Set<int> fillers) {
     if (fillers.isEmpty) {
       return List<bool>.filled(episodes.length, false);
     }
-    return [
-      for (final e in episodes) fillers.contains(e.number?.toInt()),
-    ];
+    return [for (final e in episodes) fillers.contains(e.number?.toInt())];
   }
 
   /// How long playback will wait on episode-name metadata before giving up.

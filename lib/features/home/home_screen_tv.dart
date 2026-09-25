@@ -24,6 +24,7 @@ import '../../core/models/home_section.dart';
 import '../../core/models/media_detail.dart';
 import '../../core/models/media_item.dart';
 import '../../core/models/provider_info.dart';
+import '../../core/playback/tv_playback_helpers.dart';
 import '../../core/playback/my_list.dart';
 import '../../core/playback/playback_prefs.dart';
 import '../../core/playback/resume_store.dart';
@@ -211,6 +212,8 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
       scrobbleTitle: item.type == ProviderType.anime ? item.title : null,
       tmdbId: item.tmdbId,
       tmdbIsTv: item.tmdbIsTv,
+      imdbId: item.imdbId,
+      listItem: item,
     );
     if (mounted) setState(() {});
   }
@@ -296,6 +299,14 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
       malId: e.malId,
       scrobbleTitle: e.malId != null ? e.showTitle : null,
       skipOverlay: true, // source already worked — skip the "Finding…" cover
+      listItem: mediaItemForPlayback(
+        sourceId: e.sourceId,
+        showUrl: e.showUrl,
+        showTitle: e.showTitle,
+        cover: e.cover,
+        coverHeaders: e.coverHeaders,
+        malId: e.malId,
+      ),
     );
     debugPrint('[tv-home] _resume · launch complete');
     if (mounted) setState(() {});
@@ -685,9 +696,7 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
   }
 
   void _openStreamingServices() => Navigator.of(context).push(
-    MaterialPageRoute<void>(
-      builder: (_) => const StreamingServicesScreenTv(),
-    ),
+    MaterialPageRoute<void>(builder: (_) => const StreamingServicesScreenTv()),
   );
 
   Widget _catalogScroll(

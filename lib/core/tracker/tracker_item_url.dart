@@ -36,6 +36,35 @@ ZCanonical? trackerCanonical(MediaItem stub) {
   return null;
 }
 
+/// Recover MAL / AniList / TMDB ids from a saved title.
+///
+/// Cloud My List rows do not persist those fields. Z-mode titles still carry
+/// them in the url (`zm://anime/mal:123`) or the item id (`mal:123`). Used
+/// when adding/removing on a tracker so we never ask [SourceRepository] to
+/// load the `zm` pseudo-provider.
+({int? malId, int? anilistId, int? tmdbId, bool tmdbIsTv}) trackerIdsFromItem(
+  MediaItem item,
+) {
+  var mal = item.malId;
+  var al = item.anilistId;
+  var tmdb = item.tmdbId;
+  var isTv = item.tmdbIsTv;
+
+  final z = item.url.isNotEmpty ? ZmodeIds.parseShow(item.url) : null;
+  final raw = z?.id ?? (item.sourceId == ZmodeIds.sourceId ? item.id : null);
+  if (raw != null) {
+    if (raw.startsWith('mal:')) {
+      mal ??= int.tryParse(raw.substring(4));
+    } else if (raw.startsWith('al:')) {
+      al ??= int.tryParse(raw.substring(3));
+    } else if (raw.startsWith('tmdb:')) {
+      tmdb ??= int.tryParse(raw.substring(5));
+    }
+    if (z != null) isTv = z.kind == ZKind.tv;
+  }
+  return (malId: mal, anilistId: al, tmdbId: tmdb, tmdbIsTv: isTv);
+}
+
 /// A tracker stub re-keyed to its metadata identity so a tap opens its Detail
 /// page. Null when the stub has no id to go on — the caller falls back to a
 /// search for the title ([SearchScreen] with the stub's title as the query).

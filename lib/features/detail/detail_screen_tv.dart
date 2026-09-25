@@ -271,6 +271,7 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
       tmdbId: detail.tmdbId ?? widget.item.tmdbId,
       tmdbIsTv: detail.tmdbIsTv,
       imdbId: detail.imdbId ?? widget.item.imdbId,
+      listItem: widget.item,
     );
   }
 
