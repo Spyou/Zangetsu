@@ -458,8 +458,10 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
     // local proxy for any player that isn't MX/Just — but we don't know which
     // extras they read, so external subtitles and the resume position may be
     // dropped. Flagged rather than hidden: it's a real caveat, not a blocker.
+    final androidPlayerLabel = context.l10n.androidPlayer;
     final options = <(String, String)>[
       ('', context.l10n.builtInPlayer),
+      (PlaybackPrefs.androidPlayerId, androidPlayerLabel),
       for (final p in players) (p.package, p.known ? p.label : '${p.label}${context.l10n.noSubsResumeSuffix}'),
     ];
     if (players.isEmpty) {
@@ -477,7 +479,11 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
     // hint, which belongs in the picker but not in the saved name shown on the
     // settings row afterwards.
     final match = players.where((p) => p.package == picked);
-    final label = match.isEmpty ? '' : match.first.label;
+    final label = picked == PlaybackPrefs.androidPlayerId
+        ? androidPlayerLabel
+        : match.isEmpty
+            ? ''
+            : match.first.label;
     await _prefs.setExternalPlayer(picked, picked.isEmpty ? '' : label);
     if (mounted) setState(() {});
   }
@@ -664,9 +670,11 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                 SettingsTile(
                   icon: Icons.smart_display_outlined,
                   title: context.l10n.defaultPlayer,
-                  subtitle: _prefs.externalPlayerPackage.isEmpty
-                      ? context.l10n.builtIn
-                      : (_prefs.externalPlayerLabel.isNotEmpty ? _prefs.externalPlayerLabel : context.l10n.externalApp),
+                  subtitle: _prefs.externalPlayerPackage == PlaybackPrefs.androidPlayerId
+                      ? context.l10n.androidPlayer
+                      : _prefs.externalPlayerPackage.isEmpty
+                          ? context.l10n.builtIn
+                          : (_prefs.externalPlayerLabel.isNotEmpty ? _prefs.externalPlayerLabel : context.l10n.externalApp),
                   onTap: _pickPlayer,
                 ),
                 SettingsTile(

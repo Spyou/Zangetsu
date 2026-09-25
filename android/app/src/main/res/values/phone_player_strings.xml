@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="phone_player_desc_back">Back</string>
+    <string name="phone_player_desc_more">More options</string>
+    <string name="phone_player_desc_previous">Previous episode</string>
+    <string name="phone_player_desc_play">Play or pause</string>
+    <string name="phone_player_desc_next">Next episode</string>
+    <string name="phone_player_desc_seek">Seek</string>
+    <string name="phone_player_desc_loading">Loading video</string>
+    <string name="phone_player_state_play">Play</string>
+    <string name="phone_player_state_pause">Pause</string>
+    <string name="phone_player_title_speed">Playback speed</string>
+    <string name="phone_player_title_tracks">Audio &amp; subtitles</string>
+    <string name="phone_player_title_quality">Video quality</string>
+    <string name="phone_player_title_more">More options</string>
+    <string name="phone_player_title_episodes">Episodes</string>
+    <string name="phone_player_title_sources">Sources</string>
+    <string name="phone_player_title_subtitles">Subtitles</string>
+    <string name="phone_player_title_playback_info">Playback info</string>
+    <string name="phone_player_menu_sources">Sources</string>
+    <string name="phone_player_menu_episodes">Episodes</string>
+    <string name="phone_player_menu_display">Display</string>
+    <string name="phone_player_menu_rotate">Rotate</string>
+    <string name="phone_player_menu_cast">Cast</string>
+    <string name="phone_player_menu_info">Info</string>
+    <string name="phone_player_menu_settings">Settings</string>
+    <string name="phone_player_menu_playlist">Playlist</string>
+    <string name="phone_player_menu_sleep_timer">Sleep timer</string>
+    <string name="phone_player_menu_subtitles">Subtitles</string>
+    <string name="phone_player_menu_audio_tracks">Audio tracks</string>
+    <string name="phone_player_menu_video_quality">Video quality</string>
+    <string name="phone_player_toast_no_tracks">No other tracks in this stream</string>
+    <string name="phone_player_toast_single_quality">Only one quality available</string>
+    <string name="phone_player_mode_fit">Fit</string>
+    <string name="phone_player_mode_fill">Fill</string>
+    <string name="phone_player_mode_zoom">Zoom</string>
+</resources>

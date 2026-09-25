@@ -96,7 +96,7 @@ final settingsLeaves = <SettingsLeaf>[
   SettingsLeaf(
     LeafParent.playback,
     (l) => l.defaultPlayer,
-    keywords: 'external mpv exoplayer vlc',
+    keywords: 'external mpv android native vlc',
   ),
   SettingsLeaf(
     LeafParent.playback,

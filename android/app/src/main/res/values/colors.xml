@@ -12,4 +12,13 @@
     <color name="settings_surface">#FF16161C</color>
     <color name="settings_accent">#FFFF4D57</color>
     <color name="settings_text">#FFFFFFFF</color>
+    <color name="phone_player_background">#FF0B0B0F</color>
+    <color name="phone_player_surface">#FF211F29</color>
+    <color name="phone_player_surface_container">#FF2B2930</color>
+    <color name="phone_player_accent">#FFD0BCFF</color>
+    <color name="phone_player_on_primary">#FF381E72</color>
+    <color name="phone_player_on_surface">#FFE6E1E5</color>
+    <color name="phone_player_on_surface_variant">#FFCAC4D0</color>
+    <color name="phone_player_outline">#FF938F99</color>
+    <color name="phone_player_scrim">#D90B0B0F</color>
 </resources>

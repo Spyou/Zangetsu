@@ -142,12 +142,20 @@ String resolveHwdec({
 /// coerced defensively since Hive may round-trip them as `int`/`double`/`num`.
 class PlaybackPrefs {
   static const String boxName = 'playback_prefs';
+  static const String androidPlayerId = 'zangetsu.android.player';
 
   /// Opens the prefs box. Call once during app bootstrap before constructing.
   static Future<void> init() async {
     if (!Hive.isBoxOpen(boxName)) {
       await openBoxSafely(boxName);
     }
+    final box = Hive.box<dynamic>(boxName);
+    if (!box.containsKey('externalPlayerPackage') &&
+        box.get('experimentalExoPlayer') == true) {
+      await box.put('externalPlayerPackage', androidPlayerId);
+      await box.put('externalPlayerLabel', 'Android Player');
+    }
+    await box.delete('experimentalExoPlayer');
   }
 
   Box get _box => Hive.box(boxName);
