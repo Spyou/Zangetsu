@@ -80,6 +80,10 @@ class _SourceSettingsScreenState extends State<SourceSettingsScreen> {
   }
 
   Future<List<ProviderSettingSchema>?> _loadSchema() async {
+    // CloudStream (`cs:`) sources live natively, not in the JS runtime, so
+    // there is no JS schema to wait for — return early and let the native
+    // settings card (or the no-settings state) below handle them.
+    if (_csApiName != null) return null;
     // TV skips loadAll at boot; open settings before playback and the JS
     // provider may not be in the runtime yet.
     if (_manager.get(widget.sourceId) == null) {
