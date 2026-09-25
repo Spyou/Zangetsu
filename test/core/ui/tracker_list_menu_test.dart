@@ -6,6 +6,7 @@ import 'package:watch_app/core/models/watch_status.dart';
 import 'package:watch_app/core/tracker/tracker.dart';
 import 'package:watch_app/core/tracker/tracker_binding_store.dart';
 import 'package:watch_app/core/tracker/tracker_hub.dart';
+import 'package:watch_app/core/tv/tv_focusable.dart';
 import 'package:watch_app/core/ui/tracker_list_sheet.dart';
 
 /// A connected tracker that hands back a canned entry and records what a
@@ -202,7 +203,7 @@ void main() {
     await tester.tap(find.text('Remove tracking'));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.widgetWithText(FilledButton, 'Remove'));
+    await tester.tap(find.widgetWithText(TvFocusable, 'Remove'));
     await tester.pumpAndSettle();
 
     expect(fake.removeCalls, 1);

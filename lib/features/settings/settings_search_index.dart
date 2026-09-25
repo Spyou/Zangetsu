@@ -446,6 +446,21 @@ final settingsLeaves = <SettingsLeaf>[
     (l) => l.adultCatalogue,
     keywords: 'adult 18+ nsfw anilist mal tmdb catalogue hentai',
   ),
+  SettingsLeaf(
+    LeafParent.privacy,
+    (l) => l.enableAdultCatalogue,
+    keywords: 'adult 18+ nsfw catalogue confirm show titles',
+  ),
+  SettingsLeaf(
+    LeafParent.privacy,
+    (l) => l.enableNSFWSources,
+    keywords: 'adult 18+ nsfw sources confirm enable',
+  ),
+  SettingsLeaf(
+    LeafParent.privacy,
+    (l) => l.showNSFWAniyomiSources,
+    keywords: 'adult 18+ nsfw aniyomi confirm show',
+  ),
 
   // Downloads → StorageSettingsScreen
   SettingsLeaf(
