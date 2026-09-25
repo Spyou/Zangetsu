@@ -13,6 +13,8 @@ import 'package:watch_app/core/repository/source_repository.dart';
 import 'package:watch_app/core/search/title_suggestion_service.dart';
 import 'package:get_it/get_it.dart';
 import 'package:watch_app/core/tv/tv_focusable.dart';
+import 'package:watch_app/core/tv/tv_list_focusable.dart';
+import 'package:watch_app/core/tv/tv_text_field.dart';
 import 'package:watch_app/core/zmode/metadata_repository.dart';
 import 'package:watch_app/features/home/search_screen_tv.dart';
 import 'package:watch_app/features/search/bloc/search_bloc.dart';
@@ -76,8 +78,7 @@ class _StubSuggestions extends TitleSuggestionService {
   _StubSuggestions() : super(Dio());
 
   @override
-  Future<List<String>> suggest(String query, {int limit = 8}) async =>
-      const [];
+  Future<List<String>> suggest(String query, {int limit = 8}) async => const [];
 }
 
 /// [SourceRepository] stub: implements the class interface.
@@ -121,12 +122,12 @@ class _StubSourceRepository implements SourceRepository {
 /// are made.
 class _FakeSearchBloc extends SearchBloc {
   _FakeSearchBloc(SearchState targetState)
-      : super(
-          repo: _StubSourceRepository(),
-          history: _StubSearchHistory(),
-          prefs: _StubSearchPrefs(),
-          suggestions: _StubSuggestions(),
-        ) {
+    : super(
+        repo: _StubSourceRepository(),
+        history: _StubSearchHistory(),
+        prefs: _StubSearchPrefs(),
+        suggestions: _StubSuggestions(),
+      ) {
     // Override the state set by _restoredState() with the desired test state.
     emit(targetState);
   }
@@ -138,13 +139,17 @@ Widget _buildUnderTest(
   _FakeSearchBloc bloc, {
   SearchHistory? history,
   SearchScope scope = SearchScope.sources,
-}) =>
-    BlocProvider<SearchBloc>.value(
-      value: bloc,
-      child: MaterialApp(
-        home: SearchScreenTv(history: history, scope: scope),
-      ),
-    );
+  String? initialQuery,
+}) => BlocProvider<SearchBloc>.value(
+  value: bloc,
+  child: MaterialApp(
+    home: SearchScreenTv(
+      history: history,
+      scope: scope,
+      initialQuery: initialQuery,
+    ),
+  ),
+);
 
 /// The Genres entry reads only [MetadataRepository.supportsFilters]; stubbing
 /// the rest would be fiction. Same shape as schedule_nav_test's _FiltersRepo.
@@ -222,47 +227,41 @@ void main() {
     });
   });
 
-  testWidgets(
-    'SearchScreenTv renders an autofocus-capable search field',
-    (tester) async {
-      final bloc = _FakeSearchBloc(SearchState());
-      addTearDown(bloc.close);
+  testWidgets('SearchScreenTv renders an autofocus-capable search field', (
+    tester,
+  ) async {
+    final bloc = _FakeSearchBloc(SearchState());
+    addTearDown(bloc.close);
 
-      await tester.pumpWidget(_buildUnderTest(bloc));
-      await tester.pump();
+    await tester.pumpWidget(_buildUnderTest(bloc));
+    await tester.pump();
 
-      // The TextField for query entry must be present.
-      final field = tester.widget<TextField>(find.byType(TextField));
-      expect(find.byType(TextField), findsOneWidget);
-      // autofocus=true so the Android TV keyboard is triggered on first build.
-      expect(field.autofocus, isTrue);
-    },
-  );
+    // Leanback-safe field: focus lands without raising the IME.
+    expect(find.byType(TvTextField), findsOneWidget);
+    final field = tester.widget<TextField>(find.byType(TextField));
+    expect(find.byType(TextField), findsOneWidget);
+    expect(field.autofocus, isTrue);
+  });
 
-  testWidgets(
-    'SearchScreenTv shows idle state when bloc is idle',
-    (tester) async {
-      final bloc =
-          _FakeSearchBloc(SearchState(status: SearchStatus.idle));
-      addTearDown(bloc.close);
+  testWidgets('SearchScreenTv shows idle state when bloc is idle', (
+    tester,
+  ) async {
+    final bloc = _FakeSearchBloc(SearchState(status: SearchStatus.idle));
+    addTearDown(bloc.close);
 
-      await tester.pumpWidget(_buildUnderTest(bloc));
-      await tester.pump();
+    await tester.pumpWidget(_buildUnderTest(bloc));
+    await tester.pump();
 
-      expect(find.text('Search for something to watch'), findsOneWidget);
-      // The scope chips are always visible (2 TvFocusables), but no result
-      // cards exist in idle state. Clear history is hidden until recents exist.
-      expect(find.byType(TvFocusable), findsNWidgets(2));
-      expect(
-        find.byKey(const ValueKey('tv-search-scope-current')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const ValueKey('tv-search-clear-history')),
-        findsNothing,
-      );
-    },
-  );
+    expect(find.text('Search for something to watch'), findsOneWidget);
+    // The scope chips are always visible (2 TvFocusables), but no result
+    // cards exist in idle state. Clear history is hidden until recents exist.
+    expect(find.byType(TvFocusable), findsNWidgets(2));
+    expect(
+      find.byKey(const ValueKey('tv-search-scope-current')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('tv-search-clear-history')), findsNothing);
+  });
 
   testWidgets(
     'SearchScreenTv renders result poster cards wrapped in TvFocusable '
@@ -293,8 +292,9 @@ void main() {
 
       // Each result card is wrapped in TvFocusable (plus the 2 scope chips
       // that render above the results regardless of state).
-      final focusables =
-          tester.widgetList<TvFocusable>(find.byType(TvFocusable)).toList();
+      final focusables = tester
+          .widgetList<TvFocusable>(find.byType(TvFocusable))
+          .toList();
       expect(focusables.length, greaterThanOrEqualTo(4));
 
       // The first result card (not the scope chips) carries autofocus=true
@@ -305,19 +305,17 @@ void main() {
     },
   );
 
-  testWidgets(
-    'SearchScreenTv shows error state when bloc emits error',
-    (tester) async {
-      final bloc =
-          _FakeSearchBloc(SearchState(status: SearchStatus.error));
-      addTearDown(bloc.close);
+  testWidgets('SearchScreenTv shows error state when bloc emits error', (
+    tester,
+  ) async {
+    final bloc = _FakeSearchBloc(SearchState(status: SearchStatus.error));
+    addTearDown(bloc.close);
 
-      await tester.pumpWidget(_buildUnderTest(bloc));
-      await tester.pump();
+    await tester.pumpWidget(_buildUnderTest(bloc));
+    await tester.pump();
 
-      expect(find.text('Search failed — try again'), findsOneWidget);
-    },
-  );
+    expect(find.text('Search failed — try again'), findsOneWidget);
+  });
 
   testWidgets(
     'SearchScreenTv shows no-results message on success with empty groups',
@@ -338,18 +336,16 @@ void main() {
     },
   );
 
-  // ── _onFieldKey: arrowDown leaves the field regardless of accessibleNav ───
+  // ── TvTextField: arrowDown leaves the field regardless of accessibleNav ───
   //
-  // Fire TV / onn falsely report accessibleNavigation=true after the native
-  // player with no screen reader running, which used to trap D-pad DOWN inside
-  // the field. So _onFieldKey now moves focus down whether the flag is on or
-  // off — the screen-reader-ON case mirrors the OFF case. The scope chips
+  // A bare TextField plus the leanback IME used to trap D-pad DOWN. TvTextField
+  // routes arrows to focusInDirection while not editing. The scope chips
   // ("All sources"/"Current source") render unconditionally below the field,
   // so they're always a valid down-traversal target regardless of search
   // state.
 
   testWidgets(
-    'SearchScreenTv _onFieldKey: arrowDown moves focus out of the field when '
+    'SearchScreenTv TvTextField: arrowDown moves focus out of the field when '
     'a screen reader is OFF (sighted user, original behaviour)',
     (tester) async {
       final bloc = _FakeSearchBloc(SearchState());
@@ -368,8 +364,9 @@ void main() {
       );
       await tester.pump();
 
-      final fieldNode =
-          tester.widget<TextField>(find.byType(TextField)).focusNode!;
+      final fieldNode = tester
+          .widget<TextField>(find.byType(TextField))
+          .focusNode!;
       fieldNode.requestFocus();
       await tester.pumpAndSettle();
       expect(tester.binding.focusManager.primaryFocus, same(fieldNode));
@@ -377,15 +374,12 @@ void main() {
       await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
       await tester.pumpAndSettle();
 
-      expect(
-        tester.binding.focusManager.primaryFocus,
-        isNot(same(fieldNode)),
-      );
+      expect(tester.binding.focusManager.primaryFocus, isNot(same(fieldNode)));
     },
   );
 
   testWidgets(
-    'SearchScreenTv _onFieldKey: arrowDown still moves focus out of the field '
+    'SearchScreenTv TvTextField: arrowDown still moves focus out of the field '
     'when a screen reader is ON (D-pad stays live even when the TV falsely '
     'reports one)',
     (tester) async {
@@ -405,8 +399,9 @@ void main() {
       );
       await tester.pump();
 
-      final fieldNode =
-          tester.widget<TextField>(find.byType(TextField)).focusNode!;
+      final fieldNode = tester
+          .widget<TextField>(find.byType(TextField))
+          .focusNode!;
       fieldNode.requestFocus();
       await tester.pumpAndSettle();
       expect(tester.binding.focusManager.primaryFocus, same(fieldNode));
@@ -414,41 +409,42 @@ void main() {
       await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
       await tester.pumpAndSettle();
 
-      expect(
-        tester.binding.focusManager.primaryFocus,
-        isNot(same(fieldNode)),
-      );
+      expect(tester.binding.focusManager.primaryFocus, isNot(same(fieldNode)));
     },
   );
 
-  testWidgets(
-    'SearchScreenTv idle lists recent searches and a Clear button',
-    (tester) async {
-      final bloc =
-          _FakeSearchBloc(SearchState(status: SearchStatus.idle));
-      addTearDown(bloc.close);
-      final history = _MutableSearchHistory(['Naruto', 'One Piece']);
+  testWidgets('SearchScreenTv idle lists recent searches and a Clear button', (
+    tester,
+  ) async {
+    final bloc = _FakeSearchBloc(SearchState(status: SearchStatus.idle));
+    addTearDown(bloc.close);
+    final history = _MutableSearchHistory(['Naruto', 'One Piece']);
 
-      await tester.pumpWidget(_buildUnderTest(bloc, history: history));
-      await tester.pump();
+    await tester.pumpWidget(_buildUnderTest(bloc, history: history));
+    await tester.pump();
 
-      expect(find.text('Recent searches'), findsOneWidget);
-      expect(find.text('Naruto'), findsOneWidget);
-      expect(find.text('One Piece'), findsOneWidget);
-      expect(find.text('Clear'), findsOneWidget);
-      expect(
-        find.byKey(const ValueKey('tv-search-clear-history')),
-        findsOneWidget,
-      );
-      expect(find.text('Search for something to watch'), findsNothing);
-    },
-  );
+    expect(find.text('Recent searches'), findsOneWidget);
+    expect(find.text('Naruto'), findsOneWidget);
+    expect(find.text('One Piece'), findsOneWidget);
+    expect(find.text('Clear'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('tv-search-clear-history')),
+      findsOneWidget,
+    );
+    expect(find.text('Search for something to watch'), findsNothing);
+    // OK must fire on KeyUp. KeyDown would dispose this row and land the
+    // leftover KeyUp on Filters, which then opens the filter dialog.
+    final recents = tester
+        .widgetList<TvListFocusable>(find.byType(TvListFocusable))
+        .toList();
+    expect(recents, isNotEmpty);
+    expect(recents.every((r) => r.waitForKeyUp), isTrue);
+  });
 
   testWidgets(
     'SearchScreenTv Clear wipes recents and returns to the empty idle prompt',
     (tester) async {
-      final bloc =
-          _FakeSearchBloc(SearchState(status: SearchStatus.idle));
+      final bloc = _FakeSearchBloc(SearchState(status: SearchStatus.idle));
       addTearDown(bloc.close);
       final history = _MutableSearchHistory(['Naruto']);
 
@@ -460,8 +456,84 @@ void main() {
 
       expect(history.recent(), isEmpty);
       expect(find.text('Recent searches'), findsNothing);
-      expect(find.byKey(const ValueKey('tv-search-clear-history')), findsNothing);
+      expect(
+        find.byKey(const ValueKey('tv-search-clear-history')),
+        findsNothing,
+      );
       expect(find.text('Search for something to watch'), findsOneWidget);
     },
   );
+
+  testWidgets('Back from results clears the query and returns to idle Search', (
+    tester,
+  ) async {
+    final group = SourceResultGroup(
+      sourceId: 'test',
+      sourceName: 'Test Source',
+      items: [item1],
+      arrivalIndex: 0,
+    );
+    final bloc = _FakeSearchBloc(
+      SearchState(
+        status: SearchStatus.success,
+        query: 'titan',
+        groups: [group],
+        sourceFilter: kAllSources,
+      ),
+    );
+    addTearDown(bloc.close);
+
+    await tester.pumpWidget(_buildUnderTest(bloc, initialQuery: 'titan'));
+    await tester.pump();
+
+    expect(find.text('Attack on Titan'), findsOneWidget);
+
+      await tester.binding.handlePopRoute();
+      await tester.pump();
+
+      expect(bloc.state.query, isEmpty);
+    expect(bloc.state.status, SearchStatus.idle);
+    expect(find.text('Attack on Titan'), findsNothing);
+    expect(find.text('Search for something to watch'), findsOneWidget);
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller!.text,
+      isEmpty,
+    );
+  });
+
+  testWidgets('Back from a pushed idle Search still pops the route', (
+    tester,
+  ) async {
+    final bloc = _FakeSearchBloc(SearchState(status: SearchStatus.idle));
+    addTearDown(bloc.close);
+
+    await tester.pumpWidget(
+      BlocProvider<SearchBloc>.value(
+        value: bloc,
+        child: MaterialApp(
+          home: Builder(
+            builder: (ctx) => Scaffold(
+              body: TextButton(
+                onPressed: () => Navigator.of(ctx).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) =>
+                        const SearchScreenTv(scope: SearchScope.sources),
+                  ),
+                ),
+                child: const Text('open-search'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('open-search'));
+    await tester.pumpAndSettle();
+    expect(find.byType(SearchScreenTv), findsOneWidget);
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.byType(SearchScreenTv), findsNothing);
+    expect(find.text('open-search'), findsOneWidget);
+  });
 }

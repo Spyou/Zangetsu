@@ -15,6 +15,8 @@ import '../../core/tv/tv_focusable.dart';
 import '../../core/tv/tv_list_focusable.dart';
 import '../../core/tv/tv_poster_tile.dart';
 import '../../core/tv/tv_shell_tab_scope.dart';
+import '../../core/tv/tv_text_field.dart';
+import '../../core/ui/dock_visibility.dart';
 import '../../core/ui/states.dart';
 import '../../core/zmode/metadata_filters.dart';
 import '../../core/zmode/metadata_repository.dart';
@@ -24,24 +26,19 @@ import 'genres_screen_tv.dart';
 import '../search/bloc/search_bloc.dart';
 import '../search/bloc/search_event.dart';
 import '../search/bloc/search_state.dart';
+import '../search/meta_filter_dialog_tv.dart';
 import '../search/search_meta_filter_helpers.dart';
 
 /// TV Search: D-pad-navigable layout backed by the same [SearchBloc] provided
 /// by the parent [SearchScreen].
 ///
-/// When the screen is pushed, [autofocus] on the [TextField] immediately
-/// triggers the Android TV leanback on-screen keyboard — the user types via
-/// remote, then presses OK/Enter on the keyboard to submit. [onSubmitted]
-/// dispatches [SearchRunRequested] to the bloc, identical to the phone path.
+/// The query box is a [TvTextField]: focus lands without raising the leanback
+/// IME (which would swallow arrows). OK opens the keyboard; arrows leave the
+/// field for Filters / genres / results. [onSubmitted] dispatches
+/// [SearchRunRequested] to the bloc, identical to the phone path.
 ///
-/// Results render as a 6-column focusable poster grid using the existing
-/// [PosterCard] widget (touch callbacks disabled) wrapped in [TvFocusable].
-/// D-pad DOWN from the search field moves focus into the grid; OK on a card
-/// opens the Detail screen via the same [DetailScreen.route] the phone uses.
-///
-/// The phone [SearchScreen] is unchanged except for the one-line
-/// `if (sl<AppMode>().isTv) return SearchScreenTv(...)` branch added in its
-/// [SearchScreen.build] method.
+/// Results render as a 6-column focusable poster grid using [TvPosterTile].
+/// OK on a card opens Detail via the same [DetailScreen.route] the phone uses.
 class SearchScreenTv extends StatefulWidget {
   const SearchScreenTv({
     super.key,
@@ -85,27 +82,25 @@ class _SearchScreenTvState extends State<SearchScreenTv> {
   bool _voiceAvailable = false;
 
   late final TextEditingController _controller;
-  // DOWN from the field must LEAVE it (which closes the TV keyboard) and drop
-  // onto the first suggestion/result. Without this the keyboard trapped focus
-  // and the recommendations below were unreachable (tester report).
-  late final FocusNode _fieldFocus = FocusNode(onKeyEvent: _onFieldKey);
 
-  KeyEventResult _onFieldKey(FocusNode node, KeyEvent event) {
-    if (event is KeyDownEvent &&
-        event.logicalKey == LogicalKeyboardKey.arrowDown) {
-      if (node.focusInDirection(TraversalDirection.down)) {
-        return KeyEventResult.handled;
-      }
-    }
-    return KeyEventResult.ignored;
-  }
+  /// True while this screen told the shell to stand down on Back (active
+  /// query). Cleared when we return to idle or dispose, so Home's double-back
+  /// and Settings' own intercept are not left stuck.
+  bool _ownsIntercept = false;
 
   @override
   void initState() {
     super.initState();
     _controller = TextEditingController(text: widget.initialQuery ?? '');
+    _controller.addListener(_onFieldText);
     ZModePrefs.revision.addListener(_onStreamKind);
     _checkVoice();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _syncShellBackIntercept(context.read<SearchBloc>().state);
   }
 
   /// Hint / metadata filters follow Anime ↔ Movie/TV. Only rebuild when this
@@ -151,11 +146,45 @@ class _SearchScreenTvState extends State<SearchScreenTv> {
     }
   }
 
+  void _onFieldText() {
+    if (!mounted) return;
+    _syncShellBackIntercept(context.read<SearchBloc>().state);
+  }
+
+  /// Field text, a running/finished search, or live suggestions — anything
+  /// that is not the idle root (recents / genres).
+  bool _isActiveSearch(SearchState s) =>
+      _controller.text.trim().isNotEmpty ||
+      s.query.trim().isNotEmpty ||
+      s.status != SearchStatus.idle ||
+      s.suggestions.isNotEmpty;
+
+  void _syncShellBackIntercept(SearchState state) {
+    final want = _isActiveShellTab && _isActiveSearch(state);
+    if (want) {
+      shellBackIntercepted.value = true;
+      _ownsIntercept = true;
+    } else if (_ownsIntercept) {
+      shellBackIntercepted.value = false;
+      _ownsIntercept = false;
+    }
+  }
+
+  /// Back from results / a typed query: stay on Search, show the idle root.
+  void _clearToRoot() {
+    _controller.clear();
+    context.read<SearchBloc>().add(const SearchQueryChanged(''));
+  }
+
   @override
   void dispose() {
     ZModePrefs.revision.removeListener(_onStreamKind);
+    _controller.removeListener(_onFieldText);
+    if (_ownsIntercept) {
+      shellBackIntercepted.value = false;
+      _ownsIntercept = false;
+    }
     _controller.dispose();
-    _fieldFocus.dispose();
     super.dispose();
   }
 
@@ -186,16 +215,15 @@ class _SearchScreenTvState extends State<SearchScreenTv> {
     final filterCount = metaFilterActiveCount(_metaFilters);
     final showAdult = sl<PlaybackPrefs>().adultMetadata;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(48, 0, 48, 12),
+      padding: const EdgeInsets.fromLTRB(48, 0, 48, 4),
       child: Row(
         children: [
-          if (showAdult) ...[_tvAdultToggle(), const SizedBox(width: 12)],
-          const Spacer(),
           TvFocusable(
             key: const ValueKey('tv-search-filters'),
             variant: TvFocusVariant.float,
             scale: 1.0,
             borderRadius: 999,
+            waitForKeyUp: true,
             semanticLabel: context.l10n.filters,
             onTap: _openMetaFilters,
             builder: (focused) {
@@ -204,23 +232,25 @@ class _SearchScreenTvState extends State<SearchScreenTv> {
                   : AppColors.textSecondary;
               return Container(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 18,
-                  vertical: 11,
+                  horizontal: 22,
+                  vertical: 12,
                 ),
                 decoration: BoxDecoration(
-                  color: focused ? Colors.white.withValues(alpha: 0.08) : null,
+                  color: focused
+                      ? Colors.white.withValues(alpha: 0.08)
+                      : AppColors.surface2,
                   borderRadius: BorderRadius.circular(999),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.tune_rounded, size: 20, color: fg),
+                    Icon(Icons.tune_rounded, size: 22, color: fg),
                     const SizedBox(width: 8),
                     Text(
                       context.l10n.filters,
                       style: TextStyle(
                         color: fg,
-                        fontSize: 15,
+                        fontSize: 16,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -228,18 +258,18 @@ class _SearchScreenTvState extends State<SearchScreenTv> {
                       const SizedBox(width: 8),
                       Container(
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
+                          horizontal: 7,
                           vertical: 2,
                         ),
                         decoration: BoxDecoration(
                           color: AppColors.accent,
-                          borderRadius: BorderRadius.circular(8),
+                          borderRadius: BorderRadius.circular(10),
                         ),
                         child: Text(
                           '$filterCount',
                           style: const TextStyle(
                             color: Colors.white,
-                            fontSize: 11,
+                            fontSize: 12,
                             fontWeight: FontWeight.w700,
                           ),
                         ),
@@ -250,6 +280,107 @@ class _SearchScreenTvState extends State<SearchScreenTv> {
               );
             },
           ),
+          const SizedBox(width: 12),
+          Expanded(child: _activeFilterChips()),
+          if (showAdult) ...[const SizedBox(width: 12), _tvAdultToggle()],
+        ],
+      ),
+    );
+  }
+
+  /// Removable chips for applied catalogue filters so D-pad can clear one
+  /// without reopening the dialog.
+  Widget _activeFilterChips() {
+    final f = _metaFilters;
+    final chips = <(String, MetaFilters)>[
+      for (final g in f.genres)
+        (g, f.copyWith(genres: [...f.genres]..remove(g))),
+      for (final t in f.tags) (t, f.copyWith(tags: [...f.tags]..remove(t))),
+      if (f.year != null) ('${f.year}', f.copyWith(clearYear: true)),
+      if (f.season != null)
+        (metaSeasonLabel(f.season!), f.copyWith(clearSeason: true)),
+      if (f.format != null)
+        (metaFormatLabel(f.format!), f.copyWith(clearFormat: true)),
+      if (f.status != null)
+        (metaStatusLabel(f.status!), f.copyWith(clearStatus: true)),
+      if (f.minScore != null) ('${f.minScore}+', f.copyWith(clearScore: true)),
+      if (f.sort != MetaSort.popularity)
+        (metaSortLabel(context, f.sort), f.copyWith(sort: MetaSort.popularity)),
+    ];
+    if (chips.isEmpty) return const SizedBox.shrink();
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      clipBehavior: Clip.none,
+      child: Row(
+        children: [
+          for (final (label, without) in chips) ...[
+            TvFocusable(
+              variant: TvFocusVariant.float,
+              scale: 1.0,
+              borderRadius: 20,
+              semanticLabel: label,
+              onTap: () {
+                setState(() => _metaFilters = without);
+                applyMetaFilters(context, without);
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  color: AppColors.accent.withValues(alpha: 0.16),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: AppColors.accent, width: 2),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      label,
+                      style: AppText.headline.copyWith(
+                        color: AppColors.accent,
+                        fontSize: 15,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Icon(
+                      Icons.close_rounded,
+                      size: 18,
+                      color: AppColors.accent,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+          ],
+          if (chips.length > 1)
+            TvFocusable(
+              key: const ValueKey('tv-search-clear-filters'),
+              variant: TvFocusVariant.pill,
+              scale: 1.0,
+              semanticLabel: context.l10n.clearAll,
+              onTap: () {
+                final cleared = MetaFilters(adult: _metaFilters.adult);
+                setState(() => _metaFilters = cleared);
+                applyMetaFilters(context, cleared);
+              },
+              builder: (focused) => Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 10,
+                ),
+                child: Text(
+                  context.l10n.clearAll,
+                  style: TextStyle(
+                    color: focused ? Colors.black : AppColors.accent,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -267,21 +398,24 @@ class _SearchScreenTvState extends State<SearchScreenTv> {
       builder: (focused) {
         final active = on || focused;
         return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
           decoration: BoxDecoration(
             color: on
                 ? AppColors.accent.withValues(alpha: 0.16)
-                : (focused ? Colors.white.withValues(alpha: 0.08) : null),
+                : (focused
+                      ? Colors.white.withValues(alpha: 0.08)
+                      : AppColors.surface2),
             borderRadius: BorderRadius.circular(999),
             border: Border.all(
               color: on ? AppColors.accent : Colors.transparent,
+              width: 2,
             ),
           ),
           child: Text(
             'NSFW',
             style: TextStyle(
               color: active ? AppColors.accent : AppColors.textSecondary,
-              fontSize: 13,
+              fontSize: 15,
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -320,8 +454,8 @@ class _SearchScreenTvState extends State<SearchScreenTv> {
                   borderRadius: BorderRadius.circular(999),
                 ),
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 11,
+                  horizontal: 22,
+                  vertical: 13,
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -332,7 +466,7 @@ class _SearchScreenTvState extends State<SearchScreenTv> {
                       label,
                       style: TextStyle(
                         color: fg,
-                        fontSize: 15,
+                        fontSize: 16,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -372,137 +506,155 @@ class _SearchScreenTvState extends State<SearchScreenTv> {
   @override
   Widget build(BuildContext context) {
     final hint = searchHintForScope(context, widget.scope);
-    return Scaffold(
-      backgroundColor: AppColors.bg,
-      body: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ── Search field ──────────────────────────────────────────────────
-            // autofocus=true means Flutter immediately requests focus on this
-            // TextField when the screen is first built. On Android TV that focus
-            // request triggers the system leanback on-screen keyboard so the
-            // user can start typing with the remote right away.
-            Padding(
-              padding: const EdgeInsets.fromLTRB(48, 28, 48, 20),
-              child: Row(
+    return BlocConsumer<SearchBloc, SearchState>(
+      listenWhen: (a, b) =>
+          a.status != b.status ||
+          a.query != b.query ||
+          a.suggestions != b.suggestions,
+      listener: (context, state) => _syncShellBackIntercept(state),
+      builder: (context, state) {
+        return PopScope(
+          // Idle Search lets the shell handle Back (Home / exit). An active
+          // query owns Back so the remote does not leave the tab.
+          canPop: !_isActiveSearch(state),
+          onPopInvokedWithResult: (didPop, _) {
+            if (didPop) return;
+            _clearToRoot();
+          },
+          child: Scaffold(
+            backgroundColor: AppColors.bg,
+            body: SafeArea(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Icon(
-                    Icons.search_rounded,
-                    size: 28,
-                    color: AppColors.textSecondary,
+                  // ── Search field ──────────────────────────────────────────────────
+                  // TvTextField lands focus without opening the leanback IME, so
+                  // D-pad DOWN reaches Filters / chips / results. OK shows the
+                  // keyboard when the user actually wants to type.
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(48, 20, 48, 10),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.search_rounded,
+                          size: 32,
+                          color: AppColors.textSecondary,
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: TvTextField(
+                            controller: _controller,
+                            autofocus: true,
+                            textInputAction: TextInputAction.search,
+                            onChanged: (text) => context.read<SearchBloc>().add(
+                              SearchQueryChanged(text),
+                            ),
+                            onSubmitted: (text) => context
+                                .read<SearchBloc>()
+                                .add(SearchRunRequested(text)),
+                            style: AppText.title.copyWith(
+                              color: AppColors.textPrimary,
+                              fontWeight: FontWeight.w400,
+                            ),
+                            cursorColor: Colors.white,
+                            decoration: InputDecoration(
+                              hintText: hint,
+                              hintStyle: AppText.title.copyWith(
+                                color: AppColors.textTertiary,
+                                fontWeight: FontWeight.w400,
+                              ),
+                              border: UnderlineInputBorder(
+                                borderSide: BorderSide(
+                                  color: AppColors.hairline,
+                                  width: 1,
+                                ),
+                              ),
+                              enabledBorder: UnderlineInputBorder(
+                                borderSide: BorderSide(
+                                  color: AppColors.hairline,
+                                  width: 1,
+                                ),
+                              ),
+                              focusedBorder: const UnderlineInputBorder(
+                                borderSide: BorderSide(
+                                  color: Colors.white,
+                                  width: 2,
+                                ),
+                              ),
+                              isDense: true,
+                              contentPadding: const EdgeInsets.symmetric(
+                                vertical: 12,
+                              ),
+                            ),
+                          ),
+                        ),
+                        // Voice search — D-pad RIGHT from the field reaches it. Only
+                        // rendered when the device has a recogniser (see _checkVoice).
+                        if (_voiceAvailable) ...[
+                          const SizedBox(width: 12),
+                          TvFocusable(
+                            variant: TvFocusVariant.float,
+                            scale: 1.08,
+                            onTap: _startVoice,
+                            semanticLabel: context.l10n.voiceSearch,
+                            child: Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: AppColors.surface2,
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.mic_none_rounded,
+                                size: 26,
+                                color: AppColors.textPrimary,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
                   ),
-                  const SizedBox(width: 16),
+                  if (_isLibrary) _libraryControls() else _sourcesScopeChips(),
+                  // ── Results / states ──────────────────────────────────────────────
                   Expanded(
-                    child: TextField(
-                      controller: _controller,
-                      focusNode: _fieldFocus,
-                      // Requests focus on first build → Android TV shows keyboard.
-                      autofocus: true,
-                      textInputAction: TextInputAction.search,
-                      // Typing updates suggestions (same as phone onChanged).
-                      onChanged: (text) => context.read<SearchBloc>().add(
-                        SearchQueryChanged(text),
-                      ),
-                      // OK on the TV keyboard / Enter runs the full search
-                      // (identical to the phone's onSubmitted handler).
-                      onSubmitted: (text) => context.read<SearchBloc>().add(
-                        SearchRunRequested(text),
-                      ),
-                      style: AppText.title.copyWith(
-                        color: AppColors.textPrimary,
-                        fontWeight: FontWeight.w400,
-                      ),
-                      cursorColor: Colors.white,
-                      decoration: InputDecoration(
-                        hintText: hint,
-                        hintStyle: AppText.title.copyWith(
-                          color: AppColors.textTertiary,
-                          fontWeight: FontWeight.w400,
-                        ),
-                        border: UnderlineInputBorder(
-                          borderSide: BorderSide(
-                            color: AppColors.hairline,
-                            width: 1,
-                          ),
-                        ),
-                        enabledBorder: UnderlineInputBorder(
-                          borderSide: BorderSide(
-                            color: AppColors.hairline,
-                            width: 1,
-                          ),
-                        ),
-                        // White underline while typing — premium, not a red accent.
-                        focusedBorder: const UnderlineInputBorder(
-                          borderSide: BorderSide(color: Colors.white, width: 2),
-                        ),
-                        isDense: true,
-                        contentPadding: const EdgeInsets.symmetric(vertical: 8),
-                      ),
+                    child: BlocBuilder<SearchBloc, SearchState>(
+                      builder: (context, state) {
+                        // Show live suggestions while the user is typing but before
+                        // a full search has run (same logic as the phone).
+                        if (state.status != SearchStatus.success &&
+                            state.suggestions.isNotEmpty) {
+                          return _suggestionList(state.suggestions);
+                        }
+                        switch (state.status) {
+                          case SearchStatus.idle:
+                            return _idleView();
+                          case SearchStatus.loading:
+                            return Padding(
+                              padding: const EdgeInsets.fromLTRB(40, 8, 40, 40),
+                              child: SkeletonGrid(
+                                crossAxisCount: _crossAxisCount,
+                              ),
+                            );
+                          case SearchStatus.error:
+                            return EmptyState(
+                              icon: Icons.error_outline,
+                              message: context.l10n.searchFailedTryAgain,
+                            );
+                          case SearchStatus.success:
+                            if (_isLibrary) return _resultsGrid(state);
+                            return state.currentSourceOnly
+                                ? _resultsGrid(state)
+                                : _resultsRows(state);
+                        }
+                      },
                     ),
                   ),
-                  // Voice search — D-pad RIGHT from the field reaches it. Only
-                  // rendered when the device has a recogniser (see _checkVoice).
-                  if (_voiceAvailable) ...[
-                    const SizedBox(width: 12),
-                    TvFocusable(
-                      variant: TvFocusVariant.float,
-                      scale: 1.08,
-                      onTap: _startVoice,
-                      semanticLabel: context.l10n.voiceSearch,
-                      child: Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: AppColors.surface2,
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(
-                          Icons.mic_none_rounded,
-                          size: 26,
-                          color: AppColors.textPrimary,
-                        ),
-                      ),
-                    ),
-                  ],
                 ],
               ),
             ),
-            if (_isLibrary) _libraryControls() else _sourcesScopeChips(),
-            // ── Results / states ──────────────────────────────────────────────
-            Expanded(
-              child: BlocBuilder<SearchBloc, SearchState>(
-                builder: (context, state) {
-                  // Show live suggestions while the user is typing but before
-                  // a full search has run (same logic as the phone).
-                  if (state.status != SearchStatus.success &&
-                      state.suggestions.isNotEmpty) {
-                    return _suggestionList(state.suggestions);
-                  }
-                  switch (state.status) {
-                    case SearchStatus.idle:
-                      return _idleView();
-                    case SearchStatus.loading:
-                      return Padding(
-                        padding: const EdgeInsets.fromLTRB(40, 8, 40, 40),
-                        child: SkeletonGrid(crossAxisCount: _crossAxisCount),
-                      );
-                    case SearchStatus.error:
-                      return EmptyState(
-                        icon: Icons.error_outline,
-                        message: context.l10n.searchFailedTryAgain,
-                      );
-                    case SearchStatus.success:
-                      if (_isLibrary) return _resultsGrid(state);
-                      return state.currentSourceOnly
-                          ? _resultsGrid(state)
-                          : _resultsRows(state);
-                  }
-                },
-              ),
-            ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
@@ -525,12 +677,13 @@ class _SearchScreenTvState extends State<SearchScreenTv> {
         sl<MetadataRepository>().supportsFilters;
     if (!canFilter) return const SizedBox.shrink();
     return Padding(
-      padding: const EdgeInsets.fromLTRB(48, 12, 48, 4),
+      padding: const EdgeInsets.fromLTRB(48, 4, 48, 0),
       child: Align(
         alignment: Alignment.centerLeft,
         child: TvFocusable(
           key: const ValueKey('tv-search-genres'),
           variant: TvFocusVariant.pill,
+          waitForKeyUp: true,
           semanticLabel: context.l10n.genres,
           onTap: () => Navigator.of(context).push(
             MaterialPageRoute<void>(builder: (_) => const GenresScreenTv()),
@@ -538,17 +691,17 @@ class _SearchScreenTvState extends State<SearchScreenTv> {
           builder: (focused) {
             final fg = focused ? Colors.black : AppColors.accent;
             return Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.local_offer_outlined, size: 16, color: fg),
-                  const SizedBox(width: 8),
+                  Icon(Icons.local_offer_outlined, size: 20, color: fg),
+                  const SizedBox(width: 10),
                   Text(
                     context.l10n.genres,
                     style: TextStyle(
                       color: fg,
-                      fontSize: 15,
+                      fontSize: 17,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
@@ -605,14 +758,14 @@ class _SearchScreenTvState extends State<SearchScreenTv> {
                   final fg = focused ? Colors.black : AppColors.accent;
                   return Padding(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 8,
+                      horizontal: 20,
+                      vertical: 10,
                     ),
                     child: Text(
                       context.l10n.clear,
                       style: TextStyle(
                         color: fg,
-                        fontSize: 15,
+                        fontSize: 16,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -626,6 +779,9 @@ class _SearchScreenTvState extends State<SearchScreenTv> {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 2),
             child: TvListFocusable(
+              // KeyDown would run the search and dispose this row before KeyUp;
+              // Filters (waitForKeyUp) then treats that KeyUp as its own tap.
+              waitForKeyUp: true,
               onTap: () {
                 _controller.value = TextEditingValue(
                   text: q,
@@ -636,21 +792,22 @@ class _SearchScreenTvState extends State<SearchScreenTv> {
               child: Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 16,
-                  vertical: 14,
+                  vertical: 16,
                 ),
                 child: Row(
                   children: [
                     const Icon(
                       Icons.history_rounded,
-                      size: 18,
+                      size: 22,
                       color: AppColors.textTertiary,
                     ),
-                    const SizedBox(width: 14),
+                    const SizedBox(width: 16),
                     Expanded(
                       child: Text(
                         q,
-                        style: AppText.body.copyWith(
+                        style: AppText.headline.copyWith(
                           color: AppColors.textPrimary,
+                          fontWeight: FontWeight.w500,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -817,6 +974,7 @@ class _SearchScreenTvState extends State<SearchScreenTv> {
         return Padding(
           padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 2),
           child: TvListFocusable(
+            waitForKeyUp: true,
             onTap: () {
               _controller.value = TextEditingValue(
                 text: s,
@@ -825,20 +983,21 @@ class _SearchScreenTvState extends State<SearchScreenTv> {
               context.read<SearchBloc>().add(SearchRunRequested(s));
             },
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
               child: Row(
                 children: [
                   const Icon(
                     Icons.search_rounded,
-                    size: 18,
+                    size: 22,
                     color: AppColors.textTertiary,
                   ),
-                  const SizedBox(width: 14),
+                  const SizedBox(width: 16),
                   Expanded(
                     child: Text(
                       s,
-                      style: AppText.body.copyWith(
+                      style: AppText.headline.copyWith(
                         color: AppColors.textPrimary,
+                        fontWeight: FontWeight.w500,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
