@@ -16,6 +16,7 @@ import '../../core/repository/catalogue_repository.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../l10n/l10n.dart';
+import '../../core/ui/app_dialog.dart';
 import '../../core/ui/list_status_sheet.dart';
 import '../../core/ui/media_info_sheet.dart';
 import '../detail/detail_screen.dart';
@@ -286,24 +287,12 @@ class _HistoryScreenState extends State<HistoryScreen>
       1 => (l10n.historyNounMangaItem, l10n.historyKindManga),
       _ => (l10n.historyNounNovelItem, l10n.historyKindNovel),
     };
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        title: Text(l10n.clearKindHistoryTitle(kind)),
-        content: Text(l10n.clearKindHistoryBody(noun, kind)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text(l10n.cancel),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: TextButton.styleFrom(foregroundColor: AppColors.accent),
-            child: Text(l10n.clearAll),
-          ),
-        ],
-      ),
+    final ok = await AppDialog.confirm(
+      context,
+      title: l10n.clearKindHistoryTitle(kind),
+      message: l10n.clearKindHistoryBody(noun, kind),
+      confirmLabel: l10n.clearAll,
+      destructive: true,
     );
     if (ok != true) return;
     if (idx == 0) {

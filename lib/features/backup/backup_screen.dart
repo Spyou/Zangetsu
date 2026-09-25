@@ -13,6 +13,7 @@ import '../../core/supabase/supabase_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/tv/tv_list_focusable.dart';
+import '../../core/ui/app_dialog.dart';
 import '../../core/ui/settings_widgets.dart';
 import '../auth/auth_cubit.dart';
 import '../auth/auth_screens.dart';
@@ -35,21 +36,22 @@ class _BackupScreenState extends State<BackupScreen> {
   bool get _isTv => sl<AppMode>().isTv;
 
   Future<void> _backupToCloud() async {
-    if (!requireLogin(context, action: context.l10n.signInToBackUpToCloud)) return;
+    if (!requireLogin(context, action: context.l10n.signInToBackUpToCloud))
+      return;
     final uid = context.read<AuthCubit>().state.user?.id;
     if (uid == null) return;
     setState(() => _busy = true);
     try {
       await _cloud().upload(uid, _service.build(_selected));
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.l10n.backedUpToCloud)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(context.l10n.backedUpToCloud)));
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.l10n.cloudBackupFailed)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(context.l10n.cloudBackupFailed)));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -60,14 +62,20 @@ class _BackupScreenState extends State<BackupScreen> {
     try {
       // On TV also keep an app-private copy so restore-from-file can list it
       // without a document picker (see [_restoreFromFile]).
-      final path = await BackupFile()
-          .export(_service.build(_selected), keepLocalCopy: _isTv);
+      final path = await BackupFile().export(
+        _service.build(_selected),
+        keepLocalCopy: _isTv,
+      );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(path == null
-              ? context.l10n.couldnTSaveTheBackupFileStoragePermissionMayBeNeeded
-              : context.l10n.savedToDownloadsZangetsu),
+          content: Text(
+            path == null
+                ? context
+                      .l10n
+                      .couldnTSaveTheBackupFileStoragePermissionMayBeNeeded
+                : context.l10n.savedToDownloadsZangetsu,
+          ),
         ),
       );
     } finally {
@@ -76,10 +84,12 @@ class _BackupScreenState extends State<BackupScreen> {
   }
 
   Future<void> _restoreFromCloud() async {
-    if (!requireLogin(context, action: context.l10n.signInToRestoreFromCloud)) return;
+    if (!requireLogin(context, action: context.l10n.signInToRestoreFromCloud))
+      return;
     final uid = context.read<AuthCubit>().state.user?.id;
     if (uid == null) return;
     setState(() => _busy = true);
+    late final RestoreReport report;
     try {
       final p = await _cloud().download(uid);
       if (!mounted) return;
@@ -89,12 +99,11 @@ class _BackupScreenState extends State<BackupScreen> {
         );
         return;
       }
-      final report = await _service.restore(p, _selected);
-      if (!mounted) return;
-      _showResult(report);
+      report = await _service.restore(p, _selected);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+    if (mounted) _showResultAfterBusy(report);
   }
 
   Future<void> _restoreFromFile() async {
@@ -118,23 +127,23 @@ class _BackupScreenState extends State<BackupScreen> {
     if (_isTv) p ??= await _pickLocalBackupTv();
     if (p == null) return;
     setState(() => _busy = true);
+    RestoreReport? report;
     try {
-      final report = await _service.restore(p, _selected);
-      if (!mounted) return;
-      _showResult(report);
+      report = await _service.restore(p, _selected);
     } on BackupFormatException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.l10n.restoreFailed('$e'))),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(context.l10n.restoreFailed('$e'))));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+    if (report != null && mounted) _showResultAfterBusy(report);
   }
 
   /// TV restore: enumerate app-readable backup files and show a D-pad list.
@@ -163,17 +172,23 @@ class _BackupScreenState extends State<BackupScreen> {
               // Row focus is an accent wash over the dark surface, not a white
               // pill — keep the text and icon light or they disappear into it.
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 6,
+                ),
                 child: Row(
                   children: [
-                    const Icon(Icons.description_outlined,
-                        color: AppColors.textSecondary),
+                    const Icon(
+                      Icons.description_outlined,
+                      color: AppColors.textSecondary,
+                    ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
                         _backupLabel(files[i]),
-                        style: AppText.body
-                            .copyWith(color: AppColors.textPrimary),
+                        style: AppText.body.copyWith(
+                          color: AppColors.textPrimary,
+                        ),
                       ),
                     ),
                   ],
@@ -205,41 +220,39 @@ class _BackupScreenState extends State<BackupScreen> {
     return '${m[1]}-${m[2]}-${m[3]} ${m[4]}:${m[5]}';
   }
 
+  /// Show after the busy overlay has rebuilt away — otherwise that setState
+  /// can re-seed D-pad focus on a [SettingsTile] and the dialog never gets it.
+  void _showResultAfterBusy(RestoreReport r) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _showResult(r);
+    });
+  }
+
   void _showResult(RestoreReport r) {
-    final names = r.restored.map((b) => switch (b) {
-          BackupBundle.sources => context.l10n.sourcesAndRepos,
-          BackupBundle.library => context.l10n.libraryBundle,
-          BackupBundle.settings => context.l10n.appSettingsBundle,
-        }).join(', ');
-    showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        title: Text(context.l10n.restoreComplete, style: AppText.headline),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(context.l10n.restoredColon(names), style: AppText.body),
-            if (r.hasFailures) ...[
-              const SizedBox(height: 8),
-              Text(
-                context.l10n.couldnTReinstall(r.failures.join('\n')),
-                style: AppText.body,
-              ),
-            ],
+    final names = r.restored
+        .map(
+          (b) => switch (b) {
+            BackupBundle.sources => context.l10n.sourcesAndRepos,
+            BackupBundle.library => context.l10n.libraryBundle,
+            BackupBundle.settings => context.l10n.appSettingsBundle,
+          },
+        )
+        .join(', ');
+    final l10n = context.l10n;
+    AppDialog.alert(
+      context,
+      title: l10n.restoreComplete,
+      body: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(l10n.restoredColon(names)),
+          if (r.hasFailures) ...[
             const SizedBox(height: 8),
-            Text(
-              context.l10n.reopenZangetsuToSeeRestoredLibrarySources,
-              style: AppText.caption,
-            ),
+            Text(l10n.couldnTReinstall(r.failures.join('\n'))),
           ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text(context.l10n.ok),
-          ),
+          const SizedBox(height: 8),
+          Text(l10n.reopenZangetsuToSeeRestoredLibrarySources),
         ],
       ),
     );
@@ -248,12 +261,12 @@ class _BackupScreenState extends State<BackupScreen> {
   Widget _bundleRow(BackupBundle bundle, String label, String subtitle) {
     final selected = _selected.contains(bundle);
     void toggle() => setState(() {
-          if (_selected.contains(bundle)) {
-            _selected.remove(bundle);
-          } else {
-            _selected.add(bundle);
-          }
-        });
+      if (_selected.contains(bundle)) {
+        _selected.remove(bundle);
+      } else {
+        _selected.add(bundle);
+      }
+    });
     // On TV, SettingsTile is already D-pad focusable (white pill). Phones keep
     // the Material CheckboxListTile.
     if (_isTv) {
@@ -318,12 +331,21 @@ class _BackupScreenState extends State<BackupScreen> {
               SettingsSectionLabel(context.l10n.includeInTheBackup),
               SettingsCard(
                 children: [
-                  _bundleRow(BackupBundle.sources, context.l10n.sourcesAndRepos,
-                      context.l10n.installedSourcesAndRepoLinks),
-                  _bundleRow(BackupBundle.library, context.l10n.libraryBundle,
-                      context.l10n.myListAndContinueWatching),
-                  _bundleRow(BackupBundle.settings, context.l10n.appSettingsBundle,
-                      context.l10n.playerSubtitlesQualityPreferences),
+                  _bundleRow(
+                    BackupBundle.sources,
+                    context.l10n.sourcesAndRepos,
+                    context.l10n.installedSourcesAndRepoLinks,
+                  ),
+                  _bundleRow(
+                    BackupBundle.library,
+                    context.l10n.libraryBundle,
+                    context.l10n.myListAndContinueWatching,
+                  ),
+                  _bundleRow(
+                    BackupBundle.settings,
+                    context.l10n.appSettingsBundle,
+                    context.l10n.playerSubtitlesQualityPreferences,
+                  ),
                 ],
               ),
               const SettingsSectionLabel('Create a backup'),
@@ -368,7 +390,9 @@ class _BackupScreenState extends State<BackupScreen> {
                     future: _cloud().lastBackupAt(uid),
                     builder: (_, snap) {
                       final dt = snap.data;
-                      final label = dt == null ? context.l10n.never : _fmtDt(dt);
+                      final label = dt == null
+                          ? context.l10n.never
+                          : _fmtDt(dt);
                       return Text(
                         'Last cloud backup: $label',
                         style: AppText.caption,

@@ -24,26 +24,11 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
   Future<void> _onAdultMetaChanged(bool value) async {
     final prefs = sl<PlaybackPrefs>();
     if (value) {
-      final ok = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          backgroundColor: AppColors.surface,
-          title: Text(context.l10n.enableAdultCatalogue, style: AppText.title),
-          content: Text(
-            context.l10n.enableAdultCatalogueBody,
-            style: AppText.body,
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: Text(context.l10n.cancel),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: Text(context.l10n.enable),
-            ),
-          ],
-        ),
+      final ok = await AppDialog.confirm(
+        context,
+        title: context.l10n.enableAdultCatalogue,
+        message: context.l10n.enableAdultCatalogueBody,
+        confirmLabel: context.l10n.enable,
       );
       if (ok != true) return;
     }
@@ -54,26 +39,11 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
   Future<void> _onNsfwChanged(bool value) async {
     final prefs = sl<PlaybackPrefs>();
     if (value) {
-      final ok = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          backgroundColor: AppColors.surface,
-          title: Text(context.l10n.enableNSFWSources, style: AppText.title),
-          content: Text(
-            context.l10n.enableNsfwSourcesBody,
-            style: AppText.body,
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: Text(context.l10n.cancel),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: Text(context.l10n.enable),
-            ),
-          ],
-        ),
+      final ok = await AppDialog.confirm(
+        context,
+        title: context.l10n.enableNSFWSources,
+        message: context.l10n.enableNsfwSourcesBody,
+        confirmLabel: context.l10n.enable,
       );
       if (ok != true) return;
       await prefs.setNsfwSources(true);
@@ -87,29 +57,11 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
   Future<void> _onNsfwAniChanged(bool value) async {
     final prefs = sl<PlaybackPrefs>();
     if (value) {
-      final ok = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          backgroundColor: AppColors.surface,
-          title: Text(
-            context.l10n.showNSFWAniyomiSources,
-            style: AppText.title,
-          ),
-          content: Text(
-            context.l10n.showNsfwAniyomiSourcesBody,
-            style: AppText.body,
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: Text(context.l10n.cancel),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: Text(context.l10n.enable),
-            ),
-          ],
-        ),
+      final ok = await AppDialog.confirm(
+        context,
+        title: context.l10n.showNSFWAniyomiSources,
+        message: context.l10n.showNsfwAniyomiSourcesBody,
+        confirmLabel: context.l10n.enable,
       );
       if (ok != true) return;
       await prefs.setShowNsfwAniyomi(true);

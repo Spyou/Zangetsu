@@ -10,6 +10,7 @@ import '../../core/lnreader/novel_lang_prefs.dart';
 import '../../core/repository/source_actions.dart' as source_actions;
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
+import '../../core/ui/app_dialog.dart';
 import '../../core/ui/states.dart';
 import 'sources_search_field.dart';
 import '../../l10n/l10n.dart';
@@ -101,10 +102,20 @@ class _LnReaderSourcesScreenState extends State<LnReaderSourcesScreen> {
   // exact string it uses. Missing entries (e.g. Arabic's LTR-marked value) just
   // fall back to English-only, which the user can widen from the sheet.
   static const _deviceNative = {
-    'en': 'English', 'ru': 'Русский', 'es': 'Español', 'fr': 'Français',
-    'tr': 'Türkçe', 'pt': 'Português', 'id': 'Bahasa Indonesia',
-    'vi': 'Tiếng Việt', 'ja': '日本語', 'th': 'ไทย', 'uk': 'Українська',
-    'pl': 'Polski', 'zh': '中文, 汉语, 漢語', 'ko': '조선말, 한국어',
+    'en': 'English',
+    'ru': 'Русский',
+    'es': 'Español',
+    'fr': 'Français',
+    'tr': 'Türkçe',
+    'pt': 'Português',
+    'id': 'Bahasa Indonesia',
+    'vi': 'Tiếng Việt',
+    'ja': '日本語',
+    'th': 'ไทย',
+    'uk': 'Українська',
+    'pl': 'Polski',
+    'zh': '中文, 汉语, 漢語',
+    'ko': '조선말, 한국어',
   };
 
   Set<String> _defaultLangs() {
@@ -146,13 +157,18 @@ class _LnReaderSourcesScreenState extends State<LnReaderSourcesScreen> {
     }
     final urls = Hive.box<String>(kLnReaderReposBoxName).values.toList();
     final service = sl<LnReaderExtensionService>();
-    final fetched = await Future.wait(urls.map((url) async {
-      try {
-        return MapEntry(url, _RepoCatalog(entries: await service.fetchIndex(url)));
-      } catch (e) {
-        return MapEntry(url, _RepoCatalog(error: e));
-      }
-    }));
+    final fetched = await Future.wait(
+      urls.map((url) async {
+        try {
+          return MapEntry(
+            url,
+            _RepoCatalog(entries: await service.fetchIndex(url)),
+          );
+        } catch (e) {
+          return MapEntry(url, _RepoCatalog(error: e));
+        }
+      }),
+    );
     if (!mounted) return;
     setState(() {
       _repoUrls = urls;
@@ -192,33 +208,14 @@ class _LnReaderSourcesScreenState extends State<LnReaderSourcesScreen> {
   }
 
   Future<void> _confirmRemoveRepo(String url) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        title: Text(context.l10n.removeRepo, style: AppText.headline),
-        content: Text(
+    final ok = await AppDialog.confirm(
+      context,
+      title: context.l10n.removeRepo,
+      message:
           context.l10n.alreadyInstalledSourcesStay +
-              context.l10n.youCanAddRepoBackLater,
-          style: AppText.body,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text(
-              context.l10n.cancel,
-              style: AppText.body.copyWith(color: AppColors.textSecondary),
-            ),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(
-              context.l10n.removeDownloadTooltip,
-              style: AppText.body.copyWith(color: AppColors.accent),
-            ),
-          ),
-        ],
-      ),
+          context.l10n.youCanAddRepoBackLater,
+      confirmLabel: context.l10n.removeDownloadTooltip,
+      destructive: true,
     );
     if (ok == true) await _removeRepo(url);
   }
@@ -286,10 +283,7 @@ class _LnReaderSourcesScreenState extends State<LnReaderSourcesScreen> {
             ),
             Expanded(
               child: TabBarView(
-                children: [
-                  _installedTab(),
-                  _repositoriesTab(),
-                ],
+                children: [_installedTab(), _repositoriesTab()],
               ),
             ),
           ],
@@ -380,8 +374,9 @@ class _LnReaderSourcesScreenState extends State<LnReaderSourcesScreen> {
                         const Spacer(),
                         Text(
                           '${enabled.where(counts.containsKey).length} of ${langs.length}',
-                          style: AppText.caption
-                              .copyWith(color: AppColors.textSecondary),
+                          style: AppText.caption.copyWith(
+                            color: AppColors.textSecondary,
+                          ),
                         ),
                       ],
                     ),
@@ -408,8 +403,9 @@ class _LnReaderSourcesScreenState extends State<LnReaderSourcesScreen> {
                             title: Text(_langName(lang)),
                             secondary: Text(
                               '${counts[lang]}',
-                              style: AppText.caption
-                                  .copyWith(color: AppColors.textTertiary),
+                              style: AppText.caption.copyWith(
+                                color: AppColors.textTertiary,
+                              ),
                             ),
                           ),
                       ],
@@ -431,8 +427,10 @@ class _LnReaderSourcesScreenState extends State<LnReaderSourcesScreen> {
   /// a context.l10n.removeDownloadTooltip row here too (via [installedIds]), it just isn't given its
   /// own section.
   Widget _repositoriesList() {
-    final installedIds =
-        sl<LnReaderExtensionService>().installed().map((m) => m.id).toSet();
+    final installedIds = sl<LnReaderExtensionService>()
+        .installed()
+        .map((m) => m.id)
+        .toSet();
     final enabled = _enabledLangs;
 
     return RefreshIndicator(
@@ -445,7 +443,8 @@ class _LnReaderSourcesScreenState extends State<LnReaderSourcesScreen> {
           if (_repoUrls.isEmpty)
             EmptyState(
               icon: Icons.extension_outlined,
-              message: 'No repositories added.\n'
+              message:
+                  'No repositories added.\n'
                   'Add one to browse novel sources.',
             )
           else
@@ -518,10 +517,7 @@ class _LnReaderAddRepoDialogState extends State<LnReaderAddRepoDialog> {
               ),
             ),
             const SizedBox(height: 10),
-            Text(
-              context.l10n.pluginIndexPasteHelp,
-              style: AppText.caption,
-            ),
+            Text(context.l10n.pluginIndexPasteHelp, style: AppText.caption),
           ],
         ),
       ),
@@ -774,7 +770,11 @@ class _LnReaderCatalogCard extends StatelessWidget {
       children: [
         for (var i = 0; i < entries.length; i++) ...[
           if (i > 0 || bare)
-            const Divider(height: 0.5, thickness: 0.5, color: AppColors.hairline),
+            const Divider(
+              height: 0.5,
+              thickness: 0.5,
+              color: AppColors.hairline,
+            ),
           _LnReaderSourceRow(
             key: ValueKey(entries[i].id),
             meta: entries[i],
@@ -840,11 +840,15 @@ class _LnReaderSourceRowState extends State<_LnReaderSourceRow> {
       widget.onChanged();
       messenger
         ..clearSnackBars()
-        ..showSnackBar(SnackBar(content: Text(context.l10n.installedName(widget.meta.name))));
+        ..showSnackBar(
+          SnackBar(content: Text(context.l10n.installedName(widget.meta.name))),
+        );
     } catch (e) {
       messenger
         ..clearSnackBars()
-        ..showSnackBar(SnackBar(content: Text(context.l10n.installFailed('$e'))));
+        ..showSnackBar(
+          SnackBar(content: Text(context.l10n.installFailed('$e'))),
+        );
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -866,11 +870,15 @@ class _LnReaderSourceRowState extends State<_LnReaderSourceRow> {
       widget.onChanged();
       messenger
         ..clearSnackBars()
-        ..showSnackBar(SnackBar(content: Text(context.l10n.removedName(widget.meta.name))));
+        ..showSnackBar(
+          SnackBar(content: Text(context.l10n.removedName(widget.meta.name))),
+        );
     } catch (e) {
       messenger
         ..clearSnackBars()
-        ..showSnackBar(SnackBar(content: Text(context.l10n.removeFailed('$e'))));
+        ..showSnackBar(
+          SnackBar(content: Text(context.l10n.removeFailed('$e'))),
+        );
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -956,8 +964,9 @@ class _LnReaderSourceRowState extends State<_LnReaderSourceRow> {
                 foregroundColor: AppColors.textSecondary,
                 minimumSize: const Size(100, 36),
                 side: const BorderSide(color: AppColors.hairline),
-                shape:
-                    RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
               ),
               child: Text(context.l10n.uninstall),
             )
@@ -971,8 +980,9 @@ class _LnReaderSourceRowState extends State<_LnReaderSourceRow> {
                 foregroundColor: Colors.white,
                 elevation: 0,
                 minimumSize: const Size(96, 36),
-                shape:
-                    RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
               ),
               child: Text(context.l10n.install),
             ),

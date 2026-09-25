@@ -477,35 +477,11 @@ class _EpisodesTabState extends State<_EpisodesTab> {
     // A long series can be thousands of chapters, and one tap shouldn't commit
     // to that much storage and traffic without saying so out loud.
     if (chapters.length > 50) {
-      final ok = await showDialog<bool>(
-        context: context,
-        builder: (dctx) => AlertDialog(
-          backgroundColor: AppColors.surface,
-          title: Text(
-            context.l10n.downloadChaptersQuestion(chapters.length),
-            style: AppText.headline,
-          ),
-          content: Text(
-            context.l10n.chapterOneAtATimeWarning,
-            style: AppText.body,
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dctx, false),
-              child: Text(
-                context.l10n.cancel,
-                style: AppText.button.copyWith(color: AppColors.textSecondary),
-              ),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(dctx, true),
-              child: Text(
-                context.l10n.download,
-                style: AppText.button.copyWith(color: AppColors.accent),
-              ),
-            ),
-          ],
-        ),
+      final ok = await AppDialog.confirm(
+        context,
+        title: context.l10n.downloadChaptersQuestion(chapters.length),
+        message: context.l10n.chapterOneAtATimeWarning,
+        confirmLabel: context.l10n.download,
       );
       if (ok != true) return;
       if (!mounted) return;

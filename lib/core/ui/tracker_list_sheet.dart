@@ -10,6 +10,7 @@ import '../theme/app_text.dart';
 import '../tracker/tracker.dart';
 import '../tracker/tracker_binding_store.dart';
 import '../tracker/tracker_hub.dart';
+import 'app_dialog.dart';
 import 'global_messenger.dart';
 import 'tracker_badge.dart';
 import 'tracker_sync_sheet.dart';
@@ -212,28 +213,14 @@ class _TrackerListSheetState extends State<TrackerListSheet> {
   /// app's own history and progress are untouched.
   Future<void> _remove(_Row r) async {
     final name = r.tracker.displayName;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        title: Text('Remove from $name?', style: AppText.title),
-        content: Text(
+    final confirmed = await AppDialog.confirm(
+      context,
+      title: 'Remove from $name?',
+      message:
           '${widget.title} will be taken off your $name list. '
           'Your progress in the app stays as it is.',
-          style: AppText.body.copyWith(color: AppColors.textSecondary),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: FilledButton.styleFrom(backgroundColor: AppColors.accent),
-            child: const Text('Remove'),
-          ),
-        ],
-      ),
+      confirmLabel: 'Remove',
+      destructive: true,
     );
     if (confirmed != true || !mounted) return;
     setState(() => _loading = true);

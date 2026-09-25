@@ -5,9 +5,8 @@ import '../../features/sources/providers_hub_screen.dart';
 import '../../l10n/l10n.dart';
 import '../../l10n/ui_strings.dart';
 import '../mode/content_mode.dart';
-import '../theme/app_colors.dart';
 import '../theme/app_text.dart';
-import 'tv_focusable.dart';
+import 'tv_alert_dialog.dart';
 import 'tv_playback_failure.dart';
 
 /// Inserts a blocking loading overlay while play-time source resolution runs.
@@ -101,9 +100,7 @@ class _TvPlaybackLoadErrorDialog extends StatelessWidget {
         onPrimary = () {
           Navigator.pop(context);
           Navigator.of(context).push(
-            MaterialPageRoute<void>(
-              builder: (_) => const ProvidersHubScreen(),
-            ),
+            MaterialPageRoute<void>(builder: (_) => const ProvidersHubScreen()),
           );
         };
       case TvPlaybackLoadFailureKind.noSourceMatch:
@@ -115,7 +112,7 @@ class _TvPlaybackLoadErrorDialog extends StatelessWidget {
         body =
             failure.detail ??
             'None of your installed sources have this title. Try another source '
-            'from the detail screen, or install more in Providers.';
+                'from the detail screen, or install more in Providers.';
         primaryLabel = l10n.ok;
         onPrimary = () => Navigator.pop(context);
       case TvPlaybackLoadFailureKind.episodeNotAvailable:
@@ -134,98 +131,22 @@ class _TvPlaybackLoadErrorDialog extends StatelessWidget {
         onPrimary = () => Navigator.pop(context);
     }
 
-    return Dialog(
-      backgroundColor: AppColors.surface,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      insetPadding: const EdgeInsets.symmetric(horizontal: 96, vertical: 64),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minWidth: 560, maxWidth: 680),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(40, 36, 40, 28),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: AppText.largeTitle.copyWith(fontSize: 28),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                body,
-                style: AppText.body.copyWith(
-                  fontSize: 18,
-                  height: 1.45,
-                  color: AppColors.textSecondary,
-                ),
-              ),
-              const SizedBox(height: 32),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  if (showCancel)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 12),
-                      child: TvFocusable(
-                        variant: TvFocusVariant.pill,
-                        onTap: () => Navigator.pop(context),
-                        semanticLabel: l10n.cancel,
-                        builder: (focused) => DecoratedBox(
-                          decoration: BoxDecoration(
-                            color: focused
-                                ? Colors.white24
-                                : AppColors.surface2,
-                            borderRadius: BorderRadius.circular(24),
-                            border: Border.all(
-                              color: focused
-                                  ? Colors.white54
-                                  : AppColors.hairline,
-                            ),
-                          ),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 28,
-                              vertical: 14,
-                            ),
-                            child: Text(
-                              l10n.cancel,
-                              style: AppText.headline.copyWith(fontSize: 18),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  TvFocusable(
-                    autofocus: true,
-                    variant: TvFocusVariant.pill,
-                    onTap: onPrimary,
-                    semanticLabel: primaryLabel,
-                    builder: (focused) => DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: focused ? Colors.white : AppColors.accent,
-                        borderRadius: BorderRadius.circular(24),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 36,
-                          vertical: 14,
-                        ),
-                        child: Text(
-                          primaryLabel,
-                          style: AppText.headline.copyWith(
-                            fontSize: 18,
-                            color: focused ? Colors.black : Colors.white,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
+    return TvAlertDialog(
+      title: title,
+      body: Text(body),
+      actions: [
+        if (showCancel)
+          TvAlertAction(
+            label: l10n.cancel,
+            onTap: () => Navigator.pop(context),
           ),
+        TvAlertAction(
+          label: primaryLabel,
+          primary: true,
+          autofocus: true,
+          onTap: onPrimary,
         ),
-      ),
+      ],
     );
   }
 }
@@ -258,10 +179,8 @@ Future<TvPlaybackErrorAction> showTvPlaybackErrorDialog(
   final result = await showDialog<TvPlaybackErrorAction>(
     context: context,
     barrierColor: Colors.black54,
-    builder: (ctx) => _TvPlaybackErrorDialog(
-      errorCode: errorCode,
-      showTitle: showTitle,
-    ),
+    builder: (ctx) =>
+        _TvPlaybackErrorDialog(errorCode: errorCode, showTitle: showTitle),
   );
   return result ?? TvPlaybackErrorAction.close;
 }
@@ -277,110 +196,30 @@ class _TvPlaybackErrorDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Dialog(
-      backgroundColor: AppColors.surface,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      insetPadding: const EdgeInsets.symmetric(horizontal: 96, vertical: 64),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minWidth: 560, maxWidth: 680),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(40, 36, 40, 28),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                "Couldn't play this source",
-                style: AppText.largeTitle.copyWith(fontSize: 28),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                '$showTitle failed to play. The stream was found but the '
-                'player couldn\'t decode it${errorCode.isNotEmpty ? " ($errorCode)" : ""}. '
-                'Try another source, or pick one manually.',
-                style: AppText.body.copyWith(
-                  fontSize: 18,
-                  height: 1.45,
-                  color: AppColors.textSecondary,
-                ),
-              ),
-              const SizedBox(height: 32),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  _ErrorActionButton(
-                    label: 'Close',
-                    autofocus: false,
-                    onTap: () =>
-                        Navigator.pop(context, TvPlaybackErrorAction.close),
-                  ),
-                  const SizedBox(width: 12),
-                  _ErrorActionButton(
-                    label: 'Select Source',
-                    autofocus: false,
-                    onTap: () => Navigator.pop(
-                      context,
-                      TvPlaybackErrorAction.selectSource,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  _ErrorActionButton(
-                    label: 'Try Next Source',
-                    autofocus: true,
-                    accent: true,
-                    onTap: () => Navigator.pop(
-                      context,
-                      TvPlaybackErrorAction.tryNext,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
+    return TvAlertDialog(
+      title: "Couldn't play this source",
+      body: Text(
+        '$showTitle failed to play. The stream was found but the '
+        'player couldn\'t decode it${errorCode.isNotEmpty ? " ($errorCode)" : ""}. '
+        'Try another source, or pick one manually.',
       ),
-    );
-  }
-}
-
-class _ErrorActionButton extends StatelessWidget {
-  const _ErrorActionButton({
-    required this.label,
-    required this.onTap,
-    this.autofocus = false,
-    this.accent = false,
-  });
-
-  final String label;
-  final VoidCallback onTap;
-  final bool autofocus;
-  final bool accent;
-
-  @override
-  Widget build(BuildContext context) {
-    return TvFocusable(
-      autofocus: autofocus,
-      variant: TvFocusVariant.pill,
-      onTap: onTap,
-      semanticLabel: label,
-      builder: (focused) => DecoratedBox(
-        decoration: BoxDecoration(
-          color: focused
-              ? (accent ? Colors.white : Colors.white24)
-              : (accent ? AppColors.accent : AppColors.surface2),
-          borderRadius: BorderRadius.circular(24),
+      actions: [
+        TvAlertAction(
+          label: 'Close',
+          onTap: () => Navigator.pop(context, TvPlaybackErrorAction.close),
         ),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
-          child: Text(
-            label,
-            style: AppText.headline.copyWith(
-              fontSize: 18,
-              color: focused ? Colors.black : Colors.white,
-            ),
-          ),
+        TvAlertAction(
+          label: 'Select Source',
+          onTap: () =>
+              Navigator.pop(context, TvPlaybackErrorAction.selectSource),
         ),
-      ),
+        TvAlertAction(
+          label: 'Try Next Source',
+          primary: true,
+          autofocus: true,
+          onTap: () => Navigator.pop(context, TvPlaybackErrorAction.tryNext),
+        ),
+      ],
     );
   }
 }

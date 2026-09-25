@@ -15,6 +15,7 @@ import 'package:watch_app/core/provider/base_provider.dart';
 import 'package:watch_app/core/provider/cloudstream_provider.dart';
 import 'package:watch_app/core/repository/source_repository.dart';
 import 'package:watch_app/core/state/active_source_cubit.dart';
+import 'package:watch_app/core/ui/app_dialog.dart';
 import 'package:watch_app/features/search/browse_source_screen.dart';
 
 class _FakeRepo implements SourceRepository {
@@ -109,13 +110,13 @@ void main() {
       await t.pumpAndSettle();
 
       // The confirm dialog is up — nothing has run yet.
-      expect(find.byType(AlertDialog), findsOneWidget);
+      expect(find.byType(TvAlertDialog), findsOneWidget);
       expect(find.text('Cancel'), findsOneWidget);
 
       // Cancel: dialog closes, nothing ran (no completion snackbar).
       await t.tap(find.text('Cancel'));
       await t.pumpAndSettle();
-      expect(find.byType(AlertDialog), findsNothing);
+      expect(find.byType(TvAlertDialog), findsNothing);
       expect(find.byType(SnackBar), findsNothing);
 
       // Confirm this time: dialog closes AND the action actually ran.
@@ -123,12 +124,11 @@ void main() {
       await t.pumpAndSettle();
       await t.tap(find.text('Reset'));
       await t.pumpAndSettle();
-      // The dialog's title and its confirm button both read "Reset" — the
-      // confirm button is specifically the TextButton.
-      await t.tap(find.widgetWithText(TextButton, 'Reset'));
+      // Title and confirm both read "Reset" — tap the last one (the button).
+      await t.tap(find.text('Reset').last);
       await t.pumpAndSettle();
 
-      expect(find.byType(AlertDialog), findsNothing);
+      expect(find.byType(TvAlertDialog), findsNothing);
       expect(find.byType(SnackBar), findsOneWidget);
     },
   );

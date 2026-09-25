@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/ui/app_dialog.dart';
 import '../../core/ui/app_toast.dart';
 import '../../core/di/injector.dart';
 import '../../core/mihon/mihon_extension_service.dart';
@@ -323,30 +324,12 @@ class _BrowseSourceViewState extends State<_BrowseSourceView> {
   /// that source alone — never touches the active source, another source,
   /// or anything app-side (My List, history, downloads).
   Future<void> _confirmResetData() async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        title: Text(ctx.l10n.reset, style: AppText.title),
-        content: Text(
-          ctx.l10n.resetSourceDataConfirm(_displayName),
-          style: AppText.body,
-        ),
-        actions: [
-          TextButton(
-            autofocus: true,
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text(ctx.l10n.cancel),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(
-              ctx.l10n.reset,
-              style: TextStyle(color: AppColors.accent),
-            ),
-          ),
-        ],
-      ),
+    final ok = await AppDialog.confirm(
+      context,
+      title: context.l10n.reset,
+      message: context.l10n.resetSourceDataConfirm(_displayName),
+      confirmLabel: context.l10n.reset,
+      destructive: true,
     );
     if (ok != true) return;
     await source_actions.resetSourceData(widget.sourceId);

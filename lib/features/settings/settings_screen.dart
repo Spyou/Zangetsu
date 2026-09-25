@@ -61,6 +61,7 @@ import '../../core/ui/subtitle_language_picker.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/update/update_service.dart';
 import '../update/update_dialog.dart';
+import '../../core/ui/app_dialog.dart';
 import '../../core/ui/settings_widgets.dart';
 import '../../core/tv/tv_list_focusable.dart';
 import '../../core/ui/dock_visibility.dart';
@@ -345,26 +346,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
     messenger.clearSnackBars();
     if (ref == null) return _shareLogs();
 
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        title: Text(ctx.l10n.reportSent),
-        content: Text(ctx.l10n.reportSentBody(ref)),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Clipboard.setData(ClipboardData(text: ref));
-              Navigator.pop(ctx);
-            },
-            child: Text(ctx.l10n.copy),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text(ctx.l10n.ok),
-          ),
-        ],
-      ),
+    await AppDialog.show<void>(
+      context,
+      title: context.l10n.reportSent,
+      body: Text(context.l10n.reportSentBody(ref)),
+      actions: [
+        TvAlertAction(
+          label: context.l10n.copy,
+          onTap: () {
+            Clipboard.setData(ClipboardData(text: ref));
+            Navigator.of(context, rootNavigator: true).pop();
+          },
+        ),
+        TvAlertAction(
+          label: context.l10n.ok,
+          primary: true,
+          autofocus: true,
+          onTap: () => Navigator.of(context, rootNavigator: true).pop(),
+        ),
+      ],
     );
   }
 

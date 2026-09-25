@@ -19,6 +19,7 @@ import '../../core/mode/content_mode_cubit.dart';
 import '../../core/zmode/metadata_filters.dart';
 import '../../core/zmode/zmode_module.dart';
 import '../../core/zmode/zmode_prefs.dart';
+import '../../core/ui/app_dialog.dart';
 import '../../core/ui/app_toast.dart';
 import 'open_related.dart';
 import '../../core/ui/episode_unavailable_dialog.dart';
