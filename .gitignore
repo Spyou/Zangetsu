@@ -74,3 +74,6 @@ supabase/.temp/
 .fvm/
 # Widget Preview related
 .widget_preview/
+
+# Wrangler local scratch (dev cache, telemetry state) — never commit
+**/.wrangler/

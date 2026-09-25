@@ -80,6 +80,10 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
     // a few extra workers let results come back without one slow source choking
     // the rest (each call is also time-capped in PluginHost).
     private val csReadPool = Executors.newFixedThreadPool(8)
+    // Playback's own lane: a stuck browse/search must never starve pressing
+    // play. Only the fast (first-link) resolve runs here — same call, same
+    // caps, just never queued behind the shared pool.
+    private val csPlayPool = Executors.newFixedThreadPool(2)
     private val repo: RepoManager by lazy { RepoManager(applicationContext) }
     private val host: PluginHost by lazy { PluginHost(applicationContext) }
 
@@ -1063,7 +1067,10 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
                         val name = call.argument<String>("name")
                         val data = call.argument<String>("data")
                         val fast = call.argument<Boolean>("fast") ?: false
-                        csReadPool.execute {
+                        // Playback (fast) gets its own lane so a pool clogged
+                        // by dead servers can't starve pressing play.
+                        val lane = if (fast) csPlayPool else csReadPool
+                        lane.execute {
                             try {
                                 val res = host.loadLinks(name ?: "", data ?: "", fast)
                                 runOnUiThread { result.success(res) }
@@ -1843,6 +1850,7 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
         executor.shutdown()
         csExecutor.shutdown()
         csReadPool.shutdown()
+        csPlayPool.shutdown()
         castManager?.release()
         tvBridge = null
         PhonePlayerBridge.dispose()
