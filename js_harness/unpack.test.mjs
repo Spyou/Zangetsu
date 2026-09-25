@@ -11,6 +11,21 @@ test('unpackJs returns input unchanged when not packed', () => {
   assert.equal(globalThis.unpackJs('player.src("x")'), 'player.src("x")');
 });
 
+// An ordinary embed page: a `}(jQuery));` IIFE and a `.split('|')` quality
+// list, nothing packed. Both of those used to be all the guard looked for, so
+// this reached the slicing, every indexOf came back -1, and the source was
+// truncated to `unction($){\n  $.post('/ping` — the player URL gone with it.
+test('unpackJs leaves an unpacked page with }( and split() alone', () => {
+  const page = [
+    '(function($){',
+    "  $.post('/ping', { q: 1 });",
+    "  var labels = '360p|480p|720p'.split('|');",
+    '}(jQuery));',
+    'player.src("https://cdn.example.test/v/abcd1234.mp4");',
+  ].join('\n');
+  assert.equal(globalThis.unpackJs(page), page);
+});
+
 // Packs `src` the way the packer does, in base `radix`, with enough distinct
 // words that some of them need two digits. The 36-and-under form is the short
 // `c.toString(a)` one that embed pages commonly serve; 62 needs the long one.
