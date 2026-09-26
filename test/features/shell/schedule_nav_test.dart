@@ -281,6 +281,9 @@ class _FakeDownloadPrefs extends DownloadPrefs {
 
   @override
   String? get locationLabel => null;
+
+  @override
+  bool get keepPrivate => false;
 }
 
 /// [ScheduleScreen] (built eagerly by both shells' IndexedStack) creates a
