@@ -25,6 +25,7 @@ import 'download_prefs.dart';
 import 'hls_downloader.dart';
 import 'download_record.dart';
 import 'download_service.dart';
+import 'video_destination.dart';
 
 /// Owns offline downloads. Direct-file (MP4/MKV) sources go through
 /// background_downloader (true background); HLS (m3u8) sources go through the
@@ -565,8 +566,15 @@ class DownloadManager extends ChangeNotifier {
     // A picked SAF folder (content://) streams straight into that tree. A
     // detected drive (a plain volume path) or the default both download to
     // app-docs first — _finish then moves a drive download onto the volume.
-    final loc = _downloadPrefs.locationUri;
-    final safUri = loc != null && loc.isNotEmpty && isUriPath(loc) ? loc : null;
+    // A picked SAF folder (content://) streams straight into that tree, which
+    // would put the file in public storage. keepPrivate overrides that: stream
+    // to app-docs like the default, and never move it out.
+    final safUri = videoDestination(
+      keepPrivate: _downloadPrefs.keepPrivate,
+      locationUri: _downloadPrefs.locationUri,
+    ) == VideoDestination.safTree
+        ? _downloadPrefs.locationUri
+        : null;
     final DownloadTask task = safUri != null
         // Custom SAF folder: stream straight into the user's picked directory
         // (the file ends up as a content:// URI — see _finish). No post-move.
@@ -728,8 +736,14 @@ class DownloadManager extends ChangeNotifier {
     // A detected drive is a plain volume path (not a content:// SAF tree) — an
     // app-specific external dir we can write to with plain File I/O. Remux the
     // .ts into a real .mp4 STRAIGHT onto the volume, avoiding a big post-move.
-    final isVolume =
-        customUri != null && customUri.isNotEmpty && !isUriPath(customUri);
+    final dest = videoDestination(
+      // keepPrivate is read live from the singleton; `customUri` stays the
+      // enqueue-time snapshot it has always been, so a mid-flight folder
+      // change behaves exactly as before.
+      keepPrivate: _downloadPrefs.keepPrivate,
+      locationUri: customUri,
+    );
+    final isVolume = dest == VideoDestination.detectedVolume;
     if (isVolume && Platform.isAndroid) {
       try {
         final destDir = Directory('$customUri/$dir');
@@ -742,14 +756,14 @@ class DownloadManager extends ChangeNotifier {
           return mp4;
         }
         // Remux couldn't handle the stream → keep the .ts, on the volume.
-        return await _moveToVolume(tsPath, customUri, dir) ?? tsPath;
+        return await _moveToVolume(tsPath, customUri!, dir) ?? tsPath;
       } catch (_) {
         return tsPath; // volume write failed → keep the local temp
       }
     }
     if (isVolume) {
       // iOS (no MediaMuxer): just move the .ts onto the chosen location.
-      return await _moveToVolume(tsPath, customUri, dir) ?? tsPath;
+      return await _moveToVolume(tsPath, customUri!, dir) ?? tsPath;
     }
 
     // ── Picked SAF folder / default public Downloads (unchanged) ──
@@ -766,10 +780,14 @@ class DownloadManager extends ChangeNotifier {
       }
       // Remux failed on an odd stream → keep the honestly-labelled .ts.
     }
-    if (customUri != null && customUri.isNotEmpty) {
+    if (dest == VideoDestination.safTree) {
       final moved =
-          await _moveIntoTree(publish, customUri, publish.split('/').last);
+          await _moveIntoTree(publish, customUri!, publish.split('/').last);
       return moved ?? publish;
+    }
+    if (dest != VideoDestination.publicDownloads) {
+      // privateStorage: the remuxed file is already in app-documents.
+      return publish;
     }
     try {
       final moved = await _fileDownloader.moveFileToSharedStorage(
@@ -1096,6 +1114,13 @@ class DownloadManager extends ChangeNotifier {
   /// Handles BOTH default downloads (plain file path — a cheap `exists` syscall)
   /// and custom-folder SAF downloads (content:// — via native DocumentFile).
   /// Skips in-flight records; emits a single [notifyListeners] if anything went.
+  // ponytail: deliberately reads ONLY rec.filePath — never DownloadPrefs, and
+  // never moves a file. That is what makes flipping keepPrivate safe for a user
+  // with 20 finished public downloads: their records still stat true and
+  // survive untouched. Do NOT "improve" this by consulting keepPrivate here to
+  // migrate them. Relocating existing files needs per-file copy, progress,
+  // failure rollback and record rewriting; it is a separate feature, and the
+  // toggle says "applies to new downloads" for exactly this reason.
   Future<void> pruneMissing() async {
     final gone = <String>[];
     // Downloads that finished before the size was recorded on completion. They
@@ -1282,11 +1307,18 @@ class DownloadManager extends ChangeNotifier {
       } catch (_) {}
 
       final subDir = '$_sharedDir/${_safe(rec.showTitle)}';
-      final loc = _downloadPrefs.locationUri;
-      if (loc != null && loc.isNotEmpty && !isUriPath(loc)) {
+      final dest = videoDestination(
+        keepPrivate: _downloadPrefs.keepPrivate,
+        locationUri: _downloadPrefs.locationUri,
+      );
+      if (dest == VideoDestination.detectedVolume) {
         // Detected drive (USB/SSD/SD): move the file onto that volume.
-        path = await _moveToVolume(await task.filePath(), loc, subDir);
-      } else {
+        path = await _moveToVolume(
+          await task.filePath(),
+          _downloadPrefs.locationUri!,
+          subDir,
+        );
+      } else if (dest == VideoDestination.publicDownloads) {
         try {
           path = await _fileDownloader.moveToSharedStorage(
             task,
@@ -1295,7 +1327,11 @@ class DownloadManager extends ChangeNotifier {
           );
         } catch (_) {}
       }
-      // Fall back to the app-documents path if the move failed.
+      // privateStorage: the temp already lives in app-documents, so there is
+      // nothing to move and `path` stays null. safTree is unreachable here — a
+      // content:// location makes _enqueueTaskFor build a UriDownloadTask, and
+      // that case returns earlier in this method. Either way the fallback below
+      // adopts the private path, which is also the move-failure fallback.
       path ??= await task.filePath();
     }
 
