@@ -31,4 +31,13 @@ void main() {
     expect(isUriPath('content://tree/x/doc/y'), isTrue);
     expect(isUriPath('/storage/emulated/0/Download/x.mp4'), isFalse);
   });
+
+  test('keepPrivate defaults to false and round-trips', () async {
+    final p = DownloadPrefs();
+    expect(p.keepPrivate, isFalse);
+    await p.setKeepPrivate(true);
+    expect(p.keepPrivate, isTrue);
+    await p.setKeepPrivate(false);
+    expect(p.keepPrivate, isFalse);
+  });
 }

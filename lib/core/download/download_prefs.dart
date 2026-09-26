@@ -34,6 +34,17 @@ class DownloadPrefs {
     }
   }
 
+  /// Keep finished video downloads in app-private storage instead of copying
+  /// them to the public Downloads folder. Applies to NEW downloads only —
+  /// files already downloaded stay where they are.
+  ///
+  /// Off by default: files in the private directory are invisible to every
+  /// file manager and are deleted when the app is uninstalled.
+  bool get keepPrivate =>
+      _box.get('keepPrivate', defaultValue: false) as bool;
+
+  Future<void> setKeepPrivate(bool value) => _box.put('keepPrivate', value);
+
   // ── Parallel downloads (CloudStream-style) ────────────────────────────────
   // Only the HLS path was serial (one episode at a time); MP4 already runs
   // concurrently via background_downloader. These govern the HLS worker pool.
