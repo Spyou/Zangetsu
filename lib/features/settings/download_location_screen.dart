@@ -144,6 +144,29 @@ class _DownloadLocationScreenState extends State<DownloadLocationScreen> {
                 ),
             ],
           ),
+          SettingsCard(
+            children: [
+              SettingsTile(
+                icon: Icons.lock_outline_rounded,
+                title: context.l10n.keepDownloadsPrivate,
+                subtitle: context.l10n.keepDownloadsPrivateSubtitle,
+                subtitleMaxLines: null,
+                onTap: () async {
+                  await prefs.setKeepPrivate(!prefs.keepPrivate);
+                  if (mounted) setState(() {});
+                },
+                trailing: Switch.adaptive(
+                  value: prefs.keepPrivate,
+                  activeThumbColor: AppColors.accent,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  onChanged: (v) async {
+                    await prefs.setKeepPrivate(v);
+                    if (mounted) setState(() {});
+                  },
+                ),
+              ),
+            ],
+          ),
           Padding(
             padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
             child: Text(
