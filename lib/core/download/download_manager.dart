@@ -1114,6 +1114,13 @@ class DownloadManager extends ChangeNotifier {
   /// Handles BOTH default downloads (plain file path — a cheap `exists` syscall)
   /// and custom-folder SAF downloads (content:// — via native DocumentFile).
   /// Skips in-flight records; emits a single [notifyListeners] if anything went.
+  // ponytail: deliberately reads ONLY rec.filePath — never DownloadPrefs, and
+  // never moves a file. That is what makes flipping keepPrivate safe for a user
+  // with 20 finished public downloads: their records still stat true and
+  // survive untouched. Do NOT "improve" this by consulting keepPrivate here to
+  // migrate them. Relocating existing files needs per-file copy, progress,
+  // failure rollback and record rewriting; it is a separate feature, and the
+  // toggle says "applies to new downloads" for exactly this reason.
   Future<void> pruneMissing() async {
     final gone = <String>[];
     // Downloads that finished before the size was recorded on completion. They
