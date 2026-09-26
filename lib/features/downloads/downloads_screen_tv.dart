@@ -390,10 +390,12 @@ class _TvLocationHeaderState extends State<_TvLocationHeader> {
     final l10n = context.l10n;
     // Guard the DI lookup so widget tests (which inject a fake manager and skip
     // GetIt) still render the header with the default label.
-    final label = (sl.isRegistered<DownloadPrefs>()
-            ? sl<DownloadPrefs>().locationLabel
-            : null) ??
-        l10n.downloadsZangetsu;
+    final prefs = sl.isRegistered<DownloadPrefs>() ? sl<DownloadPrefs>() : null;
+    final label = downloadDestinationLabel(
+      keepPrivate: prefs?.keepPrivate ?? false,
+      locationLabel: prefs?.locationLabel,
+      publicFallback: l10n.downloadsZangetsu,
+    );
     return Padding(
       padding: const EdgeInsets.fromLTRB(48, 0, 48, 12),
       child: TvListFocusable(
@@ -590,8 +592,14 @@ class _TvLocationPickerState extends State<_TvLocationPicker> {
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
-              child: Text(prefs?.locationLabel ?? l10n.downloadsZangetsu,
-                  style: AppText.body),
+              child: Text(
+                downloadDestinationLabel(
+                  keepPrivate: prefs?.keepPrivate ?? false,
+                  locationLabel: prefs?.locationLabel,
+                  publicFallback: l10n.downloadsZangetsu,
+                ),
+                style: AppText.body,
+              ),
             ),
             const Divider(height: 1, color: AppColors.hairline),
             ...rows,
