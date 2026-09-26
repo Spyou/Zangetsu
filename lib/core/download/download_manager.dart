@@ -736,8 +736,14 @@ class DownloadManager extends ChangeNotifier {
     // A detected drive is a plain volume path (not a content:// SAF tree) — an
     // app-specific external dir we can write to with plain File I/O. Remux the
     // .ts into a real .mp4 STRAIGHT onto the volume, avoiding a big post-move.
-    final isVolume =
-        customUri != null && customUri.isNotEmpty && !isUriPath(customUri);
+    final dest = videoDestination(
+      // keepPrivate is read live from the singleton; `customUri` stays the
+      // enqueue-time snapshot it has always been, so a mid-flight folder
+      // change behaves exactly as before.
+      keepPrivate: _downloadPrefs.keepPrivate,
+      locationUri: customUri,
+    );
+    final isVolume = dest == VideoDestination.detectedVolume;
     if (isVolume && Platform.isAndroid) {
       try {
         final destDir = Directory('$customUri/$dir');
@@ -750,14 +756,14 @@ class DownloadManager extends ChangeNotifier {
           return mp4;
         }
         // Remux couldn't handle the stream → keep the .ts, on the volume.
-        return await _moveToVolume(tsPath, customUri, dir) ?? tsPath;
+        return await _moveToVolume(tsPath, customUri!, dir) ?? tsPath;
       } catch (_) {
         return tsPath; // volume write failed → keep the local temp
       }
     }
     if (isVolume) {
       // iOS (no MediaMuxer): just move the .ts onto the chosen location.
-      return await _moveToVolume(tsPath, customUri, dir) ?? tsPath;
+      return await _moveToVolume(tsPath, customUri!, dir) ?? tsPath;
     }
 
     // ── Picked SAF folder / default public Downloads (unchanged) ──
@@ -774,10 +780,14 @@ class DownloadManager extends ChangeNotifier {
       }
       // Remux failed on an odd stream → keep the honestly-labelled .ts.
     }
-    if (customUri != null && customUri.isNotEmpty) {
+    if (dest == VideoDestination.safTree) {
       final moved =
-          await _moveIntoTree(publish, customUri, publish.split('/').last);
+          await _moveIntoTree(publish, customUri!, publish.split('/').last);
       return moved ?? publish;
+    }
+    if (dest != VideoDestination.publicDownloads) {
+      // privateStorage: the remuxed file is already in app-documents.
+      return publish;
     }
     try {
       final moved = await _fileDownloader.moveFileToSharedStorage(
