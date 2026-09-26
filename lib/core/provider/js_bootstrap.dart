@@ -247,15 +247,27 @@ if (typeof globalThis.setTimeout !== 'function') {
 
 globalThis.unpackJs = function(source) {
   var s = String(source);
-  if (s.indexOf('}(') === -1 || s.indexOf(".split('|')") === -1) return s;
-  var body = s.slice(s.indexOf("}('") + 3, s.indexOf(".split('|'),0,{}))"));
+  // Every marker the slicing below needs, checked before slicing with it.
+  // The guard used to accept `}(` plus `.split('|')`, which are far wider than
+  // the exact markers used here: an unpacked page carrying a `}(jQuery));`
+  // IIFE next to any `.split('|')` got in, indexOf returned -1, and the
+  // negative indices truncated the source instead of returning it whole.
+  var open = s.indexOf("}('");
+  var close = s.indexOf(".split('|'),0,{}))");
+  if (open === -1 || close <= open) return s;
+  var body = s.slice(open + 3, close);
   body = body.replace(/\\'/g, "'");
-  var payload = body.slice(0, body.indexOf("',"));
+  var comma = body.indexOf("',");
+  if (comma === -1) return s;
+  var payload = body.slice(0, comma);
   // The words are numbered in the base the packer passed as `a` — often 36
   // (the `c.toString(a)` variant), not always 62.
-  var radix = parseInt(body.slice(body.indexOf("',") + 2), 10);
+  var radix = parseInt(body.slice(comma + 2), 10);
   if (!(radix >= 2 && radix <= 62)) radix = 62;
-  var dict = body.slice(body.indexOf("'", body.indexOf("',") + 2) + 1, body.lastIndexOf("'")).split('|');
+  var dictStart = body.indexOf("'", comma + 2);
+  var dictEnd = body.lastIndexOf("'");
+  if (dictStart === -1 || dictEnd <= dictStart) return s;
+  var dict = body.slice(dictStart + 1, dictEnd).split('|');
   function unbase(t){ var a=0; for (var i=0;i<t.length;i++){ var c=t.charCodeAt(i); var d = c<=57 ? c-48 : c>=97 ? c-87 : c-29; if (d >= radix) return -1; a = a*radix + d; } return a; }
   return payload.replace(/[0-9A-Za-z]+/g, function(k){ var i=unbase(k); return (i>=0 && i<dict.length && dict[i]!=='') ? dict[i] : k; });
 };

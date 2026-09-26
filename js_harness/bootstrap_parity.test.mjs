@@ -82,3 +82,19 @@ for (const [name, inputs] of Object.entries(CASES)) {
     }
   });
 }
+
+// Parity alone would stay green with both sides broken the same way, so assert
+// the contract against the real bootstrap too: `unpackJs` must hand back an
+// unpacked page untouched. An ordinary embed page — a `}(jQuery));` IIFE beside
+// a `.split('|')` quality list — used to come back as
+// `unction($){\n  $.post('/ping`, with the player URL cut off the end.
+test('kJsBootstrap unpackJs leaves an unpacked page alone', () => {
+  const page = [
+    '(function($){',
+    "  $.post('/ping', { q: 1 });",
+    "  var labels = '360p|480p|720p'.split('|');",
+    '}(jQuery));',
+    'player.src("https://cdn.example.test/v/abcd1234.mp4");',
+  ].join('\n');
+  assert.equal(app.unpackJs(page), page);
+});
