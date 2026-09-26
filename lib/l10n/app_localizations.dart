@@ -9097,12 +9097,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'New video downloads stay inside Zangetsu instead of the Downloads folder. They are deleted when you uninstall Zangetsu. Chapters and exports are unaffected.'**
   String get keepDownloadsPrivateSubtitle;
-
-  /// No description provided for @privateAppStorage.
-  ///
-  /// In en, this message translates to:
-  /// **'Private (app storage)'**
-  String get privateAppStorage;
 }
 
 class _AppLocalizationsDelegate

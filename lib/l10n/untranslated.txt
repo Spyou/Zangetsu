@@ -113,8 +113,7 @@
     "epubExportFailed",
     "export",
     "keepDownloadsPrivate",
-    "keepDownloadsPrivateSubtitle",
-    "privateAppStorage"
+    "keepDownloadsPrivateSubtitle"
   ],
 
   "es": [
@@ -231,8 +230,7 @@
     "epubExportFailed",
     "export",
     "keepDownloadsPrivate",
-    "keepDownloadsPrivateSubtitle",
-    "privateAppStorage"
+    "keepDownloadsPrivateSubtitle"
   ],
 
   "fr": [
@@ -349,8 +347,7 @@
     "epubExportFailed",
     "export",
     "keepDownloadsPrivate",
-    "keepDownloadsPrivateSubtitle",
-    "privateAppStorage"
+    "keepDownloadsPrivateSubtitle"
   ],
 
   "it": [
@@ -467,8 +464,7 @@
     "epubExportFailed",
     "export",
     "keepDownloadsPrivate",
-    "keepDownloadsPrivateSubtitle",
-    "privateAppStorage"
+    "keepDownloadsPrivateSubtitle"
   ],
 
   "ja": [
@@ -585,8 +581,7 @@
     "epubExportFailed",
     "export",
     "keepDownloadsPrivate",
-    "keepDownloadsPrivateSubtitle",
-    "privateAppStorage"
+    "keepDownloadsPrivateSubtitle"
   ],
 
   "zh": [
@@ -703,8 +698,7 @@
     "epubExportFailed",
     "export",
     "keepDownloadsPrivate",
-    "keepDownloadsPrivateSubtitle",
-    "privateAppStorage"
+    "keepDownloadsPrivateSubtitle"
   ],
 
   "zh_TW": [
@@ -821,7 +815,6 @@
     "epubExportFailed",
     "export",
     "keepDownloadsPrivate",
-    "keepDownloadsPrivateSubtitle",
-    "privateAppStorage"
+    "keepDownloadsPrivateSubtitle"
   ]
 }

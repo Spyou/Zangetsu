@@ -5129,9 +5129,6 @@ class AppLocalizationsZh extends AppLocalizations {
   @override
   String get keepDownloadsPrivateSubtitle =>
       'New video downloads stay inside Zangetsu instead of the Downloads folder. They are deleted when you uninstall Zangetsu. Chapters and exports are unaffected.';
-
-  @override
-  String get privateAppStorage => 'Private (app storage)';
 }
 
 /// The translations for Chinese, as used in Taiwan (`zh_TW`).
