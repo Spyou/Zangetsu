@@ -25,6 +25,7 @@ import 'download_prefs.dart';
 import 'hls_downloader.dart';
 import 'download_record.dart';
 import 'download_service.dart';
+import 'video_destination.dart';
 
 /// Owns offline downloads. Direct-file (MP4/MKV) sources go through
 /// background_downloader (true background); HLS (m3u8) sources go through the
@@ -565,8 +566,15 @@ class DownloadManager extends ChangeNotifier {
     // A picked SAF folder (content://) streams straight into that tree. A
     // detected drive (a plain volume path) or the default both download to
     // app-docs first — _finish then moves a drive download onto the volume.
-    final loc = _downloadPrefs.locationUri;
-    final safUri = loc != null && loc.isNotEmpty && isUriPath(loc) ? loc : null;
+    // A picked SAF folder (content://) streams straight into that tree, which
+    // would put the file in public storage. keepPrivate overrides that: stream
+    // to app-docs like the default, and never move it out.
+    final safUri = videoDestination(
+      keepPrivate: _downloadPrefs.keepPrivate,
+      locationUri: _downloadPrefs.locationUri,
+    ) == VideoDestination.safTree
+        ? _downloadPrefs.locationUri
+        : null;
     final DownloadTask task = safUri != null
         // Custom SAF folder: stream straight into the user's picked directory
         // (the file ends up as a content:// URI — see _finish). No post-move.
@@ -1282,11 +1290,18 @@ class DownloadManager extends ChangeNotifier {
       } catch (_) {}
 
       final subDir = '$_sharedDir/${_safe(rec.showTitle)}';
-      final loc = _downloadPrefs.locationUri;
-      if (loc != null && loc.isNotEmpty && !isUriPath(loc)) {
+      final dest = videoDestination(
+        keepPrivate: _downloadPrefs.keepPrivate,
+        locationUri: _downloadPrefs.locationUri,
+      );
+      if (dest == VideoDestination.detectedVolume) {
         // Detected drive (USB/SSD/SD): move the file onto that volume.
-        path = await _moveToVolume(await task.filePath(), loc, subDir);
-      } else {
+        path = await _moveToVolume(
+          await task.filePath(),
+          _downloadPrefs.locationUri!,
+          subDir,
+        );
+      } else if (dest == VideoDestination.publicDownloads) {
         try {
           path = await _fileDownloader.moveToSharedStorage(
             task,
@@ -1295,7 +1310,11 @@ class DownloadManager extends ChangeNotifier {
           );
         } catch (_) {}
       }
-      // Fall back to the app-documents path if the move failed.
+      // privateStorage: the temp already lives in app-documents, so there is
+      // nothing to move and `path` stays null. safTree is unreachable here — a
+      // content:// location makes _enqueueTaskFor build a UriDownloadTask, and
+      // that case returns earlier in this method. Either way the fallback below
+      // adopts the private path, which is also the move-failure fallback.
       path ??= await task.filePath();
     }
 
