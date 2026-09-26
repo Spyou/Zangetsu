@@ -3009,6 +3009,6 @@
 	"@exportedToFolder": {"placeholders": {"folder": {"type": "String"}}},
 	"epubExportFailed": "Couldn't save the EPUB",
 	"export": "Export",
-	"keepDownloadsPrivate": "Keep downloads in app storage",
+	"keepDownloadsPrivate": "Keep downloads private",
 	"keepDownloadsPrivateSubtitle": "New video downloads stay inside Zangetsu instead of the Downloads folder. They are deleted when you uninstall Zangetsu. Chapters and exports are unaffected."
 }

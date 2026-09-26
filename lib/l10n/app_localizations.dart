@@ -9089,7 +9089,7 @@ abstract class AppLocalizations {
   /// No description provided for @keepDownloadsPrivate.
   ///
   /// In en, this message translates to:
-  /// **'Keep downloads in app storage'**
+  /// **'Keep downloads private'**
   String get keepDownloadsPrivate;
 
   /// No description provided for @keepDownloadsPrivateSubtitle.

@@ -5299,7 +5299,7 @@ class AppLocalizationsIt extends AppLocalizations {
   String get export => 'Export';
 
   @override
-  String get keepDownloadsPrivate => 'Keep downloads in app storage';
+  String get keepDownloadsPrivate => 'Keep downloads private';
 
   @override
   String get keepDownloadsPrivateSubtitle =>
