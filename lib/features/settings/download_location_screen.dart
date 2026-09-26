@@ -82,7 +82,11 @@ class _DownloadLocationScreenState extends State<DownloadLocationScreen> {
                     const SizedBox(width: 14),
                     Expanded(
                       child: Text(
-                        prefs.locationLabel ?? context.l10n.downloadsZangetsu,
+                        downloadDestinationLabel(
+                          keepPrivate: prefs.keepPrivate,
+                          locationLabel: prefs.locationLabel,
+                          publicFallback: context.l10n.downloadsZangetsu,
+                        ),
                         style: AppText.body,
                       ),
                     ),
