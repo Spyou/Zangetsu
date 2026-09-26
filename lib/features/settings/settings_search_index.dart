@@ -485,4 +485,9 @@ final settingsLeaves = <SettingsLeaf>[
     (l) => l.resetToDefault,
     keywords: 'location folder path',
   ),
+  SettingsLeaf(
+    LeafParent.downloads,
+    (l) => l.keepDownloadsPrivate,
+    keywords: 'private hidden app storage downloads folder',
+  ),
 ];

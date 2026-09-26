@@ -9085,6 +9085,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Export'**
   String get export;
+
+  /// No description provided for @keepDownloadsPrivate.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep downloads in app storage'**
+  String get keepDownloadsPrivate;
+
+  /// No description provided for @keepDownloadsPrivateSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'New video downloads stay inside Zangetsu instead of the Downloads folder. They are deleted when you uninstall Zangetsu. Chapters and exports are unaffected.'**
+  String get keepDownloadsPrivateSubtitle;
+
+  /// No description provided for @privateAppStorage.
+  ///
+  /// In en, this message translates to:
+  /// **'Private (app storage)'**
+  String get privateAppStorage;
 }
 
 class _AppLocalizationsDelegate

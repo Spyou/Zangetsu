@@ -82,7 +82,12 @@ class _DownloadsScreenState extends State<DownloadsScreen>
   /// (opens the existing picker) instead of only burying it in Settings.
   Widget _locationHeader() {
     final l10n = context.l10n;
-    final label = sl<DownloadPrefs>().locationLabel ?? l10n.downloadsZangetsu;
+    final prefs = sl<DownloadPrefs>();
+    final label = downloadDestinationLabel(
+      keepPrivate: prefs.keepPrivate,
+      locationLabel: prefs.locationLabel,
+      publicFallback: l10n.downloadsZangetsu,
+    );
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 6, 8, 2),
       child: Row(
