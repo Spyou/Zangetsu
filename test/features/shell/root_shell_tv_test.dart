@@ -277,6 +277,9 @@ class _FakeDownloadPrefs extends DownloadPrefs {
 
   @override
   String? get locationLabel => null;
+
+  @override
+  bool get keepPrivate => false;
 }
 
 /// [ScheduleScreen] (now a TV rail item — see root_shell_tv.dart) is built
