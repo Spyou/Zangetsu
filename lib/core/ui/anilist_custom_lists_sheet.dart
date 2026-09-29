@@ -103,14 +103,14 @@ Future<void> showAniListCustomListsSheet(
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 18, 20, 2),
               child: Align(
-                alignment: AlignmentDirectional.centerStart,
+                alignment: Alignment.centerLeft,
                 child: Text('AniList custom lists', style: AppText.title),
               ),
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 6),
               child: Align(
-                alignment: AlignmentDirectional.centerStart,
+                alignment: Alignment.centerLeft,
                 child: Text(
                   'Saved to your AniList account',
                   style: AppText.caption,

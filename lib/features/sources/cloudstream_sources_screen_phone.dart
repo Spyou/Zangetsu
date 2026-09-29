@@ -360,7 +360,7 @@ class _CsScreenSourceRow extends StatelessWidget {
         child: Row(
           children: [
             Padding(
-              padding: const EdgeInsetsDirectional.only(end: 12),
+              padding: const EdgeInsets.only(right: 12),
               // A loaded plugin has no icon of its own; the catalog entry it
               // came from does.
               child: SourceIconTile(
@@ -422,12 +422,32 @@ class _CsScreenSourceRow extends StatelessWidget {
 /// [CloudStreamManager.deleteRepo]; shows a context.l10n.removed snackbar on success.
 Future<void> _confirmDeleteCsRepo(BuildContext context, CsRepoGroup group) async {
   final messenger = ScaffoldMessenger.of(context);
-  final ok = await AppDialog.confirm(
-    context,
-    title: context.l10n.removeRepository2,
-    message: context.l10n.removeThisRepositoryAndItsSources,
-    confirmLabel: context.l10n.removeDownloadTooltip,
-    destructive: true,
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      backgroundColor: AppColors.surface,
+      title: Text(context.l10n.removeRepository2, style: AppText.headline),
+      content: Text(
+        context.l10n.removeThisRepositoryAndItsSources,
+        style: AppText.body,
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, false),
+          child: Text(
+            context.l10n.cancel,
+            style: AppText.body.copyWith(color: AppColors.textSecondary),
+          ),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, true),
+          child: Text(
+            context.l10n.removeDownloadTooltip,
+            style: AppText.body.copyWith(color: AppColors.accent),
+          ),
+        ),
+      ],
+    ),
   );
   if (ok != true) return;
   await sl<CloudStreamManager>().deleteRepo(group.url);
@@ -649,7 +669,7 @@ class _CsScreenRepoSectionState extends State<_CsScreenRepoSection> {
                     behavior: HitTestBehavior.opaque,
                     onTap: () => _applyCsRepoUpdates(context, group),
                     child: Container(
-                      margin: const EdgeInsetsDirectional.only(end: 2),
+                      margin: const EdgeInsets.only(right: 2),
                       padding: const EdgeInsets.symmetric(
                         horizontal: 10,
                         vertical: 5,
@@ -865,12 +885,32 @@ class _CsScreenPluginRowState extends State<_CsScreenPluginRow> {
 
   Future<void> _uninstall() async {
     final messenger = ScaffoldMessenger.of(context);
-    final ok = await AppDialog.confirm(
-      context,
-      title: context.l10n.uninstallNameQuestion(widget.plugin.name),
-      message: context.l10n.thisRemovesTheSourceFromYourInstalledList,
-      confirmLabel: context.l10n.uninstall,
-      destructive: true,
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: Text(context.l10n.uninstallNameQuestion(widget.plugin.name), style: AppText.headline),
+        content: Text(
+          context.l10n.thisRemovesTheSourceFromYourInstalledList,
+          style: AppText.body,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(
+              context.l10n.cancel,
+              style: AppText.body.copyWith(color: AppColors.textSecondary),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(
+              context.l10n.uninstall,
+              style: AppText.body.copyWith(color: AppColors.accent),
+            ),
+          ),
+        ],
+      ),
     );
     if (ok != true) return;
     setState(() => _busy = true);
@@ -903,7 +943,7 @@ class _CsScreenPluginRowState extends State<_CsScreenPluginRow> {
       child: Row(
         children: [
           Padding(
-            padding: const EdgeInsetsDirectional.only(end: 12),
+            padding: const EdgeInsets.only(right: 12),
             child: SourceIconTile(
               name: widget.plugin.name,
               icon: widget.plugin.iconUrl,

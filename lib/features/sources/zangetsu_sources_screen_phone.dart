@@ -1,6 +1,7 @@
 // Zangetsu sources — phone UI.
 part of 'zangetsu_sources_screen.dart';
 
+
 // ---------------------------------------------------------------------------
 // Phone view
 // ---------------------------------------------------------------------------
@@ -108,11 +109,7 @@ class _ZPhoneViewState extends State<_ZPhoneView> {
                       ),
                       TextButton(
                         onPressed: () => setState(() => _showAll = !_showAll),
-                        child: Text(
-                          _showAll
-                              ? context.l10n.mangaNovelOnly
-                              : context.l10n.showAllProviders,
-                        ),
+                        child: Text(_showAll ? context.l10n.mangaNovelOnly : context.l10n.showAllProviders),
                       ),
                     ],
                   ),
@@ -123,10 +120,7 @@ class _ZPhoneViewState extends State<_ZPhoneView> {
                     ListView(
                       padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
                       children: [
-                        _ZInstalledSection(
-                          query: _query,
-                          readingOnly: readingOnly,
-                        ),
+                        _ZInstalledSection(query: _query, readingOnly: readingOnly),
                       ],
                     ),
                     ListView(
@@ -170,12 +164,8 @@ class _ZInstalledSection extends StatelessWidget {
       buildWhen: (a, b) => a.installed != b.installed || a.repos != b.repos,
       builder: (context, state) {
         final entries = state.installed
-            .where(
-              (e) => sourceSearchMatches(
-                query,
-                e.displayName.isNotEmpty ? e.displayName : e.name,
-              ),
-            )
+            .where((e) => sourceSearchMatches(
+                query, e.displayName.isNotEmpty ? e.displayName : e.name))
             .where((e) => !readingOnly || _isReadingEntry(e))
             .toList();
         if (entries.isEmpty) {
@@ -183,8 +173,8 @@ class _ZInstalledSection extends StatelessWidget {
             icon: Icons.dns_rounded,
             message: query.trim().isEmpty
                 ? (readingOnly
-                      ? context.l10n.noMangaNovelProvidersInstalled
-                      : context.l10n.noProvidersInstalled)
+                    ? context.l10n.noMangaNovelProvidersInstalled
+                    : context.l10n.noProvidersInstalled)
                 : context.l10n.noInstalledProvidersMatchQuery(query.trim()),
           );
         }
@@ -265,9 +255,8 @@ class _ZReposSection extends StatelessWidget {
             ? state.repos
             : [
                 for (final r in state.repos)
-                  if (r.sources.any(
-                    (s) => sourceSearchMatches(query, s.name, s.lang),
-                  ))
+                  if (r.sources
+                      .any((s) => sourceSearchMatches(query, s.name, s.lang)))
                     r,
               ];
         if (all.isEmpty) {
@@ -411,12 +400,32 @@ class _ZInstalledRow extends StatelessWidget {
   Future<void> _confirmRemove(BuildContext context) async {
     final bloc = context.read<SourcesBloc>();
     final name = entry.displayName.isNotEmpty ? entry.displayName : entry.name;
-    final ok = await AppDialog.confirm(
-      context,
-      title: context.l10n.removeNameQuestion(name),
-      message: context.l10n.theProviderWillBeRemovedFromYourInstalledSources,
-      confirmLabel: context.l10n.removeDownloadTooltip,
-      destructive: true,
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: Text(context.l10n.removeNameQuestion(name), style: AppText.headline),
+        content: Text(
+          context.l10n.theProviderWillBeRemovedFromYourInstalledSources,
+          style: AppText.body,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(
+              context.l10n.cancel,
+              style: AppText.body.copyWith(color: AppColors.textSecondary),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(
+              context.l10n.removeDownloadTooltip,
+              style: AppText.body.copyWith(color: AppColors.accent),
+            ),
+          ),
+        ],
+      ),
     );
     if (ok != true) return;
     bloc.add(SourceUninstalled(_key, displayName: name));
@@ -442,7 +451,7 @@ class _ZInstalledRow extends StatelessWidget {
           // The repo manifest's `logo`, with the install-time snapshot as the
           // offline fallback. Letter tile when neither has one.
           Padding(
-            padding: const EdgeInsetsDirectional.only(end: 12),
+            padding: const EdgeInsets.only(right: 12),
             child: SourceIconTile(name: name, icon: logo),
           ),
           Expanded(
@@ -540,22 +549,40 @@ class _ZRepoSectionState extends State<_ZRepoSection> {
 
   int get _updateCount => repo.sources
       .where(
-        (s) => updatableKeys.contains(
-          ProviderRegistry.providerKey(repo.url, s.id),
-        ),
+        (s) =>
+            updatableKeys.contains(ProviderRegistry.providerKey(repo.url, s.id)),
       )
       .length;
 
   Future<void> _remove(BuildContext context) async {
     final bloc = context.read<SourcesBloc>();
-    final ok = await AppDialog.confirm(
-      context,
-      title: context.l10n.removeRepo,
-      message:
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: Text(context.l10n.removeRepo, style: AppText.headline),
+        content: Text(
           context.l10n.alreadyInstalledSourcesFromRepoStay(repo.displayName) +
-          context.l10n.youCanAddRepoBackLater,
-      confirmLabel: context.l10n.removeDownloadTooltip,
-      destructive: true,
+              context.l10n.youCanAddRepoBackLater,
+          style: AppText.body,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(
+              context.l10n.cancel,
+              style: AppText.body.copyWith(color: AppColors.textSecondary),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(
+              context.l10n.removeDownloadTooltip,
+              style: AppText.body.copyWith(color: AppColors.accent),
+            ),
+          ),
+        ],
+      ),
     );
     if (ok != true) return;
     bloc.add(RepoRemoved(repo.url, displayName: repo.displayName));
@@ -623,8 +650,9 @@ class _ZRepoSectionState extends State<_ZRepoSection> {
                 ),
                 if (_updateCount > 0)
                   TextButton.icon(
-                    onPressed: () =>
-                        context.read<SourcesBloc>().add(RepoUpdated(repo.url)),
+                    onPressed: () => context.read<SourcesBloc>().add(
+                      RepoUpdated(repo.url),
+                    ),
                     icon: const Icon(Icons.download_rounded, size: 18),
                     label: Text(context.l10n.updateAllCount(_updateCount)),
                     style: TextButton.styleFrom(
@@ -704,7 +732,8 @@ class _ZRepoSectionState extends State<_ZRepoSection> {
                         for (final source in repo.sources.where(
                           (s) =>
                               (!s.nsfw || sl<PlaybackPrefs>().nsfwSources) &&
-                              sourceSearchMatches(widget.query, s.name, s.lang),
+                              sourceSearchMatches(
+                                  widget.query, s.name, s.lang),
                         )) ...[
                           const Divider(
                             height: 0.5,
@@ -784,12 +813,32 @@ class _ZRepoSourceRow extends StatelessWidget {
 
   Future<void> _uninstall(BuildContext context) async {
     final bloc = context.read<SourcesBloc>();
-    final ok = await AppDialog.confirm(
-      context,
-      title: context.l10n.uninstallNameQuestion(source.name),
-      message: context.l10n.theProviderWillBeRemovedFromYourInstalledSources,
-      confirmLabel: context.l10n.uninstall,
-      destructive: true,
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: Text(context.l10n.uninstallNameQuestion(source.name), style: AppText.headline),
+        content: Text(
+          context.l10n.theProviderWillBeRemovedFromYourInstalledSources,
+          style: AppText.body,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(
+              context.l10n.cancel,
+              style: AppText.body.copyWith(color: AppColors.textSecondary),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(
+              context.l10n.uninstall,
+              style: AppText.body.copyWith(color: AppColors.accent),
+            ),
+          ),
+        ],
+      ),
     );
     if (ok != true) return;
     bloc.add(SourceUninstalled(_key, displayName: source.name));
@@ -803,7 +852,7 @@ class _ZRepoSourceRow extends StatelessWidget {
         children: [
           // The manifest may declare a `logo`, relative to itself.
           Padding(
-            padding: const EdgeInsetsDirectional.only(end: 12),
+            padding: const EdgeInsets.only(right: 12),
             child: SourceIconTile(
               name: source.name,
               icon: ProviderReposRegistry.resolveLogoUrl(repo, source),
@@ -977,7 +1026,10 @@ class _ZAddRepoDialogState extends State<_ZAddRepoDialog> {
               ),
             ),
             const SizedBox(height: 10),
-            Text(context.l10n.pasteRepoIndexJsonUrl, style: AppText.caption),
+            Text(
+              context.l10n.pasteRepoIndexJsonUrl,
+              style: AppText.caption,
+            ),
             if (_error != null) ...[
               const SizedBox(height: 8),
               Text(

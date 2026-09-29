@@ -4,11 +4,11 @@ import 'package:dio/dio.dart';
 import 'package:get_it/get_it.dart';
 
 import '../hive/source_icon_store.dart';
-// The manga twin's fetcher already walks index.pb → index.json →
-// index.min.json and hands back this same entry type, so reuse its parsers
-// rather than keeping a second copy of the wire logic here. Dart allows the
-// import cycle; there are no top-level initialisers to order.
-import '../mihon/mihon_repo.dart';
+
+String _stringValue(Object? value) => value == null ? '' : '$value';
+
+int _intValue(Object? value) =>
+    value is num ? value.toInt() : int.tryParse('$value'.trim()) ?? 0;
 
 /// A single anime source entry within a repo index entry.
 class AniyomiRepoSource {
@@ -26,10 +26,10 @@ class AniyomiRepoSource {
 
   factory AniyomiRepoSource.fromJson(Map<String, dynamic> json) {
     return AniyomiRepoSource(
-      id: (json['id'] as num).toInt(),
-      lang: (json['lang'] as String?) ?? '',
-      name: (json['name'] as String?) ?? '',
-      baseUrl: (json['baseUrl'] as String?) ?? '',
+      id: _intValue(json['id']),
+      lang: _stringValue(json['lang']),
+      name: _stringValue(json['name']),
+      baseUrl: _stringValue(json['baseUrl']),
     );
   }
 }
@@ -51,12 +51,15 @@ class AniyomiRepoEntry {
     required String repoBaseUrl,
     String absoluteApkUrl = '',
     String absoluteIconUrl = '',
-  })  : apkUrl = absoluteApkUrl.startsWith('http')
-            ? absoluteApkUrl
-            : '${AniyomiRepo.normalizeBase(repoBaseUrl)}/apk/$apk',
-        iconUrl = absoluteIconUrl.startsWith('http')
-            ? absoluteIconUrl
-            : '${AniyomiRepo.normalizeBase(repoBaseUrl)}/icon/$pkg.png';
+    double? libVersion,
+  }) : apkUrl = absoluteApkUrl.startsWith('http')
+           ? absoluteApkUrl
+           : '${AniyomiRepo.normalizeBase(repoBaseUrl)}/apk/$apk',
+       iconUrl = absoluteIconUrl.startsWith('http')
+           ? absoluteIconUrl
+           : '${AniyomiRepo.normalizeBase(repoBaseUrl)}/icon/$pkg.png',
+       // Try to derive libVersion from version if not explicitly provided
+       libVersion = libVersion ?? _tryParseLibVersion(version);
 
   final String name;
   final String pkg;
@@ -68,6 +71,11 @@ class AniyomiRepoEntry {
   /// [nsfw] is stored as 0/1 int in `index.min.json`; mapped to bool here.
   final bool nsfw;
   final List<AniyomiRepoSource> sources;
+
+  /// The extensions-lib version derived from [version] or explicit metadata.
+  /// Used for pre-validation before attempting to load the APK.
+  /// Null if the version cannot be parsed.
+  final double? libVersion;
 
   /// Full URL to download the extension APK.
   ///
@@ -92,22 +100,23 @@ class AniyomiRepoEntry {
 }
 
 /// Utilities for reading Aniyomi extension repository index files.
-class AniyomiRepo {
-  /// Index file names in preference order, the same list the Mihon fetcher
-  /// walks.
-  ///
-  /// `index.pb` first: it is the same data as `index.json` (~13x smaller on the
-  /// wire) and modern AniYomi repos publish it. `index.min.json` is last
-  /// because it is the legacy Tachiyomi shape and its maintainers commonly
-  /// reduce it to a stub — e.g. `Secozzi/aniyomi-extensions` serves a
-  /// one-line "switch to Animiru 0.20+" there while `index.json` still lists 3
-  /// real extensions, so reading ONLY this file made that repo look empty.
-  static const List<String> _indexFiles = [
-    'index.pb',
-    'index.json',
-    'index.min.json',
-  ];
+/// Attempts to parse a libVersion from a version string.
+/// Tries to extract the major.minor part before the last dot.
+/// Examples: "14.17" → 14.0, "16.0" → 16.0, "1.4.52" → 1.4
+/// Returns null if parsing fails.
+double? _tryParseLibVersion(String version) {
+  try {
+    final parts = version.split('.');
+    if (parts.length < 2) return null;
+    // Take the first two parts for major.minor
+    final majorMinor = parts.sublist(0, 2).join('.');
+    return double.parse(majorMinor);
+  } catch (_) {
+    return null;
+  }
+}
 
+class AniyomiRepo {
   /// Normalises a repo base URL to the DIRECTORY that holds `index.min.json`
   /// and the `apk/` folder. Users (and older saved repos) sometimes store the
   /// full index URL (`.../main/index.min.json`) instead of the directory
@@ -126,11 +135,7 @@ class AniyomiRepo {
     // here too — it's the file the fetcher now prefers, so it's the most
     // likely thing to be pasted; leaving it out meant the app asked for
     // `.../index.pb/index.pb` and the repo just 404'd.
-    for (final name in const [
-      '/index.min.json',
-      '/index.json',
-      '/index.pb',
-    ]) {
+    for (final name in const ['/index.min.json', '/index.json', '/index.pb']) {
       if (b.endsWith(name)) {
         b = b.substring(0, b.length - name.length);
         break;
@@ -172,15 +177,17 @@ class AniyomiRepo {
           }
           entries.add(
             AniyomiRepoEntry(
-              name: (m['name'] as String?) ?? '',
-              pkg: (m['pkg'] as String?) ?? '',
-              apk: (m['apk'] as String?) ?? '',
-              lang: (m['lang'] as String?) ?? '',
-              version: (m['version'] as String?) ?? '',
-              code: (m['code'] as num?)?.toInt() ?? 0,
-              nsfw: ((m['nsfw'] as num?)?.toInt() ?? 0) != 0,
+              name: _stringValue(m['name']),
+              pkg: _stringValue(m['pkg']),
+              apk: _stringValue(m['apk']),
+              lang: _stringValue(m['lang']),
+              version: _stringValue(m['version']),
+              code: _intValue(m['code']),
+              nsfw: _intValue(m['nsfw']) != 0,
               sources: sources,
               repoBaseUrl: repoBaseUrl,
+              absoluteApkUrl: _stringValue(m['apkUrl']),
+              absoluteIconUrl: _stringValue(m['iconUrl']),
             ),
           );
         } catch (_) {
@@ -193,33 +200,19 @@ class AniyomiRepo {
     return entries;
   }
 
-  /// Fetches and parses the index for [repoBaseUrl].
+  /// Fetches and parses `index.min.json` from [repoBaseUrl].
   ///
-  /// Tries `index.pb`, then `index.json`, then `index.min.json` — each direct
-  /// first and then through the jsDelivr mirror when the host is
-  /// `raw.githubusercontent.com` (blocked on some devices; non-githubusercontent
-  /// bases skip the fallback).
-  ///
-  /// Only an *unreachable* file (network error, 404, any non-2xx, empty body)
-  /// falls through to the next one, so `index.min.json` is reached exactly when
-  /// the repo never published a modern index — the case that fallback exists
-  /// for. A reachable but unparseable `index.pb` also falls through (it is just
-  /// a mirror of `index.json`), but a reachable, non-empty JSON index that won't
-  /// parse THROWS [MihonRepoException] instead: that is a schema change and it
-  /// must be seen rather than hidden behind a legacy stub.
-  ///
-  /// Like the Mihon fetcher, this no longer degrades to an empty list — an
-  /// empty repo and a broken one have to look different to the user.
+  /// When [repoBaseUrl] is a `raw.githubusercontent.com` URL and the primary
+  /// fetch fails, a jsDelivr mirror is tried automatically. Non-githubusercontent
+  /// base URLs skip the fallback. Never throws — returns an empty list on total
+  /// failure.
   static Future<List<AniyomiRepoEntry>> fetchIndex(String repoBaseUrl) async {
     final dio = GetIt.instance<Dio>();
     final base = normalizeBase(repoBaseUrl);
-    // jsDelivr answers with `application/json`, which Dio would helpfully
-    // decode into a Map and then fail to cast to String — force plain text.
-    final text = Options(responseType: ResponseType.plain);
+    final primaryUrl = '$base/index.min.json';
 
-    /// jsDelivr mirror of [url], or null when it isn't a github-raw file.
-    String? jsDelivrUrl(String url) {
-      final uri = Uri.tryParse(url);
+    String? jsDelivrUrl() {
+      final uri = Uri.tryParse(primaryUrl);
       if (uri == null) return null;
       if (uri.host != 'raw.githubusercontent.com') return null;
       // Path segments: ['', owner, repo, branch, ...rest]
@@ -228,74 +221,39 @@ class AniyomiRepo {
       final owner = segs[0];
       final repo = segs[1];
       final branch = segs[2];
-      return 'https://gcore.jsdelivr.net/gh/$owner/$repo@$branch/'
-          '${segs.skip(3).join('/')}';
+      return 'https://gcore.jsdelivr.net/gh/$owner/$repo@$branch/index.min.json';
     }
 
-    Object? lastError;
-    for (final file in _indexFiles) {
-      final isPb = file.endsWith('.pb');
-      final direct = '$base/$file';
-      final mirror = jsDelivrUrl(direct);
-      for (final url in <String>[direct, ?mirror]) {
-        if (isPb) {
-          List<int>? bytes;
-          try {
-            final resp = await dio.get<List<int>>(
-              url,
-              options: Options(responseType: ResponseType.bytes),
-            );
-            if ((resp.statusCode ?? 0) < 300) bytes = resp.data;
-          } catch (e) {
-            lastError = e;
-            continue;
-          }
-          if (bytes == null || bytes.isEmpty) continue;
-          // Unlike the JSON below, a pb that won't decode does NOT fail the
-          // repo: it's a smaller mirror of the identical index.json, so on any
-          // decode error fall through.
-          try {
-            final entries = MihonRepo.parsePbIndex(bytes, repoBaseUrl: base);
-            // A pb that inflates to nothing decodes to zero entries rather than
-            // throwing (Dart's gzip is lenient about garbage), and the same
-            // data in index.json would have produced a repo. Falling through
-            // here is what keeps that from being read as an empty repo.
-            if (entries.isEmpty) {
-              lastError = 'index.pb held no extensions';
-              break;
-            }
-            // The index is the only place an extension's logo is named, so keep
-            // the icon URLs on the way past — the source picker has no other
-            // way to get one for an installed extension.
-            SourceIconStore.recordAll(entries);
-            return entries;
-          } catch (e) {
-            lastError = e;
-            break; // give up on pb mirrors; move on to index.json
-          }
-        }
+    String? rawJson;
+    try {
+      final resp = await dio.get<String>(primaryUrl);
+      if ((resp.statusCode ?? 0) < 300 && resp.data != null) {
+        rawJson = resp.data;
+      }
+    } catch (_) {
+      // primary failed — try fallback below
+    }
 
-        String? body;
+    if (rawJson == null) {
+      final fallback = jsDelivrUrl();
+      if (fallback != null) {
         try {
-          final resp = await dio.get<String>(url, options: text);
-          if ((resp.statusCode ?? 0) < 300) body = resp.data;
-        } catch (e) {
-          lastError = e;
-          continue;
+          final resp = await dio.get<String>(fallback);
+          if ((resp.statusCode ?? 0) < 300 && resp.data != null) {
+            rawJson = resp.data;
+          }
+        } catch (_) {
+          // fallback also failed
         }
-        if (body == null || body.trim().isEmpty) continue;
-        // Reachable and non-empty: this IS the repo's index, so a parse failure
-        // is the answer and it propagates. Falling through to index.min.json
-        // here would hide the next schema change behind whatever legacy stub
-        // the repo still serves.
-        final entries = MihonRepo.parseIndex(body, repoBaseUrl: base);
-        SourceIconStore.recordAll(entries);
-        return entries;
       }
     }
 
-    throw MihonRepoException(
-      "couldn't read this repo's index — ${lastError ?? 'no response'}",
-    );
+    if (rawJson == null || rawJson.isEmpty) return [];
+    final entries = parseIndex(rawJson, repoBaseUrl: base);
+    // The index is the only place an extension's logo is named, so keep the
+    // icon URLs on the way past — the source picker has no other way to get
+    // one for an installed extension.
+    SourceIconStore.recordAll(entries);
+    return entries;
   }
 }

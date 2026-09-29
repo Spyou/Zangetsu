@@ -125,7 +125,7 @@ class _SectionLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsetsDirectional.only(start: 4),
+    padding: const EdgeInsets.only(left: 4),
     child: Text(text, style: AppText.overline),
   );
 }

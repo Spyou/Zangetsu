@@ -1,7 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 import 'package:watch_app/core/hive/safe_box.dart';
-import 'package:watch_app/core/hive/hive_key.dart';
 
 import '../privacy/incognito_mode.dart';
 
@@ -44,7 +43,7 @@ class ResumeStore {
   // ('S1E3', …) across every title — without it, one show's resume position
   // collides with another's.
   String _key(String sourceId, String showId, String episodeId) =>
-      hiveKey('$sourceId::$showId::$episodeId');
+      '$sourceId::$showId::$episodeId';
 
   Future<void> save(
     String sourceId,

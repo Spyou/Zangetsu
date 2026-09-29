@@ -59,7 +59,7 @@ class _TvContinueRail extends StatelessWidget {
                     ? context.l10n.continueDotEpisode(e.episodeNumber!.toInt())
                     : context.l10n.continueLabel;
                 return Padding(
-                  padding: const EdgeInsetsDirectional.only(end: 16),
+                  padding: const EdgeInsets.only(right: 16),
                   child: SizedBox(
                     width: _cardWidth,
                     child: _TvLandscapeCard(
@@ -160,7 +160,7 @@ class _TvLandscapeCard extends StatelessWidget {
                       child: Container(
                         height: 5,
                         color: Colors.black.withValues(alpha: 0.55),
-                        alignment: AlignmentDirectional.centerStart,
+                        alignment: Alignment.centerLeft,
                         child: FractionallySizedBox(
                           widthFactor: progress.clamp(0.0, 1.0),
                           child: Container(color: AppColors.accent),

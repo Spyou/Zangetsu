@@ -112,7 +112,7 @@ Future<EpisodeAction?> showEpisodeActionSheet(
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 14, 20, 8),
                 child: Align(
-                  alignment: AlignmentDirectional.centerStart,
+                  alignment: Alignment.centerLeft,
                   child: Text(
                     episodeLabel,
                     maxLines: 1,
@@ -240,14 +240,14 @@ Future<PlayerChoice?> showEpisodePlayerSheet(
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 14, 20, 2),
                 child: Align(
-                  alignment: AlignmentDirectional.centerStart,
+                  alignment: Alignment.centerLeft,
                   child: Text('Play this episode with', style: AppText.headline),
                 ),
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
                 child: Align(
-                  alignment: AlignmentDirectional.centerStart,
+                  alignment: Alignment.centerLeft,
                   child: Text(
                     episodeLabel,
                     maxLines: 1,
@@ -287,7 +287,7 @@ Future<PlayerChoice?> showEpisodePlayerSheet(
                 Padding(
                   padding: const EdgeInsets.fromLTRB(20, 12, 20, 6),
                   child: Align(
-                    alignment: AlignmentDirectional.centerStart,
+                    alignment: Alignment.centerLeft,
                     child: Text(
                       'Other apps',
                       style: AppText.caption.copyWith(
@@ -368,14 +368,14 @@ Future<VideoSource?> showMirrorSheet(
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 14, 20, 2),
                 child: Align(
-                  alignment: AlignmentDirectional.centerStart,
+                  alignment: Alignment.centerLeft,
                   child: Text('Play mirror', style: AppText.headline),
                 ),
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
                 child: Align(
-                  alignment: AlignmentDirectional.centerStart,
+                  alignment: Alignment.centerLeft,
                   child: Text(
                     episodeLabel,
                     maxLines: 1,

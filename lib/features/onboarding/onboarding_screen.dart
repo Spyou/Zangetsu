@@ -248,7 +248,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               child: SizedBox(
                 height: 40,
                 child: Align(
-                  alignment: AlignmentDirectional.centerEnd,
+                  alignment: Alignment.centerRight,
                   child: AnimatedOpacity(
                     duration: const Duration(milliseconds: 200),
                     opacity: onLastPage ? 0 : 1,
@@ -644,7 +644,7 @@ class _PageDots extends StatelessWidget {
         return AnimatedContainer(
           duration: const Duration(milliseconds: 220),
           curve: Curves.easeOut,
-          margin: const EdgeInsetsDirectional.only(end: 6),
+          margin: const EdgeInsets.only(right: 6),
           width: isActive ? 18 : 6,
           height: 6,
           decoration: BoxDecoration(

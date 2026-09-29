@@ -219,7 +219,7 @@ class _DeveloperRow extends StatelessWidget {
               children: [
                 const TeamAvatar(
                   url: 'https://github.com/spyou.png?size=200',
-                  name: 'Spyou',
+                  name: 'Krishna',
                   size: 46,
                 ),
                 const SizedBox(width: 14),
@@ -228,7 +228,7 @@ class _DeveloperRow extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Spyou',
+                        'Krishna Vishwakarma',
                         style: AppText.headline.copyWith(
                           color: AppColors.textPrimary,
                           fontWeight: FontWeight.w700,

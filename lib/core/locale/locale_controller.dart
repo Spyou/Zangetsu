@@ -27,10 +27,6 @@ class LocaleController {
     ('de', 'Deutsch'),
     ('fr', 'Français'),
     ('it', 'Italiano'),
-    ('pt', 'Português'),
-    ('tr', 'Türkçe'),
-    ('id', 'Bahasa Indonesia'),
-    ('ar', 'العربية'),
   ];
 
   static Box get _box => Hive.box(boxName);

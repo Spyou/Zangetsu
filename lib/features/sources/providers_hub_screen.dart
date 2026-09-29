@@ -12,6 +12,7 @@ import '../../core/provider/cloudstream_provider.dart';
 import '../../core/provider/provider_manager.dart';
 import '../../core/provider/provider_registry.dart';
 import '../../core/provider/provider_repo_registry.dart';
+import '../../core/provider/stremio_manager.dart';
 import '../../core/state/active_source_cubit.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
@@ -23,6 +24,7 @@ import 'bloc/sources_state.dart';
 import 'cloudstream_sources_screen.dart';
 import 'lnreader_sources_screen.dart';
 import 'mihon_sources_screen.dart';
+import 'stremio_sources_screen.dart';
 import 'zangetsu_sources_screen.dart';
 import '../../l10n/l10n.dart';
 
@@ -82,6 +84,7 @@ class _HubPhoneView extends StatelessWidget {
         sl<CloudStreamManager>(),
         sl<AniyomiManager>(),
         sl<MihonManager>(),
+        sl<StremioManager>(),
       ]),
       builder: (context, _) => _body(context),
     );
@@ -108,6 +111,7 @@ class _HubPhoneView extends StatelessWidget {
     final lnrCount = showLnReader
         ? sl<LnReaderManager>().installedSources.length
         : 0;
+    final stremioCount = sl<StremioManager>().all.length;
 
     // Read-only pending-update counts. Zangetsu reuses SourcesState's own
     // installed-vs-manifest comparison (same result the Zangetsu screen shows);
@@ -213,6 +217,16 @@ class _HubPhoneView extends StatelessWidget {
               onTap: () => open(const AniyomiSourcesScreen()),
             ),
           ],
+          const SizedBox(height: 12),
+          _EcoRow(
+            icon: Icons.hub_outlined,
+            title: 'Stremio addons',
+            desc: 'Stremio catalogs and streams',
+            info: '$stremioCount addon${stremioCount == 1 ? '' : 's'}',
+            active: activeId.startsWith('stremio:'),
+            updateCount: 0,
+            onTap: () => open(const StremioSourcesScreen()),
+          ),
           // Reading ecosystems live under their own header so a manga/novel
           // source never reads as a streaming one. Mihon (manga) and LNReader
           // (novel) sit side by side here — the Zangetsu reading row was
@@ -265,7 +279,7 @@ class _SectionLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsetsDirectional.only(start: 4),
+    padding: const EdgeInsets.only(left: 4),
     child: Text(text, style: AppText.overline),
   );
 }
@@ -471,7 +485,7 @@ class _EcoRow extends StatelessWidget {
                         ),
                         if (updateCount > 0)
                           Padding(
-                            padding: const EdgeInsetsDirectional.only(start: 6),
+                            padding: const EdgeInsets.only(left: 6),
                             child: Text(
                               '· $updateCount update${updateCount == 1 ? '' : 's'}',
                               style: AppText.caption.copyWith(

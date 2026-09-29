@@ -42,7 +42,7 @@ class MihonExtensionLoaderTest {
     }
 
     // ---------------------------------------------------------------
-    // isLibVersionSupported — range gate 1.0 .. 2.0
+    // isLibVersionSupported — range gate 1.0 .. 5.0
     // ---------------------------------------------------------------
 
     @Test
@@ -52,7 +52,7 @@ class MihonExtensionLoaderTest {
 
     @Test
     fun isLibVersionSupported_accepts_max_bound() {
-        assertTrue(MihonExtensionLoader.isLibVersionSupported(2.0))
+        assertTrue(MihonExtensionLoader.isLibVersionSupported(5.0))
     }
 
     @Test
@@ -67,8 +67,8 @@ class MihonExtensionLoaderTest {
 
     @Test
     fun isLibVersionSupported_rejects_too_new() {
-        // lib 2.1 — beyond MANGA_LIB_VERSION_MAX
-        assertFalse(MihonExtensionLoader.isLibVersionSupported(2.1))
+        // lib 5.1 — beyond the compatibility ceiling
+        assertFalse(MihonExtensionLoader.isLibVersionSupported(5.1))
     }
 
     @Test
@@ -120,10 +120,10 @@ class MihonExtensionLoaderTest {
     }
 
     @Test
-    fun version_gate_rejects_2_1_0() {
-        // Hypothetical future major-break extension — versionName "2.1.0", libVersion 2.1
+    fun version_gate_accepts_2_1_0() {
+        // Newer extension — versionName "2.1.0", libVersion 2.1
         val lib = MihonExtensionLoader.libVersionOf("2.1.0")
-        assertFalse(MihonExtensionLoader.isLibVersionSupported(lib))
+        assertTrue(MihonExtensionLoader.isLibVersionSupported(lib))
     }
 
     // ---------------------------------------------------------------

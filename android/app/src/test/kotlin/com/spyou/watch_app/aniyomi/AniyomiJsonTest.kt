@@ -1,8 +1,6 @@
 package com.spyou.watch_app.aniyomi
 
-import eu.kanade.tachiyomi.animesource.model.SAnimeEpisodeUpdate
 import eu.kanade.tachiyomi.animesource.model.SAnimeImpl
-import eu.kanade.tachiyomi.animesource.model.SAnimeSeasonUpdate
 import eu.kanade.tachiyomi.animesource.model.SEpisodeImpl
 import eu.kanade.tachiyomi.animesource.model.Track
 import eu.kanade.tachiyomi.animesource.model.Video
@@ -96,44 +94,6 @@ class AniyomiJsonTest {
         }
         val json = AniyomiJson.episodeToJson(ep)
         assertEquals(-1.0, json.getDouble("episode_number"), 0.001)
-    }
-
-    // -------------------------------------------------------------------------
-    // extensions-lib 17 update encoders
-    // -------------------------------------------------------------------------
-
-    @Test
-    fun episodeUpdateToJson_encodes_the_episodes_list() {
-        val ep = SEpisodeImpl().apply {
-            url = "/ep/9"
-            name = "Episode 9"
-            episode_number = 9f
-        }
-        val update = SAnimeEpisodeUpdate(SAnimeImpl().apply { url = "/a" }, listOf(ep))
-        val arr = JSONArray(AniyomiJson.episodeUpdateToJson(update))
-        assertEquals(1, arr.length())
-        assertEquals("/ep/9", arr.getJSONObject(0).getString("url"))
-        assertEquals("Episode 9", arr.getJSONObject(0).getString("name"))
-    }
-
-    @Test
-    fun seasonUpdateToJson_encodes_the_seasons_list() {
-        val season = SAnimeImpl().apply {
-            url = "/a/s2"
-            title = "Season 2"
-        }
-        val update = SAnimeSeasonUpdate(SAnimeImpl().apply { url = "/a" }, listOf(season))
-        val arr = JSONArray(AniyomiJson.seasonUpdateToJson(update))
-        assertEquals(1, arr.length())
-        assertEquals("/a/s2", arr.getJSONObject(0).getString("url"))
-        assertEquals("Season 2", arr.getJSONObject(0).getString("title"))
-    }
-
-    @Test
-    fun update_encoders_on_empty_lists_produce_empty_arrays() {
-        val anime = SAnimeImpl().apply { url = "/a" }
-        assertEquals(0, JSONArray(AniyomiJson.episodeUpdateToJson(SAnimeEpisodeUpdate(anime, emptyList()))).length())
-        assertEquals(0, JSONArray(AniyomiJson.seasonUpdateToJson(SAnimeSeasonUpdate(anime, emptyList()))).length())
     }
 
     // -------------------------------------------------------------------------

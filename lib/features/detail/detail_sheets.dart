@@ -78,12 +78,12 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
               ),
             ),
             Padding(
-              padding: const EdgeInsetsDirectional.only(end: 8),
+              padding: const EdgeInsets.only(right: 8),
               child: Text(context.l10n.downloadChooseServer, style: AppText.title),
             ),
             const SizedBox(height: 4),
             Padding(
-              padding: const EdgeInsetsDirectional.only(end: 8),
+              padding: const EdgeInsets.only(right: 8),
               child: Text(
                 widget.title,
                 style: AppText.caption,
@@ -149,7 +149,7 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
         // title/subtitle so TalkBack doesn't hear them twice.
         child: ExcludeSemantics(
           child: ListTile(
-            contentPadding: const EdgeInsetsDirectional.only(end: 8),
+            contentPadding: const EdgeInsets.only(right: 8),
             leading: Icon(Icons.download_rounded, color: AppColors.accent),
             title: Text(
               label,
@@ -163,7 +163,7 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
       );
     }
     return ListTile(
-      contentPadding: const EdgeInsetsDirectional.only(end: 8),
+      contentPadding: const EdgeInsets.only(right: 8),
       leading: Icon(Icons.download_rounded, color: AppColors.accent),
       title: Text(
         label,
@@ -480,7 +480,7 @@ class _DownloadSheetState extends State<_DownloadSheet> {
                 children: [
                   for (final c in widget.availableCategories)
                     Padding(
-                      padding: const EdgeInsetsDirectional.only(end: 8),
+                      padding: const EdgeInsets.only(right: 8),
                       child: _categoryChip(c),
                     ),
                 ],
@@ -521,7 +521,7 @@ class _DownloadSheetState extends State<_DownloadSheet> {
               height: 118,
               child: _filtered.isEmpty && _query.isNotEmpty
                   ? Align(
-                      alignment: AlignmentDirectional.centerStart,
+                      alignment: Alignment.centerLeft,
                       child: Text(
                         context.l10n.noEpisodesMatch,
                         style: AppText.body.copyWith(
@@ -710,7 +710,7 @@ class _DownloadSheetState extends State<_DownloadSheet> {
                   Padding(
                     padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
                     child: Align(
-                      alignment: AlignmentDirectional.centerStart,
+                      alignment: Alignment.centerLeft,
                       child: Text(context.l10n.startFrom, style: AppText.headline),
                     ),
                   ),
@@ -819,7 +819,7 @@ class _DownloadSheetState extends State<_DownloadSheet> {
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
               child: Align(
-                alignment: AlignmentDirectional.centerStart,
+                alignment: Alignment.centerLeft,
                 child: Text(context.l10n.playerInfoSource, style: AppText.headline),
               ),
             ),
@@ -1494,7 +1494,7 @@ class _ThumbnailProgressBar extends StatelessWidget {
           const ColoredBox(color: Color(0x80000000), child: SizedBox.expand()),
           FractionallySizedBox(
             widthFactor: fraction,
-            alignment: AlignmentDirectional.centerStart,
+            alignment: Alignment.centerLeft,
             child: ColoredBox(color: AppColors.accent),
           ),
         ],

@@ -372,7 +372,7 @@ class _SourceListViewState extends State<_SourceListView> {
         // swell somewhere to go, but a swollen letter floats over the list for
         // the moment it is swollen — padding the list out for it left a strip
         // of dead space beside every chevron, permanently.
-        Padding(padding: const EdgeInsetsDirectional.only(end: 24), child: list),
+        Padding(padding: const EdgeInsets.only(right: 24), child: list),
         Positioned(
           top: _railInset,
           bottom: bottomInset,
@@ -463,12 +463,7 @@ class _SourceListViewState extends State<_SourceListView> {
     contentPadding: const EdgeInsets.fromLTRB(16, 0, 8, 0),
     // sourceRowName strips the ecosystem tag so the letter fallback is the
     // source's own initial, not "C" for every CloudStream row.
-    // Hero-shared with the source screen's header tile (same tag there), so
-    // opening a source zooms its logo instead of cutting to it.
-    leading: Hero(
-      tag: 'source-icon:${s.id}',
-      child: SourceIconTile(name: sourceRowName(s.label), icon: s.icon),
-    ),
+    leading: SourceIconTile(name: sourceRowName(s.label), icon: s.icon),
     title: Text(
       s.label,
       style: AppText.body,
@@ -488,7 +483,7 @@ class _SourceListViewState extends State<_SourceListView> {
       children: [
         if (widget.pinnedSet.contains(s.id))
           Padding(
-            padding: const EdgeInsetsDirectional.only(end: 6),
+            padding: const EdgeInsets.only(right: 6),
             child: Icon(
               Icons.push_pin,
               size: 15,

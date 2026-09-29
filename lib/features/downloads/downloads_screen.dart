@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
-import '../../core/ui/app_dialog.dart';
 import '../../core/ui/settings_widgets.dart';
 
 import '../../core/app_mode.dart';
@@ -82,12 +81,7 @@ class _DownloadsScreenState extends State<DownloadsScreen>
   /// (opens the existing picker) instead of only burying it in Settings.
   Widget _locationHeader() {
     final l10n = context.l10n;
-    final prefs = sl<DownloadPrefs>();
-    final label = downloadDestinationLabel(
-      keepPrivate: prefs.keepPrivate,
-      locationLabel: prefs.locationLabel,
-      publicFallback: l10n.downloadsZangetsu,
-    );
+    final label = sl<DownloadPrefs>().locationLabel ?? l10n.downloadsZangetsu;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 6, 8, 2),
       child: Row(
@@ -215,7 +209,7 @@ class _DownloadsScreenState extends State<DownloadsScreen>
                 Padding(
                   padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
                   child: Align(
-                    alignment: AlignmentDirectional.centerStart,
+                    alignment: Alignment.centerLeft,
                     child: Text(l10n.downloadSettings, style: AppText.title),
                   ),
                 ),
@@ -641,12 +635,32 @@ class _ShowGroup extends StatelessWidget {
   Future<void> _confirmDeleteAll(BuildContext context) async {
     final l10n = context.l10n;
     final n = records.length;
-    final ok = await AppDialog.confirm(
-      context,
-      title: l10n.deleteAllDownloads,
-      message: l10n.removeAllEpisodesOfShow(n, records.first.showTitle),
-      confirmLabel: l10n.deleteAll,
-      destructive: true,
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: Text(l10n.deleteAllDownloads, style: AppText.headline),
+        content: Text(
+          l10n.removeAllEpisodesOfShow(n, records.first.showTitle),
+          style: AppText.body,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dctx, false),
+            child: Text(
+              l10n.cancel,
+              style: AppText.button.copyWith(color: AppColors.textSecondary),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dctx, true),
+            child: Text(
+              l10n.deleteAll,
+              style: AppText.button.copyWith(color: AppColors.accent),
+            ),
+          ),
+        ],
+      ),
     );
     if (ok == true) await manager.deleteAll(records);
   }

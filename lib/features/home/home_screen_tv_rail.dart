@@ -71,7 +71,7 @@ class TvRail extends StatelessWidget {
                 if (index >= items.length) {
                   // Trailing "See all" card — opens the full paginated grid.
                   return Padding(
-                    padding: const EdgeInsetsDirectional.only(end: 16),
+                    padding: const EdgeInsets.only(right: 16),
                     child: Center(
                       child: SizedBox(
                         width: _cardWidth,
@@ -121,7 +121,7 @@ class TvRail extends StatelessWidget {
                 // Only the poster ART gets the float focus (white outline hugs
                 // the artwork); the title sits below, outside the outline.
                 return Padding(
-                  padding: const EdgeInsetsDirectional.only(end: 16),
+                  padding: const EdgeInsets.only(right: 16),
                   child: SizedBox(
                     width: _cardWidth,
                     child: Column(

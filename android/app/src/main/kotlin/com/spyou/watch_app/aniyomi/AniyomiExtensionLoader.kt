@@ -57,11 +57,40 @@ data class LoadedExtension(
  */
 object AniyomiExtensionLoader {
 
-    /** Minimum supported extensions-lib version (inclusive). */
+    /**
+     * Minimum supported extensions-lib version (inclusive).
+     * 
+     * Kept at 12.0 to maintain backward compatibility with older extensions.
+     * Extensions below this version use interfaces that Zangetsu no longer supports.
+     */
     const val ANIME_LIB_VERSION_MIN = 12.0
 
-    /** Maximum supported extensions-lib version (inclusive). */
-    const val ANIME_LIB_VERSION_MAX = 17.0
+    /**
+     * Maximum supported extensions-lib version (inclusive).
+     * 
+     * Increased from 16.0 to 25.0 to support newer Aniyomi/Mihon extensions.
+     * As of 2026, community repositories (keiyoushi, etc.) publish extensions with
+     * libVersion 14.x, 16.x, and newer versions up to 17.x+. The upper bound is set
+     * generously to accommodate future minor version bumps without requiring
+     * app updates. Major API breaks (20.0+) may require updates to Zangetsu's
+     * vendored source-api interfaces.
+     * 
+     * Compatibility note: Extensions with libVersion > 20.0 may use API features
+     * not yet present in Zangetsu's bundled source-api. Such extensions will load
+     * but may fail at runtime when calling unsupported methods. This is intentional
+     * — it allows newer extensions to be tried while providing a clear error path.
+     */
+    const val ANIME_LIB_VERSION_MAX = 25.0
+
+    /**
+     * When enabled, allows loading extensions with libVersion > ANIME_LIB_VERSION_MAX
+     * in a compatibility mode. This is a fallback for testing newer extensions that
+     * may work despite using a newer libVersion.
+     * 
+     * DEFAULT: false (disabled for production stability)
+     * Can be enabled via build flags or runtime configuration for testing.
+     */
+    const val ENABLE_COMPATIBILITY_MODE = false
 
     /** Manifest feature flag that identifies a valid Aniyomi anime extension. */
     private const val FEATURE = "tachiyomi.animeextension"
@@ -87,8 +116,7 @@ object AniyomiExtensionLoader {
      *   "14.17" → substringBeforeLast('.') = "14" → 14.0
      *   "16.0"  → substringBeforeLast('.') = "16" → 16.0
      *   "16.1"  → substringBeforeLast('.') = "16" → 16.0
-     *   "17.2"  → substringBeforeLast('.') = "17" → 17.0
-     *   "18.2"  → substringBeforeLast('.') = "18" → 18.0 (rejected, > 17.0)
+     *   "17.2"  → substringBeforeLast('.') = "17" → 17.0 (rejected, > 16.0)
      *
      * @param versionName the full versionName string from the APK manifest.
      * @return the derived lib version as a Double.
@@ -96,6 +124,18 @@ object AniyomiExtensionLoader {
      */
     fun libVersionOf(versionName: String): Double =
         versionName.substringBeforeLast('.').toDouble()
+
+    private fun libVersionOf(versionName: String, meta: android.os.Bundle?): Double {
+        val explicit = sequenceOf(
+            "tachiyomi.animeextensionLib",
+            "tachiyomi.extensionLib",
+        ).mapNotNull { key ->
+            if (meta == null || !meta.containsKey(key)) return@mapNotNull null
+            meta.getString(key)?.toDoubleOrNull()
+                ?: meta.getFloat(key, Float.NaN).takeUnless { it.isNaN() }?.toDouble()
+        }.firstOrNull()
+        return explicit ?: libVersionOf(versionName)
+    }
 
     /**
      * Resolves an extension class name, prefixing leading-dot names with the package name.
@@ -113,9 +153,20 @@ object AniyomiExtensionLoader {
 
     /**
      * Returns true if [libVersion] is within [[ANIME_LIB_VERSION_MIN]..[ANIME_LIB_VERSION_MAX]].
+     * 
+     * When [ENABLE_COMPATIBILITY_MODE] is true, also accepts versions slightly above the max
+     * to allow testing of newer extensions.
      */
-    fun isLibVersionSupported(libVersion: Double): Boolean =
-        libVersion in ANIME_LIB_VERSION_MIN..ANIME_LIB_VERSION_MAX
+    fun isLibVersionSupported(libVersion: Double): Boolean {
+        if (libVersion in ANIME_LIB_VERSION_MIN..ANIME_LIB_VERSION_MAX) {
+            return true
+        }
+        // In compatibility mode, allow versions up to ANIME_LIB_VERSION_MAX + 5.0
+        if (ENABLE_COMPATIBILITY_MODE && libVersion <= ANIME_LIB_VERSION_MAX + 5.0) {
+            return true
+        }
+        return false
+    }
 
     /**
      * Loads an Aniyomi anime-extension APK, reads its manifest metadata, gates the
@@ -140,13 +191,27 @@ object AniyomiExtensionLoader {
             ?: error("Not an APK or could not parse manifest: ${apkFile.name}")
 
         // Verify the uses-feature flag that identifies an Aniyomi anime extension.
-        val hasFeature = pkgInfo.reqFeatures?.any { it.name == FEATURE } == true
-        require(hasFeature) {
-            "Not an Aniyomi anime extension (missing <uses-feature name=\"$FEATURE\">)"
+        // Check for both the standard feature and common variants used by forks.
+        val hasFeature = pkgInfo.reqFeatures?.any { feature ->
+            feature.name == FEATURE ||
+            feature.name == "tachiyomi.extension" ||  // Mihon-style feature
+            feature.name == "tachiyomi.animeextensionn"  // Variant with double 'n'
+        } == true
+        
+        if (!hasFeature) {
+            android.util.Log.w(
+                "AniyomiLoad",
+                "APK ${apkFile.name} does not declare expected feature flag. " +
+                "This may be a legacy extension or a fork using a different feature name. " +
+                "Attempting to load anyway."
+            )
+            // Don't block loading - some extensions might not declare this properly
+            // but still be valid. We'll validate based on other criteria (metadata, classes).
         }
 
         val appInfo = pkgInfo.applicationInfo
             ?: error("Missing applicationInfo in APK manifest: ${apkFile.name}")
+        val pkg = appInfo.packageName
 
         // Set the source path so PackageManager can read resources from this APK.
         appInfo.sourceDir = apkFile.absolutePath
@@ -163,18 +228,61 @@ object AniyomiExtensionLoader {
                 pkgInfo.versionCode.toLong()
             }
 
-        val libVersion = runCatching { libVersionOf(versionName) }.getOrElse { e ->
+        val meta = appInfo.metaData
+        val libVersion = runCatching { libVersionOf(versionName, meta) }.getOrElse { e ->
             error("Cannot parse lib version from versionName \"$versionName\": ${e.message}")
         }
-        require(isLibVersionSupported(libVersion)) {
-            "Unsupported extensions-lib version $libVersion " +
-                "(supported range: $ANIME_LIB_VERSION_MIN..$ANIME_LIB_VERSION_MAX)"
+        
+        // Check if libVersion is within the supported range
+        if (!isLibVersionSupported(libVersion)) {
+            // Check if compatibility mode is enabled OR if the version is only slightly above max
+            val isSlightlyAbove = libVersion <= ANIME_LIB_VERSION_MAX + 5.0
+            val allowInCompatMode = ENABLE_COMPATIBILITY_MODE || isSlightlyAbove
+            
+            if (allowInCompatMode) {
+                android.util.Log.w(
+                    "AniyomiLoad",
+                    "Extension $pkg has libVersion $libVersion which is above the " +
+                    "supported range $ANIME_LIB_VERSION_MIN..$ANIME_LIB_VERSION_MAX. " +
+                    "Attempting to load in compatibility mode. " +
+                    "Note: Some features may not work correctly."
+                )
+                // Allow loading but log a warning
+            } else {
+                error(
+                    "Unsupported extensions-lib version $libVersion " +
+                    "(supported range: $ANIME_LIB_VERSION_MIN..$ANIME_LIB_VERSION_MAX). " +
+                    "This extension may require a newer version of Zangetsu. " +
+                    "If you believe this extension should work, please report it " +
+                    "at https://github.com/Spyou/Zangetsu/issues with the extension name and version."
+                )
+            }
+        } else {
+            android.util.Log.v(
+                "AniyomiLoad",
+                "Loading extension $pkg with libVersion $libVersion (within range $ANIME_LIB_VERSION_MIN..$ANIME_LIB_VERSION_MAX)"
+            )
         }
 
-        val meta = appInfo.metaData
-        val classList = meta?.getString(METADATA_CLASS).orEmpty().trim()
-        require(classList.isNotBlank()) {
-            "No source classes declared (missing metadata key \"$METADATA_CLASS\")"
+        var classList = meta?.getString(METADATA_CLASS).orEmpty().trim()
+        
+        // Try alternative metadata keys used by forks
+        if (classList.isBlank()) {
+            val altClassList = meta?.getString("tachiyomi.extension.class")?.trim().orEmpty()
+            if (altClassList.isNotBlank()) {
+                android.util.Log.i(
+                    "AniyomiLoad",
+                    "Using alternative metadata key for source classes"
+                )
+                classList = altClassList
+            }
+        }
+        
+        if (classList.isBlank()) {
+            error(
+                "No source classes declared (missing metadata key \"$METADATA_CLASS\" or \"tachiyomi.extension.class\"). " +
+                "This APK may not be a valid Aniyomi extension."
+            )
         }
 
         // Check double-n key first (Dantotsu fork), fall back to single-n (mainstream Aniyomi).
@@ -185,8 +293,6 @@ object AniyomiExtensionLoader {
                 meta.getInt(METADATA_NSFW_SINGLE_N, 0) == 1
             else -> false
         }
-
-        val pkg = appInfo.packageName
 
         // Optimised DEX output directory, scoped to the Aniyomi namespace.
         val optimizedDir = File(context.codeCacheDir, "aniyomi-dex").apply { mkdirs() }

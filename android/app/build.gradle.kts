@@ -1,5 +1,8 @@
 import java.util.Properties
 import java.io.FileInputStream
+import com.android.build.api.dsl.ApplicationExtension
+import org.gradle.kotlin.dsl.configure
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     id("com.android.application")
@@ -7,7 +10,7 @@ plugins {
     // Aniyomi runtime models (Video/Hoster/Track) use kotlinx @Serializable.
     // Version scoped here (not in root settings) so it can't clash with the
     // serialization plugin version a Flutter plugin module pins for itself.
-    id("org.jetbrains.kotlin.plugin.serialization") version "2.2.20"
+    id("org.jetbrains.kotlin.plugin.serialization") version "2.3.20"
     // Applied at the bottom only when google-services.json is present (gitignored).
     id("com.google.gms.google-services") apply false
     id("com.google.firebase.crashlytics") apply false
@@ -25,7 +28,7 @@ if (hasReleaseKeystore) {
     keystoreProperties.load(FileInputStream(keystorePropertiesFile))
 }
 
-android {
+extensions.configure<ApplicationExtension> {
     namespace = "com.spyou.watch_app"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
@@ -37,14 +40,6 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_17.toString()
-        // The vendored Aniyomi network layer (OkHttpExtensions.parseAs) uses Kotlin
-        // context parameters, a preview feature in Kotlin 2.2.x. Enabling the syntax
-        // is additive — existing sources don't use it, so nothing else is affected.
-        freeCompilerArgs = freeCompilerArgs + listOf("-Xcontext-parameters")
-    }
-
     defaultConfig {
         applicationId = "com.spyou.watch_app"
         minSdk = flutter.minSdkVersion
@@ -53,13 +48,11 @@ android {
         versionName = flutter.versionName
     }
 
-    // Drop x86/x86_64 (emulator-only) native libs from every output — including
-    // the prebuilt plugin lib (libmpv) that abiFilters / --target-platform do
-    // NOT strip. This is the reliable lever for the fat APK + AAB, and it's
-    // harmless to the per-ABI (arm) split builds.
+    // Keep emulator ABIs in the APK. x86_64 Android emulators need the native
+    // media_kit/libmpv libraries at startup; excluding them produces an APK
+    // that installs but can fail before Flutter renders or when media_kit loads.
     packaging {
         jniLibs {
-            excludes += listOf("**/x86/**", "**/x86_64/**")
             // Extract native libs to the device's lib dir (extractNativeLibs=true).
             // The modern default (false = libs stay uncompressed inside the APK)
             // makes media_kit's libmpv.so lookup fail on some devices (old Android
@@ -120,6 +113,14 @@ android {
         // Pull Android resources (manifests, res/) into the JVM unit-test
         // classpath so Robolectric can shadow Activity / Application / etc.
         unitTests.isIncludeAndroidResources = true
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_17)
+        // The vendored Aniyomi network layer uses Kotlin context parameters.
+        freeCompilerArgs.add("-Xcontext-parameters")
     }
 }
 

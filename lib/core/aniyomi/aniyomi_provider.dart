@@ -265,49 +265,6 @@ class AniyomiProvider implements BaseProvider {
     }
   }
 
-  /// Returns the episodes a v17 source reports as added or changed for [url].
-  ///
-  /// [fetchDetails] / [fetchEpisodes] are forwarded to the source unchanged and
-  /// default to true, matching the bridge. The call is not free: the v17
-  /// signature takes the existing episode list as a parameter, so the host reads
-  /// it first, which for most sources is the whole-page fetch.
-  ///
-  /// An empty list is a normal result, not a failure — a source without v17
-  /// update support answers with one, so there is nothing to special-case here.
-  Future<List<Episode>> getEpisodeUpdate(
-    String url, {
-    bool fetchDetails = true,
-    bool fetchEpisodes = true,
-  }) async {
-    if (!Platform.isAndroid) return const [];
-    final raw = await _safeInvoke('getAnimeEpisodeUpdate', {
-      'sourceId': info.id,
-      'url': url,
-      'fetchDetails': fetchDetails,
-      'fetchEpisodes': fetchEpisodes,
-    });
-    return _parseEpisodeList(raw);
-  }
-
-  /// Returns the seasons a v17 source reports as added or changed for [url].
-  ///
-  /// A season is an SAnime, so this maps to [MediaItem]s — the same shape
-  /// [popular] and [search] return. Empty means the same thing here as it does
-  /// in [getEpisodeUpdate]: a normal "nothing to report".
-  Future<List<MediaItem>> getSeasonUpdate(
-    String url, {
-    bool fetchDetails = true,
-    bool fetchSeasons = true,
-  }) async {
-    if (!Platform.isAndroid) return const [];
-    return _invokeAnimeList('getAnimeSeasonUpdate', {
-      'sourceId': info.id,
-      'url': url,
-      'fetchDetails': fetchDetails,
-      'fetchSeasons': fetchSeasons,
-    });
-  }
-
   // ── private helpers ─────────────────────────────────────────────────────────
 
   /// Invokes [method] on the aniyomi channel with [args], returning the raw
@@ -389,12 +346,41 @@ class AniyomiProvider implements BaseProvider {
 
 /// Aniyomi/Tachiyomi extensions return episodes newest-first (N→1). Normalise to
 /// chronological order (1→N) — like the app's other sources — so the first
-/// episode plays first and next-episode navigation works. Sorts by episode
-/// number when every episode has one (keeps 12 → 12.5 → 13 correct); otherwise
-/// reverses the source's newest-first convention.
+/// episode plays first and next-episode navigation works. Season-tagged lists
+/// sort by season then episode and discard duplicate synthetic range rows;
+/// untagged lists retain the original number-only fallback.
 @visibleForTesting
 List<Episode> sortEpisodesAscending(List<Episode> eps) {
   if (eps.length < 2) return eps;
+  if (eps.any((e) => e.season != null)) {
+    final sorted = [...eps]
+      ..sort((a, b) {
+        final season = (a.season ?? 1).compareTo(b.season ?? 1);
+        if (season != 0) return season;
+        final aNumber = a.number;
+        final bNumber = b.number;
+        if (aNumber != null && bNumber != null) {
+          final number = aNumber.compareTo(bNumber);
+          if (number != 0) return number;
+        } else if (aNumber != null) {
+          return -1;
+        } else if (bNumber != null) {
+          return 1;
+        }
+        return a.id.compareTo(b.id);
+      });
+
+    // A few Stremio-compatible extensions expose the same episode once per
+    // synthetic range block. Keep the first canonical row for each season and
+    // episode number; specials without a number remain distinct.
+    final seen = <String>{};
+    return [
+      for (final episode in sorted)
+        if (episode.number == null ||
+            seen.add('${episode.season}:${episode.number}'))
+          episode,
+    ];
+  }
   if (eps.every((e) => e.number != null)) {
     final sorted = [...eps]..sort((a, b) => a.number!.compareTo(b.number!));
     return sorted;

@@ -37,7 +37,7 @@ Future<void> showCategoryPicker(BuildContext context, MediaItem item) async {
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 18, 20, 6),
               child: Align(
-                alignment: AlignmentDirectional.centerStart,
+                alignment: Alignment.centerLeft,
                 child: Text('Categories', style: AppText.title),
               ),
             ),

@@ -100,8 +100,9 @@ class MihonRepo {
   /// or null when it is too broken to install (no package name / no APK).
   static AniyomiRepoEntry? _entryFrom(Object? raw, String base) {
     if (raw is! Map) return null;
+    final entry = raw.cast<String, dynamic>();
 
-    final pkg = _str(raw['packageName']);
+    final pkg = _str(entry['packageName']);
     // `resources.apkUrl` is absolute. Keep the filename for [AniyomiRepoEntry.apk]
     // (it names the file on disk and drives update comparisons), but KEEP THE
     // URL TOO and hand it over as-is.
@@ -114,16 +115,20 @@ class MihonRepo {
     // one of its ~1400 extensions and nothing installs. Both `index.pb` and
     // `index.json` land here, so honouring the absolute URL fixes both.
     final apkUrl = _str(
-      (raw['resources'] is Map ? (raw['resources'] as Map)['apkUrl'] : null),
+        (entry['resources'] is Map
+          ? (entry['resources'] as Map)['apkUrl']
+          : null),
     );
     final apk = apkUrl.split('?').first.split('/').last;
     final iconUrl = _str(
-      (raw['resources'] is Map ? (raw['resources'] as Map)['iconUrl'] : null),
+        (entry['resources'] is Map
+          ? (entry['resources'] as Map)['iconUrl']
+          : null),
     );
     if (pkg.isEmpty || apk.isEmpty) return null;
 
     final sources = <AniyomiRepoSource>[];
-    final rawSources = raw['sources'];
+    final rawSources = entry['sources'];
     if (rawSources is List) {
       for (final s in rawSources) {
         if (s is! Map) continue;
@@ -149,20 +154,24 @@ class MihonRepo {
         sources.map((s) => s.lang).where((l) => l.isNotEmpty).toSet();
     final lang = distinctLangs.length == 1 ? distinctLangs.first : 'all';
 
+    // Try to get libVersion from explicit metadata if available
+    final libVersion = _parseLibVersion(entry);
+    
     return AniyomiRepoEntry(
-      name: _str(raw['name']),
+      name: _str(entry['name']),
       pkg: pkg,
       apk: apk,
       lang: lang,
-      version: _str(raw['versionName']),
+      version: _str(entry['versionName']),
       // A String in this schema ("4"), a number in the legacy one.
-      code: _int(raw['versionCode']),
+      code: _int(entry['versionCode']),
       // CONTENT_WARNING_MIXED exists too; only the explicit NSFW flag counts.
-      nsfw: _str(raw['contentWarning']) == 'CONTENT_WARNING_NSFW',
+      nsfw: _str(entry['contentWarning']) == 'CONTENT_WARNING_NSFW',
       sources: sources,
       repoBaseUrl: base,
       absoluteApkUrl: apkUrl,
       absoluteIconUrl: iconUrl,
+      libVersion: libVersion,
     );
   }
 
@@ -187,6 +196,50 @@ class MihonRepo {
 
   static int _int(Object? v) =>
       v is num ? v.toInt() : int.tryParse(_str(v).trim()) ?? 0;
+
+  /// Parses libVersion from extension metadata.
+  /// Tries multiple possible fields: extensionLib, libVersion, or derives from versionName.
+  static double? _parseLibVersion(Map<String, dynamic> raw) {
+    // Try explicit extensionLib field (Mihon index.json)
+    final explicitLib = raw['extensionLib'];
+    if (explicitLib != null) {
+      if (explicitLib is double) return explicitLib;
+      if (explicitLib is String) {
+        try {
+          return double.parse(explicitLib);
+        } catch (_) {}
+      }
+      if (explicitLib is num) return explicitLib.toDouble();
+    }
+    
+    // Try libVersion field (some repos)
+    final libVersion = raw['libVersion'];
+    if (libVersion != null) {
+      if (libVersion is double) return libVersion;
+      if (libVersion is String) {
+        try {
+          return double.parse(libVersion);
+        } catch (_) {}
+      }
+      if (libVersion is num) return libVersion.toDouble();
+    }
+    
+    // Try to derive from versionName
+    final versionName = _str(raw['versionName']);
+    if (versionName.isNotEmpty) {
+      try {
+        final parts = versionName.split('.');
+        if (parts.length >= 2) {
+          // For versionName like "1.4.52", take "1.4"
+          // For versionName like "14.17", take "14"
+          final majorMinor = parts.sublist(0, 2).join('.');
+          return double.parse(majorMinor);
+        }
+      } catch (_) {}
+    }
+    
+    return null;
+  }
 
   /// Fetches and parses the index for [repoBaseUrl].
   ///

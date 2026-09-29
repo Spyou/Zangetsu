@@ -17,8 +17,6 @@
 package com.spyou.watch_app.aniyomi
 
 import eu.kanade.tachiyomi.animesource.model.SAnime
-import eu.kanade.tachiyomi.animesource.model.SAnimeEpisodeUpdate
-import eu.kanade.tachiyomi.animesource.model.SAnimeSeasonUpdate
 import eu.kanade.tachiyomi.animesource.model.SEpisode
 import eu.kanade.tachiyomi.animesource.model.Video
 import okhttp3.Headers
@@ -99,26 +97,6 @@ object AniyomiJson {
         episodes.forEach { arr.put(episodeToJson(it)) }
         return arr.toString()
     }
-
-    // -------------------------------------------------------------------------
-    // SAnimeEpisodeUpdate / SAnimeSeasonUpdate (extensions-lib 17)
-    // -------------------------------------------------------------------------
-
-    /**
-     * Encodes a v17 [SAnimeEpisodeUpdate] as a JSON array string of [SEpisode].
-     *
-     * @since extensions-lib 17
-     */
-    fun episodeUpdateToJson(update: SAnimeEpisodeUpdate): String =
-        episodesToJson(update.episodes)
-
-    /**
-     * Encodes a v17 [SAnimeSeasonUpdate] as a JSON array string of [SAnime].
-     *
-     * @since extensions-lib 17
-     */
-    fun seasonUpdateToJson(update: SAnimeSeasonUpdate): String =
-        animesToJson(update.seasons)
 
     // -------------------------------------------------------------------------
     // Video

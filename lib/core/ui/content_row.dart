@@ -49,7 +49,7 @@ class ContentRow extends StatelessWidget {
                 : 600,
             itemCount: itemCount,
             itemBuilder: (context, index) => Padding(
-              padding: const EdgeInsetsDirectional.only(end: 12),
+              padding: const EdgeInsets.only(right: 12),
               child: SizedBox(
                 width: itemWidth,
                 child: RepaintBoundary(
@@ -101,7 +101,7 @@ class _Header extends StatelessWidget {
                   onTap: onSeeAll,
                   behavior: HitTestBehavior.opaque,
                   child: Padding(
-                    padding: const EdgeInsetsDirectional.only(start: 8),
+                    padding: const EdgeInsets.only(left: 8),
                     child: Text(
                       'See All',
                       style: AppText.caption.copyWith(color: AppColors.accent),

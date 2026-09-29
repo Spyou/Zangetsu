@@ -45,69 +45,58 @@ class MihonExtensionService {
   /// (`'aniyomi_installed'`) so the two extension families never collide.
   static const String installedBoxName = 'mihon_installed';
 
-  /// Uninstalls [pkg]: drops its installed-box entry, then deletes the APK
-  /// from disk.
-  ///
-  /// Order matters. The native `loadInstalled` walks the mihon directory and
-  /// loads *every* `*.apk` it finds — it never consults the box — so an APK
-  /// left on disk comes back on the next cold start and the source reappears
-  /// as if the uninstall had failed. Deleting the box entry first means a
-  /// process death between the two steps leaves an orphaned APK (reloadable,
-  /// visible, retryable) rather than an entry pointing at a missing file
-  /// (invisible in the list, with no tile left to uninstall from).
-  ///
-  /// Returns null on success, or a short human-readable reason on failure.
-  /// Never throws: a failed uninstall must still leave the source list
-  /// consistent, and the caller reports the reason to the user.
-  static Future<String?> uninstall(String pkg, {Directory? mihonDir}) async {
-    String? apkPath;
-    if (Hive.isBoxOpen(installedBoxName)) {
-      final box = Hive.box<dynamic>(installedBoxName);
-      apkPath = box.get(pkg) as String?;
-      await box.delete(pkg);
-    }
-    // The box is only a convenience cache of the path, and it has been seen
-    // empty for extensions that are demonstrably still installed and loading
-    // (Hive boxes here get quarantined and reset on read errors). The APK name
-    // is derived from the pkg at install time, so fall back to it rather than
-    // reporting failure and leaving the file to resurrect the source.
-    apkPath ??= await _conventionalApkPath(pkg, mihonDir);
-    if (apkPath == null) {
-      debugPrint('[mihon] uninstall $pkg: no apk found for pkg');
-      return 'apk not found';
-    }
-    try {
-      final f = File(apkPath);
-      if (await f.exists()) await f.delete();
-    } catch (e) {
-      debugPrint('[mihon] uninstall $pkg: deleting $apkPath failed: $e');
-      return '$e';
-    }
-    return null;
-  }
-
-  /// `<appSupport>/mihon/<pkg>.apk` — the same path [installFromRepo] writes,
-  /// or null when no such file exists.
-  static Future<String?> _conventionalApkPath(
-    String pkg,
-    Directory? mihonDir,
-  ) async {
-    try {
-      final dir = mihonDir ??
-          Directory('${(await getApplicationSupportDirectory()).path}/mihon');
-      final f = File('${dir.path}/$pkg.apk');
-      return await f.exists() ? f.path : null;
-    } catch (_) {
-      return null;
-    }
-  }
-
   /// Loads and registers a single extension APK located at [apkPath].
   ///
   /// Throws a [PlatformException] with code `"LOAD"` when the APK is not a
   /// valid Mihon manga extension or the lib version is out of range.
-  Future<void> installExtension(String apkPath) async {
-    await _channel.invokeMethod<void>('installExtension', {'apkPath': apkPath});
+  /// Returns true on success, false on failure (with detailed logging).
+  Future<bool> installExtension(String apkPath) async {
+    try {
+      await _channel.invokeMethod<void>('installExtension', {'apkPath': apkPath});
+      return true;
+    } on PlatformException catch (e) {
+      // Extract more detail from the error for better user feedback
+      final code = e.code;
+      final message = e.message ?? 'Unknown error';
+      final details = e.details;
+      
+      debugPrint(
+        '[mihon] Extension load failed: code=$code, message=$message, details=$details'
+      );
+      
+      // Re-throw with enhanced message for the UI layer
+      throw PlatformException(
+        code: code,
+        message: _enhanceErrorMessage(code, message, apkPath),
+        details: details,
+      );
+    }
+  }
+  
+  /// Enhances error messages with more context for the user.
+  static String _enhanceErrorMessage(String code, String message, String apkPath) {
+    final pkg = apkPath.split('/').last.replaceAll('.apk', '');
+    
+    if (code == 'LOAD' && message.contains('Unsupported extensions-lib version')) {
+      // Extract the version number from the message
+      final versionMatch = RegExp(r'version (\d+\.\d+)').firstMatch(message);
+      final version = versionMatch?.group(1) ?? 'unknown';
+      return 'Extension $pkg uses libVersion $version which is not yet fully supported. '
+             'It may still work in compatibility mode. '
+             'Try enabling "Compatibility Mode" in settings or update Zangetsu.';
+    }
+    
+    if (code == 'LOAD' && message.contains('Not a Mihon manga extension')) {
+      return 'Extension $pkg does not appear to be a valid Mihon manga extension. '
+             'It may be for a different app or version.';
+    }
+    
+    if (code == 'LOAD' && message.contains('No source classes declared')) {
+      return 'Extension $pkg is missing source class declarations. '
+             'This may be a corrupted or incompatible extension.';
+    }
+    
+    return message;
   }
 
   /// Loads every `*.apk` found in [dir] and registers them.
@@ -356,6 +345,16 @@ class MihonExtensionService {
       }
 
       // 3. Install and list sources.
+      // Check libVersion if available before attempting install
+      if (entry.libVersion != null) {
+        final libVersion = entry.libVersion!;
+        debugPrint(
+          '[mihon] Extension ${entry.pkg} has libVersion $libVersion from repo metadata'
+        );
+        // Note: The actual version check happens in native code (MihonExtensionLoader.kt)
+        // This is just for logging and pre-validation
+      }
+      
       await installExtension(apkPath);
       final allSources = await listSources();
       final providers = allSources

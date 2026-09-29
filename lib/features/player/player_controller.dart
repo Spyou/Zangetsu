@@ -511,12 +511,6 @@ class PlayerCubit extends Cubit<PlayerState> {
   // "· proxy" version of the same quality. Aniyomi-only + direct-only, so
   // CloudStream / JS / torrent sources are completely unaffected.
   Timer? _startTimer;
-  // Never-started watchdog (all sources): same hole as the Aniyomi one above,
-  // but general — a dead playlist mpv retries without erroring and the stall
-  // watchdog needs a started source, so without this nothing ever fires and
-  // the spinner sits forever. 30s (generous: normal starts take seconds),
-  // cancelled by the first frame like every other watchdog here.
-  Timer? _neverStartedTimer;
   // Fired once per session: mark the anime CURRENT on AniList as soon as
   // playback starts (so "started watching" shows immediately, not only after
   // an episode crosses the 92% scrobble threshold).
@@ -954,6 +948,10 @@ class PlayerCubit extends Cubit<PlayerState> {
       player.stream.playing.listen((v) {
         _playing = v;
         if (v) {
+          _startedThisSource = true;
+          _everStarted = true;
+          _startTimer?.cancel();
+          _startTimer = null;
           _discordPaused = false;
           _discordPauseTimer?.cancel();
           _pushDiscordWatching();
@@ -1007,8 +1005,6 @@ class PlayerCubit extends Cubit<PlayerState> {
           _everStarted = true; // ...and something has played at least once
           _startTimer?.cancel();
           _startTimer = null;
-          _neverStartedTimer?.cancel();
-          _neverStartedTimer = null;
           if (!_markedWatching) {
             _markedWatching = true;
             _markWatching(); // "started watching" → CURRENT on AniList now
@@ -1036,20 +1032,11 @@ class PlayerCubit extends Cubit<PlayerState> {
             _lastDur > Duration.zero &&
             p >= _lastDur * 0.85) {
           _prefetchedNextForIndex = idx;
-          final nextUrl = _episodeUrl(episodes[idx + 1]);
-          if (sourceId == ZmodeIds.sourceId) {
-            // Z Mode used to skip this entirely, because SourceRepository's
-            // own prefetch throws for the zm pseudo source — so every episode
-            // of a binge paid the full resolve again (7.3s median across 139
-            // plays, 20s at p90). The catalogue resolves it the same way Play
-            // will, and the winning source is already known here: we are
-            // playing from it. Fire-and-forget; a failure just means the next
-            // Play does the work itself, exactly as it did before.
-            sl<CatalogueRepository>()
-                .sources(nextUrl, sourceId: sourceId, fast: true)
-                .catchError((_) => <VideoSource>[]);
-          } else {
-            sl<SourceRepository>().prefetch(nextUrl, sourceId: sourceId);
+          // SourceRepository.prefetch has no metadata-catalogue equivalent and
+          // throws for the zm pseudo source, so skip it there.
+          if (sourceId != ZmodeIds.sourceId) {
+            sl<SourceRepository>()
+                .prefetch(_episodeUrl(episodes[idx + 1]), sourceId: sourceId);
           }
         }
       }),
@@ -1057,7 +1044,13 @@ class PlayerCubit extends Cubit<PlayerState> {
     _subs.add(
       player.stream.duration.listen((d) {
         _lastDur = d;
-        if (d > Duration.zero) _pushDiscordWatching();
+        if (d > Duration.zero) {
+          _startedThisSource = true;
+          _everStarted = true;
+          _startTimer?.cancel();
+          _startTimer = null;
+          _pushDiscordWatching();
+        }
         // The duration arriving is mpv's "ready" signal (its STATE_READY): only
         // now is the stream reliably seekable. A remote MP4 reports duration
         // only after its moov atom loads, and any seek issued before that is
@@ -1133,30 +1126,6 @@ class PlayerCubit extends Cubit<PlayerState> {
   /// The latest position seen from the mpv stream. Used by the cast handoff to
   /// start the Cast receiver at the exact position local playback left off.
   Duration get currentPosition => _lastPos;
-
-  /// Chromecast (and similar) progress while local mpv is paused. Updates
-  /// resume / Continue Watching on the same path as the position stream.
-  void syncExternalProgress(Duration position, Duration duration) {
-    if (position <= Duration.zero) return;
-    if (duration > Duration.zero) _lastDur = duration;
-    final jumped = (position - _lastPos).abs() > const Duration(seconds: 3);
-    if (jumped) _markUserSeek(position);
-    _lastPos = position;
-    if (position > Duration.zero) {
-      _startedThisSource = true;
-      _everStarted = true;
-      if (!_markedWatching) {
-        _markedWatching = true;
-        _markWatching();
-      }
-    }
-    if (jumped) _pushDiscordWatching();
-    final now = DateTime.now().millisecondsSinceEpoch;
-    if (now - _lastHistoryMs >= 5000) {
-      _lastHistoryMs = now;
-      unawaited(_persist());
-    }
-  }
 
   void setRate(double r) => player.setRate(r);
 
@@ -1552,23 +1521,13 @@ class PlayerCubit extends Cubit<PlayerState> {
   /// sub (the tracks-stream re-arm) doesn't re-download it. Cleared per episode.
   final Map<String, String> _localSubCache = {};
 
-  /// Load an EXTERNAL subtitle [url], fetching it ourselves rather than letting
-  /// mpv do it.
-  ///
-  /// mpv's own fetch carries none of the source's headers — no Referer, no
-  /// User-Agent, no clearance cookie — so a sub host that checks any of them
-  /// answers 403/404 and the track never appears. That is the
-  /// `Can not open external file` in the reports, and it is silent: playback
-  /// carries on with no subtitles and nothing says why.
-  ///
-  /// So download it in Dart WITH [VideoSource.headers], write a temp file, and
-  /// hand mpv the local path. This used to happen only when styled subtitles
-  /// (libass) were on — but that setting is about RENDERING and is off by
-  /// default, so the common case was the broken one. Fetching and styling are
-  /// unrelated; the track is identical either way.
-  ///
-  /// Best-effort throughout: an empty body or any error falls back to the plain
-  /// remote uri, which is exactly what it did before, and never throws.
+  /// Load an EXTERNAL subtitle [url]. With styled subtitles (libass) on, mpv
+  /// would fetch the URL itself and fail on Cloudflare-protected sub hosts (no
+  /// clearance cookie reaches mpv). So we download it in Dart WITH the source's
+  /// headers, write a temp file, and hand mpv the local path — libass then
+  /// renders it with no CF involvement. Off → the plain remote-uri path,
+  /// byte-identical to before. Best-effort: any download failure falls back to
+  /// the remote uri (no worse than today) and never throws.
   ///
   /// Owns `_wantedSubId` (the LOCAL path when downloaded, else the url) so the
   /// sub-preference watcher matches the applied track's id and can't stomp it —
@@ -1585,6 +1544,10 @@ class PlayerCubit extends Cubit<PlayerState> {
       _wantedSubId = url;
     }
 
+    if (!sl<PlaybackPrefs>().styledSubtitles) {
+      await loadRemote();
+      return;
+    }
     try {
       var local = _localSubCache[url];
       if (local == null || !File(local).existsSync()) {
@@ -2369,23 +2332,6 @@ class PlayerCubit extends Cubit<PlayerState> {
     }
     _startTimer?.cancel();
     _startedThisSource = false; // reset; set true once this source plays
-    // A source that never produces a frame and emits no error (a 403 HLS
-    // playlist mpv retries forever) used to spin forever: the error listener
-    // needs an error event and the stall watchdog needs a started source, so
-    // neither fired. Arm the same failover for the never-started case — a
-    // first frame within the window cancels it, exactly like the stall path.
-    // Torrents excluded (pieces take a while — same rule as the stall path).
-    _neverStartedTimer?.cancel();
-    final openGen = g;
-    _neverStartedTimer = Timer(const Duration(seconds: 30), () {
-      if (openGen != _gen ||
-          _startedThisSource ||
-          _recovering ||
-          _activeTorrentId != null) {
-        return;
-      }
-      _failoverFromStall();
-    });
     emit(state.copyWith(active: () => s, error: () => null));
     // When auto-resume is off, ignore the saved resume mark and start from the
     // explicit seek (a mid-session source/quality switch) or the very start.
@@ -2554,18 +2500,6 @@ class PlayerCubit extends Cubit<PlayerState> {
     _tryApplySubPref(); // apply the global subtitle preference (off / lang / auto)
   }
 
-  /// Stop playback, swallowing anything the platform throws.
-  ///
-  /// Only called on the paths that have already given up, where a failure to
-  /// stop must not replace the error the user is about to read.
-  Future<void> _stopQuietly() async {
-    try {
-      await player.stop();
-    } catch (_) {
-      /* already gone */
-    }
-  }
-
   /// Try the next source after the current one fails (dead/DRM/unsupported),
   /// preserving the live position and the audio kind.
   Future<void> _onPlaybackError(String e) async {
@@ -2576,26 +2510,24 @@ class PlayerCubit extends Cubit<PlayerState> {
     // until the app force-closes. mpv recovers on its own once the pieces land.
     if (_activeTorrentId != null) return;
     final lower = e.toLowerCase();
-    // If THIS source is already playing (position advanced), the error is a
-    // transient/secondary one (HLS segment blip, failed sub track) — ignore it.
+    // If THIS source is already playing (position advanced, duration known,
+    // or audio/video started), the error is a transient/secondary one (HLS
+    // segment blip, failed sub track, decoder fallback) — ignore it.
     // Only a source that NEVER started is worth cycling away from.
-    if (_startedThisSource) return;
+    if (_startedThisSource ||
+        player.state.playing ||
+        player.state.duration > Duration.zero ||
+        player.state.position > Duration.zero ||
+        _lastPos > Duration.zero ||
+        (player.state.width ?? 0) > 0) {
+      _startedThisSource = true;
+      _everStarted = true;
+      _startTimer?.cancel();
+      _startTimer = null;
+      return;
+    }
     if (_recovering) return;
     // Anything else is fatal unless it is on the list below.
-    //
-    // This used to be the other way round: fail over only on four hardcoded
-    // English phrases from libmpv, ignore everything else. Any wording those
-    // four did not cover — a new mpv message, a codec complaint, an http error
-    // phrased differently — was read as harmless, so a source that had never
-    // played a single frame was never cycled away from and the screen simply
-    // sat there. An unknown error on a stream that never started is not a
-    // reason to do nothing; it is the definition of one worth leaving.
-    //
-    // The list is the genuinely harmless ones, and they are all about the
-    // things AROUND the video rather than the video: an output device that
-    // isn't there (the iOS Simulator has none), a subtitle track that failed
-    // on its own, libass not finding a font. None of those mean the stream is
-    // unplayable, and cycling sources would not fix any of them.
     const harmless = [
       'audio device',
       'audio output',
@@ -2604,8 +2536,81 @@ class PlayerCubit extends Cubit<PlayerState> {
       'fontconfig',
       'libass',
       'ffmpeg-fallback',
+      'hwdec',
+      'hardware decoding',
+      'vaapi',
+      'cuda',
+      'd3d11va',
+      'vdpau',
+      'videotoolbox',
+      'mediacodec',
+      'vo/gpu',
+      'vo_gpu',
+      'gpu-next',
+      'opengl',
+      'vulkan',
+      'shader',
+      'track',
+      'audio-pts',
+      'video-pts',
+      'demuxer',
+      'buffering',
+      'resample',
+      'swscale',
+      'swresample',
+      'could not find font',
+      'fallback to software',
+      'falling back',
+      'cannot load font',
+      'attachment',
+      'undetermined',
+      'stream-lavf',
+      'cache',
+      'cookie',
+      'tls',
+      'http',
+      'tcp',
+      'eof',
+      // Waydroid / Android-on-Linux emulation — GPU and video output errors
+      // that mpv recovers from by falling back to software decode. The source
+      // is not dead; only the video pipeline hiccupped.
+      'vo/gpu-next',
+      'egl',
+      'drm',
+      'video output',
+      'v4l2',
+      'mesa',
+      'virtio',
+      'virgl',
+      'llvmpipe',
+      'softpipe',
+      'android',
+      'display',
+      'render',
+      'decode',
+      'codec',
     ];
     if (harmless.any(lower.contains)) return;
+    // Race guard: on some platforms (Waydroid, emulators) mpv may fire a video
+    // decoder error before the playing / position / duration stream listeners
+    // have had a chance to set _startedThisSource. Audio can already be audible
+    // at this point. Wait a short beat and re-check — if playback actually
+    // started in the meantime, this error was transient and not worth cycling.
+    final preGen = _gen;
+    await Future<void>.delayed(const Duration(milliseconds: 1500));
+    if (preGen != _gen) return; // superseded while we waited
+    if (_startedThisSource ||
+        player.state.playing ||
+        player.state.duration > Duration.zero ||
+        player.state.position > Duration.zero ||
+        _lastPos > Duration.zero ||
+        (player.state.width ?? 0) > 0) {
+      _startedThisSource = true;
+      _everStarted = true;
+      _startTimer?.cancel();
+      _startTimer = null;
+      return;
+    }
     // A direct Aniyomi stream that failed on Cloudflare → swap to its hidden
     // proxy fallback (same quality) rather than cycling through other qualities.
     final act = state.active;
@@ -2643,20 +2648,7 @@ class PlayerCubit extends Cubit<PlayerState> {
       // Guarded, not returned: _recovering still has to drop, or a player that
       // outlives this (a newer open on the same cubit) can never recover again.
       if (gen == _gen) {
-        // Stop the player before saying so.
-        //
-        // Left running, it fetches the NEXT piece of the stream that just
-        // failed, fails on that too, and re-enters this whole path — about
-        // once a second, for as long as the screen is open. A device log of
-        // this shows 31 identical errors in 44 seconds behind a message that
-        // had already given up. From the outside that is a frozen app: the
-        // dialog is right there, and underneath the player is still grinding.
-        //
-        // Safe by construction: everything above has already established that
-        // this source never produced a frame, that there is nothing left to
-        // fail over to, and the user is about to be told so. "Try again"
-        // re-opens the episode from scratch, which works on a stopped player.
-        await _stopQuietly();
+        await player.stop();
         emit(state.copyWith(error: () => _deadEndMessage()));
       }
     }
@@ -2834,9 +2826,6 @@ class PlayerCubit extends Cubit<PlayerState> {
       // A source whose every mirror stalls is as unplayable as one whose links
       // 404 — same fallthrough to the next source rather than ending here.
       if (!await _tryNextSource()) {
-        // Same reason as the dead end above: a stalled player left running
-        // keeps retrying behind the message.
-        await _stopQuietly();
         emit(
           state.copyWith(
             error: () =>
@@ -3458,7 +3447,6 @@ class PlayerCubit extends Cubit<PlayerState> {
       s.cancel();
     }
     _stallTimer?.cancel();
-    _neverStartedTimer?.cancel();
     _toastTimer?.cancel();
     _discordPauseTimer?.cancel();
     // Stop any active torrent stream + delete its buffered pieces.

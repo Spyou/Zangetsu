@@ -434,7 +434,7 @@ class _MihonFilterSheetState extends State<_MihonFilterSheet> {
       tilePadding: EdgeInsets.zero,
       iconColor: AppColors.textSecondary,
       collapsedIconColor: AppColors.textSecondary,
-      childrenPadding: const EdgeInsetsDirectional.only(start: 12),
+      childrenPadding: const EdgeInsets.only(left: 12),
       children: [
         for (final child in f.children) _buildControl(child),
       ],

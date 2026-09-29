@@ -55,7 +55,7 @@ Future<void> pickAppLanguagePhone(BuildContext context) async {
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
               child: Align(
-                alignment: AlignmentDirectional.centerStart,
+                alignment: Alignment.centerLeft,
                 child: Text(l10n.appLanguage, style: AppText.headline),
               ),
             ),

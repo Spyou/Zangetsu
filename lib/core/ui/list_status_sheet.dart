@@ -10,10 +10,8 @@ import '../playback/list_status_store.dart';
 import '../playback/category_store.dart';
 import 'category_picker_sheet.dart';
 import '../playback/my_list.dart';
-import '../repository/catalogue_repository.dart';
+import '../repository/source_repository.dart';
 import '../theme/app_colors.dart';
-import '../tracker/tracker_item_url.dart';
-import '../zmode/zmode_ids.dart';
 import '../theme/app_text.dart';
 import '../tracker/tracker.dart';
 import '../tracker/tracker_hub.dart';
@@ -85,17 +83,8 @@ Future<void> showListStatusSheet(
     await myList.remove(item);
     await statusStore.remove(item);
     onChanged?.call();
-    _syncToTrackers(
-      item,
-      null,
-      malId,
-      tmdbId,
-      tmdbIsTv,
-      imdbId,
-      isAnime,
-      reading: reading,
-      remove: true,
-    );
+    _syncToTrackers(item, null, malId, tmdbId, tmdbIsTv, imdbId, isAnime,
+        reading: reading, remove: true);
     return;
   }
 
@@ -104,16 +93,8 @@ Future<void> showListStatusSheet(
   await statusStore.setStatus(item, status);
   await myList.pushStatus(item); // sync the watch status to the cloud row
   onChanged?.call();
-  _syncToTrackers(
-    item,
-    status,
-    malId,
-    tmdbId,
-    tmdbIsTv,
-    imdbId,
-    isAnime,
-    reading: reading,
-  );
+  _syncToTrackers(item, status, malId, tmdbId, tmdbIsTv, imdbId, isAnime,
+      reading: reading);
 }
 
 /// Best-effort tracker push. Resolves the MAL/TMDB id from the detail when the
@@ -131,23 +112,13 @@ Future<void> _syncToTrackers(
 }) async {
   final hub = sl<TrackerHub>();
   if (!hub.anyConnected) return;
-  final fromItem = trackerIdsFromItem(item);
-  var mal = malId ?? fromItem.malId;
-  var tmdb = tmdbId ?? fromItem.tmdbId;
+  var mal = malId ?? item.malId;
+  var tmdb = tmdbId ?? item.tmdbId;
   var imdb = imdbId ?? item.imdbId;
-  var isTv = tmdbIsTv || fromItem.tmdbIsTv;
-  // Source titles can still look up ids from their provider. Z-mode (`zm`)
-  // is not a JS provider — asking SourceRepository throws
-  // `Provider not loaded: zm` and Simkl then no-ops the remove (it needs an
-  // id, not a title).
-  final isZ = item.sourceId == ZmodeIds.sourceId || ZmodeIds.isZ(item.url);
-  if (!isZ &&
-      mal == null &&
-      tmdb == null &&
-      (imdb == null || imdb.isEmpty) &&
-      sl.isRegistered<CatalogueRepository>()) {
+  var isTv = tmdbIsTv;
+  if (mal == null && tmdb == null && (imdb == null || imdb.isEmpty)) {
     try {
-      final d = await sl<CatalogueRepository>().detail(
+      final d = await sl<SourceRepository>().detail(
         item.url,
         sourceId: item.sourceId,
       );
@@ -155,9 +126,7 @@ Future<void> _syncToTrackers(
       tmdb = d.tmdbId;
       imdb = d.imdbId;
       isTv = d.tmdbIsTv;
-    } catch (_) {
-      /* leave ids null — title fallback still covers anime */
-    }
+    } catch (_) {/* leave ids null — title fallback still covers anime */}
   }
   // Manga/novel sources (Mihon) don't carry a malId, so — exactly like anime —
   // fall back to a title search on the tracker. Without this, reading titles
@@ -235,7 +204,7 @@ class ListStatusSheet extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 14, 20, 6),
                 child: Align(
-                  alignment: AlignmentDirectional.centerStart,
+                  alignment: Alignment.centerLeft,
                   child: Text('Add to your list', style: AppText.headline),
                 ),
               ),
@@ -272,16 +241,11 @@ class ListStatusSheet extends StatelessWidget {
                 _row(
                   onTap: () => Navigator.pop(context, _kCategories),
                   child: ListTile(
-                    leading: const Icon(
-                      Icons.folder_outlined,
-                      color: AppColors.textSecondary,
-                    ),
+                    leading: const Icon(Icons.folder_outlined,
+                        color: AppColors.textSecondary),
                     title: const Text('Categories'),
-                    trailing: const Icon(
-                      Icons.chevron_right_rounded,
-                      color: AppColors.textSecondary,
-                      size: 20,
-                    ),
+                    trailing: const Icon(Icons.chevron_right_rounded,
+                        color: AppColors.textSecondary, size: 20),
                     onTap: () => Navigator.pop(context, _kCategories),
                   ),
                 ),

@@ -80,10 +80,6 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
     // a few extra workers let results come back without one slow source choking
     // the rest (each call is also time-capped in PluginHost).
     private val csReadPool = Executors.newFixedThreadPool(8)
-    // Playback's own lane: a stuck browse/search must never starve pressing
-    // play. Only the fast (first-link) resolve runs here — same call, same
-    // caps, just never queued behind the shared pool.
-    private val csPlayPool = Executors.newFixedThreadPool(2)
     private val repo: RepoManager by lazy { RepoManager(applicationContext) }
     private val host: PluginHost by lazy { PluginHost(applicationContext) }
 
@@ -571,9 +567,6 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
                     }
                 }
             }
-
-        // Native phone-player channel; the object owns everything else.
-        PhonePlayerBridge.register(flutterEngine, this)
 
         // Notifications channel: deliver the "new episode" notification a CS
         // worker posted (its launch intent carries notif_payload) to Dart so it
@@ -1067,28 +1060,10 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
                         val name = call.argument<String>("name")
                         val data = call.argument<String>("data")
                         val fast = call.argument<Boolean>("fast") ?: false
-                        // Playback (fast) gets its own lane so a pool clogged
-                        // by dead servers can't starve pressing play.
-                        val lane = if (fast) csPlayPool else csReadPool
-                        lane.execute {
+                        csReadPool.execute {
                             try {
                                 val res = host.loadLinks(name ?: "", data ?: "", fast)
                                 runOnUiThread { result.success(res) }
-                            } catch (e: Exception) {
-                                runOnUiThread { result.error("cs_error", e.message, null) }
-                            }
-                        }
-                    }
-                    // A hunt the viewer walked away from (back during "Finding…").
-                    // Stops it natively instead of letting dead servers hold a
-                    // pool thread to their cap.
-                    "cancelLinks" -> {
-                        val name = call.argument<String>("name")
-                        val data = call.argument<String>("data")
-                        csReadPool.execute {
-                            try {
-                                host.cancelSession(name ?: "", data ?: "")
-                                runOnUiThread { result.success(null) }
                             } catch (e: Exception) {
                                 runOnUiThread { result.error("cs_error", e.message, null) }
                             }
@@ -1245,9 +1220,12 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
                 when (call.method) {
                     "isTv" -> {
                         val uiModeManager = getSystemService(android.content.Context.UI_MODE_SERVICE) as android.app.UiModeManager
-                        val isTv = uiModeManager.currentModeType == android.content.res.Configuration.UI_MODE_TYPE_TELEVISION ||
-                                packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK) ||
-                                packageManager.hasSystemFeature("android.software.leanback_only")
+                        // Some phone/tablet emulator images expose Leanback as a
+                        // compatibility feature even though their active UI mode
+                        // is normal. Use the active mode as the source of truth so
+                        // those AVDs do not get routed into the TV layout.
+                        val isTv = uiModeManager.currentModeType ==
+                            android.content.res.Configuration.UI_MODE_TYPE_TELEVISION
                         result.success(isTv)
                     }
                     // Does a SAF content:// document still exist on disk? Used by
@@ -1456,23 +1434,6 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
         return out
     }
 
-    /// A content:// URI another app may read for [path], or null when the
-    /// file is outside the dirs res/xml/video_paths.xml covers (or is gone).
-    ///
-    /// Android 7+ throws FileUriExposedException for a file:// handed to
-    /// another app, so a FileProvider is the only way to pass a downloaded
-    /// episode to an external player.
-    private fun sharableUri(path: String): android.net.Uri? = try {
-        androidx.core.content.FileProvider.getUriForFile(
-            this,
-            "$packageName.videoprovider",
-            java.io.File(path),
-        )
-    } catch (e: Exception) {
-        Log.w(TAG, "no content uri for a downloaded file: ${e.message}")
-        null
-    }
-
     @Suppress("UNCHECKED_CAST")
     private fun launchExternal(call: MethodCall, result: MethodChannel.Result) {
         try {
@@ -1526,26 +1487,6 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
             try {
                 startActivityForResult(intent, EXT_PLAYER_REQUEST)
             } catch (e: android.content.ActivityNotFoundException) {
-                // A DOWNLOADED episode arrives as a bare filesystem path, which
-                // is a URI with no scheme at all. Most players guess it is a
-                // file; a strict one (com.ttee.leeplayer in the reports)
-                // resolves nothing and dies right here — every launched=false
-                // in the logs is a local .mp4, never a stream. Re-offer it as
-                // content://, the only form Android has let us hand another app
-                // since API 24. Streams are untouched: they already have a
-                // scheme, so this branch skips them.
-                val shared = if (Uri.parse(url).scheme == null) sharableUri(url) else null
-                if (shared != null) {
-                    Log.w(TAG, "no activity for a bare path in $pkg — retrying as content://")
-                    intent.setDataAndType(shared, mime)
-                    intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                    try {
-                        startActivityForResult(intent, EXT_PLAYER_REQUEST)
-                        return
-                    } catch (_: android.content.ActivityNotFoundException) {
-                        // Still nothing — fall through to the mime retry.
-                    }
-                }
                 // The precise mime above is a hint, not a requirement: plenty of
                 // players advertise video/* and nothing else, so an HLS stream
                 // sent as application/x-mpegURL resolves to no activity and the
@@ -1865,10 +1806,8 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
         executor.shutdown()
         csExecutor.shutdown()
         csReadPool.shutdown()
-        csPlayPool.shutdown()
         castManager?.release()
         tvBridge = null
-        PhonePlayerBridge.dispose()
         if (com.lagradost.cloudstream3.CommonActivity.activity === this) {
             com.lagradost.cloudstream3.CommonActivity.setActivityInstance(null)
         }

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
-import '../../core/ui/app_dialog.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/tv/tv_focusable.dart';
@@ -45,12 +44,27 @@ class _BootErrorScreenState extends State<BootErrorScreen> {
   /// Only ever reached from an explicit, confirmed tap. Nothing here touches
   /// the account or the cloud copy — signing back in restores the library.
   Future<void> _reset() async {
-    final ok = await AppDialog.confirm(
-      context,
-      title: context.l10n.resetAppDataTitle,
-      message: context.l10n.resetAppDataBody,
-      confirmLabel: context.l10n.reset,
-      destructive: true,
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: Text(ctx.l10n.resetAppDataTitle, style: AppText.title),
+        content: Text(
+          ctx.l10n.resetAppDataBody,
+          style: AppText.body,
+        ),
+        actions: [
+          TextButton(
+            autofocus: true,
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(ctx.l10n.cancel),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(ctx.l10n.reset, style: TextStyle(color: AppColors.accent)),
+          ),
+        ],
+      ),
     );
     if (ok != true || !mounted) return;
     setState(() => _resetting = true);
@@ -62,10 +76,23 @@ class _BootErrorScreenState extends State<BootErrorScreen> {
     }
     if (!mounted) return;
     setState(() => _resetting = false);
-    await AppDialog.alert(
-      context,
-      title: context.l10n.done,
-      message: context.l10n.resetAppDataDone,
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: Text(ctx.l10n.done, style: AppText.title),
+        content: Text(
+          ctx.l10n.resetAppDataDone,
+          style: AppText.body,
+        ),
+        actions: [
+          TextButton(
+            autofocus: true,
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(ctx.l10n.ok),
+          ),
+        ],
+      ),
     );
   }
 

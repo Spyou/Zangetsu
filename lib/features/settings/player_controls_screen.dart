@@ -281,7 +281,7 @@ class _PlayerControlsScreenState extends State<PlayerControlsScreen> {
             ReorderableDragStartListener(
               index: index,
               child: const Padding(
-                padding: EdgeInsetsDirectional.only(end: 10),
+                padding: EdgeInsets.only(right: 10),
                 child: Icon(
                   Icons.drag_indicator_rounded,
                   size: 19,
@@ -303,7 +303,7 @@ class _PlayerControlsScreenState extends State<PlayerControlsScreen> {
           ),
           if (c.pinned)
             Padding(
-              padding: const EdgeInsetsDirectional.only(end: 8),
+              padding: const EdgeInsets.only(right: 8),
               child: Text(
                 context.l10n.pinned,
                 style: AppText.caption.copyWith(

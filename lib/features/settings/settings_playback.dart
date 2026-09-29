@@ -165,14 +165,14 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 4, 20, 2),
                 child: Align(
-                  alignment: AlignmentDirectional.centerStart,
+                  alignment: Alignment.centerLeft,
                   child: Text(context.l10n.playerInfoOverlay, style: AppText.headline),
                 ),
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
                 child: Align(
-                  alignment: AlignmentDirectional.centerStart,
+                  alignment: Alignment.centerLeft,
                   child: Text(
                     context.l10n.pickWhatShowsOverVideo,
                     style: AppText.caption,
@@ -237,10 +237,6 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
     (1.25, '1.25x'),
     (1.5, '1.5x'),
     (2.0, '2x'),
-    (2.5, '2.5x'),
-    (3.0, '3x'),
-    (4.0, '4x'),
-    (5.0, '5x'),
   ];
 
   static const List<(int, String)> _skipOptions = [(5, '5s'), (10, '10s'), (15, '15s'), (30, '30s')];
@@ -330,7 +326,7 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
               child: Align(
-                alignment: AlignmentDirectional.centerStart,
+                alignment: Alignment.centerLeft,
                 child: Text(title, style: AppText.headline),
               ),
             ),
@@ -462,10 +458,8 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
     // local proxy for any player that isn't MX/Just — but we don't know which
     // extras they read, so external subtitles and the resume position may be
     // dropped. Flagged rather than hidden: it's a real caveat, not a blocker.
-    final androidPlayerLabel = context.l10n.androidPlayer;
     final options = <(String, String)>[
       ('', context.l10n.builtInPlayer),
-      (PlaybackPrefs.androidPlayerId, androidPlayerLabel),
       for (final p in players) (p.package, p.known ? p.label : '${p.label}${context.l10n.noSubsResumeSuffix}'),
     ];
     if (players.isEmpty) {
@@ -483,11 +477,7 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
     // hint, which belongs in the picker but not in the saved name shown on the
     // settings row afterwards.
     final match = players.where((p) => p.package == picked);
-    final label = picked == PlaybackPrefs.androidPlayerId
-        ? androidPlayerLabel
-        : match.isEmpty
-            ? ''
-            : match.first.label;
+    final label = match.isEmpty ? '' : match.first.label;
     await _prefs.setExternalPlayer(picked, picked.isEmpty ? '' : label);
     if (mounted) setState(() {});
   }
@@ -674,11 +664,9 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                 SettingsTile(
                   icon: Icons.smart_display_outlined,
                   title: context.l10n.defaultPlayer,
-                  subtitle: _prefs.externalPlayerPackage == PlaybackPrefs.androidPlayerId
-                      ? context.l10n.androidPlayer
-                      : _prefs.externalPlayerPackage.isEmpty
-                          ? context.l10n.builtIn
-                          : (_prefs.externalPlayerLabel.isNotEmpty ? _prefs.externalPlayerLabel : context.l10n.externalApp),
+                  subtitle: _prefs.externalPlayerPackage.isEmpty
+                      ? context.l10n.builtIn
+                      : (_prefs.externalPlayerLabel.isNotEmpty ? _prefs.externalPlayerLabel : context.l10n.externalApp),
                   onTap: _pickPlayer,
                 ),
                 SettingsTile(

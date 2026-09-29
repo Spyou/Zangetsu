@@ -103,7 +103,7 @@ class _ControlsOverlay extends StatelessWidget {
         // for a short list of labels, too.
         final w = (MediaQuery.of(ctx).size.width * 0.33).clamp(250.0, 360.0);
         return Align(
-          alignment: AlignmentDirectional.centerEnd,
+          alignment: Alignment.centerRight,
           child: Material(
             color: Colors.transparent,
             child: FrostedSurface(
@@ -401,9 +401,11 @@ class _ControlsOverlay extends StatelessWidget {
     // button rather than two arrows that can never do anything.
     final multiEpisode = c.episodes.length > 1;
 
-    return Stack(
-      fit: StackFit.expand,
-      children: [
+    return ExcludeFocus(
+      excluding: true,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
         // Top scrim.
         const Positioned(
           top: 0,
@@ -508,7 +510,7 @@ class _ControlsOverlay extends StatelessWidget {
                                 builder: (context, _, _) =>
                                     c.isFillerAt(state.currentIndex)
                                     ? const Padding(
-                                        padding: EdgeInsetsDirectional.only(start: 8),
+                                        padding: EdgeInsets.only(left: 8),
                                         // No colour passed: TagBadge falls back
                                         // to the app accent, so the badge
                                         // follows the user's theme colour.
@@ -770,6 +772,7 @@ class _ControlsOverlay extends StatelessWidget {
           ),
         ),
       ],
+    ),
     );
   }
 }

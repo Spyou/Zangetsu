@@ -14,8 +14,6 @@
     "reportSent",
     "reportSentBody",
     "readerFullscreen",
-    "androidPlayer",
-    "androidPlayerUnavailable",
     "offlineTitle",
     "offlineBody",
     "signInToSource",
@@ -111,9 +109,7 @@
     "exportingChapterProgress",
     "exportedToFolder",
     "epubExportFailed",
-    "export",
-    "keepDownloadsPrivate",
-    "keepDownloadsPrivateSubtitle"
+    "export"
   ],
 
   "es": [
@@ -131,8 +127,6 @@
     "reportSent",
     "reportSentBody",
     "readerFullscreen",
-    "androidPlayer",
-    "androidPlayerUnavailable",
     "offlineTitle",
     "offlineBody",
     "signInToSource",
@@ -228,9 +222,7 @@
     "exportingChapterProgress",
     "exportedToFolder",
     "epubExportFailed",
-    "export",
-    "keepDownloadsPrivate",
-    "keepDownloadsPrivateSubtitle"
+    "export"
   ],
 
   "fr": [
@@ -248,8 +240,6 @@
     "reportSent",
     "reportSentBody",
     "readerFullscreen",
-    "androidPlayer",
-    "androidPlayerUnavailable",
     "offlineTitle",
     "offlineBody",
     "signInToSource",
@@ -345,9 +335,7 @@
     "exportingChapterProgress",
     "exportedToFolder",
     "epubExportFailed",
-    "export",
-    "keepDownloadsPrivate",
-    "keepDownloadsPrivateSubtitle"
+    "export"
   ],
 
   "it": [
@@ -365,8 +353,6 @@
     "reportSent",
     "reportSentBody",
     "readerFullscreen",
-    "androidPlayer",
-    "androidPlayerUnavailable",
     "offlineTitle",
     "offlineBody",
     "signInToSource",
@@ -462,9 +448,7 @@
     "exportingChapterProgress",
     "exportedToFolder",
     "epubExportFailed",
-    "export",
-    "keepDownloadsPrivate",
-    "keepDownloadsPrivateSubtitle"
+    "export"
   ],
 
   "ja": [
@@ -482,8 +466,6 @@
     "reportSent",
     "reportSentBody",
     "readerFullscreen",
-    "androidPlayer",
-    "androidPlayerUnavailable",
     "offlineTitle",
     "offlineBody",
     "signInToSource",
@@ -579,9 +561,7 @@
     "exportingChapterProgress",
     "exportedToFolder",
     "epubExportFailed",
-    "export",
-    "keepDownloadsPrivate",
-    "keepDownloadsPrivateSubtitle"
+    "export"
   ],
 
   "zh": [
@@ -599,8 +579,6 @@
     "reportSent",
     "reportSentBody",
     "readerFullscreen",
-    "androidPlayer",
-    "androidPlayerUnavailable",
     "offlineTitle",
     "offlineBody",
     "signInToSource",
@@ -696,9 +674,7 @@
     "exportingChapterProgress",
     "exportedToFolder",
     "epubExportFailed",
-    "export",
-    "keepDownloadsPrivate",
-    "keepDownloadsPrivateSubtitle"
+    "export"
   ],
 
   "zh_TW": [
@@ -716,8 +692,6 @@
     "reportSent",
     "reportSentBody",
     "readerFullscreen",
-    "androidPlayer",
-    "androidPlayerUnavailable",
     "offlineTitle",
     "offlineBody",
     "signInToSource",
@@ -813,8 +787,6 @@
     "exportingChapterProgress",
     "exportedToFolder",
     "epubExportFailed",
-    "export",
-    "keepDownloadsPrivate",
-    "keepDownloadsPrivateSubtitle"
+    "export"
   ]
 }

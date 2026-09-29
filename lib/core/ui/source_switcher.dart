@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter/material.dart';
 
 import '../aniyomi/aniyomi_provider.dart';
@@ -18,6 +17,7 @@ import '../playback/playback_prefs.dart';
 import '../provider/cloudstream_provider.dart';
 import '../provider/provider_manager.dart';
 import '../provider/provider_registry.dart';
+import '../provider/stremio_manager.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text.dart';
 import '../tv/tv_focusable.dart';
@@ -130,12 +130,7 @@ SourceBuckets categorizedSources() {
     // the field existed on its letter tile forever.
     final id = e.name as String;
     final logo = logoMap[id] ?? (e.logoUrl as String? ?? '');
-    return (
-      id: id,
-      label: base,
-      repo: repo,
-      icon: logo.isEmpty ? null : logo,
-    );
+    return (id: id, label: base, repo: repo, icon: logo.isEmpty ? null : logo);
   }
 
   int byLabel(a, b) => sourceRowName(
@@ -228,8 +223,7 @@ SourceBuckets categorizedSources() {
   final aniLangs = sl.isRegistered<AnimeLangPrefs>()
       ? (sl<AnimeLangPrefs>().enabled ?? defaultSourceLangs())
       : null;
-  var aniSources = sl<AniyomiManager>()
-      .all
+  var aniSources = sl<AniyomiManager>().all
       .where((p) => aniyomiNsfwVisible(p, showNsfwAniyomi: showNsfwAni))
       .toList();
   if (aniLangs != null) {
@@ -251,6 +245,16 @@ SourceBuckets categorizedSources() {
       icon: p is AniyomiProvider ? SourceIconStore.urlFor(p.pkg) : null,
     ));
   }
+  if (sl.isRegistered<StremioManager>()) {
+    for (final p in sl<StremioManager>().all) {
+      movies.add((
+        id: p.sourceId,
+        label: p.displayName,
+        repo: 'Stremio',
+        icon: null,
+      ));
+    }
+  }
   // Mihon providers — always manga; keyed by their `mihon:` sourceId. Only the
   // manga bucket, never anime/movies/nsfw, so TvSourcePicker (which reads
   // anime/movies/nsfw and has no mode filter) renders exactly as before.
@@ -270,8 +274,7 @@ SourceBuckets categorizedSources() {
     final langs = sl.isRegistered<MangaLangPrefs>()
         ? (sl<MangaLangPrefs>().enabled ?? defaultSourceLangs())
         : null;
-    var mihonSources = sl<MihonManager>()
-        .all
+    var mihonSources = sl<MihonManager>().all
         .where((p) => !(p.info.nsfw && !nsfwEnabled))
         .toList();
     if (langs != null) {
@@ -357,6 +360,7 @@ ProviderType sourceTypeOf(String id) {
   // touching the `mihon:`/`ani:` lines — no GetIt lookup needed since an
   // LNReader source is novel-only by construction.
   if (id.startsWith('lnr:')) return ProviderType.novel;
+  if (id.startsWith('stremio:')) return ProviderType.movie;
   // Mihon manga extensions. They carry their own `mihon:` prefix precisely so
   // this resolver can type them as manga WITHOUT disturbing the `ani:` line
   // below (spec Decision 1) — reusing `ani:` would have typed every manga
@@ -387,6 +391,7 @@ ProviderType _typeOfFromMap(String id, Map<String, String> typeMap) {
   // resolve to anime here and get filtered straight out of the novel/manga
   // bucket it was just put in.
   if (id.startsWith('lnr:')) return ProviderType.novel;
+  if (id.startsWith('stremio:')) return ProviderType.movie;
   if (id.startsWith('mihon:')) return ProviderType.manga;
   if (id.startsWith('ani:')) return ProviderType.anime; // Aniyomi is video-only
   final t = typeMap[id];
@@ -401,8 +406,15 @@ ProviderType _typeOfFromMap(String id, Map<String, String> typeMap) {
 /// The id prefix is the truth here (`cs:`, `ani:`, `mihon:`, `lnr:`), the same
 /// routing every other part of the app uses, rather than the "CS · " label
 /// text which is only for reading.
-List<({String title, List<({String id, String label, String? repo, String? icon})> rows})>
-ecosystemTabs(List<({String id, String label, String? repo, String? icon})> rows) {
+List<
+  ({
+    String title,
+    List<({String id, String label, String? repo, String? icon})> rows,
+  })
+>
+ecosystemTabs(
+  List<({String id, String label, String? repo, String? icon})> rows,
+) {
   bool isCs(String id) => id.startsWith('cs:');
   bool isAni(String id) => id.startsWith('ani:');
   final zangetsu = [
@@ -895,7 +907,9 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
   }
 
   // A scrollable flat list for a single tab.
-  Widget _flat(List<({String id, String label, String? repo, String? icon})> all) {
+  Widget _flat(
+    List<({String id, String label, String? repo, String? icon})> all,
+  ) {
     final rows = _filter(all);
     if (rows.isEmpty) {
       return _empty(_query.trim().isEmpty ? 'No sources here' : 'No matches');
@@ -933,7 +947,9 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
   // A reading mode's single-bucket tab (Manga or Novel) — same flat list as
   // [_flat], but a genuinely-empty bucket (nothing installed, not just a
   // search with no matches) gets the install CTA instead of plain text.
-  Widget _readingFlat(List<({String id, String label, String? repo, String? icon})> all) {
+  Widget _readingFlat(
+    List<({String id, String label, String? repo, String? icon})> all,
+  ) {
     final rows = _filter(all);
     if (rows.isEmpty) {
       if (all.isEmpty && _query.trim().isEmpty) return _installCta();
@@ -1021,10 +1037,12 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
     ]);
     bool unpinned(({String id, String label, String? repo, String? icon}) s) =>
         !pinnedIds.contains(s.id);
-    final focusCandidates = <({String id, String label, String? repo, String? icon})>[
-      ...pinned,
-      for (final c in categories) ..._filter(c.rows.where(unpinned).toList()),
-    ];
+    final focusCandidates =
+        <({String id, String label, String? repo, String? icon})>[
+          ...pinned,
+          for (final c in categories)
+            ..._filter(c.rows.where(unpinned).toList()),
+        ];
     final focusId = _autofocusSourceId(focusCandidates);
     var focusGiven = false;
     bool takeFocus(({String id, String label, String? repo, String? icon}) s) {
@@ -1082,7 +1100,9 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
     final on = widget.autoSelected;
     final body = DecoratedBox(
       decoration: BoxDecoration(
-        color: on ? AppColors.accent.withValues(alpha: 0.10) : Colors.transparent,
+        color: on
+            ? AppColors.accent.withValues(alpha: 0.10)
+            : Colors.transparent,
         border: Border(
           left: BorderSide(
             color: on ? AppColors.accent : Colors.transparent,
@@ -1099,7 +1119,7 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
             Container(
               width: 30,
               height: 30,
-              margin: const EdgeInsetsDirectional.only(end: 10),
+              margin: const EdgeInsets.only(right: 10),
               decoration: BoxDecoration(
                 color: AppColors.accent.withValues(alpha: 0.18),
                 borderRadius: BorderRadius.circular(9),
@@ -1189,7 +1209,7 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
                 child: Align(
-                  alignment: AlignmentDirectional.centerStart,
+                  alignment: Alignment.centerLeft,
                   child: Text(
                     'Select Source',
                     style: AppText.title.copyWith(color: AppColors.textPrimary),
@@ -1253,8 +1273,8 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
               TabBar(
                 isScrollable: true,
                 tabAlignment: TabAlignment.start,
-                padding: const EdgeInsetsDirectional.only(start: 16),
-                labelPadding: const EdgeInsetsDirectional.only(end: 24),
+                padding: const EdgeInsets.only(left: 16),
+                labelPadding: const EdgeInsets.only(right: 24),
                 labelColor: AppColors.accent,
                 unselectedLabelColor: AppColors.textSecondary,
                 indicatorColor: AppColors.accent,
@@ -1267,7 +1287,11 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
                 _autoResolveRow(),
                 // A hairline, not a caption: "OR PICK ONE" cost a whole line
                 // to say what the gap already says.
-                const Divider(height: 18, thickness: 1, color: AppColors.hairline),
+                const Divider(
+                  height: 18,
+                  thickness: 1,
+                  color: AppColors.hairline,
+                ),
               ],
               Expanded(
                 child: TabBarView(children: [for (final t in tabs) t.body()]),
@@ -1341,10 +1365,7 @@ class _PickerSearchField extends StatelessWidget {
         isDense: true,
         filled: true,
         fillColor: AppColors.surface2,
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 14,
-          vertical: 8,
-        ),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         // Pill rather than a rounded rectangle: the sheet is a short stack of
         // round shapes (avatars, chips), and a 12px box read as a form field
         // dropped into it.
@@ -1415,7 +1436,7 @@ class _SourceRow extends StatelessWidget {
         child: Row(
           children: [
             Padding(
-              padding: const EdgeInsetsDirectional.only(end: 10),
+              padding: const EdgeInsets.only(right: 10),
               // sourceRowName first: the tag ("CS · ", "Ani · ") is not part
               // of the name, and every CloudStream row would read "C".
               child: SourceIconTile(name: sourceRowName(label), icon: icon),

@@ -17,24 +17,16 @@ class TvListFocusable extends StatelessWidget {
     super.key,
     required this.onTap,
     this.onLongPress,
-    this.waitForKeyUp = false,
     this.autofocus = false,
     this.focusNode,
     this.semanticLabel,
     this.child,
     this.builder,
     this.variant = TvFocusVariant.row,
-  }) : assert(
-         child != null || builder != null,
-         'TvListFocusable needs either child or builder',
-       );
+  }) : assert(child != null || builder != null, 'TvListFocusable needs either child or builder');
 
   final VoidCallback onTap;
   final VoidCallback? onLongPress;
-
-  /// See [TvFocusable.waitForKeyUp]. Needed when [onTap] opens a dialog or
-  /// route that autofocuses another [TvFocusable].
-  final bool waitForKeyUp;
   final bool autofocus;
   final FocusNode? focusNode;
   final String? semanticLabel;
@@ -52,7 +44,6 @@ class TvListFocusable extends StatelessWidget {
       semanticLabel: semanticLabel,
       onTap: onTap,
       onLongPress: onLongPress,
-      waitForKeyUp: waitForKeyUp,
       builder: builder,
       child: child,
     );

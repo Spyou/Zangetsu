@@ -19,7 +19,6 @@ import '../../core/mode/content_mode_cubit.dart';
 import '../../core/zmode/metadata_filters.dart';
 import '../../core/zmode/zmode_module.dart';
 import '../../core/zmode/zmode_prefs.dart';
-import '../../core/ui/app_dialog.dart';
 import '../../core/ui/app_toast.dart';
 import 'open_related.dart';
 import '../../core/ui/episode_unavailable_dialog.dart';
@@ -505,40 +504,15 @@ class _DetailViewState extends State<_DetailView>
   /// reuses the work. Fire-and-forget; cancelled implicitly by leaving (the
   /// result just lands in the repo's prefetch cache, unused).
   void _maybePrefetch(String epUrl, String sourceId) {
+    // SourceRepository.prefetch isn't on CatalogueRepository and throws for
+    // the zm pseudo source — skip it, the metadata catalogue has no prefetch.
+    if (sourceId == ZmodeIds.sourceId) return;
     if (_prefetchedEpUrl == epUrl) return;
-    final zMode = sourceId == ZmodeIds.sourceId;
-    // In Z Mode the title has no source of its own, so this used to do nothing
-    // at all and every Play paid the full resolve — measured across 139 plays
-    // on 2.2.0: 7.3s median, 20s at p90, and 51 of them over ten seconds.
-    //
-    // Only worth starting when a source is already matched for this title.
-    // Then the resolve skips the sweep and goes straight to that source, which
-    // is 94% of plays; without a match it would search every installed source
-    // for a title the viewer may never play, which is not ours to spend.
-    if (zMode && _zModeMatchedSource() == null) return;
     _prefetchedEpUrl = epUrl;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      if (zMode) {
-        // Same call Play makes, so the winner and the stream URLs land in the
-        // caches it reads. Fire-and-forget: a failure here must never surface,
-        // Play just does the work itself as before.
-        sl<CatalogueRepository>()
-            .sources(epUrl, sourceId: sourceId, fast: true)
-            .catchError((_) => <VideoSource>[]);
-        return;
-      }
       sl<SourceRepository>().prefetch(epUrl, sourceId: sourceId);
     });
-  }
-
-  /// The source already matched to this title, or null when none is — a local
-  /// lookup, no network.
-  SourceMatch? _zModeMatchedSource() {
-    if (!sl.isRegistered<MatchStore>()) return null;
-    final c = ZmodeIds.parseShow(widget.item.url);
-    if (c == null) return null;
-    return sl<MatchStore>().bestFor(c);
   }
 
   // ── Scroll-driven app-bar title fade. PRESERVED EFFECT — reads the outer
@@ -895,23 +869,15 @@ class _DetailViewState extends State<_DetailView>
   Future<void> _scrobbleUpTo(Episode ep, MediaDetail detail) async {
     final n = ep.number;
     if (n == null || n <= 0 || n != n.truncateToDouble()) return;
-    // Same kind mapping as the entry fetch above: a manga/novel mark must go
-    // out as manga (plus the novel flag), with the title attached. Omitting
-    // either made manual manga marks resolve as anime with no title fallback,
-    // so AniList missed and MangaBaka refused while Simkl logged a false ok.
-    final reading =
-        detail.type == ProviderType.manga || detail.type == ProviderType.novel;
     await sl<TrackerHub>().scrobble(
       malId: detail.malId ?? widget.item.malId,
-      title: detail.title,
+      title: detail.type == ProviderType.anime ? detail.title : null,
       tmdbId: widget.item.tmdbId,
       tmdbIsTv: widget.item.tmdbIsTv,
       imdbId: widget.item.imdbId,
       episode: n.toInt(),
       season: ep.season,
       seasonEpisode: seasonEpisodeOf(detail.episodes, ep),
-      kind: reading ? MediaKind.manga : MediaKind.anime,
-      novel: detail.type == ProviderType.novel,
       // Asked for by hand, so it goes out even with auto-tracking off.
       auto: false,
     );
@@ -1105,12 +1071,8 @@ class _DetailViewState extends State<_DetailView>
       case EpisodeAction.toggleWatched:
         final nowWatched = !markedDone(ep);
         if (isReading) {
-          // readSource, not item.sourceId: for a metadata title item.sourceId
-          // is the `zm` pseudo-source while the chapter list and reader key by
-          // the real source — writing under `zm` stored the mark where nothing
-          // reads, so the row never dimmed until tracker progress arrived.
           await read.setRead(
-            readSource,
+            widget.item.sourceId,
             readShowId,
             ep.id,
             read: nowWatched,
@@ -1126,14 +1088,9 @@ class _DetailViewState extends State<_DetailView>
         // Only forward when marking. Trackers store a high-water mark, not a
         // set, so there's no "unwatch episode 12" to send — dropping progress
         // back would be a guess at what the user wanted their list to say.
+        if (nowWatched) await _scrobbleUpTo(ep, detail);
         if (!mounted) return;
-        // Repaint FIRST from the already-saved mark. The tracker fan-out below
-        // can stall on retries/backoff, and awaiting it here is what left the
-        // row un-dimmed until the next rebuild.
         setState(() {});
-        // Fire-and-forget: _scrobbleUpTo touches no context/setState, and
-        // TrackerHub._fan already swallows per-tracker errors.
-        if (nowWatched) unawaited(_scrobbleUpTo(ep, detail));
         showAppToast(
           context,
           isReading
@@ -1151,9 +1108,8 @@ class _DetailViewState extends State<_DetailView>
         // you pressed would mean marking it separately every time.
         for (var i = 0; i <= index; i++) {
           if (isReading) {
-            // Same key pairing as toggleWatched above: the real source.
             await read.setRead(
-              readSource,
+              widget.item.sourceId,
               readShowId,
               episodes[i].id,
               read: true,
@@ -1170,11 +1126,9 @@ class _DetailViewState extends State<_DetailView>
         // One tracker write for the highest episode, not one per episode —
         // progress is a high-water mark, so the rest are implied and firing
         // twelve updates would just rate-limit the account.
+        await _scrobbleUpTo(ep, detail);
         if (!mounted) return;
-        // Same repaint-first reasoning as toggleWatched above: the mark is
-        // saved, so paint it now and let the tracker write finish behind.
         setState(() {});
-        unawaited(_scrobbleUpTo(ep, detail));
         showAppToast(
           context,
           isReading
@@ -2348,8 +2302,8 @@ class _DetailViewState extends State<_DetailView>
               // content gutter (title/synopsis), and labelPadding(right: 24)
               // spaces the tabs apart while keeping them left-anchored —
               // never centered/spread (matches Sozo Read).
-              padding: const EdgeInsetsDirectional.only(start: 16),
-              labelPadding: const EdgeInsetsDirectional.only(end: 24),
+              padding: const EdgeInsets.only(left: 16),
+              labelPadding: const EdgeInsets.only(right: 24),
               labelColor: AppColors.accent,
               unselectedLabelColor: AppColors.textSecondary,
               indicatorSize: TabBarIndicatorSize.label,
@@ -2360,7 +2314,7 @@ class _DetailViewState extends State<_DetailView>
                 // bottom of that box with a visible gap under the word.
                 // Raising the line rather than shortening the tab keeps the
                 // tap target at its full height.
-                insets: EdgeInsetsDirectional.only(start: 2, end: 2, bottom: 8),
+                insets: EdgeInsets.only(left: 2, right: 2, bottom: 8),
               ),
               // Remove the full-width underline divider under the bar.
               dividerColor: Colors.transparent,

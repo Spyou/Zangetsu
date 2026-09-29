@@ -1716,12 +1716,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get audioDelay => '音频延迟';
 
   @override
-  String get androidPlayer => 'Android Player (Experimental)';
-
-  @override
-  String get androidPlayerUnavailable => 'Android Player could not start';
-
-  @override
   String get audioNormalization => '音频响度均衡';
 
   @override
@@ -5122,13 +5116,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get export => 'Export';
-
-  @override
-  String get keepDownloadsPrivate => 'Keep downloads private';
-
-  @override
-  String get keepDownloadsPrivateSubtitle =>
-      'New video downloads stay inside Zangetsu instead of the Downloads folder. They are deleted when you uninstall Zangetsu. Chapters and exports are unaffected.';
 }
 
 /// The translations for Chinese, as used in Taiwan (`zh_TW`).

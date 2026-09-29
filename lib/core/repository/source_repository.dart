@@ -28,6 +28,7 @@ import '../provider/cloudstream_provider.dart';
 import '../provider/provider_manager.dart';
 import '../provider/provider_registry.dart';
 import '../provider/reading_provider.dart';
+import '../provider/stremio_manager.dart';
 import '../state/active_source_cubit.dart';
 import 'catalogue_repository.dart';
 import 'source_domain_overrides.dart';
@@ -44,6 +45,7 @@ class SourceRepository implements CatalogueRepository {
     required PlaybackPrefs prefs,
     MihonManager? mihonManager,
     LnReaderManager? lnrManager,
+    StremioManager? stremioManager,
     // Optional so existing tests construct this unchanged; null simply means
     // "no language filtering", which is also the behaviour for a user who has
     // never picked a language set.
@@ -69,13 +71,15 @@ class SourceRepository implements CatalogueRepository {
        // instead. Omitting it yields the same "EMPTY registry" behaviour —
        // `lnr:` ids simply never resolve. The injector always passes the
        // real one.
-       _lnrManager = lnrManager;
+      _lnrManager = lnrManager,
+      _stremioManager = stremioManager;
 
   final ProviderManager _manager;
   final CloudStreamManager _csManager;
   final AniyomiManager _aniManager;
   final MihonManager _mihonManager;
   final LnReaderManager? _lnrManager;
+  final StremioManager? _stremioManager;
   final ActiveSourceCubit _active;
   final PlaybackPrefs _prefs;
 
@@ -158,6 +162,8 @@ class SourceRepository implements CatalogueRepository {
   /// [_isMihon] — its own prefix so `sourceTypeOf` can type it novel without
   /// disturbing the `mihon:`/`ani:` lines.
   static bool _isLnReader(String id) => id.startsWith('lnr:');
+
+  static bool _isStremio(String id) => id.startsWith('stremio:');
 
   /// The currently-active source identifier.
   @override
@@ -375,6 +381,10 @@ class SourceRepository implements CatalogueRepository {
       ..._lnrManager.installedSources.map(
         (s) => (id: s.id, name: s.name, lang: null),
       ),
+    if (_stremioManager != null)
+      ..._stremioManager.all.map(
+        (p) => (id: p.sourceId, name: p.displayName, lang: null),
+      ),
   ];
 
   /// Base site URL for a source. For Mihon/Aniyomi/LNReader this turns a
@@ -398,6 +408,8 @@ class SourceRepository implements CatalogueRepository {
     // `site`), same rationale as Mihon above.
     final l = _lnrManager?.get(sourceId);
     if (l != null) return l.site;
+    final stremio = _stremioManager?.get(sourceId);
+    if (stremio != null) return stremio.baseUrl;
     final a = _aniManager.get(sourceId);
     if (a is AniyomiProvider) return a.info.baseUrl;
     // CloudStream plugins declare their own site as `MainAPI.mainUrl`. Their
@@ -492,6 +504,9 @@ class SourceRepository implements CatalogueRepository {
     if (_isLnReader(sourceId)) {
       return _lnrManager?.get(sourceId)?.displayName ?? sourceId;
     }
+    if (_isStremio(sourceId)) {
+      return _stremioManager?.get(sourceId)?.displayName ?? sourceId;
+    }
     return _manager.get(sourceId)?.displayName ?? sourceId;
   }
 
@@ -518,6 +533,9 @@ class SourceRepository implements CatalogueRepository {
     }
     if (_isLnReader(sourceId)) {
       return _lnrManager?.get(sourceId) != null;
+    }
+    if (_isStremio(sourceId)) {
+      return _stremioManager?.get(sourceId) != null;
     }
     // JS provider: check runtime first, then registry (TV: runtime may be
     // empty because loadAll was skipped).
@@ -575,6 +593,8 @@ class SourceRepository implements CatalogueRepository {
       p = _mihonManager.get(resolved);
     } else if (_isLnReader(resolved)) {
       p = _lnrManager?.get(resolved);
+    } else if (_isStremio(resolved)) {
+      p = _stremioManager?.get(resolved);
     } else {
       p = _manager.get(resolved);
     }
@@ -584,35 +604,14 @@ class SourceRepository implements CatalogueRepository {
     return p;
   }
 
-  /// [_providerFor], but gives a JS provider that is not in the runtime yet a
-  /// chance to load before we give up on it.
-  ///
-  /// On phone every provider is loaded at boot, so this costs nothing —
-  /// [ensureSourceLoaded] returns straight away for a provider already in the
-  /// runtime and for every non-JS ecosystem. On TV `loadAll` is skipped and
-  /// providers load on demand, so opening a title before anything else had
-  /// touched its source (straight into a show from Continue Watching, rather
-  /// than via the home rail) threw `Provider not loaded` for a source that was
-  /// installed the whole time.
-  ///
-  /// A source that still will not load falls through to [_providerFor] and
-  /// throws exactly as it did before.
-  Future<BaseProvider> _providerReady(String? id) async {
-    final resolved = id ?? _active.state;
-    await ensureSourceLoaded(resolved);
-    return _providerFor(resolved);
-  }
-
   Future<List<MediaItem>> popular({
     String category = 'sub',
     int dateRange = 7,
     int page = 1,
     String? sourceId,
-  }) async => (await _providerReady(sourceId)).popular(
-    category: category,
-    dateRange: dateRange,
-    page: page,
-  );
+  }) => _providerFor(
+    sourceId,
+  ).popular(category: category, dateRange: dateRange, page: page);
 
   /// CloudStream-style Home: the active provider's own named rows. When the
   /// provider defines `getHome` we render exactly what it returns (empty rows
@@ -624,7 +623,7 @@ class SourceRepository implements CatalogueRepository {
     String category = 'sub',
     String? sourceId,
   }) async {
-    final provider = await _providerReady(sourceId);
+    final provider = _providerFor(sourceId);
 
     final sections = await provider.getHome(category: category);
     if (sections != null) {
@@ -664,7 +663,7 @@ class SourceRepository implements CatalogueRepository {
   /// error) degrades to an empty list so the caller just stops the scroll.
   Future<List<MediaItem>> browseMore(BrowseMore more, int page) async {
     try {
-      final p = await _providerReady(more.sourceId);
+      final p = _providerFor(more.sourceId);
       switch (more.kind) {
         case 'ani_popular':
           return p.popular(page: page);
@@ -693,8 +692,7 @@ class SourceRepository implements CatalogueRepository {
     String query, {
     String category = 'sub',
     String? sourceId,
-  }) async =>
-      (await _providerReady(sourceId)).search(query, 1, category: category);
+  }) => _providerFor(sourceId).search(query, 1, category: category);
 
   /// Status-reporting search for the source-health feature (search ordering +
   /// the "Test sources" screen). Unlike [search] it surfaces whether a source
@@ -793,7 +791,7 @@ class SourceRepository implements CatalogueRepository {
           outcome: r.items.isEmpty ? SourceOutcome.empty : SourceOutcome.ok,
         );
       }
-      final provider = await _providerReady(resolved);
+      final provider = _providerFor(resolved);
       final items = (_isAniyomi(resolved) && provider is AniyomiProvider)
           ? await provider.search(
               query,
@@ -871,7 +869,7 @@ class SourceRepository implements CatalogueRepository {
     final sid = sourceId ?? _active.state;
     AppLogger.instance.log('[detail] source fetch start sourceId=$sid url=$url');
     try {
-      final p = await _providerReady(sourceId);
+      final p = _providerFor(sourceId);
       // Only the JS providers share the serialized call queue this is meant to
       // unblock; the native ecosystems each run their own calls, so there is
       // nothing for them to wait behind and nothing to pass on.
@@ -903,8 +901,7 @@ class SourceRepository implements CatalogueRepository {
     String url, {
     String category = 'sub',
     String? sourceId,
-  }) async =>
-      (await _providerReady(sourceId)).getEpisodes(url, category: category);
+  }) => _providerFor(sourceId).getEpisodes(url, category: category);
 
   /// The links resolved SO FAR for [episodeUrl], plus whether more may arrive.
   ///
@@ -962,17 +959,15 @@ class SourceRepository implements CatalogueRepository {
         return hit.sources;
       }
       // 3. Fresh resolve → cache it for the next re-open.
-      final provider = await _providerReady(sourceId);
-      final fresh = await provider.getVideoSources(episodeUrl, fast: true);
+      final fresh = await _providerFor(
+        sourceId,
+      ).getVideoSources(episodeUrl, fast: true);
       if (fresh.isNotEmpty) {
         _resolved[key] = (at: DateTime.now(), sources: fresh);
       }
       return fresh;
     }
-    return (await _providerReady(sourceId)).getVideoSources(
-      episodeUrl,
-      fast: fast,
-    );
+    return _providerFor(sourceId).getVideoSources(episodeUrl, fast: fast);
   }
 
   /// Manga leaf — ordered page images for [chapterUrl]. No expiry cache here:
@@ -999,15 +994,10 @@ class SourceRepository implements CatalogueRepository {
     // chapter again while the first request was still in the air. Both waited
     // the full time; one of them was pure waste. A finished-result cache can't
     // help here, because neither request has finished yet.
-    // Resolved BEFORE the in-flight check on purpose: this can await (a TV
-    // loads a provider on demand), and an await between that check and the
-    // registration below would let a second caller slip past it and fetch the
-    // same chapter twice — the exact waste the check exists to stop.
-    final p = await _providerReady(sourceId);
-
     final inFlight = _pageFetches[key];
     if (inFlight != null) return inFlight;
 
+    final p = _providerFor(sourceId);
     if (p is! ReadingProvider) {
       throw UnsupportedError('${p.sourceId} does not support reading content');
     }
@@ -1124,7 +1114,7 @@ class SourceRepository implements CatalogueRepository {
         // fall through to the network
       }
     }
-    final p = await _providerReady(sourceId);
+    final p = _providerFor(sourceId);
     if (p is! ReadingProvider) {
       throw UnsupportedError('${p.sourceId} does not support reading content');
     }

@@ -643,8 +643,6 @@
 	"tapToUnlock": "Tap to unlock",
 	"subtitleDelay": "Subtitle delay",
 	"audioDelay": "Audio delay",
-	"androidPlayer": "Android Player (Experimental)",
-	"androidPlayerUnavailable": "Android Player could not start",
 	"audioNormalization": "Audio normalization",
 	"searchSubtitlesOnline": "Search subtitles online",
 	"loadFromFile": "Load from file…",
@@ -3008,7 +3006,5 @@
 	"exportedToFolder": "Exported to {folder}",
 	"@exportedToFolder": {"placeholders": {"folder": {"type": "String"}}},
 	"epubExportFailed": "Couldn't save the EPUB",
-	"export": "Export",
-	"keepDownloadsPrivate": "Keep downloads private",
-	"keepDownloadsPrivateSubtitle": "New video downloads stay inside Zangetsu instead of the Downloads folder. They are deleted when you uninstall Zangetsu. Chapters and exports are unaffected."
+	"export": "Export"
 }

@@ -15,7 +15,6 @@ import '../../core/state/active_source_cubit.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import 'providers_hub_screen.dart';
-import '../../core/ui/app_dialog.dart';
 import '../../l10n/l10n.dart';
 
 /// Thin entry point for the Providers screen — delegates to
@@ -203,12 +202,32 @@ class _AniSourceRowState extends State<_AniSourceRow> {
   /// Shows a confirm dialog then uninstalls the source.
   Future<void> _confirmUninstall(BuildContext context) async {
     final name = widget.source.displayName;
-    final ok = await AppDialog.confirm(
-      context,
-      title: context.l10n.uninstallNameQuestion(name),
-      message: context.l10n.thisRemovesTheSourceFromYourInstalledList,
-      confirmLabel: context.l10n.uninstall,
-      destructive: true,
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: Text(context.l10n.uninstallNameQuestion(name), style: AppText.headline),
+        content: Text(
+          context.l10n.thisRemovesTheSourceFromYourInstalledList,
+          style: AppText.body,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(
+              context.l10n.cancel,
+              style: AppText.body.copyWith(color: AppColors.textSecondary),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(
+              context.l10n.uninstall,
+              style: AppText.body.copyWith(color: AppColors.accent),
+            ),
+          ),
+        ],
+      ),
     );
     if (ok != true) return;
 
@@ -289,7 +308,7 @@ class _AniSourceRowState extends State<_AniSourceRow> {
       final update = pkg == null ? null : lookup(pkg);
       if (update == null) return const SizedBox.shrink();
       return Padding(
-        padding: const EdgeInsetsDirectional.only(end: 4),
+        padding: const EdgeInsets.only(right: 4),
         child: FilledButton(
           onPressed: _busy ? null : () => _applyUpdate(update),
           style: FilledButton.styleFrom(

@@ -433,7 +433,7 @@ class _HomeRowsScreenState extends State<HomeRowsScreen> {
           ReorderableDragStartListener(
             index: index,
             child: const Padding(
-              padding: EdgeInsetsDirectional.only(end: 10),
+              padding: EdgeInsets.only(right: 10),
               child: Icon(
                 Icons.drag_indicator_rounded,
                 size: 19,

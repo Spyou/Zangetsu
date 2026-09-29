@@ -28,22 +28,12 @@ class _AudioSubsSheet extends StatefulWidget {
     required this.onLoadFile,
     required this.onSearchOnline,
     required this.onTranslate,
-    this.castMode = false,
-    this.onAfterChange,
-    this.onSoftSubPicked,
-    this.onSubtitlesOff,
   });
   final PlayerCubit controller;
   final VoidCallback onInteract;
   final VoidCallback onLoadFile;
   final VoidCallback onSearchOnline;
   final VoidCallback onTranslate;
-
-  /// Chromecast can't switch muxed in-stream tracks or apply local files.
-  final bool castMode;
-  final VoidCallback? onAfterChange;
-  final ValueChanged<Subtitle>? onSoftSubPicked;
-  final VoidCallback? onSubtitlesOff;
 
   @override
   State<_AudioSubsSheet> createState() => _AudioSubsSheetState();
@@ -92,58 +82,56 @@ class _AudioSubsSheetState extends State<_AudioSubsSheet> {
                     ],
                   ),
                 ),
-                if (!widget.castMode) ...[
-                  const Divider(color: AppColors.hairline, height: 18),
-                  _DelayAdjuster(
-                    label: context.l10n.subtitleDelay,
-                    initial: c.subtitleDelay,
-                    onChanged: (d) => c.setSubtitleDelay(d),
-                    // Aniyomi-style two-tap auto-sync (subtitle only). Captures
-                    // live on the controller so they survive closing the sheet.
-                    sync: (
-                      capture: c.captureSubSync,
-                      clear: c.clearSubSync,
-                      currentMs: () => c.subtitleDelay.inMilliseconds,
-                      voiceOn: () => c.subSyncVoiceMs != null,
-                      textOn: () => c.subSyncTextMs != null,
-                    ),
+                const Divider(color: AppColors.hairline, height: 18),
+                _DelayAdjuster(
+                  label: context.l10n.subtitleDelay,
+                  initial: c.subtitleDelay,
+                  onChanged: (d) => c.setSubtitleDelay(d),
+                  // Aniyomi-style two-tap auto-sync (subtitle only). Captures
+                  // live on the controller so they survive closing the sheet.
+                  sync: (
+                    capture: c.captureSubSync,
+                    clear: c.clearSubSync,
+                    currentMs: () => c.subtitleDelay.inMilliseconds,
+                    voiceOn: () => c.subSyncVoiceMs != null,
+                    textOn: () => c.subSyncTextMs != null,
                   ),
-                  _DelayAdjuster(
-                    label: context.l10n.audioDelay,
-                    initial: c.audioDelay,
-                    onChanged: (d) => c.setAudioDelay(d),
-                  ),
-                  _SheetRow(
-                    label: context.l10n.audioNormalization,
-                    subtitle: context.l10n.audioNormalizationSubtitle,
-                    active: sl<PlaybackPrefs>().audioNormalize,
-                    onTap: () async {
-                      await c.toggleAudioNormalize();
-                      if (mounted) setState(() {});
-                      widget.onInteract();
-                    },
-                  ),
-                  _SheetRow(
-                    label: context.l10n.subtitleStyle,
-                    icon: Icons.text_fields_rounded,
-                    active: false,
-                    onTap: () {
-                      widget.onInteract();
-                      openSubtitleStyleSheet(context, c, widget.onInteract);
-                    },
-                  ),
-                  _SheetRow(
-                    label: context.l10n.styledSubtitlesLibass,
-                    subtitle: context.l10n.styledSubtitlesLibassSubtitle,
-                    toggleValue: c.styledSubtitlesOn,
-                    active: false,
-                    onTap: () {
-                      c.toggleStyledSubtitles();
-                      if (mounted) setState(() {});
-                      widget.onInteract();
-                    },
-                  ),
-                ],
+                ),
+                _DelayAdjuster(
+                  label: context.l10n.audioDelay,
+                  initial: c.audioDelay,
+                  onChanged: (d) => c.setAudioDelay(d),
+                ),
+                _SheetRow(
+                  label: context.l10n.audioNormalization,
+                  subtitle: context.l10n.audioNormalizationSubtitle,
+                  active: sl<PlaybackPrefs>().audioNormalize,
+                  onTap: () async {
+                    await c.toggleAudioNormalize();
+                    if (mounted) setState(() {});
+                    widget.onInteract();
+                  },
+                ),
+                _SheetRow(
+                  label: context.l10n.subtitleStyle,
+                  icon: Icons.text_fields_rounded,
+                  active: false,
+                  onTap: () {
+                    widget.onInteract();
+                    openSubtitleStyleSheet(context, c, widget.onInteract);
+                  },
+                ),
+                _SheetRow(
+                  label: context.l10n.styledSubtitlesLibass,
+                  subtitle: context.l10n.styledSubtitlesLibassSubtitle,
+                  toggleValue: c.styledSubtitlesOn,
+                  active: false,
+                  onTap: () {
+                    c.toggleStyledSubtitles();
+                    if (mounted) setState(() {});
+                    widget.onInteract();
+                  },
+                ),
               ],
             ),
           ),
@@ -170,33 +158,30 @@ class _AudioSubsSheetState extends State<_AudioSubsSheet> {
                   _SheetRow(
                     label: cat.toUpperCase(),
                     active: _category == cat,
-                    onTap: () async {
-                      await c.switchCategory(cat);
-                      if (!mounted) return;
+                    onTap: () {
+                      c.switchCategory(cat);
                       setState(() => _category = cat);
                       widget.onInteract();
-                      widget.onAfterChange?.call();
                     },
                   ),
-              if (!widget.castMode)
-                for (final (i, t) in tracks.indexed)
-                  _SheetRow(
-                    label: _trackLabel(
-                      t.title,
-                      t.language,
-                      '${context.l10n.audio} ${i + 1}',
-                      titleSaysSomething: _titlesSaySomething(
-                        tracks.map((t) => t.title),
-                      ),
+              for (final (i, t) in tracks.indexed)
+                _SheetRow(
+                  label: _trackLabel(
+                    t.title,
+                    t.language,
+                    '${context.l10n.audio} ${i + 1}',
+                    titleSaysSomething: _titlesSaySomething(
+                      tracks.map((t) => t.title),
                     ),
-                    subtitle: c.audioDetail(t),
-                    active: audioId == t.id,
-                    onTap: () {
-                      c.setAudioTrack(t);
-                      widget.onInteract();
-                    },
                   ),
-              if (cats.length <= 1 && (widget.castMode || tracks.length <= 1))
+                  subtitle: c.audioDetail(t),
+                  active: audioId == t.id,
+                  onTap: () {
+                    c.setAudioTrack(t);
+                    widget.onInteract();
+                  },
+                ),
+              if (cats.length <= 1 && tracks.length <= 1)
                 _SheetRow(
                   label: context.l10n.defaultLabel,
                   active: true,
@@ -249,63 +234,56 @@ class _AudioSubsSheetState extends State<_AudioSubsSheet> {
                 label: context.l10n.off,
                 active: subId == 'no',
                 onTap: () {
-                  widget.onSubtitlesOff?.call();
                   c.subtitlesOff();
                   widget.onInteract();
-                  widget.onAfterChange?.call();
                 },
               ),
-              if (!widget.castMode)
-                for (final t in embedded)
-                  _SheetRow(
-                    label: _trackLabel(
-                      t.title,
-                      t.language,
-                      t.id,
-                      titleSaysSomething: _titlesSaySomething(
-                        embedded.map((t) => t.title),
-                      ),
+              for (final t in embedded)
+                _SheetRow(
+                  label: _trackLabel(
+                    t.title,
+                    t.language,
+                    t.id,
+                    titleSaysSomething: _titlesSaySomething(
+                      embedded.map((t) => t.title),
                     ),
-                    active: subId == t.id,
-                    onTap: () {
-                      c.setSubtitle(t);
-                      widget.onInteract();
-                    },
                   ),
+                  active: subId == t.id,
+                  onTap: () {
+                    c.setSubtitle(t);
+                    widget.onInteract();
+                  },
+                ),
               for (final s in soft)
                 _SheetRow(
                   label: s.label ?? s.lang,
                   // A URI soft-sub is applied via SubtitleTrack.uri(s.url), whose
                   // media_kit track id IS the url — so the active one highlights.
                   active: subId == s.url,
-                  onTap: () async {
-                    widget.onSoftSubPicked?.call(s);
-                    await c.setSoftSub(s);
+                  onTap: () {
+                    c.setSoftSub(s);
                     widget.onInteract();
-                    widget.onAfterChange?.call();
                   },
                 ),
-              if (!widget.castMode) ...[
+              _SheetRow(
+                label: context.l10n.searchSubtitlesOnline,
+                icon: Icons.search_rounded,
+                active: false,
+                onTap: widget.onSearchOnline,
+              ),
+              _SheetRow(
+                label: context.l10n.loadFromFile,
+                icon: Icons.upload_file,
+                active: false,
+                onTap: widget.onLoadFile,
+              ),
+              if (c.softSubs.isNotEmpty || c.canTranslateSub)
                 _SheetRow(
-                  label: context.l10n.searchSubtitlesOnline,
-                  icon: Icons.search_rounded,
+                  label: context.l10n.translateSubtitles,
+                  icon: Icons.translate_rounded,
                   active: false,
-                  onTap: widget.onSearchOnline,
+                  onTap: widget.onTranslate,
                 ),
-                _SheetRow(
-                  label: context.l10n.loadFromFile,
-                  icon: Icons.upload_file,
-                  active: false,
-                  onTap: widget.onLoadFile,
-                ),
-                if (c.softSubs.isNotEmpty || c.canTranslateSub)
-                  _SheetRow(
-                    label: context.l10n.translateSubtitles,
-                    icon: Icons.translate_rounded,
-                    active: false,
-                    onTap: widget.onTranslate,
-                  ),
-              ],
             ],
           ),
         ),
@@ -1393,7 +1371,7 @@ class _ColorSheetState extends State<_ColorSheet> {
             children: [
               for (final id in _quick)
                 Padding(
-                  padding: const EdgeInsetsDirectional.only(end: 8),
+                  padding: const EdgeInsets.only(right: 8),
                   child: GestureDetector(
                     onTap: () => _applyPreset(ColorProfiles.byId(id)),
                     child: Container(
@@ -1721,7 +1699,7 @@ class _SheetRow extends StatelessWidget {
                       color: AppColors.textSecondary,
                       visualDensity: VisualDensity.compact,
                       constraints: const BoxConstraints(),
-                      padding: const EdgeInsetsDirectional.only(start: 8),
+                      padding: const EdgeInsets.only(left: 8),
                       onPressed: onRemove,
                     ),
                 ],
