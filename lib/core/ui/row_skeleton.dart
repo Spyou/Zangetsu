@@ -72,10 +72,10 @@ class _RowSkeletonState extends State<RowSkeleton>
                 child: ListView.builder(
                   scrollDirection: Axis.horizontal,
                   physics: const NeverScrollableScrollPhysics(),
-                  padding: const EdgeInsetsDirectional.only(start: 16),
+                  padding: const EdgeInsets.only(left: 16),
                   itemCount: 5,
                   itemBuilder: (context, index) => Padding(
-                    padding: const EdgeInsetsDirectional.only(end: 12),
+                    padding: const EdgeInsets.only(right: 12),
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(12),
                       child: SizedBox(

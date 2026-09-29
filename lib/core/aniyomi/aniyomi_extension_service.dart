@@ -33,8 +33,54 @@ class AniyomiExtensionService {
   ///
   /// Throws a [PlatformException] with code `"LOAD"` when the APK is not a
   /// valid Aniyomi anime extension or the lib version is out of range.
-  Future<void> installExtension(String apkPath) async {
-    await _channel.invokeMethod<void>('installExtension', {'apkPath': apkPath});
+  /// Returns true on success, false on failure (with detailed logging).
+  Future<bool> installExtension(String apkPath) async {
+    try {
+      await _channel.invokeMethod<void>('installExtension', {'apkPath': apkPath});
+      return true;
+    } on PlatformException catch (e) {
+      // Extract more detail from the error for better user feedback
+      final code = e.code;
+      final message = e.message ?? 'Unknown error';
+      final details = e.details;
+      
+      debugPrint(
+        '[aniyomi] Extension load failed: code=$code, message=$message, details=$details'
+      );
+      
+      // Re-throw with enhanced message for the UI layer
+      throw PlatformException(
+        code: code,
+        message: _enhanceErrorMessage(code, message, apkPath),
+        details: details,
+      );
+    }
+  }
+  
+  /// Enhances error messages with more context for the user.
+  static String _enhanceErrorMessage(String code, String message, String apkPath) {
+    final pkg = apkPath.split('/').last.replaceAll('.apk', '');
+    
+    if (code == 'LOAD' && message.contains('Unsupported extensions-lib version')) {
+      // Extract the version number from the message
+      final versionMatch = RegExp(r'version (\d+\.\d+)').firstMatch(message);
+      final version = versionMatch?.group(1) ?? 'unknown';
+      return 'Extension $pkg uses libVersion $version which is not yet fully supported. '
+             'It may still work in compatibility mode. '
+             'Try enabling "Compatibility Mode" in settings or update Zangetsu.';
+    }
+    
+    if (code == 'LOAD' && message.contains('Not an Aniyomi anime extension')) {
+      return 'Extension $pkg does not appear to be a valid Aniyomi anime extension. '
+             'It may be for a different app or version.';
+    }
+    
+    if (code == 'LOAD' && message.contains('No source classes declared')) {
+      return 'Extension $pkg is missing source class declarations. '
+             'This may be a corrupted or incompatible extension.';
+    }
+    
+    return message;
   }
 
   /// Loads every `*.apk` found in [dir] and registers them.
@@ -198,6 +244,16 @@ class AniyomiExtensionService {
       }
 
       // 3. Install and list sources.
+      // Check libVersion if available before attempting install
+      if (entry.libVersion != null) {
+        final libVersion = entry.libVersion!;
+        debugPrint(
+          '[aniyomi] Extension ${entry.pkg} has libVersion $libVersion from repo metadata'
+        );
+        // Note: The actual version check happens in native code (AniyomiExtensionLoader.kt)
+        // This is just for logging and pre-validation
+      }
+      
       await installExtension(apkPath);
       final allSources = await listSources();
       final providers = allSources

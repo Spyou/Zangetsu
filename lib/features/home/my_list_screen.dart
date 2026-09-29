@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:ui' show ImageFilter;
 
 import 'package:cached_network_image/cached_network_image.dart';
@@ -116,7 +115,7 @@ class _MyListView extends StatefulWidget {
   State<_MyListView> createState() => _MyListViewState();
 }
 
-class _MyListViewState extends State<_MyListView> with WidgetsBindingObserver {
+class _MyListViewState extends State<_MyListView> {
   late WatchStatus? _statusFilter = widget.initialStatus; // null = All
 
   /// Selected AniList custom list, or null. Separate from [_categoryFilter]:
@@ -177,45 +176,9 @@ class _MyListViewState extends State<_MyListView> with WidgetsBindingObserver {
     _ => null,
   };
 
-  Timer? _liveSync;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    // Own My List is Hive; tracker chips cache a fetch. While this screen is
-    // mounted, keep both aligned with other devices — TV never backgrounds.
-    _liveSync = Timer.periodic(const Duration(seconds: 15), (_) {
-      _refreshLibrary();
-    });
-  }
-
-  @override
-  void dispose() {
-    _liveSync?.cancel();
-    WidgetsBinding.instance.removeObserver(this);
-    _searchController.dispose();
-    super.dispose();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) _refreshLibrary();
-  }
-
-  void _refreshLibrary() {
-    if (!mounted) return;
-    if (sl.isRegistered<MyListStore>()) {
-      unawaited(sl<MyListStore>().pullFromCloud());
-    }
-    unawaited(context.read<TrackerListCubit>().refresh());
-  }
-
   @override
   Widget build(BuildContext context) {
-    if (sl<AppMode>().isTv) {
-      return MyListScreenTv(initialStatus: widget.initialStatus);
-    }
+    if (sl<AppMode>().isTv) return const MyListScreenTv();
     return Scaffold(
       backgroundColor: AppColors.bg,
       // bottom: false — the shell's floating dock overlays the content
@@ -253,6 +216,12 @@ class _MyListViewState extends State<_MyListView> with WidgetsBindingObserver {
   bool _searching = false;
   String _query = '';
   final _searchController = TextEditingController();
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   void _toggleSearch() {
     setState(() {
@@ -583,7 +552,7 @@ class _MyListViewState extends State<_MyListView> with WidgetsBindingObserver {
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 18, 20, 6),
               child: Align(
-                alignment: AlignmentDirectional.centerStart,
+                alignment: Alignment.centerLeft,
                 child: Text(c.name, style: AppText.title),
               ),
             ),
@@ -811,30 +780,12 @@ class _MyListViewState extends State<_MyListView> with WidgetsBindingObserver {
   Widget _myListBody(BuildContext context) {
     return BlocBuilder<MyListCubit, List<MyListEntry>>(
       builder: (context, entries) {
-        final child = entries.isEmpty
-            ? _empty(context)
-            : _grid(
-                context,
-                entries,
-                onTap: (item) => _openItem(context, item),
-                onMore: (entry) =>
-                    showListStatusSheet(context, item: entry.item),
-              );
-        return RefreshIndicator(
-          color: AppColors.accent,
-          backgroundColor: AppColors.surface,
-          onRefresh: () => sl<MyListStore>().pullFromCloud(),
-          child: entries.isEmpty
-              ? ListView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  children: [
-                    SizedBox(
-                      height: MediaQuery.of(context).size.height * 0.6,
-                      child: child,
-                    ),
-                  ],
-                )
-              : child,
+        if (entries.isEmpty) return _empty(context);
+        return _grid(
+          context,
+          entries,
+          onTap: (item) => _openItem(context, item),
+          onMore: (entry) => showListStatusSheet(context, item: entry.item),
         );
       },
     );

@@ -3,7 +3,6 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 import 'package:watch_app/core/hive/safe_box.dart';
-import 'package:watch_app/core/hive/hive_key.dart';
 
 import '../models/media_item.dart';
 import '../supabase/supabase_service.dart';
@@ -166,7 +165,7 @@ class CategoryStore {
   final ValueNotifier<int> revision = ValueNotifier<int>(0);
 
   /// Same key shape as [ListStatusStore] so the two line up per title.
-  String keyOf(MediaItem m) => hiveKey('${m.sourceId}::${m.id}');
+  String keyOf(MediaItem m) => '${m.sourceId}::${m.id}';
 
   // ── the categories themselves ────────────────────────────────────────────
 
@@ -373,7 +372,7 @@ class CategoryStore {
       // Ignore a link to a category that no longer exists, so a half-deleted
       // row can't create a phantom tab.
       if (!knownIds.contains(cat)) continue;
-      byKey.putIfAbsent(hiveKey('$src::$item'), () => <String>{}).add(cat);
+      byKey.putIfAbsent('$src::$item', () => <String>{}).add(cat);
     }
 
     // Most pulls find exactly what's already here (nothing changed on another

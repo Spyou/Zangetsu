@@ -271,7 +271,6 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
       tmdbId: detail.tmdbId ?? widget.item.tmdbId,
       tmdbIsTv: detail.tmdbIsTv,
       imdbId: detail.imdbId ?? widget.item.imdbId,
-      listItem: widget.item,
     );
   }
 
@@ -671,7 +670,7 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
                             const Padding(
                               padding: EdgeInsets.fromLTRB(8, 4, 12, 0),
                               child: Align(
-                                alignment: AlignmentDirectional.centerStart,
+                                alignment: Alignment.centerLeft,
                                 child: TvBackButton(),
                               ),
                             ),
@@ -924,7 +923,7 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
                                 i++
                               )
                                 Padding(
-                                  padding: const EdgeInsetsDirectional.only(end: 4),
+                                  padding: const EdgeInsets.only(right: 4),
                                   child: TvFocusable(
                                     key: ValueKey('tv-detail-tab-$i'),
                                     variant: TvFocusVariant.pill,
@@ -1356,7 +1355,7 @@ class _TvEpisodeDescriptionDialogState
               ),
               const SizedBox(height: 20),
               Align(
-                alignment: AlignmentDirectional.centerEnd,
+                alignment: Alignment.centerRight,
                 child: TvFocusable(
                   focusNode: _closeFocus,
                   variant: TvFocusVariant.pill,

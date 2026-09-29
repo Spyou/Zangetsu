@@ -45,6 +45,7 @@ import '../provider/cf_clearance_store.dart';
 import '../provider/cloudstream_provider.dart';
 import '../provider/provider_downloader.dart';
 import '../provider/provider_manager.dart';
+import '../provider/stremio_manager.dart';
 import '../share/open_link_service.dart';
 import '../provider/provider_registry.dart';
 import '../provider/provider_repo_registry.dart';
@@ -68,7 +69,6 @@ import '../metadata/people_service.dart';
 import '../app_config.dart';
 import '../environment.dart';
 import '../metadata/tmdb.dart';
-import 'package:watch_app/core/metadata/tmdb_fallback.dart';
 import '../metadata/title_logo_service.dart';
 import '../mode/content_mode_cubit.dart';
 import '../trailer/trailer_service.dart';
@@ -113,7 +113,6 @@ import '../mihon/mihon_repo.dart';
 import '../../features/auth/auth_cubit.dart';
 import '../../features/auth/migration_bridge.dart';
 import '../../features/auth/tv_pairing_service.dart';
-import '../../features/home/cubit/home_cache.dart';
 import '../../features/home/cubit/home_cubit.dart';
 import '../../features/watch_together/watch_room_service.dart';
 import '../../features/watch_together/watch_together_controller.dart';
@@ -325,7 +324,6 @@ Future<void> initDependencies() async {
   );
   await TitlePrefsStore.init();
   sl.registerSingleton<TitlePrefsStore>(TitlePrefsStore());
-  await HomeCache.init();
   await PlaybackPrefs.init();
   sl.registerSingleton<PlaybackPrefs>(PlaybackPrefs());
   await ReaderPrefs.init();
@@ -400,8 +398,7 @@ Future<void> initDependencies() async {
         if (options.uri.host == AniListGraphql.host) {
           options.headers.addAll(AniListGraphql.headers);
         }
-        if (options.uri.host == Tmdb.host ||
-            options.uri.host == Tmdb.fallbackHost) {
+        if (options.uri.host == Tmdb.host) {
           options.queryParameters = {
             ...options.queryParameters,
             'api_key': Tmdb.apiKey,
@@ -412,8 +409,6 @@ Future<void> initDependencies() async {
       },
     ),
   );
-  // One retry on TMDB's other host when a network blocks the usual one.
-  dio.interceptors.add(TmdbFallbackInterceptor(dio));
   // AniList gets a longer read than the 8s above and honours 429 — see
   // AniListNetworkPolicy. Registered so the UI can ask how long the wait is.
   final aniListPolicy = AniListNetworkPolicy();
@@ -519,6 +514,11 @@ Future<void> initDependencies() async {
   sl.registerSingleton<ProviderManager>(manager);
   final downloader = ProviderDownloader(dio: dio);
   sl.registerSingleton<ProviderDownloader>(downloader);
+
+  await StremioManager.init();
+  final stremioManager = StremioManager(dio: dio);
+  await stremioManager.loadInstalled();
+  sl.registerSingleton<StremioManager>(stremioManager);
 
   // CloudStream sources route through a native MethodChannel (Android-only).
   // The repo box (persisted owner/repo grouping) MUST be opened before the
@@ -951,6 +951,7 @@ Future<void> initDependencies() async {
       aniManager: aniyomiManager,
       mihonManager: mihonManager,
       lnrManager: lnrManager,
+      stremioManager: stremioManager,
       activeSource: sl<ActiveSourceCubit>(),
       prefs: sl<PlaybackPrefs>(),
       // The language sets the sources screens already filter their lists by.

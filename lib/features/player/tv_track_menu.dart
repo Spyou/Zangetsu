@@ -85,7 +85,7 @@ class _TvTrackMenuState extends State<TvTrackMenu> {
     var optionIndex = 0;
     final useSections = widget.sections.isNotEmpty;
     return Align(
-      alignment: AlignmentDirectional.centerEnd,
+      alignment: Alignment.centerRight,
       child: FocusScope(
         node: _scope,
         onKeyEvent: (_, e) {

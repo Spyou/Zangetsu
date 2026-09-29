@@ -10,4 +10,5 @@ final Set<LogicalKeyboardKey> okKeys = {
   LogicalKeyboardKey.select,
   LogicalKeyboardKey.enter,
   LogicalKeyboardKey.gameButtonA,
+  LogicalKeyboardKey.space,
 };

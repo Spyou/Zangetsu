@@ -37,8 +37,7 @@
         android:icon="@mipmap/ic_launcher_crescent"
         android:banner="@drawable/tv_banner"
         android:networkSecurityConfig="@xml/network_security_config"
-        android:enableOnBackInvokedCallback="false"
-        android:supportsRtl="true">
+        android:enableOnBackInvokedCallback="false">
         <!-- flutter_background_service declares this service but without a
              foregroundServiceType, which Android 14+ requires for dataSync.
              Same attrs as the plugin + the type (merged, no conflict). -->
@@ -234,15 +233,6 @@
             android:screenOrientation="landscape"
             android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode" />
-        <!-- Native phone video player (PhonePlayerActivity). Rotates with the
-             device and stays in the app's own task; reached only when the
-             experimental player toggle is on, for devices where libmpv will
-             not load. -->
-        <activity
-            android:name=".PhonePlayerActivity"
-            android:exported="false"
-            android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen"
-            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode" />
         <!-- Google Cast Framework configuration. -->
         <meta-data
             android:name="com.google.android.gms.cast.framework.OPTIONS_PROVIDER_CLASS_NAME"
@@ -256,23 +246,6 @@
              renderer this device handles (1.8.0 shipped with no flag and worked).
              Forcing EnableImpeller=false here black-screened it, so we match
              1.8.0 exactly and leave the default. mpv gpu-next video is separate. -->
-
-        <!-- Lets an external player read a DOWNLOADED episode. A download
-             arrives as a bare filesystem path, which is a URI with no scheme
-             at all: lenient players guess it is a file, a strict one resolves
-             nothing and the launch fails. Android 7+ refuses a file:// handed
-             to another app, so content:// is the only form left. Used ONLY as
-             a fallback after a direct launch finds no activity, so every
-             launch that works today is untouched. -->
-        <provider
-            android:name="androidx.core.content.FileProvider"
-            android:authorities="${applicationId}.videoprovider"
-            android:exported="false"
-            android:grantUriPermissions="true">
-            <meta-data
-                android:name="android.support.FILE_PROVIDER_PATHS"
-                android:resource="@xml/video_paths" />
-        </provider>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

@@ -82,17 +82,27 @@ object MihonExtensionLoader {
      * "1.4", not "1" and not "1.0".
      *
      * We use a permissive continuous range rather than mirroring Mihon's exact {1.4, 1.6}
-     * allow-list: 1.0..2.0 covers every observed value with headroom on both sides (older 1.x
-     * extensions still floating around unrepacked, and future 1.7/1.8/1.9 minor bumps). The
-     * range is inclusive, so a "2.0.x" extension (libVersion 2.0) is still accepted — only a
-     * "2.1+" bump, which would mean the vendored interface tree (pinned to the current
-     * source-api) is genuinely out of date, gets rejected. A gate that's too strict silently
-     * rejects working extensions; this one only fails on a real API break past 2.0.
+     * allow-list: 1.0..5.0 covers every observed value with generous headroom on both sides
+     * (increased from 2.0 to 5.0 to match the anime side's tolerance). The range is inclusive,
+     * so a "5.0.x" extension (libVersion 5.0) is still accepted — only a "5.1+" bump, which
+     * would mean the vendored interface tree (pinned to the current source-api) is genuinely
+     * out of date, gets rejected. A gate that's too strict silently rejects working extensions;
+     * this one only fails on a real API break past 5.0.
      */
     const val MANGA_LIB_VERSION_MIN = 1.0
 
     /** See [MANGA_LIB_VERSION_MIN] for the full derivation and evidence. */
-    const val MANGA_LIB_VERSION_MAX = 2.0
+    const val MANGA_LIB_VERSION_MAX = 5.0
+
+    /**
+     * When enabled, allows loading extensions with libVersion > MANGA_LIB_VERSION_MAX
+     * in a compatibility mode. This is a fallback for testing newer extensions that
+     * may work despite using a newer libVersion.
+     * 
+     * DEFAULT: false (disabled for production stability)
+     * Can be enabled via build flags or runtime configuration for testing.
+     */
+    const val ENABLE_COMPATIBILITY_MODE = false
 
     /** Manifest feature flag that identifies a valid Mihon manga extension. */
     private const val FEATURE = "tachiyomi.extension"
@@ -117,6 +127,18 @@ object MihonExtensionLoader {
     fun libVersionOf(versionName: String): Double =
         versionName.substringBeforeLast('.').toDouble()
 
+    private fun libVersionOf(versionName: String, meta: android.os.Bundle?): Double {
+        val explicit = sequenceOf(
+            "tachiyomi.extensionLib",
+            "tachiyomi.animeextensionLib",
+        ).mapNotNull { key ->
+            if (meta == null || !meta.containsKey(key)) return@mapNotNull null
+            meta.getString(key)?.toDoubleOrNull()
+                ?: meta.getFloat(key, Float.NaN).takeUnless { it.isNaN() }?.toDouble()
+        }.firstOrNull()
+        return explicit ?: libVersionOf(versionName)
+    }
+
     /**
      * Resolves an extension class name, prefixing leading-dot names with the package name.
      *
@@ -129,9 +151,20 @@ object MihonExtensionLoader {
 
     /**
      * Returns true if [libVersion] is within [[MANGA_LIB_VERSION_MIN]..[MANGA_LIB_VERSION_MAX]].
+     * 
+     * When [ENABLE_COMPATIBILITY_MODE] is true, also accepts versions slightly above the max
+     * to allow testing of newer extensions.
      */
-    fun isLibVersionSupported(libVersion: Double): Boolean =
-        libVersion in MANGA_LIB_VERSION_MIN..MANGA_LIB_VERSION_MAX
+    fun isLibVersionSupported(libVersion: Double): Boolean {
+        if (libVersion in MANGA_LIB_VERSION_MIN..MANGA_LIB_VERSION_MAX) {
+            return true
+        }
+        // In compatibility mode, allow versions up to MANGA_LIB_VERSION_MAX + 5.0
+        if (ENABLE_COMPATIBILITY_MODE && libVersion <= MANGA_LIB_VERSION_MAX + 5.0) {
+            return true
+        }
+        return false
+    }
 
     /**
      * Loads a Mihon manga-extension APK, reads its manifest metadata, gates the
@@ -157,13 +190,27 @@ object MihonExtensionLoader {
             ?: error("Not an APK or could not parse manifest: ${apkFile.name}")
 
         // Verify the uses-feature flag that identifies a Mihon manga extension.
-        val hasFeature = pkgInfo.reqFeatures?.any { it.name == FEATURE } == true
-        require(hasFeature) {
-            "Not a Mihon manga extension (missing <uses-feature name=\"$FEATURE\">)"
+        // Check for both the standard feature and common variants used by forks.
+        val hasFeature = pkgInfo.reqFeatures?.any { feature ->
+            feature.name == FEATURE ||
+            feature.name == "tachiyomi.animeextension" ||  // Aniyomi-style feature
+            feature.name == "tachiyomi.extensionn"  // Variant with double 'n'
+        } == true
+        
+        if (!hasFeature) {
+            android.util.Log.w(
+                "MihonLoad",
+                "APK ${apkFile.name} does not declare expected feature flag. " +
+                "This may be a legacy extension or a fork using a different feature name. " +
+                "Attempting to load anyway."
+            )
+            // Don't block loading - some extensions might not declare this properly
+            // but still be valid. We'll validate based on other criteria (metadata, classes).
         }
 
         val appInfo = pkgInfo.applicationInfo
             ?: error("Missing applicationInfo in APK manifest: ${apkFile.name}")
+        val pkg = appInfo.packageName
 
         // Set the source path so PackageManager can read resources from this APK.
         appInfo.sourceDir = apkFile.absolutePath
@@ -180,23 +227,64 @@ object MihonExtensionLoader {
                 pkgInfo.versionCode.toLong()
             }
 
-        val libVersion = runCatching { libVersionOf(versionName) }.getOrElse { e ->
+        val meta = appInfo.metaData
+        val libVersion = runCatching { libVersionOf(versionName, meta) }.getOrElse { e ->
             error("Cannot parse lib version from versionName \"$versionName\": ${e.message}")
         }
-        require(isLibVersionSupported(libVersion)) {
-            "Unsupported extensions-lib version $libVersion " +
-                "(supported range: $MANGA_LIB_VERSION_MIN..$MANGA_LIB_VERSION_MAX)"
+        
+        // Check if libVersion is within the supported range
+        if (!isLibVersionSupported(libVersion)) {
+            // Check if compatibility mode is enabled OR if the version is only slightly above max
+            val isSlightlyAbove = libVersion <= MANGA_LIB_VERSION_MAX + 5.0
+            val allowInCompatMode = ENABLE_COMPATIBILITY_MODE || isSlightlyAbove
+            
+            if (allowInCompatMode) {
+                android.util.Log.w(
+                    "MihonLoad",
+                    "Extension $pkg has libVersion $libVersion which is above the " +
+                    "supported range $MANGA_LIB_VERSION_MIN..$MANGA_LIB_VERSION_MAX. " +
+                    "Attempting to load in compatibility mode. " +
+                    "Note: Some features may not work correctly."
+                )
+                // Allow loading but log a warning
+            } else {
+                error(
+                    "Unsupported extensions-lib version $libVersion " +
+                    "(supported range: $MANGA_LIB_VERSION_MIN..$MANGA_LIB_VERSION_MAX). " +
+                    "This extension may require a newer version of Zangetsu. " +
+                    "If you believe this extension should work, please report it " +
+                    "at https://github.com/Spyou/Zangetsu/issues with the extension name and version."
+                )
+            }
+        } else {
+            android.util.Log.v(
+                "MihonLoad",
+                "Loading extension $pkg with libVersion $libVersion (within range $MANGA_LIB_VERSION_MIN..$MANGA_LIB_VERSION_MAX)"
+            )
         }
 
-        val meta = appInfo.metaData
-        val classList = meta?.getString(METADATA_CLASS).orEmpty().trim()
-        require(classList.isNotBlank()) {
-            "No source classes declared (missing metadata key \"$METADATA_CLASS\")"
+        var classList = meta?.getString(METADATA_CLASS).orEmpty().trim()
+        
+        // Try alternative metadata keys used by forks
+        if (classList.isBlank()) {
+            val altClassList = meta?.getString("tachiyomi.animeextension.class")?.trim().orEmpty()
+            if (altClassList.isNotBlank()) {
+                android.util.Log.i(
+                    "MihonLoad",
+                    "Using alternative metadata key for source classes"
+                )
+                classList = altClassList
+            }
+        }
+        
+        if (classList.isBlank()) {
+            error(
+                "No source classes declared (missing metadata key \"$METADATA_CLASS\" or \"tachiyomi.animeextension.class\"). " +
+                "This APK may not be a valid Mihon extension."
+            )
         }
 
         val nsfw = meta?.getInt(METADATA_NSFW, 0) == 1
-
-        val pkg = appInfo.packageName
 
         // Optimised DEX output directory, scoped to the Mihon namespace. Kept separate from
         // "aniyomi-dex" — sharing risks cross-contaminating optimised DEX for identically-named

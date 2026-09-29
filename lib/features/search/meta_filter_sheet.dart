@@ -5,7 +5,6 @@ import '../../core/theme/app_text.dart';
 import '../../core/zmode/metadata_filters.dart';
 import '../../core/zmode/zmode_ids.dart';
 import '../../l10n/l10n.dart';
-import 'meta_filter_dialog_tv.dart';
 
 /// Filter sheet for the metadata catalogue.
 ///
@@ -32,7 +31,17 @@ Future<MetaFilters?> showMetaFilterDialog(
   BuildContext context,
   ZKind kind,
   MetaFilters current,
-) => showMetaFilterDialogTv(context, kind, current);
+) => showDialog<MetaFilters>(
+  context: context,
+  builder: (ctx) => Dialog(
+    backgroundColor: AppColors.surface,
+    insetPadding: const EdgeInsets.symmetric(horizontal: 80, vertical: 48),
+    child: ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 640, maxHeight: 720),
+      child: _MetaFilterSheet(kind: kind, initial: current),
+    ),
+  ),
+);
 
 class _MetaFilterSheet extends StatefulWidget {
   const _MetaFilterSheet({required this.kind, required this.initial});

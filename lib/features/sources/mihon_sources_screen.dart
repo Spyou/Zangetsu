@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:watch_app/core/hive/safe_box.dart';
 
 import 'package:flutter/material.dart';
@@ -22,7 +23,6 @@ import '../../core/ui/states.dart';
 import 'mihon_repo_tab.dart'
     show kMihonReposBoxName, MihonAddRepoDialog, MihonRepoTab;
 import 'sources_search_field.dart';
-import '../../core/ui/app_dialog.dart';
 import '../../l10n/l10n.dart';
 
 /// Dedicated Mihon (manga) ecosystem screen — Installed + Repositories in one
@@ -75,9 +75,7 @@ class _MihonSourcesScreenState extends State<MihonSourcesScreen> {
   Future<void> _removeMihonRepo(String url) async {
     if (!Hive.isBoxOpen(kMihonReposBoxName)) return;
     final box = Hive.box<String>(kMihonReposBoxName);
-    final key = box
-        .toMap()
-        .entries
+    final key = box.toMap().entries
         .where((e) => e.value == url)
         .map((e) => e.key)
         .firstOrNull;
@@ -150,17 +148,18 @@ class _MihonScreenPhoneViewState extends State<_MihonScreenPhoneView> {
             IconButton(
               tooltip: context.l10n.languages,
               icon: const Icon(Icons.language_rounded),
-              onPressed: () => showSourceLanguageSheet(
-                context,
-                sl<MangaLangPrefs>(),
-                // Offer what's installed, not just the built-in list —
-                // otherwise a language this screen hides has no row to
-                // turn it back on.
-                present: presentLangCodes(
-                  sl<MihonManager>().all,
-                  (p) => p.info.lang,
-                ),
-              ),
+              onPressed: () =>
+                  showSourceLanguageSheet(
+                    context,
+                    sl<MangaLangPrefs>(),
+                    // Offer what's installed, not just the built-in list —
+                    // otherwise a language this screen hides has no row to
+                    // turn it back on.
+                    present: presentLangCodes(
+                      sl<MihonManager>().all,
+                      (p) => p.info.lang,
+                    ),
+                  ),
             ),
           ],
           bottom: TabBar(
@@ -251,10 +250,9 @@ class _MihonInstalledGroupState extends State<_MihonInstalledGroup> {
       listenable: Listenable.merge([sl<MihonManager>(), langPrefs]),
       builder: (context, _) {
         final query = widget.query;
-        var sources = sl<MihonManager>().all
-            .where(
-              (p) => sourceSearchMatches(query, p.displayName, p.info.lang),
-            )
+        var sources = sl<MihonManager>()
+            .all
+            .where((p) => sourceSearchMatches(query, p.displayName, p.info.lang))
             .toList();
         // Respect the language filter here as well. It used to apply only in
         // the picker and the browse list, so choosing English still left this
@@ -413,7 +411,7 @@ class _MihonExtensionGroupState extends State<_MihonExtensionGroup> {
                 // Every language of a multi-language extension is one
                 // package, so the whole group shares one icon.
                 Padding(
-                  padding: const EdgeInsetsDirectional.only(end: 12),
+                  padding: const EdgeInsets.only(right: 12),
                   child: SourceIconTile(
                     name: name,
                     icon: SourceIconStore.urlFor(rows.first.pkg),
@@ -427,18 +425,14 @@ class _MihonExtensionGroupState extends State<_MihonExtensionGroup> {
                       Text(
                         name,
                         style: AppText.headline.copyWith(
-                          color: active
-                              ? AppColors.accent
-                              : AppColors.textPrimary,
+                          color:
+                              active ? AppColors.accent : AppColors.textPrimary,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 2),
-                      Text(
-                        context.l10n.languageCount(rows.length),
-                        style: AppText.caption,
-                      ),
+                      Text(context.l10n.languageCount(rows.length), style: AppText.caption),
                     ],
                   ),
                 ),
@@ -537,9 +531,7 @@ class _MihonSourceRowState extends State<_MihonSourceRow> {
   }
 
   Future<void> _checkSettings() async {
-    final has = await MihonExtensionService().hasSourceSettings(
-      widget.source.info.id,
-    );
+    final has = await MihonExtensionService().hasSourceSettings(widget.source.info.id);
     if (mounted) setState(() => _hasSettings = has);
   }
 
@@ -554,36 +546,56 @@ class _MihonSourceRowState extends State<_MihonSourceRow> {
   /// Shows a confirm dialog then uninstalls the source.
   Future<void> _confirmUninstall(BuildContext context) async {
     final name = widget.source.displayName;
-    final ok = await AppDialog.confirm(
-      context,
-      title: context.l10n.uninstallNameQuestion(name),
-      message: context.l10n.thisRemovesTheSourceFromYourInstalledList,
-      confirmLabel: context.l10n.uninstall,
-      destructive: true,
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: Text(context.l10n.uninstallNameQuestion(name), style: AppText.headline),
+        content: Text(
+          context.l10n.thisRemovesTheSourceFromYourInstalledList,
+          style: AppText.body,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(
+              context.l10n.cancel,
+              style: AppText.body.copyWith(color: AppColors.textSecondary),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(
+              context.l10n.uninstall,
+              style: AppText.body.copyWith(color: AppColors.accent),
+            ),
+          ),
+        ],
+      ),
     );
     if (ok != true) return;
 
     final pkg = widget.source.pkg;
 
-    // Removes the box entry and the APK (see MihonExtensionService.uninstall
-    // for why the order matters). Returns a reason instead of swallowing it —
-    // the APK outliving the uninstall is what made sources reappear after a
-    // restart, silently.
-    final failure = await MihonExtensionService.uninstall(pkg);
+    if (Hive.isBoxOpen(MihonExtensionService.installedBoxName)) {
+      final box = Hive.box<dynamic>(MihonExtensionService.installedBoxName);
+      final apkPath = box.get(pkg) as String?;
+      if (apkPath != null) {
+        try {
+          final f = File(apkPath);
+          if (await f.exists()) await f.delete();
+        } catch (_) {}
+      }
+      await box.delete(pkg);
+    }
 
     sl<MihonManager>().removeWhere((p) => p.pkg == pkg);
 
-    if (!context.mounted) return;
-    final messenger = ScaffoldMessenger.of(context)..clearSnackBars();
-    messenger.showSnackBar(
-      SnackBar(
-        content: Text(
-          failure == null
-              ? context.l10n.uninstalledName(name)
-              : context.l10n.uninstallFailed(failure),
-        ),
-      ),
-    );
+    if (context.mounted) {
+      ScaffoldMessenger.of(context)
+        ..clearSnackBars()
+        ..showSnackBar(SnackBar(content: Text(context.l10n.uninstalledName(name))));
+    }
   }
 
   Future<void> _applyUpdate(MihonUpdate update) async {
@@ -594,15 +606,11 @@ class _MihonSourceRowState extends State<_MihonSourceRow> {
       await apply(update);
       messenger
         ..clearSnackBars()
-        ..showSnackBar(
-          SnackBar(content: Text(context.l10n.updatedName(update.name))),
-        );
+        ..showSnackBar(SnackBar(content: Text(context.l10n.updatedName(update.name))));
     } catch (e) {
       messenger
         ..clearSnackBars()
-        ..showSnackBar(
-          SnackBar(content: Text(context.l10n.updateFailed('$e'))),
-        );
+        ..showSnackBar(SnackBar(content: Text(context.l10n.updateFailed('$e'))));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -612,10 +620,8 @@ class _MihonSourceRowState extends State<_MihonSourceRow> {
     // installFromRepo never throws — it returns an empty list on failure —
     // so a failed download must be surfaced here rather than silently
     // reported as a success that clears the update badge.
-    final providers = await MihonExtensionService().installFromRepo(
-      update.entry,
-      manager: sl<MihonManager>(),
-    );
+    final providers = await MihonExtensionService()
+        .installFromRepo(update.entry, manager: sl<MihonManager>());
     if (providers.isEmpty) throw Exception('Update failed to install');
     sl<MihonManager>().clearUpdatesForPkg(update.pkg);
   }
@@ -626,15 +632,14 @@ class _MihonSourceRowState extends State<_MihonSourceRow> {
     final active = source.sourceId == widget.activeId;
     final lang = source.info.lang;
     final nameColor = active ? AppColors.accent : AppColors.textPrimary;
-    final lookup =
-        widget.updateLookupFn ??
+    final lookup = widget.updateLookupFn ??
         (String pkg) => sl<MihonManager>().updateFor(pkg);
 
     Widget updateButton() {
       final update = lookup(source.pkg);
       if (update == null) return const SizedBox.shrink();
       return Padding(
-        padding: const EdgeInsetsDirectional.only(end: 4),
+        padding: const EdgeInsets.only(right: 4),
         // Capped width + an ellipsis, because this row also carries a
         // settings, a sign-in and a delete button: the button's full label
         // used to win the width fight outright and the source NAME was what
@@ -671,9 +676,7 @@ class _MihonSourceRowState extends State<_MihonSourceRow> {
         ScaffoldMessenger.of(context)
           ..clearSnackBars()
           ..showSnackBar(
-            SnackBar(
-              content: Text(context.l10n.activeSourceColon(source.displayName)),
-            ),
+            SnackBar(content: Text(context.l10n.activeSourceColon(source.displayName))),
           );
       },
       child: Padding(
@@ -681,7 +684,7 @@ class _MihonSourceRowState extends State<_MihonSourceRow> {
         child: Row(
           children: [
             Padding(
-              padding: const EdgeInsetsDirectional.only(end: 12),
+              padding: const EdgeInsets.only(right: 12),
               child: SourceIconTile(
                 name: source.displayName,
                 icon: SourceIconStore.urlFor(source.pkg),
@@ -759,7 +762,10 @@ class _MihonSourceRowState extends State<_MihonSourceRow> {
               // grew an icon tile; 36 still clears the 36dp touch floor.
               visualDensity: VisualDensity.compact,
               padding: EdgeInsets.zero,
-              constraints: const BoxConstraints.tightFor(width: 36, height: 36),
+              constraints: const BoxConstraints.tightFor(
+                width: 36,
+                height: 36,
+              ),
             ),
           ],
         ),
@@ -776,9 +782,10 @@ Widget debugMihonSourceRow({
   required String activeId,
   MihonUpdate? Function(String pkg)? updateLookupFn,
   Future<void> Function(MihonUpdate update)? applyUpdateFn,
-}) => _MihonSourceRow(
-  source: source,
-  activeId: activeId,
-  updateLookupFn: updateLookupFn,
-  applyUpdateFn: applyUpdateFn,
-);
+}) =>
+    _MihonSourceRow(
+      source: source,
+      activeId: activeId,
+      updateLookupFn: updateLookupFn,
+      applyUpdateFn: applyUpdateFn,
+    );

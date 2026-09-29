@@ -120,8 +120,8 @@ class LibraryTabsState extends State<LibraryTabs>
                     controller: _c,
                     isScrollable: true,
                     tabAlignment: TabAlignment.start,
-                    padding: const EdgeInsetsDirectional.only(start: 16),
-                    labelPadding: const EdgeInsetsDirectional.only(end: 22),
+                    padding: const EdgeInsets.only(left: 16),
+                    labelPadding: const EdgeInsets.only(right: 22),
                     indicatorSize: TabBarIndicatorSize.label,
                     indicator: UnderlineTabIndicator(
                       borderSide: BorderSide(

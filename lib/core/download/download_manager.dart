@@ -22,10 +22,8 @@ import '../torrent/torrent_prefs.dart';
 import '../zmode/metadata_repository.dart';
 import '../zmode/zmode_ids.dart';
 import 'download_prefs.dart';
-import 'hls_downloader.dart';
 import 'download_record.dart';
 import 'download_service.dart';
-import 'video_destination.dart';
 
 /// Owns offline downloads. Direct-file (MP4/MKV) sources go through
 /// background_downloader (true background); HLS (m3u8) sources go through the
@@ -566,15 +564,8 @@ class DownloadManager extends ChangeNotifier {
     // A picked SAF folder (content://) streams straight into that tree. A
     // detected drive (a plain volume path) or the default both download to
     // app-docs first — _finish then moves a drive download onto the volume.
-    // A picked SAF folder (content://) streams straight into that tree, which
-    // would put the file in public storage. keepPrivate overrides that: stream
-    // to app-docs like the default, and never move it out.
-    final safUri = videoDestination(
-      keepPrivate: _downloadPrefs.keepPrivate,
-      locationUri: _downloadPrefs.locationUri,
-    ) == VideoDestination.safTree
-        ? _downloadPrefs.locationUri
-        : null;
+    final loc = _downloadPrefs.locationUri;
+    final safUri = loc != null && loc.isNotEmpty && isUriPath(loc) ? loc : null;
     final DownloadTask task = safUri != null
         // Custom SAF folder: stream straight into the user's picked directory
         // (the file ends up as a content:// URI — see _finish). No post-move.
@@ -736,14 +727,8 @@ class DownloadManager extends ChangeNotifier {
     // A detected drive is a plain volume path (not a content:// SAF tree) — an
     // app-specific external dir we can write to with plain File I/O. Remux the
     // .ts into a real .mp4 STRAIGHT onto the volume, avoiding a big post-move.
-    final dest = videoDestination(
-      // keepPrivate is read live from the singleton; `customUri` stays the
-      // enqueue-time snapshot it has always been, so a mid-flight folder
-      // change behaves exactly as before.
-      keepPrivate: _downloadPrefs.keepPrivate,
-      locationUri: customUri,
-    );
-    final isVolume = dest == VideoDestination.detectedVolume;
+    final isVolume =
+        customUri != null && customUri.isNotEmpty && !isUriPath(customUri);
     if (isVolume && Platform.isAndroid) {
       try {
         final destDir = Directory('$customUri/$dir');
@@ -756,14 +741,14 @@ class DownloadManager extends ChangeNotifier {
           return mp4;
         }
         // Remux couldn't handle the stream → keep the .ts, on the volume.
-        return await _moveToVolume(tsPath, customUri!, dir) ?? tsPath;
+        return await _moveToVolume(tsPath, customUri, dir) ?? tsPath;
       } catch (_) {
         return tsPath; // volume write failed → keep the local temp
       }
     }
     if (isVolume) {
       // iOS (no MediaMuxer): just move the .ts onto the chosen location.
-      return await _moveToVolume(tsPath, customUri!, dir) ?? tsPath;
+      return await _moveToVolume(tsPath, customUri, dir) ?? tsPath;
     }
 
     // ── Picked SAF folder / default public Downloads (unchanged) ──
@@ -780,14 +765,10 @@ class DownloadManager extends ChangeNotifier {
       }
       // Remux failed on an odd stream → keep the honestly-labelled .ts.
     }
-    if (dest == VideoDestination.safTree) {
+    if (customUri != null && customUri.isNotEmpty) {
       final moved =
-          await _moveIntoTree(publish, customUri!, publish.split('/').last);
+          await _moveIntoTree(publish, customUri, publish.split('/').last);
       return moved ?? publish;
-    }
-    if (dest != VideoDestination.publicDownloads) {
-      // privateStorage: the remuxed file is already in app-documents.
-      return publish;
     }
     try {
       final moved = await _fileDownloader.moveFileToSharedStorage(
@@ -832,21 +813,12 @@ class DownloadManager extends ChangeNotifier {
     return '$base.$ext';
   }
 
-  /// Save this download's subtitles beside it, from both places they come in:
-  /// the sidecar files a [source] advertises, and — for HLS — the subtitle
-  /// renditions named in the master playlist.
-  ///
-  /// The second is why a downloaded episode could come back with none. An HLS
-  /// stream carries its subtitles as their own rendition, nothing read the
-  /// master's `#EXT-X-MEDIA:TYPE=SUBTITLES` lines, and the remux to MP4 cannot
-  /// carry a subtitle track anyway — MediaMuxer refuses the format and
-  /// [TsRemuxer] logs it as unsupported. Pulled out as a sidecar they survive.
-  ///
+  /// Download the soft-subtitle sidecar files a [source] advertises and record
+  /// their local paths on [rec], so soft-subbed sources keep subtitles offline.
   /// Best-effort: stored in private app storage, idempotent (skips if already
   /// saved), and any failure just leaves the download without sidecar subs.
   Future<void> _fetchSubtitles(DownloadRecord rec, VideoSource source) async {
-    final fromHls = _isHls(source);
-    if (source.subtitles.isEmpty && !fromHls) return;
+    if (source.subtitles.isEmpty) return;
     final live = _records[rec.id];
     if (live == null || live.status == DownloadStatus.canceled) return;
     if (live.subtitles.isNotEmpty) return; // already saved (e.g. a retry mirror)
@@ -883,32 +855,6 @@ class DownloadManager extends ChangeNotifier {
             ),
           );
         } catch (_) {/* skip this track */}
-      }
-      // HLS renditions, merged into one .vtt each. After the sidecars so an
-      // explicitly advertised track wins when a stream offers both.
-      if (fromHls) {
-        final seen = saved.map((s) => '${s.lang}|${s.label}').toSet();
-        final tracks = await HlsDownloader(_dio).fetchSubtitleTracks(
-          source.url,
-          source.headers ?? const {},
-          canceled: () => _records[rec.id]?.status == DownloadStatus.canceled,
-        );
-        for (final t in tracks) {
-          if (!seen.add('${t.lang}|${t.label}')) continue;
-          idx++;
-          try {
-            final path = '${dir.path}/${safeShow}_${epTag}_$idx.vtt';
-            await File(path).writeAsString(t.vtt, flush: true);
-            saved.add(
-              OfflineSubtitle(
-                lang: t.lang,
-                label: t.label,
-                path: path,
-                isDefault: t.isDefault,
-              ),
-            );
-          } catch (_) {/* skip this track */}
-        }
       }
       if (saved.isEmpty) return;
       // Re-read: the download may have been canceled/deleted while we fetched.
@@ -1114,13 +1060,6 @@ class DownloadManager extends ChangeNotifier {
   /// Handles BOTH default downloads (plain file path — a cheap `exists` syscall)
   /// and custom-folder SAF downloads (content:// — via native DocumentFile).
   /// Skips in-flight records; emits a single [notifyListeners] if anything went.
-  // ponytail: deliberately reads ONLY rec.filePath — never DownloadPrefs, and
-  // never moves a file. That is what makes flipping keepPrivate safe for a user
-  // with 20 finished public downloads: their records still stat true and
-  // survive untouched. Do NOT "improve" this by consulting keepPrivate here to
-  // migrate them. Relocating existing files needs per-file copy, progress,
-  // failure rollback and record rewriting; it is a separate feature, and the
-  // toggle says "applies to new downloads" for exactly this reason.
   Future<void> pruneMissing() async {
     final gone = <String>[];
     // Downloads that finished before the size was recorded on completion. They
@@ -1307,18 +1246,11 @@ class DownloadManager extends ChangeNotifier {
       } catch (_) {}
 
       final subDir = '$_sharedDir/${_safe(rec.showTitle)}';
-      final dest = videoDestination(
-        keepPrivate: _downloadPrefs.keepPrivate,
-        locationUri: _downloadPrefs.locationUri,
-      );
-      if (dest == VideoDestination.detectedVolume) {
+      final loc = _downloadPrefs.locationUri;
+      if (loc != null && loc.isNotEmpty && !isUriPath(loc)) {
         // Detected drive (USB/SSD/SD): move the file onto that volume.
-        path = await _moveToVolume(
-          await task.filePath(),
-          _downloadPrefs.locationUri!,
-          subDir,
-        );
-      } else if (dest == VideoDestination.publicDownloads) {
+        path = await _moveToVolume(await task.filePath(), loc, subDir);
+      } else {
         try {
           path = await _fileDownloader.moveToSharedStorage(
             task,
@@ -1327,11 +1259,7 @@ class DownloadManager extends ChangeNotifier {
           );
         } catch (_) {}
       }
-      // privateStorage: the temp already lives in app-documents, so there is
-      // nothing to move and `path` stays null. safTree is unreachable here — a
-      // content:// location makes _enqueueTaskFor build a UriDownloadTask, and
-      // that case returns earlier in this method. Either way the fallback below
-      // adopts the private path, which is also the move-failure fallback.
+      // Fall back to the app-documents path if the move failed.
       path ??= await task.filePath();
     }
 

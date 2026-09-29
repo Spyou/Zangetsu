@@ -635,7 +635,7 @@ Widget readerSheetGroup(List<Widget> rows) {
 /// "· this title" caption under the manga reader's Direction/Fit rows.
 Widget readerOverrideTag(BuildContext context) {
   return Container(
-    margin: const EdgeInsetsDirectional.only(start: 8),
+    margin: const EdgeInsets.only(left: 8),
     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
     decoration: BoxDecoration(
       color: AppColors.accent.withValues(alpha: 0.16),

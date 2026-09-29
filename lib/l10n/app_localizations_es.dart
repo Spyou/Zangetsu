@@ -1781,12 +1781,6 @@ class AppLocalizationsEs extends AppLocalizations {
   String get audioDelay => 'Retraso de audio';
 
   @override
-  String get androidPlayer => 'Android Player (Experimental)';
-
-  @override
-  String get androidPlayerUnavailable => 'Android Player could not start';
-
-  @override
   String get audioNormalization => 'Normalización de audio';
 
   @override
@@ -5300,11 +5294,4 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get export => 'Export';
-
-  @override
-  String get keepDownloadsPrivate => 'Keep downloads private';
-
-  @override
-  String get keepDownloadsPrivateSubtitle =>
-      'New video downloads stay inside Zangetsu instead of the Downloads folder. They are deleted when you uninstall Zangetsu. Chapters and exports are unaffected.';
 }

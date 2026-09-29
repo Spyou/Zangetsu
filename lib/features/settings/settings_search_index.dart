@@ -96,7 +96,7 @@ final settingsLeaves = <SettingsLeaf>[
   SettingsLeaf(
     LeafParent.playback,
     (l) => l.defaultPlayer,
-    keywords: 'external mpv android native vlc',
+    keywords: 'external mpv exoplayer vlc',
   ),
   SettingsLeaf(
     LeafParent.playback,
@@ -446,21 +446,6 @@ final settingsLeaves = <SettingsLeaf>[
     (l) => l.adultCatalogue,
     keywords: 'adult 18+ nsfw anilist mal tmdb catalogue hentai',
   ),
-  SettingsLeaf(
-    LeafParent.privacy,
-    (l) => l.enableAdultCatalogue,
-    keywords: 'adult 18+ nsfw catalogue confirm show titles',
-  ),
-  SettingsLeaf(
-    LeafParent.privacy,
-    (l) => l.enableNSFWSources,
-    keywords: 'adult 18+ nsfw sources confirm enable',
-  ),
-  SettingsLeaf(
-    LeafParent.privacy,
-    (l) => l.showNSFWAniyomiSources,
-    keywords: 'adult 18+ nsfw aniyomi confirm show',
-  ),
 
   // Downloads → StorageSettingsScreen
   SettingsLeaf(
@@ -484,10 +469,5 @@ final settingsLeaves = <SettingsLeaf>[
     LeafParent.downloads,
     (l) => l.resetToDefault,
     keywords: 'location folder path',
-  ),
-  SettingsLeaf(
-    LeafParent.downloads,
-    (l) => l.keepDownloadsPrivate,
-    keywords: 'private hidden app storage downloads folder',
   ),
 ];

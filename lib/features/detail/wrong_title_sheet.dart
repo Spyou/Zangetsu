@@ -353,8 +353,8 @@ class _MatchLineState extends State<MatchLine> {
               padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
               child: Container(
                 height: 52,
-                alignment: AlignmentDirectional.centerStart,
-                padding: const EdgeInsetsDirectional.only(start: 14),
+                alignment: Alignment.centerLeft,
+                padding: const EdgeInsets.only(left: 14),
                 decoration: BoxDecoration(
                   color: AppColors.surface2,
                   borderRadius: BorderRadius.circular(8),
@@ -510,7 +510,7 @@ class _MatchLineState extends State<MatchLine> {
                               child: SizedBox(
                                 height: 52,
                                 child: Padding(
-                                  padding: const EdgeInsetsDirectional.only(start: 14),
+                                  padding: const EdgeInsets.only(left: 14),
                                   child: labelRow,
                                 ),
                               ),

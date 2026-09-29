@@ -442,7 +442,7 @@ class _SearchViewState extends State<_SearchView>
   Widget _adultToggle() {
     final on = _metaFilters.adult;
     return Padding(
-      padding: const EdgeInsetsDirectional.only(end: 10),
+      padding: const EdgeInsets.only(right: 10),
       child: GestureDetector(
         onTap: () {
           setState(() => _metaFilters = _metaFilters.copyWith(adult: !on));
@@ -973,7 +973,7 @@ class _SearchViewState extends State<_SearchView>
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: Align(
-                  alignment: AlignmentDirectional.centerStart,
+                  alignment: Alignment.centerLeft,
                   child: Text(context.l10n.searchIn, style: AppText.headline),
                 ),
               ),
@@ -1130,7 +1130,7 @@ class _SearchViewState extends State<_SearchView>
         children: [
           for (final (label, without) in chips)
             Padding(
-              padding: const EdgeInsetsDirectional.only(end: 8),
+              padding: const EdgeInsets.only(right: 8),
               child: _ActiveFilterChip(
                 label: label,
                 onRemove: () {
@@ -1179,7 +1179,7 @@ class _SearchViewState extends State<_SearchView>
           }
           final n = state.totalCount;
           return Align(
-            alignment: AlignmentDirectional.centerStart,
+            alignment: Alignment.centerLeft,
             child: Text(
               '$n result${n == 1 ? '' : 's'}',
               style: AppText.caption.copyWith(fontSize: 12.5),
@@ -1201,7 +1201,7 @@ class _SearchViewState extends State<_SearchView>
         if (tabs.length < 3) {
           final n = state.totalCount;
           return Align(
-            alignment: AlignmentDirectional.centerStart,
+            alignment: Alignment.centerLeft,
             child: Text(
               '$n result${n == 1 ? '' : 's'}',
               style: AppText.caption.copyWith(fontSize: 12.5),
@@ -1392,7 +1392,7 @@ class _SearchViewState extends State<_SearchView>
       isScrollable: true,
       tabAlignment: TabAlignment.start,
       padding: EdgeInsets.zero,
-      labelPadding: const EdgeInsetsDirectional.only(end: 20),
+      labelPadding: const EdgeInsets.only(right: 20),
       // Drop the default full-width hairline under the bar, same as History.
       dividerColor: Colors.transparent,
       dividerHeight: 0,
@@ -1520,7 +1520,7 @@ class _SearchViewState extends State<_SearchView>
           ),
           for (final g in groups)
             Padding(
-              padding: const EdgeInsetsDirectional.only(start: 8),
+              padding: const EdgeInsets.only(left: 8),
               child: _chip(
                 label: context.l10n.sourceCountBadge(
                   g.sourceName,
@@ -1751,7 +1751,7 @@ class _SearchViewState extends State<_SearchView>
                 onTap: onSeeAll,
                 behavior: HitTestBehavior.opaque,
                 child: Padding(
-                  padding: const EdgeInsetsDirectional.only(start: 8),
+                  padding: const EdgeInsets.only(left: 8),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -1820,7 +1820,7 @@ class _SearchViewState extends State<_SearchView>
             itemBuilder: (context, i) {
               final item = preview[i];
               return Padding(
-                padding: const EdgeInsetsDirectional.only(end: 12),
+                padding: const EdgeInsets.only(right: 12),
                 child: SizedBox(
                   width: itemW,
                   child: RepaintBoundary(
@@ -3130,7 +3130,7 @@ class _SearchFilterSheet extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
                   child: Align(
-                    alignment: AlignmentDirectional.centerStart,
+                    alignment: Alignment.centerLeft,
                     child: Text(
                       subCtx.l10n.searchInSources,
                       style: AppText.headline,

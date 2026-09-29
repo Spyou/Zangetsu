@@ -181,7 +181,7 @@ class _LoginScreenState extends State<LoginScreen> {
         const SizedBox(height: 12),
         _Field(controller: _password, hint: context.l10n.password, icon: Icons.lock_outline, obscure: true),
         Align(
-          alignment: AlignmentDirectional.centerEnd,
+          alignment: Alignment.centerRight,
           child: TextButton(
             onPressed: () => _forgotPassword(context),
             child: Text(context.l10n.forgotPassword),
@@ -384,7 +384,7 @@ class ProfileScreen extends StatelessWidget {
                 child: GestureDetector(
                   onTap: state.busy ? null : () => _pickAvatar(context),
                   child: Stack(
-                    alignment: AlignmentDirectional.bottomEnd,
+                    alignment: Alignment.bottomRight,
                     children: [
                       CircleAvatar(
                         radius: 48,
@@ -500,7 +500,7 @@ class _AvatarPicker extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Stack(
-            alignment: AlignmentDirectional.bottomEnd,
+            alignment: Alignment.bottomRight,
             children: [
               CircleAvatar(
                 radius: 44,

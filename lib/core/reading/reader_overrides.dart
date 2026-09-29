@@ -1,6 +1,5 @@
 import 'package:hive/hive.dart';
 import 'package:watch_app/core/hive/safe_box.dart';
-import 'package:watch_app/core/hive/hive_key.dart';
 import 'package:watch_app/core/reading/reader_prefs.dart';
 
 /// Per-series reading overrides for the manga reader — the "this title
@@ -27,8 +26,7 @@ class ReaderOverrideStore {
 
   Box get _box => Hive.box(boxName);
 
-  String _key(String sourceId, String showId) =>
-      hiveKey('$sourceId:$showId');
+  String _key(String sourceId, String showId) => '$sourceId:$showId';
 
   Map<String, dynamic> _entry(String sourceId, String showId) {
     final raw = _box.get(_key(sourceId, showId));

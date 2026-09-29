@@ -13,7 +13,6 @@ import '../../core/mihon/mihon_update.dart';
 import '../../core/prefs/source_lang_prefs.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
-import '../../core/ui/app_dialog.dart';
 import '../../core/ui/states.dart';
 import 'sources_search_field.dart';
 import '../../l10n/l10n.dart';
@@ -317,13 +316,33 @@ class _MihonRepoSectionState extends State<_MihonRepoSection> {
   }
 
   Future<void> _confirmRemove(BuildContext context) async {
-    final ok = await AppDialog.confirm(
-      context,
-      title: context.l10n.removeRepo,
-      message: context.l10n.alreadyInstalledExtensionsStay +
-          context.l10n.youCanAddRepoBackLater,
-      confirmLabel: context.l10n.removeDownloadTooltip,
-      destructive: true,
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: Text(context.l10n.removeRepo, style: AppText.headline),
+        content: Text(
+          context.l10n.alreadyInstalledExtensionsStay +
+              context.l10n.youCanAddRepoBackLater,
+          style: AppText.body,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(
+              context.l10n.cancel,
+              style: AppText.body.copyWith(color: AppColors.textSecondary),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(
+              context.l10n.removeDownloadTooltip,
+              style: AppText.body.copyWith(color: AppColors.accent),
+            ),
+          ),
+        ],
+      ),
     );
     if (ok == true) widget.onRemove();
   }
@@ -494,7 +513,7 @@ class _MihonRepoSectionState extends State<_MihonRepoSection> {
                         final n = mgr.updatesFor(widget.url).length;
                         if (n == 0) return const SizedBox.shrink();
                         return Padding(
-                          padding: const EdgeInsetsDirectional.only(end: 2),
+                          padding: const EdgeInsets.only(right: 2),
                           child: GestureDetector(
                             behavior: HitTestBehavior.opaque,
                             onTap: _updateAll,
@@ -775,12 +794,32 @@ class _MihonExtensionRowState extends State<_MihonExtensionRow> {
   }
 
   Future<void> _uninstall() async {
-    final ok = await AppDialog.confirm(
-      context,
-      title: context.l10n.uninstallNameQuestion(_entry.name),
-      message: context.l10n.thisRemovesTheExtensionFromYourInstalledSources,
-      confirmLabel: context.l10n.uninstall,
-      destructive: true,
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: Text(ctx.l10n.uninstallNameQuestion(_entry.name), style: AppText.headline),
+        content: Text(
+          context.l10n.thisRemovesTheExtensionFromYourInstalledSources,
+          style: AppText.body,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(
+              context.l10n.cancel,
+              style: AppText.body.copyWith(color: AppColors.textSecondary),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(
+              context.l10n.uninstall,
+              style: AppText.body.copyWith(color: AppColors.accent),
+            ),
+          ),
+        ],
+      ),
     );
     if (ok != true) return;
     if (!mounted) return;
@@ -806,11 +845,14 @@ class _MihonExtensionRowState extends State<_MihonExtensionRow> {
   }
 
   Future<void> _defaultUninstall() async {
-    // Same helper as the source tile: box entry AND the APK. The APK is what
-    // actually resurrects the source — `loadInstalled` re-reads the directory
-    // on every cold start — so deleting only the box entry left the extension
-    // to come back on the next launch.
-    final failure = await MihonExtensionService.uninstall(_entry.pkg);
+    // Remove from installed box.
+    try {
+      if (Hive.isBoxOpen(MihonExtensionService.installedBoxName)) {
+        await Hive.box<dynamic>(
+          MihonExtensionService.installedBoxName,
+        ).delete(_entry.pkg);
+      }
+    } catch (_) {}
     // Remove from the manager so the source disappears from the picker.
     // Unlike AniyomiManager (whose store is Map<String, BaseProvider> and so
     // needs an `is AniyomiProvider` narrowing check), MihonManager._sources is
@@ -820,9 +862,6 @@ class _MihonExtensionRowState extends State<_MihonExtensionRow> {
       GetIt.instance.get<MihonManager>().removeWhere(
         (p) => p.pkg == _entry.pkg,
       );
-    }
-    if (failure != null) {
-      debugPrint('[mihon] repo-tab uninstall ${_entry.pkg}: $failure');
     }
   }
 
@@ -836,7 +875,7 @@ class _MihonExtensionRowState extends State<_MihonExtensionRow> {
           // The index names the icon, so a browse row can show the real logo
           // before anything is installed.
           Padding(
-            padding: const EdgeInsetsDirectional.only(end: 12),
+            padding: const EdgeInsets.only(right: 12),
             child: SourceIconTile(name: _entry.name, icon: _entry.iconUrl),
           ),
           Expanded(

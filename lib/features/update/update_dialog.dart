@@ -71,7 +71,7 @@ Future<bool> confirmJoinBeta(BuildContext context) async {
             ),
             const SizedBox(height: 16),
             Align(
-              alignment: AlignmentDirectional.centerEnd,
+              alignment: Alignment.centerRight,
               child: Wrap(
                 spacing: 4,
                 crossAxisAlignment: WrapCrossAlignment.center,
@@ -232,7 +232,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
               const SizedBox(height: 8),
             ],
             Align(
-              alignment: AlignmentDirectional.centerEnd,
+              alignment: Alignment.centerRight,
               child: Wrap(
                 spacing: 4,
                 crossAxisAlignment: WrapCrossAlignment.center,

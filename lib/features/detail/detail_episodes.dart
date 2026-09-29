@@ -477,11 +477,35 @@ class _EpisodesTabState extends State<_EpisodesTab> {
     // A long series can be thousands of chapters, and one tap shouldn't commit
     // to that much storage and traffic without saying so out loud.
     if (chapters.length > 50) {
-      final ok = await AppDialog.confirm(
-        context,
-        title: context.l10n.downloadChaptersQuestion(chapters.length),
-        message: context.l10n.chapterOneAtATimeWarning,
-        confirmLabel: context.l10n.download,
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (dctx) => AlertDialog(
+          backgroundColor: AppColors.surface,
+          title: Text(
+            context.l10n.downloadChaptersQuestion(chapters.length),
+            style: AppText.headline,
+          ),
+          content: Text(
+            context.l10n.chapterOneAtATimeWarning,
+            style: AppText.body,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dctx, false),
+              child: Text(
+                context.l10n.cancel,
+                style: AppText.button.copyWith(color: AppColors.textSecondary),
+              ),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(dctx, true),
+              child: Text(
+                context.l10n.download,
+                style: AppText.button.copyWith(color: AppColors.accent),
+              ),
+            ),
+          ],
+        ),
       );
       if (ok != true) return;
       if (!mounted) return;
@@ -667,7 +691,7 @@ class _EpisodesHeader extends StatelessWidget {
           // Left: season dropdown pill (multi-season) or a plain label.
           Expanded(
             child: Align(
-              alignment: AlignmentDirectional.centerStart,
+              alignment: Alignment.centerLeft,
               child: hasMultipleSeasons
                   ? Material(
                       color: AppColors.surface2,
@@ -786,7 +810,7 @@ class _SeasonSheet extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
             child: Align(
-              alignment: AlignmentDirectional.centerStart,
+              alignment: Alignment.centerLeft,
               child: Text(context.l10n.seasons, style: AppText.title),
             ),
           ),
@@ -1195,7 +1219,7 @@ class _ChapterRow extends StatelessWidget {
                     const SizedBox(height: 6),
                     FractionallySizedBox(
                       widthFactor: fraction.clamp(0.0, 1.0),
-                      alignment: AlignmentDirectional.centerStart,
+                      alignment: Alignment.centerLeft,
                       child: Container(
                         height: 2,
                         decoration: BoxDecoration(

@@ -17,20 +17,23 @@ void main() {
       [{"name":"HiAnime","pkg":"eu.kanade.tachiyomi.animeextension.en.hianime",
         "apk":"hianime-v1.4.5.apk","lang":"en","code":14,"version":"1.4.5","nsfw":0,
         "sources":[{"id":123,"lang":"en","name":"HiAnime","baseUrl":"https://hianime.to"}]}]''';
-      final entries =
-          AniyomiRepo.parseIndex(json, repoBaseUrl: 'https://x.dev/repo');
+      final entries = AniyomiRepo.parseIndex(
+        json,
+        repoBaseUrl: 'https://x.dev/repo',
+      );
       expect(entries, hasLength(1));
       expect(entries.first.sources.first.id, 123);
-      expect(
-          entries.first.apkUrl, 'https://x.dev/repo/apk/hianime-v1.4.5.apk');
+      expect(entries.first.apkUrl, 'https://x.dev/repo/apk/hianime-v1.4.5.apk');
       expect(entries.first.nsfw, false);
     });
 
     test('nsfw int 1 maps to bool true', () {
       const json =
           '[{"name":"A","pkg":"p","apk":"a.apk","lang":"en","code":1,"version":"1.0","nsfw":1,"sources":[]}]';
-      final entries =
-          AniyomiRepo.parseIndex(json, repoBaseUrl: 'https://x.dev/repo');
+      final entries = AniyomiRepo.parseIndex(
+        json,
+        repoBaseUrl: 'https://x.dev/repo',
+      );
       expect(entries, hasLength(1));
       expect(entries.first.nsfw, true);
     });
@@ -38,8 +41,10 @@ void main() {
     test('nsfw int 0 maps to bool false', () {
       const json =
           '[{"name":"B","pkg":"q","apk":"b.apk","lang":"en","code":2,"version":"1.0","nsfw":0,"sources":[]}]';
-      final entries =
-          AniyomiRepo.parseIndex(json, repoBaseUrl: 'https://x.dev/repo');
+      final entries = AniyomiRepo.parseIndex(
+        json,
+        repoBaseUrl: 'https://x.dev/repo',
+      );
       expect(entries.first.nsfw, false);
     });
 
@@ -57,14 +62,36 @@ void main() {
     });
 
     test('totally malformed JSON returns empty list without throwing', () {
-      final entries =
-          AniyomiRepo.parseIndex('not json at all', repoBaseUrl: 'https://x.dev/repo');
+      final entries = AniyomiRepo.parseIndex(
+        'not json at all',
+        repoBaseUrl: 'https://x.dev/repo',
+      );
       expect(entries, isEmpty);
     });
 
     test('empty JSON array returns empty list', () {
-      final entries = AniyomiRepo.parseIndex('[]', repoBaseUrl: 'https://x.dev/repo');
+      final entries = AniyomiRepo.parseIndex(
+        '[]',
+        repoBaseUrl: 'https://x.dev/repo',
+      );
       expect(entries, isEmpty);
+    });
+
+    test('accepts string source ids and absolute resource URLs', () {
+      const json = '''[{"name":"A","pkg":"p","apk":"a.apk",
+        "apkUrl":"https://cdn.example/a.apk",
+        "iconUrl":"https://cdn.example/a.png","lang":"en","code":"7",
+        "version":"14.2","nsfw":"1",
+        "sources":[{"id":"123","lang":"en","name":"A","baseUrl":"https://a.example"}]}]''';
+      final entry = AniyomiRepo.parseIndex(
+        json,
+        repoBaseUrl: 'https://x.dev/repo',
+      ).single;
+      expect(entry.code, 7);
+      expect(entry.nsfw, isTrue);
+      expect(entry.sources.single.id, 123);
+      expect(entry.apkUrl, 'https://cdn.example/a.apk');
+      expect(entry.iconUrl, 'https://cdn.example/a.png');
     });
   });
 
@@ -77,20 +104,20 @@ void main() {
     setUp(() {
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(channel, (call) async {
-        if (call.method == 'listSources') {
-          return jsonEncode([
-            {
-              'id': 456,
-              'name': 'TestSource',
-              'lang': 'en',
-              'nsfw': false,
-              'pkg': 'com.test.source',
-              'baseUrl': 'https://test.example.com',
+            if (call.method == 'listSources') {
+              return jsonEncode([
+                {
+                  'id': 456,
+                  'name': 'TestSource',
+                  'lang': 'en',
+                  'nsfw': false,
+                  'pkg': 'com.test.source',
+                  'baseUrl': 'https://test.example.com',
+                },
+              ]);
             }
-          ]);
-        }
-        return null;
-      });
+            return null;
+          });
     });
 
     tearDown(() {

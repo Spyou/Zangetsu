@@ -1,6 +1,5 @@
 import 'package:hive/hive.dart';
 import 'package:watch_app/core/hive/safe_box.dart';
-import 'package:watch_app/core/hive/hive_key.dart';
 
 import '../privacy/incognito_mode.dart';
 
@@ -26,7 +25,7 @@ class ReadStore {
   // Key includes the SHOW because chapter ids can repeat across titles —
   // without it, one show's read position collides with another's.
   String _key(String sourceId, String showId, String chapterId) =>
-      hiveKey('$sourceId::$showId::$chapterId');
+      '$sourceId::$showId::$chapterId';
 
   Future<void> save(
     String sourceId,

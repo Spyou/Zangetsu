@@ -225,7 +225,7 @@ class SettingsCard extends StatelessWidget {
         rows.add(
           const Padding(
             // Inset past the 34px icon tile so the divider starts at the text.
-            padding: EdgeInsetsDirectional.only(start: 63),
+            padding: EdgeInsets.only(left: 63),
             child: Divider(height: 1, thickness: 1, color: AppColors.hairline),
           ),
         );

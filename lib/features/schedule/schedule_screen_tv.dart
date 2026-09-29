@@ -179,7 +179,7 @@ class _DayChipRow extends StatelessWidget {
               ? context.l10n.relativeToday
               : '${DateFormat('EEE', locale).format(d)} ${d.day}';
           return Padding(
-            padding: const EdgeInsetsDirectional.only(end: 12),
+            padding: const EdgeInsets.only(right: 12),
             child: Align(
               child: TvFocusable(
                 variant: TvFocusVariant.float,
@@ -273,7 +273,7 @@ class _Rail extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 8),
         itemCount: count,
         itemBuilder: (context, i) => Padding(
-          padding: const EdgeInsetsDirectional.only(end: 16),
+          padding: const EdgeInsets.only(right: 16),
           child: Align(alignment: Alignment.topCenter, child: builder(context, i)),
         ),
       ),

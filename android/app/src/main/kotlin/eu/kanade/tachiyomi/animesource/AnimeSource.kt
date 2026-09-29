@@ -1,10 +1,7 @@
 package eu.kanade.tachiyomi.animesource
 
-import eu.kanade.tachiyomi.animesource.model.AnimeRelation
 import eu.kanade.tachiyomi.animesource.model.Hoster
 import eu.kanade.tachiyomi.animesource.model.SAnime
-import eu.kanade.tachiyomi.animesource.model.SAnimeEpisodeUpdate
-import eu.kanade.tachiyomi.animesource.model.SAnimeSeasonUpdate
 import eu.kanade.tachiyomi.animesource.model.SEpisode
 import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.util.awaitSingle
@@ -86,47 +83,6 @@ interface AnimeSource {
      * @return the videos for the hoster.
      */
     suspend fun getVideoList(hoster: Hoster): List<Video> = throw IllegalStateException("Not used")
-
-    /**
-     * Fetches updated episode and/or detail information for an anime.
-     *
-     * @since extensions-lib 17
-     */
-    suspend fun getAnimeEpisodeUpdate(
-        anime: SAnime,
-        episodes: List<SEpisode>,
-        fetchDetails: Boolean,
-        fetchEpisodes: Boolean,
-    ): SAnimeEpisodeUpdate = throw UnsupportedOperationException("Not supported by this source")
-
-    /**
-     * Fetches updated season and/or detail information for an anime.
-     *
-     * @since extensions-lib 17
-     */
-    suspend fun getAnimeSeasonUpdate(
-        anime: SAnime,
-        seasons: List<SAnime>,
-        fetchDetails: Boolean,
-        fetchSeasons: Boolean,
-    ): SAnimeSeasonUpdate = throw UnsupportedOperationException("Not supported by this source")
-
-    /**
-     * Whether this source supports [getRelatedAnimeList]. The host only calls
-     * that method when this is true.
-     *
-     * @since extensions-lib 17
-     */
-    val supportsRelatedAnime: Boolean
-        get() = false
-
-    /**
-     * Anime related to [anime], grouped by relation label.
-     *
-     * @since extensions-lib 17
-     */
-    suspend fun getRelatedAnimeList(anime: SAnime): List<AnimeRelation> =
-        throw UnsupportedOperationException("Not supported by this source")
 
     /**
      * Get the list of videos a episode has. Pages should be returned

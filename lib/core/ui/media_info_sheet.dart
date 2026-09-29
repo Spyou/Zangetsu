@@ -192,7 +192,7 @@ class _MediaInfoSheetState extends State<_MediaInfoSheet> {
 
           // Title + meta overlaid at the bottom.
           Align(
-            alignment: AlignmentDirectional.bottomStart,
+            alignment: Alignment.bottomLeft,
             child: Padding(padding: const EdgeInsets.fromLTRB(18, 0, 18, 16), child: _heroTitle()),
           ),
         ],

@@ -28,7 +28,6 @@ import '../../core/models/home_row.dart';
 import '../../core/models/home_section.dart';
 import '../../core/models/media_detail.dart';
 import '../../core/models/media_item.dart';
-import '../../core/models/video_source.dart';
 import '../../core/models/provider_info.dart';
 import '../../core/playback/my_list.dart';
 import '../../core/playback/playback_prefs.dart';
@@ -62,8 +61,6 @@ import 'continue_section.dart';
 import 'my_list_screen.dart';
 import 'tracker_continue_section.dart';
 import '../../core/ui/content_row.dart';
-import '../../core/ui/banner_style.dart';
-import '../../core/ui/featured_banner_panels.dart';
 import '../../core/ui/featured_carousel.dart';
 import '../../core/ui/featured_hero.dart';
 import '../../core/metadata/title_logo_service.dart';
@@ -83,7 +80,6 @@ import '../schedule/schedule_screen.dart';
 import '../shell/dock_icons.dart';
 import '../../core/zmode/source_matcher.dart';
 import '../../core/zmode/metadata_repository.dart';
-import '../../core/zmode/match_store.dart';
 import '../../core/zmode/zmode_ids.dart';
 import 'streaming_services_row.dart';
 import 'cubit/home_cubit.dart';
@@ -124,7 +120,6 @@ class _HomeViewState extends State<_HomeView>
   /// never re-fetched on carousel rotation; pre-warmed when hero items load.
   final Map<String, Future<HeroMeta?>> _metaCache = {};
   bool _heroPrewarmed = false;
-  bool _resumePrewarmed = false;
 
   // ── Logo-strike mode transition ──────────────────────────────────────────
   // Tapping a mode card runs a full-screen overlay: the Zangetsu mark springs
@@ -298,47 +293,9 @@ class _HomeViewState extends State<_HomeView>
   /// one `detail()` per hero AT ONCE; for a heavy CloudStream source (e.g.
   /// MovieBox) those N concurrent `load()`s saturated the read pool and froze
   /// the UI thread → ANR. One-at-a-time on rotation is fine even for MovieBox.
-  /// Resolve the stream for the top Continue Watching row before it is tapped.
-  ///
-  /// It is the most-tapped thing on Home, and the caches that make a resolve
-  /// instant live in memory only — so the first play after opening the app
-  /// always paid full price (7.3s median across 139 plays on 2.2.0, 20s at
-  /// p90). The episode url is already on the history row, so this costs one
-  /// resolve and no source search.
-  ///
-  /// Only the first row: warming the whole rail would fire a resolve per show
-  /// for shows nobody asked for. Fire-and-forget, after the frame, so it never
-  /// competes with Home rendering — and a failure just means Play does the
-  /// work itself, as before.
-  void _prewarmResume() {
-    if (_resumePrewarmed) return;
-    _resumePrewarmed = true;
-    final rows = sl<WatchHistory>().all();
-    if (rows.isEmpty) return;
-    final e = rows.first;
-    if (e.episodeUrl.isEmpty) return;
-    // In Z Mode a title has no source of its own; without a match already
-    // stored this would search every installed source. See DetailScreen.
-    if (e.sourceId == ZmodeIds.sourceId) {
-      final c = ZmodeIds.parseShow(e.showUrl);
-      if (c == null ||
-          !sl.isRegistered<MatchStore>() ||
-          sl<MatchStore>().bestFor(c) == null) {
-        return;
-      }
-    }
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      _repo
-          .sources(e.episodeUrl, sourceId: e.sourceId, fast: true)
-          .catchError((_) => <VideoSource>[]);
-    });
-  }
-
   void _prewarmHeroMeta(List<MediaItem> items) {
     if (_heroPrewarmed || items.isEmpty) return;
     _heroPrewarmed = true;
-    _prewarmResume();
     _heroMeta(items.first);
     // Warm the TMDB title logos for the whole carousel up front. The service
     // resolves them SEQUENTIALLY (so no request burst at TMDB) and caches both
@@ -641,7 +598,7 @@ class _HomeViewState extends State<_HomeView>
             // is untouched.
             Expanded(
               child: Align(
-                alignment: AlignmentDirectional.centerStart,
+                alignment: Alignment.centerLeft,
                 child: GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   onTap: () => showMetadataSwitchSheet(context),
@@ -668,49 +625,6 @@ class _HomeViewState extends State<_HomeView>
         ),
       ),
     );
-  }
-
-  /// The banner for [bannerId], with the same items and the same callbacks
-  /// whichever one is showing.
-  ///
-  /// [BannerStyle.defaultId] returns the carousel exactly as it was written —
-  /// this switch is the only thing standing between Home and the banner every
-  /// install already has, and the other branch is a separate widget that never
-  /// runs unless someone opts in.
-  Widget _featuredBanner(String bannerId, List<MediaItem> heroItems) {
-    final reading = sl<ContentModeCubit>().state.isReading;
-    void toggleList(MediaItem m) => showListStatusSheet(
-      context,
-      item: m,
-      onChanged: () {
-        if (mounted) setState(() {});
-      },
-    );
-
-    switch (bannerId) {
-      case BannerStyle.panelsId:
-        return FeaturedBannerPanels(
-          items: heroItems,
-          reading: reading,
-          inList: (m) => _myList.contains(m),
-          onPlay: _playFeatured,
-          onInfo: _openDetail,
-          onToggleList: toggleList,
-          meta: _heroMeta,
-        );
-      default:
-        // Auto-rotating carousel (up to 6 trending items)
-        return FeaturedCarousel(
-          items: heroItems,
-          reading: reading,
-          inList: (m) => _myList.contains(m),
-          onPlay: _playFeatured,
-          onInfo: _openDetail,
-          onToggleList: toggleList,
-          meta: _heroMeta,
-          style: HeroTransition.cinematic,
-        );
-    }
   }
 
   /// Header download shortcut → [DownloadsScreen]. Same shape as
@@ -1655,7 +1569,9 @@ class _HomeViewState extends State<_HomeView>
                 // (the "Reconnect to sync" banner). force: it must not sit out
                 // the cool-off when someone deliberately pulled.
                 if (sl.isRegistered<AuthCubit>()) {
-                  unawaited(sl<AuthCubit>().revalidateIfFlagged(force: true));
+                  unawaited(
+                    sl<AuthCubit>().revalidateIfFlagged(force: true),
+                  );
                 }
                 return context.read<HomeCubit>().load();
               },
@@ -1706,23 +1622,34 @@ class _HomeViewState extends State<_HomeView>
                             if (hasHero) _prewarmHeroMeta(heroItems);
 
                             if (hasHero && !noSourceForMode) {
-                              // Which banner is drawn is a Settings choice, and
-                              // it can change while Home is already built — so
-                              // listen rather than read once.
-                              return ValueListenableBuilder<String>(
-                                valueListenable: BannerStyle.current,
-                                builder: (context, bannerId, _) => Stack(
-                                  children: [
-                                    _featuredBanner(bannerId, heroItems),
-                                    // Floating header sits on top
-                                    Positioned(
-                                      top: 0,
-                                      left: 0,
-                                      right: 0,
-                                      child: _buildHeader(),
+                              return Stack(
+                                children: [
+                                  // Auto-rotating carousel (up to 6 trending items)
+                                  FeaturedCarousel(
+                                    items: heroItems,
+                                    reading:
+                                        sl<ContentModeCubit>().state.isReading,
+                                    inList: (m) => _myList.contains(m),
+                                    onPlay: _playFeatured,
+                                    onInfo: _openDetail,
+                                    onToggleList: (m) => showListStatusSheet(
+                                      context,
+                                      item: m,
+                                      onChanged: () {
+                                        if (mounted) setState(() {});
+                                      },
                                     ),
-                                  ],
-                                ),
+                                    meta: _heroMeta,
+                                    style: HeroTransition.cinematic,
+                                  ),
+                                  // Floating header sits on top
+                                  Positioned(
+                                    top: 0,
+                                    left: 0,
+                                    right: 0,
+                                    child: _buildHeader(),
+                                  ),
+                                ],
                               );
                             }
 
@@ -2269,7 +2196,7 @@ class _IncognitoChip extends StatelessWidget {
       return Padding(
         // Its own breathing room. The old chip carried a right margin only, so
         // it sat flush against the wordmark.
-        padding: const EdgeInsetsDirectional.only(start: 10, end: 6),
+        padding: const EdgeInsets.only(left: 10, right: 6),
         child: Tooltip(
           message: l10n.incognitoMode,
           child: GestureDetector(

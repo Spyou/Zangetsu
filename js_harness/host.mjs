@@ -73,21 +73,13 @@ globalThis.absUrl = function (href, base) {
 // js_bootstrap.dart.
 globalThis.unpackJs = function (source) {
   const s = String(source);
-  // Same marker checks as kJsBootstrap — see the comment there.
-  const open = s.indexOf("}('");
-  const close = s.indexOf(".split('|'),0,{}))");
-  if (open === -1 || close <= open) return s;
-  let body = s.slice(open + 3, close);
+  if (s.indexOf('}(') === -1 || s.indexOf(".split('|')") === -1) return s;
+  let body = s.slice(s.indexOf("}('") + 3, s.indexOf(".split('|'),0,{}))"));
   body = body.replace(/\\'/g, "'");
-  const comma = body.indexOf("',");
-  if (comma === -1) return s;
-  const payload = body.slice(0, comma);
-  let radix = parseInt(body.slice(comma + 2), 10);
+  const payload = body.slice(0, body.indexOf("',"));
+  let radix = parseInt(body.slice(body.indexOf("',") + 2), 10);
   if (!(radix >= 2 && radix <= 62)) radix = 62;
-  const dictStart = body.indexOf("'", comma + 2);
-  const dictEnd = body.lastIndexOf("'");
-  if (dictStart === -1 || dictEnd <= dictStart) return s;
-  const dict = body.slice(dictStart + 1, dictEnd).split('|');
+  const dict = body.slice(body.indexOf("'", body.indexOf("',") + 2) + 1, body.lastIndexOf("'")).split('|');
   const unbase = (t) => {
     let a = 0;
     for (const c of t) {

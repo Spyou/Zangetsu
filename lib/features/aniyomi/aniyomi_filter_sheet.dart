@@ -429,7 +429,7 @@ class _AniyomiFilterSheetState extends State<_AniyomiFilterSheet> {
       tilePadding: EdgeInsets.zero,
       iconColor: AppColors.textSecondary,
       collapsedIconColor: AppColors.textSecondary,
-      childrenPadding: const EdgeInsetsDirectional.only(start: 12),
+      childrenPadding: const EdgeInsets.only(left: 12),
       children: [
         for (final child in f.children) _buildControl(child),
       ],

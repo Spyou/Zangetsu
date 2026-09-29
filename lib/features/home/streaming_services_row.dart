@@ -123,7 +123,7 @@ class _StreamingServicesRowState extends State<StreamingServicesRow> {
                       onTap: widget.onSeeAll,
                       behavior: HitTestBehavior.opaque,
                       child: Padding(
-                        padding: const EdgeInsetsDirectional.only(start: 8),
+                        padding: const EdgeInsets.only(left: 8),
                         child: Text(
                           context.l10n.seeAll,
                           style: AppText.caption.copyWith(

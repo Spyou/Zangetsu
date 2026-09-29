@@ -164,7 +164,7 @@ class _CommunitySheet extends StatelessWidget {
         backgroundColor: color,
         foregroundColor: Colors.white,
         minimumSize: const Size.fromHeight(50),
-        alignment: AlignmentDirectional.centerStart,
+        alignment: Alignment.centerLeft,
       ),
       onPressed: go,
       icon: Icon(icon),

@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../../core/ui/app_dialog.dart';
 import '../../core/ui/app_toast.dart';
 import '../../core/di/injector.dart';
 import '../../core/mihon/mihon_extension_service.dart';
@@ -18,9 +17,7 @@ import '../../core/theme/app_text.dart';
 import '../../core/ui/content_row.dart';
 import '../../core/ui/states.dart';
 import '../../core/ui/poster_card.dart';
-import '../../core/ui/source_icon_tile.dart';
-import '../../core/ui/source_switcher.dart'
-    show sourceTypeOf, categorizedSources, cloudStreamIconUrls;
+import '../../core/ui/source_switcher.dart' show sourceTypeOf;
 import '../../core/zmode/metadata_repository.dart';
 import '../../core/zmode/source_matcher.dart';
 import '../../core/zmode/zmode_ids.dart';
@@ -156,39 +153,6 @@ class _BrowseSourceViewState extends State<_BrowseSourceView> {
   // Not `late final`: setting a domain override changes what this answers,
   // and the menu has to reflect that without reopening the screen.
   String get _baseUrl => sl<SourceRepository>().baseUrlFor(widget.sourceId);
-
-  /// The header icon, resolved exactly like the browse list resolves its
-  /// own tiles — repo/manifest logo first, CloudStream catalog next, site
-  /// favicon last. Same picture in both places (never letter here, logo
-  /// there), and null when nothing names one, which keeps the letter tile.
-  String? get _sourceIconUrl {
-    final id = widget.sourceId;
-    try {
-      final b = categorizedSources();
-      for (final group in [b.anime, b.movies, b.nsfw, b.manga, b.novel]) {
-        for (final r in group) {
-          if (r.id == id && (r.icon?.isNotEmpty ?? false)) return r.icon;
-        }
-      }
-    } catch (_) {}
-    try {
-      final cs = cloudStreamIconUrls()[id];
-      if (cs?.isNotEmpty ?? false) return cs;
-    } catch (_) {}
-    return _sourceLogoUrl;
-  }
-
-  /// The site's own icon for the identity header (`<origin>/favicon.ico`).
-  /// Null when the source has no website — the header then keeps its
-  /// initial-letter tile, exactly as before. A site without a favicon falls
-  /// back the same way (the image's error widget is the letter tile).
-  String? get _sourceLogoUrl {
-    final base = _baseUrl.trim();
-    if (base.isEmpty) return null;
-    final uri = Uri.tryParse(base);
-    if (uri == null || !uri.hasScheme || uri.host.isEmpty) return null;
-    return '${uri.scheme}://${uri.host}/favicon.ico';
-  }
   bool get _canSolveCloudflare => _baseUrl.isNotEmpty;
   bool get _canOpenInBrowser => _baseUrl.isNotEmpty;
   // Not _baseUrl.isNotEmpty: webViewUrlFor trims, so a whitespace-only base
@@ -359,12 +323,30 @@ class _BrowseSourceViewState extends State<_BrowseSourceView> {
   /// that source alone — never touches the active source, another source,
   /// or anything app-side (My List, history, downloads).
   Future<void> _confirmResetData() async {
-    final ok = await AppDialog.confirm(
-      context,
-      title: context.l10n.reset,
-      message: context.l10n.resetSourceDataConfirm(_displayName),
-      confirmLabel: context.l10n.reset,
-      destructive: true,
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: Text(ctx.l10n.reset, style: AppText.title),
+        content: Text(
+          ctx.l10n.resetSourceDataConfirm(_displayName),
+          style: AppText.body,
+        ),
+        actions: [
+          TextButton(
+            autofocus: true,
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(ctx.l10n.cancel),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(
+              ctx.l10n.reset,
+              style: TextStyle(color: AppColors.accent),
+            ),
+          ),
+        ],
+      ),
     );
     if (ok != true) return;
     await source_actions.resetSourceData(widget.sourceId);
@@ -527,8 +509,6 @@ class _BrowseSourceViewState extends State<_BrowseSourceView> {
               ecosystem: _ecosystem,
               language: _language,
               kind: _kind,
-              icon: _sourceIconUrl,
-              heroTag: 'source-icon:${widget.sourceId}',
             ),
           ),
         Expanded(
@@ -781,8 +761,6 @@ class _SourceIdentityHeader extends StatelessWidget {
     required this.ecosystem,
     required this.language,
     required this.kind,
-    this.icon,
-    this.heroTag,
   });
 
   final String name;
@@ -790,23 +768,28 @@ class _SourceIdentityHeader extends StatelessWidget {
   final String? language;
   final String kind;
 
-  /// Logo url resolved like the browse list's tiles. Null → letter tile.
-  final String? icon;
-
-  /// Shared-element tag with the browse list's tile. Null → no animation.
-  final String? heroTag;
-
   @override
   Widget build(BuildContext context) {
-    final tile = SourceIconTile(name: name, icon: icon, size: 52);
-    final tag = heroTag;
+    final initial = name.isNotEmpty ? name[0].toUpperCase() : '?';
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        if (tag == null)
-          tile
-        else
-          Hero(tag: tag, child: tile),
+        Container(
+          width: 52,
+          height: 52,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: AppColors.surface2,
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Text(
+            initial,
+            style: AppText.headline.copyWith(
+              fontSize: 21,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
         const SizedBox(width: 13),
         Expanded(
           child: Column(

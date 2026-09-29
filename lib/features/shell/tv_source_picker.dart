@@ -182,7 +182,7 @@ class TvSourcePicker extends StatelessWidget {
                       child: Row(
                         children: [
                           Padding(
-                            padding: const EdgeInsetsDirectional.only(end: 14),
+                            padding: const EdgeInsets.only(right: 14),
                             child: SourceIconTile(
                               size: 38,
                               name: sourceRowName(row.label),

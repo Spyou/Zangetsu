@@ -28,10 +28,10 @@ void main() {
     expect(parseCommunity(json), isEmpty);
   });
 
-  test('the core team lists Spyou, NeighborhoodNerd and Ombryal (dual role)',
+  test('the core team lists Krishna, NeighborhoodNerd and Ombryal (dual role)',
       () {
     expect(kCoreTeam.map((m) => m.name), [
-      'Spyou',
+      'Krishna Vishwakarma',
       'NeighborhoodNerd',
       'Ombryal',
     ]);

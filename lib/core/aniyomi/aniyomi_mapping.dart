@@ -152,15 +152,27 @@ MediaDetail mediaDetailFromSAnime(
 ///   date_upload    — int     (Unix millis; 0 = unset)
 ///   fillermark     — bool
 ///   preview_url    — String? (episode thumbnail)
+///   season_number  — int? (optional; some bridge-compatible extensions add it)
 Episode episodeFromSEpisode(Map<String, dynamic> j) {
   final url = (j['url'] as String?) ?? '';
+  final title = (j['name'] as String?) ?? '';
   final rawNum = (j['episode_number'] as num?)?.toDouble();
   // Aniyomi uses -1.0 as the "no episode number" sentinel.
-  final epNum = (rawNum != null && rawNum >= 0) ? rawNum : null;
+  final sourceNum = (rawNum != null && rawNum >= 0) ? rawNum : null;
+  final coordinates = _coordinatesFromEpisode(j, title);
+  // Stremio-compatible addons sometimes put an absolute number or a range
+  // index in episode_number. A season-qualified title is the authoritative
+  // pair, otherwise S1E1 and S2E1 cannot coexist safely.
+  final season = coordinates?.season;
+  final epNum = coordinates?.episode ?? sourceNum;
 
   // Derive a stable id: prefer episode-number key so watch-history survives URL
   // changes; fall back to the raw URL for specials / unordered episodes.
-  final id = epNum != null ? 'ep-${epNum.toStringAsFixed(1)}' : url;
+  final id = epNum != null
+      ? (season == null
+            ? 'ep-${epNum.toStringAsFixed(1)}'
+            : 's${season}e${epNum.toStringAsFixed(1)}')
+      : url;
 
   String? dateStr;
   final dateUpload = (j['date_upload'] as num?)?.toInt();
@@ -170,13 +182,58 @@ Episode episodeFromSEpisode(Map<String, dynamic> j) {
 
   return Episode(
     id: id.isNotEmpty ? id : url,
-    title: (j['name'] as String?) ?? '',
+    title: title,
     number: epNum,
     url: url,
     date: dateStr,
     thumbnail: j['preview_url'] as String?,
     filler: (j['fillermark'] as bool?) ?? false,
+    season: season,
   );
+}
+
+({int season, double episode})? _coordinatesFromEpisode(
+  Map<String, dynamic> json,
+  String title,
+) {
+  final explicit = json['season_number'] ?? json['season'];
+  int? explicitSeason;
+  if (explicit is num && explicit.toInt() >= 0) {
+    explicitSeason = explicit.toInt();
+  }
+  if (explicit is String) {
+    final parsed = int.tryParse(explicit.trim());
+    if (parsed != null && parsed >= 0) explicitSeason = parsed;
+  }
+
+  final value = title.trim();
+  final match = RegExp(
+    r'(?:^|[^A-Za-z])(?:S(?:eason)?\s*0*(\d+)\s*(?:E|Episode)\s*0*(\d+)|0*(\d+)\s*x\s*0*(\d+)|S\s*0*(\d+)\s*[-:]\s*E?\s*0*(\d+))',
+    caseSensitive: false,
+  ).firstMatch(value);
+  if (match != null) {
+    final season = int.tryParse(
+      match.group(1) ?? match.group(3) ?? match.group(5) ?? '',
+    );
+    final episode = double.tryParse(
+      match.group(2) ?? match.group(4) ?? match.group(6) ?? '',
+    );
+    if (season != null && episode != null) {
+      return (season: season, episode: episode);
+    }
+  }
+
+  final season = explicitSeason;
+  if (season == null) {
+    return null;
+  }
+  final rawEpisode = json['episode_number'];
+  final episode = rawEpisode is num
+      ? rawEpisode.toDouble()
+      : double.tryParse('$rawEpisode');
+  return episode == null || episode < 0
+      ? null
+      : (season: season, episode: episode);
 }
 
 /// Converts one Video JSON object (from getVideoList) into a [VideoSource].
@@ -200,7 +257,9 @@ final RegExp _kAudioMarker = RegExp(
 
 /// Leftover punctuation once a marker is cut out of a label — "Dub - 1080p"
 /// must read "1080p", not "- 1080p".
-final RegExp _kOrphanSeparators = RegExp(r'^[\s\-–—·•|:/()\[\]]+|[\s\-–—·•|:/()\[\]]+$');
+final RegExp _kOrphanSeparators = RegExp(
+  r'^[\s\-–—·•|:/()\[\]]+|[\s\-–—·•|:/()\[\]]+$',
+);
 final RegExp _kDoubledSeparators = RegExp(r'[\s]*([\-–—·•|])[\s]*\1*[\s]*');
 
 /// The audio cut named by a video's title, and that title with the naming
@@ -261,7 +320,9 @@ VideoSource videoSourceFromVideo(
   Map<String, dynamic> j, {
   AudioKind fallbackKind = AudioKind.unknown,
 }) {
-  final videoUrl = (j['videoUrl'] as String?) ?? '';
+  final rawVideoUrl = (j['videoUrl'] as String?) ?? '';
+  final pipe = rawVideoUrl.indexOf('|');
+  final videoUrl = pipe > 0 ? rawVideoUrl.substring(0, pipe) : rawVideoUrl;
   final lowerUrl = videoUrl.toLowerCase();
   final container = lowerUrl.endsWith('.m3u8')
       ? SourceContainer.hls
@@ -272,6 +333,18 @@ VideoSource videoSourceFromVideo(
   final rawHeaders = j['headers'];
   if (rawHeaders is Map && rawHeaders.isNotEmpty) {
     headers = {for (final e in rawHeaders.entries) '${e.key}': '${e.value}'};
+  }
+  final encodedHeaders = pipe > 0 ? rawVideoUrl.substring(pipe + 1) : '';
+  if (encodedHeaders.isNotEmpty) {
+    headers ??= <String, String>{};
+    for (final pair in encodedHeaders.split('&')) {
+      final separator = pair.indexOf('=');
+      if (separator <= 0) continue;
+      final key = pair.substring(0, separator).trim();
+      final value = pair.substring(separator + 1).trim();
+      if (key.isEmpty || value.isEmpty) continue;
+      headers[key] = Uri.decodeComponent(value);
+    }
   }
 
   // Subtitle tracks: [{url, lang}]

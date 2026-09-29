@@ -332,7 +332,7 @@ class _ScheduleBodyState extends State<ScheduleBody>
               isScrollable: true,
               tabAlignment: TabAlignment.start,
               padding: EdgeInsets.zero,
-              labelPadding: const EdgeInsetsDirectional.only(end: 24),
+              labelPadding: const EdgeInsets.only(right: 24),
               // .label → the bar matches the word width exactly (no padding
               // gap). Thin height.
               indicatorSize: TabBarIndicatorSize.label,
@@ -970,11 +970,7 @@ class _SkeletonTimelineState extends State<_SkeletonTimeline>
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
         child: Column(
           children: [
-            _bar(
-              width: 120,
-              height: 12,
-              align: AlignmentDirectional.centerStart,
-            ),
+            _bar(width: 120, height: 12, align: Alignment.centerLeft),
             const SizedBox(height: 14),
             for (var i = 0; i < 5; i++) ...[
               Row(
@@ -1003,7 +999,7 @@ class _SkeletonTimelineState extends State<_SkeletonTimeline>
   Widget _bar({
     required double width,
     required double height,
-    AlignmentGeometry? align,
+    Alignment? align,
   }) {
     final b = Container(
       width: width,
