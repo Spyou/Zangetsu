@@ -180,6 +180,9 @@ String? castProxyEncodedPayload(List<String> segs, String? queryU) {
 // ponytail: proxying runs on the app isolate — fine for I/O-bound streaming;
 // move to a background isolate only if a 4K cast measurably janks the UI.
 class CastProxyServer {
+  CastProxyServer({this.restrictTargets = false});
+  final bool restrictTargets;
+  final Set<String> _targets = {};
   HttpServer? _server;
   String? _token;
   String? _basePrefix; // http://ip:port/p/<token>
@@ -228,6 +231,7 @@ class CastProxyServer {
   String? proxify(String upstreamUrl) {
     final prefix = _basePrefix;
     if (prefix == null) return null;
+    _targets.add(upstreamUrl);
     final encoded = base64Url.encode(utf8.encode(upstreamUrl));
     // Path-only — CAF is unreliable following `?u=` on HLS playlists.
     // Caption URLs keep a `.vtt` suffix so the receiver treats them as text
@@ -250,6 +254,7 @@ class CastProxyServer {
   }
 
   Future<void> stop() async {
+    _targets.clear();
     _basePrefix = null;
     _token = null;
     final s = _server;
@@ -287,6 +292,13 @@ class CastProxyServer {
       }
       final target = Uri.parse(utf8.decode(base64Url.decode(encoded)));
 
+      if (!['http', 'https'].contains(target.scheme) ||
+          (restrictTargets && !_targets.contains(target.toString()))) {
+        res.statusCode = HttpStatus.forbidden;
+        await res.close();
+        return;
+      }
+
       final upReq = await _client.getUrl(target);
       _headers.forEach(upReq.headers.set);
       // Playlists are text; ask for identity so we don't have to gunzip.
@@ -297,19 +309,31 @@ class CastProxyServer {
       }
       // Never forward Range onto a segment. Decoy-wrapped files must be read
       // whole so we can peel JPEG/ICO/… and then range the unwrapped media.
+      // Companion streams remain streaming; casting retains unwrap/range handling.
+      if (restrictTargets) {
+        upReq.headers.set(HttpHeaders.acceptEncodingHeader, 'identity');
+        final range = req.headers.value(HttpHeaders.rangeHeader);
+        if (range != null) upReq.headers.set(HttpHeaders.rangeHeader, range);
+      }
       final upRes = await upReq.close();
+      var effectiveTarget = target;
+      for (final redirect in upRes.redirects) {
+        effectiveTarget = effectiveTarget.resolveUri(redirect.location);
+      }
 
       final ctype = upRes.headers.contentType?.mimeType.toLowerCase() ?? '';
-      final isHls = looksHls || ctype.contains('mpegurl');
+      final isHls =
+          effectiveTarget.path.toLowerCase().endsWith('.m3u8') ||
+          ctype.contains('mpegurl');
 
       final destName = segs.isNotEmpty ? segs.last.toLowerCase() : '';
       final isSub = looksSubtitleUri(target.path) || destName == 'subs.vtt';
 
-      if (isHls) {
+      if (isHls && upRes.statusCode >= 200 && upRes.statusCode < 300) {
         final body = await _readPlaylistText(upRes);
         final rewritten = rewriteHlsPlaylist(
           body,
-          target,
+          effectiveTarget,
           // Absolute URLs — CAF is unreliable at resolving path-absolute
           // `/p/…?u=` variants against a playlist that itself has a query.
           (abs) => proxify(abs.toString()) ?? abs.toString(),
@@ -320,6 +344,20 @@ class CastProxyServer {
           'vnd.apple.mpegurl',
         );
         res.write(rewritten);
+        await res.close();
+      } else if (restrictTargets) {
+        // Preserve upstream status/ranges without buffering the whole episode.
+        res.statusCode = upRes.statusCode;
+        for (final header in [
+          HttpHeaders.contentTypeHeader,
+          HttpHeaders.contentLengthHeader,
+          HttpHeaders.contentRangeHeader,
+          HttpHeaders.acceptRangesHeader,
+        ]) {
+          final value = upRes.headers.value(header);
+          if (value != null) res.headers.set(header, value);
+        }
+        await res.addStream(upRes);
         await res.close();
       } else if (isSub) {
         // Never unwrap captions as TS/fMP4. DMR only accepts WebVTT.

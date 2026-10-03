@@ -44,6 +44,7 @@ import '../downloads/downloads_screen.dart';
 import '../history/history_screen.dart';
 import 'app_face_screen.dart';
 import 'appearance_screen.dart';
+import '../companion/companion_settings_screen.dart';
 import 'home_rows_screen.dart';
 import 'nav_tabs_screen.dart';
 import 'reader_settings_screen.dart';
@@ -887,6 +888,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
     required int connectedCount,
   }) => [
     // Account & sync
+    if (Platform.isAndroid || Platform.isIOS)
+      _SettingsEntry(
+        section: SettingsSection.account,
+        icon: Icons.connected_tv_rounded,
+        title: 'TV remote',
+        subtitle: _isTv
+            ? 'Control this TV with your phone'
+            : 'Connect to your TV',
+        keywords: 'remote companion pairing bluetooth wifi tv',
+        onTap: () => _push(const CompanionSettingsScreen()),
+      ),
     _SettingsEntry(
       section: SettingsSection.account,
       icon: Icons.sync_alt_rounded,

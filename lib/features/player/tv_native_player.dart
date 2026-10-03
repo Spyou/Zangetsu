@@ -1,9 +1,11 @@
+import '../companion/apple_companion.dart';
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/di/injector.dart';
+import '../../core/cast/cast_proxy.dart';
 import '../../core/discord/discord_presence.dart';
 import '../../core/discord/discord_rpc.dart';
 import '../../core/metadata/episode_metadata_service.dart';
@@ -50,6 +52,95 @@ import 'subtitle_font_service.dart';
 /// phone (media_kit) player.
 class TvNativePlayer {
   static const _ch = MethodChannel('zangetsu/tv_player');
+  static int _companionSession = 0;
+  static final _companionProxy = CastProxyServer(restrictTargets: true);
+  /// Revokes stream proxy access when the receiver or paired-phone session ends.
+  static Future<void> stopCompanionSharing() => _companionProxy.stop();
+
+  /// Returns stable episode identity and a session generation for phone handoff.
+  static Map<String, dynamic> companionSnapshot() {
+    if (_episodes.isEmpty || _resolve == null)
+      throw StateError('Start an episode on TV first.');
+    return {
+      'session': _companionSession,
+      'sourceId': _sourceId,
+      'showUrl': _showUrl,
+      'title': _showTitle,
+      'cover': _cover,
+      'episodes': _episodes.map((e) => e.toJson()).toList(),
+    };
+  }
+
+  /// Validates the TV session and proxies its actual stream with TV-owned headers.
+  static Future<Map<String, dynamic>> companionSources(
+    int session,
+    int index,
+  ) async {
+    if (session != _companionSession ||
+        index < 0 ||
+        index >= _episodes.length ||
+        _resolve == null) {
+      throw StateError('The TV title changed. Open Continue on phone again.');
+    }
+    final live = await const CompanionChannel()
+        .invokeMapMethod<String, dynamic>('receiverStream');
+    VideoSource? source;
+    if (live?['index'] == index && live?['url'] is String) {
+      source = VideoSource(
+        url: live!['url'] as String,
+        headers: (live['headers'] as Map?)?.cast<String, String>(),
+        subtitles: (live['subtitles'] as List? ?? [])
+            .map((s) => Subtitle.fromJson(Map<String, dynamic>.from(s as Map)))
+            .toList(),
+        drmKid: live['drmKid'] as String?,
+        drmKey: live['drmKey'] as String?,
+      );
+    }
+    source ??= await _resolveSource(_episodes[index]);
+    if (session != _companionSession) throw StateError('The TV title changed.');
+    if (source == null)
+      throw StateError(
+        'The TV could not resolve this episode. Try another source.',
+      );
+    if (source.isDrm)
+      throw StateError(
+        'This protected stream cannot be transferred to the phone player.',
+      );
+    final playable = isTorrentUrl(source.url)
+        ? await _playableUrl(source.url)
+        : source.url;
+    if (playable == null)
+      throw StateError('The TV stream is not available yet.');
+    final url = await _companionProxy.serve(playable, source.headers);
+    if (url == null)
+      throw StateError(
+        'Connect your phone and TV to the same Wi-Fi for video handoff.',
+      );
+    return {
+      'sources': [
+        VideoSource(
+          url: url,
+          container: source.container,
+          label: source.label,
+          subtitles: source.subtitles
+              .map(
+                (s) => Subtitle(
+                  url: _companionProxy.proxify(s.url) ?? s.url,
+                  lang: s.lang,
+                  label: s.label,
+                  format: s.format,
+                  isDefault: s.isDefault,
+                ),
+              )
+              .toList(),
+        ).toJson(),
+      ],
+    };
+  }
+
+  /// Rejects handoff selections made before the TV changed titles.
+  static bool companionSessionMatches(int session) =>
+      session == _companionSession;
   static bool _handlerBound = false;
 
   /// Set when [play] fails during source resolution — surfaced by
@@ -106,6 +197,7 @@ class TvNativePlayer {
     String? imdbId,
   }) async {
     if (startIndex < 0 || startIndex >= episodes.length) return false;
+    _companionSession++;
     lastFailure = null;
     lastPlaybackErrorCode = null;
 

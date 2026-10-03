@@ -31,6 +31,8 @@ import '../../core/models/episode.dart';
 import '../../core/models/episode_title.dart';
 import '../../core/models/video_source.dart';
 import '../../core/playback/resume_store.dart';
+import '../companion/companion_settings_screen.dart';
+import '../companion/remote_session.dart';
 import '../../core/playback/skip_service.dart';
 import '../../core/playback/source_selection.dart';
 import '../../core/playback/subtitle_language.dart';
@@ -164,12 +166,15 @@ class PlayerScreen extends StatefulWidget {
     this.joinRoomCode,
     this.playerOverride,
     this.initialSource,
+    this.onContinueOnTv,
   });
 
   /// A mirror picked from the episode list's long-press menu, opened instead
   /// of the adaptive default. One-shot: the cubit clears it after the first
   /// episode so nothing later is affected.
   final VideoSource? initialSource;
+  /// Optional handoff callback; true means the TV accepted the episode and resume point.
+  final Future<bool> Function(int index, Duration position)? onContinueOnTv;
 
   /// Set by the episode list's long-press sheet: play this one episode here,
   /// ignoring the Settings default. Empty string means the built-in player
@@ -400,6 +405,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
   bool _tvBarVisible = true;
 
   bool _ready = false; // the player session (cubit) is built
+  bool _remotePlayback = false;
+  bool _sendingToTv = false;
+  String? _remoteError;
   PlayerRouteTeardownLease? _routeTeardownLease;
   // Set when a Watch Together join can't resolve the room's source on this
   // device — show a clear message instead of silently bouncing to a portrait
@@ -452,6 +460,20 @@ class _PlayerScreenState extends State<PlayerScreen> {
     // Refresh the "enhancement shaders downloaded?" flag so the in-player picker
     // gates correctly (they're fetched on demand from Settings). Fire-and-forget.
     unawaited(ShaderPresets.refreshDownloaded());
+    if ((Platform.isAndroid || Platform.isIOS) &&
+        !sl<AppMode>().isTv &&
+        RemoteSession.instance.remoteMode &&
+        widget.onContinueOnTv == null &&
+        widget.joinRoomCode == null) {
+      _remotePlayback = true;
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _sendRemotePlayback(),
+      );
+      return;
+    }
+    // Default external player: hand the stream off to the chosen app and close
+    // this screen instead of starting the in-app player. Falls back to in-app
+    // if the launch can't be set up, so playback never silently dies.
     if (Platform.isAndroid && _chosenPlayer == PlaybackPrefs.androidPlayerId) {
       _launchExoThenPop();
       return;
@@ -461,6 +483,73 @@ class _PlayerScreenState extends State<PlayerScreen> {
       return;
     }
     _initInApp();
+  }
+
+  /// Resolves phone selection metadata and asks the TV to play before opening remote controls.
+  Future<void> _sendRemotePlayback() async {
+    if (_sendingToTv || !mounted) return;
+    setState(() {
+      _sendingToTv = true;
+      _remoteError = null;
+    });
+    final remote = RemoteSession.instance;
+    try {
+      if (!remote.connected) await remote.reconnect();
+      if (!remote.connected)
+        throw StateError('Open the Remote tab and connect your TV first.');
+      var episodes = widget.episodes;
+      if (episodes.isEmpty && widget.episodesResolver != null)
+        episodes = await widget.episodesResolver!();
+      if (episodes.isEmpty) throw StateError('No episodes are available.');
+      var index = widget.startIndex.clamp(0, episodes.length - 1);
+      if (widget.resumeEpisodeId != null) {
+        final match = episodes.indexWhere(
+          (e) =>
+              e.id == widget.resumeEpisodeId ||
+              e.number == widget.resumeEpisodeNumber,
+        );
+        if (match >= 0) index = match;
+      }
+      final episode = episodes[index];
+      final result = await remote.command('openFromPhone', {
+        'title': widget.showTitle ?? '',
+        'sourceId': widget.sourceId,
+        if (widget.showUrl?.startsWith('zm://') == true)
+          'canonical': widget.showUrl,
+        'number': episode.number,
+        'season': episode.season,
+        'category': widget.category,
+        'positionMs': widget.resumePosition.inMilliseconds,
+      });
+      for (var attempt = 0; attempt < 120 && mounted; attempt++) {
+        final state = remote.playback.value;
+        if (state['active'] == true &&
+            state['title'] == result['title'] &&
+            state['episodeIndex'] == result['index'] &&
+            state['buffering'] != true) {
+          if (mounted)
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute<void>(
+                builder: (_) => const CompanionSettingsScreen(),
+              ),
+            );
+          return;
+        }
+        if (state['playbackError'] != null)
+          throw StateError(state['playbackError'].toString());
+        await Future<void>.delayed(const Duration(milliseconds: 500));
+      }
+      throw StateError(
+        'The TV is still loading. Check the Remote tab for its status.',
+      );
+    } catch (e) {
+      if (mounted)
+        setState(
+          () => _remoteError = e.toString().replaceFirst('Bad state: ', ''),
+        );
+    } finally {
+      if (mounted) setState(() => _sendingToTv = false);
+    }
   }
 
   /// Watching upright (the ⟳ button). Starts false — every episode opens
@@ -2468,6 +2557,46 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_remotePlayback)
+      return Scaffold(
+        backgroundColor: AppColors.bg,
+        appBar: AppBar(title: const Text('Play on TV')),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (_sendingToTv)
+                  const CircularProgressIndicator()
+                else
+                  const Icon(Icons.connected_tv_rounded, size: 48),
+                const SizedBox(height: 20),
+                Text(
+                  _remoteError ??
+                      'Opening ${widget.showTitle ?? 'your episode'} on TV…',
+                  textAlign: TextAlign.center,
+                ),
+                if (!_sendingToTv) ...[
+                  const SizedBox(height: 16),
+                  FilledButton(
+                    onPressed: _sendRemotePlayback,
+                    child: const Text('Try again'),
+                  ),
+                  TextButton(
+                    onPressed: () {
+                      RemoteSession.instance.setRemoteMode(false);
+                      setState(() => _remotePlayback = false);
+                      _initInApp();
+                    },
+                    child: const Text('Watch on this phone'),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      );
     // A Watch Together join that couldn't resolve the room's source — explain
     // it clearly instead of a blank/bouncing screen.
     if (_loadError != null) {
@@ -3044,6 +3173,48 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       child: IgnorePointer(
                         ignoring: !_controlsVisible,
                         child: _ControlsOverlay(
+                          onContinueOnTv:
+                              !(Platform.isAndroid || Platform.isIOS)
+                              ? null
+                              : () async {
+                                  final wasPlaying = _c.player.state.playing;
+                                  await _c.player.pause();
+                                  if (!mounted || !context.mounted) return;
+                                  final moved = widget.onContinueOnTv != null
+                                      ? await widget.onContinueOnTv!(
+                                          _c.state.currentIndex,
+                                          _c.currentPosition,
+                                        )
+                                      : await Navigator.of(context).push<bool>(
+                                              MaterialPageRoute(
+                                                builder: (_) =>
+                                                    CompanionSettingsScreen(
+                                                      phonePlayback: {
+                                                        'sourceId':
+                                                            widget.sourceId,
+                                                        'title':
+                                                            widget.showTitle ??
+                                                            '',
+                                                        'episodeNumber': _c
+                                                            .episodes[_c
+                                                                .state
+                                                                .currentIndex]
+                                                            .number,
+                                                        'positionMs': _c
+                                                            .currentPosition
+                                                            .inMilliseconds,
+                                                      },
+                                                    ),
+                                              ),
+                                            ) ==
+                                            true;
+                                  if (!mounted || !context.mounted) return;
+                                  if (moved) {
+                                    Navigator.of(context).pop();
+                                  } else if (wasPlaying) {
+                                    await _c.player.play();
+                                  }
+                                },
                           controller: _c,
                           state: state,
                           visible: _controlsVisible,
