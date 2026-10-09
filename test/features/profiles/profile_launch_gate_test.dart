@@ -79,7 +79,7 @@ void main() {
     );
 
     expect(find.text("Who's watching?"), findsOneWidget);
-    expect(find.text('Select a profile to continue'), findsOneWidget);
+    expect(find.text('Ready for the next watch, Home?'), findsOneWidget);
     expect(find.byType(CircleAvatar), findsOneWidget);
     expect(
       find.byKey(ValueKey('profile-avatar-fill-${profiles.profiles.first.id}')),
@@ -546,6 +546,26 @@ void main() {
       ),
       findsOneWidget,
     );
+  });
+
+  testWidgets('picker greets the active profile', (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(home: ViewerProfilesScreen(selectionOnly: true)),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Ready for the next watch, Home?'), findsOneWidget);
+  });
+
+  testWidgets('picker greeting follows a rename', (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(home: ViewerProfilesScreen(selectionOnly: true)),
+    );
+    await tester.pumpAndSettle();
+    await tester.runAsync(
+      () => profiles.rename(profiles.profiles.first.id, 'Evening'),
+    );
+    await tester.pump();
+    expect(find.text('Ready for the next watch, Evening?'), findsOneWidget);
   });
 }
 

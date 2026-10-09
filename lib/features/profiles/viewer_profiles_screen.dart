@@ -324,7 +324,9 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
                         ),
                         child: ValueListenableBuilder<int>(
                           valueListenable: _profiles.revision,
-                          builder: (context, _, _) => Column(
+                          builder: (context, _, _) {
+                            final lastName = _profiles.active.value?.name;
+                            return Column(
                             mainAxisSize: MainAxisSize.min,
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
@@ -345,7 +347,9 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
                                     ),
                                     const SizedBox(height: 8),
                                     Text(
-                                      'Select a profile to continue',
+                                      lastName == null
+                                          ? 'Select a profile to continue'
+                                          : 'Ready for the next watch, $lastName?',
                                       textAlign: TextAlign.center,
                                       style: AppText.caption.copyWith(
                                         color: AppColors.textSecondary,
@@ -388,7 +392,8 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
                                 ),
                               ),
                             ],
-                          ),
+                            );
+                          },
                         ),
                       ),
                     ),
