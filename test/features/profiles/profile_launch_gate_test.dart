@@ -366,6 +366,26 @@ void main() {
     expect(tester.widget<ScaleTransition>(lastAvatar).scale.value, 1.0);
     expect(tester.widget<FadeTransition>(footerFade).opacity.value, 1);
   });
+
+  testWidgets('gate releases content before popping the picker', (
+    tester,
+  ) async {
+    final deferredStates = <bool>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ProfileLaunchGate(
+          child: _ProfileGateShellProbe(onBuild: deferredStates.add),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(deferredStates.last, isTrue);
+    final id = profiles.profiles.first.id;
+    await tester.tap(find.byKey(ValueKey('profile-avatar-ink-$id')));
+    await tester.pump(); // one frame: content released, pop not yet done
+    expect(deferredStates.last, isFalse);
+    expect(find.text("Who's watching?"), findsOneWidget);
+  });
 }
 
 class _ProfileGateShellProbe extends StatelessWidget {
