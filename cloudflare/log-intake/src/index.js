@@ -195,7 +195,11 @@ async function verifyAppUser(request, env) {
       (c) => c.charCodeAt(0),
     );
     if (!await crypto.subtle.verify('HMAC', secret, sig, data)) return null;
-    const payload = JSON.parse(atob(p));
+    // Same base64url conversion as the signature: a raw atob throws on
+    // '- '_', which appear in most payloads and would 401 valid users.
+    const payload = JSON.parse(
+      atob(p.replace(/-/g, '+').replace(/_/g, '/')),
+    );
     if (typeof payload.exp === 'number' && payload.exp * 1000 < Date.now()) {
       return null;
     }

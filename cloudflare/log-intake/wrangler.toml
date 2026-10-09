@@ -30,4 +30,4 @@ bucket_name = "zangetsu-avatars"
 
 [vars]
 # REPLACE after exposing the bucket publicly — deploy again once set.
-AVATAR_PUBLIC_BASE = "https://REPLACE-WITH-R2-PUBLIC-URL"
+AVATAR_PUBLIC_BASE = "https://pub-a8b67f6edb404cb1b7545e19bc2b5b94.r2.dev"
