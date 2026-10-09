@@ -386,6 +386,70 @@ void main() {
     expect(deferredStates.last, isFalse);
     expect(find.text("Who's watching?"), findsOneWidget);
   });
+
+  testWidgets('double-tap selects once', (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(home: ProfileLaunchGate(child: Text('Main screen'))),
+    );
+    await tester.pumpAndSettle();
+    final id = profiles.profiles.first.id;
+    final ink = find.byKey(ValueKey('profile-avatar-ink-$id'));
+    await tester.tap(ink);
+    await tester.pump(); // real taps always span frames
+    await tester.tap(ink);
+    await tester.pumpAndSettle();
+    expect(find.text('Main screen'), findsOneWidget);
+    expect(find.text("Who's watching?"), findsNothing);
+  });
+
+  testWidgets('reduced motion shows everything instantly', (tester) async {
+    await tester.runAsync(() async {
+      await profiles.create('Second');
+    });
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MediaQuery(
+          data: const MediaQueryData(disableAnimations: true),
+          child: const ViewerProfilesScreen(selectionOnly: true),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 50));
+    final lastId = profiles.profiles.last.id;
+    expect(find.byKey(ValueKey('profile-entrance-$lastId')), findsOneWidget);
+    expect(
+      tester
+          .widget<ScaleTransition>(
+            find.byKey(ValueKey('profile-entrance-$lastId')),
+          )
+          .scale
+          .value,
+      1.0,
+    );
+  });
+
+  testWidgets('manager-screen tap pops without hero flight', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => TextButton(
+            onPressed: () => Navigator.of(context).push<void>(
+              MaterialPageRoute<void>(
+                builder: (_) => const ViewerProfilesScreen(),
+              ),
+            ),
+            child: const Text('Open'),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('Open'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(profiles.profiles.first.name).first);
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.text('Open'), findsOneWidget);
+  });
 }
 
 class _ProfileGateShellProbe extends StatelessWidget {
