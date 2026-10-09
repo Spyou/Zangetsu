@@ -35,6 +35,7 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
   late final Animation<double> _titleOpacity;
   late final Animation<double> _footerOpacity;
   final _enableSelectionHero = ValueNotifier(false);
+  bool _selecting = false;
 
   ViewerProfileStore get _profiles => sl<ViewerProfileStore>();
 
@@ -100,6 +101,11 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
   }
 
   Future<void> _switchTo(ViewerProfile profile) async {
+    // Both the avatar and the name label land here. Sticky: every real flow
+    // closes the picker after a selection, so a second tap is always a
+    // double-tap, never a new choice.
+    if (_selecting) return;
+    _selecting = true;
     final switching = _profiles.switchTo(profile.id);
     if (!mounted) return;
     final onSelected = widget.onSelected;

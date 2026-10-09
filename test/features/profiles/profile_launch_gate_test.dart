@@ -387,19 +387,23 @@ void main() {
     expect(find.text("Who's watching?"), findsOneWidget);
   });
 
-  testWidgets('double-tap selects once', (tester) async {
+  testWidgets('double selection fires once', (tester) async {
+    var selections = 0;
     await tester.pumpWidget(
-      const MaterialApp(home: ProfileLaunchGate(child: Text('Main screen'))),
+      MaterialApp(
+        home: ViewerProfilesScreen(
+          selectionOnly: true,
+          onSelected: () => selections++,
+        ),
+      ),
     );
     await tester.pumpAndSettle();
-    final id = profiles.profiles.first.id;
-    final ink = find.byKey(ValueKey('profile-avatar-ink-$id'));
-    await tester.tap(ink);
-    await tester.pump(); // real taps always span frames
-    await tester.tap(ink);
+    final name = find.text(profiles.profiles.first.name).first;
+    await tester.tap(name);
+    await tester.pump();
+    await tester.tap(name);
     await tester.pumpAndSettle();
-    expect(find.text('Main screen'), findsOneWidget);
-    expect(find.text("Who's watching?"), findsNothing);
+    expect(selections, 1);
   });
 
   testWidgets('reduced motion shows everything instantly', (tester) async {
