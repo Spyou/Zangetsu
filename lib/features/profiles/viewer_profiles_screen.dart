@@ -77,8 +77,10 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
   double _avatarStart(int i, int count, double gapScale) =>
       0.25 + (0.45 * gapScale * i / count);
   double _avatarEnd(int i, int count, double gapScale) =>
-      (_avatarStart(i, count, gapScale) + 0.45 * gapScale / count + 0.15)
-          .clamp(0.0, 1.0);
+      (_avatarStart(i, count, gapScale) + 0.45 * gapScale / count + 0.15).clamp(
+        0.0,
+        1.0,
+      );
 
   Animation<double> _avatarScale(int i, int count, double gapScale) =>
       Tween<double>(begin: 0.8, end: 1.0)
@@ -118,10 +120,11 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
     Navigator.of(context).pop();
   }
 
-  Future<void> _edit([ViewerProfile? profile]) async {
+  Future<void> _edit([ViewerProfile? profile, int initialAvatar = 0]) async {
     final result = await showDialog<_ProfileDraft>(
       context: context,
-      builder: (context) => _ProfileEditor(profile: profile),
+      builder: (context) =>
+          _ProfileEditor(profile: profile, initialAvatar: initialAvatar),
     );
     if (result == null) return;
     if (profile == null) {
@@ -250,7 +253,10 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
                       _profiles.profiles.length >=
                           ViewerProfileStore.maxProfiles
                       ? null
-                      : () => _edit(),
+                      : () => _edit(
+                          null,
+                          defaultAvatarForNewProfile(_profiles.profiles.length),
+                        ),
                 ),
               ],
             ),
@@ -316,7 +322,9 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               FadeTransition(
-                                key: const ValueKey('profile-picker-title-fade'),
+                                key: const ValueKey(
+                                  'profile-picker-title-fade',
+                                ),
                                 opacity: _titleOpacity,
                                 child: Column(
                                   children: [
@@ -610,13 +618,15 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
       return TvListFocusable(
         autofocus: autofocus,
         semanticLabel: 'Add profile',
-        onTap: () => _edit(),
+        onTap: () =>
+            _edit(null, defaultAvatarForNewProfile(_profiles.profiles.length)),
         builder: content,
       );
     }
     return InkWell(
       borderRadius: BorderRadius.circular(diameter),
-      onTap: () => _edit(),
+      onTap: () =>
+          _edit(null, defaultAvatarForNewProfile(_profiles.profiles.length)),
       child: content(false),
     );
   }
@@ -640,6 +650,21 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
     final selected = _profiles.activeId == profile.id;
     return SettingsTile(
       icon: viewerProfileAvatarIcon(profile.avatar),
+      leading: Container(
+        key: ValueKey('profile-tile-avatar-${profile.id}'),
+        width: 34,
+        height: 34,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: viewerProfileAvatarColor(profile.avatar),
+        ),
+        child: Icon(
+          viewerProfileAvatarIcon(profile.avatar),
+          color: Colors.white,
+          size: 19,
+        ),
+      ),
       title: profile.name,
       subtitle: profile.isKids
           ? 'Kids profile'
@@ -840,8 +865,9 @@ class _ProfileDraft {
 }
 
 class _ProfileEditor extends StatefulWidget {
-  const _ProfileEditor({this.profile});
+  const _ProfileEditor({this.profile, this.initialAvatar = 0});
   final ViewerProfile? profile;
+  final int initialAvatar;
 
   @override
   State<_ProfileEditor> createState() => _ProfileEditorState();
@@ -851,7 +877,7 @@ class _ProfileEditorState extends State<_ProfileEditor> {
   late final TextEditingController _name = TextEditingController(
     text: widget.profile?.name ?? '',
   );
-  late int _avatar = widget.profile?.avatar ?? 0;
+  late int _avatar = widget.profile?.avatar ?? widget.initialAvatar;
   late bool _isKids = widget.profile?.isKids ?? false;
 
   @override

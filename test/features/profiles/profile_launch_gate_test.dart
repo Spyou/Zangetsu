@@ -6,6 +6,7 @@ import 'package:get_it/get_it.dart';
 import 'package:hive/hive.dart';
 import 'package:watch_app/core/app_mode.dart';
 import 'package:watch_app/core/profiles/viewer_profile.dart';
+import 'package:watch_app/core/profiles/viewer_profile_avatar.dart';
 import 'package:watch_app/core/profiles/profile_shell_scope.dart';
 import 'package:watch_app/core/theme/app_colors.dart';
 import 'package:watch_app/core/tv/tv_list_focusable.dart';
@@ -144,106 +145,102 @@ void main() {
     );
   });
 
-  testWidgets(
-    'avatar tap feedback is circular under one entrance wrapper',
-    (tester) async {
-      var selected = false;
-      await tester.pumpWidget(
-        MaterialApp(
-          home: ViewerProfilesScreen(
-            selectionOnly: true,
-            onSelected: () => selected = true,
-          ),
+  testWidgets('avatar tap feedback is circular under one entrance wrapper', (
+    tester,
+  ) async {
+    var selected = false;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ViewerProfilesScreen(
+          selectionOnly: true,
+          onSelected: () => selected = true,
         ),
-      );
+      ),
+    );
 
-      final screenFade = find.byKey(
-        const ValueKey('profile-picker-entry-screen-fade'),
-      );
-      final screenSlide = find.byKey(
-        const ValueKey('profile-picker-entry-screen-slide'),
-      );
-      expect(tester.widget<FadeTransition>(screenFade).opacity.value, 0);
-      expect(
-        tester.widget<SlideTransition>(screenSlide).position.value.dy,
-        closeTo(0.08, 0.01),
-      );
-      expect(
-        tester.widget<SlideTransition>(screenSlide).child,
-        isA<Scaffold>(),
-      );
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 220));
-      expect(
-        tester.widget<FadeTransition>(screenFade).opacity.value,
-        greaterThan(0),
-      );
-      expect(
-        tester.widget<SlideTransition>(screenSlide).position.value.dy,
-        lessThan(0.08),
-      );
-      await tester.pump(const Duration(milliseconds: 500));
-      expect(tester.widget<FadeTransition>(screenFade).opacity.value, 1);
-      expect(
-        tester.widget<SlideTransition>(screenSlide).position.value,
-        Offset.zero,
-      );
+    final screenFade = find.byKey(
+      const ValueKey('profile-picker-entry-screen-fade'),
+    );
+    final screenSlide = find.byKey(
+      const ValueKey('profile-picker-entry-screen-slide'),
+    );
+    expect(tester.widget<FadeTransition>(screenFade).opacity.value, 0);
+    expect(
+      tester.widget<SlideTransition>(screenSlide).position.value.dy,
+      closeTo(0.08, 0.01),
+    );
+    expect(tester.widget<SlideTransition>(screenSlide).child, isA<Scaffold>());
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 220));
+    expect(
+      tester.widget<FadeTransition>(screenFade).opacity.value,
+      greaterThan(0),
+    );
+    expect(
+      tester.widget<SlideTransition>(screenSlide).position.value.dy,
+      lessThan(0.08),
+    );
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(tester.widget<FadeTransition>(screenFade).opacity.value, 1);
+    expect(
+      tester.widget<SlideTransition>(screenSlide).position.value,
+      Offset.zero,
+    );
 
-      final profile = profiles.profiles.first;
-      final avatar = find.byKey(ValueKey('profile-avatar-${profile.id}'));
-      expect(
-        find.byWidgetPredicate(
-          (widget) =>
-              widget is Hero && widget.tag == 'viewer-profile-${profile.id}',
-        ),
-        findsOneWidget,
-      );
-      final ripple = tester.widget<InkResponse>(
-        find.byKey(ValueKey('profile-avatar-ink-${profile.id}')),
-      );
-      expect(ripple.containedInkWell, isTrue);
-      expect(ripple.customBorder, isA<CircleBorder>());
-      expect(ripple.splashColor, AppColors.textPrimary.withValues(alpha: 0.28));
-      final fill = tester.widget<Material>(
-        find.byKey(ValueKey('profile-avatar-fill-${profile.id}')),
-      );
-      expect(fill.color, AppColors.accent);
-      expect(fill.shape, isA<CircleBorder>());
-      expect(
-        find.descendant(
-          of: find.byKey(ValueKey('profile-avatar-fill-${profile.id}')),
-          matching: find.byKey(ValueKey('profile-avatar-ink-${profile.id}')),
-        ),
-        findsOneWidget,
-      );
-      final scale = tester.widget<ScaleTransition>(avatar).scale;
-      expect(
-        find.ancestor(of: avatar, matching: find.byType(ScaleTransition)),
-        findsOneWidget,
-      );
-      expect(
-        find.ancestor(
-          of: avatar,
-          matching: find.byKey(ValueKey('profile-entrance-${profile.id}')),
-        ),
-        findsOneWidget,
-      );
-      final gesture = await tester.startGesture(tester.getCenter(avatar));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 70));
-      expect(scale.value, closeTo(0.94, 0.01));
+    final profile = profiles.profiles.first;
+    final avatar = find.byKey(ValueKey('profile-avatar-${profile.id}'));
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Hero && widget.tag == 'viewer-profile-${profile.id}',
+      ),
+      findsOneWidget,
+    );
+    final ripple = tester.widget<InkResponse>(
+      find.byKey(ValueKey('profile-avatar-ink-${profile.id}')),
+    );
+    expect(ripple.containedInkWell, isTrue);
+    expect(ripple.customBorder, isA<CircleBorder>());
+    expect(ripple.splashColor, AppColors.textPrimary.withValues(alpha: 0.28));
+    final fill = tester.widget<Material>(
+      find.byKey(ValueKey('profile-avatar-fill-${profile.id}')),
+    );
+    expect(fill.color, AppColors.accent);
+    expect(fill.shape, isA<CircleBorder>());
+    expect(
+      find.descendant(
+        of: find.byKey(ValueKey('profile-avatar-fill-${profile.id}')),
+        matching: find.byKey(ValueKey('profile-avatar-ink-${profile.id}')),
+      ),
+      findsOneWidget,
+    );
+    final scale = tester.widget<ScaleTransition>(avatar).scale;
+    expect(
+      find.ancestor(of: avatar, matching: find.byType(ScaleTransition)),
+      findsOneWidget,
+    );
+    expect(
+      find.ancestor(
+        of: avatar,
+        matching: find.byKey(ValueKey('profile-entrance-${profile.id}')),
+      ),
+      findsOneWidget,
+    );
+    final gesture = await tester.startGesture(tester.getCenter(avatar));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 70));
+    expect(scale.value, closeTo(0.94, 0.01));
 
-      await gesture.up();
-      await tester.pump();
-      expect(selected, isTrue);
-      await tester.pump(const Duration(milliseconds: 90));
-      expect(scale.value, greaterThan(1.04));
-      await tester.pump(const Duration(milliseconds: 250));
-      expect(scale.value, 1);
-      await tester.pumpAndSettle();
-      expect(selected, isTrue);
-    },
-  );
+    await gesture.up();
+    await tester.pump();
+    expect(selected, isTrue);
+    await tester.pump(const Duration(milliseconds: 90));
+    expect(scale.value, greaterThan(1.04));
+    await tester.pump(const Duration(milliseconds: 250));
+    expect(scale.value, 1);
+    await tester.pumpAndSettle();
+    expect(selected, isTrue);
+  });
 
   testWidgets('avatar returns to full size when a press is released outside', (
     tester,
@@ -357,9 +354,7 @@ void main() {
     final lastAvatar = find.byKey(ValueKey('profile-entrance-$lastId'));
     expect(lastAvatar, findsOneWidget);
     expect(tester.widget<ScaleTransition>(lastAvatar).scale.value, 0.8);
-    final footerFade = find.byKey(
-      const ValueKey('profile-picker-footer-fade'),
-    );
+    final footerFade = find.byKey(const ValueKey('profile-picker-footer-fade'));
     expect(footerFade, findsOneWidget);
     expect(tester.widget<FadeTransition>(footerFade).opacity.value, 0);
     await tester.pump(const Duration(milliseconds: 600));
@@ -453,6 +448,37 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(seconds: 1));
     expect(find.text('Open'), findsOneWidget);
+  });
+
+  testWidgets('manager tile paints the profile avatar color', (tester) async {
+    await tester.runAsync(() async {
+      await profiles.create('Colored');
+      await profiles.update(profiles.profiles.last.id, avatar: 3);
+    });
+    await tester.pumpWidget(const MaterialApp(home: ViewerProfilesScreen()));
+    await tester.pumpAndSettle();
+    final id = profiles.profiles.last.id;
+    final avatar = find.byKey(ValueKey('profile-tile-avatar-$id'));
+    expect(avatar, findsOneWidget);
+    final box = tester.widget<Container>(avatar);
+    expect(
+      (box.decoration as BoxDecoration).color,
+      viewerProfileAvatarColor(3),
+    );
+    expect(
+      tester
+          .widget<Icon>(
+            find.descendant(of: avatar, matching: find.byType(Icon)),
+          )
+          .icon,
+      viewerProfileAvatarIcon(3),
+    );
+  });
+
+  test('new profiles default to distinct avatars', () {
+    expect(defaultAvatarForNewProfile(0), 0);
+    expect(defaultAvatarForNewProfile(1), 1);
+    expect(defaultAvatarForNewProfile(viewerProfileAvatarIcons.length), 0);
   });
 }
 
