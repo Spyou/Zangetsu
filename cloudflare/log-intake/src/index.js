@@ -27,7 +27,13 @@ const MAX_BYTES = 1_000_000;
 /** Bumped by hand when the Worker changes, so `/health` can prove which code
  *  is actually serving. Cloudflare takes a while to roll a new version out and
  *  there is otherwise no way to tell from outside. */
-const BUILD = 'ctx-2';
+const BUILD = 'ctx-3';
+
+/** Supabase JWKS endpoint (ES256, P-256). Cached in a module global;
+ *  refetched only when the token's `kid` misses the cache. */
+const JWKS_URL =
+  'https://eogwzrlfoercfwcfwlmv.supabase.co/auth/v1/.well-known/jwks.json';
+let CACHED_JWKS = null;
 
 /** Long enough to still have the log when someone gets round to mentioning it,
  *  short enough that nothing accumulates. KV expires these itself. */
@@ -176,30 +182,62 @@ function json(data, status = 200) {
   });
 }
 
+async function getJwk(kid) {
+  const hit =
+    CACHED_JWKS &&
+    Array.isArray(CACHED_JWKS.keys) &&
+    CACHED_JWKS.keys.find((k) => k.kid === kid);
+  if (hit) return hit;
+  const res = await fetch(JWKS_URL);
+  if (!res.ok) return null;
+  CACHED_JWKS = await res.json();
+  const keys = (CACHED_JWKS && CACHED_JWKS.keys) || [];
+  return keys.find((k) => k.kid === kid) || null;
+}
+
+function b64urlToBytes(seg) {
+  const b64 = seg.replace(/-/g, '+').replace(/_/g, '/');
+  const padded = b64 + '='.repeat((4 - (b64.length % 4)) % 4);
+  return Uint8Array.from(atob(padded), (c) => c.charCodeAt(0));
+}
+
+function b64urlToJson(seg) {
+  const bytes = b64urlToBytes(seg);
+  let text = '';
+  for (let i = 0; i < bytes.length; i++) text += String.fromCharCode(bytes[i]);
+  return JSON.parse(text);
+}
+
 async function verifyAppUser(request, env) {
   const header = request.headers.get('authorization') || '';
   const [scheme, token] = header.split(' ');
   if (scheme !== 'Bearer' || !token) return null;
   try {
-    const [h, p, s] = token.split('.');
-    const data = new TextEncoder().encode(`${h}.${p}`);
-    const secret = await crypto.subtle.importKey(
-      'raw',
-      new TextEncoder().encode(env.SUPABASE_JWT_SECRET),
-      { name: 'HMAC', hash: 'SHA-256' },
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    const [h, p, s] = parts;
+    if (!h || !p || !s) return null;
+    const decodedHeader = b64urlToJson(h);
+    if (!decodedHeader || typeof decodedHeader.kid !== 'string') return null;
+    const jwk = await getJwk(decodedHeader.kid);
+    if (!jwk) return null;
+    const key = await crypto.subtle.importKey(
+      'jwk',
+      jwk,
+      { name: 'ECDSA', namedCurve: 'P-256' },
       false,
       ['verify'],
     );
-    const sig = Uint8Array.from(
-      atob(s.replace(/-/g, '+').replace(/_/g, '/')),
-      (c) => c.charCodeAt(0),
+    const data = new TextEncoder().encode(`${h}.${p}`);
+    const sig = b64urlToBytes(s);
+    const ok = await crypto.subtle.verify(
+      { name: 'ECDSA', hash: 'SHA-256' },
+      key,
+      sig,
+      data,
     );
-    if (!await crypto.subtle.verify('HMAC', secret, sig, data)) return null;
-    // Same base64url conversion as the signature: a raw atob throws on
-    // '- '_', which appear in most payloads and would 401 valid users.
-    const payload = JSON.parse(
-      atob(p.replace(/-/g, '+').replace(/_/g, '/')),
-    );
+    if (!ok) return null;
+    const payload = b64urlToJson(p);
     if (typeof payload.exp === 'number' && payload.exp * 1000 < Date.now()) {
       return null;
     }
