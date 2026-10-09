@@ -1,11 +1,15 @@
 import 'dart:math' as math;
 
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
+import '../../core/profiles/profile_avatar_uploader.dart';
 import '../../core/profiles/viewer_profile.dart';
 import '../../core/profiles/viewer_profile_avatar.dart';
+import '../../core/supabase/supabase_service.dart';
 import '../auth/auth_cubit.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
@@ -139,6 +143,7 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
         result.name,
         avatar: result.avatar,
         isKids: result.isKids,
+        photoUrl: result.photoUrl,
       );
     } else {
       await _profiles.rename(profile.id, result.name);
@@ -146,6 +151,7 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
         profile.id,
         avatar: result.avatar,
         isKids: result.isKids,
+        photoUrl: result.photoUrl,
       );
     }
   }
@@ -882,10 +888,11 @@ class _ProfileAvatarTapTargetState extends State<_ProfileAvatarTapTarget>
 }
 
 class _ProfileDraft {
-  const _ProfileDraft(this.name, this.avatar, this.isKids);
+  const _ProfileDraft(this.name, this.avatar, this.isKids, [this.photoUrl]);
   final String name;
   final int avatar;
   final bool isKids;
+  final String? photoUrl;
 }
 
 class _ProfileEditor extends StatefulWidget {
@@ -903,11 +910,58 @@ class _ProfileEditorState extends State<_ProfileEditor> {
   );
   late int _avatar = widget.profile?.avatar ?? widget.initialAvatar;
   late bool _isKids = widget.profile?.isKids ?? false;
+  late String? _photoUrl = widget.profile?.photoUrl;
+  bool _uploading = false;
+  String? _photoError;
 
   @override
   void dispose() {
     _name.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickPhoto() async {
+    final x = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+      // Avatars render at ~40–96px, so 256px is still 2–3× the display size —
+      // keeps the R2 object tiny (~15–30 KB/pic) with no visible quality loss.
+      maxWidth: 256,
+      maxHeight: 256,
+      imageQuality: 80,
+    );
+    if (x == null || !mounted) return;
+    final token =
+        sl<SupabaseService>().client.auth.currentSession?.accessToken;
+    if (token == null) {
+      setState(() => _photoError = "Couldn't upload photo");
+      return;
+    }
+    setState(() {
+      _uploading = true;
+      _photoError = null;
+    });
+    String? url;
+    try {
+      final bytes = await x.readAsBytes();
+      // image_picker re-encodes to JPEG when maxWidth/imageQuality are set,
+      // so no extension sniffing.
+      url = await ProfileAvatarUploader(sl<Dio>()).upload(
+        bytes: bytes,
+        contentType: 'image/jpeg',
+        token: token,
+      );
+    } catch (_) {
+      url = null;
+    }
+    if (!mounted) return;
+    setState(() {
+      _uploading = false;
+      if (url != null) {
+        _photoUrl = url;
+      } else {
+        _photoError = "Couldn't upload photo";
+      }
+    });
   }
 
   @override
@@ -925,6 +979,60 @@ class _ProfileEditorState extends State<_ProfileEditor> {
               textCapitalization: TextCapitalization.words,
               decoration: const InputDecoration(labelText: 'Name'),
             ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                if (_photoUrl != null && _photoUrl!.isNotEmpty)
+                  ClipOval(
+                    child: Image.network(
+                      _photoUrl!,
+                      width: 64,
+                      height: 64,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, _, _) => CircleAvatar(
+                        radius: 32,
+                        backgroundColor: viewerProfileAvatarColor(_avatar),
+                        child: Icon(
+                          viewerProfileAvatarIcon(_avatar),
+                          color: Colors.white,
+                          size: 30,
+                        ),
+                      ),
+                    ),
+                  )
+                else
+                  CircleAvatar(
+                    radius: 32,
+                    backgroundColor: viewerProfileAvatarColor(_avatar),
+                    child: Icon(
+                      viewerProfileAvatarIcon(_avatar),
+                      color: Colors.white,
+                      size: 30,
+                    ),
+                  ),
+                const SizedBox(width: 12),
+                TextButton.icon(
+                  onPressed: _uploading ? null : _pickPhoto,
+                  icon: _uploading
+                      ? const SizedBox.square(
+                          dimension: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.photo_rounded, size: 18),
+                  label: Text(_uploading ? 'Uploading…' : 'Photo'),
+                ),
+              ],
+            ),
+            if (_photoError != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  _photoError!,
+                  style: AppText.caption.copyWith(
+                    color: Theme.of(context).colorScheme.error,
+                  ),
+                ),
+              ),
             const SizedBox(height: 10),
             Wrap(
               spacing: 8,
@@ -968,7 +1076,7 @@ class _ProfileEditorState extends State<_ProfileEditor> {
           onPressed: () {
             final name = _name.text.trim();
             if (name.isEmpty) return;
-            Navigator.pop(context, _ProfileDraft(name, _avatar, _isKids));
+            Navigator.pop(context, _ProfileDraft(name, _avatar, _isKids, _photoUrl));
           },
           child: const Text('Save'),
         ),
