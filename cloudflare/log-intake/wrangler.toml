@@ -16,3 +16,18 @@ id = "4cb9a82d2b7349cab0ce4c99de730c76"
 # DISCORD_WEBHOOK is a SECRET, not a var — it must never appear in this file,
 # which is committed to a public repo. Set it with:
 #   wrangler secret put DISCORD_WEBHOOK
+# Same for SUPABASE_JWT_SECRET (Supabase dashboard → Project Settings → API →
+# JWT Secret):
+#   wrangler secret put SUPABASE_JWT_SECRET
+
+# Profile photos live here (2MB cap, jpeg/png/webp, enforced in index.js).
+# Create once, then expose publicly (r2.dev domain or custom domain) and put
+# that URL in AVATAR_PUBLIC_BASE below:
+#   wrangler r2 bucket create zangetsu-avatars
+[[r2_buckets]]
+binding = "AVATARS"
+bucket_name = "zangetsu-avatars"
+
+[vars]
+# REPLACE after exposing the bucket publicly — deploy again once set.
+AVATAR_PUBLIC_BASE = "https://REPLACE-WITH-R2-PUBLIC-URL"

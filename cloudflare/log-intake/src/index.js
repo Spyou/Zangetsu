@@ -14,7 +14,9 @@
  *
  * Bindings (see wrangler.toml):
  *   LOGS            KV namespace
+ *   AVATARS         R2 bucket for profile photos
  *   DISCORD_WEBHOOK secret — `wrangler secret put DISCORD_WEBHOOK`
+ *   SUPABASE_JWT_SECRET secret — `wrangler secret put SUPABASE_JWT_SECRET`
  */
 
 /** Refuse anything bigger. A full log is ~25KB gzipped; this is for a
@@ -25,7 +27,7 @@ const MAX_BYTES = 1_000_000;
 /** Bumped by hand when the Worker changes, so `/health` can prove which code
  *  is actually serving. Cloudflare takes a while to roll a new version out and
  *  there is otherwise no way to tell from outside. */
-const BUILD = 'ctx-1';
+const BUILD = 'ctx-2';
 
 /** Long enough to still have the log when someone gets round to mentioning it,
  *  short enough that nothing accumulates. KV expires these itself. */
@@ -34,7 +36,7 @@ const KEEP_SECONDS = 60 * 60 * 24 * 30;
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, X-App-Version, X-Device',
+  'Access-Control-Allow-Headers': 'Content-Type, X-App-Version, X-Device, Authorization',
 };
 
 export default {
@@ -56,6 +58,24 @@ export default {
           : 'missing',
         build: BUILD,
       });
+    }
+    if (url.pathname === '/v1/avatar-slot' && request.method === 'POST') {
+      const user = await verifyAppUser(request, env);
+      if (!user) return json({ error: 'unauthorized' }, 401);
+      const type = (request.headers.get('content-type') || '')
+        .split(';')[0]
+        .trim()
+        .toLowerCase();
+      if (type !== 'image/jpeg' && type !== 'image/png' && type !== 'image/webp') {
+        return json({ error: 'bad type' }, 400);
+      }
+      const body = await request.arrayBuffer();
+      if (!body.byteLength || body.byteLength > 2_000_000) {
+        return json({ error: 'bad image' }, 400);
+      }
+      const key = `avatars/${user}/${crypto.randomUUID()}.jpg`;
+      await env.AVATARS.put(key, body, { httpMetadata: { contentType: type } });
+      return json({ url: `${env.AVATAR_PUBLIC_BASE}/${key}` });
     }
     if (url.pathname !== '/v1/logs' || request.method !== 'POST') {
       return json({ error: 'not found' }, 404);
@@ -154,6 +174,37 @@ function json(data, status = 200) {
     status,
     headers: { 'Content-Type': 'application/json', ...CORS },
   });
+}
+
+async function verifyAppUser(request, env) {
+  const header = request.headers.get('authorization') || '';
+  const [scheme, token] = header.split(' ');
+  if (scheme !== 'Bearer' || !token) return null;
+  try {
+    const [h, p, s] = token.split('.');
+    const data = new TextEncoder().encode(`${h}.${p}`);
+    const secret = await crypto.subtle.importKey(
+      'raw',
+      new TextEncoder().encode(env.SUPABASE_JWT_SECRET),
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['verify'],
+    );
+    const sig = Uint8Array.from(
+      atob(s.replace(/-/g, '+').replace(/_/g, '/')),
+      (c) => c.charCodeAt(0),
+    );
+    if (!await crypto.subtle.verify('HMAC', secret, sig, data)) return null;
+    const payload = JSON.parse(atob(p));
+    if (typeof payload.exp === 'number' && payload.exp * 1000 < Date.now()) {
+      return null;
+    }
+    return typeof payload.sub === 'string' && payload.sub
+      ? payload.sub
+      : null;
+  } catch (_) {
+    return null;
+  }
 }
 
 /** Posts the report to Discord with the log itself attached, so reading one is
