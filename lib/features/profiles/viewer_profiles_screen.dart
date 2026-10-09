@@ -6,6 +6,7 @@ import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
 import '../../core/profiles/viewer_profile.dart';
 import '../../core/profiles/viewer_profile_avatar.dart';
+import '../auth/auth_cubit.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/ui/settings_widgets.dart';
@@ -38,6 +39,12 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
   bool _selecting = false;
 
   ViewerProfileStore get _profiles => sl<ViewerProfileStore>();
+
+  /// The signed-in account's photo, for the default profile's face. Absent
+  /// in widget tests and when signed out — callers fall back to icons.
+  String? _accountPhoto() => sl.isRegistered<AuthCubit>()
+      ? sl<AuthCubit>().state.avatarUrl
+      : null;
 
   @override
   void initState() {
@@ -488,9 +495,12 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
     required bool autofocus,
   }) {
     final selected = _profiles.activeId == profile.id;
-    final icon = viewerProfileAvatarIcon(profile.avatar);
     final fill = viewerProfileAvatarColor(profile.avatar);
     final avatarKey = GlobalKey<_ProfileAvatarTapTargetState>();
+    final photo = accountPhotoForProfile(
+      isDefault: profile.isDefault,
+      accountPhotoUrl: _accountPhoto(),
+    );
 
     Widget content(bool focused) => SizedBox(
       width: diameter + 28,
@@ -505,7 +515,12 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
             focused: focused,
             selected: selected,
             onTap: () => _switchTo(profile),
-            child: Icon(icon, size: diameter * 0.42, color: Colors.white),
+            child: ProfileAvatarFace(
+              profile: profile,
+              photoUrl: photo,
+              iconSize: diameter * 0.42,
+              photoDiameter: diameter,
+            ),
           ),
           GestureDetector(
             behavior: HitTestBehavior.opaque,
@@ -659,10 +674,14 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
           shape: BoxShape.circle,
           color: viewerProfileAvatarColor(profile.avatar),
         ),
-        child: Icon(
-          viewerProfileAvatarIcon(profile.avatar),
-          color: Colors.white,
-          size: 19,
+        child: ProfileAvatarFace(
+          profile: profile,
+          photoUrl: accountPhotoForProfile(
+            isDefault: profile.isDefault,
+            accountPhotoUrl: _accountPhoto(),
+          ),
+          iconSize: 19,
+          photoDiameter: 34,
         ),
       ),
       title: profile.name,

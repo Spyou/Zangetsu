@@ -12,6 +12,12 @@ import '../search/browse_sources_screen.dart';
 import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
 import '../../core/playback/my_list.dart';
+import '../../core/playback/category_store.dart';
+import '../../core/playback/watch_history.dart';
+import '../../core/profiles/viewer_profile.dart';
+import '../../core/profiles/viewer_profile_avatar.dart';
+import '../../core/profiles/profile_shell_scope.dart';
+import '../../core/reading/read_history.dart';
 import '../../core/mode/content_mode.dart';
 import '../../core/mode/content_mode_cubit.dart';
 import '../../core/theme/app_colors.dart';
@@ -107,6 +113,54 @@ class _RootShellState extends State<RootShell>
     _switch = CurvedAnimation(parent: _switchCtrl, curve: Curves.easeOutCubic);
     _navPrefs.addListener(_onTabsChanged);
     ZModePrefs.revision.addListener(_onZMode);
+    if (sl.isRegistered<ViewerProfileStore>()) {
+      sl<ViewerProfileStore>().active.addListener(_onProfileChanged);
+      sl<ViewerProfileStore>().contextRevision.addListener(
+        _onProfileContextChanged,
+      );
+    }
+  }
+
+  void _onProfileChanged() {
+    if (!mounted) return;
+    setState(() {});
+  }
+
+  void _onProfileContextChanged() {
+    if (!mounted) return;
+    final profileId = sl<ViewerProfileStore>().activeId;
+    if (sl.isRegistered<HomeCubit>()) {
+      unawaited(sl<HomeCubit>().reloadAfterProfileChange());
+    }
+    unawaited(_syncProfile(profileId));
+  }
+
+  Future<void> _syncProfile(String profileId) async {
+    if (!sl.isRegistered<MyListStore>() ||
+        !sl.isRegistered<WatchHistory>() ||
+        !sl.isRegistered<ReadHistory>() ||
+        !sl.isRegistered<CategoryStore>()) {
+      return;
+    }
+    try {
+      await Future.wait([
+        sl<MyListStore>().seedCloudIfNeeded(),
+        sl<WatchHistory>().seedCloudIfNeeded(),
+        sl<ReadHistory>().seedCloudIfNeeded(),
+      ]).timeout(const Duration(seconds: 8));
+      if (!mounted || sl<ViewerProfileStore>().activeId != profileId) return;
+      await Future.wait([
+        sl<MyListStore>().pullFromCloud(forProfileId: profileId),
+        sl<WatchHistory>().pullFromCloud(forProfileId: profileId),
+        sl<ReadHistory>().pullFromCloud(forProfileId: profileId),
+        sl<CategoryStore>().pullFromCloud(),
+      ]).timeout(const Duration(seconds: 8));
+      if (mounted && sl<ViewerProfileStore>().activeId == profileId) {
+        sl<HomeCubit>().relayout();
+      }
+    } catch (_) {
+      // Keep the already-available local profile usable when cloud sync fails.
+    }
   }
 
   /// The toggle changed: close the mode bar and, as a safety net, bounce off
@@ -143,6 +197,12 @@ class _RootShellState extends State<RootShell>
   void dispose() {
     _navPrefs.removeListener(_onTabsChanged);
     ZModePrefs.revision.removeListener(_onZMode);
+    if (sl.isRegistered<ViewerProfileStore>()) {
+      sl<ViewerProfileStore>().active.removeListener(_onProfileChanged);
+      sl<ViewerProfileStore>().contextRevision.removeListener(
+        _onProfileContextChanged,
+      );
+    }
     _switchCtrl.dispose();
     super.dispose();
   }
@@ -201,26 +261,32 @@ class _RootShellState extends State<RootShell>
   /// no longer a phone dock tab (it's a Home header icon now), so this never
   /// places `shared[1]` — it's still built, just unused here, the same way
   /// Settings only ever takes `shared.last`.
-  List<Widget> _pagesFor(List<DockTab> tabs) {
+  List<Widget> _pagesFor(List<DockTab> tabs, String profileId) {
     final shared = buildShellPages(null);
     return [
       for (final t in tabs)
-        switch (t) {
-          DockTab.home => shared[0],
-          DockTab.myList => shared[2],
-          DockTab.profile => shared.last, // Settings, shown as "Profile"
-          // Both normally get pushed with a back button; as tabs they own the
-          // whole screen, so their own back affordance is suppressed.
-          DockTab.downloads => const DownloadsScreen(showBack: false),
-          DockTab.history => const HistoryScreen(showBack: false),
-          DockTab.sources => const BrowseSourcesScreen(),
-        },
+        KeyedSubtree(
+          key: ValueKey('$profileId:${t.name}'),
+          child: switch (t) {
+            DockTab.home => shared[0],
+            DockTab.myList => shared[2],
+            DockTab.profile => shared.last, // Settings, shown as "Profile"
+            // Both normally get pushed with a back button; as tabs they own the
+            // whole screen, so their own back affordance is suppressed.
+            DockTab.downloads => const DownloadsScreen(showBack: false),
+            DockTab.history => const HistoryScreen(showBack: false),
+            DockTab.sources => const BrowseSourcesScreen(),
+          },
+        ),
     ];
   }
 
   @override
   Widget build(BuildContext context) {
-    if (sl<AppMode>().isTv) return const RootShellTv();
+    final deferContent = ProfileShellScope.shouldDeferContent(context);
+    if (sl<AppMode>().isTv) {
+      return deferContent ? const SizedBox.expand() : const RootShellTv();
+    }
     return PopScope(
       // Intercept Back at the app root: first press toasts, second exits.
       canPop: false,
@@ -242,41 +308,48 @@ class _RootShellState extends State<RootShell>
           // Content runs under the floating dock (screens keep their own bottom
           // padding so the last row scrolls clear of it).
           extendBody: true,
-          body: NotificationListener<ScrollNotification>(
-            // One place, so no screen has to know the dock exists. Returns
-            // false throughout — it reads the scroll, never eats it.
-            onNotification: DockScrollCollapse.onNotification,
-            child: Builder(
-              builder: (context) {
-                final visible = _visibleTabs();
-                final active = visible.indexOf(_tab);
-                return AnimatedBuilder(
-                  animation: _switch,
-                  builder: (context, child) {
-                    final v = _switch.value;
-                    // Incoming tab fades in from 0.4 and slides up 20px. Never blanks.
-                    return Opacity(
-                      opacity: 0.4 + 0.6 * v,
-                      child: Transform.translate(
-                        offset: Offset(0, (1 - v) * 20),
-                        child: child,
-                      ),
-                    );
-                  },
-                  // RepaintBoundary → the page is a single cached layer the transition
-                  // just composites (opacity + translate), so no repaint per frame.
-                  child: RepaintBoundary(
-                    child: IndexedStack(
-                      // indexOf can be -1 for one frame if the mode flipped before
-                      // the listener ran; clamp rather than throw.
-                      index: active < 0 ? 0 : active,
-                      children: _pagesFor(visible),
-                    ),
+          body: deferContent
+              ? const SizedBox.expand()
+              : NotificationListener<ScrollNotification>(
+                  // One place, so no screen has to know the dock exists. Returns
+                  // false throughout — it reads the scroll, never eats it.
+                  onNotification: DockScrollCollapse.onNotification,
+                  child: Builder(
+                    builder: (context) {
+                      final visible = _visibleTabs();
+                      final active = visible.indexOf(_tab);
+                      return AnimatedBuilder(
+                        animation: _switch,
+                        builder: (context, child) {
+                          final v = _switch.value;
+                          // Incoming tab fades in from 0.4 and slides up 20px. Never blanks.
+                          return Opacity(
+                            opacity: 0.4 + 0.6 * v,
+                            child: Transform.translate(
+                              offset: Offset(0, (1 - v) * 20),
+                              child: child,
+                            ),
+                          );
+                        },
+                        // RepaintBoundary → the page is a single cached layer the transition
+                        // just composites (opacity + translate), so no repaint per frame.
+                        child: RepaintBoundary(
+                          child: IndexedStack(
+                            // indexOf can be -1 for one frame if the mode flipped before
+                            // the listener ran; clamp rather than throw.
+                            index: active < 0 ? 0 : active,
+                            children: _pagesFor(
+                              visible,
+                              sl.isRegistered<ViewerProfileStore>()
+                                  ? sl<ViewerProfileStore>().activeId
+                                  : 'default',
+                            ),
+                          ),
+                        ),
+                      );
+                    },
                   ),
-                );
-              },
-            ),
-          ),
+                ),
           bottomNavigationBar: ValueListenableBuilder<bool>(
             valueListenable: dockHiddenBySection,
             builder: (context, sectionOpen, _) {
@@ -744,6 +817,9 @@ class _ProfileDockItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = selected ? AppColors.accent : AppColors.textSecondary;
+    final profile = sl.isRegistered<ViewerProfileStore>()
+        ? sl<ViewerProfileStore>().activeProfile
+        : null;
     return Expanded(
       // See [_DockItem]: the name has to survive the label folding away.
       child: Semantics(
@@ -767,67 +843,105 @@ class _ProfileDockItem extends StatelessWidget {
                       child: Center(
                         child: _DockPop(
                           selected: selected,
-                          child: BlocBuilder<AuthCubit, AuthState>(
-                            builder: (context, auth) {
-                              final ring = selected
-                                  ? Border.all(
-                                      color: AppColors.accent,
-                                      width: 1.8,
-                                    )
-                                  : null;
-                              if (auth.isLoggedIn) {
-                                final initial = auth.displayName.isNotEmpty
-                                    ? auth.displayName[0].toUpperCase()
-                                    : '?';
-                                return Container(
-                                  width: 24,
-                                  height: 24,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    border: ring,
-                                    color: AppColors.surface2,
-                                    image: auth.avatarUrl != null
-                                        ? DecorationImage(
-                                            image: CachedNetworkImageProvider(
-                                              auth.avatarUrl!,
-                                            ),
-                                            fit: BoxFit.cover,
+                          child: profile == null
+                              ? BlocBuilder<AuthCubit, AuthState>(
+                                  builder: (context, auth) {
+                                    final ring = selected
+                                        ? Border.all(
+                                            color: AppColors.accent,
+                                            width: 1.8,
                                           )
-                                        : null,
+                                        : null;
+                                    if (auth.isLoggedIn) {
+                                      final initial =
+                                          auth.displayName.isNotEmpty
+                                          ? auth.displayName[0].toUpperCase()
+                                          : '?';
+                                      return Container(
+                                        width: 24,
+                                        height: 24,
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          border: ring,
+                                          color: AppColors.surface2,
+                                          image: auth.avatarUrl != null
+                                              ? DecorationImage(
+                                                  image:
+                                                      CachedNetworkImageProvider(
+                                                        auth.avatarUrl!,
+                                                      ),
+                                                  fit: BoxFit.cover,
+                                                )
+                                              : null,
+                                        ),
+                                        alignment: Alignment.center,
+                                        child: auth.avatarUrl == null
+                                            ? Text(
+                                                initial,
+                                                style: TextStyle(
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.w800,
+                                                  color: selected
+                                                      ? AppColors.accent
+                                                      : AppColors.textPrimary,
+                                                ),
+                                              )
+                                            : null,
+                                      );
+                                    }
+                                    // Signed out — quiet person glyph in a hairline circle.
+                                    return Container(
+                                      width: 24,
+                                      height: 24,
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        border:
+                                            ring ??
+                                            Border.all(
+                                              color: color,
+                                              width: 1.4,
+                                            ),
+                                      ),
+                                      child: Icon(
+                                        Icons.person_outline,
+                                        size: 15,
+                                        color: color,
+                                      ),
+                                    );
+                                  },
+                                )
+                              : Hero(
+                                  tag: viewerProfileHeroTag(profile.id),
+                                  child: Container(
+                                    width: 24,
+                                    height: 24,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      border: selected
+                                          ? Border.all(
+                                              color: AppColors.accent,
+                                              width: 1.8,
+                                            )
+                                          : null,
+                                      color: viewerProfileAvatarColor(
+                                        profile.avatar,
+                                      ),
+                                    ),
+                                    alignment: Alignment.center,
+                                    child: ProfileAvatarFace(
+                                      profile: profile,
+                                      photoUrl: accountPhotoForProfile(
+                                        isDefault: profile.isDefault,
+                                        accountPhotoUrl:
+                                            sl.isRegistered<AuthCubit>()
+                                            ? sl<AuthCubit>().state.avatarUrl
+                                            : null,
+                                      ),
+                                      iconSize: 14,
+                                      photoDiameter: 24,
+                                    ),
                                   ),
-                                  alignment: Alignment.center,
-                                  child: auth.avatarUrl == null
-                                      ? Text(
-                                          initial,
-                                          style: TextStyle(
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.w800,
-                                            color: selected
-                                                ? AppColors.accent
-                                                : AppColors.textPrimary,
-                                          ),
-                                        )
-                                      : null,
-                                );
-                              }
-                              // Signed out — quiet person glyph in a hairline circle.
-                              return Container(
-                                width: 24,
-                                height: 24,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  border:
-                                      ring ??
-                                      Border.all(color: color, width: 1.4),
                                 ),
-                                child: Icon(
-                                  Icons.person_outline,
-                                  size: 15,
-                                  color: color,
-                                ),
-                              );
-                            },
-                          ),
                         ),
                       ),
                     ),

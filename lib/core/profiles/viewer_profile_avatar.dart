@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_colors.dart';
+import 'viewer_profile.dart';
 
 const viewerProfileAvatarIcons = <IconData>[
   Icons.person_rounded,
@@ -36,6 +37,50 @@ Color viewerProfileAvatarColor(int avatar) => avatar == 0
     : _avatarColors[(avatar - 1) % _avatarColors.length];
 
 String viewerProfileHeroTag(String profileId) => 'viewer-profile-$profileId';
+
+/// The account photo belongs to the default (owner) profile only. Every
+/// other profile keeps its icon, and a missing photo falls back to icons.
+String? accountPhotoForProfile({
+  required bool isDefault,
+  required String? accountPhotoUrl,
+}) => isDefault ? accountPhotoUrl : null;
+
+/// Icon or account photo, drawn inside the caller's own circle. A photo
+/// that fails to load falls back to the icon instead of an empty disc.
+class ProfileAvatarFace extends StatelessWidget {
+  const ProfileAvatarFace({
+    super.key,
+    required this.profile,
+    this.photoUrl,
+    required this.iconSize,
+    required this.photoDiameter,
+  });
+
+  final ViewerProfile profile;
+  final String? photoUrl;
+  final double iconSize;
+  final double photoDiameter;
+
+  @override
+  Widget build(BuildContext context) {
+    final icon = Icon(
+      viewerProfileAvatarIcon(profile.avatar),
+      size: iconSize,
+      color: Colors.white,
+    );
+    final url = photoUrl;
+    if (url == null || url.isEmpty) return icon;
+    return ClipOval(
+      child: Image.network(
+        url,
+        width: photoDiameter,
+        height: photoDiameter,
+        fit: BoxFit.cover,
+        errorBuilder: (_, _, _) => icon,
+      ),
+    );
+  }
+}
 
 /// Avatar a newly created profile starts with: spread across the icon set
 /// by creation order so siblings never all look identical.

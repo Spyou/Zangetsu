@@ -5,9 +5,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:get_it/get_it.dart';
 import 'package:hive/hive.dart';
 import 'package:watch_app/core/app_mode.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:watch_app/core/profiles/viewer_profile.dart';
 import 'package:watch_app/core/profiles/viewer_profile_avatar.dart';
 import 'package:watch_app/core/profiles/profile_shell_scope.dart';
+import 'package:watch_app/features/auth/auth_cubit.dart';
 import 'package:watch_app/core/theme/app_colors.dart';
 import 'package:watch_app/core/tv/tv_list_focusable.dart';
 import 'package:watch_app/features/profiles/profile_launch_gate.dart';
@@ -480,6 +482,84 @@ void main() {
     expect(defaultAvatarForNewProfile(1), 1);
     expect(defaultAvatarForNewProfile(viewerProfileAvatarIcons.length), 0);
   });
+
+  test('account photo goes only to the default profile', () {
+    expect(
+      accountPhotoForProfile(
+        isDefault: true,
+        accountPhotoUrl: 'https://example.com/pic.png',
+      ),
+      'https://example.com/pic.png',
+    );
+    expect(
+      accountPhotoForProfile(
+        isDefault: false,
+        accountPhotoUrl: 'https://example.com/pic.png',
+      ),
+      isNull,
+    );
+    expect(
+      accountPhotoForProfile(isDefault: true, accountPhotoUrl: null),
+      isNull,
+    );
+  });
+
+  testWidgets('default profile avatar shows the account photo', (tester) async {
+    await tester.runAsync(() async {
+      await profiles.create('Other');
+      await profiles.update(profiles.profiles.last.id, avatar: 1);
+    });
+    GetIt.instance.registerSingleton<AuthCubit>(_PhotoAuthCubit());
+    await tester.pumpWidget(
+      const MaterialApp(home: ViewerProfilesScreen(selectionOnly: true)),
+    );
+    await tester.pumpAndSettle();
+    final defaultId = profiles.profiles.first.id;
+    expect(
+      find.descendant(
+        of: find.byKey(ValueKey('profile-avatar-fill-$defaultId')),
+        matching: find.byType(Image),
+      ),
+      findsOneWidget,
+    );
+    final otherId = profiles.profiles.last.id;
+    expect(
+      find.descendant(
+        of: find.byKey(ValueKey('profile-avatar-fill-$otherId')),
+        matching: find.byIcon(viewerProfileAvatarIcon(1)),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('manager tile shows the account photo for the default profile', (
+    tester,
+  ) async {
+    GetIt.instance.registerSingleton<AuthCubit>(_PhotoAuthCubit());
+    await tester.pumpWidget(const MaterialApp(home: ViewerProfilesScreen()));
+    await tester.pumpAndSettle();
+    final defaultId = profiles.profiles.first.id;
+    expect(
+      find.descendant(
+        of: find.byKey(ValueKey('profile-tile-avatar-$defaultId')),
+        matching: find.byType(Image),
+      ),
+      findsOneWidget,
+    );
+  });
+}
+
+class _PhotoAuthCubit extends Cubit<AuthState> implements AuthCubit {
+  _PhotoAuthCubit()
+    : super(
+        const AuthState(
+          status: AuthStatus.authenticated,
+          avatarUrl: 'https://example.com/pic.png',
+        ),
+      );
+
+  @override
+  noSuchMethod(Invocation i) => super.noSuchMethod(i);
 }
 
 class _ProfileGateShellProbe extends StatelessWidget {
