@@ -38,12 +38,16 @@ Color viewerProfileAvatarColor(int avatar) => avatar == 0
 
 String viewerProfileHeroTag(String profileId) => 'viewer-profile-$profileId';
 
-/// The account photo belongs to the default (owner) profile only. Every
-/// other profile keeps its icon, and a missing photo falls back to icons.
-String? accountPhotoForProfile({
-  required bool isDefault,
+/// Use a profile's own photo first; the account photo is only the default
+/// profile's fallback. A missing URL lets [ProfileAvatarFace] show its icon.
+String? profilePhotoForFace({
+  required ViewerProfile profile,
   required String? accountPhotoUrl,
-}) => isDefault ? accountPhotoUrl : null;
+}) {
+  final profilePhoto = profile.photoUrl;
+  if (profilePhoto != null && profilePhoto.isNotEmpty) return profilePhoto;
+  return profile.isDefault ? accountPhotoUrl : null;
+}
 
 /// Icon or account photo, drawn inside the caller's own circle. A photo
 /// that fails to load falls back to the icon instead of an empty disc.

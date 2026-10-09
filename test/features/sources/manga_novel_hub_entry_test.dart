@@ -30,6 +30,7 @@ import 'package:watch_app/core/playback/search_prefs.dart';
 import 'package:watch_app/core/provider/cloudstream_provider.dart';
 import 'package:watch_app/core/provider/provider_manager.dart';
 import 'package:watch_app/core/provider/provider_registry.dart';
+import 'package:watch_app/core/profiles/viewer_profile.dart';
 import 'package:watch_app/core/provider/provider_repo_registry.dart';
 import 'package:watch_app/core/state/active_source_cubit.dart';
 import 'package:watch_app/core/supabase/supabase_service.dart';
@@ -144,25 +145,25 @@ void main() {
     // through Settings → Manga & Novel (unaffected, tested elsewhere), just
     // not from this hub. Inverse assertion so the row can't silently
     // reappear.
-    testWidgets('has no Zangetsu Manga row or MANGA & NOVEL section',
-        (tester) async {
+    testWidgets('has no Zangetsu Manga row or MANGA & NOVEL section', (
+      tester,
+    ) async {
       await pump(tester);
 
       expect(find.text('Zangetsu Manga'), findsNothing);
       expect(find.text('MANGA & NOVEL'), findsNothing);
     });
 
-    testWidgets(
-      'the existing Zangetsu row is unchanged — same title, desc and '
-      'unfiltered total (reading sources still count toward it, as today)',
-      (tester) async {
-        await pump(tester);
+    testWidgets('the existing Zangetsu row is unchanged — same title, desc and '
+        'unfiltered total (reading sources still count toward it, as today)', (
+      tester,
+    ) async {
+      await pump(tester);
 
-        expect(find.text('Zangetsu'), findsOneWidget);
-        expect(find.text('Built-in JS providers'), findsOneWidget);
-        expect(find.text('3 sources'), findsOneWidget); // all 3, unfiltered
-      },
-    );
+      expect(find.text('Zangetsu'), findsOneWidget);
+      expect(find.text('Built-in JS providers'), findsOneWidget);
+      expect(find.text('3 sources'), findsOneWidget); // all 3, unfiltered
+    });
 
     testWidgets(
       'CloudStream and Aniyomi rows are unaffected — still Android-gated, '
@@ -225,9 +226,7 @@ void main() {
       'to reading providers, with a Show all escape hatch back to everything',
       (tester) async {
         await tester.pumpWidget(
-          const MaterialApp(
-            home: ZangetsuSourcesScreen(scopeToReading: true),
-          ),
+          const MaterialApp(home: ZangetsuSourcesScreen(scopeToReading: true)),
         );
         await tester.pumpAndSettle();
 
@@ -277,21 +276,23 @@ void main() {
       await Hive.openBox(TorrentPrefs.boxName);
       await Hive.openBox(ThemeController.boxName);
       await Hive.openBox(PlaybackPrefs.boxName);
+      await ViewerProfileStore.init();
       sl
         ..registerSingleton<AppMode>(const AppMode(isTv: false))
         ..registerSingleton<SearchPrefs>(_StubSearchPrefs())
-        ..registerSingleton<ProviderRegistry>(_FakeProviderRegistry(
-          [
-            ProviderRegistryEntry(name: 'manga1', url: 'bundled://manga1'),
-          ],
-          {'manga1': 'manga'},
-        ))
+        ..registerSingleton<ProviderRegistry>(
+          _FakeProviderRegistry(
+            [ProviderRegistryEntry(name: 'manga1', url: 'bundled://manga1')],
+            {'manga1': 'manga'},
+          ),
+        )
         ..registerSingleton<AniListService>(_StubAniList())
         ..registerSingleton<MalService>(_StubMal())
         ..registerSingleton<SimklService>(_StubSimkl())
         ..registerSingleton<PlaybackPrefs>(PlaybackPrefs())
         ..registerSingleton<DownloadPrefs>(DownloadPrefs())
         ..registerSingleton<TorrentPrefs>(TorrentPrefs());
+      sl.registerSingleton<ViewerProfileStore>(ViewerProfileStore());
       activeCubit = ActiveSourceCubit();
     });
 
@@ -311,8 +312,11 @@ void main() {
       await tester.binding.setSurfaceSize(const Size(1000, 2200));
       addTearDown(() => tester.binding.setSurfaceSize(null));
 
-      final authCubit =
-          AuthCubit(SupabaseService(), AppwriteService(), _fakeBridge());
+      final authCubit = AuthCubit(
+        SupabaseService(),
+        AppwriteService(),
+        _fakeBridge(),
+      );
       addTearDown(authCubit.close);
       GetIt.instance.registerSingleton<AuthCubit>(authCubit);
 
@@ -342,10 +346,7 @@ void main() {
         // silently returning.
         expect(find.text('Manga & Novel'), findsNothing);
 
-        for (final t in const [
-          'Providers',
-          'Source health',
-        ]) {
+        for (final t in const ['Providers', 'Source health']) {
           expect(find.text(t), findsOneWidget, reason: 'tile: $t');
         }
         expect(find.text('Active source'), findsNothing);
@@ -359,8 +360,9 @@ void main() {
       },
     );
 
-    testWidgets('searching "manga" surfaces no reading Settings entry',
-        (tester) async {
+    testWidgets('searching "manga" surfaces no reading Settings entry', (
+      tester,
+    ) async {
       await pumpSettings(tester);
 
       await tester.enterText(find.byType(TextField), 'manga');
@@ -372,10 +374,10 @@ void main() {
 }
 
 MigrationBridge _fakeBridge() => MigrationBridge(
-      invoke: (_, __) async => const {'ok': false},
-      signInPassword: (_, __) async => false,
-      verifyOtp: (_, __) async => false,
-    );
+  invoke: (_, __) async => const {'ok': false},
+  signInPassword: (_, __) async => false,
+  verifyOtp: (_, __) async => false,
+);
 
 class _StubSearchPrefs extends SearchPrefs {
   @override

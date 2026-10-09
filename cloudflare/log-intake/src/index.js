@@ -33,6 +33,8 @@ const BUILD = 'ctx-3';
  *  refetched only when the token's `kid` misses the cache. */
 const JWKS_URL =
   'https://eogwzrlfoercfwcfwlmv.supabase.co/auth/v1/.well-known/jwks.json';
+const JWT_ISSUER = `${new URL(JWKS_URL).origin}/auth/v1`;
+const AVATAR_MAX_BYTES = 256 * 1024;
 let CACHED_JWKS = null;
 
 /** Long enough to still have the log when someone gets round to mentioning it,
@@ -66,6 +68,16 @@ export default {
       });
     }
     if (url.pathname === '/v1/avatar-slot' && request.method === 'POST') {
+      const declaredLength = request.headers.get('content-length');
+      if (declaredLength !== null) {
+        const parsedLength = Number(declaredLength);
+        if (!Number.isSafeInteger(parsedLength) || parsedLength < 0) {
+          return json({ error: 'bad image size' }, 400);
+        }
+        if (parsedLength > AVATAR_MAX_BYTES) {
+          return json({ error: 'image too large' }, 413);
+        }
+      }
       const user = await verifyAppUser(request, env);
       if (!user) return json({ error: 'unauthorized' }, 401);
       const type = (request.headers.get('content-type') || '')
@@ -75,8 +87,9 @@ export default {
       if (type !== 'image/jpeg' && type !== 'image/png' && type !== 'image/webp') {
         return json({ error: 'bad type' }, 400);
       }
-      const body = await request.arrayBuffer();
-      if (!body.byteLength || body.byteLength > 2_000_000) {
+      const body = await readBodyUpTo(request, AVATAR_MAX_BYTES);
+      if (body === null) return json({ error: 'image too large' }, 413);
+      if (!body.byteLength || !matchesImageSignature(type, body)) {
         return json({ error: 'bad image' }, 400);
       }
       const key = `avatars/${user}/${crypto.randomUUID()}.jpg`;
@@ -195,6 +208,62 @@ async function getJwk(kid) {
   return keys.find((k) => k.kid === kid) || null;
 }
 
+async function readBodyUpTo(request, maxBytes) {
+  const reader = request.body?.getReader();
+  if (!reader) return new Uint8Array();
+
+  const chunks = [];
+  let size = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > maxBytes) {
+        try {
+          await reader.cancel();
+        } catch (_) {}
+        return null;
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  const body = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return body;
+}
+
+function matchesImageSignature(type, bytes) {
+  if (type === 'image/jpeg') {
+    return (
+      bytes.length >= 3 &&
+      bytes[0] === 0xff &&
+      bytes[1] === 0xd8 &&
+      bytes[2] === 0xff
+    );
+  }
+  if (type === 'image/png') {
+    return [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a].every(
+      (value, index) => bytes[index] === value,
+    );
+  }
+  if (type === 'image/webp') {
+    return (
+      bytes.length >= 12 &&
+      String.fromCharCode(...bytes.subarray(0, 4)) === 'RIFF' &&
+      String.fromCharCode(...bytes.subarray(8, 12)) === 'WEBP'
+    );
+  }
+  return false;
+}
+
 function b64urlToBytes(seg) {
   const b64 = seg.replace(/-/g, '+').replace(/_/g, '/');
   const padded = b64 + '='.repeat((4 - (b64.length % 4)) % 4);
@@ -218,9 +287,16 @@ async function verifyAppUser(request, env) {
     const [h, p, s] = parts;
     if (!h || !p || !s) return null;
     const decodedHeader = b64urlToJson(h);
-    if (!decodedHeader || typeof decodedHeader.kid !== 'string') return null;
+    if (
+      !decodedHeader ||
+      decodedHeader.alg !== 'ES256' ||
+      typeof decodedHeader.kid !== 'string' ||
+      !decodedHeader.kid
+    ) {
+      return null;
+    }
     const jwk = await getJwk(decodedHeader.kid);
-    if (!jwk) return null;
+    if (!jwk || (jwk.alg && jwk.alg !== decodedHeader.alg)) return null;
     const key = await crypto.subtle.importKey(
       'jwk',
       jwk,
@@ -238,12 +314,21 @@ async function verifyAppUser(request, env) {
     );
     if (!ok) return null;
     const payload = b64urlToJson(p);
-    if (typeof payload.exp === 'number' && payload.exp * 1000 < Date.now()) {
+    const now = Math.floor(Date.now() / 1000);
+    const audience = payload.aud;
+    if (
+      !Number.isFinite(payload.exp) ||
+      payload.exp <= now ||
+      payload.iss !== JWT_ISSUER ||
+      (audience !== 'authenticated' &&
+        !(Array.isArray(audience) && audience.includes('authenticated'))) ||
+      payload.role !== 'authenticated' ||
+      ('nbf' in payload &&
+        (!Number.isFinite(payload.nbf) || payload.nbf > now))
+    ) {
       return null;
     }
-    return typeof payload.sub === 'string' && payload.sub
-      ? payload.sub
-      : null;
+    return typeof payload.sub === 'string' && payload.sub ? payload.sub : null;
   } catch (_) {
     return null;
   }

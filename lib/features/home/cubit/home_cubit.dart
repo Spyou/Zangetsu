@@ -454,6 +454,16 @@ class HomeCubit extends Cubit<HomeState> {
     if (zModeEnabled) await load();
   }
 
+  /// A profile switch changes which local history and saved-list rows Home
+  /// composes. Drop catalogue snapshots too: Kids mode can have a different
+  /// adult-title policy from the profile that filled them.
+  Future<void> reloadAfterProfileChange() async {
+    clearStreamKindCache();
+    await HomeCache.clearSource(ZmodeIds.sourceId);
+    emit(const HomeState(loading: true));
+    await load();
+  }
+
   /// Copies prefetched metadata rows into the per-kind cache.
   void rememberStreamKindRows(StreamKind kind, List<HomeSection> sections) {
     if (sections.isEmpty) return;

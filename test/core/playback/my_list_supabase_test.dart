@@ -23,6 +23,7 @@ class FakeMyListRemote implements MyListRemote {
     rows.removeWhere(
       (r) =>
           r['user_key'] == row['user_key'] &&
+          r['profile_id'] == row['profile_id'] &&
           r['source_id'] == row['source_id'] &&
           r['item_id'] == row['item_id'],
     );
@@ -30,7 +31,12 @@ class FakeMyListRemote implements MyListRemote {
   }
 
   @override
-  Future<void> deleteRow(String userKey, String sourceId, String itemId) async {
+  Future<void> deleteRow(
+    String userKey,
+    String sourceId,
+    String itemId, {
+    String? profileId,
+  }) async {
     if (failNextDelete) {
       failNextDelete = false;
       throw Exception('network down');
@@ -38,14 +44,20 @@ class FakeMyListRemote implements MyListRemote {
     rows.removeWhere(
       (r) =>
           r['user_key'] == userKey &&
+          r['profile_id'] == profileId &&
           r['source_id'] == sourceId &&
           r['item_id'] == itemId,
     );
   }
 
   @override
-  Future<List<Map<String, dynamic>>> listFor(String userKey) async {
-    return rows.where((r) => r['user_key'] == userKey).toList();
+  Future<List<Map<String, dynamic>>> listFor(
+    String userKey, {
+    String? profileId,
+  }) async {
+    return rows
+        .where((r) => r['user_key'] == userKey && r['profile_id'] == profileId)
+        .toList();
   }
 }
 
@@ -87,6 +99,34 @@ void main() {
     expect(row['title'], 'Title');
     expect(row['url'], 'https://x/id');
   });
+
+  test(
+    'profile scoped lists stay separate while the default keeps legacy keys',
+    () async {
+      var activeProfileId = 'default';
+      final scoped = MyListStore(
+        SupabaseService(),
+        () => 'user1',
+        remote: fake,
+        currentProfileId: () => activeProfileId,
+      );
+
+      await scoped.add(_item(id: 'shared'));
+      activeProfileId = 'kid';
+      await scoped.add(_item(id: 'shared'));
+
+      expect(scoped.all(), hasLength(1));
+      expect(fake.rows.map((r) => r['profile_id']), [null, 'kid']);
+
+      activeProfileId = 'default';
+      expect(scoped.all(), hasLength(1));
+      expect(scoped.contains(_item(id: 'shared')), isTrue);
+      expect(
+        Hive.box<Map>(MyListStore.boxName).containsKey('src::shared'),
+        isTrue,
+      );
+    },
+  );
 
   test(
     'failed upsert enqueues pending key; retryPending() re-sends it',

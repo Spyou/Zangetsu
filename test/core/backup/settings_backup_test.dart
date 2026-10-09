@@ -10,6 +10,7 @@ void main() {
     dir = await Directory.systemTemp.createTemp();
     Hive.init(dir.path);
     await Hive.openBox('playback_prefs');
+    await Hive.openBox('viewer_profiles');
     // A typed Box<Map> — the codec must read/write it without a type-mismatch.
     await Hive.openBox<Map>('title_prefs');
   });
@@ -27,7 +28,25 @@ void main() {
   });
 
   test('merge skips boxes that are not open (no throw)', () async {
-    await SettingsBackup().merge({'not_open_box': {'x': 1}});
+    await SettingsBackup().merge({
+      'not_open_box': {'x': 1},
+    });
+  });
+
+  test('backs up viewer profile metadata', () async {
+    final profile = {
+      'id': 'default',
+      'name': 'Home',
+      'avatar': 0,
+      'isKids': false,
+    };
+    Hive.box('viewer_profiles').put('profiles:local', [profile]);
+
+    final data = SettingsBackup().build();
+    await Hive.box('viewer_profiles').clear();
+    await SettingsBackup().merge(data);
+
+    expect(Hive.box('viewer_profiles').get('profiles:local'), [profile]);
   });
 
   // Regression: title_prefs is opened as Box<Map>; an untyped Hive.box() throws.
@@ -100,6 +119,7 @@ void _driftGuard() {
       'announcements': 'transient',
       'search_history': 'transient',
       'content_mode': 'restored per device',
+      'home_cache': 'cache',
     };
 
     test('every settings box is either backed up or explicitly excluded', () {
@@ -113,16 +133,18 @@ void _driftGuard() {
       }
       expect(declared, isNotEmpty, reason: 'the scan itself must find boxes');
 
-      final unclassified = declared
-          .where((b) => !SettingsBackup.boxNames.contains(b))
-          .where((b) => !excluded.containsKey(b))
-          .toList()
-        ..sort();
+      final unclassified =
+          declared
+              .where((b) => !SettingsBackup.boxNames.contains(b))
+              .where((b) => !excluded.containsKey(b))
+              .toList()
+            ..sort();
 
       expect(
         unclassified,
         isEmpty,
-        reason: 'These Hive boxes are neither backed up nor listed as excluded.\n'
+        reason:
+            'These Hive boxes are neither backed up nor listed as excluded.\n'
             'Add each to SettingsBackup.boxNames if it holds user settings, or\n'
             'to this test\'s `excluded` map with the reason it should not be\n'
             'restored: $unclassified',

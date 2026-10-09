@@ -34,6 +34,7 @@ import '../../core/playback/playback_prefs.dart';
 import '../../core/playback/watch_history.dart';
 import '../auth/reconnect.dart';
 import '../../core/privacy/incognito_mode.dart';
+import '../../core/profiles/viewer_profile.dart';
 import '../../core/playback/search_prefs.dart';
 import '../../core/playback/subtitle_language.dart';
 import '../../core/aniyomi/aniyomi_provider.dart';
@@ -74,6 +75,7 @@ import '../auth/auth_cubit.dart';
 import '../backup/backup_screen.dart';
 import '../watch_together/ui/watch_party_lobby_screen.dart';
 import '../auth/auth_screens.dart';
+import '../profiles/viewer_profiles_screen.dart';
 import '../onboarding/how_it_works.dart';
 import '../notify/subscriptions_screen.dart';
 import 'tracker_settings_screen.dart';
@@ -755,6 +757,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  Widget _viewerProfilesTile(BuildContext context) => ValueListenableBuilder(
+    valueListenable: sl<ViewerProfileStore>().active,
+    builder: (context, profile, _) => SettingsCard(
+      margin: const EdgeInsets.only(top: 2, bottom: 10),
+      children: [
+        SettingsTile(
+          icon: Icons.switch_account_rounded,
+          iconHeroTag: kViewerProfileHeroTag,
+          title: 'Profiles',
+          subtitle: profile == null
+              ? 'Choose who is watching'
+              : 'Active: ${profile.name}${profile.isKids ? ' · Kids' : ''}',
+          onTap: () => _push(const ViewerProfilesScreen()),
+        ),
+      ],
+    ),
+  );
+
   Widget _accountRow({
     required VoidCallback onTap,
     required Widget avatar,
@@ -1431,6 +1451,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 // Browse view: account row + one tappable row per section.
                 children
                   ..add(_accountCard(context))
+                  ..add(_viewerProfilesTile(context))
                   ..addAll(_categoryRows(entries));
               } else {
                 // Search cuts across every section (unchanged behaviour).

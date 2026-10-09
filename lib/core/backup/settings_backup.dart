@@ -46,6 +46,7 @@ class SettingsBackup {
     'home_rows_prefs', // per-layout home row order + visibility
     'streaming_prefs', // streaming-service region + pinned service rows
     'zmode_source_order', // Source Priority: which source Auto Resolve tries first
+    'viewer_profiles', // per-account profile names and Kids-mode preference
   ];
 
   /// Returns a map of `{boxName: {key: value, ...}}` for every open box.
@@ -89,13 +90,19 @@ class SettingsBackup {
     if (!Hive.isBoxOpen(name)) return null;
     try {
       return Hive.box<Map>(name);
-    } catch (_) {/* not a Box<Map> */}
+    } catch (_) {
+      /* not a Box<Map> */
+    }
     try {
       return Hive.box<String>(name);
-    } catch (_) {/* not a Box<String> */}
+    } catch (_) {
+      /* not a Box<String> */
+    }
     try {
       return Hive.box(name);
-    } catch (_) {/* not a Box<dynamic> either */}
+    } catch (_) {
+      /* not a Box<dynamic> either */
+    }
     return null;
   }
 }

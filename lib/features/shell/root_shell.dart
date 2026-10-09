@@ -122,12 +122,13 @@ class _RootShellState extends State<RootShell>
   }
 
   void _onProfileChanged() {
-    if (!mounted) return;
+    if (!mounted || (sl.isRegistered<AppMode>() && sl<AppMode>().isTv)) return;
     setState(() {});
   }
 
   void _onProfileContextChanged() {
-    if (!mounted) return;
+    // RootShellTv owns these listeners when the TV shell is active.
+    if (!mounted || (sl.isRegistered<AppMode>() && sl<AppMode>().isTv)) return;
     final profileId = sl<ViewerProfileStore>().activeId;
     if (sl.isRegistered<HomeCubit>()) {
       unawaited(sl<HomeCubit>().reloadAfterProfileChange());
@@ -930,8 +931,8 @@ class _ProfileDockItem extends StatelessWidget {
                                     alignment: Alignment.center,
                                     child: ProfileAvatarFace(
                                       profile: profile,
-                                      photoUrl: accountPhotoForProfile(
-                                        isDefault: profile.isDefault,
+                                      photoUrl: profilePhotoForFace(
+                                        profile: profile,
                                         accountPhotoUrl:
                                             sl.isRegistered<AuthCubit>()
                                             ? sl<AuthCubit>().state.avatarUrl

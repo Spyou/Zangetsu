@@ -34,6 +34,7 @@ import 'core/playback/my_list.dart';
 import 'core/playback/history_merge.dart';
 import 'core/playback/resume_store.dart';
 import 'core/playback/watch_history.dart';
+import 'core/profiles/viewer_profile.dart';
 import 'core/reading/read_history.dart';
 import 'core/state/active_source_cubit.dart';
 import 'core/locale/locale_controller.dart';
@@ -51,6 +52,7 @@ import 'features/auth/auth_cubit.dart';
 import 'features/home/cubit/home_cubit.dart';
 import 'features/onboarding/boot_error_screen.dart';
 import 'features/onboarding/onboarding_screen.dart';
+import 'features/profiles/profile_launch_gate.dart';
 import 'features/shell/root_shell.dart';
 import 'features/watch_together/ui/party_bar.dart';
 
@@ -502,6 +504,9 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
     try {
       await sl<AuthCubit>().restore().timeout(const Duration(seconds: 5));
       if (sl<AuthCubit>().state.isLoggedIn) {
+        await sl<ViewerProfileStore>().loadForUser(
+          displayName: sl<AuthCubit>().state.displayName,
+        );
         Future<void> cloudSync() async {
           await Future.wait([
             sl<MyListStore>().seedCloudIfNeeded(),
@@ -528,6 +533,13 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
         _startForegroundSync();
       }
     } catch (_) {}
+    if (!sl<ViewerProfileStore>().isLoadedForCurrentUser) {
+      try {
+        await sl<ViewerProfileStore>().loadForUser(
+          displayName: sl<AuthCubit>().state.displayName,
+        );
+      } catch (_) {}
+    }
     // Rows saved under a source before the browse screen started resolving
     // titles to the catalogue: move them onto the show they belong to so
     // Continue Watching stops listing the same title twice. Once, after the
@@ -576,6 +588,9 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
   /// listener mounts, so no double pull).
   Future<void> _onAuthChange(BuildContext context, AuthState state) async {
     if (state.status == AuthStatus.authenticated) {
+      await sl<ViewerProfileStore>().loadForUser(
+        displayName: state.displayName,
+      );
       Future<void> sync() async {
         await sl<MyListStore>().seedCloudIfNeeded();
         await sl<WatchHistory>().seedCloudIfNeeded();
@@ -600,6 +615,7 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
         await sync();
       }
     } else if (state.status == AuthStatus.unauthenticated) {
+      await sl<ViewerProfileStore>().loadForUser();
       await sl<MyListStore>().clearLocal();
       await sl<WatchHistory>().clearLocal();
       await sl<ReadHistory>().clearLocal();
@@ -609,7 +625,7 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
   Widget _buildShellHome() {
     final onboarded = _onboardedOverride ?? isOnboarded();
     return onboarded
-        ? RootShell()
+        ? ProfileLaunchGate(child: RootShell())
         : OnboardingScreen(
             onDone: () {
               setState(() => _onboardedOverride = true);
@@ -622,7 +638,9 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
                   ..value = true;
               } else {
                 rootNavigatorKey.currentState?.pushReplacement(
-                  MaterialPageRoute<void>(builder: (_) => RootShell()),
+                  MaterialPageRoute<void>(
+                    builder: (_) => ProfileLaunchGate(child: RootShell()),
+                  ),
                 );
               }
             },

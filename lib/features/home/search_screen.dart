@@ -26,6 +26,7 @@ import '../../core/playback/search_source_prefs.dart';
 import '../../core/playback/source_health_store.dart' show SourceOutcome;
 import '../../core/playback/title_prefs.dart';
 import '../../core/playback/watch_history.dart';
+import '../../core/profiles/viewer_profile.dart';
 import '../../core/repository/catalogue_repository.dart';
 import '../../core/repository/source_repository.dart';
 import '../../core/state/active_source_cubit.dart';
@@ -415,7 +416,10 @@ class _SearchViewState extends State<_SearchView>
   ///
   late MetaFilters _metaFilters = initialSearchFilters(
     widget.initialFilters,
-    sl.isRegistered<PlaybackPrefs>() && sl<PlaybackPrefs>().adultMetadata,
+    sl.isRegistered<PlaybackPrefs>() &&
+        sl<PlaybackPrefs>().adultMetadata &&
+        (!sl.isRegistered<ViewerProfileStore>() ||
+            sl<ViewerProfileStore>().adultMetadataAllowed),
   );
 
   /// What this search will actually look through.
@@ -1089,7 +1093,9 @@ class _SearchViewState extends State<_SearchView>
             // looking at results, so it sits in the open ahead of them rather
             // than tucked in beside the icons. Only when Privacy allows it.
             if (widget.scope == SearchScope.library &&
-                sl<PlaybackPrefs>().adultMetadata)
+                sl<PlaybackPrefs>().adultMetadata &&
+                (!sl.isRegistered<ViewerProfileStore>() ||
+                    sl<ViewerProfileStore>().adultMetadataAllowed))
               _adultToggle(),
             Expanded(child: _controlRowLeft(modeSources)),
             // Per-source filter sheet — Library scope has no per-source

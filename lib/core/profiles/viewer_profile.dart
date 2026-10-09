@@ -105,6 +105,7 @@ class ViewerProfileStore {
 
   final ViewerProfileRemote? _remote;
   final String? Function()? _currentUserId;
+  int _loadRequest = 0;
   String? _loadedOwner;
   List<ViewerProfile> _profiles = const [];
   final ValueNotifier<ViewerProfile?> active = ValueNotifier(null);
@@ -135,17 +136,22 @@ class ViewerProfileStore {
   String _activeKey(String owner) => 'active:$owner';
 
   Future<void> loadForUser({String displayName = 'Home'}) async {
-    final owner = _owner;
+    final request = ++_loadRequest;
+    final userId = _currentUserId?.call();
+    final owner = userId ?? 'local';
+    bool isCurrentLoad() => request == _loadRequest && owner == _owner;
+
     final local = _readLocal(owner);
     var next = local.isEmpty ? [_defaultProfile(displayName)] : local;
-    final userId = _currentUserId?.call();
     final remote = _remote;
     if (userId != null && remote != null) {
       try {
         final rows = await remote.listFor(userId);
+        if (!isCurrentLoad()) return;
         if (rows.isEmpty) {
           for (final profile in next) {
             await remote.upsert(userId, profile);
+            if (!isCurrentLoad()) return;
           }
         } else {
           final cloud = [
@@ -156,6 +162,7 @@ class ViewerProfileStore {
             final fallback = _defaultProfile(displayName);
             cloud.insert(0, fallback);
             await remote.upsert(userId, fallback);
+            if (!isCurrentLoad()) return;
           }
           final merged = {
             for (final p in local) p.id: p,
@@ -165,6 +172,7 @@ class ViewerProfileStore {
           next = merged.values.toList();
           for (final p in local.where((p) => !cloud.any((c) => c.id == p.id))) {
             await remote.upsert(userId, p);
+            if (!isCurrentLoad()) return;
           }
         }
       } catch (_) {
@@ -175,9 +183,11 @@ class ViewerProfileStore {
     if (!next.any((p) => p.id == kDefaultProfileId)) {
       next.insert(0, _defaultProfile(displayName));
     }
+    if (!isCurrentLoad()) return;
+    await _saveLocal(owner, next);
+    if (!isCurrentLoad()) return;
     _loadedOwner = owner;
     _profiles = next;
-    await _saveLocal(owner);
     final storedId = _box.get(_activeKey(owner)) as String?;
     final chosen =
         next.where((p) => p.id == storedId).firstOrNull ??
@@ -278,7 +288,7 @@ class ViewerProfileStore {
   }
 
   Future<void> _deleteLocalProfileData(String profileId) async {
-    final prefix = 'p:$profileId::';
+    final prefix = profileScopePrefix(profileId);
     for (final name in [
       'my_list',
       'watch_history',
@@ -335,9 +345,10 @@ class ViewerProfileStore {
     return profiles;
   }
 
-  Future<void> _saveLocal(String owner) => _box.put(_profilesKey(owner), [
-    for (final profile in _profiles) profile.toJson(),
-  ]);
+  Future<void> _saveLocal(String owner, [List<ViewerProfile>? profiles]) =>
+      _box.put(_profilesKey(owner), [
+        for (final profile in profiles ?? _profiles) profile.toJson(),
+      ]);
 
   Future<void> _saveRemote(ViewerProfile profile) async {
     final userId = _currentUserId?.call();

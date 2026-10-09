@@ -6,6 +6,7 @@ import '../../core/di/injector.dart';
 import '../../core/mode/content_mode.dart';
 import '../../core/models/media_item.dart';
 import '../../core/playback/playback_prefs.dart';
+import '../../core/profiles/viewer_profile.dart';
 import '../../core/playback/search_history.dart';
 import '../../core/playback/search_scope.dart';
 import '../../core/theme/app_colors.dart';
@@ -213,7 +214,10 @@ class _SearchScreenTvState extends State<SearchScreenTv> {
 
   Widget _libraryControls() {
     final filterCount = metaFilterActiveCount(_metaFilters);
-    final showAdult = sl<PlaybackPrefs>().adultMetadata;
+    final showAdult =
+        sl<PlaybackPrefs>().adultMetadata &&
+        (!sl.isRegistered<ViewerProfileStore>() ||
+            sl<ViewerProfileStore>().adultMetadataAllowed);
     return Padding(
       padding: const EdgeInsets.fromLTRB(48, 0, 48, 20),
       child: Row(

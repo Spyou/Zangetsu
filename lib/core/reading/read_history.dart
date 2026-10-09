@@ -5,6 +5,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 
 import '../models/provider_info.dart';
 import '../privacy/incognito_mode.dart';
+import '../profiles/profile_scope.dart';
 import '../supabase/supabase_service.dart';
 import '../zmode/zmode_ids.dart';
 
@@ -94,7 +95,8 @@ class ReadEntry {
   /// Same finished rule as [ReadStore]: total == 1000 is the novel
   /// scroll-permille convention (>=950 counts as done); otherwise last
   /// page/chapter (manga).
-  bool get finished => total > 0 && (total == 1000 ? pos >= 950 : pos >= total - 1);
+  bool get finished =>
+      total > 0 && (total == 1000 ? pos >= 950 : pos >= total - 1);
 
   /// Reconstructs the internal native-image marker (`x-mihon-src` / `x-ani-src`)
   /// from the stored [sourceId], so Continue-Reading covers on a Cloudflare-gated
@@ -152,35 +154,64 @@ class ReadingHistoryRemote {
   final SupabaseService _service;
 
   Future<void> upsert(Map<String, dynamic> row) async {
-    await _service.client
-        .from('reading_history')
-        .upsert(row, onConflict: 'user_key,source_id,show_id');
+    final profileId = row['profile_id'] as String?;
+    final table = profileId == null
+        ? 'reading_history'
+        : 'profile_reading_history';
+    final conflict = profileId == null
+        ? 'user_key,source_id,show_id'
+        : 'user_key,profile_id,source_id,show_id';
+    await _service.client.from(table).upsert(row, onConflict: conflict);
   }
 
-  Future<List<Map<String, dynamic>>> listFor(String userKey) async {
-    final res = await _service.client
-        .from('reading_history')
-        .select()
-        .eq('user_key', userKey);
+  Future<List<Map<String, dynamic>>> listFor(
+    String userKey, {
+    String? profileId,
+  }) async {
+    final table = profileId == null
+        ? 'reading_history'
+        : 'profile_reading_history';
+    var query = _service.client.from(table).select().eq('user_key', userKey);
+    if (profileId != null) query = query.eq('profile_id', profileId);
+    final res = await query;
     return (res as List).cast<Map<String, dynamic>>();
   }
 
-  Future<void> deleteRow(String userKey, String sourceId, String showId) async {
-    await _service.client.from('reading_history').delete().match({
+  Future<void> deleteRow(
+    String userKey,
+    String sourceId,
+    String showId, {
+    String? profileId,
+  }) async {
+    final table = profileId == null
+        ? 'reading_history'
+        : 'profile_reading_history';
+    await _service.client.from(table).delete().match({
       'user_key': userKey,
       'source_id': sourceId,
       'show_id': showId,
+      if (profileId != null) 'profile_id': profileId,
     });
   }
 
   /// Delete every reading-history row for [userKey] of one kind
   /// (`'manga'`/`'novel'`) — used by the per-tab "Clear history" so it can't
   /// sync back, and so clearing manga never touches novel (they share a table).
-  Future<void> deleteAllForType(String userKey, String typeName) async {
-    await _service.client.from('reading_history').delete().match({
-      'user_key': userKey,
-      'type': typeName,
-    });
+  Future<void> deleteAllForType(
+    String userKey,
+    String typeName, {
+    String? profileId,
+  }) async {
+    final table = profileId == null
+        ? 'reading_history'
+        : 'profile_reading_history';
+    var query = _service.client
+        .from(table)
+        .delete()
+        .eq('user_key', userKey)
+        .eq('type', typeName);
+    if (profileId != null) query = query.eq('profile_id', profileId);
+    await query;
   }
 }
 
@@ -188,11 +219,19 @@ class ReadingHistoryRemote {
 /// Supabase when signed in. The manga/novel sibling of [WatchHistory] — same
 /// box/table/throttle/merge shape, ReadEntry fields instead of HistoryEntry.
 class ReadHistory {
-  ReadHistory(SupabaseService service, this._currentUserId, {ReadingHistoryRemote? remote})
-      : _remote = remote ?? ReadingHistoryRemote(service);
+  ReadHistory(
+    SupabaseService service,
+    this._currentUserId, {
+    ReadingHistoryRemote? remote,
+    String? Function()? currentProfileId,
+  }) : _remote = remote ?? ReadingHistoryRemote(service),
+       _currentProfileId = currentProfileId;
 
   final ReadingHistoryRemote _remote;
   final String? Function() _currentUserId;
+  final String? Function()? _currentProfileId;
+  String get _profileId => _currentProfileId?.call() ?? kDefaultProfileId;
+  String? _remoteProfileId(String id) => id == kDefaultProfileId ? null : id;
 
   static const String boxName = 'read_history';
   // Same rationale as WatchHistory's throttle: local saves stay instant, the
@@ -221,25 +260,27 @@ class ReadHistory {
   }
 
   Box<Map> get _box => Hive.box<Map>(boxName);
-  String _key(String sourceId, String showId) =>
-      hiveKey('$sourceId::$showId');
+  String _key(String sourceId, String showId, [String? profileId]) =>
+      profileScopedKey(profileId ?? _profileId, hiveKey('$sourceId::$showId'));
   final Map<String, int> _lastCloudPush = {};
 
   /// Persist progress. The local write is ALWAYS immediate (instant resume);
   /// the cloud push is throttled unless [flush] is true.
   Future<void> save(ReadEntry e, {bool flush = false}) async {
     if (IncognitoMode.on) return; // incognito: don't record what's read
-    final key = _key(e.sourceId, e.showId);
+    final profileId = _profileId;
+    final key = _key(e.sourceId, e.showId, profileId);
     await _box.put(key, e.toJson());
     if (flush) {
-      await _pushToCloud(key, e, force: true);
+      await _pushToCloud(key, e, profileId, force: true);
     } else {
-      _pushToCloud(key, e);
+      _pushToCloud(key, e, profileId);
     }
   }
 
-  Map<String, dynamic> _rowFor(String uid, ReadEntry e) => {
+  Map<String, dynamic> _rowFor(String uid, ReadEntry e, String profileId) => {
     'user_key': uid,
+    if (profileId != kDefaultProfileId) 'profile_id': profileId,
     'source_id': e.sourceId,
     'show_id': e.showId,
     'title': e.title,
@@ -253,7 +294,12 @@ class ReadHistory {
     'type': e.type.name,
   };
 
-  Future<void> _pushToCloud(String key, ReadEntry e, {bool force = false}) async {
+  Future<void> _pushToCloud(
+    String key,
+    ReadEntry e,
+    String profileId, {
+    bool force = false,
+  }) async {
     final uid = _currentUserId();
     if (uid == null) return;
     final now = DateTime.now().millisecondsSinceEpoch;
@@ -261,11 +307,14 @@ class ReadHistory {
     if (!force && now - last < _cloudThrottleMs) return;
     _lastCloudPush[key] = now;
     try {
-      await _remote.upsert(_rowFor(uid, e));
-    } catch (_) {/* best-effort — missing table / offline degrades silently */}
+      await _remote.upsert(_rowFor(uid, e, profileId));
+    } catch (_) {
+      /* best-effort — missing table / offline degrades silently */
+    }
   }
 
-  ReadEntry _fromMap(Map raw) => ReadEntry.fromJson(Map<String, dynamic>.from(raw));
+  ReadEntry _fromMap(Map raw) =>
+      ReadEntry.fromJson(Map<String, dynamic>.from(raw));
 
   /// Newest-first, excluding finished chapters (the Continue Reading feed).
   /// [type] filters to one kind (manga or novel) — the box mixes both, so the
@@ -273,11 +322,11 @@ class ReadHistory {
   /// under Novel and vice versa. Filtering happens BEFORE [limit] so a busy
   /// other-kind history can't crowd this kind out of the row.
   List<ReadEntry> recent({int limit = 20, ProviderType? type}) {
-    final all = _box.values
-        .map(_fromMap)
-        .where((e) => !e.finished && (type == null || e.type == type))
-        .toList()
-      ..sort((a, b) => b.updatedMs.compareTo(a.updatedMs));
+    final all =
+        _entriesFor(_profileId)
+            .where((e) => !e.finished && (type == null || e.type == type))
+            .toList()
+          ..sort((a, b) => b.updatedMs.compareTo(a.updatedMs));
     return all.take(limit).toList();
   }
 
@@ -286,9 +335,14 @@ class ReadHistory {
   /// not just the unfinished subset [recent] surfaces. The box mixes manga and
   /// novel; callers filter on [ReadEntry.type].
   List<ReadEntry> all() {
-    return _box.values.map(_fromMap).toList()
+    return _entriesFor(_profileId)
       ..sort((a, b) => b.updatedMs.compareTo(a.updatedMs));
   }
+
+  List<ReadEntry> _entriesFor(String profileId) => [
+    for (final key in _box.keys)
+      if (profileOwnsKey(key, profileId)) _fromMap(_box.get(key)!),
+  ];
 
   /// Notifies the Home "Continue Reading" row on any local change.
   ValueListenable<Box> listenable() => _box.listenable();
@@ -299,23 +353,27 @@ class ReadHistory {
   Future<({int pushed, int failed})> pushAllLocalToCloud() async {
     final uid = _currentUserId();
     if (uid == null) return (pushed: 0, failed: 0);
+    final profileId = _profileId;
     final cloudTimes = <String, int>{};
     var readOk = true;
     try {
-      for (final m in await _remote.listFor(uid)) {
-        cloudTimes[hiveKey('${m['source_id']}::${m['show_id']}')] =
+      for (final m in await _remote.listFor(
+        uid,
+        profileId: _remoteProfileId(profileId),
+      )) {
+        cloudTimes[_key('${m['source_id']}', '${m['show_id']}', profileId)] =
             (m['updated_ms'] as num?)?.toInt() ?? 0;
       }
     } catch (_) {
       readOk = false;
     }
     var pushed = 0, failed = 0;
-    for (final e in all()) {
-      final key = _key(e.sourceId, e.showId);
+    for (final e in _entriesFor(profileId)) {
+      final key = _key(e.sourceId, e.showId, profileId);
       final cloudT = cloudTimes[key];
       if (cloudT != null && cloudT >= e.updatedMs) continue;
       try {
-        await _remote.upsert(_rowFor(uid, e));
+        await _remote.upsert(_rowFor(uid, e, profileId));
         pushed++;
       } catch (_) {
         failed++;
@@ -331,7 +389,8 @@ class ReadHistory {
     final uid = _currentUserId();
     if (uid == null || !Hive.isBoxOpen(syncMetaBox)) return;
     final box = Hive.box(syncMetaBox);
-    final flag = '$_seedFlagPrefix$uid';
+    final profileId = _profileId;
+    final flag = profileScopedKey(profileId, '$_seedFlagPrefix$uid');
     if (box.get(flag) == true) return;
     final r = await pushAllLocalToCloud();
     if (r.failed == 0) await box.put(flag, true);
@@ -340,16 +399,22 @@ class ReadHistory {
   /// Merge the signed-in user's cloud reading history into the local cache,
   /// newest-wins, non-destructive — see [WatchHistory.pullFromCloud] for the
   /// full rationale (an empty/sparse cloud must never wipe local progress).
-  Future<void> pullFromCloud() async {
+  Future<void> pullFromCloud({String? forProfileId}) async {
     final uid = _currentUserId();
     if (uid == null) return;
+    final profileId = forProfileId ?? _profileId;
     try {
-      final rows = await _remote.listFor(uid);
+      final rows = await _remote.listFor(
+        uid,
+        profileId: _remoteProfileId(profileId),
+      );
       for (final m in rows) {
-        final key = hiveKey('${m['source_id']}::${m['show_id']}');
+        final key = _key('${m['source_id']}', '${m['show_id']}', profileId);
         final cloudUpdated = (m['updated_ms'] as num?)?.toInt() ?? 0;
-        final localUpdated = (_box.get(key)?['updatedMs'] as num?)?.toInt() ?? -1;
-        if (cloudUpdated <= localUpdated) continue; // local is same/newer — keep it
+        final localUpdated =
+            (_box.get(key)?['updatedMs'] as num?)?.toInt() ?? -1;
+        if (cloudUpdated <= localUpdated)
+          continue; // local is same/newer — keep it
         await _box.put(key, {
           'sourceId': m['source_id'],
           'showId': m['show_id'],
@@ -364,8 +429,10 @@ class ReadHistory {
           'type': m['type'],
         });
       }
-      _markPulled();
-    } catch (_) {/* keep local — missing table / offline degrades silently */}
+      _markPulled(profileId);
+    } catch (_) {
+      /* keep local — missing table / offline degrades silently */
+    }
   }
 
   /// Pull from cloud only when the last successful pull is older than
@@ -375,21 +442,26 @@ class ReadHistory {
     Duration maxAge = const Duration(hours: 12),
   }) async {
     if (_currentUserId() == null) return;
+    final profileId = _profileId;
     int? last;
     if (Hive.isBoxOpen(syncMetaBox)) {
-      last = Hive.box(syncMetaBox).get(_syncMetaKey) as int?;
+      last =
+          Hive.box(syncMetaBox).get(profileScopedKey(profileId, _syncMetaKey))
+              as int?;
     }
     if (last != null) {
       final age = DateTime.now().millisecondsSinceEpoch - last;
       if (age >= 0 && age < maxAge.inMilliseconds) return; // still fresh
     }
-    await pullFromCloud();
+    await pullFromCloud(forProfileId: profileId);
   }
 
-  void _markPulled() {
+  void _markPulled(String profileId) {
     if (Hive.isBoxOpen(syncMetaBox)) {
-      Hive.box(syncMetaBox)
-          .put(_syncMetaKey, DateTime.now().millisecondsSinceEpoch);
+      Hive.box(syncMetaBox).put(
+        profileScopedKey(profileId, _syncMetaKey),
+        DateTime.now().millisecondsSinceEpoch,
+      );
     }
   }
 
@@ -405,14 +477,22 @@ class ReadHistory {
   /// Remove a single title from reading history, locally and (when signed in)
   /// from the cloud so it doesn't sync back — see [WatchHistory.remove].
   Future<void> remove(String sourceId, String showId) async {
-    final key = _key(sourceId, showId);
+    final profileId = _profileId;
+    final key = _key(sourceId, showId, profileId);
     await _box.delete(key);
     _lastCloudPush.remove(key);
     final uid = _currentUserId();
     if (uid == null) return;
     try {
-      await _remote.deleteRow(uid, sourceId, showId);
-    } catch (_) {/* best-effort */}
+      await _remote.deleteRow(
+        uid,
+        sourceId,
+        showId,
+        profileId: _remoteProfileId(profileId),
+      );
+    } catch (_) {
+      /* best-effort */
+    }
   }
 
   /// User-initiated "Clear history" for ONE kind (manga or novel): wipe those
@@ -421,14 +501,23 @@ class ReadHistory {
   /// Deletes the cloud rows first so even a racing pull sees nothing.
   Future<void> clearType(ProviderType type) async {
     final uid = _currentUserId();
+    final profileId = _profileId;
     if (uid != null) {
       try {
-        await _remote.deleteAllForType(uid, type.name);
-      } catch (_) {/* best-effort — local still clears */}
+        await _remote.deleteAllForType(
+          uid,
+          type.name,
+          profileId: _remoteProfileId(profileId),
+        );
+      } catch (_) {
+        /* best-effort — local still clears */
+      }
     }
     final keys = _box.keys.where((k) {
+      if (!profileOwnsKey(k, profileId)) return false;
       final raw = _box.get(k);
-      return raw != null && readEntryTypeFromName(raw['type'] as String?) == type;
+      return raw != null &&
+          readEntryTypeFromName(raw['type'] as String?) == type;
     }).toList();
     for (final k in keys) {
       await _box.delete(k);
@@ -442,7 +531,13 @@ class ReadHistory {
   Future<void> clearLocal() async {
     await _box.clear();
     if (Hive.isBoxOpen(syncMetaBox)) {
-      await Hive.box(syncMetaBox).delete(_syncMetaKey);
+      final meta = Hive.box(syncMetaBox);
+      for (final key
+          in meta.keys
+              .where((k) => '$k' == _syncMetaKey || '$k'.startsWith('p:'))
+              .toList()) {
+        await meta.delete(key);
+      }
     }
   }
 }

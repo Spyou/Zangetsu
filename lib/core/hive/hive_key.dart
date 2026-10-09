@@ -19,8 +19,8 @@ import 'package:crypto/crypto.dart';
 /// Anything that fits comes back untouched, so existing rows keep the key they
 /// already have. Only the oversized ones change, and those cannot be read back
 /// today anyway.
-String hiveKey(String raw) {
+String hiveKey(String raw, {int maxBytes = 255}) {
   final bytes = utf8.encode(raw);
-  if (bytes.length <= 255) return raw;
+  if (bytes.length <= maxBytes) return raw;
   return 'h:${md5.convert(bytes)}';
 }

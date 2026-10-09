@@ -16,19 +16,37 @@ class LibraryBackup {
   static const _listStatusBox = 'list_status';
 
   Map<String, dynamic> build() => {
-        'myList': _dump(_myListBox),
-        'history': _dump(_historyBox),
-        'readHistory': _dumpKeyed(_readHistoryBox, asMap: true),
-        'readPositions': _dumpKeyed(_readPositionsBox, asMap: true),
-        'listStatus': _dumpKeyed(_listStatusBox, asMap: false),
-      };
+    'myList': _dump(_myListBox),
+    'history': _dump(_historyBox),
+    'profileMyList': _dumpProfileRows(_myListBox),
+    'profileHistory': _dumpProfileRows(_historyBox),
+    'readHistory': _dumpKeyed(_readHistoryBox, asMap: true),
+    'readPositions': _dumpKeyed(_readPositionsBox, asMap: true),
+    'listStatus': _dumpKeyed(_listStatusBox, asMap: false),
+  };
 
-  List<Map<String, dynamic>> _dump(String box) => Hive.isBoxOpen(box)
-      ? Hive.box<Map>(box)
-          .values
-          .map((m) => Map<String, dynamic>.from(m))
-          .toList()
-      : const [];
+  List<Map<String, dynamic>> _dump(String box) {
+    if (!Hive.isBoxOpen(box)) return const [];
+    final b = Hive.box<Map>(box);
+    return [
+      for (final key in b.keys)
+        if (!key.toString().startsWith('p:'))
+          Map<String, dynamic>.from(b.get(key) ?? const {}),
+    ];
+  }
+
+  /// My List and watch-history records do not carry their Hive keys, unlike
+  /// reading progress. Keep profile-scoped keys beside the legacy payload so
+  /// restore cannot accidentally merge a private profile into the default.
+  Map<String, dynamic> _dumpProfileRows(String box) {
+    if (!Hive.isBoxOpen(box)) return const {};
+    final b = Hive.box<Map>(box);
+    return {
+      for (final key in b.keys)
+        if (key.toString().startsWith('p:'))
+          key.toString(): Map<String, dynamic>.from(b.get(key) ?? const {}),
+    };
+  }
 
   /// Dumps [box] as a `{hiveKey: value}` map instead of a values list — for
   /// boxes whose stored VALUE doesn't carry its own key back (read_positions'
@@ -56,7 +74,9 @@ class LibraryBackup {
       for (final raw in (data['myList'] as List? ?? const [])) {
         final m = Map<String, dynamic>.from(raw as Map);
         final key = hiveKey('${m['sourceId']}::${m['id']}');
-        if (!box.containsKey(key)) await box.put(key, m); // union, never overwrite
+        if (!box.containsKey(key)) {
+          await box.put(key, m); // union, never overwrite
+        }
       }
     }
     if (Hive.isBoxOpen(_historyBox)) {
@@ -65,21 +85,56 @@ class LibraryBackup {
         final h = Map<String, dynamic>.from(raw as Map);
         final key = hiveKey('${h['sourceId']}::${h['showId']}');
         final cur = box.get(key);
-        final curTs = cur == null ? -1 : (cur['updatedAt'] as num? ?? -1).toInt();
+        final curTs = cur == null
+            ? -1
+            : (cur['updatedAt'] as num? ?? -1).toInt();
         final newTs = (h['updatedAt'] as num? ?? 0).toInt();
         if (newTs > curTs) await box.put(key, h); // keep-newer, never delete
       }
     }
+    await _mergeProfileRows(_myListBox, data['profileMyList']);
+    await _mergeProfileRows(
+      _historyBox,
+      data['profileHistory'],
+      keepNewer: true,
+    );
     await _mergeKeyed(_readHistoryBox, data['readHistory'], asMap: true);
     await _mergeKeyed(_readPositionsBox, data['readPositions'], asMap: true);
     await _mergeKeyed(_listStatusBox, data['listStatus'], asMap: false);
+  }
+
+  Future<void> _mergeProfileRows(
+    String boxName,
+    Object? raw, {
+    bool keepNewer = false,
+  }) async {
+    if (!Hive.isBoxOpen(boxName) || raw is! Map) return;
+    final box = Hive.box<Map>(boxName);
+    for (final entry in raw.entries) {
+      final key = hiveKey(entry.key.toString());
+      final value = entry.value;
+      if (value is! Map) continue;
+      final row = Map<String, dynamic>.from(value);
+      final current = box.get(key);
+      if (current != null) {
+        if (!keepNewer) continue;
+        final currentMs = (current['updatedAt'] as num? ?? -1).toInt();
+        final incomingMs = (row['updatedAt'] as num? ?? 0).toInt();
+        if (incomingMs <= currentMs) continue;
+      }
+      await box.put(key, row);
+    }
   }
 
   /// Union-merges a `{hiveKey: value}` map (as dumped by [_dumpKeyed]) into
   /// [box]: adds only keys not already present, never overwrites the current
   /// session's data. No-op when the box is closed or [raw] is missing/not a
   /// Map — covers both an old backup that lacks the key and a malformed one.
-  Future<void> _mergeKeyed(String box, Object? raw, {required bool asMap}) async {
+  Future<void> _mergeKeyed(
+    String box,
+    Object? raw, {
+    required bool asMap,
+  }) async {
     if (!Hive.isBoxOpen(box) || raw is! Map) return;
     if (asMap) {
       final b = Hive.box<Map>(box);

@@ -5,6 +5,7 @@ import 'package:hive/hive.dart';
 
 import '../models/media_item.dart';
 import '../models/watch_status.dart';
+import '../profiles/profile_scope.dart';
 
 /// Local, device-side status for every title in My List, keyed by
 /// `sourceId::id`. Deliberately a SEPARATE box from [MyListStore] (which clears
@@ -12,6 +13,12 @@ import '../models/watch_status.dart';
 /// anime the authoritative copy lives on AniList; this is the local mirror that
 /// also covers movies and offline use.
 class ListStatusStore {
+  ListStatusStore({String? Function()? currentProfileId})
+    : _currentProfileId = currentProfileId;
+
+  final String? Function()? _currentProfileId;
+  String get _profileId => _currentProfileId?.call() ?? kDefaultProfileId;
+
   static const String boxName = 'list_status';
 
   static Future<void> init() async {
@@ -23,7 +30,8 @@ class ListStatusStore {
   /// Bumped on every change so My List can rebuild.
   final ValueNotifier<int> revision = ValueNotifier<int>(0);
 
-  String keyOf(MediaItem m) => hiveKey('${m.sourceId}::${m.id}');
+  String keyOf(MediaItem m) =>
+      profileScopedKey(_profileId, hiveKey('${m.sourceId}::${m.id}'));
 
   WatchStatus? statusOf(MediaItem m) =>
       watchStatusFromName(_box.get(keyOf(m)) as String?);

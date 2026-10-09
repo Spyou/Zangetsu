@@ -18,6 +18,7 @@ import 'anime_catalogue.dart';
 import 'mal_catalogue.dart';
 import '../di/injector.dart';
 import '../playback/playback_prefs.dart';
+import '../profiles/viewer_profile.dart';
 import 'metadata_filters.dart';
 import 'metadata_provider_prefs.dart';
 import 'simkl_catalogue.dart';
@@ -495,7 +496,10 @@ class MetadataRepository implements CatalogueRepository {
   /// The Privacy switch. Read through GetIt rather than injected because this
   /// is a guard, and a build that forgets to wire it must fail closed.
   bool _adultAllowed() =>
-      sl.isRegistered<PlaybackPrefs>() && sl<PlaybackPrefs>().adultMetadata;
+      sl.isRegistered<PlaybackPrefs>() &&
+      sl<PlaybackPrefs>().adultMetadata &&
+      (!sl.isRegistered<ViewerProfileStore>() ||
+          sl<ViewerProfileStore>().adultMetadataAllowed);
 
   /// Whether the CHOSEN provider filters server-side.
   ///

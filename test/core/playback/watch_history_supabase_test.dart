@@ -14,29 +14,47 @@ class FakeHistoryRemote implements HistoryRemote {
   @override
   Future<void> upsert(Map<String, dynamic> row) async {
     upsertCalls++;
-    rows.removeWhere((r) =>
-        r['user_key'] == row['user_key'] &&
-        r['source_id'] == row['source_id'] &&
-        r['show_id'] == row['show_id']);
+    rows.removeWhere(
+      (r) =>
+          r['user_key'] == row['user_key'] &&
+          r['profile_id'] == row['profile_id'] &&
+          r['source_id'] == row['source_id'] &&
+          r['show_id'] == row['show_id'],
+    );
     rows.add(row);
   }
 
   @override
-  Future<void> deleteRow(String userKey, String sourceId, String showId) async {
-    rows.removeWhere((r) =>
-        r['user_key'] == userKey &&
-        r['source_id'] == sourceId &&
-        r['show_id'] == showId);
+  Future<void> deleteRow(
+    String userKey,
+    String sourceId,
+    String showId, {
+    String? profileId,
+  }) async {
+    rows.removeWhere(
+      (r) =>
+          r['user_key'] == userKey &&
+          r['profile_id'] == profileId &&
+          r['source_id'] == sourceId &&
+          r['show_id'] == showId,
+    );
   }
 
   @override
-  Future<void> deleteAllFor(String userKey) async {
-    rows.removeWhere((r) => r['user_key'] == userKey);
+  Future<void> deleteAllFor(String userKey, {String? profileId}) async {
+    rows.removeWhere(
+      (r) => r['user_key'] == userKey && r['profile_id'] == profileId,
+    );
   }
 
   @override
-  Future<List<Map<String, dynamic>>> listFor(String userKey) async {
-    return rows.where((r) => r['user_key'] == userKey).toList();
+  Future<List<Map<String, dynamic>>> listFor(
+    String userKey, {
+    String? profileId,
+  }) async {
+    return rows
+        .where((r) => r['user_key'] == userKey && r['profile_id'] == profileId)
+        .toList();
   }
 }
 
@@ -44,20 +62,19 @@ HistoryEntry _entry({
   String sourceId = 'src',
   String showId = 'show1',
   Duration position = const Duration(minutes: 1),
-}) =>
-    HistoryEntry(
-      sourceId: sourceId,
-      showId: showId,
-      showTitle: 'Title',
-      showUrl: 'https://x/$showId',
-      category: 'sub',
-      episodeId: 'ep1',
-      episodeNumber: 1,
-      episodeUrl: 'https://x/$showId/ep1',
-      position: position,
-      duration: const Duration(minutes: 24),
-      updatedAt: DateTime.now().millisecondsSinceEpoch,
-    );
+}) => HistoryEntry(
+  sourceId: sourceId,
+  showId: showId,
+  showTitle: 'Title',
+  showUrl: 'https://x/$showId',
+  category: 'sub',
+  episodeId: 'ep1',
+  episodeNumber: 1,
+  episodeUrl: 'https://x/$showId/ep1',
+  position: position,
+  duration: const Duration(minutes: 24),
+  updatedAt: DateTime.now().millisecondsSinceEpoch,
+);
 
 void main() {
   late Directory tmpDir;
@@ -78,41 +95,78 @@ void main() {
   });
 
   HistoryEntry entryAt(String showId, int updatedAt) => HistoryEntry(
-        sourceId: 'src',
-        showId: showId,
-        showTitle: 'T',
-        showUrl: 'u',
-        category: 'sub',
-        episodeId: 'e',
-        episodeNumber: 1,
-        episodeUrl: 'u',
-        position: const Duration(seconds: 1),
-        duration: const Duration(seconds: 2),
-        updatedAt: updatedAt,
+    sourceId: 'src',
+    showId: showId,
+    showTitle: 'T',
+    showUrl: 'u',
+    category: 'sub',
+    episodeId: 'e',
+    episodeNumber: 1,
+    episodeUrl: 'u',
+    position: const Duration(seconds: 1),
+    duration: const Duration(seconds: 2),
+    updatedAt: updatedAt,
+  );
+
+  test(
+    'two save() calls for the same show within 120s throttle to one upsert',
+    () async {
+      await history.save(_entry(position: const Duration(minutes: 1)));
+      await history.save(_entry(position: const Duration(minutes: 2)));
+
+      expect(fake.upsertCalls, 1);
+      // Local (Hive) save is always immediate regardless of throttle.
+      expect(history.recent().single.position, const Duration(minutes: 2));
+      // The throttled remote upsert still carries the first save's value.
+      expect(
+        fake.rows.single['position_ms'],
+        const Duration(minutes: 1).inMilliseconds,
+      );
+    },
+  );
+
+  test('watch progress is isolated by profile', () async {
+    var activeProfileId = 'default';
+    final scoped = WatchHistory(
+      SupabaseService(),
+      () => 'user1',
+      remote: fake,
+      currentProfileId: () => activeProfileId,
+    );
+
+    await scoped.save(
+      _entry(showId: 'same', position: const Duration(minutes: 1)),
+    );
+    activeProfileId = 'kid';
+    await scoped.save(
+      _entry(showId: 'same', position: const Duration(minutes: 3)),
+    );
+
+    expect(scoped.all().single.position, const Duration(minutes: 3));
+    expect(fake.rows.map((r) => r['profile_id']), [null, 'kid']);
+
+    activeProfileId = 'default';
+    expect(scoped.all().single.position, const Duration(minutes: 1));
+  });
+
+  test(
+    'save(flush: true) forces an immediate upsert regardless of throttle',
+    () async {
+      await history.save(_entry(position: const Duration(minutes: 1)));
+      expect(fake.upsertCalls, 1);
+
+      await history.save(
+        _entry(position: const Duration(minutes: 5)),
+        flush: true,
       );
 
-  test('two save() calls for the same show within 120s throttle to one upsert',
-      () async {
-    await history.save(_entry(position: const Duration(minutes: 1)));
-    await history.save(_entry(position: const Duration(minutes: 2)));
-
-    expect(fake.upsertCalls, 1);
-    // Local (Hive) save is always immediate regardless of throttle.
-    expect(history.recent().single.position, const Duration(minutes: 2));
-    // The throttled remote upsert still carries the first save's value.
-    expect(fake.rows.single['position_ms'], const Duration(minutes: 1).inMilliseconds);
-  });
-
-  test('save(flush: true) forces an immediate upsert regardless of throttle',
-      () async {
-    await history.save(_entry(position: const Duration(minutes: 1)));
-    expect(fake.upsertCalls, 1);
-
-    await history.save(_entry(position: const Duration(minutes: 5)), flush: true);
-
-    expect(fake.upsertCalls, 2);
-    expect(fake.rows.single['position_ms'], const Duration(minutes: 5).inMilliseconds);
-  });
+      expect(fake.upsertCalls, 2);
+      expect(
+        fake.rows.single['position_ms'],
+        const Duration(minutes: 5).inMilliseconds,
+      );
+    },
+  );
 
   test('pullFromCloud() MERGES cloud into local, keeping local-only rows '
       '(never wipes an un-synced Continue Watching item)', () async {
@@ -144,7 +198,10 @@ void main() {
     await history.pullFromCloud();
 
     final ids = history.all().map((e) => e.showId).toSet();
-    expect(ids, {'localOnly', 'fromCloud'}); // both survive — merge, not replace
+    expect(ids, {
+      'localOnly',
+      'fromCloud',
+    }); // both survive — merge, not replace
   });
 
   test('pullFromCloud() with an EMPTY cloud does NOT wipe local history '
@@ -154,30 +211,42 @@ void main() {
     final loggedOut = WatchHistory(SupabaseService(), () => null, remote: fake);
     await loggedOut.save(_entry(showId: 'a'));
     await loggedOut.save(_entry(showId: 'b'));
-    expect(fake.rows.where((r) => r['user_key'] == 'user1'), isEmpty); // cloud empty
+    expect(
+      fake.rows.where((r) => r['user_key'] == 'user1'),
+      isEmpty,
+    ); // cloud empty
 
     await history.pullFromCloud();
 
     expect(history.all().map((e) => e.showId).toSet(), {'a', 'b'}); // untouched
   });
 
-  test('pullFromCloud() overwrites a local row only when the cloud is newer',
-      () async {
-    final loggedOut = WatchHistory(SupabaseService(), () => null, remote: fake);
-    await loggedOut.save(entryAt('shared', 100)); // local at t=100
-    fake.rows.add({
-      'user_key': 'user1', 'source_id': 'src', 'show_id': 'shared',
-      'show_title': 'Cloud', 'cover': null, 'cover_headers': null,
-      'show_url': 'u', 'category': 'sub', 'episode_id': 'e', 'episode_number': 1,
-      'episode_url': 'u', 'position_ms': 5000, 'duration_ms': 6000,
-      'updated_at': 50, 'mal_id': null, // OLDER than local
-    });
+  test(
+    'pullFromCloud() overwrites a local row only when the cloud is newer',
+    () async {
+      final loggedOut = WatchHistory(
+        SupabaseService(),
+        () => null,
+        remote: fake,
+      );
+      await loggedOut.save(entryAt('shared', 100)); // local at t=100
+      fake.rows.add({
+        'user_key': 'user1', 'source_id': 'src', 'show_id': 'shared',
+        'show_title': 'Cloud', 'cover': null, 'cover_headers': null,
+        'show_url': 'u',
+        'category': 'sub',
+        'episode_id': 'e',
+        'episode_number': 1,
+        'episode_url': 'u', 'position_ms': 5000, 'duration_ms': 6000,
+        'updated_at': 50, 'mal_id': null, // OLDER than local
+      });
 
-    await history.pullFromCloud();
+      await history.pullFromCloud();
 
-    // Local (t=100) kept; the older cloud copy did not clobber it.
-    expect(history.recent().single.position, const Duration(seconds: 1));
-  });
+      // Local (t=100) kept; the older cloud copy did not clobber it.
+      expect(history.recent().single.position, const Duration(seconds: 1));
+    },
+  );
 
   test('clearAll() wipes local AND cloud, so a later pull restores nothing '
       '(the "cleared shows came back" bug)', () async {
@@ -188,35 +257,49 @@ void main() {
     await history.clearAll();
 
     expect(history.all(), isEmpty); // local gone
-    expect(fake.rows.where((r) => r['user_key'] == 'user1'), isEmpty); // cloud gone
+    expect(
+      fake.rows.where((r) => r['user_key'] == 'user1'),
+      isEmpty,
+    ); // cloud gone
 
     // The regression: a pull after clearing must NOT bring them back.
     await history.pullFromCloud();
     expect(history.all(), isEmpty);
   });
 
-  test('clearLocal() keeps the cloud (logout path) — a pull restores it',
-      () async {
-    await history.save(_entry(showId: 'a'), flush: true);
+  test(
+    'clearLocal() keeps the cloud (logout path) — a pull restores it',
+    () async {
+      await history.save(_entry(showId: 'a'), flush: true);
 
-    await history.clearLocal();
-    expect(history.all(), isEmpty); // local dropped
+      await history.clearLocal();
+      expect(history.all(), isEmpty); // local dropped
 
-    // Cloud still has it (that's the point on logout) — a pull brings it back.
-    await history.pullFromCloud();
-    expect(history.all().map((e) => e.showId), ['a']);
-  });
-
+      // Cloud still has it (that's the point on logout) — a pull brings it back.
+      await history.pullFromCloud();
+      expect(history.all().map((e) => e.showId), ['a']);
+    },
+  );
 
   test('pushAllLocalToCloud() is newest-wins: uploads absent + locally-newer, '
       'never clobbers a newer cloud row', () async {
     // Cloud already has "shared" at t=100.
     fake.rows.add({
-      'user_key': 'user1', 'source_id': 'src', 'show_id': 'shared',
-      'show_title': 'C', 'cover': null, 'cover_headers': null, 'show_url': 'u',
-      'category': 'sub', 'episode_id': 'e', 'episode_number': 1,
-      'episode_url': 'u', 'position_ms': 1000, 'duration_ms': 2000,
-      'updated_at': 100, 'mal_id': null,
+      'user_key': 'user1',
+      'source_id': 'src',
+      'show_id': 'shared',
+      'show_title': 'C',
+      'cover': null,
+      'cover_headers': null,
+      'show_url': 'u',
+      'category': 'sub',
+      'episode_id': 'e',
+      'episode_number': 1,
+      'episode_url': 'u',
+      'position_ms': 1000,
+      'duration_ms': 2000,
+      'updated_at': 100,
+      'mal_id': null,
     });
     // Local: a STALE copy of "shared" (t=50) + a fresh local-only show.
     final loggedOut = WatchHistory(SupabaseService(), () => null, remote: fake);
@@ -228,7 +311,10 @@ void main() {
     expect(r.failed, 0);
     expect(r.pushed, 1); // only localOnly; "shared" skipped (cloud is newer)
     final cloud = fake.rows.where((r) => r['user_key'] == 'user1');
-    expect(cloud.firstWhere((r) => r['show_id'] == 'shared')['updated_at'], 100);
+    expect(
+      cloud.firstWhere((r) => r['show_id'] == 'shared')['updated_at'],
+      100,
+    );
     expect(cloud.any((r) => r['show_id'] == 'localOnly'), isTrue);
   });
 

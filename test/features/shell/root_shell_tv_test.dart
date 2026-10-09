@@ -26,6 +26,7 @@ import 'package:watch_app/core/playback/playback_prefs.dart';
 import 'package:watch_app/core/playback/search_history.dart';
 import 'package:watch_app/core/playback/search_prefs.dart';
 import 'package:watch_app/core/playback/search_source_prefs.dart';
+import 'package:watch_app/core/profiles/viewer_profile.dart';
 import 'package:watch_app/core/provider/cloudstream_provider.dart';
 import 'package:watch_app/core/provider/provider_manager.dart';
 import 'package:watch_app/core/provider/provider_registry.dart';
@@ -49,10 +50,10 @@ import 'package:watch_app/features/home/cubit/home_cubit.dart';
 import 'package:watch_app/features/shell/root_shell_tv.dart';
 
 MigrationBridge _fakeBridge() => MigrationBridge(
-      invoke: (_, __) async => const {'ok': false},
-      signInPassword: (_, __) async => false,
-      verifyOtp: (_, __) async => false,
-    );
+  invoke: (_, __) async => const {'ok': false},
+  signInPassword: (_, __) async => false,
+  verifyOtp: (_, __) async => false,
+);
 
 // ── Minimal fakes (no platform channels, no Hive) ──────────────────────────
 
@@ -99,7 +100,6 @@ class _FakeMyListStore implements MyListStore {
   @override
   Future<bool> ensureSourceLoaded(String sourceId) async => true;
 
-
   @override
   List<MediaItem> all() => const [];
 
@@ -119,7 +119,6 @@ class _FakeSearchHistory implements SearchHistory {
   @override
   Future<bool> ensureSourceLoaded(String sourceId) async => true;
 
-
   @override
   List<String> recent() => const [];
 }
@@ -132,7 +131,6 @@ class _FakeSearchPrefs extends ChangeNotifier implements SearchPrefs {
   // provider is loaded before searching it. These fakes are already "loaded".
   @override
   Future<bool> ensureSourceLoaded(String sourceId) async => true;
-
 
   @override
   SearchLayout get layout => SearchLayout.vertical;
@@ -169,7 +167,6 @@ class _FakeSearchSourcePrefs extends ChangeNotifier
   @override
   Future<bool> ensureSourceLoaded(String sourceId) async => true;
 
-
   @override
   Set<String> get excluded => const {};
 
@@ -186,7 +183,6 @@ class _FakeProviderRegistry implements ProviderRegistry {
   @override
   Future<bool> ensureSourceLoaded(String sourceId) async => true;
 
-
   @override
   List<ProviderRegistryEntry> getAll() => const [];
 
@@ -199,8 +195,8 @@ class _FakeProviderRegistry implements ProviderRegistry {
   @override
   Map<String, String> typeMapOf() => const {};
   @override
-  ({Map<String, String> types, Map<String, String> logos})
-  manifestMapsOf() => (types: const {}, logos: const {});
+  ({Map<String, String> types, Map<String, String> logos}) manifestMapsOf() =>
+      (types: const {}, logos: const {});
 }
 
 /// Fake tracker — always disconnected, no Hive box.
@@ -211,7 +207,6 @@ class _FakeAniListService extends ChangeNotifier implements AniListService {
   // provider is loaded before searching it. These fakes are already "loaded".
   @override
   Future<bool> ensureSourceLoaded(String sourceId) async => true;
-
 
   @override
   bool get isConnected => false;
@@ -234,7 +229,6 @@ class _FakeMalService extends ChangeNotifier implements MalService {
   @override
   Future<bool> ensureSourceLoaded(String sourceId) async => true;
 
-
   @override
   bool get isConnected => false;
 
@@ -255,7 +249,6 @@ class _FakeSimklService extends ChangeNotifier implements SimklService {
   // provider is loaded before searching it. These fakes are already "loaded".
   @override
   Future<bool> ensureSourceLoaded(String sourceId) async => true;
-
 
   @override
   bool get isConnected => false;
@@ -291,29 +284,29 @@ class _FakeAiringService extends AiringService {
   _FakeAiringService() : super(Dio());
   @override
   Future<List<AiringEntry>> weekAiring({DateTime? now}) async => [
-        AiringEntry(
-          malId: 1,
-          title: 'x',
-          coverUrl: null,
-          episode: 1,
-          airsAtLocal: DateTime(2026),
-          format: 'TV',
-        ),
-      ];
+    AiringEntry(
+      malId: 1,
+      title: 'x',
+      coverUrl: null,
+      episode: 1,
+      airsAtLocal: DateTime(2026),
+      format: 'TV',
+    ),
+  ];
 }
 
 class _FakeComingSoonService extends ComingSoonService {
   _FakeComingSoonService() : super(Dio());
   @override
   Future<List<ComingSoonEntry>> upcoming() async => const [
-        ComingSoonEntry(
-          tmdbId: 1,
-          isTv: false,
-          title: 'x',
-          posterUrl: null,
-          releaseDate: null,
-        ),
-      ];
+    ComingSoonEntry(
+      tmdbId: 1,
+      isTv: false,
+      title: 'x',
+      posterUrl: null,
+      releaseDate: null,
+    ),
+  ];
 }
 
 /// [HomeScreen] (rendered inside RootShellTv's shared shell pages) fires a
@@ -344,9 +337,9 @@ void main() {
     // throw MissingPluginException across test boundaries.
     TestWidgetsFlutterBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
-      const MethodChannel('plugins.flutter.io/path_provider'),
-      (call) async => '/tmp',
-    );
+          const MethodChannel('plugins.flutter.io/path_provider'),
+          (call) async => '/tmp',
+        );
 
     // Reset GetIt in case a previous test left registrations.
     await sl.reset();
@@ -359,6 +352,7 @@ void main() {
     final flags = await Hive.openBox('app_flags');
     await flags.put('communitySheetSeen', true);
     await Hive.openBox(ThemeController.boxName);
+    await ViewerProfileStore.init();
     // SettingsScreen (rendered eagerly in the shared shell pages) reads
     // sl<PlaybackPrefs>(), which reads its own Hive box — open it first.
     await PlaybackPrefs.init();
@@ -370,9 +364,14 @@ void main() {
     final dio = Dio();
     final fakeRepo = _FakeSourceRepository();
     activeSource = ActiveSourceCubit(); // nullable box → no Hive
-    authCubit = AuthCubit(SupabaseService(), AppwriteService(), _fakeBridge()); // cache box is nullable → no Hive
+    authCubit = AuthCubit(
+      SupabaseService(),
+      AppwriteService(),
+      _fakeBridge(),
+    ); // cache box is nullable → no Hive
 
     sl.registerSingleton<AppMode>(const AppMode(isTv: false));
+    sl.registerSingleton<ViewerProfileStore>(ViewerProfileStore());
     sl.registerSingleton<HomeCubit>(HomeCubit(fakeRepo));
     sl.registerSingleton<SourceRepository>(fakeRepo);
     sl.registerSingleton<CatalogueRepository>(fakeRepo);
@@ -417,73 +416,67 @@ void main() {
     // Clear the path_provider mock so it doesn't bleed into other test files.
     TestWidgetsFlutterBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
-      const MethodChannel('plugins.flutter.io/path_provider'),
-      null,
-    );
+          const MethodChannel('plugins.flutter.io/path_provider'),
+          null,
+        );
     await sl.reset();
     authCubit.close();
     activeSource.close();
     await Hive.close();
   });
 
-  testWidgets(
-    'RootShellTv shows a focusable nav rail with the destinations',
-    (tester) async {
-      await tester.pumpWidget(
-        MultiBlocProvider(
-          providers: [
-            BlocProvider<ActiveSourceCubit>.value(value: activeSource),
-            BlocProvider<AuthCubit>.value(value: authCubit),
-          ],
-          child: const MaterialApp(home: RootShellTv()),
+  testWidgets('RootShellTv shows a focusable nav rail with the destinations', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MultiBlocProvider(
+        providers: [
+          BlocProvider<ActiveSourceCubit>.value(value: activeSource),
+          BlocProvider<AuthCubit>.value(value: authCubit),
+        ],
+        child: const MaterialApp(home: RootShellTv()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Home'), findsOneWidget);
+    expect(find.text('Settings'), findsOneWidget);
+  });
+
+  testWidgets('TV viewport keeps Settings at the same screen-relative height', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(960, 540));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      MultiBlocProvider(
+        providers: [
+          BlocProvider<ActiveSourceCubit>.value(value: activeSource),
+          BlocProvider<AuthCubit>.value(value: authCubit),
+        ],
+        child: MaterialApp(
+          builder: (_, child) => TvViewport(child: child!),
+          home: const RootShellTv(),
         ),
-      );
-      await tester.pumpAndSettle();
-      expect(find.text('Home'), findsOneWidget);
-      expect(find.text('Settings'), findsOneWidget);
-    },
-  );
+      ),
+    );
+    await tester.pumpAndSettle();
 
-  testWidgets(
-    'TV viewport keeps Settings at the same screen-relative height',
-    (tester) async {
-      await tester.binding.setSurfaceSize(const Size(960, 540));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
+    double settingsHeightFraction(Size viewport) {
+      final box = tester.renderObject<RenderBox>(find.text('Settings'));
+      final center = box.localToGlobal(box.size.center(Offset.zero));
+      return center.dy / viewport.height;
+    }
 
-      await tester.pumpWidget(
-        MultiBlocProvider(
-          providers: [
-            BlocProvider<ActiveSourceCubit>.value(value: activeSource),
-            BlocProvider<AuthCubit>.value(value: authCubit),
-          ],
-          child: MaterialApp(
-            builder: (_, child) => TvViewport(child: child!),
-            home: const RootShellTv(),
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
+    final androidLikeFraction = settingsHeightFraction(const Size(960, 540));
 
-      double settingsHeightFraction(Size viewport) {
-        final box = tester.renderObject<RenderBox>(find.text('Settings'));
-        final center = box.localToGlobal(box.size.center(Offset.zero));
-        return center.dy / viewport.height;
-      }
+    await tester.binding.setSurfaceSize(const Size(1920, 1080));
+    await tester.pumpAndSettle();
+    final appleTvLikeFraction = settingsHeightFraction(const Size(1920, 1080));
 
-      final androidLikeFraction = settingsHeightFraction(
-        const Size(960, 540),
-      );
-
-      await tester.binding.setSurfaceSize(const Size(1920, 1080));
-      await tester.pumpAndSettle();
-      final appleTvLikeFraction = settingsHeightFraction(
-        const Size(1920, 1080),
-      );
-
-      expect(appleTvLikeFraction, closeTo(androidLikeFraction, 0.001));
-      expect(tester.takeException(), isNull);
-    },
-  );
+    expect(appleTvLikeFraction, closeTo(androidLikeFraction, 0.001));
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets(
     'Settings nav item stays inside the rail drawer with TV viewport',
@@ -506,7 +499,8 @@ void main() {
       await tester.pumpAndSettle();
 
       final rail = find.byWidgetPredicate(
-        (w) => w is Focus && (w as Focus).focusNode?.debugLabel == 'tv-rail-scope',
+        (w) =>
+            w is Focus && (w as Focus).focusNode?.debugLabel == 'tv-rail-scope',
       );
       final settingsInRail = find.descendant(
         of: rail,
@@ -523,7 +517,8 @@ void main() {
 
       final railBox = tester.renderObject<RenderBox>(rail);
       final settingsBox = tester.renderObject<RenderBox>(settingsInRail);
-      final railBottom = railBox.localToGlobal(Offset.zero).dy + railBox.size.height;
+      final railBottom =
+          railBox.localToGlobal(Offset.zero).dy + railBox.size.height;
       final settingsBottom =
           settingsBox.localToGlobal(Offset.zero).dy + settingsBox.size.height;
 
@@ -532,45 +527,40 @@ void main() {
     },
   );
 
-  testWidgets(
-    'RootShellTv shows the profile row at the top of the nav',
-    (tester) async {
-      await tester.pumpWidget(
-        MultiBlocProvider(
-          providers: [
-            BlocProvider<ActiveSourceCubit>.value(value: activeSource),
-            BlocProvider<AuthCubit>.value(value: authCubit),
-          ],
-          child: const MaterialApp(home: RootShellTv()),
-        ),
-      );
-      await tester.pumpAndSettle();
-      // The account/profile row (avatar + name / "Sign in") is keyed
-      // 'tv-nav-avatar' and sits at the top of the nav.
-      expect(find.byKey(const ValueKey('tv-nav-avatar')), findsOneWidget);
-    },
-  );
+  testWidgets('RootShellTv shows the profile row at the top of the nav', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MultiBlocProvider(
+        providers: [
+          BlocProvider<ActiveSourceCubit>.value(value: activeSource),
+          BlocProvider<AuthCubit>.value(value: authCubit),
+        ],
+        child: const MaterialApp(home: RootShellTv()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    // The account/profile row (avatar + name / "Sign in") is keyed
+    // 'tv-nav-avatar' and sits at the top of the nav.
+    expect(find.byKey(const ValueKey('tv-nav-avatar')), findsOneWidget);
+  });
 
-  testWidgets(
-    'RootShellTv does not show an active-source row in the rail',
-    (tester) async {
-      await tester.pumpWidget(
-        MultiBlocProvider(
-          providers: [
-            BlocProvider<ActiveSourceCubit>.value(value: activeSource),
-            BlocProvider<AuthCubit>.value(value: authCubit),
-          ],
-          child: const MaterialApp(home: RootShellTv()),
-        ),
-      );
-      await tester.pumpAndSettle();
-      expect(
-        find.byKey(const ValueKey('tv-source-indicator')),
-        findsNothing,
-      );
-      expect(find.byIcon(Icons.swap_horiz_rounded), findsNothing);
-    },
-  );
+  testWidgets('RootShellTv does not show an active-source row in the rail', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MultiBlocProvider(
+        providers: [
+          BlocProvider<ActiveSourceCubit>.value(value: activeSource),
+          BlocProvider<AuthCubit>.value(value: authCubit),
+        ],
+        child: const MaterialApp(home: RootShellTv()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('tv-source-indicator')), findsNothing);
+    expect(find.byIcon(Icons.swap_horiz_rounded), findsNothing);
+  });
 
   testWidgets(
     'RootShellTv has exactly two Focus zones (rail scope + content scope)',
@@ -611,29 +601,28 @@ void main() {
 
   // ── Back-to-exit tests ─────────────────────────────────────────────────────
 
-  testWidgets(
-    'RootShellTv has a PopScope(canPop: false) wrapping the shell',
-    (tester) async {
-      await tester.pumpWidget(
-        MultiBlocProvider(
-          providers: [
-            BlocProvider<ActiveSourceCubit>.value(value: activeSource),
-            BlocProvider<AuthCubit>.value(value: authCubit),
-          ],
-          child: const MaterialApp(home: RootShellTv()),
-        ),
-      );
-      await tester.pumpAndSettle();
-      // PopScope with canPop: false must be present so Back is never handled
-      // by the default Navigator but always by our custom handler.
-      final popScopes = tester.widgetList<PopScope>(find.byType(PopScope));
-      expect(
-        popScopes.any((ps) => ps.canPop == false),
-        isTrue,
-        reason: 'Expected a PopScope(canPop: false) in the RootShellTv tree',
-      );
-    },
-  );
+  testWidgets('RootShellTv has a PopScope(canPop: false) wrapping the shell', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MultiBlocProvider(
+        providers: [
+          BlocProvider<ActiveSourceCubit>.value(value: activeSource),
+          BlocProvider<AuthCubit>.value(value: authCubit),
+        ],
+        child: const MaterialApp(home: RootShellTv()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    // PopScope with canPop: false must be present so Back is never handled
+    // by the default Navigator but always by our custom handler.
+    final popScopes = tester.widgetList<PopScope>(find.byType(PopScope));
+    expect(
+      popScopes.any((ps) => ps.canPop == false),
+      isTrue,
+      reason: 'Expected a PopScope(canPop: false) in the RootShellTv tree',
+    );
+  });
 
   testWidgets(
     'RootShellTv: first Back on the Home tab shows the exit snackbar',

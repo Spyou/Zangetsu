@@ -89,6 +89,32 @@ void main() {
   });
 
   test(
+    'ignores a profile response after the signed-in account changes',
+    () async {
+      String? userId = 'account-a';
+      final remote = _AccountSwitchProfileRemote();
+      final switchingStore = ViewerProfileStore(
+        remote: remote,
+        currentUserId: () => userId,
+      );
+
+      final oldLoad = switchingStore.loadForUser(displayName: 'Account A');
+      await remote.accountAStarted.future;
+      userId = 'account-b';
+      await switchingStore.loadForUser(displayName: 'Account B');
+      remote.accountAResult.complete([
+        {'profile_id': kDefaultProfileId, 'name': 'Account A'},
+        {'profile_id': 'a-private', 'name': 'Private A'},
+      ]);
+      await oldLoad;
+
+      expect(switchingStore.profiles.map((profile) => profile.name), [
+        'Account B',
+      ]);
+    },
+  );
+
+  test(
     'deleting a profile clears only its local profile-scoped rows',
     () async {
       final kid = (await store.create('Kid'))!;
@@ -159,6 +185,28 @@ class _BlockingDeleteProfileRemote implements ViewerProfileRemote {
 
   @override
   Future<List<Map<String, dynamic>>> listFor(String userId) async => [];
+
+  @override
+  Future<void> upsert(String userId, ViewerProfile profile) async {}
+}
+
+class _AccountSwitchProfileRemote implements ViewerProfileRemote {
+  final accountAStarted = Completer<void>();
+  final accountAResult = Completer<List<Map<String, dynamic>>>();
+
+  @override
+  Future<List<Map<String, dynamic>>> listFor(String userId) {
+    if (userId == 'account-a') {
+      accountAStarted.complete();
+      return accountAResult.future;
+    }
+    return Future.value([
+      {'profile_id': kDefaultProfileId, 'name': 'Account B'},
+    ]);
+  }
+
+  @override
+  Future<void> delete(String userId, String profileId) async {}
 
   @override
   Future<void> upsert(String userId, ViewerProfile profile) async {}

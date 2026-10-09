@@ -6,6 +6,7 @@ import 'package:watch_app/core/hive/safe_box.dart';
 import 'package:watch_app/core/hive/hive_key.dart';
 
 import '../models/media_item.dart';
+import '../profiles/profile_scope.dart';
 import '../supabase/supabase_service.dart';
 
 /// One user-made category ("Persona", "Gym"). [id] is stable and never shown —
@@ -75,44 +76,77 @@ class CategoryRemote {
   CategoryRemote(this._service);
   final SupabaseService _service;
 
-  Future<List<Map<String, dynamic>>> categoriesFor(String uid) async {
-    final res = await _service.client
-        .from('list_categories')
-        .select()
-        .eq('user_key', uid);
+  Future<List<Map<String, dynamic>>> categoriesFor(
+    String uid, {
+    String? profileId,
+  }) async {
+    final table = profileId == null
+        ? 'list_categories'
+        : 'profile_list_categories';
+    var query = _service.client.from(table).select().eq('user_key', uid);
+    if (profileId != null) query = query.eq('profile_id', profileId);
+    final res = await query;
     return (res as List).cast<Map<String, dynamic>>();
   }
 
-  Future<List<Map<String, dynamic>>> assignmentsFor(String uid) async {
-    final res = await _service.client
-        .from('mylist_categories')
-        .select()
-        .eq('user_key', uid);
+  Future<List<Map<String, dynamic>>> assignmentsFor(
+    String uid, {
+    String? profileId,
+  }) async {
+    final table = profileId == null
+        ? 'mylist_categories'
+        : 'profile_mylist_categories';
+    var query = _service.client.from(table).select().eq('user_key', uid);
+    if (profileId != null) query = query.eq('profile_id', profileId);
+    final res = await query;
     return (res as List).cast<Map<String, dynamic>>();
   }
 
-  Future<void> upsertCategory(Map<String, dynamic> row) =>
-      _service.client.from('list_categories').upsert(row);
+  Future<void> upsertCategory(Map<String, dynamic> row) => _service.client
+      .from(
+        row['profile_id'] == null
+            ? 'list_categories'
+            : 'profile_list_categories',
+      )
+      .upsert(row);
 
-  Future<void> deleteCategory(String uid, String id) => _service.client
-      .from('list_categories')
-      .delete()
-      .match({'user_key': uid, 'id': id});
+  Future<void> deleteCategory(String uid, String id, {String? profileId}) =>
+      _service.client
+          .from(
+            profileId == null ? 'list_categories' : 'profile_list_categories',
+          )
+          .delete()
+          .match({
+            'user_key': uid,
+            'id': id,
+            ...?profileId == null ? null : {'profile_id': profileId},
+          });
 
-  Future<void> addAssignment(Map<String, dynamic> row) =>
-      _service.client.from('mylist_categories').upsert(row);
+  Future<void> addAssignment(Map<String, dynamic> row) => _service.client
+      .from(
+        row['profile_id'] == null
+            ? 'mylist_categories'
+            : 'profile_mylist_categories',
+      )
+      .upsert(row);
 
   Future<void> removeAssignment(
     String uid,
     String sourceId,
     String itemId,
-    String categoryId,
-  ) =>
-      _service.client.from('mylist_categories').delete().match({
+    String categoryId, {
+    String? profileId,
+  }) => _service.client
+      .from(
+        profileId == null ? 'mylist_categories' : 'profile_mylist_categories',
+      )
+      .delete()
+      .match({
         'user_key': uid,
         'source_id': sourceId,
         'item_id': itemId,
         'category_id': categoryId,
+        ...?profileId == null ? null : {'profile_id': profileId},
       });
 }
 
@@ -126,17 +160,28 @@ class CategoryRemote {
 /// A title can be in several categories at once, so assignments are a set per
 /// title rather than a single value. Trackers never see any of this.
 class CategoryStore {
-  CategoryStore({CategoryRemote? remote, String? Function()? currentUserId})
-      : _remote = remote,
-        _currentUserId = currentUserId;
+  CategoryStore({
+    CategoryRemote? remote,
+    String? Function()? currentUserId,
+    String? Function()? currentProfileId,
+  }) : _remote = remote,
+       _currentUserId = currentUserId,
+       _currentProfileId = currentProfileId;
 
   /// Null when the app runs without Supabase (tests) — everything still works,
   /// it just stays on the device.
   final CategoryRemote? _remote;
   final String? Function()? _currentUserId;
+  final String? Function()? _currentProfileId;
+  String get _profileId => _currentProfileId?.call() ?? kDefaultProfileId;
+  String? _remoteProfileId(String id) => id == kDefaultProfileId ? null : id;
 
   static const String boxName = 'list_categories';
   static const String _catsKey = '__categories__';
+  String _categoriesKey([String? profileId]) =>
+      profileScopedKey(profileId ?? _profileId, _catsKey);
+  String _metaKey([String? profileId]) =>
+      profileScopedKey(profileId ?? _profileId, _syncMetaKey);
 
   /// Shared with [MyListStore] / [WatchHistory] — last successful cloud-pull
   /// timestamps, kept out of [boxName] so they never appear in assignment
@@ -173,24 +218,31 @@ class CategoryStore {
   final ValueNotifier<int> revision = ValueNotifier<int>(0);
 
   /// Same key shape as [ListStatusStore] so the two line up per title.
-  String keyOf(MediaItem m) => hiveKey('${m.sourceId}::${m.id}');
+  String keyOf(MediaItem m) =>
+      profileScopedKey(_profileId, hiveKey('${m.sourceId}::${m.id}'));
 
   // ── the categories themselves ────────────────────────────────────────────
 
   /// In display order. Ties fall back to name so the order is never arbitrary.
-  List<ListCategory> all() {
-    final raw = _box.get(_catsKey);
+  List<ListCategory> all() => _allFor(_profileId);
+
+  List<ListCategory> _allFor(String profileId) {
+    final raw = _box.get(_categoriesKey(profileId));
     if (raw is! List) return const [];
     final out = raw.map(ListCategory.fromMap).whereType<ListCategory>().toList()
       ..sort((a, b) {
         final p = a.position.compareTo(b.position);
-        return p != 0 ? p : a.name.toLowerCase().compareTo(b.name.toLowerCase());
+        return p != 0
+            ? p
+            : a.name.toLowerCase().compareTo(b.name.toLowerCase());
       });
     return out;
   }
 
-  Future<void> _writeAll(List<ListCategory> cats) async {
-    await _box.put(_catsKey, [for (final c in cats) c.toMap()]);
+  Future<void> _writeAll(List<ListCategory> cats, [String? profileId]) async {
+    await _box.put(_categoriesKey(profileId), [
+      for (final c in cats) c.toMap(),
+    ]);
     revision.value++;
   }
 
@@ -200,7 +252,8 @@ class CategoryStore {
   Future<ListCategory?> create(String name, {String? kind}) async {
     final trimmed = name.trim();
     if (trimmed.isEmpty) return null;
-    final cats = all();
+    final profileId = _profileId;
+    final cats = _allFor(profileId);
     if (cats.any((c) => c.name.toLowerCase() == trimmed.toLowerCase())) {
       return null;
     }
@@ -212,13 +265,16 @@ class CategoryStore {
       position: cats.isEmpty ? 0 : cats.last.position + 1,
       kind: kind,
     );
-    await _writeAll([...cats, cat]);
-    _push((r, uid) => r.upsertCategory({
-          'id': cat.id,
-          'user_key': uid,
-          'name': cat.name,
-          'position': cat.position,
-        }));
+    await _writeAll([...cats, cat], profileId);
+    _push(
+      (r, uid) => r.upsertCategory({
+        'id': cat.id,
+        'user_key': uid,
+        if (profileId != kDefaultProfileId) 'profile_id': profileId,
+        'name': cat.name,
+        'position': cat.position,
+      }),
+    );
     return cat;
   }
 
@@ -226,9 +282,11 @@ class CategoryStore {
   Future<bool> rename(String id, String name) async {
     final trimmed = name.trim();
     if (trimmed.isEmpty) return false;
-    final cats = all();
-    if (cats.any((c) =>
-        c.id != id && c.name.toLowerCase() == trimmed.toLowerCase())) {
+    final profileId = _profileId;
+    final cats = _allFor(profileId);
+    if (cats.any(
+      (c) => c.id != id && c.name.toLowerCase() == trimmed.toLowerCase(),
+    )) {
       return false;
     }
     if (!cats.any((c) => c.id == id)) return false;
@@ -238,22 +296,31 @@ class CategoryStore {
           ListCategory(id: c.id, name: trimmed, position: c.position)
         else
           c,
-    ]);
-    _push((r, uid) => r.upsertCategory({
-          'id': id,
-          'user_key': uid,
-          'name': trimmed,
-          'position': cats.firstWhere((c) => c.id == id).position,
-        }));
+    ], profileId);
+    _push(
+      (r, uid) => r.upsertCategory({
+        'id': id,
+        'user_key': uid,
+        if (profileId != kDefaultProfileId) 'profile_id': profileId,
+        'name': trimmed,
+        'position': cats.firstWhere((c) => c.id == id).position,
+      }),
+    );
     return true;
   }
 
   /// Removes the category and every assignment to it. Titles are untouched —
   /// deleting a category loses the label, never anything from the list.
   Future<void> delete(String id) async {
-    await _writeAll(all().where((c) => c.id != id).toList());
+    final profileId = _profileId;
+    await _writeAll(
+      _allFor(profileId).where((c) => c.id != id).toList(),
+      profileId,
+    );
     for (final key in _box.keys.toList()) {
-      if (key == _catsKey || key is! String) continue;
+      if (!profileOwnsKey(key, profileId) || key == _categoriesKey(profileId)) {
+        continue;
+      }
       final ids = _idsFor(key);
       if (!ids.remove(id)) continue;
       if (ids.isEmpty) {
@@ -264,12 +331,16 @@ class CategoryStore {
     }
     revision.value++;
     // The cloud cascades the assignments itself (foreign key on delete).
-    _push((r, uid) => r.deleteCategory(uid, id));
+    _push(
+      (r, uid) =>
+          r.deleteCategory(uid, id, profileId: _remoteProfileId(profileId)),
+    );
   }
 
   /// Persists a new order. [orderedIds] is the full list, first to last.
   Future<void> reorder(List<String> orderedIds) async {
-    final byId = {for (final c in all()) c.id: c};
+    final profileId = _profileId;
+    final byId = {for (final c in _allFor(profileId)) c.id: c};
     final out = <ListCategory>[];
     var i = 0;
     for (final id in orderedIds) {
@@ -283,14 +354,17 @@ class CategoryStore {
     for (final c in byId.values) {
       out.add(ListCategory(id: c.id, name: c.name, position: i++));
     }
-    await _writeAll(out);
+    await _writeAll(out, profileId);
     for (final c in out) {
-      _push((r, uid) => r.upsertCategory({
-            'id': c.id,
-            'user_key': uid,
-            'name': c.name,
-            'position': c.position,
-          }));
+      _push(
+        (r, uid) => r.upsertCategory({
+          'id': c.id,
+          'user_key': uid,
+          if (profileId != kDefaultProfileId) 'profile_id': profileId,
+          'name': c.name,
+          'position': c.position,
+        }),
+      );
     }
   }
 
@@ -308,7 +382,12 @@ class CategoryStore {
   bool isIn(MediaItem m, String categoryId) =>
       _idsFor(keyOf(m)).contains(categoryId);
 
-  Future<void> setMembership(MediaItem m, String categoryId, bool member) async {
+  Future<void> setMembership(
+    MediaItem m,
+    String categoryId,
+    bool member,
+  ) async {
+    final profileId = _profileId;
     final key = keyOf(m);
     final ids = _idsFor(key);
     if (member ? !ids.add(categoryId) : !ids.remove(categoryId)) return;
@@ -318,14 +397,23 @@ class CategoryStore {
       await _box.put(key, ids.toList());
     }
     revision.value++;
-    _push((r, uid) => member
-        ? r.addAssignment({
-            'user_key': uid,
-            'source_id': m.sourceId,
-            'item_id': m.id,
-            'category_id': categoryId,
-          })
-        : r.removeAssignment(uid, m.sourceId, m.id, categoryId));
+    _push(
+      (r, uid) => member
+          ? r.addAssignment({
+              'user_key': uid,
+              if (profileId != kDefaultProfileId) 'profile_id': profileId,
+              'source_id': m.sourceId,
+              'item_id': m.id,
+              'category_id': categoryId,
+            })
+          : r.removeAssignment(
+              uid,
+              m.sourceId,
+              m.id,
+              categoryId,
+              profileId: _remoteProfileId(profileId),
+            ),
+    );
   }
 
   /// Drops every assignment for a title — for when it leaves My List entirely.
@@ -347,13 +435,20 @@ class CategoryStore {
   /// A pull that fails leaves the device exactly as it was: nothing is cleared
   /// until the read has succeeded.
   Future<void> pullFromCloud() async {
+    final profileId = _profileId;
     final r = _remote, uid = _uid;
     if (r == null || uid == null) return;
     final List<Map<String, dynamic>> catRows;
     final List<Map<String, dynamic>> linkRows;
     try {
-      catRows = await r.categoriesFor(uid);
-      linkRows = await r.assignmentsFor(uid);
+      catRows = await r.categoriesFor(
+        uid,
+        profileId: _remoteProfileId(profileId),
+      );
+      linkRows = await r.assignmentsFor(
+        uid,
+        profileId: _remoteProfileId(profileId),
+      );
     } catch (e) {
       debugPrint('[categories] cloud pull failed: $e');
       return;
@@ -363,11 +458,13 @@ class CategoryStore {
     for (final row in catRows) {
       final id = row['id'], name = row['name'];
       if (id is! String || name is! String) continue;
-      cats.add(ListCategory(
-        id: id,
-        name: name,
-        position: (row['position'] as num?)?.toInt() ?? 0,
-      ));
+      cats.add(
+        ListCategory(
+          id: id,
+          name: name,
+          position: (row['position'] as num?)?.toInt() ?? 0,
+        ),
+      );
     }
 
     // Rebuild assignments from scratch, keyed the same way the local box is.
@@ -380,14 +477,19 @@ class CategoryStore {
       // Ignore a link to a category that no longer exists, so a half-deleted
       // row can't create a phantom tab.
       if (!knownIds.contains(cat)) continue;
-      byKey.putIfAbsent(hiveKey('$src::$item'), () => <String>{}).add(cat);
+      byKey
+          .putIfAbsent(
+            profileScopedKey(profileId, hiveKey('$src::$item')),
+            () => <String>{},
+          )
+          .add(cat);
     }
 
     // Most pulls find exactly what's already here (nothing changed on another
     // device). Bailing out means no writes and no rebuild — which is what
     // stops the tabs flickering on every launch and resume.
-    if (_sameAsLocal(cats, byKey)) {
-      _markPulled();
+    if (_sameAsLocal(cats, byKey, profileId)) {
+      _markPulled(profileId);
       return;
     }
 
@@ -399,11 +501,13 @@ class CategoryStore {
       await _box.put(e.key, e.value.toList());
     }
     for (final key in _box.keys.toList()) {
-      if (key == _catsKey || key is! String) continue;
+      if (!profileOwnsKey(key, profileId) || key == _categoriesKey(profileId)) {
+        continue;
+      }
       if (!byKey.containsKey(key)) await _box.delete(key);
     }
-    await _writeAll(cats); // bumps revision, so My List rebuilds
-    _markPulled();
+    await _writeAll(cats, profileId); // bumps revision, so My List rebuilds
+    _markPulled(profileId);
   }
 
   /// Pull from cloud only when the last successful pull is older than [maxAge]
@@ -413,28 +517,34 @@ class CategoryStore {
     Duration maxAge = const Duration(hours: 12),
   }) async {
     if (_uid == null || _remote == null) return;
+    final profileId = _profileId;
     int? last;
     if (Hive.isBoxOpen(syncMetaBox)) {
-      last = Hive.box(syncMetaBox).get(_syncMetaKey) as int?;
+      last = Hive.box(syncMetaBox).get(_metaKey(profileId)) as int?;
     }
     if (last != null) {
       final age = DateTime.now().millisecondsSinceEpoch - last;
       if (age >= 0 && age < maxAge.inMilliseconds) return; // still fresh
     }
-    await pullFromCloud();
+    if (_profileId == profileId) await pullFromCloud();
   }
 
-  void _markPulled() {
+  void _markPulled(String profileId) {
     if (Hive.isBoxOpen(syncMetaBox)) {
-      Hive.box(syncMetaBox)
-          .put(_syncMetaKey, DateTime.now().millisecondsSinceEpoch);
+      Hive.box(
+        syncMetaBox,
+      ).put(_metaKey(profileId), DateTime.now().millisecondsSinceEpoch);
     }
   }
 
   /// True when the cloud copy already matches what's on the device, so a pull
   /// can skip the rebuild entirely.
-  bool _sameAsLocal(List<ListCategory> cats, Map<String, Set<String>> byKey) {
-    final local = all();
+  bool _sameAsLocal(
+    List<ListCategory> cats,
+    Map<String, Set<String>> byKey,
+    String profileId,
+  ) {
+    final local = _allFor(profileId);
     if (local.length != cats.length) return false;
     for (var i = 0; i < local.length; i++) {
       if (local[i].id != cats[i].id || local[i].name != cats[i].name) {
@@ -451,8 +561,11 @@ class CategoryStore {
   /// empty category honestly reads 0.
   int countIn(String categoryId) {
     var n = 0;
+    final profileId = _profileId;
     for (final key in _box.keys) {
-      if (key == _catsKey || key is! String) continue;
+      if (!profileOwnsKey(key, profileId) || key == _categoriesKey(profileId)) {
+        continue;
+      }
       if (_idsFor(key).contains(categoryId)) n++;
     }
     return n;

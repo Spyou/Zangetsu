@@ -6,6 +6,7 @@ import '../metadata/streaming_providers.dart';
 import '../mode/content_mode.dart';
 import '../mode/content_mode_cubit.dart';
 import '../playback/playback_prefs.dart';
+import '../profiles/viewer_profile.dart';
 import '../playback/source_health_store.dart';
 import '../repository/catalogue_repository.dart';
 import '../repository/catalogue_router.dart';
@@ -44,13 +45,15 @@ Future<void> registerZangetsuMode(GetIt sl) async {
   final sourceOrderPrefs = await SourceOrderPrefs.open();
   sl.registerSingleton<SourceOrderPrefs>(sourceOrderPrefs);
 
-  sl.registerSingleton<SourceMatcher>(SourceMatcher(
-    sources: sl<SourceRepository>(),
-    store: matchStore,
-    prefs: sourcePrefs,
-    candidates: orderedCandidates,
-    sweepCandidates: sweepList,
-  ));
+  sl.registerSingleton<SourceMatcher>(
+    SourceMatcher(
+      sources: sl<SourceRepository>(),
+      store: matchStore,
+      prefs: sourcePrefs,
+      candidates: orderedCandidates,
+      sweepCandidates: sweepList,
+    ),
+  );
 
   final providerPrefs = await MetadataProviderPrefs.open();
   sl.registerSingleton<MetadataProviderPrefs>(providerPrefs);
@@ -61,42 +64,44 @@ Future<void> registerZangetsuMode(GetIt sl) async {
     () => StreamingProvidersService(TmdbCatalogue.dioGet(sl<Dio>())),
   );
 
-  sl.registerSingleton<MetadataRepository>(MetadataRepository(
-    anilist: AniListCatalogue(
-      AniListCatalogue.dioGql(sl<Dio>()),
-      adultAllowed: () => sl<PlaybackPrefs>().adultMetadata,
+  sl.registerSingleton<MetadataRepository>(
+    MetadataRepository(
+      anilist: AniListCatalogue(
+        AniListCatalogue.dioGql(sl<Dio>()),
+        adultAllowed: () =>
+            sl<PlaybackPrefs>().adultMetadata &&
+            sl<ViewerProfileStore>().adultMetadataAllowed,
+      ),
+      tmdb: TmdbCatalogue(TmdbCatalogue.dioGet(sl<Dio>())),
+      mal: MalCatalogue(sl<Dio>()),
+      simkl: SimklCatalogue(sl<Dio>()),
+      providerPrefs: providerPrefs,
+      // Say it out loud when the chosen provider was unreachable — silently
+      // serving different data is how "why do my rows look wrong" starts.
+      onProviderFallback: (name) {
+        // A toast, not a SnackBar: the app uses toasts everywhere else, and a
+        // SnackBar shoves the layout up and sits under the floating dock.
+        //
+        // Straight into the overlay, because there is no screen context here:
+        // `showAppToast` resolves one with `Overlay.of`, and every context a
+        // navigator key can hand back is either above the overlay or is the
+        // overlay itself. Both threw "Overlay is null", so the warning never
+        // actually reached anyone.
+        final overlay = rootNavigatorKey.currentState?.overlay;
+        if (overlay != null) {
+          showAppToastIn(overlay, 'Showing results from $name');
+        }
+      },
+      sources: sl<SourceRepository>(),
+      matcher: sl<SourceMatcher>(),
+      matchStore: matchStore,
+      sourcePrefs: sourcePrefs,
+      health: sl<SourceHealthStore>(),
+      candidates: orderedCandidates,
+      browseKind: () =>
+          browseKindFor(sl<ContentModeCubit>().state, ZModePrefs.streamKind),
     ),
-    tmdb: TmdbCatalogue(TmdbCatalogue.dioGet(sl<Dio>())),
-    mal: MalCatalogue(sl<Dio>()),
-    simkl: SimklCatalogue(sl<Dio>()),
-    providerPrefs: providerPrefs,
-    // Say it out loud when the chosen provider was unreachable — silently
-    // serving different data is how "why do my rows look wrong" starts.
-    onProviderFallback: (name) {
-      // A toast, not a SnackBar: the app uses toasts everywhere else, and a
-      // SnackBar shoves the layout up and sits under the floating dock.
-      //
-      // Straight into the overlay, because there is no screen context here:
-      // `showAppToast` resolves one with `Overlay.of`, and every context a
-      // navigator key can hand back is either above the overlay or is the
-      // overlay itself. Both threw "Overlay is null", so the warning never
-      // actually reached anyone.
-      final overlay = rootNavigatorKey.currentState?.overlay;
-      if (overlay != null) {
-        showAppToastIn(overlay, 'Showing results from $name');
-      }
-    },
-    sources: sl<SourceRepository>(),
-    matcher: sl<SourceMatcher>(),
-    matchStore: matchStore,
-    sourcePrefs: sourcePrefs,
-    health: sl<SourceHealthStore>(),
-    candidates: orderedCandidates,
-    browseKind: () => browseKindFor(
-      sl<ContentModeCubit>().state,
-      ZModePrefs.streamKind,
-    ),
-  ));
+  );
 
   // Changing a title's source has to drop the resolver's cached winners for
   // it, or playback keeps serving the source that played last. Bound here
@@ -105,15 +110,19 @@ Future<void> registerZangetsuMode(GetIt sl) async {
     sl<MetadataRepository>().playbackResolver.invalidateShow,
   );
 
-  sl.registerSingleton<CatalogueRepository>(CatalogueRouter(
-    source: sl<SourceRepository>(),
-    metadata: sl<MetadataRepository>(),
-    enabled: () => ZModePrefs.enabled,
-  ));
+  sl.registerSingleton<CatalogueRepository>(
+    CatalogueRouter(
+      source: sl<SourceRepository>(),
+      metadata: sl<MetadataRepository>(),
+      enabled: () => ZModePrefs.enabled,
+    ),
+  );
 
   // Expose PlaybackResolver directly so TvNativePlayer can invalidate the
   // winner cache when the native player reports a playback error.
-  sl.registerSingleton<PlaybackResolver>(sl<MetadataRepository>().playbackResolver);
+  sl.registerSingleton<PlaybackResolver>(
+    sl<MetadataRepository>().playbackResolver,
+  );
 }
 
 /// Which installed sources may play a title of [kind]. Prefix rules match
@@ -147,8 +156,14 @@ List<({String id, String name})> candidatesForKind(
   // showed Aniyomi sources this picker did not.
   final all = repo.pickableSources;
   return switch (kind) {
-    ZKind.manga => [for (final s in all) if (s.id.startsWith('mihon:')) s],
-    ZKind.novel => [for (final s in all) if (s.id.startsWith('lnr:')) s],
+    ZKind.manga => [
+      for (final s in all)
+        if (s.id.startsWith('mihon:')) s,
+    ],
+    ZKind.novel => [
+      for (final s in all)
+        if (s.id.startsWith('lnr:')) s,
+    ],
     // Anime and movie/TV share one streaming pool. Which of the two a title
     // is has already been decided by the metadata catalogue; the source only
     // has to be able to play it, and plenty carry both. Kind affinity is NOT
@@ -207,9 +222,7 @@ List<({String id, String name})> byKindAffinity(
     // in the app already pairs them (`_isTmdb`, the Movies & TV tab); this was
     // the one place that didn't.
     final wantsVideoPool = kind == ZKind.movie || kind == ZKind.tv;
-    declared = {
-      for (final r in wantsVideoPool ? b.movies : b.anime) r.id,
-    };
+    declared = {for (final r in wantsVideoPool ? b.movies : b.anime) r.id};
   } catch (_) {
     return pool;
   }
@@ -280,10 +293,9 @@ List<({String id, String name})> sweepList(ZKind kind) =>
 /// top ten that the sweep would never attempt, under a heading claiming it was
 /// used automatically. One function, one answer.
 List<({String id, String name})> sweepCandidates(ZKind kind) {
-  final narrowed = languageNarrowedCandidates(
-    orderedCandidates(kind),
-    {for (final s in sl<SourceRepository>().loadedSources) s.id},
-  );
+  final narrowed = languageNarrowedCandidates(orderedCandidates(kind), {
+    for (final s in sl<SourceRepository>().loadedSources) s.id,
+  });
   // Rank first, then put the sources the user placed by hand back on top.
   //
   // The two are not rival modes. Dragging one favourite used to switch the
@@ -318,6 +330,5 @@ SourceRecord sourceRecordOf(String id) {
 ZKind browseKindFor(ContentMode mode, StreamKind stream) => switch (mode) {
   ContentMode.manga => ZKind.manga,
   ContentMode.novel => ZKind.novel,
-  ContentMode.anime =>
-    stream == StreamKind.movie ? ZKind.movie : ZKind.anime,
+  ContentMode.anime => stream == StreamKind.movie ? ZKind.movie : ZKind.anime,
 };

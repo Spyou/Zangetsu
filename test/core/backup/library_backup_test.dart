@@ -21,23 +21,76 @@ void main() {
   });
 
   test('build then merge: My List union + watch history keep-newer', () async {
-    Hive.box<Map>('my_list').put('src::1',
-        {'id': '1', 'sourceId': 'src', 'title': 'A', 'url': 'u1', 'type': 'anime'});
-    Hive.box<Map>('watch_history').put('src::1',
-        {'sourceId': 'src', 'showId': '1', 'positionMs': 100, 'updatedAt': 100});
+    Hive.box<Map>('my_list').put('src::1', {
+      'id': '1',
+      'sourceId': 'src',
+      'title': 'A',
+      'url': 'u1',
+      'type': 'anime',
+    });
+    Hive.box<Map>('watch_history').put('src::1', {
+      'sourceId': 'src',
+      'showId': '1',
+      'positionMs': 100,
+      'updatedAt': 100,
+    });
     final data = LibraryBackup().build();
 
     await Hive.box<Map>('my_list').clear();
     await Hive.box<Map>('watch_history').clear();
     // a NEWER local history entry must survive the merge
-    Hive.box<Map>('watch_history').put('src::1',
-        {'sourceId': 'src', 'showId': '1', 'positionMs': 500, 'updatedAt': 500});
+    Hive.box<Map>('watch_history').put('src::1', {
+      'sourceId': 'src',
+      'showId': '1',
+      'positionMs': 500,
+      'updatedAt': 500,
+    });
 
     await LibraryBackup().merge(data);
 
-    expect(Hive.box<Map>('my_list').containsKey('src::1'), isTrue); // union restored
-    expect(Hive.box<Map>('watch_history').get('src::1')!['updatedAt'], 500); // newer kept
+    expect(
+      Hive.box<Map>('my_list').containsKey('src::1'),
+      isTrue,
+    ); // union restored
+    expect(
+      Hive.box<Map>('watch_history').get('src::1')!['updatedAt'],
+      500,
+    ); // newer kept
   });
+
+  test(
+    'profile-scoped list and history rows keep their profile keys in backup',
+    () async {
+      const profileListKey = 'p:kid::src::1';
+      const profileHistoryKey = 'p:kid::src::1';
+      await Hive.box<Map>('my_list').put(profileListKey, {
+        'id': '1',
+        'sourceId': 'src',
+        'title': 'Kid title',
+        'url': 'u',
+        'type': 'anime',
+      });
+      await Hive.box<Map>('watch_history').put(profileHistoryKey, {
+        'sourceId': 'src',
+        'showId': '1',
+        'positionMs': 100,
+        'updatedAt': 100,
+      });
+
+      final data = LibraryBackup().build();
+      await Hive.box<Map>('my_list').clear();
+      await Hive.box<Map>('watch_history').clear();
+      await LibraryBackup().merge(data);
+
+      expect(Hive.box<Map>('my_list').containsKey(profileListKey), isTrue);
+      expect(
+        Hive.box<Map>('watch_history').containsKey(profileHistoryKey),
+        isTrue,
+      );
+      expect(Hive.box<Map>('my_list').containsKey('src::1'), isFalse);
+      expect(Hive.box<Map>('watch_history').containsKey('src::1'), isFalse);
+    },
+  );
 
   test('build then merge: manga/novel reading progress round-trips', () async {
     Hive.box<Map>('read_history').put('mihon:src::1', {
@@ -50,8 +103,9 @@ void main() {
       'updatedMs': 1000,
       'type': 'manga',
     });
-    Hive.box<Map>('read_positions').put(
-        'mihon:src::1::c1', {'pos': 3, 'total': 20});
+    Hive.box<Map>(
+      'read_positions',
+    ).put('mihon:src::1::c1', {'pos': 3, 'total': 20});
     Hive.box('list_status').put('mihon:src::1', 'reading');
 
     final data = LibraryBackup().build();
@@ -63,40 +117,51 @@ void main() {
     await LibraryBackup().merge(data);
 
     expect(Hive.box<Map>('read_history').containsKey('mihon:src::1'), isTrue);
-    expect(Hive.box<Map>('read_history').get('mihon:src::1')!['title'],
-        'Manga A');
-    expect(Hive.box<Map>('read_positions').get('mihon:src::1::c1'),
-        {'pos': 3, 'total': 20});
+    expect(
+      Hive.box<Map>('read_history').get('mihon:src::1')!['title'],
+      'Manga A',
+    );
+    expect(Hive.box<Map>('read_positions').get('mihon:src::1::c1'), {
+      'pos': 3,
+      'total': 20,
+    });
     expect(Hive.box('list_status').get('mihon:src::1'), 'reading');
   });
 
-  test('merge: reading progress is union — existing entries win, nothing is clobbered',
-      () async {
-    Hive.box('list_status').put('src::1', 'completed'); // current session's data
-    await LibraryBackup().merge({
-      'listStatus': {'src::1': 'dropped', 'src::2': 'reading'},
-    });
+  test(
+    'merge: reading progress is union — existing entries win, nothing is clobbered',
+    () async {
+      Hive.box(
+        'list_status',
+      ).put('src::1', 'completed'); // current session's data
+      await LibraryBackup().merge({
+        'listStatus': {'src::1': 'dropped', 'src::2': 'reading'},
+      });
 
-    // pre-existing entry survives untouched...
-    expect(Hive.box('list_status').get('src::1'), 'completed');
-    // ...but a genuinely new key is still added.
-    expect(Hive.box('list_status').get('src::2'), 'reading');
-  });
+      // pre-existing entry survives untouched...
+      expect(Hive.box('list_status').get('src::1'), 'completed');
+      // ...but a genuinely new key is still added.
+      expect(Hive.box('list_status').get('src::2'), 'reading');
+    },
+  );
 
-  test('merge: an OLD backup missing the new reading keys imports fine', () async {
-    // Shape of a backup taken before manga/novel support existed.
-    await LibraryBackup().merge({
-      'myList': [
-        {'id': '1', 'sourceId': 's'},
-      ],
-      'history': [],
-    });
+  test(
+    'merge: an OLD backup missing the new reading keys imports fine',
+    () async {
+      // Shape of a backup taken before manga/novel support existed.
+      await LibraryBackup().merge({
+        'myList': [
+          {'id': '1', 'sourceId': 's'},
+        ],
+        'history': [],
+      });
 
-    expect(Hive.box<Map>('my_list').containsKey('s::1'), isTrue);
-    expect(Hive.box<Map>('read_history').isEmpty, isTrue);
-    expect(Hive.box<Map>('read_positions').isEmpty, isTrue);
-    expect(Hive.box('list_status').isEmpty, isTrue);
-  });
+      expect(Hive.box<Map>('my_list').containsKey('s::1'), isTrue);
+      expect(Hive.box<Map>('read_history').isEmpty, isTrue);
+      expect(Hive.box<Map>('read_positions').isEmpty, isTrue);
+      expect(Hive.box('list_status').isEmpty, isTrue);
+    },
+  );
 
   test('merge hashes oversized keys the same way the stores do', () async {
     // A source URL carrying a multi-kilobyte ?data={…} blob — the exact
@@ -155,25 +220,41 @@ void main() {
     await LibraryBackup().merge(backup);
 
     // My List: the entry should land under the hashed key, not a raw one.
-    expect(Hive.box<Map>('my_list').containsKey(hashedKey), isTrue,
-        reason: 'My List entry should be stored under the hashed key');
-    expect(Hive.box<Map>('my_list').length, 1,
-        reason: 'no duplicate under a raw key');
+    expect(
+      Hive.box<Map>('my_list').containsKey(hashedKey),
+      isTrue,
+      reason: 'My List entry should be stored under the hashed key',
+    );
+    expect(
+      Hive.box<Map>('my_list').length,
+      1,
+      reason: 'no duplicate under a raw key',
+    );
 
     // Watch History: the newer local entry must survive the merge.
-    expect(Hive.box<Map>('watch_history').get(hashedKey)!['updatedAt'], 500,
-        reason: 'keep-newer must find the existing row by hashed key');
-    expect(Hive.box<Map>('watch_history').length, 1,
-        reason: 'no duplicate under a raw key');
+    expect(
+      Hive.box<Map>('watch_history').get(hashedKey)!['updatedAt'],
+      500,
+      reason: 'keep-newer must find the existing row by hashed key',
+    );
+    expect(
+      Hive.box<Map>('watch_history').length,
+      1,
+      reason: 'no duplicate under a raw key',
+    );
   });
 
   test('merge is a no-op when a box is closed', () async {
     await Hive.box<Map>('my_list').close();
     await Hive.box<Map>('read_history').close();
     await LibraryBackup().merge({
-      'myList': [{'id': '1', 'sourceId': 's'}],
+      'myList': [
+        {'id': '1', 'sourceId': 's'},
+      ],
       'history': [],
-      'readHistory': {'k': {'a': 1}},
+      'readHistory': {
+        'k': {'a': 1},
+      },
     });
   });
 }

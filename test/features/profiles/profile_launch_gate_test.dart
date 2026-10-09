@@ -50,6 +50,21 @@ void main() {
     expect(find.text('Main screen'), findsOneWidget);
   });
 
+  testWidgets('profile tap finishes the picker transition within 400ms', (
+    tester,
+  ) async {
+    await tester.pumpWidget(app());
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Home'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 16));
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(find.text("Who's watching?"), findsNothing);
+    expect(find.text('Main screen'), findsOneWidget);
+  });
+
   testWidgets('defers shell content until a profile is selected', (
     tester,
   ) async {
@@ -384,6 +399,42 @@ void main() {
     expect(find.text("Who's watching?"), findsOneWidget);
   });
 
+  testWidgets('launch selection flies a full-size avatar to the dock', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ProfileLaunchGate(
+          child: _ProfileGateHeroProbe(profiles: profiles),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(ValueKey('profile-avatar-ink-${profiles.profiles.first.id}')),
+    );
+    await tester.pump();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 40));
+
+    final flight = find.byKey(const ValueKey('profile-flight-avatar'));
+    expect(flight, findsOneWidget);
+    expect(
+      find.descendant(
+        of: flight,
+        matching: find.byKey(
+          ValueKey('profile-avatar-fill-${profiles.profiles.first.id}'),
+        ),
+      ),
+      findsOneWidget,
+    );
+    await tester.pump(const Duration(milliseconds: 120));
+    expect(flight, findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(flight, findsNothing);
+  });
+
   testWidgets('double selection fires once', (tester) async {
     var selections = 0;
     await tester.pumpWidget(
@@ -483,23 +534,31 @@ void main() {
     expect(defaultAvatarForNewProfile(viewerProfileAvatarIcons.length), 0);
   });
 
-  test('account photo goes only to the default profile', () {
+  test('profile photo takes priority over the default account photo', () {
+    final profile = ViewerProfile(
+      id: kDefaultProfileId,
+      name: 'Home',
+      photoUrl: 'https://example.com/profile.png',
+    );
     expect(
-      accountPhotoForProfile(
-        isDefault: true,
+      profilePhotoForFace(
+        profile: profile,
+        accountPhotoUrl: 'https://example.com/pic.png',
+      ),
+      'https://example.com/profile.png',
+    );
+    expect(
+      profilePhotoForFace(
+        profile: ViewerProfile(id: kDefaultProfileId, name: 'Home'),
         accountPhotoUrl: 'https://example.com/pic.png',
       ),
       'https://example.com/pic.png',
     );
     expect(
-      accountPhotoForProfile(
-        isDefault: false,
-        accountPhotoUrl: 'https://example.com/pic.png',
+      profilePhotoForFace(
+        profile: ViewerProfile(id: 'custom', name: 'Custom'),
+        accountPhotoUrl: null,
       ),
-      isNull,
-    );
-    expect(
-      accountPhotoForProfile(isDefault: true, accountPhotoUrl: null),
       isNull,
     );
   });
@@ -532,6 +591,33 @@ void main() {
     );
   });
 
+  testWidgets('picker shows the photo saved on a custom profile', (
+    tester,
+  ) async {
+    const photoUrl = 'https://cdn.example/profile.jpg';
+    ViewerProfile? customProfile;
+    await tester.runAsync(() async {
+      customProfile = await profiles.create('Custom', photoUrl: photoUrl);
+    });
+    GetIt.instance.registerSingleton<AuthCubit>(_PhotoAuthCubit());
+
+    await tester.pumpWidget(
+      const MaterialApp(home: ViewerProfilesScreen(selectionOnly: true)),
+    );
+    await tester.pumpAndSettle();
+
+    final avatar = find.byKey(
+      ValueKey('profile-avatar-fill-${customProfile!.id}'),
+    );
+    final imageFinder = find.descendant(
+      of: avatar,
+      matching: find.byType(Image),
+    );
+    expect(imageFinder, findsOneWidget);
+    final image = tester.widget<Image>(imageFinder);
+    expect((image.image as NetworkImage).url, photoUrl);
+  });
+
   testWidgets('manager tile shows the account photo for the default profile', (
     tester,
   ) async {
@@ -546,6 +632,27 @@ void main() {
       ),
       findsOneWidget,
     );
+  });
+
+  testWidgets('manager tile shows the photo saved on its profile', (
+    tester,
+  ) async {
+    const photoUrl = 'https://cdn.example/custom-profile.jpg';
+    ViewerProfile? customProfile;
+    await tester.runAsync(() async {
+      customProfile = await profiles.create('Custom', photoUrl: photoUrl);
+    });
+
+    await tester.pumpWidget(const MaterialApp(home: ViewerProfilesScreen()));
+    await tester.pumpAndSettle();
+
+    final avatar = find.byKey(
+      ValueKey('profile-tile-avatar-${customProfile!.id}'),
+    );
+    final image = tester.widget<Image>(
+      find.descendant(of: avatar, matching: find.byType(Image)),
+    );
+    expect((image.image as NetworkImage).url, photoUrl);
   });
 
   testWidgets('picker greets the active profile', (tester) async {
@@ -592,5 +699,42 @@ class _ProfileGateShellProbe extends StatelessWidget {
     final deferContent = ProfileShellScope.shouldDeferContent(context);
     onBuild(deferContent);
     return deferContent ? const SizedBox.expand() : const Text('Main screen');
+  }
+}
+
+class _ProfileGateHeroProbe extends StatelessWidget {
+  const _ProfileGateHeroProbe({required this.profiles});
+
+  final ViewerProfileStore profiles;
+
+  @override
+  Widget build(BuildContext context) {
+    if (ProfileShellScope.shouldDeferContent(context)) {
+      return const SizedBox.expand();
+    }
+    return ValueListenableBuilder<ViewerProfile?>(
+      valueListenable: profiles.active,
+      builder: (context, profile, _) => Align(
+        alignment: Alignment.bottomCenter,
+        child: profile == null
+            ? const SizedBox.shrink()
+            : Hero(
+                tag: viewerProfileHeroTag(profile.id),
+                child: Container(
+                  width: 24,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: viewerProfileAvatarColor(profile.avatar),
+                  ),
+                  child: ProfileAvatarFace(
+                    profile: profile,
+                    iconSize: 14,
+                    photoDiameter: 24,
+                  ),
+                ),
+              ),
+      ),
+    );
   }
 }

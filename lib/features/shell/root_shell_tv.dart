@@ -8,6 +8,10 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
 import '../../core/playback/my_list.dart';
+import '../../core/playback/category_store.dart';
+import '../../core/playback/watch_history.dart';
+import '../../core/profiles/viewer_profile.dart';
+import '../../core/reading/read_history.dart';
 import '../../core/platform/apple_tv.dart';
 import '../../core/provider/provider_manager.dart';
 import '../../core/provider/provider_registry.dart';
@@ -158,7 +162,55 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    if (sl.isRegistered<ViewerProfileStore>()) {
+      sl<ViewerProfileStore>().active.addListener(_onProfileChanged);
+      sl<ViewerProfileStore>().contextRevision.addListener(
+        _onProfileContextChanged,
+      );
+    }
     _recoverFocusIfNeeded();
+  }
+
+  void _onProfileChanged() {
+    if (!mounted) return;
+    setState(() {});
+  }
+
+  void _onProfileContextChanged() {
+    if (!mounted) return;
+    final profileId = sl<ViewerProfileStore>().activeId;
+    if (sl.isRegistered<HomeCubit>()) {
+      unawaited(sl<HomeCubit>().reloadAfterProfileChange());
+    }
+    unawaited(_syncProfile(profileId));
+  }
+
+  Future<void> _syncProfile(String profileId) async {
+    if (!sl.isRegistered<MyListStore>() ||
+        !sl.isRegistered<WatchHistory>() ||
+        !sl.isRegistered<ReadHistory>() ||
+        !sl.isRegistered<CategoryStore>()) {
+      return;
+    }
+    try {
+      await Future.wait([
+        sl<MyListStore>().seedCloudIfNeeded(),
+        sl<WatchHistory>().seedCloudIfNeeded(),
+        sl<ReadHistory>().seedCloudIfNeeded(),
+      ]).timeout(const Duration(seconds: 8));
+      if (!mounted || sl<ViewerProfileStore>().activeId != profileId) return;
+      await Future.wait([
+        sl<MyListStore>().pullFromCloud(forProfileId: profileId),
+        sl<WatchHistory>().pullFromCloud(forProfileId: profileId),
+        sl<ReadHistory>().pullFromCloud(forProfileId: profileId),
+        sl<CategoryStore>().pullFromCloud(),
+      ]).timeout(const Duration(seconds: 8));
+      if (mounted && sl<ViewerProfileStore>().activeId == profileId) {
+        sl<HomeCubit>().relayout();
+      }
+    } catch (_) {
+      // Keep the already-available local profile usable when cloud sync fails.
+    }
   }
 
   @override
@@ -341,6 +393,12 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    if (sl.isRegistered<ViewerProfileStore>()) {
+      sl<ViewerProfileStore>().active.removeListener(_onProfileChanged);
+      sl<ViewerProfileStore>().contextRevision.removeListener(
+        _onProfileContextChanged,
+      );
+    }
     _searchFocusSignal.dispose();
     _railScope.dispose();
     _contentScope.dispose();
@@ -430,11 +488,18 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
 
   List<Widget> get _pages {
     final shared = buildShellPages(_searchFocusSignal);
-    return [
+    final pages = <Widget>[
       ...shared.sublist(0, 3), // Home, Search, My List
       const DownloadsScreen(),
       const ScheduleScreen(),
       shared.last, // Settings
+    ];
+    final profileId = sl.isRegistered<ViewerProfileStore>()
+        ? sl<ViewerProfileStore>().activeId
+        : 'default';
+    return [
+      for (var i = 0; i < pages.length; i++)
+        KeyedSubtree(key: ValueKey('$profileId:$i'), child: pages[i]),
     ];
   }
 

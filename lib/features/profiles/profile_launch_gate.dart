@@ -14,6 +14,13 @@ class ProfileLaunchGate extends StatefulWidget {
   State<ProfileLaunchGate> createState() => _ProfileLaunchGateState();
 }
 
+class _ProfilePickerRoute extends MaterialPageRoute<void> {
+  _ProfilePickerRoute({required super.builder});
+
+  @override
+  Duration get reverseTransitionDuration => const Duration(milliseconds: 300);
+}
+
 class _ProfileLaunchGateState extends State<ProfileLaunchGate> {
   late bool _deferContent = sl<ViewerProfileStore>().askOnLaunch;
 
@@ -29,7 +36,7 @@ class _ProfileLaunchGateState extends State<ProfileLaunchGate> {
 
   Future<void> _showPicker() async {
     await Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(
+      _ProfilePickerRoute(
         builder: (pickerContext) => PopScope(
           canPop: false,
           child: ViewerProfilesScreen(

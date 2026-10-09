@@ -4,6 +4,7 @@ import 'package:watch_app/core/hive/safe_box.dart';
 import 'package:watch_app/core/hive/hive_key.dart';
 
 import '../privacy/incognito_mode.dart';
+import '../profiles/profile_scope.dart';
 
 /// A saved playback position for one episode.
 class ResumeMark {
@@ -30,6 +31,12 @@ class ResumeMark {
 
 /// Hive-backed per-(sourceId, episodeId) resume positions.
 class ResumeStore {
+  ResumeStore({String? Function()? currentProfileId})
+    : _currentProfileId = currentProfileId;
+
+  final String? Function()? _currentProfileId;
+  String get _profileId => _currentProfileId?.call() ?? kDefaultProfileId;
+
   static const String boxName = 'resume_positions';
 
   static Future<void> init() async {
@@ -44,7 +51,7 @@ class ResumeStore {
   // ('S1E3', …) across every title — without it, one show's resume position
   // collides with another's.
   String _key(String sourceId, String showId, String episodeId) =>
-      hiveKey('$sourceId::$showId::$episodeId');
+      profileScopedKey(_profileId, hiveKey('$sourceId::$showId::$episodeId'));
 
   Future<void> save(
     String sourceId,
@@ -100,7 +107,9 @@ class ResumeStore {
       return;
     }
     final raw = _box.get(key);
-    final m = raw == null ? <String, dynamic>{} : Map<String, dynamic>.from(raw);
+    final m = raw == null
+        ? <String, dynamic>{}
+        : Map<String, dynamic>.from(raw);
     await _box.put(key, {
       // Position and duration are left as they were — a half-watched episode
       // marked watched keeps its real numbers, so unmarking it later doesn't

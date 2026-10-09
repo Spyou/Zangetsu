@@ -10,6 +10,7 @@ import '../../core/mode/content_mode_cubit.dart';
 import '../../core/models/home_section.dart';
 import '../../core/models/media_item.dart';
 import '../../core/playback/playback_prefs.dart';
+import '../../core/profiles/viewer_profile.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/ui/app_toast.dart';
@@ -119,7 +120,10 @@ class _GenresScreenState extends State<GenresScreen> {
   }
 
   bool get _adultAllowed =>
-      sl.isRegistered<PlaybackPrefs>() && sl<PlaybackPrefs>().adultMetadata;
+      sl.isRegistered<PlaybackPrefs>() &&
+      sl<PlaybackPrefs>().adultMetadata &&
+      (!sl.isRegistered<ViewerProfileStore>() ||
+          sl<ViewerProfileStore>().adultMetadataAllowed);
 
   @override
   void initState() {

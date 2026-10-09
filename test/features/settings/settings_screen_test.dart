@@ -12,6 +12,7 @@ import 'package:watch_app/core/appwrite/appwrite_service.dart';
 import 'package:watch_app/core/download/download_prefs.dart';
 import 'package:watch_app/core/playback/playback_prefs.dart';
 import 'package:watch_app/core/playback/search_prefs.dart';
+import 'package:watch_app/core/profiles/viewer_profile.dart';
 import 'package:watch_app/core/reading/manga_translation/manga_page_translation_models.dart';
 import 'package:watch_app/core/reading/reader_prefs.dart';
 import 'package:watch_app/core/torrent/torrent_prefs.dart';
@@ -25,13 +26,14 @@ import 'package:watch_app/core/tracker/simkl_service.dart';
 import 'package:watch_app/features/auth/auth_cubit.dart';
 import 'package:watch_app/features/auth/migration_bridge.dart';
 import 'package:watch_app/features/settings/settings_screen.dart';
+import 'package:watch_app/features/profiles/viewer_profiles_screen.dart';
 import 'package:watch_app/l10n/app_localizations.dart';
 
 MigrationBridge _fakeBridge() => MigrationBridge(
-      invoke: (_, __) async => const {'ok': false},
-      signInPassword: (_, __) async => false,
-      verifyOtp: (_, __) async => false,
-    );
+  invoke: (_, __) async => const {'ok': false},
+  signInPassword: (_, __) async => false,
+  verifyOtp: (_, __) async => false,
+);
 
 // ── Minimal stubs (mirrors settings_screen_tv_test.dart / AppMode wiring) ────
 
@@ -139,6 +141,7 @@ void main() {
     await LocaleController.init();
     await Hive.openBox(PlaybackPrefs.boxName);
     await ReaderPrefs.init();
+    await ViewerProfileStore.init();
     final sl = GetIt.instance;
     sl
       ..registerSingleton<AppMode>(AppMode(isTv: false))
@@ -151,6 +154,7 @@ void main() {
       ..registerSingleton<DownloadPrefs>(DownloadPrefs())
       ..registerSingleton<TorrentPrefs>(TorrentPrefs())
       ..registerSingleton<ReaderPrefs>(ReaderPrefs());
+    sl.registerSingleton<ViewerProfileStore>(ViewerProfileStore());
     activeCubit = ActiveSourceCubit();
   });
 
@@ -166,8 +170,11 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(1000, 2200));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
-    final authCubit =
-        AuthCubit(SupabaseService(), AppwriteService(), _fakeBridge());
+    final authCubit = AuthCubit(
+      SupabaseService(),
+      AppwriteService(),
+      _fakeBridge(),
+    );
     addTearDown(authCubit.close);
     GetIt.instance.registerSingleton<AuthCubit>(authCubit);
 
@@ -187,8 +194,9 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('top level shows one tappable row per section, not the tiles',
-      (tester) async {
+  testWidgets('top level shows one tappable row per section, not the tiles', (
+    tester,
+  ) async {
     await _pumpSettings(tester);
 
     // Each section is now a single drill-down row.
@@ -210,6 +218,30 @@ void main() {
     expect(find.text('Providers'), findsNothing);
     expect(find.text('Storage'), findsNothing);
     expect(find.text('Backup & Restore'), findsNothing);
+  });
+
+  testWidgets('Profiles row has a Hero transition into profile selection', (
+    tester,
+  ) async {
+    await _pumpSettings(tester);
+
+    expect(
+      find.byWidgetPredicate(
+        (widget) => widget is Hero && widget.tag == kViewerProfileHeroTag,
+      ),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.text('Profiles'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Choose who is watching.'), findsOneWidget);
+    expect(
+      find.byWidgetPredicate(
+        (widget) => widget is Hero && widget.tag == kViewerProfileHeroTag,
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('tapping a category drills into its settings', (tester) async {
@@ -237,8 +269,9 @@ void main() {
     },
   );
 
-  testWidgets('Reading section has a Reader entry that opens reader defaults',
-      (tester) async {
+  testWidgets('Reading section has a Reader entry that opens reader defaults', (
+    tester,
+  ) async {
     await _pumpSettings(tester);
 
     await tester.tap(find.text('Reading'));
@@ -347,8 +380,9 @@ void main() {
     );
   });
 
-  testWidgets('search cuts across every section (flat filtered list)',
-      (tester) async {
+  testWidgets('search cuts across every section (flat filtered list)', (
+    tester,
+  ) async {
     await _pumpSettings(tester);
 
     await tester.enterText(find.byType(TextField), 'backup');

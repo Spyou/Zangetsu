@@ -31,6 +31,7 @@ import '../playback/source_health_store.dart';
 import '../schedule/airing_service.dart';
 import '../schedule/coming_soon_service.dart';
 import '../privacy/incognito_mode.dart';
+import '../profiles/viewer_profile.dart';
 import '../search/title_suggestion_service.dart';
 import '../ui/animation_prefs.dart';
 import '../playback/skip_service.dart';
@@ -190,7 +191,6 @@ const MethodChannel _novelHttp = MethodChannel('zangetsu/novel_http');
 /// repo-installed providers), and the bundled extractors.
 const _deviceChannel = MethodChannel('com.spyou.watch_app/device');
 
-
 /// Simkl requires these on every request — the API and the static data files
 /// alike. Without them our traffic doesn't appear in their debug log at all,
 /// so when something breaks on their side they have nothing to look at. The
@@ -243,6 +243,14 @@ Future<void> initDependencies() async {
   // Resolved lazily at call time; null when signed out so the stores stay
   // local-only.
   String? currentUserId() => sl<SupabaseService>().currentUserId();
+  await ViewerProfileStore.init();
+  sl.registerSingleton<ViewerProfileStore>(
+    ViewerProfileStore(
+      remote: ViewerProfileRemote(sl<SupabaseService>()),
+      currentUserId: currentUserId,
+    ),
+  );
+  String currentProfileId() => sl<ViewerProfileStore>().activeId;
 
   // Client half of the invisible Appwrite→Supabase account migration. Wired
   // with real closures here (not in migration_bridge.dart) so the bridge
@@ -250,18 +258,18 @@ Future<void> initDependencies() async {
   sl.registerSingleton<MigrationBridge>(
     MigrationBridge(
       invoke: (name, body) async {
-        final r = await sl<SupabaseService>()
-            .client
-            .functions
-            .invoke(name, body: body);
+        final r = await sl<SupabaseService>().client.functions.invoke(
+          name,
+          body: body,
+        );
         return (r.data as Map).cast<String, dynamic>();
       },
       signInPassword: (email, pw) async {
         try {
-          await sl<SupabaseService>()
-              .client
-              .auth
-              .signInWithPassword(email: email, password: pw);
+          await sl<SupabaseService>().client.auth.signInWithPassword(
+            email: email,
+            password: pw,
+          );
           return sl<SupabaseService>().client.auth.currentUser != null;
         } catch (_) {
           return false;
@@ -270,10 +278,10 @@ Future<void> initDependencies() async {
       verifyOtp: (email, token) async {
         try {
           await sl<SupabaseService>().client.auth.verifyOTP(
-                email: email,
-                token: token,
-                type: OtpType.email,
-              );
+            email: email,
+            token: token,
+            type: OtpType.email,
+          );
           return sl<SupabaseService>().client.auth.currentUser != null;
         } catch (_) {
           return false;
@@ -283,18 +291,32 @@ Future<void> initDependencies() async {
   );
 
   await ResumeStore.init();
-  sl.registerSingleton<ResumeStore>(ResumeStore());
+  sl.registerSingleton<ResumeStore>(
+    ResumeStore(currentProfileId: currentProfileId),
+  );
   await ReadStore.init();
-  sl.registerSingleton<ReadStore>(ReadStore());
+  sl.registerSingleton<ReadStore>(
+    ReadStore(currentProfileId: currentProfileId),
+  );
   await WatchHistory.init();
   sl.registerSingleton<WatchHistory>(
-    WatchHistory(sl<SupabaseService>(), currentUserId),
+    WatchHistory(
+      sl<SupabaseService>(),
+      currentUserId,
+      currentProfileId: currentProfileId,
+    ),
   );
   await ReadHistory.init();
   sl.registerSingleton<ReadHistory>(
-    ReadHistory(sl<SupabaseService>(), currentUserId),
+    ReadHistory(
+      sl<SupabaseService>(),
+      currentUserId,
+      currentProfileId: currentProfileId,
+    ),
   );
-  sl.registerSingleton<WatchRoomService>(WatchRoomService(sl<SupabaseService>()));
+  sl.registerSingleton<WatchRoomService>(
+    WatchRoomService(sl<SupabaseService>()),
+  );
   sl.registerSingleton<WatchTogetherController>(
     WatchTogetherController(sl<WatchRoomService>()),
   );
@@ -302,7 +324,9 @@ Future<void> initDependencies() async {
   // status read/hydrate seams straight to it (keeps My List's cloud row + the
   // deliberately-local status store in sync without either importing the other).
   await ListStatusStore.init();
-  sl.registerSingleton<ListStatusStore>(ListStatusStore());
+  sl.registerSingleton<ListStatusStore>(
+    ListStatusStore(currentProfileId: currentProfileId),
+  );
   // User-made categories for My List. Its own box, beside the status store and
   // for the same reason: a cloud pull clears the list box, and a category must
   // not go with it.
@@ -311,6 +335,7 @@ Future<void> initDependencies() async {
     CategoryStore(
       remote: CategoryRemote(sl<SupabaseService>()),
       currentUserId: currentUserId,
+      currentProfileId: currentProfileId,
     ),
   );
   await MyListStore.init();
@@ -318,6 +343,7 @@ Future<void> initDependencies() async {
     MyListStore(
       sl<SupabaseService>(),
       currentUserId,
+      currentProfileId: currentProfileId,
       statusOf: (m) => sl<ListStatusStore>().statusOf(m)?.name,
       onStatusPulled: (key, name) =>
           sl<ListStatusStore>().setStatusRaw(key, name),
@@ -446,7 +472,8 @@ Future<void> initDependencies() async {
   // Pass the AniList token (lazily — AniListService is registered below) so the
   // enrichment's searches authenticate; AniList now 403s anonymous API calls.
   sl.registerSingleton<MetadataEnrichment>(
-      MetadataEnrichment(dio, () => sl<AniListService>().store.token));
+    MetadataEnrichment(dio, () => sl<AniListService>().store.token),
+  );
 
   // Per-episode descriptions for the episode list (AniZip for anime, TMDB
   // season for movie-source TV series). Best-effort; shares the TMDB-keyed dio.
@@ -496,12 +523,14 @@ Future<void> initDependencies() async {
   await TrackerBindingStore.init();
   sl.registerSingleton<TrackerBindingStore>(TrackerBindingStore());
   // TV relay: packs/unpacks tracker sessions to move a login from phone to TV.
-  sl.registerLazySingleton<TrackerRelay>(() => TrackerRelay({
-        'anilist': sl<AniListService>(),
-        'mal': sl<MalService>(),
-        'simkl': sl<SimklService>(),
-        'mangabaka': sl<MangaBakaService>(),
-      }));
+  sl.registerLazySingleton<TrackerRelay>(
+    () => TrackerRelay({
+      'anilist': sl<AniListService>(),
+      'mal': sl<MalService>(),
+      'simkl': sl<SimklService>(),
+      'mangabaka': sl<MangaBakaService>(),
+    }),
+  );
 
   // Share deep links (zangetsu://open?…): opens a shared title's Detail, or
   // reports an uninstalled source. Eager so its AppLinks listener is live from
@@ -512,7 +541,11 @@ Future<void> initDependencies() async {
   // AppwriteService (mintJwt for migration) and MigrationBridge are already
   // registered above.
   sl.registerSingleton<AuthCubit>(
-    AuthCubit(sl<SupabaseService>(), sl<AppwriteService>(), sl<MigrationBridge>()),
+    AuthCubit(
+      sl<SupabaseService>(),
+      sl<AppwriteService>(),
+      sl<MigrationBridge>(),
+    ),
   );
 
   final manager = ProviderManager(dio: dio);
@@ -600,9 +633,7 @@ Future<void> initDependencies() async {
             {
               'url': url,
               'method': method,
-              'headers': mergedHeaders.map(
-                (k, v) => MapEntry(k, v.toString()),
-              ),
+              'headers': mergedHeaders.map((k, v) => MapEntry(k, v.toString())),
               'body': init['body'] is String
                   ? init['body'] as String
                   : init['body']?.toString(),
@@ -651,9 +682,7 @@ Future<void> initDependencies() async {
         url: res.realUri.toString(),
         // Dio hands back a list per header (a name may repeat); join them the
         // way HTTP does rather than keeping only the first.
-        headers: res.headers.map.map(
-          (k, v) => MapEntry(k, v.join(', ')),
-        ),
+        headers: res.headers.map.map((k, v) => MapEntry(k, v.join(', '))),
       );
     },
   );
@@ -683,15 +712,20 @@ Future<void> initDependencies() async {
   sl.registerSingleton<ProviderReposRegistry>(repos);
   sl.registerSingleton<ProviderSettingsRepository>(settings);
   sl.registerSingleton<ProviderRegistry>(registry);
-  sl.registerSingleton<BackupService>(BackupService(
-    SourcesBackup(sl<ProviderReposRegistry>(), sl<ProviderRegistry>(),
+  sl.registerSingleton<BackupService>(
+    BackupService(
+      SourcesBackup(
+        sl<ProviderReposRegistry>(),
+        sl<ProviderRegistry>(),
         sl.isRegistered<CloudStreamManager>() ? sl<CloudStreamManager>() : null,
         aniyomi: AniyomiExtensionService(),
         mihon: MihonExtensionService(),
-        lnreader: lnrService),
-    LibraryBackup(),
-    SettingsBackup(),
-  ));
+        lnreader: lnrService,
+      ),
+      LibraryBackup(),
+      SettingsBackup(),
+    ),
+  );
 
   // Load bundled extractor BEFORE the providers so getVideoSources can resolve.
   // Extractors are NOT providers — they stay loaded directly on the manager.
@@ -727,8 +761,9 @@ Future<void> initDependencies() async {
   void onProviderLoadFinished() {
     void apply() {
       if (sl.isRegistered<ActiveSourceCubit>()) {
-        sl<ActiveSourceCubit>()
-            .reapplySaved((id) => manager.installedIds.contains(id));
+        sl<ActiveSourceCubit>().reapplySaved(
+          (id) => manager.installedIds.contains(id),
+        );
       }
       // Metadata home on TV loads from AniList/TMDB — no JS providers needed.
       // Reloading here after a slow background loadAll only blocks toggles.
@@ -739,6 +774,7 @@ Future<void> initDependencies() async {
         sl<HomeCubit>().load();
       }
     }
+
     apply();
   }
 
@@ -750,8 +786,10 @@ Future<void> initDependencies() async {
     await providerLoad.timeout(
       const Duration(seconds: 8),
       onTimeout: () {
-        debugPrint('[boot] provider load exceeded 8s — booting now; '
-            'remaining providers finish in the background');
+        debugPrint(
+          '[boot] provider load exceeded 8s — booting now; '
+          'remaining providers finish in the background',
+        );
         return const <String>[];
       },
     );
@@ -1041,8 +1079,9 @@ Future<void> initDependencies() async {
 
   sl<MetadataRepository>().onStreamHomeCached = (kind, rows) {
     if (!sl.isRegistered<HomeCubit>()) return;
-    final streamKind =
-        kind == ZKind.movie ? StreamKind.movie : StreamKind.anime;
+    final streamKind = kind == ZKind.movie
+        ? StreamKind.movie
+        : StreamKind.anime;
     sl<HomeCubit>().rememberStreamKindRows(streamKind, rows);
   };
 
@@ -1059,8 +1098,9 @@ Future<void> initDependencies() async {
       // when the saved id is now valid — it never resets an already-restored
       // source — so this composes cleanly with the Aniyomi step above.
       if (sl.isRegistered<ActiveSourceCubit>()) {
-        final changed = sl<ActiveSourceCubit>()
-            .reapplySaved((id) => csManager.get(id) != null);
+        final changed = sl<ActiveSourceCubit>().reapplySaved(
+          (id) => csManager.get(id) != null,
+        );
         if (changed && sl.isRegistered<HomeCubit>()) {
           sl<HomeCubit>().load(); // reload Home for the restored source
         }

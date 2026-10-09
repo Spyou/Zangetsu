@@ -148,8 +148,10 @@ void main() {
     await dir.delete(recursive: true);
   });
 
-  HomeCubit cubitWith(_FakeTracker t, {List<HomeSection> sections = const []}) =>
-      HomeCubit(_StubRepo(sections), trackerHub: TrackerHub([t]));
+  HomeCubit cubitWith(
+    _FakeTracker t, {
+    List<HomeSection> sections = const [],
+  }) => HomeCubit(_StubRepo(sections), trackerHub: TrackerHub([t]));
 
   test('relayout re-merges a saved arrangement without refetching', () async {
     final t = _FakeTracker(library: [_entry('One Piece', progress: 100)]);
@@ -200,7 +202,10 @@ void main() {
 
   test('DEFAULT: tracker data fetched but no tracker row renders', () async {
     final t = _FakeTracker(library: [_entry('One Piece', progress: 100)]);
-    final cubit = cubitWith(t, sections: [_zmSection('Trending'), _zmSection('Popular')]);
+    final cubit = cubitWith(
+      t,
+      sections: [_zmSection('Trending'), _zmSection('Popular')],
+    );
     addTearDown(cubit.close);
 
     await cubit.load();
@@ -214,45 +219,59 @@ void main() {
     expect(cubit.state.rows!.any((r) => isTrackerRowId(r.id)), isFalse);
   });
 
-  test('enabled rows render at the saved spot with the tracker bucketed', () async {
-    final t = _FakeTracker(
-      library: [
-        _entry('One Piece', progress: 100, updatedAt: DateTime(2026, 9, 1)),
-        _entry('Bleach', progress: 3, nextAiringEpisode: 5, updatedAt: DateTime(2026, 8, 1)),
-        _entry('Naruto', status: WatchStatus.planning),
-        _entry('Cowboy Bebop', status: WatchStatus.paused, progress: 5),
-      ],
-    );
-    await HomeRowsPrefs.save('anilist::anime', [
-      'tracker:continue',
-      'tracker:new-episodes',
-      'tracker:watching',
-      'local:continue',
-      'section:Trending',
-      'section:Popular',
-    ]);
-    final cubit = cubitWith(t, sections: [_zmSection('Trending'), _zmSection('Popular')]);
-    addTearDown(cubit.close);
+  test(
+    'enabled rows render at the saved spot with the tracker bucketed',
+    () async {
+      final t = _FakeTracker(
+        library: [
+          _entry('One Piece', progress: 100, updatedAt: DateTime(2026, 9, 1)),
+          _entry(
+            'Bleach',
+            progress: 3,
+            nextAiringEpisode: 5,
+            updatedAt: DateTime(2026, 8, 1),
+          ),
+          _entry('Naruto', status: WatchStatus.planning),
+          _entry('Cowboy Bebop', status: WatchStatus.paused, progress: 5),
+        ],
+      );
+      await HomeRowsPrefs.save('anilist::anime', [
+        'tracker:continue',
+        'tracker:new-episodes',
+        'tracker:watching',
+        'local:continue',
+        'section:Trending',
+        'section:Popular',
+      ]);
+      final cubit = cubitWith(
+        t,
+        sections: [_zmSection('Trending'), _zmSection('Popular')],
+      );
+      addTearDown(cubit.close);
 
-    await cubit.load();
+      await cubit.load();
 
-    expect(cubit.state.rows?.map((r) => r.id), [
-      'tracker:continue',
-      'tracker:new-episodes',
-      'tracker:watching',
-      'local:continue',
-      'section:Trending',
-      'section:Popular',
-    ]);
-    final continueRow = cubit.state.rows![0] as TrackerContinueHomeRow;
-    expect(continueRow.trackerName, 'AniList');
-    expect(continueRow.items.map((e) => e.item.title), ['One Piece', 'Bleach']);
-    // New episodes: only Bleach has released episodes beyond its progress.
-    final fresh = cubit.state.rows![1] as NewEpisodesHomeRow;
-    expect(fresh.items.single.item.title, 'Bleach');
-    final watching = cubit.state.rows![2] as TrackerListHomeRow;
-    expect(watching.items.length, 2);
-  });
+      expect(cubit.state.rows?.map((r) => r.id), [
+        'tracker:continue',
+        'tracker:new-episodes',
+        'tracker:watching',
+        'local:continue',
+        'section:Trending',
+        'section:Popular',
+      ]);
+      final continueRow = cubit.state.rows![0] as TrackerContinueHomeRow;
+      expect(continueRow.trackerName, 'AniList');
+      expect(continueRow.items.map((e) => e.item.title), [
+        'One Piece',
+        'Bleach',
+      ]);
+      // New episodes: only Bleach has released episodes beyond its progress.
+      final fresh = cubit.state.rows![1] as NewEpisodesHomeRow;
+      expect(fresh.items.single.item.title, 'Bleach');
+      final watching = cubit.state.rows![2] as TrackerListHomeRow;
+      expect(watching.items.length, 2);
+    },
+  );
 
   test('a tracker that throws degrades to provider-only rows', () async {
     final t = _FakeTracker(error: Exception('offline'));
@@ -308,6 +327,20 @@ void main() {
     },
   );
 
+  test('profile change reloads Home but keeps the tracker cache', () async {
+    final t = _FakeTracker(library: [_entry('One Piece', progress: 1)]);
+    final repo = _StubRepo([_zmSection('Trending')]);
+    final cubit = HomeCubit(repo, trackerHub: TrackerHub([t]));
+    addTearDown(cubit.close);
+
+    await cubit.load();
+    await cubit.reloadAfterProfileChange();
+
+    expect(repo.homeCount, 2);
+    expect(t.fetchCount, 1);
+    expect(cubit.state.sections?.single.title, 'Trending');
+  });
+
   test('adult catalogue change does not reload source-backed Home', () async {
     await ZModePrefs.setEnabled(false);
     final repo = _StubRepo([_csSection('Latest')]);
@@ -334,33 +367,41 @@ void main() {
     expect(cubit.state.rows?.map((r) => r.id), firstRows?.map((r) => r.id));
   });
 
-  test('a source-backed home keeps the phone first-drop rule and never asks a tracker', () async {
-    await ZModePrefs.setEnabled(false);
-    final t = _FakeTracker(library: [_entry('One Piece', progress: 1)]);
-    final cubit = cubitWith(t, sections: [
-      _csSection('Featured'),
-      _csSection('Latest'),
-      _csSection('Popular'),
-    ]);
-    addTearDown(cubit.close);
+  test(
+    'a source-backed home keeps the phone first-drop rule and never asks a tracker',
+    () async {
+      await ZModePrefs.setEnabled(false);
+      final t = _FakeTracker(library: [_entry('One Piece', progress: 1)]);
+      final cubit = cubitWith(
+        t,
+        sections: [
+          _csSection('Featured'),
+          _csSection('Latest'),
+          _csSection('Popular'),
+        ],
+      );
+      addTearDown(cubit.close);
 
-    await cubit.load();
+      await cubit.load();
 
-    expect(t.fetchCount, 0); // no Z Mode kind → no tracker read at all
-    expect(cubit.state.rows?.map((r) => r.id), [
-      'local:continue',
-      'section:Latest', // Featured fed the banner and was dropped, as today
-      'section:Popular',
-    ]);
-  });
+      expect(t.fetchCount, 0); // no Z Mode kind → no tracker read at all
+      expect(cubit.state.rows?.map((r) => r.id), [
+        'local:continue',
+        'section:Latest', // Featured fed the banner and was dropped, as today
+        'section:Popular',
+      ]);
+    },
+  );
 
   test('the FIRST connected tracker in hub order answers', () async {
-    final anilist = _FakeTracker(name: 'AniList', library: [
-      _entry('One Piece', progress: 1),
-    ]);
-    final mal = _FakeTracker(name: 'MyAnimeList', library: [
-      _entry('Naruto', progress: 1),
-    ]);
+    final anilist = _FakeTracker(
+      name: 'AniList',
+      library: [_entry('One Piece', progress: 1)],
+    );
+    final mal = _FakeTracker(
+      name: 'MyAnimeList',
+      library: [_entry('Naruto', progress: 1)],
+    );
     await HomeRowsPrefs.save('anilist::anime', [
       'tracker:continue',
       'local:continue',
@@ -382,12 +423,14 @@ void main() {
   });
 
   test('the layout provider decides which tracker answers', () async {
-    final anilist = _FakeTracker(name: 'AniList', library: [
-      _entry('One Piece', progress: 1),
-    ]);
-    final mal = _FakeTracker(name: 'MyAnimeList', library: [
-      _entry('Naruto', progress: 1),
-    ]);
+    final anilist = _FakeTracker(
+      name: 'AniList',
+      library: [_entry('One Piece', progress: 1)],
+    );
+    final mal = _FakeTracker(
+      name: 'MyAnimeList',
+      library: [_entry('Naruto', progress: 1)],
+    );
     // MAL as the anime metadata provider makes the layout 'mal::anime', and a
     // layout's provider is the tracker behind its list rows — one choice, not
     // a separate account setting to keep in sync.
@@ -421,9 +464,10 @@ void main() {
     // The layout is AniList's and AniList isn't connected. MAL's library is
     // not a substitute — the row would carry the wrong account's name.
     final anilist = _FakeTracker(name: 'AniList', connected: false);
-    final mal = _FakeTracker(name: 'MyAnimeList', library: [
-      _entry('Naruto', progress: 1),
-    ]);
+    final mal = _FakeTracker(
+      name: 'MyAnimeList',
+      library: [_entry('Naruto', progress: 1)],
+    );
     await HomeRowsPrefs.save('anilist::anime', [
       'tracker:continue',
       'local:continue',

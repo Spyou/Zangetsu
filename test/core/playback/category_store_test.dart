@@ -7,12 +7,12 @@ import 'package:watch_app/core/models/provider_info.dart';
 import 'package:watch_app/core/playback/category_store.dart';
 
 MediaItem item(String id) => MediaItem(
-      id: id,
-      title: id,
-      url: '/$id',
-      type: ProviderType.anime,
-      sourceId: 'src',
-    );
+  id: id,
+  title: id,
+  url: '/$id',
+  type: ProviderType.anime,
+  sourceId: 'src',
+);
 
 void main() {
   late Directory dir;
@@ -50,6 +50,22 @@ void main() {
     test('trims the name', () async {
       final c = await store.create('  Persona  ');
       expect(c!.name, 'Persona');
+    });
+
+    test('syncs to the profile that started the async create', () async {
+      var profileId = 'first';
+      final remote = _RecordingCategoryRemote();
+      final scoped = CategoryStore(
+        remote: remote,
+        currentUserId: () => 'user',
+        currentProfileId: () => profileId,
+      );
+
+      final creating = scoped.create('Gym');
+      profileId = 'second';
+      await creating;
+
+      expect(remote.upsertedCategories.single['profile_id'], 'first');
     });
   });
 
@@ -131,4 +147,44 @@ void main() {
       expect(store.all().length, 2);
     });
   });
+}
+
+class _RecordingCategoryRemote implements CategoryRemote {
+  final upsertedCategories = <Map<String, dynamic>>[];
+
+  @override
+  Future<void> upsertCategory(Map<String, dynamic> row) async {
+    upsertedCategories.add(row);
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> categoriesFor(
+    String uid, {
+    String? profileId,
+  }) async => [];
+
+  @override
+  Future<List<Map<String, dynamic>>> assignmentsFor(
+    String uid, {
+    String? profileId,
+  }) async => [];
+
+  @override
+  Future<void> deleteCategory(
+    String uid,
+    String id, {
+    String? profileId,
+  }) async {}
+
+  @override
+  Future<void> addAssignment(Map<String, dynamic> row) async {}
+
+  @override
+  Future<void> removeAssignment(
+    String uid,
+    String sourceId,
+    String itemId,
+    String categoryId, {
+    String? profileId,
+  }) async {}
 }

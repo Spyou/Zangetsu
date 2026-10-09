@@ -3,6 +3,7 @@ import 'package:watch_app/core/hive/safe_box.dart';
 import 'package:watch_app/core/hive/hive_key.dart';
 
 import '../privacy/incognito_mode.dart';
+import '../profiles/profile_scope.dart';
 
 /// Hive-backed per-(sourceId, showId, chapterId) reading positions.
 ///
@@ -13,6 +14,12 @@ import '../privacy/incognito_mode.dart';
 ///  - manga: pos = page index, total = page count.
 ///  - novel: pos = scroll permille (0–1000), total = 1000.
 class ReadStore {
+  ReadStore({String? Function()? currentProfileId})
+    : _currentProfileId = currentProfileId;
+
+  final String? Function()? _currentProfileId;
+  String get _profileId => _currentProfileId?.call() ?? kDefaultProfileId;
+
   static const String boxName = 'read_positions';
 
   static Future<void> init() async {
@@ -26,7 +33,7 @@ class ReadStore {
   // Key includes the SHOW because chapter ids can repeat across titles —
   // without it, one show's read position collides with another's.
   String _key(String sourceId, String showId, String chapterId) =>
-      hiveKey('$sourceId::$showId::$chapterId');
+      profileScopedKey(_profileId, hiveKey('$sourceId::$showId::$chapterId'));
 
   Future<void> save(
     String sourceId,
@@ -49,7 +56,11 @@ class ReadStore {
     });
   }
 
-  ({int pos, int total})? get(String sourceId, String showId, String chapterId) {
+  ({int pos, int total})? get(
+    String sourceId,
+    String showId,
+    String chapterId,
+  ) {
     final raw = _box.get(_key(sourceId, showId, chapterId));
     if (raw == null) return null;
     final m = Map<String, dynamic>.from(raw);

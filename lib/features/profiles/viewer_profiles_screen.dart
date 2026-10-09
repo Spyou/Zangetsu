@@ -46,9 +46,8 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
 
   /// The signed-in account's photo, for the default profile's face. Absent
   /// in widget tests and when signed out — callers fall back to icons.
-  String? _accountPhoto() => sl.isRegistered<AuthCubit>()
-      ? sl<AuthCubit>().state.avatarUrl
-      : null;
+  String? _accountPhoto() =>
+      sl.isRegistered<AuthCubit>() ? sl<AuthCubit>().state.avatarUrl : null;
 
   @override
   void initState() {
@@ -333,71 +332,71 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
                           builder: (context, _, _) {
                             final lastName = _profiles.active.value?.name;
                             return Column(
-                            mainAxisSize: MainAxisSize.min,
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              FadeTransition(
-                                key: const ValueKey(
-                                  'profile-picker-title-fade',
-                                ),
-                                opacity: _titleOpacity,
-                                child: Column(
-                                  children: [
-                                    Text(
-                                      "Who's watching?",
-                                      textAlign: TextAlign.center,
-                                      style: AppText.title.copyWith(
-                                        fontSize: wide ? 36 : 30,
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 8),
-                                    Text(
-                                      lastName == null
-                                          ? 'Select a profile to continue'
-                                          : 'Ready for the next watch, $lastName?',
-                                      textAlign: TextAlign.center,
-                                      style: AppText.caption.copyWith(
-                                        color: AppColors.textSecondary,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              SizedBox(height: wide ? 36 : 32),
-                              _pickerGrid(
-                                diameter: diameter,
-                                gridWidth: gridWidth,
-                                isTv: isTv,
-                                gapScale: isTv ? 0.5 : 1.0,
-                              ),
-                              const SizedBox(height: 8),
-                              FadeTransition(
-                                key: const ValueKey(
-                                  'profile-picker-footer-fade',
-                                ),
-                                opacity: _footerOpacity,
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    _manageProfilesButton(isTv),
-                                    SizedBox(height: wide ? 20 : 14),
-                                    ConstrainedBox(
-                                      constraints: const BoxConstraints(
-                                        maxWidth: 620,
-                                      ),
-                                      child: Text(
-                                        'Kids profiles hide adult-rated titles only when catalogue ratings are available. They are not a parental lock.',
+                              mainAxisSize: MainAxisSize.min,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                FadeTransition(
+                                  key: const ValueKey(
+                                    'profile-picker-title-fade',
+                                  ),
+                                  opacity: _titleOpacity,
+                                  child: Column(
+                                    children: [
+                                      Text(
+                                        "Who's watching?",
                                         textAlign: TextAlign.center,
-                                        style: AppText.caption.copyWith(
-                                          color: AppColors.textTertiary,
+                                        style: AppText.title.copyWith(
+                                          fontSize: wide ? 36 : 30,
+                                          fontWeight: FontWeight.w700,
                                         ),
                                       ),
-                                    ),
-                                  ],
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        lastName == null
+                                            ? 'Select a profile to continue'
+                                            : 'Ready for the next watch, $lastName?',
+                                        textAlign: TextAlign.center,
+                                        style: AppText.caption.copyWith(
+                                          color: AppColors.textSecondary,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                              ),
-                            ],
+                                SizedBox(height: wide ? 36 : 32),
+                                _pickerGrid(
+                                  diameter: diameter,
+                                  gridWidth: gridWidth,
+                                  isTv: isTv,
+                                  gapScale: isTv ? 0.5 : 1.0,
+                                ),
+                                const SizedBox(height: 8),
+                                FadeTransition(
+                                  key: const ValueKey(
+                                    'profile-picker-footer-fade',
+                                  ),
+                                  opacity: _footerOpacity,
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      _manageProfilesButton(isTv),
+                                      SizedBox(height: wide ? 20 : 14),
+                                      ConstrainedBox(
+                                        constraints: const BoxConstraints(
+                                          maxWidth: 620,
+                                        ),
+                                        child: Text(
+                                          'Kids profiles hide adult-rated titles only when catalogue ratings are available. They are not a parental lock.',
+                                          textAlign: TextAlign.center,
+                                          style: AppText.caption.copyWith(
+                                            color: AppColors.textTertiary,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
                             );
                           },
                         ),
@@ -508,8 +507,8 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
     final selected = _profiles.activeId == profile.id;
     final fill = viewerProfileAvatarColor(profile.avatar);
     final avatarKey = GlobalKey<_ProfileAvatarTapTargetState>();
-    final photo = accountPhotoForProfile(
-      isDefault: profile.isDefault,
+    final photo = profilePhotoForFace(
+      profile: profile,
       accountPhotoUrl: _accountPhoto(),
     );
 
@@ -687,8 +686,8 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
         ),
         child: ProfileAvatarFace(
           profile: profile,
-          photoUrl: accountPhotoForProfile(
-            isDefault: profile.isDefault,
+          photoUrl: profilePhotoForFace(
+            profile: profile,
             accountPhotoUrl: _accountPhoto(),
           ),
           iconSize: 19,
@@ -836,6 +835,11 @@ class _ProfileAvatarTapTargetState extends State<_ProfileAvatarTapTarget>
         scale: _scale,
         child: Hero(
           tag: viewerProfileHeroTag(widget.profileId),
+          flightShuttleBuilder: (_, _, _, fromHeroContext, _) => FittedBox(
+            key: const ValueKey('profile-flight-avatar'),
+            fit: BoxFit.contain,
+            child: (fromHeroContext.widget as Hero).child,
+          ),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 180),
             padding: const EdgeInsets.all(4),
@@ -930,8 +934,7 @@ class _ProfileEditorState extends State<_ProfileEditor> {
       imageQuality: 80,
     );
     if (x == null || !mounted) return;
-    final token =
-        sl<SupabaseService>().client.auth.currentSession?.accessToken;
+    final token = sl<SupabaseService>().client.auth.currentSession?.accessToken;
     if (token == null) {
       setState(() => _photoError = "Couldn't upload photo");
       return;
@@ -943,13 +946,19 @@ class _ProfileEditorState extends State<_ProfileEditor> {
     String? url;
     try {
       final bytes = await x.readAsBytes();
+      if (bytes.lengthInBytes > ProfileAvatarUploader.maxAvatarBytes) {
+        if (!mounted) return;
+        setState(() {
+          _uploading = false;
+          _photoError = 'Photo must be 256 KB or smaller';
+        });
+        return;
+      }
       // image_picker re-encodes to JPEG when maxWidth/imageQuality are set,
       // so no extension sniffing.
-      url = await ProfileAvatarUploader(sl<Dio>()).upload(
-        bytes: bytes,
-        contentType: 'image/jpeg',
-        token: token,
-      );
+      url = await ProfileAvatarUploader(
+        sl<Dio>(),
+      ).upload(bytes: bytes, contentType: 'image/jpeg', token: token);
     } catch (_) {
       url = null;
     }
@@ -1076,7 +1085,10 @@ class _ProfileEditorState extends State<_ProfileEditor> {
           onPressed: () {
             final name = _name.text.trim();
             if (name.isEmpty) return;
-            Navigator.pop(context, _ProfileDraft(name, _avatar, _isKids, _photoUrl));
+            Navigator.pop(
+              context,
+              _ProfileDraft(name, _avatar, _isKids, _photoUrl),
+            );
           },
           child: const Text('Save'),
         ),

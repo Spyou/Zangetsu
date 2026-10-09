@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../../core/di/injector.dart';
 import '../../core/mode/content_mode_cubit.dart';
 import '../../core/playback/playback_prefs.dart';
+import '../../core/profiles/viewer_profile.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/tv/tv_focusable.dart';
@@ -45,7 +46,10 @@ class _GenresScreenTvState extends State<GenresScreenTv> {
   String? _opening;
 
   bool get _adultAllowed =>
-      sl.isRegistered<PlaybackPrefs>() && sl<PlaybackPrefs>().adultMetadata;
+      sl.isRegistered<PlaybackPrefs>() &&
+      sl<PlaybackPrefs>().adultMetadata &&
+      (!sl.isRegistered<ViewerProfileStore>() ||
+          sl<ViewerProfileStore>().adultMetadataAllowed);
 
   bool get _canFilter =>
       sl.isRegistered<MetadataRepository>() &&

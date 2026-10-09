@@ -12,6 +12,8 @@ import '../app_config.dart';
 class ProfileAvatarUploader {
   ProfileAvatarUploader(this._dio);
 
+  static const int maxAvatarBytes = 256 * 1024;
+
   final Dio _dio;
 
   Future<String?> upload({
@@ -19,6 +21,7 @@ class ProfileAvatarUploader {
     required String contentType,
     required String token,
   }) async {
+    if (bytes.isEmpty || bytes.lengthInBytes > maxAvatarBytes) return null;
     try {
       final res = await _dio.post<dynamic>(
         '$kLogIntakeUrl/v1/avatar-slot',

@@ -13,6 +13,7 @@ import '../zmode/zmode_ids.dart';
 import '../logging/app_logger.dart';
 import '../models/media_item.dart';
 import '../supabase/supabase_service.dart';
+import '../profiles/profile_scope.dart';
 
 /// Thin transport seam over the `mylist` Supabase table, injectable so
 /// [MyListStore]'s pending-queue/pull-merge logic is unit-testable without a
@@ -23,22 +24,34 @@ class MyListRemote {
   final SupabaseService _service;
 
   Future<void> upsert(Map<String, dynamic> row) async {
-    await _service.client.from('mylist').upsert(row);
+    final profileId = row['profile_id'] as String?;
+    final table = profileId == null ? 'mylist' : 'profile_mylist';
+    await _service.client.from(table).upsert(row);
   }
 
-  Future<void> deleteRow(String userKey, String sourceId, String itemId) async {
-    await _service.client.from('mylist').delete().match({
+  Future<void> deleteRow(
+    String userKey,
+    String sourceId,
+    String itemId, {
+    String? profileId,
+  }) async {
+    final table = profileId == null ? 'mylist' : 'profile_mylist';
+    await _service.client.from(table).delete().match({
       'user_key': userKey,
       'source_id': sourceId,
       'item_id': itemId,
+      if (profileId != null) 'profile_id': profileId,
     });
   }
 
-  Future<List<Map<String, dynamic>>> listFor(String userKey) async {
-    final res = await _service.client
-        .from('mylist')
-        .select()
-        .eq('user_key', userKey);
+  Future<List<Map<String, dynamic>>> listFor(
+    String userKey, {
+    String? profileId,
+  }) async {
+    final table = profileId == null ? 'mylist' : 'profile_mylist';
+    var query = _service.client.from(table).select().eq('user_key', userKey);
+    if (profileId != null) query = query.eq('profile_id', profileId);
+    final res = await query;
     return (res as List).cast<Map<String, dynamic>>();
   }
 }
@@ -53,9 +66,11 @@ class MyListStore {
     MyListRemote? remote,
     String? Function(MediaItem)? statusOf,
     void Function(String key, String? statusName)? onStatusPulled,
+    String? Function()? currentProfileId,
   }) : _remote = remote ?? MyListRemote(service),
        _statusOf = statusOf,
-       _onStatusPulled = onStatusPulled;
+       _onStatusPulled = onStatusPulled,
+       _currentProfileId = currentProfileId;
 
   final MyListRemote _remote;
 
@@ -71,6 +86,9 @@ class MyListStore {
   /// Hydrates the local status store from a pulled cloud row's status. Injected
   /// for the same decoupling reason as [_statusOf].
   final void Function(String key, String? statusName)? _onStatusPulled;
+  final String? Function()? _currentProfileId;
+  String get _profileId => _currentProfileId?.call() ?? kDefaultProfileId;
+  String? _remoteProfileId(String id) => id == kDefaultProfileId ? null : id;
 
   /// Bumped whenever the contents change (toggle / cloud pull / clear) so
   /// listeners like MyListCubit can refresh — needed because a cloud pull
@@ -105,12 +123,21 @@ class MyListStore {
 
   Box<Map> get _box => Hive.box<Map>(boxName);
 
-  String _key(MediaItem m) => hiveKey('${m.sourceId}::${m.id}');
+  String _key(MediaItem m, [String? profileId]) => profileScopedKey(
+    profileId ?? _profileId,
+    hiveKey('${m.sourceId}::${m.id}'),
+  );
 
   bool contains(MediaItem m) => _box.containsKey(_key(m));
 
-  List<MediaItem> all() =>
-      _box.values.map(_itemFromHive).whereType<MediaItem>().toList();
+  List<MediaItem> all() => _allFor(_profileId);
+
+  List<MediaItem> _allFor(String id) {
+    return [
+      for (final key in _box.keys)
+        if (profileOwnsKey(key, id)) _box.get(key),
+    ].whereType<Map>().map(_itemFromHive).whereType<MediaItem>().toList();
+  }
 
   static const String _seedFlagPrefix = 'mylist_seeded_';
 
@@ -124,21 +151,25 @@ class MyListStore {
   Future<({int pushed, int failed})> pushAllLocalToCloud() async {
     final uid = _currentUserId();
     if (uid == null) return (pushed: 0, failed: 0);
+    final profileId = _profileId;
     final cloudKeys = <String>{};
     var readOk = true;
     try {
-      for (final r in await _remote.listFor(uid)) {
-        cloudKeys.add(hiveKey('${r['source_id']}::${r['item_id']}'));
+      for (final r in await _remote.listFor(
+        uid,
+        profileId: _remoteProfileId(profileId),
+      )) {
+        cloudKeys.add(_keyFromIds(r['source_id'], r['item_id'], profileId));
       }
     } catch (_) {
       readOk = false;
     }
     var pushed = 0, failed = 0;
-    for (final m in all()) {
-      if (cloudKeys.contains(_key(m)))
+    for (final m in _allFor(profileId)) {
+      if (cloudKeys.contains(_key(m, profileId)))
         continue; // already in cloud — don't clobber
       try {
-        await _remote.upsert(_cloudRow(uid, m));
+        await _remote.upsert(_cloudRow(uid, m, profileId));
         pushed++;
       } catch (_) {
         failed++;
@@ -157,7 +188,8 @@ class MyListStore {
     final uid = _currentUserId();
     if (uid == null || !Hive.isBoxOpen(syncMetaBox)) return;
     final box = Hive.box(syncMetaBox);
-    final flag = '$_seedFlagPrefix$uid';
+    final profileId = _profileId;
+    final flag = profileScopedKey(profileId, '$_seedFlagPrefix$uid');
     if (box.get(flag) == true) return;
     final r = await pushAllLocalToCloud();
     if (r.failed == 0) await box.put(flag, true);
@@ -230,7 +262,8 @@ class MyListStore {
   }
 
   Future<void> toggle(MediaItem m) async {
-    final k = _key(m);
+    final profileId = _profileId;
+    final k = _key(m, profileId);
     final adding = !_box.containsKey(k);
     if (adding) {
       await _box.put(k, _stamped(m).toJson());
@@ -245,21 +278,26 @@ class MyListStore {
         level: 'W',
       );
       if (adding) {
-        _markPending(k);
+        _markPending(k, profileId);
       } else {
-        _markPendingDelete(m.sourceId, m.id);
+        _markPendingDelete(m.sourceId, m.id, profileId);
       }
       return;
     }
     try {
       if (adding) {
-        await _remote.upsert(_cloudRow(uid, m));
-        _clearPendingDelete(m.sourceId, m.id);
+        await _remote.upsert(_cloudRow(uid, m, profileId));
+        _clearPendingDelete(m.sourceId, m.id, profileId);
       } else {
-        await _remote.deleteRow(uid, m.sourceId, m.id);
-        _clearPendingDelete(m.sourceId, m.id);
+        await _remote.deleteRow(
+          uid,
+          m.sourceId,
+          m.id,
+          profileId: _remoteProfileId(profileId),
+        );
+        _clearPendingDelete(m.sourceId, m.id, profileId);
       }
-      _clearPending(k); // synced — nothing to retry
+      _clearPending(k, profileId); // synced — nothing to retry
     } catch (e) {
       // Cloud write failed (offline, or the backend is unreachable). The
       // local box already reflects the change; remember the unsynced write
@@ -269,15 +307,16 @@ class MyListStore {
         level: 'E',
       );
       if (adding) {
-        _markPending(k);
+        _markPending(k, profileId);
       } else {
-        _markPendingDelete(m.sourceId, m.id);
+        _markPendingDelete(m.sourceId, m.id, profileId);
       }
     }
   }
 
-  Map<String, dynamic> _cloudRow(String uid, MediaItem m) => {
+  Map<String, dynamic> _cloudRow(String uid, MediaItem m, String profileId) => {
     'user_key': uid,
+    if (profileId != kDefaultProfileId) 'profile_id': profileId,
     'item_id': m.id,
     'source_id': m.sourceId,
     'title': m.title,
@@ -299,8 +338,9 @@ class MyListStore {
   Future<void> pushStatus(MediaItem m) async {
     final uid = _currentUserId();
     if (uid == null) return;
+    final profileId = _profileId;
     try {
-      await _remote.upsert(_cloudRow(uid, m));
+      await _remote.upsert(_cloudRow(uid, m, profileId));
     } catch (_) {
       /* best-effort */
     }
@@ -312,45 +352,58 @@ class MyListStore {
   static const String _pendingKey = 'mylist_pending';
   static const String _pendingDeleteKey = 'mylist_pending_delete';
 
-  Set<String> pendingKeys() {
+  String _metaKey(String key, [String? profileId]) =>
+      profileScopedKey(profileId ?? _profileId, key);
+
+  Set<String> pendingKeys([String? profileId]) {
     if (!Hive.isBoxOpen(syncMetaBox)) return <String>{};
-    final raw = Hive.box(syncMetaBox).get(_pendingKey);
+    final raw = Hive.box(syncMetaBox).get(_metaKey(_pendingKey, profileId));
     return raw is List ? raw.map((e) => '$e').toSet() : <String>{};
   }
 
-  void _markPending(String k) {
+  void _markPending(String k, [String? profileId]) {
     if (!Hive.isBoxOpen(syncMetaBox)) return;
-    final s = pendingKeys()..add(k);
-    Hive.box(syncMetaBox).put(_pendingKey, s.toList());
+    final key = _metaKey(_pendingKey, profileId);
+    final s = pendingKeys(profileId)..add(k);
+    Hive.box(syncMetaBox).put(key, s.toList());
   }
 
-  void _clearPending(String k) {
+  void _clearPending(String k, [String? profileId]) {
     if (!Hive.isBoxOpen(syncMetaBox)) return;
-    final s = pendingKeys();
-    if (s.remove(k)) Hive.box(syncMetaBox).put(_pendingKey, s.toList());
+    final key = _metaKey(_pendingKey, profileId);
+    final s = pendingKeys(profileId);
+    if (s.remove(k)) Hive.box(syncMetaBox).put(key, s.toList());
   }
 
   /// `sourceId::itemId` pairs whose cloud DELETE failed. A later pull must
   /// not resurrect them, and [retryPending] re-sends the delete.
-  Set<String> pendingDeleteKeys() {
+  Set<String> pendingDeleteKeys([String? profileId]) {
     if (!Hive.isBoxOpen(syncMetaBox)) return <String>{};
-    final raw = Hive.box(syncMetaBox).get(_pendingDeleteKey);
+    final raw = Hive.box(
+      syncMetaBox,
+    ).get(_metaKey(_pendingDeleteKey, profileId));
     return raw is List ? raw.map((e) => '$e').toSet() : <String>{};
   }
 
   String _deleteKey(String sourceId, String itemId) => '$sourceId::$itemId';
 
-  void _markPendingDelete(String sourceId, String itemId) {
+  void _markPendingDelete(String sourceId, String itemId, [String? profileId]) {
     if (!Hive.isBoxOpen(syncMetaBox)) return;
-    final s = pendingDeleteKeys()..add(_deleteKey(sourceId, itemId));
-    Hive.box(syncMetaBox).put(_pendingDeleteKey, s.toList());
+    final key = _metaKey(_pendingDeleteKey, profileId);
+    final s = pendingDeleteKeys(profileId)..add(_deleteKey(sourceId, itemId));
+    Hive.box(syncMetaBox).put(key, s.toList());
   }
 
-  void _clearPendingDelete(String sourceId, String itemId) {
+  void _clearPendingDelete(
+    String sourceId,
+    String itemId, [
+    String? profileId,
+  ]) {
     if (!Hive.isBoxOpen(syncMetaBox)) return;
-    final s = pendingDeleteKeys();
+    final key = _metaKey(_pendingDeleteKey, profileId);
+    final s = pendingDeleteKeys(profileId);
     if (s.remove(_deleteKey(sourceId, itemId))) {
-      Hive.box(syncMetaBox).put(_pendingDeleteKey, s.toList());
+      Hive.box(syncMetaBox).put(key, s.toList());
     }
   }
 
@@ -361,20 +414,26 @@ class MyListStore {
   Future<void> retryPending() async {
     final uid = _currentUserId();
     if (uid == null) return;
-    final pending = pendingKeys();
-    final pendingDeletes = pendingDeleteKeys();
+    final profileId = _profileId;
+    final pending = pendingKeys(profileId);
+    final pendingDeletes = pendingDeleteKeys(profileId);
     if (pending.isEmpty && pendingDeletes.isEmpty) return;
     for (final raw in pendingDeletes) {
       final split = raw.indexOf('::');
       if (split <= 0) {
-        _clearPendingDelete(raw, '');
+        _clearPendingDelete(raw, '', profileId);
         continue;
       }
       final sourceId = raw.substring(0, split);
       final itemId = raw.substring(split + 2);
       try {
-        await _remote.deleteRow(uid, sourceId, itemId);
-        _clearPendingDelete(sourceId, itemId);
+        await _remote.deleteRow(
+          uid,
+          sourceId,
+          itemId,
+          profileId: _remoteProfileId(profileId),
+        );
+        _clearPendingDelete(sourceId, itemId, profileId);
       } catch (_) {
         /* keep pending, retry next launch */
       }
@@ -382,7 +441,7 @@ class MyListStore {
     for (final k in pending) {
       final raw = _box.get(k);
       if (raw == null) {
-        _clearPending(k); // removed locally since — nothing to sync
+        _clearPending(k, profileId); // removed locally since — nothing to sync
         continue;
       }
       final m = _itemFromHive(raw);
@@ -390,8 +449,8 @@ class MyListStore {
       // rather than cleared, so it still syncs if a later build can decode it.
       if (m == null) continue;
       try {
-        await _remote.upsert(_cloudRow(uid, m));
-        _clearPending(k);
+        await _remote.upsert(_cloudRow(uid, m, profileId));
+        _clearPending(k, profileId);
       } catch (_) {
         /* keep pending, retry next launch */
       }
@@ -406,12 +465,16 @@ class MyListStore {
   /// here. Unsynced local adds (the pending queue) and a pull that happens
   /// *before* seed still keep local-only rows, so an empty/orphaned cloud
   /// cannot wipe a device that has never successfully pushed.
-  Future<void> pullFromCloud() async {
+  Future<void> pullFromCloud({String? forProfileId}) async {
     final uid = _currentUserId();
     if (uid == null) return;
+    final profileId = forProfileId ?? _profileId;
     try {
-      final rows = await _remote.listFor(uid);
-      final doomed = pendingDeleteKeys();
+      final rows = await _remote.listFor(
+        uid,
+        profileId: _remoteProfileId(profileId),
+      );
+      final doomed = pendingDeleteKeys(profileId);
       for (final row in rows) {
         final headers = row['cover_headers'];
         // A row this build can't decode (e.g. a `manga` type saved by a build
@@ -445,9 +508,12 @@ class MyListStore {
           anilistId: ids.anilistId,
           tmdbId: ids.tmdbId,
         );
-        final key = hiveKey('${item.sourceId}::${item.id}');
+        final key = _key(item, profileId);
         await _box.put(key, item.toJson());
-        _clearPending(key); // it's in the cloud now — no longer needs retrying
+        _clearPending(
+          key,
+          profileId,
+        ); // it's in the cloud now — no longer needs retrying
         // Watch status: hydrate the local mirror from the cloud when the cloud
         // knows one; otherwise back-fill the cloud from a local status set
         // before status-sync existed. Never CLEAR a local status just because
@@ -456,24 +522,25 @@ class MyListStore {
         if (cloudStatus != null) {
           _onStatusPulled?.call(key, cloudStatus);
         } else if (_statusOf?.call(item) != null) {
-          unawaited(pushStatus(item));
+          unawaited(_pushStatusForProfile(item, profileId));
         }
       }
-      if (_seededFor(uid)) {
+      if (_seededFor(uid, profileId)) {
         final cloudKeys = <String>{
           for (final row in rows)
-            hiveKey('${row['source_id']}::${row['item_id']}'),
+            _keyFromIds(row['source_id'], row['item_id'], profileId),
         };
-        final pending = pendingKeys();
+        final pending = pendingKeys(profileId);
         for (final raw in _box.keys.toList()) {
           final key = '$raw';
+          if (!profileOwnsKey(key, profileId)) continue;
           if (cloudKeys.contains(key) || pending.contains(key)) continue;
           await _box.delete(key);
           _onStatusPulled?.call(key, null);
         }
       }
       revision.value++;
-      _markPulled();
+      _markPulled(profileId);
     } catch (_) {
       /* keep whatever is local */
     }
@@ -488,27 +555,46 @@ class MyListStore {
     Duration maxAge = const Duration(hours: 12),
   }) async {
     if (_currentUserId() == null) return;
+    final profileId = _profileId;
     int? last;
     if (Hive.isBoxOpen(syncMetaBox)) {
-      last = Hive.box(syncMetaBox).get(_syncMetaKey) as int?;
+      last =
+          Hive.box(syncMetaBox).get(_metaKey(_syncMetaKey, profileId)) as int?;
     }
     if (last != null) {
       final age = DateTime.now().millisecondsSinceEpoch - last;
       if (age >= 0 && age < maxAge.inMilliseconds) return; // still fresh
     }
-    await pullFromCloud();
+    await pullFromCloud(forProfileId: profileId);
   }
 
-  bool _seededFor(String uid) {
+  String _keyFromIds(Object? sourceId, Object? itemId, String profileId) =>
+      profileScopedKey(profileId, hiveKey('$sourceId::$itemId'));
+
+  Future<void> _pushStatusForProfile(MediaItem item, String profileId) async {
+    final uid = _currentUserId();
+    if (uid == null) return;
+    try {
+      await _remote.upsert(_cloudRow(uid, item, profileId));
+    } catch (_) {
+      /* best-effort */
+    }
+  }
+
+  bool _seededFor(String uid, String profileId) {
     if (!Hive.isBoxOpen(syncMetaBox)) return false;
-    return Hive.box(syncMetaBox).get('$_seedFlagPrefix$uid') == true;
+    return Hive.box(
+          syncMetaBox,
+        ).get(profileScopedKey(profileId, '$_seedFlagPrefix$uid')) ==
+        true;
   }
 
-  void _markPulled() {
+  void _markPulled(String profileId) {
     if (Hive.isBoxOpen(syncMetaBox)) {
-      Hive.box(
-        syncMetaBox,
-      ).put(_syncMetaKey, DateTime.now().millisecondsSinceEpoch);
+      Hive.box(syncMetaBox).put(
+        _metaKey(_syncMetaKey, profileId),
+        DateTime.now().millisecondsSinceEpoch,
+      );
     }
   }
 

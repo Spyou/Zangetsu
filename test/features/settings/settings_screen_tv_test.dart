@@ -26,6 +26,7 @@ import 'package:watch_app/core/download/download_prefs.dart';
 import 'package:watch_app/core/locale/locale_controller.dart';
 import 'package:watch_app/core/playback/playback_prefs.dart';
 import 'package:watch_app/core/playback/search_prefs.dart';
+import 'package:watch_app/core/profiles/viewer_profile.dart';
 import 'package:watch_app/core/provider/provider_registry.dart';
 import 'package:watch_app/core/reading/reader_prefs.dart';
 import 'package:watch_app/core/state/active_source_cubit.dart';
@@ -42,10 +43,10 @@ import 'package:watch_app/features/settings/settings_screen.dart';
 import 'package:watch_app/l10n/app_localizations.dart';
 
 MigrationBridge _fakeBridge() => MigrationBridge(
-      invoke: (_, __) async => const {'ok': false},
-      signInPassword: (_, __) async => false,
-      verifyOtp: (_, __) async => false,
-    );
+  invoke: (_, __) async => const {'ok': false},
+  signInPassword: (_, __) async => false,
+  verifyOtp: (_, __) async => false,
+);
 
 // ── Minimal stubs ─────────────────────────────────────────────────────────────
 
@@ -98,6 +99,7 @@ Future<void> _registerStubs() async {
   await Hive.openBox(TorrentPrefs.boxName);
   await Hive.openBox(ThemeController.boxName);
   await ReaderPrefs.init();
+  await ViewerProfileStore.init();
   final sl = GetIt.instance;
   sl
     ..registerSingleton<AppMode>(const AppMode(isTv: true))
@@ -110,6 +112,7 @@ Future<void> _registerStubs() async {
     ..registerSingleton<DownloadPrefs>(DownloadPrefs())
     ..registerSingleton<TorrentPrefs>(TorrentPrefs())
     ..registerSingleton<ReaderPrefs>(ReaderPrefs());
+  sl.registerSingleton<ViewerProfileStore>(ViewerProfileStore());
 }
 
 void _mockPathProvider(WidgetTester tester) {
@@ -123,18 +126,17 @@ void _mockPathProvider(WidgetTester tester) {
 Widget _buildUnderTest({
   required AuthCubit authCubit,
   required ActiveSourceCubit activeCubit,
-}) =>
-    MultiBlocProvider(
-      providers: [
-        BlocProvider<AuthCubit>.value(value: authCubit),
-        BlocProvider<ActiveSourceCubit>.value(value: activeCubit),
-      ],
-      child: MaterialApp(
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        home: const SettingsScreen(),
-      ),
-    );
+}) => MultiBlocProvider(
+  providers: [
+    BlocProvider<AuthCubit>.value(value: authCubit),
+    BlocProvider<ActiveSourceCubit>.value(value: activeCubit),
+  ],
+  child: MaterialApp(
+    localizationsDelegates: AppLocalizations.localizationsDelegates,
+    supportedLocales: AppLocalizations.supportedLocales,
+    home: const SettingsScreen(),
+  ),
+);
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
@@ -158,125 +160,136 @@ void main() {
     await hiveDir.delete(recursive: true);
   });
 
-  testWidgets(
-    'TV SettingsScreen shows Sign-in tile when unauthenticated',
-    (tester) async {
-      _mockPathProvider(tester);
-      final authCubit =
-          AuthCubit(SupabaseService(), AppwriteService(), _fakeBridge());
-      addTearDown(authCubit.close);
+  testWidgets('TV SettingsScreen shows Sign-in tile when unauthenticated', (
+    tester,
+  ) async {
+    _mockPathProvider(tester);
+    final authCubit = AuthCubit(
+      SupabaseService(),
+      AppwriteService(),
+      _fakeBridge(),
+    );
+    addTearDown(authCubit.close);
 
-      await tester.pumpWidget(
-        _buildUnderTest(authCubit: authCubit, activeCubit: activeCubit),
-      );
-      await tester.pumpAndSettle();
+    await tester.pumpWidget(
+      _buildUnderTest(authCubit: authCubit, activeCubit: activeCubit),
+    );
+    await tester.pumpAndSettle();
 
-      expect(find.text('Sign in'), findsOneWidget);
-      expect(find.text('Profile'), findsNothing);
-    },
-  );
+    expect(find.text('Sign in'), findsOneWidget);
+    expect(find.text('Profile'), findsNothing);
+  });
 
-  testWidgets(
-    'TV SettingsScreen shows section categories like mobile',
-    (tester) async {
-      _mockPathProvider(tester);
-      await tester.binding.setSurfaceSize(const Size(1280, 2200));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
+  testWidgets('TV SettingsScreen shows section categories like mobile', (
+    tester,
+  ) async {
+    _mockPathProvider(tester);
+    await tester.binding.setSurfaceSize(const Size(1280, 2200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
 
-      final authCubit =
-          AuthCubit(SupabaseService(), AppwriteService(), _fakeBridge());
-      addTearDown(authCubit.close);
+    final authCubit = AuthCubit(
+      SupabaseService(),
+      AppwriteService(),
+      _fakeBridge(),
+    );
+    addTearDown(authCubit.close);
 
-      await tester.pumpWidget(
-        _buildUnderTest(authCubit: authCubit, activeCubit: activeCubit),
-      );
-      await tester.pumpAndSettle();
+    await tester.pumpWidget(
+      _buildUnderTest(authCubit: authCubit, activeCubit: activeCubit),
+    );
+    await tester.pumpAndSettle();
 
-      for (final section in const [
-        'Account & sync',
-        'Sources',
-        'Playback',
-        'Downloads',
-        'Interface',
-        'Advanced',
-        'About',
-      ]) {
-        expect(find.text(section), findsOneWidget, reason: 'category: $section');
-      }
-      // History is a single-destination section — category title is History.
-      expect(find.text('History'), findsOneWidget);
-      // Manga/novel reader and search are phone-only.
-      expect(find.text('Reading'), findsNothing);
-      expect(find.text('Reader'), findsNothing);
-      expect(find.text('Search settings'), findsNothing);
-      // Leaf tiles live inside sections, not on the root.
-      expect(find.text('Providers'), findsNothing);
-      expect(find.text('Backup & Restore'), findsNothing);
-    },
-  );
+    for (final section in const [
+      'Account & sync',
+      'Sources',
+      'Playback',
+      'Downloads',
+      'Interface',
+      'Advanced',
+      'About',
+    ]) {
+      expect(find.text(section), findsOneWidget, reason: 'category: $section');
+    }
+    // History is a single-destination section — category title is History.
+    expect(find.text('History'), findsOneWidget);
+    // Manga/novel reader and search are phone-only.
+    expect(find.text('Reading'), findsNothing);
+    expect(find.text('Reader'), findsNothing);
+    expect(find.text('Search settings'), findsNothing);
+    // Leaf tiles live inside sections, not on the root.
+    expect(find.text('Providers'), findsNothing);
+    expect(find.text('Backup & Restore'), findsNothing);
+  });
 
-  testWidgets(
-    'TV SettingsScreen History category is D-pad reachable',
-    (tester) async {
-      _mockPathProvider(tester);
-      final authCubit =
-          AuthCubit(SupabaseService(), AppwriteService(), _fakeBridge());
-      addTearDown(authCubit.close);
+  testWidgets('TV SettingsScreen History category is D-pad reachable', (
+    tester,
+  ) async {
+    _mockPathProvider(tester);
+    final authCubit = AuthCubit(
+      SupabaseService(),
+      AppwriteService(),
+      _fakeBridge(),
+    );
+    addTearDown(authCubit.close);
 
-      await tester.pumpWidget(
-        _buildUnderTest(authCubit: authCubit, activeCubit: activeCubit),
-      );
-      await tester.pumpAndSettle();
+    await tester.pumpWidget(
+      _buildUnderTest(authCubit: authCubit, activeCubit: activeCubit),
+    );
+    await tester.pumpAndSettle();
 
-      expect(find.text('History'), findsOneWidget);
-      expect(
-        find.ancestor(
-          of: find.text('History'),
-          matching: find.byType(TvListFocusable),
-        ),
-        findsOneWidget,
-      );
-      expect(Platform.isAndroid, isFalse, reason: 'Android-only tiles gated');
-    },
-  );
+    expect(find.text('History'), findsOneWidget);
+    expect(
+      find.ancestor(
+        of: find.text('History'),
+        matching: find.byType(TvListFocusable),
+      ),
+      findsOneWidget,
+    );
+    expect(Platform.isAndroid, isFalse, reason: 'Android-only tiles gated');
+  });
 
-  testWidgets(
-    'TV SettingsScreen offers sync library inside Account & sync',
-    (tester) async {
-      _mockPathProvider(tester);
-      await tester.binding.setSurfaceSize(const Size(1280, 2200));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
+  testWidgets('TV SettingsScreen offers sync library inside Account & sync', (
+    tester,
+  ) async {
+    _mockPathProvider(tester);
+    await tester.binding.setSurfaceSize(const Size(1280, 2200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
 
-      final authCubit =
-          AuthCubit(SupabaseService(), AppwriteService(), _fakeBridge());
-      addTearDown(authCubit.close);
+    final authCubit = AuthCubit(
+      SupabaseService(),
+      AppwriteService(),
+      _fakeBridge(),
+    );
+    addTearDown(authCubit.close);
 
-      await tester.pumpWidget(
-        _buildUnderTest(authCubit: authCubit, activeCubit: activeCubit),
-      );
-      await tester.pumpAndSettle();
+    await tester.pumpWidget(
+      _buildUnderTest(authCubit: authCubit, activeCubit: activeCubit),
+    );
+    await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Account & sync'));
-      await tester.pumpAndSettle();
+    await tester.tap(find.text('Account & sync'));
+    await tester.pumpAndSettle();
 
-      expect(find.text('Sync library to cloud'), findsOneWidget);
-      expect(
-        find.ancestor(
-          of: find.text('Sync library to cloud'),
-          matching: find.byType(TvListFocusable),
-        ),
-        findsOneWidget,
-      );
-      expect(find.text('Backup & Restore'), findsOneWidget);
-    },
-  );
+    expect(find.text('Sync library to cloud'), findsOneWidget);
+    expect(
+      find.ancestor(
+        of: find.text('Sync library to cloud'),
+        matching: find.byType(TvListFocusable),
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Backup & Restore'), findsOneWidget);
+  });
 
   testWidgets(
     'TV SettingsScreen only the first TvFocusable has autofocus=true',
     (tester) async {
       _mockPathProvider(tester);
-      final authCubit =
-          AuthCubit(SupabaseService(), AppwriteService(), _fakeBridge());
+      final authCubit = AuthCubit(
+        SupabaseService(),
+        AppwriteService(),
+        _fakeBridge(),
+      );
       addTearDown(authCubit.close);
 
       await tester.pumpWidget(
@@ -284,8 +297,9 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final focusables =
-          tester.widgetList<TvFocusable>(find.byType(TvFocusable)).toList();
+      final focusables = tester
+          .widgetList<TvFocusable>(find.byType(TvFocusable))
+          .toList();
 
       expect(focusables, isNotEmpty);
       expect(focusables.first.autofocus, isTrue);
@@ -302,8 +316,11 @@ void main() {
       await tester.binding.setSurfaceSize(const Size(1280, 2200));
       addTearDown(() => tester.binding.setSurfaceSize(null));
 
-      final authCubit =
-          AuthCubit(SupabaseService(), AppwriteService(), _fakeBridge());
+      final authCubit = AuthCubit(
+        SupabaseService(),
+        AppwriteService(),
+        _fakeBridge(),
+      );
       addTearDown(authCubit.close);
 
       await tester.pumpWidget(
