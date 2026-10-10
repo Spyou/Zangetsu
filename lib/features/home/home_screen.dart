@@ -933,9 +933,8 @@ class _HomeViewState extends State<_HomeView>
   /// switch makes a future row type a compile error here instead of a silent
   /// gap, and the local row reuses [ContinueSection] itself so its reactive
   /// Hive/mode behaviour is identical wherever the user drags it.
-  Widget _homeRowSliver(HomeRow row, {required bool loggedIn}) => switch (row) {
+  Widget _homeRowSliver(HomeRow row) => switch (row) {
     LocalContinueHomeRow() => ContinueSection(
-      loggedIn: loggedIn,
       onResume: _resume,
       onLongPress: _showContinueInfo,
       onSeeAll: _openHistory,
@@ -1717,8 +1716,8 @@ class _HomeViewState extends State<_HomeView>
   @override
   Widget build(BuildContext context) {
     if (sl<AppMode>().isTv) return const HomeScreenTv();
-    // Local Continue Watching stays visible signed out; cloud sync still needs
-    // an account. Continue Reading remains login-gated in ContinueSection.
+    // Local Continue Watching/Reading stays visible signed out; cloud sync
+    // still needs an account.
     final authState = context.watch<AuthCubit>().state;
     final loggedIn = authState.isLoggedIn;
     // Session lapsed (logged-in from cache only) → cloud sync is silently off.
@@ -1851,12 +1850,9 @@ class _HomeViewState extends State<_HomeView>
                       // ContinueSection keeps its old spot above the skeletons
                       // so the loading screen is exactly today's.
                       if (state.rows case final rows?)
-                        ...rows.map(
-                          (r) => _homeRowSliver(r, loggedIn: loggedIn),
-                        )
+                        ...rows.map(_homeRowSliver)
                       else
                         ContinueSection(
-                          loggedIn: loggedIn,
                           onResume: _resume,
                           onLongPress: _showContinueInfo,
                           onSeeAll: _openHistory,

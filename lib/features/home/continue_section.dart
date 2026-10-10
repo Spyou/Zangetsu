@@ -31,7 +31,6 @@ import '../../core/ui/continue_card.dart';
 class ContinueSection extends StatelessWidget {
   const ContinueSection({
     super.key,
-    required this.loggedIn,
     required this.onResume,
     required this.onLongPress,
     required this.onSeeAll,
@@ -39,7 +38,6 @@ class ContinueSection extends StatelessWidget {
     required this.onLongPressReading,
   });
 
-  final bool loggedIn;
   final void Function(HistoryEntry) onResume;
   final void Function(HistoryEntry) onLongPress;
   final VoidCallback onSeeAll;
@@ -90,7 +88,7 @@ class ContinueSection extends StatelessWidget {
   // ── Continue Reading (manga/novel) ────────────────────────────────────────
 
   Widget _readingRow(ContentMode mode) {
-    if (!(loggedIn && Hive.isBoxOpen(ReadHistory.boxName))) {
+    if (!Hive.isBoxOpen(ReadHistory.boxName)) {
       return const SliverToBoxAdapter(child: SizedBox.shrink());
     }
     // Only this mode's kind — the ReadHistory box mixes manga and novel.

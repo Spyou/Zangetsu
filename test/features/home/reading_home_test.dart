@@ -9,8 +9,8 @@
 //
 // ContinueWatchingRow/ContinueReadingRow (the actual card content — title,
 // subtitle, tap wiring) are pumped directly against a resolved list.
-// ContinueSection's gating (login / box-not-open) is exercised without
-// opening a real Hive box; its LIVE branch selection (box open, real
+// ContinueSection's unopened-box guard is exercised without opening a real
+// Hive box; its LIVE branch selection (box open, real
 // ValueListenableBuilder mount) is exercised in the group below with
 // `tester.runAsync()` — real Hive I/O called directly inside a `testWidgets`
 // body (no runAsync) hangs indefinitely in this environment (bare
@@ -325,7 +325,6 @@ void main() {
 
     Future<void> pumpGated(
       WidgetTester tester, {
-      required bool loggedIn,
       required ContentMode mode,
     }) async {
       if (sl.isRegistered<ContentModeCubit>()) {
@@ -338,7 +337,6 @@ void main() {
             body: CustomScrollView(
               slivers: [
                 ContinueSection(
-                  loggedIn: loggedIn,
                   onResume: (_) {},
                   onLongPress: (_) {},
                   onSeeAll: () {},
@@ -356,7 +354,7 @@ void main() {
     testWidgets('unopened watch-history box renders nothing in anime mode', (
       tester,
     ) async {
-      await pumpGated(tester, loggedIn: false, mode: ContentMode.anime);
+      await pumpGated(tester, mode: ContentMode.anime);
       expect(find.text('Continue Watching'), findsNothing);
       expect(find.text('Continue Reading'), findsNothing);
     });
@@ -364,19 +362,8 @@ void main() {
     testWidgets(
       'unopened reading-history box renders nothing in reading mode',
       (tester) async {
-        await pumpGated(tester, loggedIn: false, mode: ContentMode.novel);
+        await pumpGated(tester, mode: ContentMode.novel);
         expect(find.text('Continue Watching'), findsNothing);
-        expect(find.text('Continue Reading'), findsNothing);
-      },
-    );
-
-    testWidgets(
-      'signed in but the box was never opened (production opens it at '
-      'boot) still renders nothing — never throws',
-      (tester) async {
-        await pumpGated(tester, loggedIn: true, mode: ContentMode.anime);
-        expect(find.text('Continue Watching'), findsNothing);
-        await pumpGated(tester, loggedIn: true, mode: ContentMode.manga);
         expect(find.text('Continue Reading'), findsNothing);
       },
     );
@@ -449,7 +436,6 @@ void main() {
             body: CustomScrollView(
               slivers: [
                 ContinueSection(
-                  loggedIn: false,
                   onResume: (_) {},
                   onLongPress: (_) {},
                   onSeeAll: () {},
@@ -474,8 +460,7 @@ void main() {
     });
 
     testWidgets(
-      'a reading mode with the box open renders ContinueReadingRow, not '
-      'ContinueWatchingRow',
+      'signed-out manga and novel modes show their local Continue Reading',
       (tester) async {
         late Directory dir;
         await tester.runAsync(() async {
@@ -490,25 +475,39 @@ void main() {
         sl.registerSingleton<ReadHistory>(
           ReadHistory(SupabaseService(), () => null),
         );
-        await tester.runAsync(
-          () => sl<ReadHistory>().save(
+        final history = sl<ReadHistory>();
+        await tester.runAsync(() async {
+          await history.save(
             ReadEntry(
               sourceId: 'src',
-              showId: 'show2',
-              title: 'Novel Title',
-              chapterId: 'c1',
+              showId: 'manga',
+              title: 'Manga Title',
+              chapterId: 'm1',
               chapterNumber: 1,
-              chapterUrl: '/c1',
+              chapterUrl: '/m1',
               pos: 1,
               total: 20,
               updatedMs: 1,
+              type: ProviderType.manga,
+            ),
+          );
+          await history.save(
+            ReadEntry(
+              sourceId: 'src',
+              showId: 'novel',
+              title: 'Novel Title',
+              chapterId: 'n1',
+              chapterNumber: 1,
+              chapterUrl: '/n1',
+              pos: 1,
+              total: 20,
+              updatedMs: 2,
               type: ProviderType.novel,
             ),
-          ),
-        );
-        sl.registerSingleton<ContentModeCubit>(
-          _FakeContentModeCubit(ContentMode.novel),
-        );
+          );
+        });
+        final modeCubit = _FakeContentModeCubit(ContentMode.manga);
+        sl.registerSingleton<ContentModeCubit>(modeCubit);
 
         await tester.pumpWidget(
           MaterialApp(
@@ -516,7 +515,6 @@ void main() {
               body: CustomScrollView(
                 slivers: [
                   ContinueSection(
-                    loggedIn: true,
                     onResume: (_) {},
                     onLongPress: (_) {},
                     onSeeAll: () {},
@@ -533,6 +531,14 @@ void main() {
         expect(find.byType(ContinueReadingRow), findsOneWidget);
         expect(find.byType(ContinueWatchingRow), findsNothing);
         expect(find.text('Continue Reading'), findsOneWidget);
+        expect(find.text('Manga Title'), findsOneWidget);
+        expect(find.text('Novel Title'), findsNothing);
+
+        modeCubit.emit(ContentMode.novel);
+        await tester.pumpAndSettle();
+
+        expect(find.text('Manga Title'), findsNothing);
+        expect(find.text('Novel Title'), findsOneWidget);
 
         await tester.runAsync(() async {
           await Hive.deleteFromDisk();
