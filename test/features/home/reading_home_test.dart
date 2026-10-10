@@ -310,10 +310,8 @@ void main() {
     });
   });
 
-  // ── Part A: ContinueSection gating (login / box-open guard) ──────────────
-  // No Hive box is ever opened here, so Hive.isBoxOpen() is always false —
-  // exercising exactly the "signed-out / test-env" guard branch the
-  // original code's comment described, for both modes.
+  // ── Part A: ContinueSection unopened-box guard ──────────────────────────
+  // No Hive box is ever opened here, so Hive.isBoxOpen() is always false.
 
   group('ContinueSection gating', () {
     setUp(() async {
@@ -355,17 +353,22 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    testWidgets('signed out renders nothing in anime mode', (tester) async {
+    testWidgets('unopened watch-history box renders nothing in anime mode', (
+      tester,
+    ) async {
       await pumpGated(tester, loggedIn: false, mode: ContentMode.anime);
       expect(find.text('Continue Watching'), findsNothing);
       expect(find.text('Continue Reading'), findsNothing);
     });
 
-    testWidgets('signed out renders nothing in a reading mode', (tester) async {
-      await pumpGated(tester, loggedIn: false, mode: ContentMode.novel);
-      expect(find.text('Continue Watching'), findsNothing);
-      expect(find.text('Continue Reading'), findsNothing);
-    });
+    testWidgets(
+      'unopened reading-history box renders nothing in reading mode',
+      (tester) async {
+        await pumpGated(tester, loggedIn: false, mode: ContentMode.novel);
+        expect(find.text('Continue Watching'), findsNothing);
+        expect(find.text('Continue Reading'), findsNothing);
+      },
+    );
 
     testWidgets(
       'signed in but the box was never opened (production opens it at '
@@ -381,8 +384,8 @@ void main() {
 
   // ── Part A: ContinueSection's live branch selection ───────────────────────
   // Proves `mode.isReading ? _readingRow() : _watchingRow()` actually picks
-  // the right row widget when the box IS open — the one path the gating
-  // group above can't reach (it never opens a box, by design).
+  // the right row widget when the box IS open, including local watch history
+  // while signed out.
   //
   // Real Hive I/O inside a `testWidgets` body must run through
   // `tester.runAsync()` — without it, `Hive.init`/`openBox` hang
@@ -403,8 +406,9 @@ void main() {
       await sl.reset();
     });
 
-    testWidgets('anime mode with the box open renders ContinueWatchingRow, not '
-        'ContinueReadingRow', (tester) async {
+    testWidgets('signed-out anime mode shows local Continue Watching history', (
+      tester,
+    ) async {
       late Directory dir;
       await tester.runAsync(() async {
         dir = await Directory.systemTemp.createTemp('continue_section_live');
@@ -445,7 +449,7 @@ void main() {
             body: CustomScrollView(
               slivers: [
                 ContinueSection(
-                  loggedIn: true,
+                  loggedIn: false,
                   onResume: (_) {},
                   onLongPress: (_) {},
                   onSeeAll: () {},

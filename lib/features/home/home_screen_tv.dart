@@ -47,7 +47,6 @@ import '../../core/ui/featured_hero.dart';
 import '../../core/ui/list_status_sheet.dart';
 import '../../core/ui/media_info_sheet.dart';
 import '../../core/ui/poster_card.dart';
-import '../auth/auth_cubit.dart';
 import '../../core/mode/content_mode.dart';
 import '../../core/mode/content_mode_cubit.dart';
 import '../../core/ui/source_switcher.dart';
@@ -547,9 +546,6 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
       'loadedEmpty=$loadedEmpty noSourceForMode=$noSourceForMode',
     );
 
-    // Continue Watching — same login-gated local history the phone home uses.
-    final loggedIn = context.watch<AuthCubit>().state.isLoggedIn;
-
     if (noSourceForMode || loadedEmpty) {
       debugPrint(
         '[tv-home] build → HomeLoadedEmptyView '
@@ -637,8 +633,7 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
       );
     }
 
-    final body =
-        (loggedIn && _historyLive && Hive.isBoxOpen(WatchHistory.boxName))
+    final body = (_historyLive && Hive.isBoxOpen(WatchHistory.boxName))
         ? ValueListenableBuilder(
             valueListenable: Hive.box<Map>(WatchHistory.boxName).listenable(),
             builder: (context, _, _) =>

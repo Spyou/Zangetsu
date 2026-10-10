@@ -6,7 +6,7 @@ part of 'home_screen_tv.dart';
 
 /// A labelled row of D-pad-focusable Continue Watching cards (poster + progress
 /// bar). OK resumes the episode at its saved position. Mirrors the phone home's
-/// Continue Watching row; fed by the same login-gated [WatchHistory.recent].
+/// Continue Watching row; fed by local [WatchHistory.recent] history.
 class _TvContinueRail extends StatelessWidget {
   const _TvContinueRail({
     required this.history,

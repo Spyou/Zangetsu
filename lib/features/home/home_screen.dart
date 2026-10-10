@@ -1717,7 +1717,8 @@ class _HomeViewState extends State<_HomeView>
   @override
   Widget build(BuildContext context) {
     if (sl<AppMode>().isTv) return const HomeScreenTv();
-    // Continue Watching is a logged-in feature; hide the row when signed out.
+    // Local Continue Watching stays visible signed out; cloud sync still needs
+    // an account. Continue Reading remains login-gated in ContinueSection.
     final authState = context.watch<AuthCubit>().state;
     final loggedIn = authState.isLoggedIn;
     // Session lapsed (logged-in from cache only) → cloud sync is silently off.

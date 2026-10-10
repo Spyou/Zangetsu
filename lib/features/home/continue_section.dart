@@ -58,9 +58,9 @@ class ContinueSection extends StatelessWidget {
   // ── Continue Watching ────────────────────────────────────────────────────
 
   Widget _watchingRow() {
-    // Login-gated, and guarded so a signed-out render (or the test env) never
-    // touches the box — production opens it at boot.
-    if (!(loggedIn && Hive.isBoxOpen(WatchHistory.boxName))) {
+    // Watch history is local too, so signed-out users can continue watching.
+    // Keep the box guard so a test or early boot never touches a closed box.
+    if (!Hive.isBoxOpen(WatchHistory.boxName)) {
       return const SliverToBoxAdapter(child: SizedBox.shrink());
     }
     return ValueListenableBuilder(

@@ -1,14 +1,19 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hive/hive.dart';
 import 'package:watch_app/core/app_mode.dart';
 import 'package:watch_app/core/di/injector.dart';
 import 'package:watch_app/core/models/home_section.dart';
 import 'package:watch_app/core/models/media_item.dart';
 import 'package:watch_app/core/models/provider_info.dart';
+import 'package:watch_app/core/playback/watch_history.dart';
 import 'package:watch_app/core/repository/catalogue_repository.dart';
 import 'package:watch_app/core/repository/source_repository.dart';
 import 'package:watch_app/core/state/active_source_cubit.dart';
+import 'package:watch_app/core/supabase/supabase_service.dart';
 import 'package:watch_app/core/tv/tv_focusable.dart';
 import 'package:watch_app/core/zmode/zmode_prefs.dart';
 import 'package:watch_app/features/auth/auth_cubit.dart';
@@ -63,7 +68,6 @@ class _FakeAuthCubit extends Cubit<AuthState> implements AuthCubit {
   // provider is loaded before searching it. These fakes are already "loaded".
   @override
   Future<bool> ensureSourceLoaded(String sourceId) async => true;
-
 }
 
 Widget _homeApp(HomeCubit cubit) => MultiBlocProvider(
@@ -142,6 +146,49 @@ void main() {
       expect(poster.onLongPress, isNotNull);
     },
   );
+
+  testWidgets('TV home shows local Continue Watching while signed out', (
+    tester,
+  ) async {
+    late Directory dir;
+    await tester.runAsync(() async {
+      dir = await Directory.systemTemp.createTemp('tv_continue_history');
+      Hive.init(dir.path);
+      await WatchHistory.init();
+    });
+    final history = WatchHistory(SupabaseService(), () => null);
+    sl.registerSingleton<WatchHistory>(history);
+    await tester.runAsync(
+      () => history.save(
+        HistoryEntry(
+          sourceId: 'test',
+          showId: 'local-show',
+          showTitle: 'Local Show',
+          showUrl: '/local-show',
+          category: 'sub',
+          episodeId: 'episode-1',
+          episodeNumber: 1,
+          episodeUrl: '/local-show/1',
+          position: const Duration(minutes: 1),
+          duration: const Duration(minutes: 24),
+          updatedAt: 1,
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(_homeApp(cubit));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Continue Watching'), findsOneWidget);
+    expect(find.text('Local Show'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.runAsync(() async {
+      await Hive.deleteFromDisk();
+      if (await dir.exists()) await dir.delete(recursive: true);
+    });
+    sl.unregister<WatchHistory>();
+  });
 
   testWidgets(
     'HomeScreenTv exposes semantics labels for hero buttons, See all and '
