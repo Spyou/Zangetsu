@@ -25,6 +25,7 @@ import 'package:watch_app/core/playback/playback_prefs.dart';
 import 'package:watch_app/core/playback/search_history.dart';
 import 'package:watch_app/core/playback/search_prefs.dart';
 import 'package:watch_app/core/playback/search_source_prefs.dart';
+import 'package:watch_app/core/profiles/viewer_profile.dart';
 import 'package:watch_app/core/provider/cloudstream_provider.dart';
 import 'package:watch_app/core/provider/provider_manager.dart';
 import 'package:watch_app/core/provider/provider_registry.dart';
@@ -401,6 +402,7 @@ void main() {
     sl.registerSingleton<SearchPrefs>(_FakeSearchPrefs());
     sl.registerSingleton<SearchSourcePrefs>(_FakeSearchSourcePrefs());
     sl.registerSingleton<ListStatusStore>(ListStatusStore());
+    sl.registerSingleton<ViewerProfileStore>(ViewerProfileStore());
     sl.registerSingleton<DownloadManager>(DownloadManager(fakeRepo));
     sl.registerSingleton<ProviderRegistry>(_FakeProviderRegistry());
     sl.registerSingleton<CloudStreamManager>(CloudStreamManager());
