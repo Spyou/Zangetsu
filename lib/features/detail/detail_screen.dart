@@ -427,6 +427,8 @@ class _DetailViewState extends State<_DetailView>
   // The episode url we've already kicked a background source-prefetch for, so we
   // don't re-fire it on every rebuild (see _maybePrefetch).
   String? _prefetchedEpUrl;
+  final Map<(String, String), Future<ReadEntry?>> _cloudReadHistoryLookups = {};
+  final Set<(String, String)> _cloudReadHistoryChecked = {};
 
   /// How long the viewer must stay on the screen before a source resolve is
   /// started for them. Long enough that a back-and-forth browse never starts
@@ -1280,8 +1282,13 @@ class _DetailViewState extends State<_DetailView>
         detail.type == ProviderType.manga ||
         widget.item.type == ProviderType.novel ||
         widget.item.type == ProviderType.manga;
+    final readingSourceId = _readingSourceId(detail);
+    if (reading) {
+      await _loadCloudReadHistory(readingSourceId);
+      if (!mounted) return;
+    }
     final resume = reading
-        ? _readResumeIndex(episodes, sourceId: _readingSourceId(detail))
+        ? _readResumeIndex(episodes, sourceId: readingSourceId)
         : (index: _resumeIndex(episodes), hasResume: _hasVideoResume(episodes));
     var peek = false;
     if (shouldAskBeforeJump(
@@ -1663,6 +1670,31 @@ class _DetailViewState extends State<_DetailView>
     return (index: 0, hasResume: false);
   }
 
+  Future<ReadEntry?> _loadCloudReadHistory(String sourceId) {
+    final history = sl<ReadHistory>();
+    final showId = widget.item.id;
+    final key = (sourceId, showId);
+    final pending = _cloudReadHistoryLookups[key];
+    if (pending != null) return pending;
+    if (!_cloudReadHistoryChecked.add(key)) {
+      return Future.value(history.get(sourceId, showId));
+    }
+
+    final future = () async {
+      try {
+        final entry = await history.refreshFromCloud(sourceId, showId);
+        if (entry != null && mounted) setState(() {});
+        return entry;
+      } catch (_) {
+        return null;
+      } finally {
+        _cloudReadHistoryLookups.remove(key);
+      }
+    }();
+    _cloudReadHistoryLookups[key] = future;
+    return future;
+  }
+
   // ── Downloads ─────────────────────────────────────────────────────────────
 
   /// The main Download button. A single movie/episode goes straight to the
@@ -2022,6 +2054,7 @@ class _DetailViewState extends State<_DetailView>
     // (harmlessly but wrongly) say "start over".
     final resume = _resumeTarget(eps);
     final readingSourceId = _readingSourceId(detail);
+    if (isReading) unawaited(_loadCloudReadHistory(readingSourceId));
     final readResume = isReading
         ? _readResumeIndex(eps, sourceId: readingSourceId)
         : null;

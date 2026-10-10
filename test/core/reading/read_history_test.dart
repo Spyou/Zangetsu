@@ -12,6 +12,8 @@ import 'package:watch_app/core/supabase/supabase_service.dart';
 class FakeReadingHistoryRemote implements ReadingHistoryRemote {
   final List<Map<String, dynamic>> rows = [];
   int upsertCalls = 0;
+  int targetedReads = 0;
+  bool failNextPage = false;
 
   @override
   Future<void> upsert(Map<String, dynamic> row) async {
@@ -34,6 +36,61 @@ class FakeReadingHistoryRemote implements ReadingHistoryRemote {
     return rows
         .where((r) => r['user_key'] == userKey && r['profile_id'] == profileId)
         .toList();
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> pageFor(
+    String userKey, {
+    String? profileId,
+    required ProviderType type,
+    required int offset,
+  }) async {
+    if (failNextPage) {
+      failNextPage = false;
+      throw Exception('network down');
+    }
+    final page =
+        rows
+            .where(
+              (r) =>
+                  r['user_key'] == userKey &&
+                  r['profile_id'] == profileId &&
+                  (type == ProviderType.manga
+                      ? r['type'] == ProviderType.manga.name
+                      : readEntryTypeFromName(r['type'] as String?) ==
+                            ProviderType.novel),
+            )
+            .toList()
+          ..sort((a, b) {
+            final updated = (b['updated_ms'] as num? ?? 0).compareTo(
+              a['updated_ms'] as num? ?? 0,
+            );
+            if (updated != 0) return updated;
+            final source = '${a['source_id']}'.compareTo('${b['source_id']}');
+            return source != 0
+                ? source
+                : '${a['show_id']}'.compareTo('${b['show_id']}');
+          });
+    return page.skip(offset).take(ReadingHistoryRemote.pageSize).toList();
+  }
+
+  @override
+  Future<Map<String, dynamic>?> getFor(
+    String userKey, {
+    String? profileId,
+    required String sourceId,
+    required String showId,
+  }) async {
+    targetedReads++;
+    for (final row in rows) {
+      if (row['user_key'] == userKey &&
+          row['profile_id'] == profileId &&
+          row['source_id'] == sourceId &&
+          row['show_id'] == showId) {
+        return row;
+      }
+    }
+    return null;
   }
 
   @override
@@ -79,6 +136,26 @@ class _BrokenReadingHistoryRemote implements ReadingHistoryRemote {
   Future<List<Map<String, dynamic>>> listFor(
     String userKey, {
     String? profileId,
+  }) async {
+    throw Exception('relation "reading_history" does not exist');
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> pageFor(
+    String userKey, {
+    String? profileId,
+    required ProviderType type,
+    required int offset,
+  }) async {
+    throw Exception('relation "reading_history" does not exist');
+  }
+
+  @override
+  Future<Map<String, dynamic>?> getFor(
+    String userKey, {
+    String? profileId,
+    required String sourceId,
+    required String showId,
   }) async {
     throw Exception('relation "reading_history" does not exist');
   }
@@ -254,6 +331,89 @@ void main() {
     }); // both survive — merge, not replace
   });
 
+  test(
+    'pullFromCloud() initially loads 200 newest rows per reading type',
+    () async {
+      final remote = FakeReadingHistoryRemote();
+      final h = ReadHistory(SupabaseService(), () => 'user1', remote: remote);
+      for (var i = 0; i < 201; i++) {
+        remote.rows.add({
+          'user_key': 'user1',
+          'source_id': 'src',
+          'show_id': 'manga$i',
+          'title': 'Manga $i',
+          'cover': null,
+          'chapter_id': 'chapter1',
+          'chapter_number': 1,
+          'chapter_url': 'https://x/manga$i/1',
+          'pos': 1,
+          'total': 20,
+          'updated_ms': i,
+          'type': 'manga',
+        });
+      }
+      remote.rows.add({
+        'user_key': 'user1',
+        'source_id': 'src',
+        'show_id': 'novel1',
+        'title': 'Novel 1',
+        'cover': null,
+        'chapter_id': 'chapter1',
+        'chapter_number': 1,
+        'chapter_url': 'https://x/novel1/1',
+        'pos': 1,
+        'total': 20,
+        'updated_ms': 1,
+        'type': 'novel',
+      });
+
+      await h.pullFromCloud();
+
+      expect(
+        h.all().where((e) => e.type == ProviderType.manga),
+        hasLength(200),
+      );
+      expect(h.all().where((e) => e.type == ProviderType.novel), hasLength(1));
+
+      await h.loadMoreFromCloud(ProviderType.manga);
+
+      expect(
+        h.all().where((e) => e.type == ProviderType.manga),
+        hasLength(201),
+      );
+      expect(h.all().where((e) => e.type == ProviderType.novel), hasLength(1));
+    },
+  );
+
+  test('failed reading-history pages keep the cursor for retry', () async {
+    final remote = FakeReadingHistoryRemote();
+    final h = ReadHistory(SupabaseService(), () => 'user1', remote: remote);
+    for (var i = 0; i < 201; i++) {
+      remote.rows.add({
+        'user_key': 'user1',
+        'source_id': 'src',
+        'show_id': 'novel$i',
+        'title': 'Novel $i',
+        'cover': null,
+        'chapter_id': 'chapter1',
+        'chapter_number': 1,
+        'chapter_url': 'https://x/novel$i/1',
+        'pos': 1,
+        'total': 20,
+        'updated_ms': i,
+        'type': 'novel',
+      });
+    }
+    await h.pullFromCloud();
+    remote.failNextPage = true;
+
+    await h.loadMoreFromCloud(ProviderType.novel);
+    expect(h.all(), hasLength(200));
+    await h.loadMoreFromCloud(ProviderType.novel);
+
+    expect(h.all(), hasLength(201));
+  });
+
   test('pullFromCloud() does NOT overwrite a local row when the cloud copy '
       'is OLDER (newest-wins, local-newer direction)', () async {
     final fake = FakeReadingHistoryRemote();
@@ -371,6 +531,38 @@ void main() {
     'total': 20,
     'updated_ms': updatedMs,
   };
+
+  test('title progress can be fetched by its exact cloud key', () async {
+    final remote = FakeReadingHistoryRemote()
+      ..rows.add(cloudRow('olderTitle', updatedMs: 10));
+    final history = ReadHistory(
+      SupabaseService(),
+      () => 'user1',
+      remote: remote,
+    );
+
+    final entry = await history.refreshFromCloud('js:m', 'olderTitle');
+
+    expect(entry?.chapterId, 'chCloud');
+    expect(remote.targetedReads, 1);
+  });
+
+  test('title refresh never replaces newer local reading progress', () async {
+    final remote = FakeReadingHistoryRemote()
+      ..rows.add(cloudRow('title', updatedMs: 10));
+    final history = ReadHistory(
+      SupabaseService(),
+      () => 'user1',
+      remote: remote,
+    );
+    await history.save(entry('title', pos: 8, ts: 20));
+
+    final refreshed = await history.refreshFromCloud('js:m', 'title');
+
+    expect(refreshed?.pos, 8);
+    expect(refreshed?.updatedMs, 20);
+    expect(remote.targetedReads, 1);
+  });
 
   test(
     'pullFromCloudIfStale() pulls when there is no prior pull marker',

@@ -10,6 +10,7 @@ import 'package:watch_app/core/supabase/supabase_service.dart';
 class FakeHistoryRemote implements HistoryRemote {
   final List<Map<String, dynamic>> rows = [];
   int upsertCalls = 0;
+  bool failNextPage = false;
 
   @override
   Future<void> upsert(Map<String, dynamic> row) async {
@@ -55,6 +56,35 @@ class FakeHistoryRemote implements HistoryRemote {
     return rows
         .where((r) => r['user_key'] == userKey && r['profile_id'] == profileId)
         .toList();
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> pageFor(
+    String userKey, {
+    String? profileId,
+    required int offset,
+  }) async {
+    if (failNextPage) {
+      failNextPage = false;
+      throw Exception('network down');
+    }
+    final page =
+        rows
+            .where(
+              (r) => r['user_key'] == userKey && r['profile_id'] == profileId,
+            )
+            .toList()
+          ..sort((a, b) {
+            final updated = (b['updated_at'] as num? ?? 0).compareTo(
+              a['updated_at'] as num? ?? 0,
+            );
+            if (updated != 0) return updated;
+            final source = '${a['source_id']}'.compareTo('${b['source_id']}');
+            return source != 0
+                ? source
+                : '${a['show_id']}'.compareTo('${b['show_id']}');
+          });
+    return page.skip(offset).take(HistoryRemote.pageSize).toList();
   }
 }
 
@@ -202,6 +232,71 @@ void main() {
       'localOnly',
       'fromCloud',
     }); // both survive — merge, not replace
+  });
+
+  test(
+    'pullFromCloud() initially loads only the newest 200 cloud rows',
+    () async {
+      for (var i = 0; i < 201; i++) {
+        fake.rows.add({
+          'user_key': 'user1',
+          'source_id': 'src',
+          'show_id': 'show$i',
+          'show_title': 'Show $i',
+          'cover': null,
+          'cover_headers': null,
+          'show_url': 'https://x/show$i',
+          'category': 'sub',
+          'episode_id': 'ep1',
+          'episode_number': 1,
+          'episode_url': 'https://x/show$i/ep1',
+          'position_ms': 1000,
+          'duration_ms': 10000,
+          'updated_at': i,
+          'mal_id': null,
+        });
+      }
+
+      await history.pullFromCloud();
+
+      expect(history.all(), hasLength(200));
+      expect(history.all().first.showId, 'show200');
+
+      await history.loadMoreFromCloud();
+
+      expect(history.all(), hasLength(201));
+      expect(history.all().last.showId, 'show0');
+    },
+  );
+
+  test('failed watch-history pages keep the cursor for retry', () async {
+    for (var i = 0; i < 201; i++) {
+      fake.rows.add({
+        'user_key': 'user1',
+        'source_id': 'src',
+        'show_id': 'show$i',
+        'show_title': 'Show $i',
+        'cover': null,
+        'cover_headers': null,
+        'show_url': 'https://x/show$i',
+        'category': 'sub',
+        'episode_id': 'ep1',
+        'episode_number': 1,
+        'episode_url': 'https://x/show$i/ep1',
+        'position_ms': 1000,
+        'duration_ms': 10000,
+        'updated_at': i,
+        'mal_id': null,
+      });
+    }
+    await history.pullFromCloud();
+    fake.failNextPage = true;
+
+    await history.loadMoreFromCloud();
+    expect(history.all(), hasLength(200));
+    await history.loadMoreFromCloud();
+
+    expect(history.all(), hasLength(201));
   });
 
   test('pullFromCloud() with an EMPTY cloud does NOT wipe local history '

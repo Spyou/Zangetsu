@@ -152,6 +152,10 @@ class ReadingHistoryRemote {
   ReadingHistoryRemote(this._service);
 
   final SupabaseService _service;
+  static const int pageSize = 200;
+  static const int _seedPageSize = 1000;
+  static const String _readingColumns =
+      'source_id,show_id,title,cover,chapter_id,chapter_number,chapter_url,pos,total,updated_ms,type';
 
   Future<void> upsert(Map<String, dynamic> row) async {
     final profileId = row['profile_id'] as String?;
@@ -171,10 +175,77 @@ class ReadingHistoryRemote {
     final table = profileId == null
         ? 'reading_history'
         : 'profile_reading_history';
-    var query = _service.client.from(table).select().eq('user_key', userKey);
+    final rows = <Map<String, dynamic>>[];
+    var offset = 0;
+    while (true) {
+      var query = _service.client
+          .from(table)
+          .select('source_id,show_id,updated_ms')
+          .eq('user_key', userKey);
+      if (profileId != null) query = query.eq('profile_id', profileId);
+      final page =
+          (await query
+                      .order('source_id')
+                      .order('show_id')
+                      .range(offset, offset + _seedPageSize - 1)
+                  as List)
+              .cast<Map<String, dynamic>>();
+      if (page.isEmpty) break;
+      rows.addAll(page);
+      offset += page.length;
+      if (page.length < _seedPageSize) break;
+    }
+    return rows;
+  }
+
+  /// shortcut: offset pages may drift during concurrent cloud edits; switch to
+  /// keyset cursors if users observe skipped rows while scrolling.
+  Future<List<Map<String, dynamic>>> pageFor(
+    String userKey, {
+    String? profileId,
+    required ProviderType type,
+    required int offset,
+  }) async {
+    final table = profileId == null
+        ? 'reading_history'
+        : 'profile_reading_history';
+    var query = _service.client
+        .from(table)
+        .select(_readingColumns)
+        .eq('user_key', userKey);
     if (profileId != null) query = query.eq('profile_id', profileId);
-    final res = await query;
-    return (res as List).cast<Map<String, dynamic>>();
+    query = type == ProviderType.manga
+        ? query.eq('type', type.name)
+        : query.or('type.neq.manga,type.is.null');
+    final page =
+        (await query
+                    .order('updated_ms', ascending: false)
+                    .order('source_id')
+                    .order('show_id')
+                    .range(offset, offset + pageSize - 1)
+                as List)
+            .cast<Map<String, dynamic>>();
+    return page;
+  }
+
+  Future<Map<String, dynamic>?> getFor(
+    String userKey, {
+    String? profileId,
+    required String sourceId,
+    required String showId,
+  }) async {
+    final table = profileId == null
+        ? 'reading_history'
+        : 'profile_reading_history';
+    var query = _service.client
+        .from(table)
+        .select(_readingColumns)
+        .eq('user_key', userKey)
+        .eq('source_id', sourceId)
+        .eq('show_id', showId);
+    if (profileId != null) query = query.eq('profile_id', profileId);
+    final row = await query.maybeSingle();
+    return (row as Map?)?.cast<String, dynamic>();
   }
 
   Future<void> deleteRow(
@@ -190,7 +261,7 @@ class ReadingHistoryRemote {
       'user_key': userKey,
       'source_id': sourceId,
       'show_id': showId,
-      if (profileId != null) 'profile_id': profileId,
+      'profile_id': ?profileId,
     });
   }
 
@@ -243,6 +314,7 @@ class ReadHistory {
   static const String syncMetaBox = 'library_sync_meta';
   static const String _syncMetaKey = 'reading_history_lastPullMs';
   static const String _seedFlagPrefix = 'reading_history_seeded_';
+  static const String _cloudPagePrefix = 'reading_history_page:';
 
   static Future<void> init() async {
     if (!Hive.isBoxOpen(boxName)) {
@@ -255,7 +327,11 @@ class ReadHistory {
     // while the pull throttle in [syncMetaBox] survives, which would skip the
     // very pull that puts the reading history back. Drop it.
     if (quarantinedBoxes.contains(boxName) && Hive.isBoxOpen(syncMetaBox)) {
-      await Hive.box(syncMetaBox).delete(_syncMetaKey);
+      final meta = Hive.box(syncMetaBox);
+      await meta.delete(_syncMetaKey);
+      for (final key in meta.keys.toList()) {
+        if ('$key'.contains(_cloudPagePrefix)) await meta.delete(key);
+      }
     }
   }
 
@@ -263,6 +339,41 @@ class ReadHistory {
   String _key(String sourceId, String showId, [String? profileId]) =>
       profileScopedKey(profileId ?? _profileId, hiveKey('$sourceId::$showId'));
   final Map<String, int> _lastCloudPush = {};
+
+  String _cloudPageKey(String userId, String profileId, ProviderType type) =>
+      profileScopedKey(
+        profileId,
+        '$_cloudPagePrefix${hiveKey(userId)}:${type.name}',
+      );
+
+  Map _cloudPageState(String userId, String profileId, ProviderType type) {
+    if (!Hive.isBoxOpen(syncMetaBox)) return const {};
+    final state = Hive.box(
+      syncMetaBox,
+    ).get(_cloudPageKey(userId, profileId, type));
+    return state is Map ? state : const {};
+  }
+
+  bool hasMoreCloudPages(ProviderType type, {String? forProfileId}) {
+    final uid = _currentUserId();
+    if (uid == null) return false;
+    final profileId = forProfileId ?? _profileId;
+    return _cloudPageState(uid, profileId, type)['hasMore'] as bool? ?? true;
+  }
+
+  Future<void> _saveCloudPageState(
+    String userId,
+    String profileId,
+    ProviderType type, {
+    required int offset,
+    required bool hasMore,
+  }) async {
+    if (!Hive.isBoxOpen(syncMetaBox)) return;
+    await Hive.box(syncMetaBox).put(_cloudPageKey(userId, profileId, type), {
+      'offset': offset,
+      'hasMore': hasMore,
+    });
+  }
 
   /// Persist progress. The local write is ALWAYS immediate (instant resume);
   /// the cloud push is throttled unless [flush] is true.
@@ -404,34 +515,96 @@ class ReadHistory {
     if (uid == null) return;
     final profileId = forProfileId ?? _profileId;
     try {
-      final rows = await _remote.listFor(
-        uid,
-        profileId: _remoteProfileId(profileId),
-      );
-      for (final m in rows) {
-        final key = _key('${m['source_id']}', '${m['show_id']}', profileId);
-        final cloudUpdated = (m['updated_ms'] as num?)?.toInt() ?? 0;
-        final localUpdated =
-            (_box.get(key)?['updatedMs'] as num?)?.toInt() ?? -1;
-        if (cloudUpdated <= localUpdated)
-          continue; // local is same/newer — keep it
-        await _box.put(key, {
-          'sourceId': m['source_id'],
-          'showId': m['show_id'],
-          'title': m['title'],
-          'cover': m['cover'],
-          'chapterId': m['chapter_id'],
-          'chapterNumber': m['chapter_number'],
-          'chapterUrl': m['chapter_url'],
-          'pos': m['pos'],
-          'total': m['total'],
-          'updatedMs': m['updated_ms'],
-          'type': m['type'],
-        });
+      final profile = _remoteProfileId(profileId);
+      final pages = await Future.wait([
+        _remote.pageFor(
+          uid,
+          profileId: profile,
+          type: ProviderType.manga,
+          offset: 0,
+        ),
+        _remote.pageFor(
+          uid,
+          profileId: profile,
+          type: ProviderType.novel,
+          offset: 0,
+        ),
+      ]);
+      await _mergeCloudRows(pages.expand((page) => page).toList(), profileId);
+      for (final (type, rows) in [
+        (ProviderType.manga, pages[0]),
+        (ProviderType.novel, pages[1]),
+      ]) {
+        final pageState = _cloudPageState(uid, profileId, type);
+        final oldOffset = pageState['offset'] as int? ?? 0;
+        await _saveCloudPageState(
+          uid,
+          profileId,
+          type,
+          offset: oldOffset < rows.length ? rows.length : oldOffset,
+          hasMore: rows.length == ReadingHistoryRemote.pageSize,
+        );
       }
       _markPulled(profileId);
     } catch (_) {
       /* keep local — missing table / offline degrades silently */
+    }
+  }
+
+  Future<bool> loadMoreFromCloud(
+    ProviderType type, {
+    String? forProfileId,
+  }) async {
+    final uid = _currentUserId();
+    if (uid == null) return false;
+    final profileId = forProfileId ?? _profileId;
+    final state = _cloudPageState(uid, profileId, type);
+    if (state['hasMore'] == false) return false;
+    final offset = state['offset'] as int? ?? 0;
+    try {
+      final rows = await _remote.pageFor(
+        uid,
+        profileId: _remoteProfileId(profileId),
+        type: type,
+        offset: offset,
+      );
+      await _mergeCloudRows(rows, profileId);
+      final hasMore = rows.length == ReadingHistoryRemote.pageSize;
+      await _saveCloudPageState(
+        uid,
+        profileId,
+        type,
+        offset: offset + rows.length,
+        hasMore: hasMore,
+      );
+      return hasMore;
+    } catch (_) {
+      return true; // Keep the same cursor so the next scroll can retry.
+    }
+  }
+
+  Future<void> _mergeCloudRows(
+    List<Map<String, dynamic>> rows,
+    String profileId,
+  ) async {
+    for (final m in rows) {
+      final key = _key('${m['source_id']}', '${m['show_id']}', profileId);
+      final cloudUpdated = (m['updated_ms'] as num?)?.toInt() ?? 0;
+      final localUpdated = (_box.get(key)?['updatedMs'] as num?)?.toInt() ?? -1;
+      if (cloudUpdated <= localUpdated) continue;
+      await _box.put(key, {
+        'sourceId': m['source_id'],
+        'showId': m['show_id'],
+        'title': m['title'],
+        'cover': m['cover'],
+        'chapterId': m['chapter_id'],
+        'chapterNumber': m['chapter_number'],
+        'chapterUrl': m['chapter_url'],
+        'pos': m['pos'],
+        'total': m['total'],
+        'updatedMs': m['updated_ms'],
+        'type': m['type'],
+      });
     }
   }
 
@@ -472,6 +645,23 @@ class ReadHistory {
   ReadEntry? get(String sourceId, String showId) {
     final raw = _box.get(_key(sourceId, showId));
     return raw == null ? null : _fromMap(raw);
+  }
+
+  Future<ReadEntry?> refreshFromCloud(String sourceId, String showId) async {
+    final uid = _currentUserId();
+    if (uid == null) return get(sourceId, showId);
+    try {
+      final row = await _remote.getFor(
+        uid,
+        profileId: _remoteProfileId(_profileId),
+        sourceId: sourceId,
+        showId: showId,
+      );
+      if (row != null) await _mergeCloudRows([row], _profileId);
+    } catch (_) {
+      // A missing row or offline detail screen stays local-only.
+    }
+    return get(sourceId, showId);
   }
 
   /// Remove a single title from reading history, locally and (when signed in)
@@ -523,6 +713,9 @@ class ReadHistory {
       await _box.delete(k);
       _lastCloudPush.remove(k);
     }
+    if (uid != null && Hive.isBoxOpen(syncMetaBox)) {
+      await Hive.box(syncMetaBox).delete(_cloudPageKey(uid, profileId, type));
+    }
   }
 
   /// Drop the local cache only — see [WatchHistory.clearLocal]. The cloud
@@ -534,7 +727,12 @@ class ReadHistory {
       final meta = Hive.box(syncMetaBox);
       for (final key
           in meta.keys
-              .where((k) => '$k' == _syncMetaKey || '$k'.startsWith('p:'))
+              .where(
+                (k) =>
+                    '$k' == _syncMetaKey ||
+                    '$k'.startsWith('p:') ||
+                    '$k'.contains(_cloudPagePrefix),
+              )
               .toList()) {
         await meta.delete(key);
       }

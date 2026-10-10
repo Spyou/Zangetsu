@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -30,11 +32,7 @@ import '../player/player_screen.dart';
 /// Every store is a per-title last-position pointer, so there's one row per
 /// show/title.
 class HistoryScreen extends StatefulWidget {
-  const HistoryScreen({
-    super.key,
-    this.initialIndex = 0,
-    this.showBack = true,
-  });
+  const HistoryScreen({super.key, this.initialIndex = 0, this.showBack = true});
 
   /// False when shown as a dock tab — nothing to pop back to.
   final bool showBack;
@@ -73,6 +71,9 @@ class _HistoryScreenState extends State<HistoryScreen>
   late List<HistoryEntry> _anime = _watch.all();
   late List<ReadEntry> _manga = _readOf(ProviderType.manga);
   late List<ReadEntry> _novel = _readOf(ProviderType.novel);
+  bool _loadingAnimeMore = false;
+  bool _loadingMangaMore = false;
+  bool _loadingNovelMore = false;
 
   List<ReadEntry> _readOf(ProviderType t) =>
       _read.all().where((e) => e.type == t).toList();
@@ -83,6 +84,44 @@ class _HistoryScreenState extends State<HistoryScreen>
     _manga = all.where((e) => e.type == ProviderType.manga).toList();
     _novel = all.where((e) => e.type == ProviderType.novel).toList();
   });
+
+  Future<void> _loadMoreAnime() async {
+    if (_loadingAnimeMore || !_watch.hasMoreCloudPages()) return;
+    setState(() => _loadingAnimeMore = true);
+    try {
+      await _watch.loadMoreFromCloud();
+      if (mounted) _reloadAnime();
+    } finally {
+      if (mounted) setState(() => _loadingAnimeMore = false);
+    }
+  }
+
+  Future<void> _loadMoreReading(ProviderType type) async {
+    final isManga = type == ProviderType.manga;
+    final isLoading = isManga ? _loadingMangaMore : _loadingNovelMore;
+    if (isLoading || !_read.hasMoreCloudPages(type)) return;
+    setState(() {
+      if (isManga) {
+        _loadingMangaMore = true;
+      } else {
+        _loadingNovelMore = true;
+      }
+    });
+    try {
+      await _read.loadMoreFromCloud(type);
+      if (mounted) _reloadReading();
+    } finally {
+      if (mounted) {
+        setState(() {
+          if (isManga) {
+            _loadingMangaMore = false;
+          } else {
+            _loadingNovelMore = false;
+          }
+        });
+      }
+    }
+  }
 
   @override
   void dispose() {
@@ -111,7 +150,10 @@ class _HistoryScreenState extends State<HistoryScreen>
   }
 
   void _openDetail(MediaItem item) {
-    Navigator.push(context, DetailScreen.route(item)).then((_) => _reloadAnime());
+    Navigator.push(
+      context,
+      DetailScreen.route(item),
+    ).then((_) => _reloadAnime());
   }
 
   /// Long-press info sheet — mirrors the Home Continue Watching card
@@ -129,10 +171,7 @@ class _HistoryScreenState extends State<HistoryScreen>
       playLabel: context.l10n.resume,
       progress: e.progress,
       progressLabel: e.episodeNumber != null
-          ? context.l10n.episodeWatchedPct(
-              e.episodeNumber!.toInt(),
-              pct,
-            )
+          ? context.l10n.episodeWatchedPct(e.episodeNumber!.toInt(), pct)
           : context.l10n.percentWatched(pct),
       onPlay: () => _resume(e),
       onOpenDetail: () => _openDetail(stub),
@@ -225,7 +264,10 @@ class _HistoryScreenState extends State<HistoryScreen>
   );
 
   void _openReadDetail(MediaItem item) {
-    Navigator.push(context, DetailScreen.route(item)).then((_) => _reloadReading());
+    Navigator.push(
+      context,
+      DetailScreen.route(item),
+    ).then((_) => _reloadReading());
   }
 
   /// Long-press info sheet for a manga/novel row — the reading twin of
@@ -238,8 +280,9 @@ class _HistoryScreenState extends State<HistoryScreen>
     final chap = e.chapterNumber != null
         ? l10n.chapterLabel(e.chapterNumber!.toInt())
         : null;
-    final pctLabel =
-        hasProgress ? l10n.percentRead((progress * 100).round()) : null;
+    final pctLabel = hasProgress
+        ? l10n.percentRead((progress * 100).round())
+        : null;
     showMediaInfoSheet(
       context,
       title: e.title,
@@ -340,13 +383,13 @@ class _HistoryScreenState extends State<HistoryScreen>
           unselectedLabelColor: AppColors.textSecondary,
           labelStyle: TextStyle(
             fontFamily: AppText.fontFamily,
-          fontFamilyFallback: AppText.fontFamilyFallback,
+            fontFamilyFallback: AppText.fontFamilyFallback,
             fontSize: 14.5,
             fontWeight: FontWeight.w700,
           ),
           unselectedLabelStyle: TextStyle(
             fontFamily: AppText.fontFamily,
-          fontFamilyFallback: AppText.fontFamilyFallback,
+            fontFamilyFallback: AppText.fontFamilyFallback,
             fontSize: 14.5,
             fontWeight: FontWeight.w600,
           ),
@@ -363,6 +406,9 @@ class _HistoryScreenState extends State<HistoryScreen>
         children: [
           _list<HistoryEntry>(
             entries: _anime,
+            hasMore: _watch.hasMoreCloudPages(),
+            loadingMore: _loadingAnimeMore,
+            onLoadMore: _loadMoreAnime,
             tsMs: (e) => e.updatedAt,
             row: (e) => _HistoryRow(
               entry: e,
@@ -378,6 +424,9 @@ class _HistoryScreenState extends State<HistoryScreen>
           ),
           _list<ReadEntry>(
             entries: _manga,
+            hasMore: _read.hasMoreCloudPages(ProviderType.manga),
+            loadingMore: _loadingMangaMore,
+            onLoadMore: () => _loadMoreReading(ProviderType.manga),
             tsMs: (e) => e.updatedMs,
             row: (e) => _ReadRow(
               entry: e,
@@ -393,6 +442,9 @@ class _HistoryScreenState extends State<HistoryScreen>
           ),
           _list<ReadEntry>(
             entries: _novel,
+            hasMore: _read.hasMoreCloudPages(ProviderType.novel),
+            loadingMore: _loadingNovelMore,
+            onLoadMore: () => _loadMoreReading(ProviderType.novel),
             tsMs: (e) => e.updatedMs,
             row: (e) => _ReadRow(
               entry: e,
@@ -416,41 +468,67 @@ class _HistoryScreenState extends State<HistoryScreen>
   /// ([ReadEntry.updatedMs]) share this scaffolding.
   Widget _list<T>({
     required List<T> entries,
+    required bool hasMore,
+    required bool loadingMore,
+    required Future<void> Function() onLoadMore,
     required int Function(T) tsMs,
     required Widget Function(T) row,
     required Widget empty,
   }) {
-    if (entries.isEmpty) return empty;
     final groups = _groupBy(context, entries, tsMs);
-    return ListView.builder(
-      padding: EdgeInsets.only(
-        top: 4,
-        bottom: MediaQuery.paddingOf(context).bottom,
-      ),
-      itemCount: groups.length,
-      itemBuilder: (_, gi) {
-        final g = groups[gi];
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 18, 20, 8),
-              child: Text(
-                g.label,
-                style: TextStyle(
-                  fontFamily: AppText.fontFamily,
-          fontFamilyFallback: AppText.fontFamilyFallback,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 0.2,
-                  color: AppColors.accent,
+    return NotificationListener<ScrollNotification>(
+      onNotification: (notification) {
+        if (hasMore &&
+            notification.metrics.extentAfter < 320 &&
+            (notification is ScrollUpdateNotification ||
+                notification is ScrollEndNotification)) {
+          unawaited(onLoadMore());
+        }
+        return false;
+      },
+      child: ListView.builder(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: EdgeInsets.only(
+          top: 4,
+          bottom: MediaQuery.paddingOf(context).bottom,
+        ),
+        itemCount: (groups.isEmpty ? 1 : groups.length) + (hasMore ? 1 : 0),
+        itemBuilder: (_, gi) {
+          if (groups.isEmpty) {
+            if (gi == 0) {
+              return SizedBox(
+                height: MediaQuery.sizeOf(context).height * 0.65,
+                child: empty,
+              );
+            }
+            return _HistoryLoadMore(loading: loadingMore);
+          }
+          if (gi == groups.length) {
+            return _HistoryLoadMore(loading: loadingMore);
+          }
+          final g = groups[gi];
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 18, 20, 8),
+                child: Text(
+                  g.label,
+                  style: TextStyle(
+                    fontFamily: AppText.fontFamily,
+                    fontFamilyFallback: AppText.fontFamilyFallback,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.2,
+                    color: AppColors.accent,
+                  ),
                 ),
               ),
-            ),
-            for (final e in g.entries) row(e),
-          ],
-        );
-      },
+              for (final e in g.entries) row(e),
+            ],
+          );
+        },
+      ),
     );
   }
 
@@ -520,7 +598,10 @@ class _HistoryRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final e = entry;
-    final time = _clockTime(context, DateTime.fromMillisecondsSinceEpoch(e.updatedAt));
+    final time = _clockTime(
+      context,
+      DateTime.fromMillisecondsSinceEpoch(e.updatedAt),
+    );
     final ep = e.episodeNumber != null
         ? context.l10n.episodeLabel(e.episodeNumber!.toInt())
         : null;
@@ -554,7 +635,10 @@ class _ReadRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final e = entry;
-    final time = _clockTime(context, DateTime.fromMillisecondsSinceEpoch(e.updatedMs));
+    final time = _clockTime(
+      context,
+      DateTime.fromMillisecondsSinceEpoch(e.updatedMs),
+    );
     final ch = e.chapterNumber != null
         ? context.l10n.chapterLabel(e.chapterNumber!.toInt())
         : null;
@@ -696,10 +780,8 @@ class _Cover extends StatelessWidget {
                 httpHeaders: headers,
                 memCacheWidth: 144,
                 fit: BoxFit.cover,
-                placeholder: (_, _) =>
-                    ColoredBox(color: AppColors.surface2),
-                errorWidget: (_, _, _) =>
-                    ColoredBox(color: AppColors.surface2),
+                placeholder: (_, _) => ColoredBox(color: AppColors.surface2),
+                errorWidget: (_, _, _) => ColoredBox(color: AppColors.surface2),
               ),
             if (p > 0)
               Positioned(
@@ -725,6 +807,25 @@ class _Cover extends StatelessWidget {
       ),
     );
   }
+}
+
+class _HistoryLoadMore extends StatelessWidget {
+  const _HistoryLoadMore({required this.loading});
+
+  final bool loading;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    height: 56,
+    child: loading
+        ? const Center(
+            child: SizedBox.square(
+              dimension: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+          )
+        : const SizedBox.shrink(),
+  );
 }
 
 class _EmptyState extends StatelessWidget {
