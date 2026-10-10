@@ -22,6 +22,9 @@ class MyListRemote {
   MyListRemote(this._service);
 
   final SupabaseService _service;
+  static const int _pageSize = 500;
+  static const String _listColumns =
+      'sync_id,sync_version,source_id,item_id,title,cover,cover_headers,url,type,status,added_at';
 
   Future<void> upsert(Map<String, dynamic> row) async {
     final profileId = row['profile_id'] as String?;
@@ -36,12 +39,13 @@ class MyListRemote {
     String? profileId,
   }) async {
     final table = profileId == null ? 'mylist' : 'profile_mylist';
-    await _service.client.from(table).delete().match({
+    final filters = <String, Object>{
       'user_key': userKey,
       'source_id': sourceId,
       'item_id': itemId,
-      if (profileId != null) 'profile_id': profileId,
-    });
+    };
+    if (profileId != null) filters['profile_id'] = profileId;
+    await _service.client.from(table).delete().match(filters);
   }
 
   Future<List<Map<String, dynamic>>> listFor(
@@ -49,10 +53,166 @@ class MyListRemote {
     String? profileId,
   }) async {
     final table = profileId == null ? 'mylist' : 'profile_mylist';
-    var query = _service.client.from(table).select().eq('user_key', userKey);
+    var query = _service.client
+        .from(table)
+        .select('sync_id')
+        .eq('user_key', userKey);
     if (profileId != null) query = query.eq('profile_id', profileId);
-    final res = await query;
-    return (res as List).cast<Map<String, dynamic>>();
+    final head = await query.order('sync_id', ascending: false).limit(1);
+    final throughSyncId = (head as List).isEmpty
+        ? 0
+        : ((head.first['sync_id'] as num?)?.toInt() ?? 0);
+    return _listPages(
+      userKey,
+      profileId: profileId,
+      throughSyncId: throughSyncId,
+    );
+  }
+
+  Future<int> currentVersion(String userKey, {String? profileId}) async {
+    final row = await _service.client
+        .from('mylist_sync_clock')
+        .select('version')
+        .eq('user_key', userKey)
+        .eq('profile_scope', profileId ?? '')
+        .maybeSingle();
+    return (row?['version'] as num?)?.toInt() ?? 0;
+  }
+
+  Future<List<Map<String, dynamic>>> changesFor(
+    String userKey, {
+    String? profileId,
+    required int afterVersion,
+    required int throughVersion,
+  }) async {
+    if (throughVersion <= afterVersion) return const [];
+    final table = profileId == null ? 'mylist' : 'profile_mylist';
+    final changedRows = await _versionedRows(
+      table,
+      userKey,
+      profileId: profileId,
+      afterVersion: afterVersion,
+      throughVersion: throughVersion,
+    );
+    final removedRows = await _tombstones(
+      userKey,
+      profileId: profileId,
+      afterVersion: afterVersion,
+      throughVersion: throughVersion,
+    );
+    return [
+      for (final row in changedRows)
+        {'sync_version': row['sync_version'], 'deleted': false, 'row': row},
+      for (final row in removedRows) {...row, 'deleted': true},
+    ]..sort(
+      (a, b) => (a['sync_version'] as num).compareTo(b['sync_version'] as num),
+    );
+  }
+
+  Future<Set<String>> deletedKeysFor(
+    String userKey, {
+    String? profileId,
+  }) async {
+    final version = await currentVersion(userKey, profileId: profileId);
+    return {
+      for (final row in await _tombstones(
+        userKey,
+        profileId: profileId,
+        afterVersion: 0,
+        throughVersion: version,
+      ))
+        '${row['source_id']}::${row['item_id']}',
+    };
+  }
+
+  Future<List<Map<String, dynamic>>> _listPages(
+    String userKey, {
+    String? profileId,
+    required int throughSyncId,
+  }) async {
+    final table = profileId == null ? 'mylist' : 'profile_mylist';
+    final rows = <Map<String, dynamic>>[];
+    var afterSyncId = 0;
+    while (true) {
+      var query = _service.client
+          .from(table)
+          .select(_listColumns)
+          .eq('user_key', userKey);
+      if (profileId != null) query = query.eq('profile_id', profileId);
+      final page =
+          (await query
+                      .gt('sync_id', afterSyncId)
+                      .lte('sync_id', throughSyncId)
+                      .order('sync_id')
+                      .limit(_pageSize)
+                  as List)
+              .cast<Map<String, dynamic>>();
+      if (page.isEmpty) break;
+      rows.addAll(page);
+      afterSyncId = (page.last['sync_id'] as num).toInt();
+      if (page.length < _pageSize) break;
+    }
+    return rows;
+  }
+
+  Future<List<Map<String, dynamic>>> _versionedRows(
+    String table,
+    String userKey, {
+    String? profileId,
+    required int afterVersion,
+    required int throughVersion,
+  }) async {
+    final rows = <Map<String, dynamic>>[];
+    var after = afterVersion;
+    while (true) {
+      var query = _service.client
+          .from(table)
+          .select(_listColumns)
+          .eq('user_key', userKey);
+      if (profileId != null) query = query.eq('profile_id', profileId);
+      final page =
+          (await query
+                      .gt('sync_version', after)
+                      .lte('sync_version', throughVersion)
+                      .order('sync_version')
+                      .limit(_pageSize)
+                  as List)
+              .cast<Map<String, dynamic>>();
+      if (page.isEmpty) break;
+      rows.addAll(page);
+      after = (page.last['sync_version'] as num).toInt();
+      if (page.length < _pageSize) break;
+    }
+    return rows;
+  }
+
+  Future<List<Map<String, dynamic>>> _tombstones(
+    String userKey, {
+    String? profileId,
+    required int afterVersion,
+    required int throughVersion,
+  }) async {
+    final rows = <Map<String, dynamic>>[];
+    var after = afterVersion;
+    while (true) {
+      final page =
+          (await _service.client
+                      .from('mylist_sync_tombstones')
+                      .select('source_id,item_id,sync_version')
+                      .eq('user_key', userKey)
+                      .eq('profile_scope', profileId ?? '')
+                      .gt('sync_version', after)
+                      .lte('sync_version', throughVersion)
+                      .order('sync_version')
+                      .limit(_pageSize)
+                  as List)
+              .cast<Map<String, dynamic>>();
+      if (page.isEmpty) break;
+      rows.addAll(page);
+      after = (page.last['sync_version'] as num).toInt();
+      if (page.length < _pageSize) break;
+    }
+    return rows;
   }
 }
 
@@ -97,12 +257,16 @@ class MyListStore {
 
   static const String boxName = 'my_list';
 
-  /// Shared box holding the last successful cloud-pull timestamp per store, so
+  /// Shared box holding pull timestamps and server cursors per account/profile, so
   /// app-launch pulls can be throttled — the full list is already in the local
   /// cache and our own writes push to cloud immediately. Kept OUT of [boxName]
   /// so it never appears in [all]'s value iteration.
   static const String syncMetaBox = 'library_sync_meta';
   static const String _syncMetaKey = 'mylist_lastPullMs';
+  static const String _syncCursorPrefix = 'mylist_sync_cursor';
+
+  static bool _isMyListSyncMetaKey(String key) =>
+      key.contains(_syncMetaKey) || key.contains(_syncCursorPrefix);
 
   static Future<void> init() async {
     if (!Hive.isBoxOpen(boxName)) {
@@ -113,11 +277,17 @@ class MyListStore {
     }
     // An unreadable list box reopens EMPTY, but the pull throttle lives in
     // [syncMetaBox] and survives — so the next launch would see a fresh
-    // timestamp, skip the pull, and leave the list empty for up to 12 hours
+    // timestamp, skip the pull, and leave the list empty until the next stale pull
     // even though the cloud still has every item. Drop the timestamp so the
     // next [pullFromCloudIfStale] actually pulls.
     if (quarantinedBoxes.contains(boxName) && Hive.isBoxOpen(syncMetaBox)) {
-      await Hive.box(syncMetaBox).delete(_syncMetaKey);
+      final meta = Hive.box(syncMetaBox);
+      for (final key in meta.keys.toList()) {
+        final value = '$key';
+        if (_isMyListSyncMetaKey(value)) {
+          await meta.delete(key);
+        }
+      }
     }
   }
 
@@ -153,6 +323,7 @@ class MyListStore {
     if (uid == null) return (pushed: 0, failed: 0);
     final profileId = _profileId;
     final cloudKeys = <String>{};
+    final deletedKeys = <String>{};
     var readOk = true;
     try {
       for (final r in await _remote.listFor(
@@ -161,13 +332,24 @@ class MyListStore {
       )) {
         cloudKeys.add(_keyFromIds(r['source_id'], r['item_id'], profileId));
       }
+      deletedKeys.addAll(
+        await _remote.deletedKeysFor(
+          uid,
+          profileId: _remoteProfileId(profileId),
+        ),
+      );
     } catch (_) {
       readOk = false;
     }
+    if (!readOk) return (pushed: 0, failed: 1);
     var pushed = 0, failed = 0;
     for (final m in _allFor(profileId)) {
-      if (cloudKeys.contains(_key(m, profileId)))
-        continue; // already in cloud — don't clobber
+      final key = _key(m, profileId);
+      if (cloudKeys.contains(key)) continue; // already in cloud — don't clobber
+      if (deletedKeys.contains(_deleteKey(m.sourceId, m.id)) &&
+          !pendingKeys(profileId).contains(key)) {
+        continue; // don't resurrect a cloud delete from a stale local cache
+      }
       try {
         await _remote.upsert(_cloudRow(uid, m, profileId));
         pushed++;
@@ -175,7 +357,6 @@ class MyListStore {
         failed++;
       }
     }
-    if (!readOk) failed++;
     return (pushed: pushed, failed: failed);
   }
 
@@ -355,6 +536,12 @@ class MyListStore {
   String _metaKey(String key, [String? profileId]) =>
       profileScopedKey(profileId ?? _profileId, key);
 
+  String _userSyncMetaKey(String key, String userId, String profileId) =>
+      profileScopedKey(profileId, '$key:${hiveKey(userId)}');
+
+  String _cursorKey(String userId, String profileId) =>
+      _userSyncMetaKey(_syncCursorPrefix, userId, profileId);
+
   Set<String> pendingKeys([String? profileId]) {
     if (!Hive.isBoxOpen(syncMetaBox)) return <String>{};
     final raw = Hive.box(syncMetaBox).get(_metaKey(_pendingKey, profileId));
@@ -469,80 +656,183 @@ class MyListStore {
     final uid = _currentUserId();
     if (uid == null) return;
     final profileId = forProfileId ?? _profileId;
+    final remoteProfileId = _remoteProfileId(profileId);
     try {
-      final rows = await _remote.listFor(
+      final meta = Hive.box(syncMetaBox);
+      final cursorKey = _cursorKey(uid, profileId);
+      final cursor = meta.get(cursorKey) as int?;
+      final currentVersion = await _remote.currentVersion(
         uid,
-        profileId: _remoteProfileId(profileId),
+        profileId: remoteProfileId,
       );
-      final doomed = pendingDeleteKeys(profileId);
-      for (final row in rows) {
-        final headers = row['cover_headers'];
-        // A row this build can't decode (e.g. a `manga` type saved by a build
-        // that had it) must skip, not abort — throwing here stopped the pull
-        // dead and every later row went unmerged.
-        MediaItem item;
-        try {
-          item = MediaItem.fromJson({
-            'id': row['item_id'],
-            'title': row['title'],
-            'cover': row['cover'],
-            'coverHeaders': headers is String
-                ? jsonDecode(headers)
-                : headers is Map
-                ? headers
-                : null,
-            'url': row['url'],
-            'type': row['type'],
-            'sourceId': row['source_id'],
-          });
-        } catch (_) {
-          continue;
+
+      if (cursor != null && cursor <= currentVersion) {
+        if (cursor < currentVersion) {
+          final changes = await _remote.changesFor(
+            uid,
+            profileId: remoteProfileId,
+            afterVersion: cursor,
+            throughVersion: currentVersion,
+          );
+          await _applyIncrementalChanges(changes, profileId);
+          await meta.put(cursorKey, currentVersion);
+          revision.value++;
         }
-        // A local remove whose cloud DELETE failed must not come back.
-        if (doomed.contains('${item.sourceId}::${item.id}')) continue;
-        // Cloud rows don't store mal/tmdb ids; put them back from the zm url
-        // so a later tracker write (remove/scrobble) has something to send.
-        final ids = trackerIdsFromItem(item);
-        item = item.copyWith(
-          malId: ids.malId,
-          anilistId: ids.anilistId,
-          tmdbId: ids.tmdbId,
-        );
-        final key = _key(item, profileId);
-        await _box.put(key, item.toJson());
-        _clearPending(
-          key,
-          profileId,
-        ); // it's in the cloud now — no longer needs retrying
-        // Watch status: hydrate the local mirror from the cloud when the cloud
-        // knows one; otherwise back-fill the cloud from a local status set
-        // before status-sync existed. Never CLEAR a local status just because
-        // the cloud hasn't heard about it yet (cloudStatus == null).
-        final cloudStatus = row['status'] as String?;
-        if (cloudStatus != null) {
-          _onStatusPulled?.call(key, cloudStatus);
-        } else if (_statusOf?.call(item) != null) {
-          unawaited(_pushStatusForProfile(item, profileId));
-        }
+        _markPulled(profileId, uid);
+        return;
       }
-      if (_seededFor(uid, profileId)) {
-        final cloudKeys = <String>{
-          for (final row in rows)
-            _keyFromIds(row['source_id'], row['item_id'], profileId),
-        };
-        final pending = pendingKeys(profileId);
-        for (final raw in _box.keys.toList()) {
-          final key = '$raw';
-          if (!profileOwnsKey(key, profileId)) continue;
-          if (cloudKeys.contains(key) || pending.contains(key)) continue;
+
+      // First sync for this account/profile (or a reset server clock): read a
+      // complete, paged snapshot, then replay writes made while it was loading.
+      final rows = await _remote.listFor(uid, profileId: remoteProfileId);
+      final throughVersion = await _remote.currentVersion(
+        uid,
+        profileId: remoteProfileId,
+      );
+      final changes = await _remote.changesFor(
+        uid,
+        profileId: remoteProfileId,
+        afterVersion: currentVersion,
+        throughVersion: throughVersion,
+      );
+      final snapshot = _mergeSnapshotAndChanges(rows, changes);
+      await _applyFullSnapshot(snapshot, profileId, uid);
+      await meta.put(cursorKey, throughVersion);
+      revision.value++;
+      _markPulled(profileId, uid);
+    } catch (_) {
+      /* keep whatever is local */
+    }
+  }
+
+  Map<String, Map<String, dynamic>> _mergeSnapshotAndChanges(
+    List<Map<String, dynamic>> rows,
+    List<Map<String, dynamic>> changes,
+  ) {
+    final activeRows = <String, Map<String, dynamic>>{};
+    final versions = <String, int>{};
+    for (final row in rows) {
+      final key = _deleteKey('${row['source_id']}', '${row['item_id']}');
+      activeRows[key] = row;
+      versions[key] = (row['sync_version'] as num?)?.toInt() ?? 0;
+    }
+    for (final change in changes) {
+      final row = change['row'] as Map<String, dynamic>?;
+      final sourceId = row?['source_id'] ?? change['source_id'];
+      final itemId = row?['item_id'] ?? change['item_id'];
+      final key = _deleteKey('$sourceId', '$itemId');
+      final version = (change['sync_version'] as num).toInt();
+      if (version <= (versions[key] ?? -1)) continue;
+      versions[key] = version;
+      if (change['deleted'] == true) {
+        activeRows.remove(key);
+      } else if (row != null) {
+        activeRows[key] = row;
+      }
+    }
+    return activeRows;
+  }
+
+  Future<void> _applyFullSnapshot(
+    Map<String, Map<String, dynamic>> rows,
+    String profileId,
+    String uid,
+  ) async {
+    final pendingDeletes = pendingDeleteKeys(profileId);
+    final cloudKeys = <String>{};
+    for (final row in rows.values) {
+      cloudKeys.add(_keyFromIds(row['source_id'], row['item_id'], profileId));
+      await _applyCloudRow(row, profileId, pendingDeletes);
+    }
+    if (!_seededFor(uid, profileId)) return;
+    final pending = pendingKeys(profileId);
+    for (final raw in _box.keys.toList()) {
+      final key = '$raw';
+      if (!profileOwnsKey(key, profileId) ||
+          cloudKeys.contains(key) ||
+          pending.contains(key)) {
+        continue;
+      }
+      await _box.delete(key);
+      _onStatusPulled?.call(key, null);
+    }
+  }
+
+  Future<void> _applyIncrementalChanges(
+    List<Map<String, dynamic>> changes,
+    String profileId,
+  ) async {
+    final pendingDeletes = pendingDeleteKeys(profileId);
+    final pendingAdds = pendingKeys(profileId);
+    for (final change in changes) {
+      final row = change['row'] as Map<String, dynamic>?;
+      final sourceId = '${row?['source_id'] ?? change['source_id']}';
+      final itemId = '${row?['item_id'] ?? change['item_id']}';
+      if (change['deleted'] == true) {
+        final key = _keyFromIds(sourceId, itemId, profileId);
+        if (!pendingAdds.contains(key)) {
           await _box.delete(key);
           _onStatusPulled?.call(key, null);
         }
+      } else if (row != null) {
+        await _applyCloudRow(row, profileId, pendingDeletes);
       }
-      revision.value++;
-      _markPulled(profileId);
+    }
+  }
+
+  Future<void> _applyCloudRow(
+    Map<String, dynamic> row,
+    String profileId,
+    Set<String> pendingDeletes,
+  ) async {
+    final sourceId = '${row['source_id']}';
+    final itemId = '${row['item_id']}';
+    if (pendingDeletes.contains(_deleteKey(sourceId, itemId))) return;
+    final headers = row['cover_headers'];
+    Object? coverHeaders;
+    try {
+      coverHeaders = headers is String
+          ? jsonDecode(headers)
+          : headers is Map
+          ? headers
+          : null;
     } catch (_) {
-      /* keep whatever is local */
+      coverHeaders = null;
+    }
+    final rawItem = <String, dynamic>{
+      'id': row['item_id'],
+      'title': row['title'],
+      'cover': row['cover'],
+      'coverHeaders': coverHeaders,
+      'url': row['url'],
+      'type': row['type'],
+      'sourceId': row['source_id'],
+    };
+    MediaItem item;
+    try {
+      item = MediaItem.fromJson(rawItem);
+    } catch (_) {
+      // Keep future/unknown types on disk so a later build can decode them.
+      await _box.put(
+        _keyFromIds(row['source_id'], row['item_id'], profileId),
+        rawItem,
+      );
+      return;
+    }
+    final ids = trackerIdsFromItem(item);
+    item = item.copyWith(
+      malId: ids.malId,
+      anilistId: ids.anilistId,
+      tmdbId: ids.tmdbId,
+    );
+    final key = _key(item, profileId);
+    await _box.put(key, item.toJson());
+    _clearPending(key, profileId);
+    final cloudStatus = row['status'] as String?;
+    if (cloudStatus != null) {
+      _onStatusPulled?.call(key, cloudStatus);
+    } else if (_statusOf?.call(item) != null) {
+      unawaited(_pushStatusForProfile(item, profileId));
     }
   }
 
@@ -554,12 +844,16 @@ class MyListStore {
   Future<void> pullFromCloudIfStale({
     Duration maxAge = const Duration(hours: 12),
   }) async {
-    if (_currentUserId() == null) return;
+    final uid = _currentUserId();
+    if (uid == null) return;
     final profileId = _profileId;
     int? last;
     if (Hive.isBoxOpen(syncMetaBox)) {
       last =
-          Hive.box(syncMetaBox).get(_metaKey(_syncMetaKey, profileId)) as int?;
+          Hive.box(
+                syncMetaBox,
+              ).get(_userSyncMetaKey(_syncMetaKey, uid, profileId))
+              as int?;
     }
     if (last != null) {
       final age = DateTime.now().millisecondsSinceEpoch - last;
@@ -589,10 +883,10 @@ class MyListStore {
         true;
   }
 
-  void _markPulled(String profileId) {
+  void _markPulled(String profileId, String uid) {
     if (Hive.isBoxOpen(syncMetaBox)) {
       Hive.box(syncMetaBox).put(
-        _metaKey(_syncMetaKey, profileId),
+        _userSyncMetaKey(_syncMetaKey, uid, profileId),
         DateTime.now().millisecondsSinceEpoch,
       );
     }
@@ -602,9 +896,15 @@ class MyListStore {
   Future<void> clearLocal() async {
     await _box.clear();
     if (Hive.isBoxOpen(syncMetaBox)) {
-      await Hive.box(syncMetaBox).delete(_syncMetaKey);
-      await Hive.box(syncMetaBox).delete(_pendingKey);
-      await Hive.box(syncMetaBox).delete(_pendingDeleteKey);
+      final meta = Hive.box(syncMetaBox);
+      for (final key in meta.keys.toList()) {
+        final value = '$key';
+        if (_isMyListSyncMetaKey(value)) {
+          await meta.delete(key);
+        }
+      }
+      await meta.delete(_pendingKey);
+      await meta.delete(_pendingDeleteKey);
     }
     revision.value++;
   }

@@ -334,15 +334,6 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
   /// debounce app-switching so the DB isn't hammered.
   static const Duration _syncFreshness = Duration(minutes: 2);
 
-  /// TV stays in [AppLifecycleState.resumed] for hours, so [_syncOnResume]
-  /// never fires again. Poll while foregrounded so a watch/add/remove on
-  /// another device lands without relaunching — but only when the local cache
-  /// is older than this window (see [pullFromCloudIfStale]). A 30s full
-  /// `select *` on mylist/history burned ~GB/day of PostgREST egress + logs.
-  static const Duration _foregroundPoll = Duration(minutes: 10);
-
-  Timer? _foregroundSync;
-
   void _onThemeChanged() {
     if (mounted) {
       setState(() {}); // accent changed → rebuild so the app recolours
@@ -412,7 +403,6 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
     MetadataProviderPrefs.revision.removeListener(_onMetadataProviderChanged);
     HomeRowsPrefs.revision.removeListener(_onHomeRowsChanged);
     WidgetsBinding.instance.removeObserver(this);
-    _foregroundSync?.cancel();
     _tvShellGate.dispose();
     super.dispose();
   }
@@ -429,19 +419,14 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
         unawaited(sl<AuthCubit>().revalidateIfFlagged());
       }
       _syncOnResume();
-      _startForegroundSync();
       // The wallpaper may have changed while we were away. No-op unless
       // Material You is on, and only rebuilds if the colours actually moved.
       ThemeController.refresh();
     } else if (state == AppLifecycleState.paused) {
-      _foregroundSync?.cancel();
-      _foregroundSync = null;
       // Opening the in-app player (native surface / immersive) fires paused
       // even though the user is still watching. Do not drop Rich Presence.
       discord?.onPaused();
     } else if (state == AppLifecycleState.detached) {
-      _foregroundSync?.cancel();
-      _foregroundSync = null;
       discord?.onDetached();
     }
   }
@@ -451,16 +436,6 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
   /// [MyListStore.pullFromCloudIfStale], so rapid app-switching doesn't hammer
   /// the DB). Also flushes any un-synced My List adds.
   void _syncOnResume() => _syncLibrary(maxAge: _syncFreshness);
-
-  void _startForegroundSync() {
-    _foregroundSync?.cancel();
-    // Don't wait for the first period — TV sits in resumed and phone
-    // app-switch used to skip a pull for two minutes.
-    _syncLibrary(maxAge: _foregroundPoll);
-    _foregroundSync = Timer.periodic(_foregroundPoll, (_) {
-      _syncLibrary(maxAge: _foregroundPoll);
-    });
-  }
 
   void _syncLibrary({required Duration maxAge}) {
     if (!sl.isRegistered<AuthCubit>() || !sl<AuthCubit>().state.isLoggedIn) {
@@ -528,9 +503,6 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
         } else {
           await cloudSync();
         }
-        // Launch never delivers [AppLifecycleState.resumed] if the app started
-        // in the foreground (TV sits there all day). Start the poll now.
-        _startForegroundSync();
       }
     } catch (_) {}
     if (!sl<ViewerProfileStore>().isLoadedForCurrentUser) {

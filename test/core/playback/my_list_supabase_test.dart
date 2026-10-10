@@ -11,8 +11,24 @@ import 'package:watch_app/core/supabase/supabase_service.dart';
 /// pull-merge logic can be tested without a live Supabase project.
 class FakeMyListRemote implements MyListRemote {
   final List<Map<String, dynamic>> rows = [];
+  final List<Map<String, dynamic>> tombstones = [];
+  final Map<String, int> versions = {};
+  int listForCalls = 0;
+  int changesForCalls = 0;
+  int _nextSyncId = 1;
   bool failNext = false;
   bool failNextDelete = false;
+  bool failNextChanges = false;
+  bool failNextList = false;
+  Future<void> Function()? afterListSnapshot;
+
+  String _scope(String userKey, String? profileId) =>
+      '$userKey|${profileId ?? ''}';
+
+  int _nextVersion(String userKey, String? profileId) {
+    final key = _scope(userKey, profileId);
+    return versions[key] = (versions[key] ?? 0) + 1;
+  }
 
   @override
   Future<void> upsert(Map<String, dynamic> row) async {
@@ -20,15 +36,42 @@ class FakeMyListRemote implements MyListRemote {
       failNext = false;
       throw Exception('network down');
     }
-    rows.removeWhere(
+    final previous = rows.where(
       (r) =>
           r['user_key'] == row['user_key'] &&
           r['profile_id'] == row['profile_id'] &&
           r['source_id'] == row['source_id'] &&
           r['item_id'] == row['item_id'],
     );
-    rows.add(row);
+    final existing = previous.isEmpty ? null : previous.first;
+    rows.removeWhere(identicalOrSameRow(row));
+    final userKey = '${row['user_key']}';
+    final profileId = row['profile_id'] as String?;
+    final sourceId = '${row['source_id']}';
+    final itemId = '${row['item_id']}';
+    final version = _nextVersion(userKey, profileId);
+    rows.add({
+      ...row,
+      'sync_id': existing?['sync_id'] ?? _nextSyncId++,
+      'sync_version': version,
+    });
+    tombstones.removeWhere(
+      (r) =>
+          r['user_key'] == userKey &&
+          r['profile_scope'] == (profileId ?? '') &&
+          r['source_id'] == sourceId &&
+          r['item_id'] == itemId,
+    );
   }
+
+  bool Function(Map<String, dynamic>) identicalOrSameRow(
+    Map<String, dynamic> row,
+  ) =>
+      (r) =>
+          r['user_key'] == row['user_key'] &&
+          r['profile_id'] == row['profile_id'] &&
+          r['source_id'] == row['source_id'] &&
+          r['item_id'] == row['item_id'];
 
   @override
   Future<void> deleteRow(
@@ -41,6 +84,16 @@ class FakeMyListRemote implements MyListRemote {
       failNextDelete = false;
       throw Exception('network down');
     }
+    final matched = rows
+        .where(
+          (r) =>
+              r['user_key'] == userKey &&
+              r['profile_id'] == profileId &&
+              r['source_id'] == sourceId &&
+              r['item_id'] == itemId,
+        )
+        .toList();
+    if (matched.isEmpty) return;
     rows.removeWhere(
       (r) =>
           r['user_key'] == userKey &&
@@ -48,6 +101,20 @@ class FakeMyListRemote implements MyListRemote {
           r['source_id'] == sourceId &&
           r['item_id'] == itemId,
     );
+    tombstones.removeWhere(
+      (r) =>
+          r['user_key'] == userKey &&
+          r['profile_scope'] == (profileId ?? '') &&
+          r['source_id'] == sourceId &&
+          r['item_id'] == itemId,
+    );
+    tombstones.add({
+      'user_key': userKey,
+      'profile_scope': profileId ?? '',
+      'source_id': sourceId,
+      'item_id': itemId,
+      'sync_version': _nextVersion(userKey, profileId),
+    });
   }
 
   @override
@@ -55,10 +122,64 @@ class FakeMyListRemote implements MyListRemote {
     String userKey, {
     String? profileId,
   }) async {
-    return rows
+    listForCalls++;
+    if (failNextList) {
+      failNextList = false;
+      throw Exception('network down');
+    }
+    final snapshot = rows
         .where((r) => r['user_key'] == userKey && r['profile_id'] == profileId)
         .toList();
+    final callback = afterListSnapshot;
+    afterListSnapshot = null;
+    await callback?.call();
+    return snapshot;
   }
+
+  @override
+  Future<int> currentVersion(String userKey, {String? profileId}) async =>
+      versions[_scope(userKey, profileId)] ?? 0;
+
+  @override
+  Future<List<Map<String, dynamic>>> changesFor(
+    String userKey, {
+    String? profileId,
+    required int afterVersion,
+    required int throughVersion,
+  }) async {
+    changesForCalls++;
+    if (failNextChanges) {
+      failNextChanges = false;
+      throw Exception('network down');
+    }
+    return [
+      for (final row in rows)
+        if (row['user_key'] == userKey &&
+            row['profile_id'] == profileId &&
+            (row['sync_version'] as int? ?? 0) > afterVersion &&
+            (row['sync_version'] as int? ?? 0) <= throughVersion)
+          {'sync_version': row['sync_version'], 'deleted': false, 'row': row},
+      for (final row in tombstones)
+        if (row['user_key'] == userKey &&
+            row['profile_scope'] == (profileId ?? '') &&
+            (row['sync_version'] as int) > afterVersion &&
+            (row['sync_version'] as int) <= throughVersion)
+          {...row, 'deleted': true},
+    ]..sort(
+      (a, b) => (a['sync_version'] as int).compareTo(b['sync_version'] as int),
+    );
+  }
+
+  @override
+  Future<Set<String>> deletedKeysFor(
+    String userKey, {
+    String? profileId,
+  }) async => {
+    for (final row in tombstones)
+      if (row['user_key'] == userKey &&
+          row['profile_scope'] == (profileId ?? ''))
+        '${row['source_id']}::${row['item_id']}',
+  };
 }
 
 MediaItem _item({String sourceId = 'src', String id = 'id'}) => MediaItem(
@@ -173,6 +294,134 @@ void main() {
       final all = store.all().map((m) => m.id).toSet();
       expect(all, containsAll(['synced', 'fromCloud', 'unsynced']));
       expect(store.pendingKeys(), contains('src::unsynced'));
+    },
+  );
+
+  test(
+    'a second pull does not download the unchanged full list again',
+    () async {
+      await store.add(_item(id: 'cached'));
+      await store.pullFromCloud();
+      final fullListReads = fake.listForCalls;
+      final deltaReads = fake.changesForCalls;
+
+      await store.pullFromCloud();
+
+      expect(fake.listForCalls, fullListReads);
+      expect(fake.changesForCalls, deltaReads);
+      expect(store.all().map((item) => item.id), contains('cached'));
+    },
+  );
+
+  test(
+    'incremental pull applies a remote add without reading the full list',
+    () async {
+      await store.add(_item(id: 'cached'));
+      await store.pullFromCloud();
+      final fullListReads = fake.listForCalls;
+
+      await fake.upsert({
+        'user_key': 'user1',
+        'source_id': 'src',
+        'item_id': 'fromOtherDevice',
+        'title': 'Cloud Title',
+        'cover': 'cloud.png',
+        'cover_headers': null,
+        'url': 'https://x/cloud',
+        'type': 'anime',
+        'added_at': 0,
+      });
+      await store.pullFromCloud();
+
+      expect(fake.listForCalls, fullListReads);
+      expect(
+        store.all().map((item) => item.id),
+        containsAll(['cached', 'fromOtherDevice']),
+      );
+    },
+  );
+
+  test(
+    'first sync replays an add that arrives during the full snapshot',
+    () async {
+      await store.add(_item(id: 'beforeSnapshot'));
+      fake.afterListSnapshot = () => fake.upsert({
+        'user_key': 'user1',
+        'source_id': 'src',
+        'item_id': 'duringSnapshot',
+        'title': 'Concurrent item',
+        'cover': null,
+        'cover_headers': null,
+        'url': 'https://x/during',
+        'type': 'anime',
+      });
+
+      await store.pullFromCloud();
+
+      expect(
+        store.all().map((item) => item.id),
+        containsAll(['beforeSnapshot', 'duringSnapshot']),
+      );
+    },
+  );
+
+  test(
+    'incremental pull applies a remote deletion without losing other rows',
+    () async {
+      await store.add(_item(id: 'keep'));
+      await store.add(_item(id: 'remove'));
+      await store.pullFromCloud();
+      final fullListReads = fake.listForCalls;
+
+      await fake.deleteRow('user1', 'src', 'remove');
+      await store.pullFromCloud();
+
+      expect(fake.listForCalls, fullListReads);
+      expect(store.all().map((item) => item.id), {'keep'});
+    },
+  );
+
+  test('failed incremental pull retries from the previous cursor', () async {
+    await store.add(_item(id: 'cached'));
+    await store.pullFromCloud();
+    final fullListReads = fake.listForCalls;
+    await fake.upsert({
+      'user_key': 'user1',
+      'source_id': 'src',
+      'item_id': 'offlineChange',
+      'title': 'Cloud Title',
+      'cover': null,
+      'cover_headers': null,
+      'url': 'https://x/offline',
+      'type': 'anime',
+    });
+    fake.failNextChanges = true;
+
+    await store.pullFromCloud();
+    expect(
+      store.all().map((item) => item.id),
+      isNot(contains('offlineChange')),
+    );
+    await store.pullFromCloud();
+
+    expect(fake.listForCalls, fullListReads);
+    expect(store.all().map((item) => item.id), contains('offlineChange'));
+  });
+
+  test(
+    'failed first snapshot leaves the local list visible and retries fully',
+    () async {
+      await store.add(_item(id: 'cached'));
+      fake.failNextList = true;
+
+      await store.pullFromCloud();
+
+      expect(store.all().map((item) => item.id), contains('cached'));
+      final readsAfterFailure = fake.listForCalls;
+      await store.pullFromCloud();
+
+      expect(fake.listForCalls, readsAfterFailure + 1);
+      expect(store.all().map((item) => item.id), contains('cached'));
     },
   );
 
@@ -318,6 +567,20 @@ void main() {
     expect(fake.rows.any((r) => r['item_id'] == 'localOnly'), isTrue);
   });
 
+  test(
+    'stale local rows do not resurrect a cloud-deleted item during seeding',
+    () async {
+      await store.add(_item(id: 'deletedElsewhere'));
+      await fake.deleteRow('user1', 'src', 'deletedElsewhere');
+
+      final result = await store.pushAllLocalToCloud();
+
+      expect(result.failed, 0);
+      expect(result.pushed, 0);
+      expect(fake.rows.any((r) => r['item_id'] == 'deletedElsewhere'), isFalse);
+    },
+  );
+
   test('failed delete is retried and is not resurrected by a pull', () async {
     await store.add(_item(id: 'x'));
     await store.seedCloudIfNeeded();
@@ -340,7 +603,8 @@ void main() {
     await store.add(_item(id: 'keep'));
     await store.add(_item(id: 'gone'));
     await store.seedCloudIfNeeded();
-    fake.rows.removeWhere((r) => r['item_id'] == 'gone');
+    await store.pullFromCloud(); // establish the initial-sync cursor
+    await fake.deleteRow('user1', 'src', 'gone');
 
     await store.pullFromCloud();
 
@@ -488,6 +752,11 @@ void main() {
         reason: 'a bad row must not abort the rest of the pull',
       );
       expect(store.all().map((i) => i.id), isNot(contains('bad')));
+      expect(
+        Hive.box<Map>(MyListStore.boxName).containsKey('src::bad'),
+        isTrue,
+        reason: 'a later build may understand this stored type',
+      );
     });
 
     test('a list with no bad rows is unaffected', () async {
