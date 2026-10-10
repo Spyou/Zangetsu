@@ -27,14 +27,14 @@ const MAX_BYTES = 1_000_000;
 /** Bumped by hand when the Worker changes, so `/health` can prove which code
  *  is actually serving. Cloudflare takes a while to roll a new version out and
  *  there is otherwise no way to tell from outside. */
-const BUILD = 'ctx-3';
+const BUILD = 'ctx-4';
 
 /** Supabase JWKS endpoint (ES256, P-256). Cached in a module global;
  *  refetched only when the token's `kid` misses the cache. */
 const JWKS_URL =
   'https://eogwzrlfoercfwcfwlmv.supabase.co/auth/v1/.well-known/jwks.json';
 const JWT_ISSUER = `${new URL(JWKS_URL).origin}/auth/v1`;
-const AVATAR_MAX_BYTES = 256 * 1024;
+const AVATAR_MAX_BYTES = 512 * 1024;
 let CACHED_JWKS = null;
 
 /** Long enough to still have the log when someone gets round to mentioning it,
@@ -43,7 +43,7 @@ const KEEP_SECONDS = 60 * 60 * 24 * 30;
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Methods': 'POST, DELETE, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, X-App-Version, X-Device, Authorization',
 };
 
@@ -95,6 +95,27 @@ export default {
       const key = `avatars/${user}/${crypto.randomUUID()}.jpg`;
       await env.AVATARS.put(key, body, { httpMetadata: { contentType: type } });
       return json({ url: `${env.AVATAR_PUBLIC_BASE}/${key}` });
+    }
+    if (url.pathname === '/v1/avatar-slot' && request.method === 'DELETE') {
+      const user = await verifyAppUser(request, env);
+      if (!user) return json({ error: 'unauthorized' }, 401);
+      const body = await readBodyUpTo(request, 512);
+      if (body === null) return json({ error: 'bad avatar URL' }, 400);
+      let target;
+      try {
+        target = JSON.parse(new TextDecoder().decode(body)).url;
+      } catch (_) {
+        return json({ error: 'bad avatar URL' }, 400);
+      }
+      const prefix = `${env.AVATAR_PUBLIC_BASE.replace(/\/+$/, '')}/avatars/${user}/`;
+      const file = typeof target === 'string' && target.startsWith(prefix)
+        ? target.slice(prefix.length)
+        : '';
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.jpg$/i.test(file)) {
+        return json({ error: 'bad avatar URL' }, 400);
+      }
+      await env.AVATARS.delete(`avatars/${user}/${file}`);
+      return json({ ok: true });
     }
     if (url.pathname !== '/v1/logs' || request.method !== 'POST') {
       return json({ error: 'not found' }, 404);

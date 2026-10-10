@@ -9,16 +9,17 @@ import 'tv_focusable.dart';
 /// [Positioned] overlay on posters. Overlays sit on the first cell, so D-pad
 /// up/left cannot land on them.
 class TvBackButton extends StatelessWidget {
-  const TvBackButton({super.key, this.autofocus = false});
+  const TvBackButton({super.key, this.autofocus = false, this.onPressed});
 
   final bool autofocus;
+  final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context) {
     return TvFocusable(
       autofocus: autofocus,
       semanticLabel: 'Back',
-      onTap: () => Navigator.of(context).maybePop(),
+      onTap: onPressed ?? () => Navigator.of(context).maybePop(),
       // Excluded — semanticLabel above already announces "Back"; without
       // this the nested Text was a second sibling node and TalkBack read
       // it twice.

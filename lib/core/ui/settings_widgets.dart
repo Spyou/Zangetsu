@@ -16,16 +16,17 @@ PreferredSizeWidget settingsAppBar(
   String title, {
   List<Widget>? actions,
   bool showBack = true,
+  VoidCallback? onBack,
 }) {
   final tvBack = showBack && _isTvDevice();
   return AppBar(
     titleSpacing: tvBack ? 8 : (showBack ? 4 : 16),
-    automaticallyImplyLeading: showBack && !tvBack,
+    automaticallyImplyLeading: showBack && !tvBack && onBack == null,
     toolbarHeight: tvBack ? 72 : kToolbarHeight,
     title: tvBack
         ? Row(
             children: [
-              const TvBackButton(),
+              TvBackButton(onPressed: onBack),
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
@@ -39,6 +40,13 @@ PreferredSizeWidget settingsAppBar(
           )
         : Text(title, style: AppText.barTitle),
     actions: actions,
+    leading: showBack && !tvBack && onBack != null
+        ? IconButton(
+            tooltip: 'Back',
+            onPressed: onBack,
+            icon: const Icon(Icons.arrow_back),
+          )
+        : null,
     bottom: const PreferredSize(
       preferredSize: Size.fromHeight(1),
       child: Divider(height: 1, thickness: 1, color: AppColors.hairline),

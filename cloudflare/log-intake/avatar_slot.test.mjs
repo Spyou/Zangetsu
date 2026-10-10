@@ -6,7 +6,7 @@ const jwksUrl =
   'https://eogwzrlfoercfwcfwlmv.supabase.co/auth/v1/.well-known/jwks.json';
 const issuer = 'https://eogwzrlfoercfwcfwlmv.supabase.co/auth/v1';
 const userId = '12000000-0000-4000-8000-000000000001';
-const maxBytes = 256 * 1024;
+const maxBytes = 512 * 1024;
 const encoder = new TextEncoder();
 const originalFetch = globalThis.fetch;
 const keys = await crypto.subtle.generateKey(
@@ -65,15 +65,31 @@ async function token({ header = {}, claims = {} } = {}) {
 
 function environment() {
   const writes = [];
+  const deletes = [];
   return {
     writes,
+    deletes,
     AVATAR_PUBLIC_BASE: 'https://avatars.example',
     AVATARS: {
       async put(...args) {
         writes.push(args);
       },
+      async delete(key) {
+        deletes.push(key);
+      },
     },
   };
+}
+
+function deleteRequest(jwt, url) {
+  return new Request('https://intake.example/v1/avatar-slot', {
+    method: 'DELETE',
+    headers: {
+      authorization: `Bearer ${jwt}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({ url }),
+  });
 }
 
 function requestFor(jwt, body, extraHeaders = {}, extra = {}) {
@@ -108,7 +124,58 @@ test('accepts a valid Supabase ES256 user token and stores a small image', async
   assert.equal(env.writes[0][1].byteLength, 3);
 });
 
-test('accepts a photo exactly at the 256 KiB limit', async () => {
+test('deletes only an authenticated user’s avatar object', async () => {
+  const env = environment();
+  const id = '11111111-1111-4111-8111-111111111111';
+  const response = await worker.fetch(
+    deleteRequest(
+      await token(),
+      `${env.AVATAR_PUBLIC_BASE}/avatars/${userId}/${id}.jpg`,
+    ),
+    env,
+  );
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(env.deletes, [`avatars/${userId}/${id}.jpg`]);
+});
+
+test('cannot delete another user’s photo or profile-picker artwork', async () => {
+  const env = environment();
+  const jwt = await token();
+  const id = '11111111-1111-4111-8111-111111111111';
+  for (const url of [
+    `${env.AVATAR_PUBLIC_BASE}/avatars/other-user/${id}.jpg`,
+    `${env.AVATAR_PUBLIC_BASE}/profile-picker/zangetsu-sword.webp`,
+  ]) {
+    const response = await worker.fetch(deleteRequest(jwt, url), env);
+    assert.equal(response.status, 400);
+  }
+  assert.deepEqual(env.deletes, []);
+});
+
+test('rejects unsigned deletion and URL lookalikes', async () => {
+  const env = environment();
+  const id = '11111111-1111-4111-8111-111111111111';
+  const url = `${env.AVATAR_PUBLIC_BASE}/avatars/${userId}/${id}.jpg`;
+  const anonymous = await worker.fetch(
+    new Request('https://intake.example/v1/avatar-slot', {
+      method: 'DELETE',
+      body: JSON.stringify({ url }),
+    }),
+    env,
+  );
+  assert.equal(anonymous.status, 401);
+  for (const lookalike of [`${url}?other=1`, `${url}/extra`, `${url}.bak`]) {
+    const response = await worker.fetch(
+      deleteRequest(await token(), lookalike),
+      env,
+    );
+    assert.equal(response.status, 400);
+  }
+  assert.deepEqual(env.deletes, []);
+});
+
+test('accepts a photo exactly at the 512 KiB limit', async () => {
   const env = environment();
   const response = await worker.fetch(
     requestFor(await token(), jpegBytes(maxBytes)),
@@ -149,7 +216,7 @@ test('accepts an audience array containing authenticated', async () => {
   assert.equal(env.writes.length, 1);
 });
 
-test('rejects declared image sizes above 256 KiB before writing to R2', async () => {
+test('rejects declared image sizes above 512 KiB before writing to R2', async () => {
   const env = environment();
   const response = await worker.fetch(
     requestFor(await token(), new Uint8Array([1]), {

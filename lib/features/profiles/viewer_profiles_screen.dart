@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:hive/hive.dart';
 
 import '../../core/app_mode.dart';
@@ -19,7 +20,9 @@ import '../../core/ui/image_fade.dart';
 import '../../core/ui/native_cover_provider.dart';
 import '../../core/ui/settings_widgets.dart';
 import '../../core/tv/tv_list_focusable.dart';
+import '../../l10n/l10n.dart';
 import '../home/cubit/home_cubit.dart';
+import '../auth/auth_screens.dart' show ProfileAccountSection;
 import 'viewer_profile_editor_screen.dart';
 
 const Object kViewerProfileHeroTag = 'viewer-profile-selector';
@@ -64,7 +67,10 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
   late final Animation<double> _footerOpacity;
   final _enableSelectionHero = ValueNotifier(false);
   bool _selecting = false;
+  bool _managingProfiles = false;
   String? _pickerArtworkUrl;
+  ProfilePickerArtwork? _pickerArtwork;
+  Timer? _artworkRotation;
 
   ViewerProfileStore get _profiles => sl<ViewerProfileStore>();
 
@@ -108,7 +114,7 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
     );
     if (widget.selectionOnly) {
       if (Hive.isBoxOpen(ViewerProfileStore.boxName)) {
-        final artwork = ProfilePickerArtwork(
+        final artwork = _pickerArtwork = ProfilePickerArtwork(
           box: Hive.box(ViewerProfileStore.boxName),
           fetchManifest: () async => (await sl<Dio>().get<Object>(
             kProfilePickerArtworkManifestUrl,
@@ -116,7 +122,7 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
           )).data,
         );
         _pickerArtworkUrl = artwork.cachedUrl;
-        if (sl.isRegistered<Dio>()) unawaited(_loadNextArtwork(artwork));
+        if (sl.isRegistered<Dio>()) unawaited(_loadNextArtwork());
       }
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
@@ -129,10 +135,17 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
     }
   }
 
-  Future<void> _loadNextArtwork(ProfilePickerArtwork artwork) async {
+  Future<void> _loadNextArtwork() async {
+    final artwork = _pickerArtwork;
+    if (artwork == null) return;
     final url = await artwork.next();
-    if (!mounted || url == null || url == _pickerArtworkUrl) return;
-    setState(() => _pickerArtworkUrl = url);
+    if (!mounted || url == null) return;
+    if (url != _pickerArtworkUrl) setState(() => _pickerArtworkUrl = url);
+    if (artwork.canRotate) {
+      _artworkRotation ??= Timer.periodic(const Duration(seconds: 3), (_) {
+        unawaited(_loadNextArtwork());
+      });
+    }
   }
 
   double _avatarStart(int i, int count, double gapScale) =>
@@ -158,6 +171,7 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
 
   @override
   void dispose() {
+    _artworkRotation?.cancel();
     _enableSelectionHero.dispose();
     _pickerEntrance.dispose();
     super.dispose();
@@ -210,18 +224,26 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
         ],
       ),
     );
-    if (confirmed == true) await _profiles.delete(profile.id);
+    if (confirmed != true) return;
+    final deleted = await _profiles.delete(profile.id);
+    if (!deleted && mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(context.l10n.offlineBody)));
+    }
   }
 
   void _openProfileManager() {
-    Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(builder: (_) => const ViewerProfilesScreen()),
-    );
+    setState(() => _managingProfiles = true);
+  }
+
+  void _closeProfileManager() {
+    setState(() => _managingProfiles = false);
   }
 
   @override
   Widget build(BuildContext context) {
-    if (widget.selectionOnly) {
+    if (widget.selectionOnly && !_managingProfiles) {
       return ValueListenableBuilder<bool>(
         valueListenable: _enableSelectionHero,
         builder: (context, enabled, child) =>
@@ -240,12 +262,26 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
 
     return Scaffold(
       backgroundColor: AppColors.bg,
-      appBar: settingsAppBar('Profiles'),
+      appBar: settingsAppBar(
+        'Profiles',
+        onBack: widget.selectionOnly ? _closeProfileManager : null,
+      ),
       body: ValueListenableBuilder<int>(
         valueListenable: _profiles.revision,
         builder: (context, _, _) => ListView(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 36),
           children: [
+            if (sl.isRegistered<AuthCubit>()) ...[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(4, 4, 4, 0),
+                child: Text('Account', style: AppText.headline),
+              ),
+              BlocProvider.value(
+                value: sl<AuthCubit>(),
+                child: const ProfileAccountSection(),
+              ),
+              const Divider(height: 1),
+            ],
             Padding(
               padding: const EdgeInsets.fromLTRB(4, 4, 4, 12),
               child: Row(
@@ -365,15 +401,52 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
           ),
           if (backdropProvider != null)
             Positioned.fill(
+              bottom: useWideArt ? 0 : screenSize.height * 0.4,
               child: ExcludeSemantics(
                 child: IgnorePointer(
-                  child: Image(
-                    key: const ValueKey('profile-picker-backdrop-image'),
-                    image: ResizeImage(backdropProvider, width: backdropWidth),
-                    fit: BoxFit.cover,
-                    alignment: Alignment.topCenter,
-                    frameBuilder: imageFadeIn,
-                    errorBuilder: (_, _, _) => const SizedBox.shrink(),
+                  child: AnimatedSwitcher(
+                    key: const ValueKey('profile-picker-backdrop-switcher'),
+                    duration: const Duration(milliseconds: 900),
+                    reverseDuration: const Duration(milliseconds: 700),
+                    switchInCurve: Curves.easeOutCubic,
+                    switchOutCurve: Curves.easeInCubic,
+                    transitionBuilder: (child, animation) {
+                      final curved = CurvedAnimation(
+                        parent: animation,
+                        curve: Curves.easeOutCubic,
+                        reverseCurve: Curves.easeInCubic,
+                      );
+                      return FadeTransition(
+                        opacity: curved,
+                        child: SlideTransition(
+                          position: Tween<Offset>(
+                            begin: const Offset(0.025, 0),
+                            end: Offset.zero,
+                          ).animate(curved),
+                          child: ScaleTransition(
+                            scale: Tween<double>(
+                              begin: 1.04,
+                              end: 1,
+                            ).animate(curved),
+                            child: child,
+                          ),
+                        ),
+                      );
+                    },
+                    child: SizedBox.expand(
+                      key: ValueKey(backdropUrl),
+                      child: Image(
+                        key: const ValueKey('profile-picker-backdrop-image'),
+                        image: ResizeImage(
+                          backdropProvider,
+                          width: backdropWidth,
+                        ),
+                        fit: BoxFit.cover,
+                        alignment: Alignment.topCenter,
+                        frameBuilder: imageFadeIn,
+                        errorBuilder: (_, _, _) => const SizedBox.shrink(),
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -385,14 +458,24 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
-                    stops: const [0, 0.18, 0.42, 0.72, 1],
-                    colors: [
-                      AppColors.bg.withValues(alpha: 0.52),
-                      AppColors.bg.withValues(alpha: 0.12),
-                      AppColors.bg.withValues(alpha: 0.34),
-                      AppColors.bg.withValues(alpha: 0.96),
-                      AppColors.bg,
-                    ],
+                    stops: isTv
+                        ? const [0, 0.18, 0.42, 0.72, 1]
+                        : const [0, 0.2, 0.36, 0.56, 1],
+                    colors: isTv
+                        ? [
+                            AppColors.bg.withValues(alpha: 0.52),
+                            AppColors.bg.withValues(alpha: 0.12),
+                            AppColors.bg.withValues(alpha: 0.34),
+                            AppColors.bg.withValues(alpha: 0.96),
+                            AppColors.bg,
+                          ]
+                        : [
+                            AppColors.bg.withValues(alpha: 0.24),
+                            AppColors.bg.withValues(alpha: 0.04),
+                            AppColors.bg.withValues(alpha: 0.78),
+                            AppColors.bg,
+                            AppColors.bg,
+                          ],
                   ),
                 ),
               ),
@@ -405,10 +488,12 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
                 final wide = constraints.maxWidth >= 900;
                 final diameter = isTv
                     ? (wide ? 160.0 : 120.0)
-                    : (constraints.maxWidth >= 600 ? 132.0 : 120.0);
+                    : (constraints.maxWidth >= 600 ? 112.0 : 100.0);
                 final columns = isTv || wide ? 4 : 2;
                 final gridWidth = math.min(
-                  (diameter + 8) * columns + 4 * (columns - 1),
+                  isTv || wide
+                      ? (diameter + 32) * columns + 16 * (columns - 1)
+                      : constraints.maxWidth - 32,
                   math.max(0.0, constraints.maxWidth - (wide ? 96 : 32)),
                 );
                 const topPadding = 24.0;
@@ -421,7 +506,9 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
                     constraints: BoxConstraints(
                       minHeight: math.max(
                         0.0,
-                        constraints.maxHeight - topPadding - bottomPadding,
+                        constraints.maxHeight -
+                            topPadding -
+                            (isTv ? bottomPadding : 0),
                       ),
                     ),
                     child: Container(
@@ -440,56 +527,66 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
                         valueListenable: _profiles.revision,
                         builder: (context, _, _) {
                           final lastName = _profiles.active.value?.name;
+                          final title = FadeTransition(
+                            key: const ValueKey('profile-picker-title-fade'),
+                            opacity: _titleOpacity,
+                            child: Column(
+                              children: [
+                                Text(
+                                  "Who's watching?",
+                                  textAlign: TextAlign.center,
+                                  style: AppText.title.copyWith(
+                                    fontSize: wide ? 34 : 28,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                const SizedBox(height: 7),
+                                Text(
+                                  lastName == null
+                                      ? 'Pick up where you left off.'
+                                      : 'Ready for the next watch, $lastName?',
+                                  textAlign: TextAlign.center,
+                                  style: AppText.caption.copyWith(
+                                    color: AppColors.textSecondary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                          final grid = _pickerGrid(
+                            diameter: diameter,
+                            gridWidth: gridWidth,
+                            columns: columns,
+                            isTv: isTv,
+                            gapScale: isTv ? 0.5 : 1.0,
+                          );
+                          final manage = FadeTransition(
+                            key: const ValueKey('profile-picker-footer-fade'),
+                            opacity: _footerOpacity,
+                            child: _manageProfilesButton(isTv),
+                          );
+                          if (isTv) {
+                            return Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                title,
+                                SizedBox(height: wide ? 28 : 16),
+                                grid,
+                                SizedBox(height: wide ? 16 : 8),
+                                manage,
+                              ],
+                            );
+                          }
                           return Column(
-                            mainAxisAlignment: isTv
-                                ? MainAxisAlignment.center
-                                : MainAxisAlignment.end,
+                            mainAxisAlignment: MainAxisAlignment.end,
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              FadeTransition(
-                                key: const ValueKey(
-                                  'profile-picker-title-fade',
-                                ),
-                                opacity: _titleOpacity,
-                                child: Column(
-                                  children: [
-                                    Text(
-                                      "Who's watching?",
-                                      textAlign: TextAlign.center,
-                                      style: AppText.title.copyWith(
-                                        fontSize: wide ? 34 : 28,
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 7),
-                                    Text(
-                                      lastName == null
-                                          ? 'Pick up where you left off.'
-                                          : 'Ready for the next watch, $lastName?',
-                                      textAlign: TextAlign.center,
-                                      style: AppText.caption.copyWith(
-                                        color: AppColors.textSecondary,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              SizedBox(height: wide ? 28 : 16),
-                              _pickerGrid(
-                                diameter: diameter,
-                                gridWidth: gridWidth,
-                                columns: columns,
-                                isTv: isTv,
-                                gapScale: isTv ? 0.5 : 1.0,
-                              ),
-                              SizedBox(height: wide ? 16 : 8),
-                              FadeTransition(
-                                key: const ValueKey(
-                                  'profile-picker-footer-fade',
-                                ),
-                                opacity: _footerOpacity,
-                                child: _manageProfilesButton(isTv),
-                              ),
+                              title,
+                              const SizedBox(height: 20),
+                              grid,
+                              const SizedBox(height: 16),
+                              manage,
                             ],
                           );
                         },
@@ -568,7 +665,7 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
         key: const ValueKey('profile-picker-grid'),
         crossAxisCount: columns,
         crossAxisSpacing: 4,
-        mainAxisSpacing: 8,
+        mainAxisSpacing: 16,
         mainAxisExtent: diameter + 48,
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
@@ -630,7 +727,11 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
             profileId: profile.id,
             diameter: diameter,
             fill: fill,
-            shape: const CircleBorder(),
+            shape: CircleBorder(
+              side: BorderSide(
+                color: AppColors.textPrimary.withValues(alpha: 0.25),
+              ),
+            ),
             onTap: () => _switchTo(profile),
             child: ProfileAvatarFace(
               profile: profile,

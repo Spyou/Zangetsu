@@ -11,6 +11,7 @@ import '../../core/di/injector.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/ui/buttons.dart';
+import '../../core/tv/tv_focusable.dart';
 import 'auth_cubit.dart';
 import 'auth_screens_tv.dart';
 import 'pair_tv_screen.dart';
@@ -36,9 +37,9 @@ bool requireLogin(BuildContext context, {String? action}) {
         action: SnackBarAction(
           label: context.l10n.signIn,
           textColor: AppColors.accent,
-          onPressed: () => Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const LoginScreen()),
-          ),
+          onPressed: () => Navigator.of(
+            context,
+          ).push(MaterialPageRoute(builder: (_) => const LoginScreen())),
         ),
       ),
     );
@@ -73,10 +74,15 @@ class _Field extends StatelessWidget {
       decoration: InputDecoration(
         hintText: hint,
         hintStyle: AppText.body.copyWith(color: AppColors.textTertiary),
-        prefixIcon: icon == null ? null : Icon(icon, color: AppColors.textTertiary, size: 20),
+        prefixIcon: icon == null
+            ? null
+            : Icon(icon, color: AppColors.textTertiary, size: 20),
         filled: true,
         fillColor: AppColors.surface,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 16,
+        ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
           borderSide: const BorderSide(color: AppColors.hairline, width: 0.5),
@@ -163,11 +169,9 @@ class _LoginScreenState extends State<LoginScreen> {
     if (email == null || email.isEmpty || !context.mounted) return;
     final err = await context.read<AuthCubit>().sendRecovery(email);
     if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(err ?? context.l10n.resetLinkSent),
-      ),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(err ?? context.l10n.resetLinkSent)));
   }
 
   @override
@@ -177,9 +181,19 @@ class _LoginScreenState extends State<LoginScreen> {
       title: context.l10n.welcomeBack,
       subtitle: context.l10n.signInToSyncYourListAcrossDevices,
       children: [
-        _Field(controller: _email, hint: context.l10n.email, icon: Icons.mail_outline, keyboard: TextInputType.emailAddress),
+        _Field(
+          controller: _email,
+          hint: context.l10n.email,
+          icon: Icons.mail_outline,
+          keyboard: TextInputType.emailAddress,
+        ),
         const SizedBox(height: 12),
-        _Field(controller: _password, hint: context.l10n.password, icon: Icons.lock_outline, obscure: true),
+        _Field(
+          controller: _password,
+          hint: context.l10n.password,
+          icon: Icons.lock_outline,
+          obscure: true,
+        ),
         Align(
           alignment: AlignmentDirectional.centerEnd,
           child: TextButton(
@@ -253,7 +267,11 @@ class _SignupScreenState extends State<SignupScreen> {
     if (_password.text.length < 8) {
       ScaffoldMessenger.of(context)
         ..clearSnackBars()
-        ..showSnackBar(SnackBar(content: Text(context.l10n.passwordMustBeAtLeast8Characters)));
+        ..showSnackBar(
+          SnackBar(
+            content: Text(context.l10n.passwordMustBeAtLeast8Characters),
+          ),
+        );
       return;
     }
     final auth = context.read<AuthCubit>();
@@ -275,13 +293,29 @@ class _SignupScreenState extends State<SignupScreen> {
       title: context.l10n.createAccount,
       subtitle: context.l10n.saveYourListAndContinueWatchingAnywhere,
       children: [
-        Center(child: _AvatarPicker(path: _avatarPath, onTap: _pickAvatar)),
+        Center(
+          child: _AvatarPicker(path: _avatarPath, onTap: _pickAvatar),
+        ),
         const SizedBox(height: 24),
-        _Field(controller: _name, hint: context.l10n.name, icon: Icons.person_outline),
+        _Field(
+          controller: _name,
+          hint: context.l10n.name,
+          icon: Icons.person_outline,
+        ),
         const SizedBox(height: 12),
-        _Field(controller: _email, hint: context.l10n.email, icon: Icons.mail_outline, keyboard: TextInputType.emailAddress),
+        _Field(
+          controller: _email,
+          hint: context.l10n.email,
+          icon: Icons.mail_outline,
+          keyboard: TextInputType.emailAddress,
+        ),
         const SizedBox(height: 12),
-        _Field(controller: _password, hint: context.l10n.password8Characters, icon: Icons.lock_outline, obscure: true),
+        _Field(
+          controller: _password,
+          hint: context.l10n.password8Characters,
+          icon: Icons.lock_outline,
+          obscure: true,
+        ),
         const SizedBox(height: 20),
         BlocBuilder<AuthCubit, AuthState>(
           builder: (context, state) => _SubmitBlock(
@@ -308,8 +342,8 @@ class _SignupScreenState extends State<SignupScreen> {
 // Profile (logged-in)
 // ─────────────────────────────────────────────────────────────────────────────
 
-class ProfileScreen extends StatelessWidget {
-  const ProfileScreen({super.key});
+class ProfileAccountSection extends StatelessWidget {
+  const ProfileAccountSection({super.key});
 
   Future<void> _pickAvatar(BuildContext context) async {
     final x = await ImagePicker().pickImage(
@@ -359,7 +393,7 @@ class ProfileScreen extends StatelessWidget {
     }
     final messenger = ScaffoldMessenger.of(context);
     final ok = await context.read<AuthCubit>().updateName(name);
-    if (!ok) {
+    if (!ok && context.mounted) {
       messenger.showSnackBar(
         SnackBar(content: Text(context.l10n.couldnTUpdateYourName)),
       );
@@ -367,89 +401,209 @@ class ProfileScreen extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
-    if (sl<AppMode>().isTv) return const ProfileScreenTv();
-    return Scaffold(
-      backgroundColor: AppColors.bg,
-      appBar: settingsAppBar(context.l10n.profile),
-      body: BlocBuilder<AuthCubit, AuthState>(
-        builder: (context, state) {
-          if (!state.isLoggedIn) {
-            return Center(child: Text(context.l10n.notSignedIn));
-          }
-          return ListView(
-            padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
+  Widget build(BuildContext context) => BlocBuilder<AuthCubit, AuthState>(
+    builder: (context, state) {
+      final isTv = sl.isRegistered<AppMode>() && sl<AppMode>().isTv;
+      if (!state.isLoggedIn) {
+        void signIn() {
+          Navigator.of(
+            context,
+          ).push(MaterialPageRoute(builder: (_) => const LoginScreen()));
+        }
+
+        return Padding(
+          padding: EdgeInsets.fromLTRB(24, isTv ? 20 : 28, 24, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Center(
-                child: GestureDetector(
-                  onTap: state.busy ? null : () => _pickAvatar(context),
-                  child: Stack(
-                    alignment: AlignmentDirectional.bottomEnd,
-                    children: [
-                      CircleAvatar(
-                        radius: 48,
-                        backgroundColor: AppColors.surface2,
-                        backgroundImage: state.avatarUrl != null
-                            ? CachedNetworkImageProvider(state.avatarUrl!)
-                            : null,
-                        child: state.avatarUrl == null
-                            ? Text(
-                                state.displayName.isNotEmpty
-                                    ? state.displayName[0].toUpperCase()
-                                    : '?',
-                                style: AppText.largeTitle,
-                              )
-                            : null,
+              Text(context.l10n.notSignedIn),
+              const SizedBox(height: 12),
+              if (isTv)
+                TvFocusable(
+                  autofocus: true,
+                  semanticLabel: context.l10n.signIn,
+                  onTap: signIn,
+                  variant: TvFocusVariant.row,
+                  borderRadius: 14,
+                  child: Container(
+                    height: 56,
+                    decoration: BoxDecoration(
+                      color: const Color(0x1AFFFFFF),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: AppColors.hairline, width: 0.5),
+                    ),
+                    child: Center(
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.login_rounded,
+                            color: AppColors.textPrimary,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            context.l10n.signIn,
+                            style: AppText.button.copyWith(
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                        ],
                       ),
-                      Container(
-                        padding: const EdgeInsets.all(6),
-                        decoration: BoxDecoration(
-                          color: AppColors.accent,
-                          shape: BoxShape.circle,
-                        ),
-                        child: state.busy
-                            ? const SizedBox(
-                                width: 14,
-                                height: 14,
-                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                              )
-                            : const Icon(Icons.camera_alt_rounded, size: 14, color: Colors.white),
-                      ),
-                    ],
+                    ),
                   ),
+                )
+              else
+                SecondaryButton(
+                  label: context.l10n.signIn,
+                  icon: Icons.login_rounded,
+                  onPressed: signIn,
                 ),
-              ),
-              const SizedBox(height: 16),
-              Center(
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(8),
-                  onTap: () => _editName(context, state.displayName),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            ],
+          ),
+        );
+      }
+
+      final avatar = CircleAvatar(
+        radius: isTv ? 56 : 48,
+        backgroundColor: AppColors.surface2,
+        backgroundImage: state.avatarUrl != null
+            ? CachedNetworkImageProvider(state.avatarUrl!)
+            : null,
+        child: state.avatarUrl == null
+            ? Text(
+                state.displayName.isNotEmpty
+                    ? state.displayName[0].toUpperCase()
+                    : '?',
+                style: AppText.largeTitle,
+              )
+            : null,
+      );
+      final name = Text(state.displayName, style: AppText.title);
+      final logout = isTv
+          ? TvFocusable(
+              onTap: () {
+                context.read<AuthCubit>().logout();
+                Navigator.of(context).pop();
+              },
+              child: SizedBox(
+                height: 56,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: const Color(0x1AFFFFFF),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: AppColors.hairline, width: 0.5),
+                  ),
+                  child: Center(
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Flexible(
-                          child: Text(
-                            state.displayName,
-                            style: AppText.title,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        const SizedBox(width: 7),
                         const Icon(
-                          Icons.edit_rounded,
-                          size: 15,
-                          color: AppColors.textTertiary,
+                          Icons.logout_rounded,
+                          color: AppColors.textPrimary,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          context.l10n.logOut,
+                          style: AppText.button.copyWith(
+                            color: AppColors.textPrimary,
+                          ),
                         ),
                       ],
                     ),
                   ),
                 ),
               ),
-              const SizedBox(height: 4),
-              Center(child: Text(state.user?.email ?? '', style: AppText.caption)),
-              const SizedBox(height: 32),
+            )
+          : SecondaryButton(
+              label: context.l10n.logOut,
+              icon: Icons.logout_rounded,
+              onPressed: () async {
+                // Backs up an un-synced library first / warns before wiping.
+                final done = await safeLogout(context);
+                if (done && context.mounted) Navigator.of(context).pop();
+              },
+            );
+
+      return Padding(
+        padding: EdgeInsets.fromLTRB(24, isTv ? 20 : 28, 24, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Center(
+              child: isTv
+                  ? avatar
+                  : GestureDetector(
+                      onTap: state.busy ? null : () => _pickAvatar(context),
+                      child: Stack(
+                        alignment: AlignmentDirectional.bottomEnd,
+                        children: [
+                          avatar,
+                          Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: BoxDecoration(
+                              color: AppColors.accent,
+                              shape: BoxShape.circle,
+                            ),
+                            child: state.busy
+                                ? const SizedBox(
+                                    width: 14,
+                                    height: 14,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : const Icon(
+                                    Icons.camera_alt_rounded,
+                                    size: 14,
+                                    color: Colors.white,
+                                  ),
+                          ),
+                        ],
+                      ),
+                    ),
+            ),
+            const SizedBox(height: 16),
+            Center(
+              child: isTv
+                  ? name
+                  : InkWell(
+                      borderRadius: BorderRadius.circular(8),
+                      onTap: () => _editName(context, state.displayName),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Flexible(
+                              child: Text(
+                                state.displayName,
+                                style: AppText.title,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            const SizedBox(width: 7),
+                            const Icon(
+                              Icons.edit_rounded,
+                              size: 15,
+                              color: AppColors.textTertiary,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+            ),
+            const SizedBox(height: 4),
+            Center(
+              child: Text(state.user?.email ?? '', style: AppText.caption),
+            ),
+            SizedBox(height: isTv ? 24 : 32),
+            if (!isTv) ...[
               SizedBox(
                 width: double.infinity,
                 child: SecondaryButton(
@@ -460,22 +614,25 @@ class ProfileScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                child: SecondaryButton(
-                  label: context.l10n.logOut,
-                  icon: Icons.logout_rounded,
-                  onPressed: () async {
-                    // Backs up an un-synced library first / warns before wiping.
-                    final done = await safeLogout(context);
-                    if (done && context.mounted) Navigator.of(context).pop();
-                  },
-                ),
-              ),
             ],
-          );
-        },
-      ),
+            SizedBox(width: double.infinity, child: logout),
+          ],
+        ),
+      );
+    },
+  );
+}
+
+class ProfileScreen extends StatelessWidget {
+  const ProfileScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    if (sl<AppMode>().isTv) return const ProfileScreenTv();
+    return Scaffold(
+      backgroundColor: AppColors.bg,
+      appBar: settingsAppBar(context.l10n.profile),
+      body: ListView(children: const [ProfileAccountSection()]),
     );
   }
 }
@@ -507,8 +664,11 @@ class _AvatarPicker extends StatelessWidget {
                 backgroundColor: AppColors.surface2,
                 backgroundImage: path != null ? FileImage(File(path!)) : null,
                 child: path == null
-                    ? const Icon(Icons.person_outline,
-                        size: 40, color: AppColors.textTertiary)
+                    ? const Icon(
+                        Icons.person_outline,
+                        size: 40,
+                        color: AppColors.textTertiary,
+                      )
                     : null,
               ),
               Container(
@@ -517,8 +677,11 @@ class _AvatarPicker extends StatelessWidget {
                   color: AppColors.accent,
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.camera_alt_rounded,
-                    size: 14, color: Colors.white),
+                child: const Icon(
+                  Icons.camera_alt_rounded,
+                  size: 14,
+                  color: Colors.white,
+                ),
               ),
             ],
           ),
@@ -595,7 +758,10 @@ class _SubmitBlock extends StatelessWidget {
                   child: SizedBox(
                     width: 24,
                     height: 24,
-                    child: CircularProgressIndicator(strokeWidth: 2.4, color: AppColors.accent),
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.4,
+                      color: AppColors.accent,
+                    ),
                   ),
                 )
               : PrimaryButton(label: label, onPressed: onPressed),
@@ -606,7 +772,11 @@ class _SubmitBlock extends StatelessWidget {
 }
 
 class _SwitchLink extends StatelessWidget {
-  const _SwitchLink({required this.prompt, required this.action, required this.onTap});
+  const _SwitchLink({
+    required this.prompt,
+    required this.action,
+    required this.onTap,
+  });
   final String prompt;
   final String action;
   final VoidCallback onTap;

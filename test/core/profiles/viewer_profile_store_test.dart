@@ -128,7 +128,7 @@ void main() {
     },
   );
 
-  test('notifies profile screens before waiting for remote deletion', () async {
+  test('keeps profile visible until cloud deletion completes', () async {
     final remote = _BlockingDeleteProfileRemote();
     final cloudStore = ViewerProfileStore(
       remote: remote,
@@ -141,11 +141,94 @@ void main() {
     final deletion = cloudStore.delete(profile.id);
     await remote.deleteStarted.future;
 
-    expect(cloudStore.revision.value, greaterThan(previousRevision));
-    expect(cloudStore.profiles.any((item) => item.id == profile.id), isFalse);
+    expect(cloudStore.revision.value, previousRevision);
+    expect(cloudStore.profiles.any((item) => item.id == profile.id), isTrue);
 
     remote.allowDelete.complete();
     expect(await deletion, isTrue);
+    expect(cloudStore.revision.value, greaterThan(previousRevision));
+    expect(cloudStore.profiles.any((item) => item.id == profile.id), isFalse);
+  });
+
+  test(
+    'deletes a profile avatar only after cloud profile deletion succeeds',
+    () async {
+      const photoUrl = 'https://cdn.example/avatars/user/photo.jpg';
+      final remote = _BlockingDeleteProfileRemote();
+      String? deletedAvatarUrl;
+      final cloudStore = ViewerProfileStore(
+        remote: remote,
+        currentUserId: () => 'test-user',
+        deleteAvatar: (url) async {
+          deletedAvatarUrl = url;
+          return true;
+        },
+      );
+      await cloudStore.loadForUser();
+      final profile = (await cloudStore.create('Guest', photoUrl: photoUrl))!;
+
+      final deletion = cloudStore.delete(profile.id);
+      await remote.deleteStarted.future;
+
+      expect(deletedAvatarUrl, isNull);
+      expect(cloudStore.profiles.any((item) => item.id == profile.id), isTrue);
+
+      remote.allowDelete.complete();
+      expect(await deletion, isTrue);
+      expect(deletedAvatarUrl, photoUrl);
+    },
+  );
+
+  test('does not delete an avatar still used by another profile', () async {
+    const photoUrl = 'https://cdn.example/avatars/user/shared.jpg';
+    String? deletedAvatarUrl;
+    final profileStore = ViewerProfileStore(
+      deleteAvatar: (url) async {
+        deletedAvatarUrl = url;
+        return true;
+      },
+    );
+    await profileStore.loadForUser();
+    final first = (await profileStore.create('First', photoUrl: photoUrl))!;
+    await profileStore.create('Second', photoUrl: photoUrl);
+
+    expect(await profileStore.delete(first.id), isTrue);
+
+    expect(deletedAvatarUrl, isNull);
+    expect(
+      profileStore.profiles.any((profile) => profile.photoUrl == photoUrl),
+      isTrue,
+    );
+  });
+
+  test('keeps profile and local data when cloud deletion fails', () async {
+    var avatarDeleteCalled = false;
+    final cloudStore = ViewerProfileStore(
+      remote: _FailingDeleteProfileRemote(),
+      currentUserId: () => 'test-user',
+      deleteAvatar: (_) async {
+        avatarDeleteCalled = true;
+        return true;
+      },
+    );
+    await cloudStore.loadForUser();
+    final guest = (await cloudStore.create(
+      'Guest',
+      photoUrl: 'https://cdn.example/avatars/user/retained.jpg',
+    ))!;
+    final box = await Hive.openBox('my_list');
+    final key = 'p:${guest.id}::saved-title';
+    await box.put(key, {'title': 'Guest title'});
+
+    final deleted = await cloudStore.delete(guest.id);
+
+    expect(deleted, isFalse);
+    expect(
+      cloudStore.profiles.any((profile) => profile.id == guest.id),
+      isTrue,
+    );
+    expect(box.containsKey(key), isTrue);
+    expect(avatarDeleteCalled, isFalse);
   });
 
   test('photoUrl round-trips through create, update, and reload', () async {
@@ -167,6 +250,22 @@ void main() {
     );
   });
 
+  test('does not confirm a photo update when cloud sync fails', () async {
+    final cloudStore = ViewerProfileStore(
+      remote: _FailingUpsertProfileRemote(),
+      currentUserId: () => 'test-user',
+    );
+    await cloudStore.loadForUser();
+
+    final synced = await cloudStore.update(
+      kDefaultProfileId,
+      photoUrl: 'https://cdn.example/new.jpg',
+    );
+
+    expect(synced, isFalse);
+    expect(cloudStore.activeProfile.photoUrl, 'https://cdn.example/new.jpg');
+  });
+
   test('old rows without a photo read as icon-only', () {
     final hive = ViewerProfile.fromJson({'id': 'x', 'name': 'X'});
     expect(hive.photoUrl, isNull);
@@ -185,6 +284,32 @@ class _BlockingDeleteProfileRemote implements ViewerProfileRemote {
 
   @override
   Future<List<Map<String, dynamic>>> listFor(String userId) async => [];
+
+  @override
+  Future<void> upsert(String userId, ViewerProfile profile) async {}
+}
+
+class _FailingUpsertProfileRemote implements ViewerProfileRemote {
+  @override
+  Future<List<Map<String, dynamic>>> listFor(String userId) async => [];
+
+  @override
+  Future<void> delete(String userId, String profileId) async {}
+
+  @override
+  Future<void> upsert(String userId, ViewerProfile profile) async {
+    throw const SocketException('offline');
+  }
+}
+
+class _FailingDeleteProfileRemote implements ViewerProfileRemote {
+  @override
+  Future<List<Map<String, dynamic>>> listFor(String userId) async => [];
+
+  @override
+  Future<void> delete(String userId, String profileId) async {
+    throw const SocketException('offline');
+  }
 
   @override
   Future<void> upsert(String userId, ViewerProfile profile) async {}

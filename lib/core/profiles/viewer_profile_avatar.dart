@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../cache/app_image_cache.dart';
 import '../theme/app_colors.dart';
+import '../ui/image_fade.dart';
 import 'viewer_profile.dart';
 
 const viewerProfileAvatarIcons = <IconData>[
@@ -49,8 +51,8 @@ String? profilePhotoForFace({
   return profile.isDefault ? accountPhotoUrl : null;
 }
 
-/// Icon or account photo, drawn inside the caller's own circle. A photo
-/// that fails to load falls back to the icon instead of an empty disc.
+/// Icon or account photo. Photos are circular by default; the launch picker
+/// can opt into rounded-square crops. Failed photos fall back to the icon.
 class ProfileAvatarFace extends StatelessWidget {
   const ProfileAvatarFace({
     super.key,
@@ -58,12 +60,14 @@ class ProfileAvatarFace extends StatelessWidget {
     this.photoUrl,
     required this.iconSize,
     required this.photoDiameter,
+    this.photoBorderRadius,
   });
 
   final ViewerProfile profile;
   final String? photoUrl;
   final double iconSize;
   final double photoDiameter;
+  final BorderRadius? photoBorderRadius;
 
   @override
   Widget build(BuildContext context) {
@@ -74,13 +78,30 @@ class ProfileAvatarFace extends StatelessWidget {
     );
     final url = photoUrl;
     if (url == null || url.isEmpty) return icon;
-    return ClipOval(
-      child: Image.network(
-        url,
-        width: photoDiameter,
-        height: photoDiameter,
-        fit: BoxFit.cover,
-        errorBuilder: (_, _, _) => icon,
+    final pixels = (photoDiameter * MediaQuery.devicePixelRatioOf(context))
+        .round();
+    final image = Image(
+      image: ResizeImage(
+        AppImageCache.imageProvider(url),
+        width: pixels,
+        height: pixels,
+      ),
+      fit: BoxFit.cover,
+      filterQuality: FilterQuality.high,
+      frameBuilder: imageFadeIn,
+      errorBuilder: (_, _, _) => const SizedBox.shrink(),
+    );
+    return SizedBox.square(
+      dimension: photoDiameter,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Center(child: icon),
+          if (photoBorderRadius == null)
+            ClipOval(child: image)
+          else
+            ClipRRect(borderRadius: photoBorderRadius!, child: image),
+        ],
       ),
     );
   }

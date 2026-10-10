@@ -91,6 +91,8 @@ dependencies:
   # Image caching
   cached_network_image: ^3.4.1
   flutter_cache_manager: ^3.4.1
+  # Resize and compress profile photos before sending them to R2.
+  image: ^4.8.0
   # Lazy HTML rendering for the novel reader (RenderMode.sliverList) — only the
   # on-screen paragraphs are built, so long chapters scroll without jank.
   flutter_widget_from_html: ^0.15.3

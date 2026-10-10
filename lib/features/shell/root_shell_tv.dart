@@ -492,7 +492,7 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
       ...shared.sublist(0, 3), // Home, Search, My List
       const DownloadsScreen(),
       const ScheduleScreen(),
-      shared.last, // Settings
+      shared[3], // Settings; the phone Profile tab uses the same destination.
     ];
     final profileId = sl.isRegistered<ViewerProfileStore>()
         ? sl<ViewerProfileStore>().activeId

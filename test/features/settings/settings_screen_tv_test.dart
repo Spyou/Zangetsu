@@ -160,25 +160,32 @@ void main() {
     await hiveDir.delete(recursive: true);
   });
 
-  testWidgets('TV SettingsScreen shows Sign-in tile when unauthenticated', (
-    tester,
-  ) async {
-    _mockPathProvider(tester);
-    final authCubit = AuthCubit(
-      SupabaseService(),
-      AppwriteService(),
-      _fakeBridge(),
-    );
-    addTearDown(authCubit.close);
+  testWidgets(
+    'TV SettingsScreen keeps sign-in available inside Profiles & account',
+    (tester) async {
+      _mockPathProvider(tester);
+      final authCubit = AuthCubit(
+        SupabaseService(),
+        AppwriteService(),
+        _fakeBridge(),
+      );
+      addTearDown(authCubit.close);
+      GetIt.instance.registerSingleton<AuthCubit>(authCubit);
 
-    await tester.pumpWidget(
-      _buildUnderTest(authCubit: authCubit, activeCubit: activeCubit),
-    );
-    await tester.pumpAndSettle();
+      await tester.pumpWidget(
+        _buildUnderTest(authCubit: authCubit, activeCubit: activeCubit),
+      );
+      await tester.pumpAndSettle();
 
-    expect(find.text('Sign in'), findsOneWidget);
-    expect(find.text('Profile'), findsNothing);
-  });
+      expect(find.text('Profiles & account'), findsOneWidget);
+      expect(find.text('Sign in'), findsNothing);
+
+      await tester.tap(find.text('Profiles & account'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Sign in'), findsOneWidget);
+    },
+  );
 
   testWidgets('TV SettingsScreen shows section categories like mobile', (
     tester,

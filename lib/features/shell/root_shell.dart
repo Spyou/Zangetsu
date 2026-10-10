@@ -38,9 +38,8 @@ import 'mode_bar.dart';
 import '../../core/ui/dock_visibility.dart';
 import 'root_shell_tv.dart';
 
-/// The four pages used by both [RootShell] (phone bottom nav) and
-/// [RootShellTv] (TV left rail). Any change to the page set must be
-/// reflected in BOTH shells; this single function is the one source of truth.
+/// Shared pages for [RootShell] (phone bottom nav) and [RootShellTv] (TV left
+/// rail). Settings stays at index 3 for both shells.
 ///
 /// [searchFocusSignal] is bumped each time the Search rail item is
 /// (re)selected on TV so the embedded search screen can auto-focus its
@@ -257,11 +256,8 @@ class _RootShellState extends State<RootShell>
   /// One page per visible tab, in the same order the dock draws them, so the
   /// [IndexedStack] index is just the tab's position in that list.
   ///
-  /// [buildShellPages] stays the shared Home/Search/My List/Settings set that
-  /// the TV rail also builds from — untouched, so TV is unaffected. Search is
-  /// no longer a phone dock tab (it's a Home header icon now), so this never
-  /// places `shared[1]` — it's still built, just unused here, the same way
-  /// Settings only ever takes `shared.last`.
+  /// Search is no longer a phone dock tab (it's a Home header icon now), so
+  /// this never places `shared[1]`. The Profile dock item opens Settings.
   List<Widget> _pagesFor(List<DockTab> tabs, String profileId) {
     final shared = buildShellPages(null);
     return [
@@ -271,7 +267,7 @@ class _RootShellState extends State<RootShell>
           child: switch (t) {
             DockTab.home => shared[0],
             DockTab.myList => shared[2],
-            DockTab.profile => shared.last, // Settings, shown as "Profile"
+            DockTab.profile => shared[3], // Settings
             // Both normally get pushed with a back button; as tabs they own the
             // whole screen, so their own back affordance is suppressed.
             DockTab.downloads => const DownloadsScreen(showBack: false),
@@ -355,8 +351,7 @@ class _RootShellState extends State<RootShell>
             valueListenable: dockHiddenBySection,
             builder: (context, sectionOpen, _) {
               // Slide the dock away only when a Settings section is open AND the
-              // Settings (Profile, last) tab is the one showing — every other tab
-              // keeps its dock.
+              // Profile (Settings) tab is showing — every other tab keeps its dock.
               final hide = sectionOpen && _tab == DockTab.profile;
               return Column(
                 mainAxisSize: MainAxisSize.min,

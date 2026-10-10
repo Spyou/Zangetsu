@@ -112,15 +112,28 @@ void main() {
       find.byKey(ValueKey('profile-avatar-fill-${profiles.profiles.first.id}')),
       findsOneWidget,
     );
+    final avatar = tester.widget<Material>(
+      find.byKey(ValueKey('profile-avatar-fill-${profiles.profiles.first.id}')),
+    );
+    final outline = (avatar.shape! as CircleBorder).side;
+    expect(outline.width, 1);
+    expect(outline.color, AppColors.textPrimary.withValues(alpha: 0.25));
     expect(find.text('Add'), findsOneWidget);
     expect(find.text('Edit'), findsNothing);
   });
 
-  testWidgets('phone picker uses large circular avatars', (tester) async {
+  testWidgets('phone picker keeps its heading with the lower profile choices', (
+    tester,
+  ) async {
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(390, 844);
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.runAsync(() async {
+      await profiles.create('Second');
+      await profiles.create('Third');
+    });
 
     await tester.pumpWidget(
       const MaterialApp(home: ViewerProfilesScreen(selectionOnly: true)),
@@ -132,12 +145,14 @@ void main() {
           ValueKey('profile-avatar-fill-${profiles.profiles.first.id}'),
         ),
       ),
-      const Size.square(120),
+      const Size.square(100),
     );
-    expect(
-      tester.getTopLeft(find.text("Who's watching?")).dy,
-      greaterThan(250),
-    );
+    final headingTop = tester.getTopLeft(find.text("Who's watching?")).dy;
+    final gridTop = tester
+        .getTopLeft(find.byKey(const ValueKey('profile-picker-grid')))
+        .dy;
+    expect(headingTop, greaterThan(350));
+    expect(headingTop, lessThan(gridTop));
     expect(
       tester.getBottomLeft(find.text('Manage profiles')).dy,
       greaterThan(760),
@@ -190,7 +205,7 @@ void main() {
         .toList();
     expect(profileAvatars, hasLength(ViewerProfileStore.maxProfiles));
     for (final avatar in profileAvatars) {
-      expect(tester.getSize(avatar), const Size.square(120));
+      expect(tester.getSize(avatar), const Size.square(100));
     }
 
     final gridFinder = find.byKey(const ValueKey('profile-picker-grid'));
@@ -203,9 +218,10 @@ void main() {
     expect(
       (grid.gridDelegate as SliverGridDelegateWithFixedCrossAxisCount)
           .mainAxisExtent,
-      inInclusiveRange(160, 180),
+      inInclusiveRange(140, 160),
     );
-    expect(tester.getSize(gridFinder).width, inInclusiveRange(250, 270));
+    expect(tester.getSize(gridFinder).width, inInclusiveRange(350, 360));
+    expect(tester.getTopLeft(gridFinder).dy, greaterThan(844 / 2));
     expect(grid.childrenDelegate, isA<SliverChildListDelegate>());
     expect(
       (grid.childrenDelegate as SliverChildListDelegate).children.length,
@@ -255,6 +271,10 @@ void main() {
 
     final artwork = tester.widget<Image>(
       find.byKey(const ValueKey('profile-picker-backdrop-image')),
+    );
+    expect(
+      find.byKey(const ValueKey('profile-picker-backdrop-switcher')),
+      findsOneWidget,
     );
     final resized = artwork.image as ResizeImage;
     expect(resized.imageProvider, isA<CachedNetworkImageProvider>());
@@ -307,6 +327,12 @@ void main() {
     expect(
       (resized.imageProvider as CachedNetworkImageProvider).url,
       'https://image.tmdb.org/t/p/w1280/safe-poster.jpg',
+    );
+    expect(
+      tester
+          .getSize(find.byKey(const ValueKey('profile-picker-backdrop-image')))
+          .height,
+      closeTo(844 * 0.6, 1),
     );
   });
 
@@ -466,15 +492,25 @@ void main() {
   });
 
   testWidgets('picker manage button opens the profile manager', (tester) async {
+    final observer = _CountingNavigatorObserver();
     await tester.pumpWidget(
-      const MaterialApp(home: ViewerProfilesScreen(selectionOnly: true)),
+      MaterialApp(
+        navigatorObservers: [observer],
+        home: const ViewerProfilesScreen(selectionOnly: true),
+      ),
     );
+    final pushesBeforeManage = observer.pushes;
 
     await tester.tap(find.text('Manage profiles'));
     await tester.pumpAndSettle();
 
     expect(find.text('Profiles'), findsOneWidget);
     expect(find.text('Ask who is watching on launch'), findsOneWidget);
+    expect(observer.pushes, pushesBeforeManage);
+
+    await tester.tap(find.byIcon(Icons.arrow_back));
+    await tester.pumpAndSettle();
+    expect(find.text("Who's watching?"), findsOneWidget);
   });
 
   testWidgets('picker add tile opens the profile editor', (tester) async {
@@ -499,6 +535,16 @@ void main() {
     );
 
     expect(find.byType(TvListFocusable), findsNWidgets(3));
+    expect(
+      (tester
+                  .widget<GridView>(
+                    find.byKey(const ValueKey('profile-picker-grid')),
+                  )
+                  .gridDelegate
+              as SliverGridDelegateWithFixedCrossAxisCount)
+          .crossAxisCount,
+      4,
+    );
     expect(
       find.byWidgetPredicate(
         (widget) =>
@@ -880,6 +926,15 @@ void main() {
     await tester.pump();
     expect(find.text('Ready for the next watch, Evening?'), findsOneWidget);
   });
+}
+
+class _CountingNavigatorObserver extends NavigatorObserver {
+  int pushes = 0;
+
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    pushes++;
+  }
 }
 
 class _PhotoAuthCubit extends Cubit<AuthState> implements AuthCubit {

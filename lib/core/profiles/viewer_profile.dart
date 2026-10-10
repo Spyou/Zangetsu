@@ -95,8 +95,10 @@ class ViewerProfileStore {
   ViewerProfileStore({
     ViewerProfileRemote? remote,
     String? Function()? currentUserId,
+    Future<bool> Function(String url)? deleteAvatar,
   }) : _remote = remote,
-       _currentUserId = currentUserId;
+       _currentUserId = currentUserId,
+       _deleteAvatar = deleteAvatar;
 
   static const int maxProfiles = 4;
   static const int maxNameLength = 24;
@@ -105,6 +107,7 @@ class ViewerProfileStore {
 
   final ViewerProfileRemote? _remote;
   final String? Function()? _currentUserId;
+  final Future<bool> Function(String url)? _deleteAvatar;
   int _loadRequest = 0;
   String? _loadedOwner;
   List<ViewerProfile> _profiles = const [];
@@ -256,10 +259,10 @@ class ViewerProfileStore {
         if (i == index) profile else _profiles[i],
     ];
     await _saveLocal(_loadedOwner ?? _owner);
-    await _saveRemote(profile);
+    final synced = await _saveRemote(profile);
     _refreshActive(profileId);
     if (activePolicyChanged) contextRevision.value++;
-    return true;
+    return synced;
   }
 
   Future<void> switchTo(String profileId) async {
@@ -272,16 +275,34 @@ class ViewerProfileStore {
   }
 
   Future<bool> delete(String profileId) async {
-    if (profileId == kDefaultProfileId || _profiles.length <= 1) return false;
+    if (profileId == kDefaultProfileId ||
+        _profiles.length <= 1 ||
+        !_profiles.any((profile) => profile.id == profileId)) {
+      return false;
+    }
+    final profile = _profiles.firstWhere((profile) => profile.id == profileId);
+    final photoUrl = profile.photoUrl;
+    final photoIsShared =
+        photoUrl != null &&
+        _profiles.any(
+          (other) => other.id != profileId && other.photoUrl == photoUrl,
+        );
+    final userId = _currentUserId?.call();
+    if (userId != null && _remote != null) {
+      try {
+        await _remote.delete(userId, profileId);
+      } catch (_) {
+        return false;
+      }
+    }
     _profiles = _profiles.where((p) => p.id != profileId).toList();
     revision.value++;
     if (activeId == profileId) await switchTo(kDefaultProfileId);
     await _deleteLocalProfileData(profileId);
     await _saveLocal(_loadedOwner ?? _owner);
-    final userId = _currentUserId?.call();
-    if (userId != null && _remote != null) {
+    if (photoUrl != null && !photoIsShared) {
       try {
-        await _remote.delete(userId, profileId);
+        await _deleteAvatar?.call(photoUrl);
       } catch (_) {}
     }
     return true;
@@ -350,14 +371,16 @@ class ViewerProfileStore {
         for (final profile in profiles ?? _profiles) profile.toJson(),
       ]);
 
-  Future<void> _saveRemote(ViewerProfile profile) async {
+  Future<bool> _saveRemote(ViewerProfile profile) async {
     final userId = _currentUserId?.call();
     final remote = _remote;
-    if (userId == null || remote == null) return;
+    if (userId == null || remote == null) return true;
     try {
       await remote.upsert(userId, profile);
+      return true;
     } catch (_) {
       // The local update remains available and will be uploaded at next load.
+      return false;
     }
   }
 

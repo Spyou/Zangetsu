@@ -25,8 +25,8 @@ import 'package:watch_app/core/tracker/mal_service.dart';
 import 'package:watch_app/core/tracker/simkl_service.dart';
 import 'package:watch_app/features/auth/auth_cubit.dart';
 import 'package:watch_app/features/auth/migration_bridge.dart';
+import 'package:watch_app/features/profiles/viewer_profile_home_screen.dart';
 import 'package:watch_app/features/settings/settings_screen.dart';
-import 'package:watch_app/features/profiles/viewer_profiles_screen.dart';
 import 'package:watch_app/l10n/app_localizations.dart';
 
 MigrationBridge _fakeBridge() => MigrationBridge(
@@ -165,7 +165,11 @@ void main() {
     if (_hiveDir.existsSync()) await _hiveDir.delete(recursive: true);
   });
 
-  Future<void> _pumpSettings(WidgetTester tester) async {
+  Future<void> _pumpSettings(
+    WidgetTester tester, {
+    bool showBackButton = false,
+    bool openFromProfile = false,
+  }) async {
     _mockPathProvider(tester);
     await tester.binding.setSurfaceSize(const Size(1000, 2200));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -187,62 +191,74 @@ void main() {
         child: MaterialApp(
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
-          home: const SettingsScreen(),
+          home: openFromProfile
+              ? const ViewerProfileHomeScreen()
+              : SettingsScreen(showBackButton: showBackButton),
         ),
       ),
     );
     await tester.pumpAndSettle();
   }
 
-  testWidgets('top level shows one tappable row per section, not the tiles', (
+  testWidgets(
+    'top level shows one combined profile row and one row per section',
+    (tester) async {
+      await _pumpSettings(tester);
+
+      // Each section is now a single drill-down row.
+      for (final section in const [
+        'Account & sync',
+        'Sources',
+        'Playback',
+        'Downloads',
+        'Interface',
+        'Advanced',
+        'About',
+      ]) {
+        expect(
+          find.text(section),
+          findsOneWidget,
+          reason: 'category: $section',
+        );
+      }
+      expect(find.text('Profiles & account'), findsOneWidget);
+      expect(find.text('Watching as Home · Not signed in'), findsOneWidget);
+      expect(find.text('Profiles'), findsNothing);
+      // Notifications is Android-only (its sole entry), so its category is absent
+      // on the non-Android test host.
+      expect(find.text('Notifications'), findsNothing);
+      // The individual settings live INSIDE their section now, not up top.
+      expect(find.text('Providers'), findsNothing);
+      expect(find.text('Storage'), findsNothing);
+      expect(find.text('Backup & Restore'), findsNothing);
+    },
+  );
+
+  testWidgets('route-pushed Settings shows a visible back button', (
     tester,
   ) async {
-    await _pumpSettings(tester);
-
-    // Each section is now a single drill-down row.
-    for (final section in const [
-      'Account & sync',
-      'Sources',
-      'Playback',
-      'Downloads',
-      'Interface',
-      'Advanced',
-      'About',
-    ]) {
-      expect(find.text(section), findsOneWidget, reason: 'category: $section');
-    }
-    // Notifications is Android-only (its sole entry), so its category is absent
-    // on the non-Android test host.
-    expect(find.text('Notifications'), findsNothing);
-    // The individual settings live INSIDE their section now, not up top.
-    expect(find.text('Providers'), findsNothing);
-    expect(find.text('Storage'), findsNothing);
-    expect(find.text('Backup & Restore'), findsNothing);
-  });
-
-  testWidgets('Profiles row has a Hero transition into profile selection', (
-    tester,
-  ) async {
-    await _pumpSettings(tester);
-
-    expect(
-      find.byWidgetPredicate(
-        (widget) => widget is Hero && widget.tag == kViewerProfileHeroTag,
-      ),
-      findsOneWidget,
-    );
-
-    await tester.tap(find.text('Profiles'));
+    await _pumpSettings(tester, openFromProfile: true);
+    await tester.tap(find.byTooltip('App settings'));
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('Choose who is watching.'), findsOneWidget);
-    expect(
-      find.byWidgetPredicate(
-        (widget) => widget is Hero && widget.tag == kViewerProfileHeroTag,
-      ),
-      findsOneWidget,
-    );
+    expect(find.byType(AppBar), findsOneWidget);
+    expect(find.byIcon(Icons.arrow_back), findsOneWidget);
   });
+
+  testWidgets(
+    'combined profile row opens viewer manager and keeps sign-in available',
+    (tester) async {
+      await _pumpSettings(tester);
+
+      await tester.tap(find.text('Profiles & account'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Profiles'), findsOneWidget);
+      expect(find.text('Ask who is watching on launch'), findsOneWidget);
+      expect(find.text('Not signed in'), findsOneWidget);
+      expect(find.text('Sign in'), findsOneWidget);
+    },
+  );
 
   testWidgets('tapping a category drills into its settings', (tester) async {
     await _pumpSettings(tester);

@@ -32,6 +32,7 @@ import '../schedule/airing_service.dart';
 import '../schedule/coming_soon_service.dart';
 import '../privacy/incognito_mode.dart';
 import '../profiles/viewer_profile.dart';
+import '../profiles/profile_avatar_uploader.dart';
 import '../search/title_suggestion_service.dart';
 import '../ui/animation_prefs.dart';
 import '../playback/skip_service.dart';
@@ -248,6 +249,12 @@ Future<void> initDependencies() async {
     ViewerProfileStore(
       remote: ViewerProfileRemote(sl<SupabaseService>()),
       currentUserId: currentUserId,
+      deleteAvatar: (url) async {
+        final token =
+            sl<SupabaseService>().client.auth.currentSession?.accessToken;
+        if (token == null) return false;
+        return ProfileAvatarUploader(sl<Dio>()).delete(url: url, token: token);
+      },
     ),
   );
   String currentProfileId() => sl<ViewerProfileStore>().activeId;
