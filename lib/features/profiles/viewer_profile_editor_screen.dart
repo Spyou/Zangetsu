@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -126,13 +128,83 @@ class _ViewerProfileEditorScreenState extends State<ViewerProfileEditorScreen> {
   }
 
   Future<void> _pickPhoto() async {
+    final pickGif = await showModalBottomSheet<bool>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_outlined),
+              title: const Text('Photo from gallery'),
+              onTap: () => Navigator.of(context).pop(false),
+            ),
+            ListTile(
+              leading: const Icon(Icons.movie_filter_outlined),
+              title: const Text('Animated GIF file'),
+              onTap: () => Navigator.of(context).pop(true),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (pickGif == null || !mounted) return;
+    if (pickGif) {
+      await _pickGif();
+      return;
+    }
+    await _pickStillPhoto();
+  }
+
+  Future<void> _pickStillPhoto() async {
     final x = await ImagePicker().pickImage(
       source: ImageSource.gallery,
-      maxWidth: 512,
-      maxHeight: 512,
-      imageQuality: 90,
+      maxWidth: ProfileAvatarUploader.maxAvatarDimension.toDouble(),
+      maxHeight: ProfileAvatarUploader.maxAvatarDimension.toDouble(),
+      imageQuality: 100,
     );
     if (x == null || !mounted) return;
+    final bytes = await x.readAsBytes();
+    if (!mounted) return;
+    await _uploadAvatarBytes(bytes);
+  }
+
+  Future<void> _pickGif() async {
+    try {
+      final file = await FilePicker.pickFile(
+        type: FileType.custom,
+        allowedExtensions: const ['gif'],
+      );
+      if (file == null || !mounted) return;
+      final size = await file.length();
+      if (!mounted) return;
+      if (size > ProfileAvatarUploader.maxAvatarBytes) {
+        setState(
+          () => _photoError =
+              'GIF must be 512 KB or smaller, 512 × 512 or less, and at most 60 frames.',
+        );
+        return;
+      }
+      final bytes = await file.readAsBytes();
+      if (!mounted) return;
+      if (!ProfileAvatarUploader.isAllowedGif(bytes)) {
+        setState(
+          () => _photoError =
+              'GIF must be 512 KB or smaller, 512 × 512 or less, and at most 60 frames.',
+        );
+        return;
+      }
+      await _uploadAvatarBytes(bytes);
+    } catch (_) {
+      if (mounted) {
+        setState(() => _photoError = 'Could not read that GIF file.');
+      }
+    }
+  }
+
+  Future<void> _uploadAvatarBytes(Uint8List bytes) async {
     final token = sl<SupabaseService>().client.auth.currentSession?.accessToken;
     if (token == null) {
       setState(() => _photoError = "Couldn't upload photo");
@@ -144,7 +216,6 @@ class _ViewerProfileEditorScreenState extends State<ViewerProfileEditorScreen> {
     });
     String? url;
     try {
-      final bytes = await x.readAsBytes();
       url = await ProfileAvatarUploader(
         sl<Dio>(),
       ).upload(bytes: bytes, token: token);

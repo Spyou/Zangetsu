@@ -78,13 +78,16 @@ class ProfileAvatarFace extends StatelessWidget {
     );
     final url = photoUrl;
     if (url == null || url.isEmpty) return icon;
-    final pixels = (photoDiameter * MediaQuery.devicePixelRatioOf(context))
-        .round();
+    final baseImageProvider = AppImageCache.imageProvider(url);
+    final decodeSize =
+        (photoDiameter * (MediaQuery.maybeOf(context)?.devicePixelRatio ?? 1))
+            .round();
     final image = Image(
       image: ResizeImage(
-        AppImageCache.imageProvider(url),
-        width: pixels,
-        height: pixels,
+        baseImageProvider,
+        width: decodeSize,
+        height: decodeSize,
+        policy: ResizeImagePolicy.fit,
       ),
       fit: BoxFit.cover,
       filterQuality: FilterQuality.high,

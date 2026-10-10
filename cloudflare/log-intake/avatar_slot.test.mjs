@@ -111,6 +111,38 @@ function jpegBytes(length = 3) {
   return bytes;
 }
 
+function gifBytes({ width = 1, height = 1, frames = 2 } = {}) {
+  const bytes = [
+    ...encoder.encode('GIF89a'),
+    width & 0xff,
+    width >> 8,
+    height & 0xff,
+    height >> 8,
+    0x80,
+    0,
+    0,
+    0, 0, 0,
+    255, 255, 255,
+    0x21, 0xff, 0x0b,
+    ...encoder.encode('NETSCAPE2.0'),
+    0x03, 0x01, 0, 0, 0,
+  ];
+  for (let i = 0; i < frames; i++) {
+    bytes.push(
+      0x2c,
+      0, 0, 0, 0,
+      width & 0xff, width >> 8,
+      height & 0xff, height >> 8,
+      0,
+      2,
+      2, 0x44, 0x01,
+      0,
+    );
+  }
+  bytes.push(0x3b);
+  return new Uint8Array(bytes);
+}
+
 test('accepts a valid Supabase ES256 user token and stores a small image', async () => {
   const env = environment();
   const response = await worker.fetch(
@@ -201,6 +233,55 @@ for (const [type, bytes] of [
     assert.equal(env.writes.length, 1);
   });
 }
+
+test('stores a validated animated GIF with GIF metadata and extension', async () => {
+  const env = environment();
+  const response = await worker.fetch(
+    requestFor(await token(), gifBytes(), { 'content-type': 'image/gif' }),
+    env,
+  );
+
+  assert.equal(response.status, 200);
+  assert.match(env.writes[0][0], /\.gif$/);
+  assert.equal(env.writes[0][2].httpMetadata.contentType, 'image/gif');
+});
+
+test('rejects animated GIFs with oversized dimensions or frame counts', async () => {
+  for (const gif of [gifBytes({ width: 513 }), gifBytes({ frames: 61 })]) {
+    const env = environment();
+    const response = await worker.fetch(
+      requestFor(await token(), gif, { 'content-type': 'image/gif' }),
+      env,
+    );
+
+    assert.equal(response.status, 400);
+    assert.equal(env.writes.length, 0);
+  }
+});
+
+test('deletes GIF avatar objects without changing old JPEG URLs', async () => {
+  const env = environment();
+  const jwt = await token();
+  const gifId = '11111111-1111-4111-8111-111111111111';
+  const jpgId = '22222222-2222-4222-8222-222222222222';
+
+  for (const extension of ['gif', 'jpg']) {
+    const id = extension === 'gif' ? gifId : jpgId;
+    const response = await worker.fetch(
+      deleteRequest(
+        jwt,
+        `${env.AVATAR_PUBLIC_BASE}/avatars/${userId}/${id}.${extension}`,
+      ),
+      env,
+    );
+    assert.equal(response.status, 200);
+  }
+
+  assert.deepEqual(env.deletes, [
+    `avatars/${userId}/${gifId}.gif`,
+    `avatars/${userId}/${jpgId}.jpg`,
+  ]);
+});
 
 test('accepts an audience array containing authenticated', async () => {
   const env = environment();

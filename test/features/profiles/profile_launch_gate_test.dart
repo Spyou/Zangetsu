@@ -833,9 +833,11 @@ void main() {
     );
     expect(imageFinder, findsOneWidget);
     final image = tester.widget<Image>(imageFinder);
+    expect(image.image, isA<ResizeImage>());
     final resized = image.image as ResizeImage;
     expect(resized.imageProvider, isA<CachedNetworkImageProvider>());
     expect((resized.imageProvider as CachedNetworkImageProvider).url, photoUrl);
+    expect(image.fit, BoxFit.cover);
     expect(image.frameBuilder, same(imageFadeIn));
     expect(image.filterQuality, FilterQuality.high);
     expect(
@@ -878,10 +880,12 @@ void main() {
     final image = tester.widget<Image>(
       find.descendant(of: avatar, matching: find.byType(Image)),
     );
+    expect(image.image, isA<ResizeImage>());
     expect(
       (image.image as ResizeImage).imageProvider,
       isA<CachedNetworkImageProvider>(),
     );
+    expect(image.fit, BoxFit.cover);
     expect(image.frameBuilder, same(imageFadeIn));
     expect(
       find.descendant(of: avatar, matching: find.byType(ClipOval)),

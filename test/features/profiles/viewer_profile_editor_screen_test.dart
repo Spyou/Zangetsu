@@ -71,9 +71,7 @@ void main() {
     expect(result, isNull);
   });
 
-  testWidgets('photo picker keeps a sharp bounded 512 pixel source', (
-    tester,
-  ) async {
+  testWidgets('photo picker keeps a sharp bounded source', (tester) async {
     const channel = MethodChannel('plugins.flutter.io/image_picker');
     MethodCall? pickedCall;
     final messenger =
@@ -88,12 +86,15 @@ void main() {
     await tester.tap(find.text('Open editor'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Choose photo'));
+    await tester.pumpAndSettle();
+    expect(find.text('Animated GIF file'), findsOneWidget);
+    await tester.tap(find.text('Photo from gallery'));
     await tester.pump();
 
     expect(pickedCall?.method, 'pickImage');
-    expect(pickedCall?.arguments['maxWidth'], 512.0);
-    expect(pickedCall?.arguments['maxHeight'], 512.0);
-    expect(pickedCall?.arguments['imageQuality'], 90);
+    expect(pickedCall?.arguments['maxWidth'], 768.0);
+    expect(pickedCall?.arguments['maxHeight'], 768.0);
+    expect(pickedCall?.arguments['imageQuality'], 100);
   });
 
   testWidgets('edit saves the entered name, avatar, and kids setting', (

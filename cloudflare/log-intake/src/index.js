@@ -27,7 +27,7 @@ const MAX_BYTES = 1_000_000;
 /** Bumped by hand when the Worker changes, so `/health` can prove which code
  *  is actually serving. Cloudflare takes a while to roll a new version out and
  *  there is otherwise no way to tell from outside. */
-const BUILD = 'ctx-4';
+const BUILD = 'ctx-5';
 
 /** Supabase JWKS endpoint (ES256, P-256). Cached in a module global;
  *  refetched only when the token's `kid` misses the cache. */
@@ -35,6 +35,8 @@ const JWKS_URL =
   'https://eogwzrlfoercfwcfwlmv.supabase.co/auth/v1/.well-known/jwks.json';
 const JWT_ISSUER = `${new URL(JWKS_URL).origin}/auth/v1`;
 const AVATAR_MAX_BYTES = 512 * 1024;
+const AVATAR_GIF_MAX_DIMENSION = 512;
+const AVATAR_GIF_MAX_FRAMES = 60;
 let CACHED_JWKS = null;
 
 /** Long enough to still have the log when someone gets round to mentioning it,
@@ -84,7 +86,12 @@ export default {
         .split(';')[0]
         .trim()
         .toLowerCase();
-      if (type !== 'image/jpeg' && type !== 'image/png' && type !== 'image/webp') {
+      if (
+        type !== 'image/jpeg' &&
+        type !== 'image/png' &&
+        type !== 'image/webp' &&
+        type !== 'image/gif'
+      ) {
         return json({ error: 'bad type' }, 400);
       }
       const body = await readBodyUpTo(request, AVATAR_MAX_BYTES);
@@ -92,7 +99,8 @@ export default {
       if (!body.byteLength || !matchesImageSignature(type, body)) {
         return json({ error: 'bad image' }, 400);
       }
-      const key = `avatars/${user}/${crypto.randomUUID()}.jpg`;
+      const extension = type === 'image/gif' ? 'gif' : 'jpg';
+      const key = `avatars/${user}/${crypto.randomUUID()}.${extension}`;
       await env.AVATARS.put(key, body, { httpMetadata: { contentType: type } });
       return json({ url: `${env.AVATAR_PUBLIC_BASE}/${key}` });
     }
@@ -111,7 +119,7 @@ export default {
       const file = typeof target === 'string' && target.startsWith(prefix)
         ? target.slice(prefix.length)
         : '';
-      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.jpg$/i.test(file)) {
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.(?:jpg|gif)$/i.test(file)) {
         return json({ error: 'bad avatar URL' }, 400);
       }
       await env.AVATARS.delete(`avatars/${user}/${file}`);
@@ -282,7 +290,96 @@ function matchesImageSignature(type, bytes) {
       String.fromCharCode(...bytes.subarray(8, 12)) === 'WEBP'
     );
   }
+  if (type === 'image/gif') {
+    return inspectGif(bytes);
+  }
   return false;
+}
+
+function inspectGif(bytes) {
+  if (bytes.length < 14) return false;
+  const signature = String.fromCharCode(...bytes.subarray(0, 6));
+  if (signature !== 'GIF87a' && signature !== 'GIF89a') return false;
+
+  const read16 = (offset) => bytes[offset] | (bytes[offset + 1] << 8);
+  const width = read16(6);
+  const height = read16(8);
+  if (
+    width < 1 ||
+    width > AVATAR_GIF_MAX_DIMENSION ||
+    height < 1 ||
+    height > AVATAR_GIF_MAX_DIMENSION
+  ) {
+    return false;
+  }
+
+  let offset = 13;
+  const screenFlags = bytes[10];
+  const hasGlobalColorTable = (screenFlags & 0x80) !== 0;
+  if (hasGlobalColorTable) {
+    offset += 3 * (1 << ((screenFlags & 0x07) + 1));
+    if (offset > bytes.length) return false;
+  }
+
+  let frames = 0;
+  while (offset < bytes.length) {
+    const marker = bytes[offset++];
+    if (marker === 0x3b) {
+      return frames > 0 && offset === bytes.length;
+    }
+    if (marker === 0x2c) {
+      if (offset + 9 > bytes.length) return false;
+      const left = read16(offset);
+      const top = read16(offset + 2);
+      const frameWidth = read16(offset + 4);
+      const frameHeight = read16(offset + 6);
+      const frameFlags = bytes[offset + 8];
+      const hasLocalColorTable = (frameFlags & 0x80) !== 0;
+      if (
+        frameWidth < 1 ||
+        frameWidth > AVATAR_GIF_MAX_DIMENSION ||
+        frameHeight < 1 ||
+        frameHeight > AVATAR_GIF_MAX_DIMENSION ||
+        left + frameWidth > width ||
+        top + frameHeight > height
+      ) {
+        return false;
+      }
+      offset += 9;
+      if (hasLocalColorTable) {
+        offset += 3 * (1 << ((frameFlags & 0x07) + 1));
+        if (offset > bytes.length) return false;
+      } else if (!hasGlobalColorTable) {
+        return false;
+      }
+      if (offset >= bytes.length || bytes[offset] < 2 || bytes[offset] > 8) {
+        return false;
+      }
+      offset++;
+      offset = skipGifSubBlocks(bytes, offset);
+      if (offset < 0 || ++frames > AVATAR_GIF_MAX_FRAMES) return false;
+      continue;
+    }
+    if (marker === 0x21) {
+      if (offset >= bytes.length) return false;
+      offset++;
+      offset = skipGifSubBlocks(bytes, offset);
+      if (offset < 0) return false;
+      continue;
+    }
+    return false;
+  }
+  return false;
+}
+
+function skipGifSubBlocks(bytes, offset) {
+  while (offset < bytes.length) {
+    const length = bytes[offset++];
+    if (length === 0) return offset;
+    offset += length;
+    if (offset > bytes.length) return -1;
+  }
+  return -1;
 }
 
 function b64urlToBytes(seg) {

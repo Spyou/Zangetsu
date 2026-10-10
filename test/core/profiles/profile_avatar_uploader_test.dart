@@ -76,6 +76,108 @@ void main() {
     expect(adapter.contentType, 'image/png');
   });
 
+  test('preserves accepted animated GIF data for looping playback', () async {
+    final adapter = _RecordingAdapter();
+    final dio = Dio()..httpClientAdapter = adapter;
+    final gif = _animatedGif();
+
+    final result = await ProfileAvatarUploader(
+      dio,
+    ).upload(bytes: gif, token: 'token');
+
+    expect(result, 'https://cdn.example/avatar.gif');
+    expect(adapter.contentType, 'image/gif');
+    expect(adapter.uploadedBytes, gif);
+    expect(img.decodeGif(adapter.uploadedBytes)!.numFrames, 2);
+  });
+
+  test('forces finite GIFs to loop forever without losing frames', () async {
+    final adapter = _RecordingAdapter();
+    final dio = Dio()..httpClientAdapter = adapter;
+
+    await ProfileAvatarUploader(
+      dio,
+    ).upload(bytes: _animatedGif(repeat: 2), token: 'token');
+
+    final uploaded = img.decodeGif(adapter.uploadedBytes)!;
+    expect(uploaded.loopCount, 0);
+    expect(uploaded.numFrames, 2);
+    expect(_hasLoopMetadata(adapter.uploadedBytes), isTrue);
+  });
+
+  test('adds looping metadata when the source GIF has none', () async {
+    final adapter = _RecordingAdapter();
+    final dio = Dio()..httpClientAdapter = adapter;
+    final gifWithoutLoopMetadata = _withoutLoopMetadata(_animatedGif());
+
+    await ProfileAvatarUploader(
+      dio,
+    ).upload(bytes: gifWithoutLoopMetadata, token: 'token');
+
+    final uploaded = img.decodeGif(adapter.uploadedBytes)!;
+    expect(uploaded.loopCount, 0);
+    expect(uploaded.numFrames, 2);
+    expect(_hasLoopMetadata(adapter.uploadedBytes), isTrue);
+  });
+
+  test('keeps a 700px photo sharp when it fits the byte limit', () async {
+    final adapter = _RecordingAdapter();
+    final dio = Dio()..httpClientAdapter = adapter;
+    final source = img.Image(width: 700, height: 700, numChannels: 3)
+      ..clear(img.ColorRgb8(30, 60, 90));
+    final png = img.encodePng(source);
+    expect(png.length, lessThanOrEqualTo(ProfileAvatarUploader.maxAvatarBytes));
+
+    await ProfileAvatarUploader(dio).upload(bytes: png, token: 'token');
+
+    final uploaded = img.decodeImage(adapter.uploadedBytes)!;
+    expect(uploaded.width, 700);
+    expect(uploaded.height, 700);
+  });
+
+  test(
+    'preserves photo proportions when a large image is compressed',
+    () async {
+      final adapter = _RecordingAdapter();
+      final dio = Dio()..httpClientAdapter = adapter;
+      final source = img.Image(width: 1200, height: 600, numChannels: 3);
+      final random = Random(7);
+      for (var y = 0; y < source.height; y++) {
+        for (var x = 0; x < source.width; x++) {
+          source.setPixelRgb(
+            x,
+            y,
+            random.nextInt(256),
+            random.nextInt(256),
+            random.nextInt(256),
+          );
+        }
+      }
+      final png = img.encodePng(source, level: 0);
+      expect(png.length, greaterThan(ProfileAvatarUploader.maxAvatarBytes));
+
+      await ProfileAvatarUploader(dio).upload(bytes: png, token: 'token');
+
+      final uploaded = img.decodeImage(adapter.uploadedBytes)!;
+      expect(uploaded.width / uploaded.height, closeTo(2, 0.01));
+    },
+  );
+
+  test('rejects GIFs that exceed the bounded avatar byte limit', () async {
+    final adapter = _RecordingAdapter();
+    final dio = Dio()..httpClientAdapter = adapter;
+    final gif = _animatedGif();
+    final oversized = Uint8List(ProfileAvatarUploader.maxAvatarBytes + 1)
+      ..setRange(0, gif.length, gif);
+
+    final result = await ProfileAvatarUploader(
+      dio,
+    ).upload(bytes: oversized, token: 'token');
+
+    expect(result, isNull);
+    expect(adapter.requests, 0);
+  });
+
   test('compresses a large opaque image under the Worker size limit', () async {
     final adapter = _RecordingAdapter();
     final dio = Dio()..httpClientAdapter = adapter;
@@ -135,6 +237,45 @@ void main() {
   });
 }
 
+Uint8List _animatedGif({int repeat = 0}) {
+  final encoder = img.GifEncoder(repeat: repeat, samplingFactor: 1);
+  for (final color in [img.ColorRgb8(255, 0, 0), img.ColorRgb8(0, 0, 255)]) {
+    final frame = img.Image(width: 8, height: 8, numChannels: 3)..clear(color);
+    encoder.addFrame(frame, duration: 10);
+  }
+  return encoder.finish()!;
+}
+
+Uint8List _withoutLoopMetadata(Uint8List gif) {
+  for (var start = 0; start + 19 <= gif.length; start++) {
+    if (gif[start] != 0x21 || gif[start + 1] != 0xff || gif[start + 2] != 11) {
+      continue;
+    }
+    if (String.fromCharCodes(gif.sublist(start + 3, start + 14)) !=
+        'NETSCAPE2.0') {
+      continue;
+    }
+    return Uint8List.fromList([
+      ...gif.sublist(0, start),
+      ...gif.sublist(start + 19),
+    ]);
+  }
+  throw StateError('GIF fixture has no Netscape loop extension');
+}
+
+bool _hasLoopMetadata(Uint8List gif) {
+  for (var start = 0; start + 14 <= gif.length; start++) {
+    if (gif[start] == 0x21 &&
+        gif[start + 1] == 0xff &&
+        gif[start + 2] == 11 &&
+        String.fromCharCodes(gif.sublist(start + 3, start + 14)) ==
+            'NETSCAPE2.0') {
+      return true;
+    }
+  }
+  return false;
+}
+
 class _RecordingAdapter implements HttpClientAdapter {
   int requests = 0;
   String? method;
@@ -161,8 +302,9 @@ class _RecordingAdapter implements HttpClientAdapter {
       }
     }
     uploadedBytes = Uint8List.fromList(chunks);
+    final extension = contentType == 'image/gif' ? 'gif' : 'jpg';
     return ResponseBody.fromString(
-      '{"url":"https://cdn.example/avatar.jpg"}',
+      '{"url":"https://cdn.example/avatar.$extension"}',
       200,
       headers: {
         Headers.contentTypeHeader: [Headers.jsonContentType],
