@@ -87,6 +87,7 @@ void main() {
 
     expect(result, 'https://cdn.example/avatar.gif');
     expect(adapter.contentType, 'image/gif');
+    expect(ProfileAvatarUploader.isAllowedGif(adapter.uploadedBytes), isTrue);
     expect(adapter.uploadedBytes, gif);
     expect(img.decodeGif(adapter.uploadedBytes)!.numFrames, 2);
   });
@@ -119,6 +120,34 @@ void main() {
     expect(uploaded.numFrames, 2);
     expect(_hasLoopMetadata(adapter.uploadedBytes), isTrue);
   });
+
+  test(
+    'resizes GIFs wider than the Worker limit without losing color',
+    () async {
+      final adapter = _RecordingAdapter();
+      final dio = Dio()..httpClientAdapter = adapter;
+      final source = img.GifEncoder(repeat: 0, samplingFactor: 1);
+      source.addFrame(
+        img.Image(width: 640, height: 40, numChannels: 3)
+          ..clear(img.ColorRgb8(240, 20, 30)),
+        duration: 10,
+      );
+      source.addFrame(
+        img.Image(width: 640, height: 40, numChannels: 3)
+          ..clear(img.ColorRgb8(20, 30, 240)),
+        duration: 10,
+      );
+      final gif = source.finish()!;
+
+      await ProfileAvatarUploader(dio).upload(bytes: gif, token: 'token');
+
+      final uploaded = img.decodeGif(adapter.uploadedBytes)!;
+      expect(uploaded.width, 512);
+      expect(uploaded.height, 32);
+      expect(uploaded.frames.first.getPixel(0, 0).r.toInt(), greaterThan(200));
+      expect(uploaded.frames.last.getPixel(0, 0).b.toInt(), greaterThan(200));
+    },
+  );
 
   test('keeps a 700px photo sharp when it fits the byte limit', () async {
     final adapter = _RecordingAdapter();
@@ -163,20 +192,59 @@ void main() {
     },
   );
 
-  test('rejects GIFs that exceed the bounded avatar byte limit', () async {
+  test('compresses large GIFs to the avatar size and frame limits', () async {
     final adapter = _RecordingAdapter();
     final dio = Dio()..httpClientAdapter = adapter;
-    final gif = _animatedGif();
-    final oversized = Uint8List(ProfileAvatarUploader.maxAvatarBytes + 1)
-      ..setRange(0, gif.length, gif);
+    final gif = _largeAnimatedGif();
+    expect(gif.length, greaterThan(ProfileAvatarUploader.maxAvatarBytes));
 
     final result = await ProfileAvatarUploader(
       dio,
-    ).upload(bytes: oversized, token: 'token');
+    ).upload(bytes: gif, token: 'token');
 
-    expect(result, isNull);
-    expect(adapter.requests, 0);
+    expect(result, 'https://cdn.example/avatar.gif');
+    expect(adapter.contentType, 'image/gif');
+    expect(ProfileAvatarUploader.isAllowedGif(adapter.uploadedBytes), isTrue);
+    expect(
+      adapter.contentLength,
+      lessThanOrEqualTo(ProfileAvatarUploader.maxAvatarBytes),
+    );
+    final uploaded = img.decodeGif(adapter.uploadedBytes)!;
+    expect(uploaded.width, lessThanOrEqualTo(512));
+    expect(uploaded.height, lessThanOrEqualTo(512));
+    expect(uploaded.numFrames, lessThanOrEqualTo(60));
+    expect(uploaded.loopCount, 0);
+    expect(
+      uploaded.frames.fold<int>(
+        0,
+        (total, frame) => total + frame.frameDuration,
+      ),
+      2800,
+    );
   });
+
+  test(
+    'rejects GIFs beyond the safe source-frame bound before upload',
+    () async {
+      final adapter = _RecordingAdapter();
+      final dio = Dio()..httpClientAdapter = adapter;
+      final encoder = img.GifEncoder(repeat: 0, samplingFactor: 1);
+      for (var i = 0; i <= ProfileAvatarUploader.maxGifSourceFrames; i++) {
+        encoder.addFrame(
+          img.Image(width: 1, height: 1, numChannels: 3)
+            ..clear(img.ColorRgb8(i & 255, 0, 0)),
+          duration: 1,
+        );
+      }
+
+      final result = await ProfileAvatarUploader(
+        dio,
+      ).upload(bytes: encoder.finish()!, token: 'token');
+
+      expect(result, isNull);
+      expect(adapter.requests, 0);
+    },
+  );
 
   test('compresses a large opaque image under the Worker size limit', () async {
     final adapter = _RecordingAdapter();
@@ -242,6 +310,27 @@ Uint8List _animatedGif({int repeat = 0}) {
   for (final color in [img.ColorRgb8(255, 0, 0), img.ColorRgb8(0, 0, 255)]) {
     final frame = img.Image(width: 8, height: 8, numChannels: 3)..clear(color);
     encoder.addFrame(frame, duration: 10);
+  }
+  return encoder.finish()!;
+}
+
+Uint8List _largeAnimatedGif() {
+  final encoder = img.GifEncoder(repeat: 2, samplingFactor: 1);
+  final random = Random(42);
+  for (var frameIndex = 0; frameIndex < 70; frameIndex++) {
+    final frame = img.Image(width: 80, height: 80, numChannels: 3);
+    for (var y = 0; y < frame.height; y++) {
+      for (var x = 0; x < frame.width; x++) {
+        frame.setPixelRgb(
+          x,
+          y,
+          random.nextInt(256),
+          random.nextInt(256),
+          random.nextInt(256),
+        );
+      }
+    }
+    encoder.addFrame(frame, duration: 4);
   }
   return encoder.finish()!;
 }

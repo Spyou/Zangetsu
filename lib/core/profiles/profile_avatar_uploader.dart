@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
@@ -17,24 +18,23 @@ class ProfileAvatarUploader {
   static const int maxAvatarDimension = 768;
   static const int maxGifDimension = 512;
   static const int maxGifFrames = 60;
+  // shortcut: reject GIFs above these decode bounds until low-memory devices are benchmarked.
+  static const int maxGifSourceBytes = 10 * 1024 * 1024;
+  static const int maxGifSourceDimension = 2048;
+  static const int maxGifSourceFrames = 240;
+  static const int maxGifSourcePixels = 20 * 1024 * 1024;
 
   final Dio _dio;
 
   static bool isAllowedGif(Uint8List bytes) {
     if (bytes.isEmpty || bytes.lengthInBytes > maxAvatarBytes) return false;
-    try {
-      final decoder = img.GifDecoder();
-      final info = decoder.startDecode(bytes);
-      return info != null &&
-          info.width > 0 &&
-          info.width <= maxGifDimension &&
-          info.height > 0 &&
-          info.height <= maxGifDimension &&
-          info.numFrames > 0 &&
-          info.numFrames <= maxGifFrames;
-    } catch (_) {
-      return false;
-    }
+    return _inspectGif(
+          bytes,
+          maxDimension: maxGifDimension,
+          maxFrames: maxGifFrames,
+          maxPixels: maxGifDimension * maxGifDimension * maxGifFrames,
+        ) !=
+        null;
   }
 
   Future<String?> upload({
@@ -110,9 +110,7 @@ typedef _AvatarUpload = ({Uint8List bytes, String contentType});
 
 _AvatarUpload? _prepareAvatar(Uint8List bytes) {
   if (img.findFormatForData(bytes) == img.ImageFormat.gif) {
-    if (!ProfileAvatarUploader.isAllowedGif(bytes)) return null;
-    final looping = _ensureGifLoops(bytes);
-    return looping == null ? null : (bytes: looping, contentType: 'image/gif');
+    return _prepareGifAvatar(bytes);
   }
   final source = img.decodeImage(bytes);
   if (source == null || source.width < 1 || source.height < 1) return null;
@@ -195,6 +193,208 @@ _AvatarUpload? _prepareAvatar(Uint8List bytes) {
     }
   }
   return null;
+}
+
+_AvatarUpload? _prepareGifAvatar(Uint8List bytes) {
+  if (bytes.isEmpty ||
+      bytes.lengthInBytes > ProfileAvatarUploader.maxGifSourceBytes) {
+    return null;
+  }
+  final sourceInfo = _inspectGif(
+    bytes,
+    maxDimension: ProfileAvatarUploader.maxGifSourceDimension,
+    maxFrames: ProfileAvatarUploader.maxGifSourceFrames,
+    maxPixels: ProfileAvatarUploader.maxGifSourcePixels,
+  );
+  if (sourceInfo == null) return null;
+
+  if (bytes.lengthInBytes <= ProfileAvatarUploader.maxAvatarBytes &&
+      sourceInfo.width <= ProfileAvatarUploader.maxGifDimension &&
+      sourceInfo.height <= ProfileAvatarUploader.maxGifDimension &&
+      sourceInfo.numFrames <= ProfileAvatarUploader.maxGifFrames) {
+    final looping = _ensureGifLoops(bytes);
+    if (looping != null &&
+        looping.lengthInBytes <= ProfileAvatarUploader.maxAvatarBytes) {
+      return (bytes: looping, contentType: 'image/gif');
+    }
+  }
+
+  final source = img.decodeGif(bytes);
+  if (source == null || source.numFrames == 0) return null;
+
+  final longestSide = source.width > source.height
+      ? source.width
+      : source.height;
+  var targetSide = longestSide < ProfileAvatarUploader.maxGifDimension
+      ? longestSide
+      : ProfileAvatarUploader.maxGifDimension;
+  var colors = 256;
+  for (var attempt = 0; attempt < 8; attempt++) {
+    final encoder = img.GifEncoder(
+      repeat: 0,
+      numColors: colors,
+      samplingFactor: 10,
+      dither: img.DitherKernel.none,
+    );
+    final outputFrames = source.numFrames < ProfileAvatarUploader.maxGifFrames
+        ? source.numFrames
+        : ProfileAvatarUploader.maxGifFrames;
+    for (var outputIndex = 0; outputIndex < outputFrames; outputIndex++) {
+      final start = outputIndex * source.numFrames ~/ outputFrames;
+      final end = (outputIndex + 1) * source.numFrames ~/ outputFrames;
+      var durationMs = 0;
+      for (var frameIndex = start; frameIndex < end; frameIndex++) {
+        durationMs += source.frames[frameIndex].frameDuration;
+      }
+      final frame = _resizeGifFrame(source.frames[start], targetSide);
+      encoder.addFrame(
+        frame,
+        duration: (durationMs / 10).round().clamp(1, 65535),
+      );
+    }
+    final compressed = encoder.finish();
+    if (compressed != null &&
+        compressed.lengthInBytes <= ProfileAvatarUploader.maxAvatarBytes &&
+        ProfileAvatarUploader.isAllowedGif(compressed)) {
+      return (bytes: compressed, contentType: 'image/gif');
+    }
+    if (compressed == null) return null;
+
+    if (targetSide > 64) {
+      final estimate =
+          targetSide *
+          math.sqrt(
+            ProfileAvatarUploader.maxAvatarBytes / compressed.lengthInBytes,
+          ) *
+          0.85;
+      targetSide = estimate.floor().clamp(64, targetSide - 1);
+    } else if (colors > 32) {
+      colors ~/= 2;
+    } else {
+      break;
+    }
+  }
+  return null;
+}
+
+img.Image _resizeGifFrame(img.Image frame, int targetSide) {
+  final longestSide = frame.width > frame.height ? frame.width : frame.height;
+  final scale = targetSide / longestSide;
+  final width = (frame.width * scale).round().clamp(1, targetSide);
+  final height = (frame.height * scale).round().clamp(1, targetSide);
+  final rgba = img.Image(
+    width: frame.width,
+    height: frame.height,
+    numChannels: 4,
+  );
+  for (final pixel in frame) {
+    rgba.setPixelRgba(
+      pixel.x,
+      pixel.y,
+      pixel.r.toInt(),
+      pixel.g.toInt(),
+      pixel.b.toInt(),
+      pixel.a.toInt(),
+    );
+  }
+  return width == rgba.width && height == rgba.height
+      ? rgba
+      : img.copyResize(
+          rgba,
+          width: width,
+          height: height,
+          interpolation: img.Interpolation.average,
+        );
+}
+
+({int width, int height, int numFrames})? _inspectGif(
+  Uint8List bytes, {
+  required int maxDimension,
+  required int maxFrames,
+  required int maxPixels,
+}) {
+  if (bytes.length < 14) return null;
+  final signature = String.fromCharCodes(bytes.sublist(0, 6));
+  if (signature != 'GIF87a' && signature != 'GIF89a') return null;
+
+  int read16(int offset) => bytes[offset] | (bytes[offset + 1] << 8);
+  final width = read16(6);
+  final height = read16(8);
+  if (width < 1 ||
+      width > maxDimension ||
+      height < 1 ||
+      height > maxDimension) {
+    return null;
+  }
+
+  var offset = 13;
+  final screenFlags = bytes[10];
+  final hasGlobalColorTable = screenFlags & 0x80 != 0;
+  if (hasGlobalColorTable) {
+    offset += 3 * (1 << ((screenFlags & 0x07) + 1));
+    if (offset > bytes.length) return null;
+  }
+
+  var frames = 0;
+  while (offset < bytes.length) {
+    final marker = bytes[offset++];
+    if (marker == 0x3b) {
+      return frames > 0 && offset == bytes.length
+          ? (width: width, height: height, numFrames: frames)
+          : null;
+    }
+    if (marker == 0x2c) {
+      if (offset + 9 > bytes.length) return null;
+      final left = read16(offset);
+      final top = read16(offset + 2);
+      final frameWidth = read16(offset + 4);
+      final frameHeight = read16(offset + 6);
+      final frameFlags = bytes[offset + 8];
+      final hasLocalColorTable = frameFlags & 0x80 != 0;
+      if (frameWidth < 1 ||
+          frameWidth > maxDimension ||
+          frameHeight < 1 ||
+          frameHeight > maxDimension ||
+          left + frameWidth > width ||
+          top + frameHeight > height) {
+        return null;
+      }
+      offset += 9;
+      if (hasLocalColorTable) {
+        offset += 3 * (1 << ((frameFlags & 0x07) + 1));
+        if (offset > bytes.length) return null;
+      } else if (!hasGlobalColorTable) {
+        return null;
+      }
+      if (offset >= bytes.length || bytes[offset] < 2 || bytes[offset] > 8) {
+        return null;
+      }
+      offset++;
+      offset = _skipGifSubBlocks(bytes, offset);
+      if (offset < 0 || ++frames > maxFrames) return null;
+      if (width * height * frames > maxPixels) return null;
+      continue;
+    }
+    if (marker == 0x21) {
+      if (offset >= bytes.length) return null;
+      offset++;
+      offset = _skipGifSubBlocks(bytes, offset);
+      if (offset < 0) return null;
+      continue;
+    }
+    return null;
+  }
+  return null;
+}
+
+int _skipGifSubBlocks(Uint8List bytes, int offset) {
+  while (offset < bytes.length) {
+    final length = bytes[offset++];
+    if (length == 0) return offset;
+    offset += length;
+    if (offset > bytes.length) return -1;
+  }
+  return -1;
 }
 
 const _infiniteGifLoopExtension = <int>[

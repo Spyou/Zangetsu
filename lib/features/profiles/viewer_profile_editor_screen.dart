@@ -180,23 +180,20 @@ class _ViewerProfileEditorScreenState extends State<ViewerProfileEditorScreen> {
       if (file == null || !mounted) return;
       final size = await file.length();
       if (!mounted) return;
-      if (size > ProfileAvatarUploader.maxAvatarBytes) {
+      if (size > ProfileAvatarUploader.maxGifSourceBytes) {
         setState(
           () => _photoError =
-              'GIF must be 512 KB or smaller, 512 × 512 or less, and at most 60 frames.',
+              'This GIF is too large to optimize safely. Try a smaller file.',
         );
         return;
       }
       final bytes = await file.readAsBytes();
       if (!mounted) return;
-      if (!ProfileAvatarUploader.isAllowedGif(bytes)) {
-        setState(
-          () => _photoError =
-              'GIF must be 512 KB or smaller, 512 × 512 or less, and at most 60 frames.',
-        );
-        return;
-      }
-      await _uploadAvatarBytes(bytes);
+      await _uploadAvatarBytes(
+        bytes,
+        failureMessage:
+            'Couldn’t process or upload this GIF. Try a smaller file or check your connection.',
+      );
     } catch (_) {
       if (mounted) {
         setState(() => _photoError = 'Could not read that GIF file.');
@@ -204,10 +201,13 @@ class _ViewerProfileEditorScreenState extends State<ViewerProfileEditorScreen> {
     }
   }
 
-  Future<void> _uploadAvatarBytes(Uint8List bytes) async {
+  Future<void> _uploadAvatarBytes(
+    Uint8List bytes, {
+    String failureMessage = "Couldn't upload photo",
+  }) async {
     final token = sl<SupabaseService>().client.auth.currentSession?.accessToken;
     if (token == null) {
-      setState(() => _photoError = "Couldn't upload photo");
+      setState(() => _photoError = failureMessage);
       return;
     }
     setState(() {
@@ -237,7 +237,7 @@ class _ViewerProfileEditorScreenState extends State<ViewerProfileEditorScreen> {
         _uploadedUrls.add(url);
         _photoUrl = url;
       } else {
-        _photoError = "Couldn't upload photo";
+        _photoError = failureMessage;
       }
     });
   }
