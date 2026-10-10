@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_it/get_it.dart';
@@ -8,10 +9,16 @@ import 'package:watch_app/core/app_mode.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:watch_app/core/profiles/viewer_profile.dart';
 import 'package:watch_app/core/profiles/viewer_profile_avatar.dart';
+import 'package:watch_app/core/ui/image_fade.dart';
 import 'package:watch_app/core/profiles/profile_shell_scope.dart';
+import 'package:watch_app/core/models/home_section.dart';
+import 'package:watch_app/core/models/media_item.dart';
+import 'package:watch_app/core/models/provider_info.dart';
+import 'package:watch_app/core/repository/catalogue_repository.dart';
 import 'package:watch_app/features/auth/auth_cubit.dart';
 import 'package:watch_app/core/theme/app_colors.dart';
 import 'package:watch_app/core/tv/tv_list_focusable.dart';
+import 'package:watch_app/features/home/cubit/home_cubit.dart';
 import 'package:watch_app/features/profiles/profile_launch_gate.dart';
 import 'package:watch_app/features/profiles/viewer_profiles_screen.dart';
 
@@ -86,7 +93,7 @@ void main() {
     expect(find.text('Main screen'), findsOneWidget);
   });
 
-  testWidgets('launch picker uses round profile avatars and an add avatar', (
+  testWidgets('launch picker uses round profile photos and actions', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -95,17 +102,56 @@ void main() {
 
     expect(find.text("Who's watching?"), findsOneWidget);
     expect(find.text('Ready for the next watch, Home?'), findsOneWidget);
-    expect(find.byType(CircleAvatar), findsOneWidget);
+    expect(
+      find.textContaining('Kids profiles hide adult-rated titles'),
+      findsNothing,
+    );
+    expect(find.text('Manage profiles'), findsOneWidget);
+    expect(find.byType(CircleAvatar), findsNothing);
     expect(
       find.byKey(ValueKey('profile-avatar-fill-${profiles.profiles.first.id}')),
       findsOneWidget,
     );
-    expect(find.text('Add profile'), findsOneWidget);
+    expect(find.text('Add'), findsOneWidget);
+    expect(find.text('Edit'), findsNothing);
   });
 
-  testWidgets('launch picker uses the app background and a two-column grid', (
+  testWidgets('phone picker uses large circular avatars', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(390, 844);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      const MaterialApp(home: ViewerProfilesScreen(selectionOnly: true)),
+    );
+
+    expect(
+      tester.getSize(
+        find.byKey(
+          ValueKey('profile-avatar-fill-${profiles.profiles.first.id}'),
+        ),
+      ),
+      const Size.square(120),
+    );
+    expect(
+      tester.getTopLeft(find.text("Who's watching?")).dy,
+      greaterThan(250),
+    );
+    expect(
+      tester.getBottomLeft(find.text('Manage profiles')).dy,
+      greaterThan(760),
+    );
+  });
+
+  testWidgets('launch picker is full-bleed with a two-column phone grid', (
     tester,
   ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(390, 844);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
     await tester.runAsync(() async {
       for (var i = 1; i < ViewerProfileStore.maxProfiles; i++) {
         await profiles.create('Profile $i');
@@ -129,6 +175,11 @@ void main() {
       backgroundGlow.colors.first,
       AppColors.accent.withValues(alpha: 0.28),
     );
+    expect(
+      find.byKey(const ValueKey('profile-picker-backdrop-image')),
+      findsNothing,
+    );
+    expect(find.byKey(const ValueKey('profile-picker-panel')), findsNothing);
 
     expect(find.byIcon(Icons.check_rounded), findsNothing);
     final profileAvatars = profiles.profiles
@@ -139,7 +190,7 @@ void main() {
         .toList();
     expect(profileAvatars, hasLength(ViewerProfileStore.maxProfiles));
     for (final avatar in profileAvatars) {
-      expect(tester.getSize(avatar).width, greaterThanOrEqualTo(100));
+      expect(tester.getSize(avatar), const Size.square(120));
     }
 
     final gridFinder = find.byKey(const ValueKey('profile-picker-grid'));
@@ -152,9 +203,9 @@ void main() {
     expect(
       (grid.gridDelegate as SliverGridDelegateWithFixedCrossAxisCount)
           .mainAxisExtent,
-      inInclusiveRange(165, 180),
+      inInclusiveRange(160, 180),
     );
-    expect(tester.getSize(gridFinder).width, inInclusiveRange(260, 380));
+    expect(tester.getSize(gridFinder).width, inInclusiveRange(250, 270));
     expect(grid.childrenDelegate, isA<SliverChildListDelegate>());
     expect(
       (grid.childrenDelegate as SliverChildListDelegate).children.length,
@@ -162,9 +213,104 @@ void main() {
     );
   });
 
-  testWidgets('avatar tap feedback is circular under one entrance wrapper', (
+  testWidgets('picker uses loaded non-adult home artwork without fetching', (
     tester,
   ) async {
+    const adultUrl = 'https://example.test/adult-banner.jpg';
+    const safeUrl = 'https://image.tmdb.org/t/p/w780/safe-banner.jpg';
+    GetIt.instance.registerSingleton<HomeCubit>(
+      _SeededHomeCubit(
+        HomeState(
+          sections: [
+            HomeSection(
+              title: 'Trending',
+              items: const [
+                MediaItem(
+                  id: 'adult',
+                  title: 'Adult title',
+                  banner: adultUrl,
+                  url: '/adult',
+                  type: ProviderType.anime,
+                  sourceId: 'test',
+                  isAdult: true,
+                ),
+                MediaItem(
+                  id: 'safe',
+                  title: 'Safe title',
+                  banner: safeUrl,
+                  url: '/safe',
+                  type: ProviderType.anime,
+                  sourceId: 'test',
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(
+      const MaterialApp(home: ViewerProfilesScreen(selectionOnly: true)),
+    );
+
+    final artwork = tester.widget<Image>(
+      find.byKey(const ValueKey('profile-picker-backdrop-image')),
+    );
+    final resized = artwork.image as ResizeImage;
+    expect(resized.imageProvider, isA<CachedNetworkImageProvider>());
+    expect(
+      (resized.imageProvider as CachedNetworkImageProvider).url,
+      'https://image.tmdb.org/t/p/w1280/safe-banner.jpg',
+    );
+    expect(artwork.frameBuilder, same(imageFadeIn));
+  });
+
+  testWidgets('portrait picker uses poster artwork instead of a wide banner', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(390, 844);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    GetIt.instance.registerSingleton<HomeCubit>(
+      _SeededHomeCubit(
+        HomeState(
+          sections: [
+            HomeSection(
+              title: 'Trending',
+              items: const [
+                MediaItem(
+                  id: 'safe',
+                  title: 'Safe title',
+                  cover: 'https://image.tmdb.org/t/p/w500/safe-poster.jpg',
+                  banner: 'https://image.tmdb.org/t/p/w780/safe-banner.jpg',
+                  url: '/safe',
+                  type: ProviderType.anime,
+                  sourceId: 'test',
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(
+      const MaterialApp(home: ViewerProfilesScreen(selectionOnly: true)),
+    );
+
+    final artwork = tester.widget<Image>(
+      find.byKey(const ValueKey('profile-picker-backdrop-image')),
+    );
+    final resized = artwork.image as ResizeImage;
+    expect(
+      (resized.imageProvider as CachedNetworkImageProvider).url,
+      'https://image.tmdb.org/t/p/w1280/safe-poster.jpg',
+    );
+  });
+
+  testWidgets('avatar tap feedback uses circular picker shape', (tester) async {
     var selected = false;
     await tester.pumpWidget(
       MaterialApp(
@@ -218,12 +364,15 @@ void main() {
     );
     expect(ripple.containedInkWell, isTrue);
     expect(ripple.customBorder, isA<CircleBorder>());
+    expect(ripple.highlightShape, BoxShape.circle);
     expect(ripple.splashColor, AppColors.textPrimary.withValues(alpha: 0.28));
-    final fill = tester.widget<Material>(
-      find.byKey(ValueKey('profile-avatar-fill-${profile.id}')),
+    final fillFinder = find.byKey(
+      ValueKey('profile-avatar-fill-${profile.id}'),
     );
+    final fill = tester.widget<Material>(fillFinder);
     expect(fill.color, AppColors.accent);
     expect(fill.shape, isA<CircleBorder>());
+    expect(tester.getSize(avatar), tester.getSize(fillFinder));
     expect(
       find.descendant(
         of: find.byKey(ValueKey('profile-avatar-fill-${profile.id}')),
@@ -306,8 +455,7 @@ void main() {
     );
 
     expect(find.text('Manage profiles'), findsOneWidget);
-    expect(find.text('Add profile'), findsNothing);
-
+    expect(find.text('Add'), findsNothing);
     await tester.tap(find.text('Manage profiles'));
     await tester.pumpAndSettle();
 
@@ -315,6 +463,30 @@ void main() {
     expect(find.byTooltip('Delete Profile 1'), findsOneWidget);
     expect(find.byTooltip('Delete Profile 2'), findsOneWidget);
     expect(find.byTooltip('Delete Profile 3'), findsOneWidget);
+  });
+
+  testWidgets('picker manage button opens the profile manager', (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(home: ViewerProfilesScreen(selectionOnly: true)),
+    );
+
+    await tester.tap(find.text('Manage profiles'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Profiles'), findsOneWidget);
+    expect(find.text('Ask who is watching on launch'), findsOneWidget);
+  });
+
+  testWidgets('picker add tile opens the profile editor', (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(home: ViewerProfilesScreen(selectionOnly: true)),
+    );
+
+    await tester.tap(find.text('Add'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Add profile'), findsOneWidget);
+    expect(find.text('Save'), findsOneWidget);
   });
 
   testWidgets('TV picker exposes profile actions to D-pad focus', (
@@ -345,7 +517,7 @@ void main() {
     await tester.pumpWidget(app());
 
     expect(find.text('Main screen'), findsOneWidget);
-    expect(find.text('Who is watching?'), findsNothing);
+    expect(find.text("Who's watching?"), findsNothing);
   });
 
   testWidgets('picker entrance staggers title, avatars, footer', (
@@ -591,7 +763,7 @@ void main() {
     );
   });
 
-  testWidgets('picker shows the photo saved on a custom profile', (
+  testWidgets('picker crops the saved profile photo into a circle', (
     tester,
   ) async {
     const photoUrl = 'https://cdn.example/profile.jpg';
@@ -615,7 +787,15 @@ void main() {
     );
     expect(imageFinder, findsOneWidget);
     final image = tester.widget<Image>(imageFinder);
-    expect((image.image as NetworkImage).url, photoUrl);
+    final resized = image.image as ResizeImage;
+    expect(resized.imageProvider, isA<CachedNetworkImageProvider>());
+    expect((resized.imageProvider as CachedNetworkImageProvider).url, photoUrl);
+    expect(image.frameBuilder, same(imageFadeIn));
+    expect(image.filterQuality, FilterQuality.high);
+    expect(
+      find.descendant(of: avatar, matching: find.byType(ClipOval)),
+      findsOneWidget,
+    );
   });
 
   testWidgets('manager tile shows the account photo for the default profile', (
@@ -652,7 +832,33 @@ void main() {
     final image = tester.widget<Image>(
       find.descendant(of: avatar, matching: find.byType(Image)),
     );
-    expect((image.image as NetworkImage).url, photoUrl);
+    expect(
+      (image.image as ResizeImage).imageProvider,
+      isA<CachedNetworkImageProvider>(),
+    );
+    expect(image.frameBuilder, same(imageFadeIn));
+    expect(
+      find.descendant(of: avatar, matching: find.byType(ClipOval)),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('editing a profile opens a full page and can be cancelled', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const MaterialApp(home: ViewerProfilesScreen()));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Edit Home'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.text('Edit profile'), findsOneWidget);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+
+    expect(profiles.profiles.first.name, 'Home');
+    await tester.pumpWidget(const SizedBox.shrink());
   });
 
   testWidgets('picker greets the active profile', (tester) async {
@@ -687,6 +893,21 @@ class _PhotoAuthCubit extends Cubit<AuthState> implements AuthCubit {
 
   @override
   noSuchMethod(Invocation i) => super.noSuchMethod(i);
+}
+
+class _SeededHomeCubit extends HomeCubit {
+  _SeededHomeCubit(this._seed) : super(_UnusedCatalogueRepository());
+
+  final HomeState _seed;
+
+  @override
+  HomeState get state => _seed;
+}
+
+class _UnusedCatalogueRepository implements CatalogueRepository {
+  @override
+  noSuchMethod(Invocation invocation) =>
+      throw StateError('The profile picker must not fetch Home data');
 }
 
 class _ProfileGateShellProbe extends StatelessWidget {

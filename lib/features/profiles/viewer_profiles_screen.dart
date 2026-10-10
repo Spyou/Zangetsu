@@ -1,22 +1,45 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
+import 'package:hive/hive.dart';
 
 import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
-import '../../core/profiles/profile_avatar_uploader.dart';
+import '../../core/models/media_item.dart';
 import '../../core/profiles/viewer_profile.dart';
 import '../../core/profiles/viewer_profile_avatar.dart';
-import '../../core/supabase/supabase_service.dart';
+import '../../core/profiles/profile_picker_artwork.dart';
+import '../../core/app_config.dart';
 import '../auth/auth_cubit.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
+import '../../core/ui/image_fade.dart';
+import '../../core/ui/native_cover_provider.dart';
 import '../../core/ui/settings_widgets.dart';
 import '../../core/tv/tv_list_focusable.dart';
+import '../home/cubit/home_cubit.dart';
+import 'viewer_profile_editor_screen.dart';
 
 const Object kViewerProfileHeroTag = 'viewer-profile-selector';
+
+String _pickerBackdropUrl(String url) {
+  final uri = Uri.tryParse(url);
+  if (uri == null || uri.host != 'image.tmdb.org') return url;
+  final segments = uri.pathSegments;
+  if (segments.length < 4 ||
+      segments[0] != 't' ||
+      segments[1] != 'p' ||
+      !const {'w500', 'w780'}.contains(segments[2])) {
+    return url;
+  }
+  return uri
+      .replace(
+        pathSegments: [...segments.take(2), 'w1280', ...segments.skip(3)],
+      )
+      .toString();
+}
 
 class ViewerProfilesScreen extends StatefulWidget {
   const ViewerProfilesScreen({
@@ -41,6 +64,7 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
   late final Animation<double> _footerOpacity;
   final _enableSelectionHero = ValueNotifier(false);
   bool _selecting = false;
+  String? _pickerArtworkUrl;
 
   ViewerProfileStore get _profiles => sl<ViewerProfileStore>();
 
@@ -48,6 +72,16 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
   /// in widget tests and when signed out — callers fall back to icons.
   String? _accountPhoto() =>
       sl.isRegistered<AuthCubit>() ? sl<AuthCubit>().state.avatarUrl : null;
+
+  MediaItem? _pickerBackdropItem() {
+    if (!sl.isRegistered<HomeCubit>()) return null;
+    for (final item in sl<HomeCubit>().state.heroItems) {
+      if (item.isAdult) continue;
+      final art = item.banner ?? item.cover;
+      if (art != null && art.isNotEmpty) return item;
+    }
+    return null;
+  }
 
   @override
   void initState() {
@@ -73,6 +107,17 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
       curve: const Interval(0.7, 1, curve: Curves.easeOutCubic),
     );
     if (widget.selectionOnly) {
+      if (Hive.isBoxOpen(ViewerProfileStore.boxName)) {
+        final artwork = ProfilePickerArtwork(
+          box: Hive.box(ViewerProfileStore.boxName),
+          fetchManifest: () async => (await sl<Dio>().get<Object>(
+            kProfilePickerArtworkManifestUrl,
+            options: Options(receiveTimeout: const Duration(seconds: 4)),
+          )).data,
+        );
+        _pickerArtworkUrl = artwork.cachedUrl;
+        if (sl.isRegistered<Dio>()) unawaited(_loadNextArtwork(artwork));
+      }
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         if (MediaQuery.disableAnimationsOf(context)) {
@@ -82,6 +127,12 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
         }
       });
     }
+  }
+
+  Future<void> _loadNextArtwork(ProfilePickerArtwork artwork) async {
+    final url = await artwork.next();
+    if (!mounted || url == null || url == _pickerArtworkUrl) return;
+    setState(() => _pickerArtworkUrl = url);
   }
 
   double _avatarStart(int i, int count, double gapScale) =>
@@ -131,28 +182,12 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
   }
 
   Future<void> _edit([ViewerProfile? profile, int initialAvatar = 0]) async {
-    final result = await showDialog<_ProfileDraft>(
-      context: context,
-      builder: (context) =>
-          _ProfileEditor(profile: profile, initialAvatar: initialAvatar),
+    await openViewerProfileEditor(
+      context,
+      _profiles,
+      profile: profile,
+      initialAvatar: initialAvatar,
     );
-    if (result == null) return;
-    if (profile == null) {
-      await _profiles.create(
-        result.name,
-        avatar: result.avatar,
-        isKids: result.isKids,
-        photoUrl: result.photoUrl,
-      );
-    } else {
-      await _profiles.rename(profile.id, result.name);
-      await _profiles.update(
-        profile.id,
-        avatar: result.avatar,
-        isKids: result.isKids,
-        photoUrl: result.photoUrl,
-      );
-    }
   }
 
   Future<void> _delete(ViewerProfile profile) async {
@@ -285,129 +320,187 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
 
   Widget _buildProfilePicker() {
     final isTv = sl.isRegistered<AppMode>() && sl<AppMode>().isTv;
+    final backdrop = _pickerBackdropItem();
+    final screenSize = MediaQuery.sizeOf(context);
+    final useWideArt = isTv || screenSize.width >= screenSize.height;
+    final sourceBackdropUrl = useWideArt
+        ? backdrop?.banner ?? backdrop?.cover
+        : backdrop?.cover ?? backdrop?.banner;
+    final backdropUrl =
+        _pickerArtworkUrl ??
+        (sourceBackdropUrl == null
+            ? null
+            : _pickerBackdropUrl(sourceBackdropUrl));
+    final backdropProvider = backdropUrl == null || backdropUrl.isEmpty
+        ? null
+        : nativeCoverProvider(
+            backdropUrl,
+            _pickerArtworkUrl == null ? backdrop?.coverHeaders : null,
+          );
+    final backdropWidth = math
+        .min(
+          (MediaQuery.sizeOf(context).width *
+                  MediaQuery.devicePixelRatioOf(context))
+              .round(),
+          2560,
+        )
+        .toInt();
     return Scaffold(
       backgroundColor: AppColors.bg,
-      body: DecoratedBox(
-        key: const ValueKey('profile-picker-background'),
-        decoration: BoxDecoration(
-          gradient: RadialGradient(
-            center: const Alignment(0, -0.7),
-            radius: 1.35,
-            colors: [AppColors.accent.withValues(alpha: 0.28), AppColors.bg],
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          DecoratedBox(
+            key: const ValueKey('profile-picker-background'),
+            decoration: BoxDecoration(
+              gradient: RadialGradient(
+                center: const Alignment(0, -0.7),
+                radius: 1.35,
+                colors: [
+                  AppColors.accent.withValues(alpha: 0.28),
+                  AppColors.bg,
+                ],
+              ),
+            ),
           ),
-        ),
-        child: SafeArea(
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final diameter = constraints.maxWidth >= 900
-                  ? 124.0
-                  : constraints.maxWidth >= 600
-                  ? 112.0
-                  : 104.0;
-              final wide = constraints.maxWidth >= 900;
-              final availableGridWidth = math.max(
-                0.0,
-                constraints.maxWidth - (wide ? 96 : 32),
-              );
-              final gridWidth = math.min(
-                (diameter + 28) * 2 + 64,
-                availableGridWidth,
-              );
-              return SingleChildScrollView(
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(minHeight: constraints.maxHeight),
-                  child: Align(
-                    alignment: Alignment.center,
-                    child: Padding(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: wide ? 48 : 16,
-                        vertical: wide ? 24 : 12,
+          if (backdropProvider != null)
+            Positioned.fill(
+              child: ExcludeSemantics(
+                child: IgnorePointer(
+                  child: Image(
+                    key: const ValueKey('profile-picker-backdrop-image'),
+                    image: ResizeImage(backdropProvider, width: backdropWidth),
+                    fit: BoxFit.cover,
+                    alignment: Alignment.topCenter,
+                    frameBuilder: imageFadeIn,
+                    errorBuilder: (_, _, _) => const SizedBox.shrink(),
+                  ),
+                ),
+              ),
+            ),
+          Positioned.fill(
+            child: IgnorePointer(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    stops: const [0, 0.18, 0.42, 0.72, 1],
+                    colors: [
+                      AppColors.bg.withValues(alpha: 0.52),
+                      AppColors.bg.withValues(alpha: 0.12),
+                      AppColors.bg.withValues(alpha: 0.34),
+                      AppColors.bg.withValues(alpha: 0.96),
+                      AppColors.bg,
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          SafeArea(
+            bottom: false,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final wide = constraints.maxWidth >= 900;
+                final diameter = isTv
+                    ? (wide ? 160.0 : 120.0)
+                    : (constraints.maxWidth >= 600 ? 132.0 : 120.0);
+                final columns = isTv || wide ? 4 : 2;
+                final gridWidth = math.min(
+                  (diameter + 8) * columns + 4 * (columns - 1),
+                  math.max(0.0, constraints.maxWidth - (wide ? 96 : 32)),
+                );
+                const topPadding = 24.0;
+                final bottomPadding = math.max(
+                  24.0,
+                  MediaQuery.paddingOf(context).bottom + 16,
+                );
+                return SingleChildScrollView(
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      minHeight: math.max(
+                        0.0,
+                        constraints.maxHeight - topPadding - bottomPadding,
                       ),
-                      child: ConstrainedBox(
-                        constraints: BoxConstraints(
-                          maxWidth: isTv ? 1400 : 820,
-                        ),
-                        child: ValueListenableBuilder<int>(
-                          valueListenable: _profiles.revision,
-                          builder: (context, _, _) {
-                            final lastName = _profiles.active.value?.name;
-                            return Column(
-                              mainAxisSize: MainAxisSize.min,
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                FadeTransition(
-                                  key: const ValueKey(
-                                    'profile-picker-title-fade',
-                                  ),
-                                  opacity: _titleOpacity,
-                                  child: Column(
-                                    children: [
-                                      Text(
-                                        "Who's watching?",
-                                        textAlign: TextAlign.center,
-                                        style: AppText.title.copyWith(
-                                          fontSize: wide ? 36 : 30,
-                                          fontWeight: FontWeight.w700,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 8),
-                                      Text(
-                                        lastName == null
-                                            ? 'Select a profile to continue'
-                                            : 'Ready for the next watch, $lastName?',
-                                        textAlign: TextAlign.center,
-                                        style: AppText.caption.copyWith(
-                                          color: AppColors.textSecondary,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
+                    ),
+                    child: Container(
+                      key: const ValueKey('profile-picker-bottom-content'),
+                      width: math.min(
+                        constraints.maxWidth,
+                        isTv ? 1400.0 : 820.0,
+                      ),
+                      padding: EdgeInsets.fromLTRB(
+                        16,
+                        topPadding,
+                        16,
+                        bottomPadding,
+                      ),
+                      child: ValueListenableBuilder<int>(
+                        valueListenable: _profiles.revision,
+                        builder: (context, _, _) {
+                          final lastName = _profiles.active.value?.name;
+                          return Column(
+                            mainAxisAlignment: isTv
+                                ? MainAxisAlignment.center
+                                : MainAxisAlignment.end,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              FadeTransition(
+                                key: const ValueKey(
+                                  'profile-picker-title-fade',
                                 ),
-                                SizedBox(height: wide ? 36 : 32),
-                                _pickerGrid(
-                                  diameter: diameter,
-                                  gridWidth: gridWidth,
-                                  isTv: isTv,
-                                  gapScale: isTv ? 0.5 : 1.0,
-                                ),
-                                const SizedBox(height: 8),
-                                FadeTransition(
-                                  key: const ValueKey(
-                                    'profile-picker-footer-fade',
-                                  ),
-                                  opacity: _footerOpacity,
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      _manageProfilesButton(isTv),
-                                      SizedBox(height: wide ? 20 : 14),
-                                      ConstrainedBox(
-                                        constraints: const BoxConstraints(
-                                          maxWidth: 620,
-                                        ),
-                                        child: Text(
-                                          'Kids profiles hide adult-rated titles only when catalogue ratings are available. They are not a parental lock.',
-                                          textAlign: TextAlign.center,
-                                          style: AppText.caption.copyWith(
-                                            color: AppColors.textTertiary,
-                                          ),
-                                        ),
+                                opacity: _titleOpacity,
+                                child: Column(
+                                  children: [
+                                    Text(
+                                      "Who's watching?",
+                                      textAlign: TextAlign.center,
+                                      style: AppText.title.copyWith(
+                                        fontSize: wide ? 34 : 28,
+                                        fontWeight: FontWeight.w700,
                                       ),
-                                    ],
-                                  ),
+                                    ),
+                                    const SizedBox(height: 7),
+                                    Text(
+                                      lastName == null
+                                          ? 'Pick up where you left off.'
+                                          : 'Ready for the next watch, $lastName?',
+                                      textAlign: TextAlign.center,
+                                      style: AppText.caption.copyWith(
+                                        color: AppColors.textSecondary,
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                              ],
-                            );
-                          },
-                        ),
+                              ),
+                              SizedBox(height: wide ? 28 : 16),
+                              _pickerGrid(
+                                diameter: diameter,
+                                gridWidth: gridWidth,
+                                columns: columns,
+                                isTv: isTv,
+                                gapScale: isTv ? 0.5 : 1.0,
+                              ),
+                              SizedBox(height: wide ? 16 : 8),
+                              FadeTransition(
+                                key: const ValueKey(
+                                  'profile-picker-footer-fade',
+                                ),
+                                opacity: _footerOpacity,
+                                child: _manageProfilesButton(isTv),
+                              ),
+                            ],
+                          );
+                        },
                       ),
                     ),
                   ),
-                ),
-              );
-            },
+                );
+              },
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
@@ -447,14 +540,22 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
 
     return TextButton.icon(
       onPressed: _openProfileManager,
-      icon: const Icon(Icons.manage_accounts_rounded, size: 18),
+      icon: const Icon(Icons.edit_rounded, size: 18),
       label: const Text('Manage profiles'),
+      style: TextButton.styleFrom(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(24),
+          side: BorderSide(color: AppColors.hairline),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      ),
     );
   }
 
   Widget _pickerGrid({
     required double diameter,
     required double gridWidth,
+    required int columns,
     required bool isTv,
     required double gapScale,
   }) {
@@ -465,10 +566,10 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
       width: gridWidth.toDouble(),
       child: GridView.count(
         key: const ValueKey('profile-picker-grid'),
-        crossAxisCount: 2,
-        crossAxisSpacing: 8,
-        mainAxisSpacing: 12,
-        mainAxisExtent: diameter + 56,
+        crossAxisCount: columns,
+        crossAxisSpacing: 4,
+        mainAxisSpacing: 8,
+        mainAxisExtent: diameter + 48,
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
         children: [
@@ -487,10 +588,17 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
             ScaleTransition(
               key: const ValueKey('profile-entrance-add'),
               scale: _avatarScale(profiles.length, count, gapScale),
-              child: _addProfilePickerChoice(
+              child: _profilePickerAction(
+                title: 'Add',
+                semanticLabel: 'Add profile',
+                icon: Icons.add_rounded,
                 diameter: diameter,
                 isTv: isTv,
                 autofocus: profiles.isEmpty,
+                onTap: () => _edit(
+                  null,
+                  defaultAvatarForNewProfile(_profiles.profiles.length),
+                ),
               ),
             ),
         ],
@@ -513,7 +621,7 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
     );
 
     Widget content(bool focused) => SizedBox(
-      width: diameter + 28,
+      width: diameter + 8,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -522,8 +630,7 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
             profileId: profile.id,
             diameter: diameter,
             fill: fill,
-            focused: focused,
-            selected: selected,
+            shape: const CircleBorder(),
             onTap: () => _switchTo(profile),
             child: ProfileAvatarFace(
               profile: profile,
@@ -586,47 +693,41 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
     return content(false);
   }
 
-  Widget _addProfilePickerChoice({
+  Widget _profilePickerAction({
+    required String title,
+    required String semanticLabel,
+    required IconData icon,
     required double diameter,
     required bool isTv,
     required bool autofocus,
+    required VoidCallback onTap,
   }) {
     Widget content(bool focused) => SizedBox(
-      width: diameter + 28,
+      width: diameter + 8,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           AnimatedContainer(
+            key: ValueKey('profile-picker-action-$title'),
             duration: const Duration(milliseconds: 180),
-            padding: const EdgeInsets.all(4),
+            width: diameter,
+            height: diameter,
             decoration: BoxDecoration(
+              color: AppColors.surface2,
               shape: BoxShape.circle,
-              border: Border.all(
-                color: focused ? AppColors.textPrimary : AppColors.hairline,
-                width: 2.5,
-              ),
-              boxShadow: focused
-                  ? [
-                      BoxShadow(
-                        color: AppColors.accent.withValues(alpha: 0.3),
-                        blurRadius: 24,
-                      ),
-                    ]
-                  : const [],
+              border: focused
+                  ? Border.all(color: AppColors.accent, width: 2)
+                  : Border.all(color: AppColors.hairline),
             ),
-            child: CircleAvatar(
-              radius: diameter / 2,
-              backgroundColor: AppColors.surface2,
-              child: Icon(
-                Icons.add_rounded,
-                size: diameter * 0.42,
-                color: AppColors.textPrimary,
-              ),
+            child: Icon(
+              icon,
+              size: diameter * 0.38,
+              color: AppColors.textPrimary,
             ),
           ),
           const SizedBox(height: 6),
           Text(
-            'Add profile',
+            title,
             textAlign: TextAlign.center,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
@@ -642,16 +743,14 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
     if (isTv) {
       return TvListFocusable(
         autofocus: autofocus,
-        semanticLabel: 'Add profile',
-        onTap: () =>
-            _edit(null, defaultAvatarForNewProfile(_profiles.profiles.length)),
+        semanticLabel: semanticLabel,
+        onTap: onTap,
         builder: content,
       );
     }
     return InkWell(
-      borderRadius: BorderRadius.circular(diameter),
-      onTap: () =>
-          _edit(null, defaultAvatarForNewProfile(_profiles.profiles.length)),
+      customBorder: const CircleBorder(),
+      onTap: onTap,
       child: content(false),
     );
   }
@@ -727,8 +826,7 @@ class _ProfileAvatarTapTarget extends StatefulWidget {
     required this.profileId,
     required this.diameter,
     required this.fill,
-    required this.focused,
-    required this.selected,
+    required this.shape,
     required this.onTap,
     required this.child,
   });
@@ -736,8 +834,7 @@ class _ProfileAvatarTapTarget extends StatefulWidget {
   final String profileId;
   final double diameter;
   final Color fill;
-  final bool focused;
-  final bool selected;
+  final ShapeBorder shape;
   final Future<void> Function() onTap;
   final Widget child;
 
@@ -805,7 +902,7 @@ class _ProfileAvatarTapTargetState extends State<_ProfileAvatarTapTarget>
 
   @override
   Widget build(BuildContext context) => SizedBox.square(
-    dimension: widget.diameter + 8,
+    dimension: widget.diameter,
     child: Listener(
       onPointerDown: (_) {
         if (!_activating) {
@@ -840,48 +937,23 @@ class _ProfileAvatarTapTargetState extends State<_ProfileAvatarTapTarget>
             fit: BoxFit.contain,
             child: (fromHeroContext.widget as Hero).child,
           ),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            padding: const EdgeInsets.all(4),
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: widget.focused
-                    ? AppColors.textPrimary
-                    : widget.selected
-                    ? AppColors.accent
-                    : Colors.transparent,
-                width: 2.5,
-              ),
-              boxShadow: widget.selected || widget.focused
-                  ? [
-                      BoxShadow(
-                        color: AppColors.accent.withValues(
-                          alpha: widget.focused ? 0.30 : 0.18,
-                        ),
-                        blurRadius: widget.focused ? 24 : 18,
-                      ),
-                    ]
-                  : const [],
-            ),
-            child: Material(
-              key: ValueKey('profile-avatar-fill-${widget.profileId}'),
-              color: widget.fill,
-              shape: const CircleBorder(),
-              clipBehavior: Clip.antiAlias,
-              child: InkResponse(
-                key: ValueKey('profile-avatar-ink-${widget.profileId}'),
-                containedInkWell: true,
-                highlightShape: BoxShape.circle,
-                customBorder: const CircleBorder(),
-                radius: widget.diameter / 2,
-                splashColor: AppColors.textPrimary.withValues(alpha: 0.28),
-                highlightColor: AppColors.textPrimary.withValues(alpha: 0.10),
-                onTap: runSelection,
-                child: SizedBox.square(
-                  dimension: widget.diameter,
-                  child: Center(child: widget.child),
-                ),
+          child: Material(
+            key: ValueKey('profile-avatar-fill-${widget.profileId}'),
+            color: widget.fill,
+            shape: widget.shape,
+            clipBehavior: Clip.antiAlias,
+            child: InkResponse(
+              key: ValueKey('profile-avatar-ink-${widget.profileId}'),
+              containedInkWell: true,
+              highlightShape: BoxShape.circle,
+              customBorder: widget.shape,
+              radius: widget.diameter / 2,
+              splashColor: AppColors.textPrimary.withValues(alpha: 0.28),
+              highlightColor: AppColors.textPrimary.withValues(alpha: 0.10),
+              onTap: runSelection,
+              child: SizedBox.square(
+                dimension: widget.diameter,
+                child: Center(child: widget.child),
               ),
             ),
           ),
@@ -889,210 +961,4 @@ class _ProfileAvatarTapTargetState extends State<_ProfileAvatarTapTarget>
       ),
     ),
   );
-}
-
-class _ProfileDraft {
-  const _ProfileDraft(this.name, this.avatar, this.isKids, [this.photoUrl]);
-  final String name;
-  final int avatar;
-  final bool isKids;
-  final String? photoUrl;
-}
-
-class _ProfileEditor extends StatefulWidget {
-  const _ProfileEditor({this.profile, this.initialAvatar = 0});
-  final ViewerProfile? profile;
-  final int initialAvatar;
-
-  @override
-  State<_ProfileEditor> createState() => _ProfileEditorState();
-}
-
-class _ProfileEditorState extends State<_ProfileEditor> {
-  late final TextEditingController _name = TextEditingController(
-    text: widget.profile?.name ?? '',
-  );
-  late int _avatar = widget.profile?.avatar ?? widget.initialAvatar;
-  late bool _isKids = widget.profile?.isKids ?? false;
-  late String? _photoUrl = widget.profile?.photoUrl;
-  bool _uploading = false;
-  String? _photoError;
-
-  @override
-  void dispose() {
-    _name.dispose();
-    super.dispose();
-  }
-
-  Future<void> _pickPhoto() async {
-    final x = await ImagePicker().pickImage(
-      source: ImageSource.gallery,
-      // Avatars render at ~40–96px, so 256px is still 2–3× the display size —
-      // keeps the R2 object tiny (~15–30 KB/pic) with no visible quality loss.
-      maxWidth: 256,
-      maxHeight: 256,
-      imageQuality: 80,
-    );
-    if (x == null || !mounted) return;
-    final token = sl<SupabaseService>().client.auth.currentSession?.accessToken;
-    if (token == null) {
-      setState(() => _photoError = "Couldn't upload photo");
-      return;
-    }
-    setState(() {
-      _uploading = true;
-      _photoError = null;
-    });
-    String? url;
-    try {
-      final bytes = await x.readAsBytes();
-      if (bytes.lengthInBytes > ProfileAvatarUploader.maxAvatarBytes) {
-        if (!mounted) return;
-        setState(() {
-          _uploading = false;
-          _photoError = 'Photo must be 256 KB or smaller';
-        });
-        return;
-      }
-      // image_picker re-encodes to JPEG when maxWidth/imageQuality are set,
-      // so no extension sniffing.
-      url = await ProfileAvatarUploader(
-        sl<Dio>(),
-      ).upload(bytes: bytes, contentType: 'image/jpeg', token: token);
-    } catch (_) {
-      url = null;
-    }
-    if (!mounted) return;
-    setState(() {
-      _uploading = false;
-      if (url != null) {
-        _photoUrl = url;
-      } else {
-        _photoError = "Couldn't upload photo";
-      }
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Text(widget.profile == null ? 'Add profile' : 'Edit profile'),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: _name,
-              autofocus: true,
-              maxLength: ViewerProfileStore.maxNameLength,
-              textCapitalization: TextCapitalization.words,
-              decoration: const InputDecoration(labelText: 'Name'),
-            ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                if (_photoUrl != null && _photoUrl!.isNotEmpty)
-                  ClipOval(
-                    child: Image.network(
-                      _photoUrl!,
-                      width: 64,
-                      height: 64,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, _, _) => CircleAvatar(
-                        radius: 32,
-                        backgroundColor: viewerProfileAvatarColor(_avatar),
-                        child: Icon(
-                          viewerProfileAvatarIcon(_avatar),
-                          color: Colors.white,
-                          size: 30,
-                        ),
-                      ),
-                    ),
-                  )
-                else
-                  CircleAvatar(
-                    radius: 32,
-                    backgroundColor: viewerProfileAvatarColor(_avatar),
-                    child: Icon(
-                      viewerProfileAvatarIcon(_avatar),
-                      color: Colors.white,
-                      size: 30,
-                    ),
-                  ),
-                const SizedBox(width: 12),
-                TextButton.icon(
-                  onPressed: _uploading ? null : _pickPhoto,
-                  icon: _uploading
-                      ? const SizedBox.square(
-                          dimension: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.photo_rounded, size: 18),
-                  label: Text(_uploading ? 'Uploading…' : 'Photo'),
-                ),
-              ],
-            ),
-            if (_photoError != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: Text(
-                  _photoError!,
-                  style: AppText.caption.copyWith(
-                    color: Theme.of(context).colorScheme.error,
-                  ),
-                ),
-              ),
-            const SizedBox(height: 10),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (var i = 0; i < viewerProfileAvatarIcons.length; i++)
-                  IconButton.filledTonal(
-                    tooltip: 'Avatar ${i + 1}',
-                    onPressed: () => setState(() => _avatar = i),
-                    style: IconButton.styleFrom(
-                      backgroundColor: _avatar == i
-                          ? AppColors.accentSoft
-                          : AppColors.surface2,
-                    ),
-                    icon: Icon(
-                      viewerProfileAvatarIcons[i],
-                      color: _avatar == i
-                          ? AppColors.accent
-                          : AppColors.textSecondary,
-                    ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            SwitchListTile.adaptive(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Kids profile'),
-              subtitle: const Text('Hide adult catalogue titles'),
-              value: _isKids,
-              onChanged: (value) => setState(() => _isKids = value),
-            ),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: () {
-            final name = _name.text.trim();
-            if (name.isEmpty) return;
-            Navigator.pop(
-              context,
-              _ProfileDraft(name, _avatar, _isKids, _photoUrl),
-            );
-          },
-          child: const Text('Save'),
-        ),
-      ],
-    );
-  }
 }
