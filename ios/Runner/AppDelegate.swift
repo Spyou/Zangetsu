@@ -12,6 +12,9 @@ import UIKit
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "AppleCompanionServices") {
+      AppleCompanionServices.register(messenger: registrar.messenger(), presenter: nil)
+    }
 
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "MangaTranslationBridge") {
       let channel = FlutterMethodChannel(
