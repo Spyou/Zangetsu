@@ -17,6 +17,7 @@ extension DockTabL10n on DockTab {
         DockTab.downloads => context.l10n.downloads,
         DockTab.history => context.l10n.history,
         DockTab.sources => context.l10n.sources,
+        DockTab.remote => 'Remote',
         DockTab.profile => context.l10n.profile,
       };
 }

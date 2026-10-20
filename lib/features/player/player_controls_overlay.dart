@@ -40,9 +40,11 @@ class _ControlsOverlay extends StatelessWidget {
     required this.enhanceActive,
     required this.onColorProfile,
     this.visible = true,
+    this.onContinueOnTv,
   });
 
   final PlayerCubit controller;
+  final VoidCallback? onContinueOnTv;
   final PlayerState state;
   final String? showTitle;
   final Duration duration;
@@ -476,6 +478,15 @@ class _ControlsOverlay extends StatelessWidget {
                     tooltip: context.l10n.back,
                     onPressed: onBack,
                   ),
+                  if (onContinueOnTv != null)
+                    IconButton(
+                      icon: const Icon(
+                        Icons.connected_tv_rounded,
+                        color: Colors.white,
+                      ),
+                      tooltip: 'Continue on TV',
+                      onPressed: onContinueOnTv,
+                    ),
                   // Text hit-tests as opaque (RenderParagraph.hitTestSelf is
                   // true), so the title used to eat taps aimed at the video —
                   // a wide dead strip across the top where tapping did nothing.

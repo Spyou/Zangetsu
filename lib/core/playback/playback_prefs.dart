@@ -204,6 +204,7 @@ enum PosterTitlePlacement { adaptive, inside, below }
 enum PosterTitleStyle { text, artwork }
 
 class PlaybackPrefs {
+  static final remoteSkipChanges = ValueNotifier<int>(0);
   static const String boxName = 'playback_prefs';
   static const String androidPlayerId = 'zangetsu.android.player';
 
@@ -793,7 +794,10 @@ class PlaybackPrefs {
   /// Whether to show the accurate AniSkip "Skip opening/ending" button (anime,
   /// when real OP/ED timings are detected).
   bool get skipIntro => _box.get('skipIntro', defaultValue: true) as bool;
-  Future<void> setSkipIntro(bool value) => _box.put('skipIntro', value);
+  Future<void> setSkipIntro(bool value) async {
+    await _box.put('skipIntro', value);
+    remoteSkipChanges.value++;
+  }
 
   /// Jump past the opening / ending on their own, no tap, when AniSkip has real
   /// timings for the episode. Independent of [skipIntro] (that one only governs
@@ -817,7 +821,10 @@ class PlaybackPrefs {
   /// [megaSkip] toggles the button; [megaSkipSeconds] is the jump size, clamped
   /// 5–180s (default 85 ≈ a typical anime opening).
   bool get megaSkip => _box.get('megaSkip', defaultValue: true) as bool;
-  Future<void> setMegaSkip(bool value) => _box.put('megaSkip', value);
+  Future<void> setMegaSkip(bool value) async {
+    await _box.put('megaSkip', value);
+    remoteSkipChanges.value++;
+  }
 
   static const int megaSkipMin = 5;
   static const int megaSkipMax = 180;
@@ -826,8 +833,10 @@ class PlaybackPrefs {
     return v.clamp(megaSkipMin, megaSkipMax);
   }
 
-  Future<void> setMegaSkipSeconds(int value) =>
-      _box.put('megaSkipSeconds', value.clamp(megaSkipMin, megaSkipMax));
+  Future<void> setMegaSkipSeconds(int value) async {
+    await _box.put('megaSkipSeconds', value.clamp(megaSkipMin, megaSkipMax));
+    remoteSkipChanges.value++;
+  }
 
   /// Default player. Empty string = the built-in player; otherwise the package
   /// id of an external player (e.g. 'org.videolan.vlc') to hand streams to.

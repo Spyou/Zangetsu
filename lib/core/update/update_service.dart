@@ -62,8 +62,9 @@ class UpdateService {
   Future<UpdateInfo?> checkForUpdate({bool respectSkip = false}) async {
     try {
       final beta = await betaOptIn();
-      final release =
-          beta ? await _newestBetaRelease() : await _latestStableRelease();
+      final release = beta
+          ? await _newestBetaRelease()
+          : await _latestStableRelease();
       if (release == null) return null;
 
       final rawTag = ((release['tag_name'] as String?) ?? '').trim();
@@ -75,7 +76,9 @@ class UpdateService {
       if (respectSkip && await _skippedVersion() == version) return null;
 
       final apk = _pickApk(
-          (release['assets'] as List?) ?? const [], await _deviceAbis());
+        (release['assets'] as List?) ?? const [],
+        await _deviceAbis(),
+      );
       if (apk == null) return null;
 
       return UpdateInfo(
@@ -265,7 +268,9 @@ class UpdateService {
   static int compareVersions(String a, String b) {
     final pa = _parseVersion(a);
     final pb = _parseVersion(b);
-    final len = pa.core.length > pb.core.length ? pa.core.length : pb.core.length;
+    final len = pa.core.length > pb.core.length
+        ? pa.core.length
+        : pb.core.length;
     for (var i = 0; i < len; i++) {
       final x = i < pa.core.length ? pa.core[i] : 0;
       final y = i < pb.core.length ? pb.core[i] : 0;
@@ -287,8 +292,10 @@ class UpdateService {
     final dash = s.indexOf('-');
     final corePart = dash >= 0 ? s.substring(0, dash) : s;
     final label = dash >= 0 ? s.substring(dash + 1) : null;
-    final core =
-        corePart.split('.').map((e) => int.tryParse(e.trim()) ?? 0).toList();
+    final core = corePart
+        .split('.')
+        .map((e) => int.tryParse(e.trim()) ?? 0)
+        .toList();
     int? pre;
     if (label != null) {
       final m = RegExp(r'(\d+)').firstMatch(label);
