@@ -73,7 +73,9 @@
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Zangetsu does not use your location. A linked library references location APIs, so iOS requires this explanation.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Zangetsu plays video and audio. The player framework may request microphone access; Zangetsu does not record you.</string>
+	<string>Zangetsu uses the microphone only when you start voice search.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Turn your spoken title into text for voice search. Speech may be processed by Apple’s speech service.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Zangetsu saves player screenshots and manga pages to your photo library when you choose Save.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

@@ -19,6 +19,7 @@
 		97C147011CF9000F007C117D /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FF1CF9000F007C117D /* LaunchScreen.storyboard */; };
 		A91E7D39F31B4EED9A0D67B1 /* MangaTranslationBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = A91E7D39F31B4EED9A0D67B0 /* MangaTranslationBridge.swift */; };
 		B8F1170E2A2D410100000001 /* MangayomiCloudflareBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8F1170E2A2D410100000002 /* MangayomiCloudflareBridge.swift */; };
+		D9F1340E2A2D410100000001 /* PhoneVoiceSearchBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9F1340E2A2D410100000002 /* PhoneVoiceSearchBridge.swift */; };
 		F1A0C0DE0002GOOGLESVC02 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = F1A0C0DE0001GOOGLESVC01 /* GoogleService-Info.plist */; };
 		F2A7815711DBDC43F90BF104 /* Pods_RunnerTests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7E275654149C45B4B791D90E /* Pods_RunnerTests.framework */; };
 /* End PBXBuildFile section */
@@ -71,6 +72,7 @@
 		97C147021CF9000F007C117D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A91E7D39F31B4EED9A0D67B0 /* MangaTranslationBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MangaTranslationBridge.swift; sourceTree = "<group>"; };
 		B8F1170E2A2D410100000002 /* MangayomiCloudflareBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MangayomiCloudflareBridge.swift; sourceTree = "<group>"; };
+		D9F1340E2A2D410100000002 /* PhoneVoiceSearchBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneVoiceSearchBridge.swift; sourceTree = "<group>"; };
 		BE6D4D512D3DF17C0419DFBF /* Pods-RunnerTests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RunnerTests.release.xcconfig"; path = "Target Support Files/Pods-RunnerTests/Pods-RunnerTests.release.xcconfig"; sourceTree = "<group>"; };
 		C0C3AF967BF035541D547E99 /* Pods-Runner.profile.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.profile.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.profile.xcconfig"; sourceTree = "<group>"; };
 		C457B8872F2B5D5234FAB6B8 /* Pods-RunnerTests.profile.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RunnerTests.profile.xcconfig"; path = "Target Support Files/Pods-RunnerTests/Pods-RunnerTests.profile.xcconfig"; sourceTree = "<group>"; };
@@ -174,6 +176,7 @@
 				1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */,
 				A91E7D39F31B4EED9A0D67B0 /* MangaTranslationBridge.swift */,
 				B8F1170E2A2D410100000002 /* MangayomiCloudflareBridge.swift */,
+				D9F1340E2A2D410100000002 /* PhoneVoiceSearchBridge.swift */,
 				74858FAE1ED2DC5600515810 /* AppDelegate.swift */,
 				7884E8672EC3CC0400C636F2 /* SceneDelegate.swift */,
 				74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */,
@@ -422,6 +425,7 @@
 				74858FAF1ED2DC5600515810 /* AppDelegate.swift in Sources */,
 				A91E7D39F31B4EED9A0D67B1 /* MangaTranslationBridge.swift in Sources */,
 				B8F1170E2A2D410100000001 /* MangayomiCloudflareBridge.swift in Sources */,
+				D9F1340E2A2D410100000001 /* PhoneVoiceSearchBridge.swift in Sources */,
 				1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */,
 				7884E8682EC3CC0700C636F2 /* SceneDelegate.swift in Sources */,
 			);

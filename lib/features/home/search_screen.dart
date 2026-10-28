@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../search/meta_filter_sheet.dart';
+import 'phone_voice_search_sheet.dart';
 import '../../core/ui/app_toast.dart';
 import '../../core/zmode/zmode_module.dart';
 import '../../core/zmode/zmode_ids.dart';
@@ -262,9 +263,7 @@ class _SearchViewState extends State<_SearchView>
   late final TextEditingController _controller;
   final _focusNode = FocusNode();
 
-  /// Native voice-search bridge (system RecognizerIntent; no plugin, no mic
-  /// permission — the system dialog does the recording). Same contract as TV.
-  static const _voiceChannel = MethodChannel('zangetsu/voice_search');
+  static const _voiceChannel = MethodChannel('zangetsu/phone_voice_search');
 
   /// Hidden until Android reports a recogniser, so non-Android and boxes
   /// without one keep their unchanged search bar.
@@ -332,9 +331,9 @@ class _SearchViewState extends State<_SearchView>
   /// Focus the field when the Search tab is (re)selected so the keyboard is
   /// ready. Defers a frame so it runs after the IndexedStack reveals the tab.
   void _onFocusSignal() {
-    if (!mounted) return;
+    if (!mounted || _voiceListening) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _focusNode.requestFocus();
+      if (mounted && !_voiceListening) _focusNode.requestFocus();
     });
   }
 
@@ -365,18 +364,21 @@ class _SearchViewState extends State<_SearchView>
     return '${profiles.ownerKey}/${profiles.activeId}';
   }
 
-  /// Opens the system voice dialog; on a recognised phrase, fills the field
+  /// Opens the phone voice sheet; on a recognised phrase, fills the field
   /// and runs the normal search. Partial results are never submitted.
   Future<void> _startVoice() async {
     if (_voiceListening) return;
     final request = ++_voiceRequest;
     final contextKey = _voiceContext();
     setState(() => _voiceListening = true);
-    FocusScope.of(context).unfocus();
+    _focusNode.canRequestFocus = false;
+    _focusNode.unfocus();
     try {
-      final text = await _voiceChannel.invokeMethod<String>('listen', {
-        'prompt': context.l10n.speakTheTitle,
-      });
+      final text = await showPhoneVoiceSearchSheet(
+        context,
+        gifUrl:
+            'https://media.tenor.com/EjowFmPUajMAAAAj/death-note-l-lawliet.gif',
+      );
       final query = text?.trim() ?? '';
       if (!mounted || request != _voiceRequest || query.isEmpty) return;
       if (_voiceContext() != contextKey) return;
@@ -400,6 +402,8 @@ class _SearchViewState extends State<_SearchView>
       );
     } finally {
       if (mounted && request == _voiceRequest) {
+        _focusNode.unfocus();
+        _focusNode.canRequestFocus = true;
         setState(() => _voiceListening = false);
       }
     }
@@ -929,21 +933,13 @@ class _SearchViewState extends State<_SearchView>
                         key: const ValueKey('phone-search-voice'),
                         icon: Transform.translate(
                           offset: Offset(value.text.isEmpty ? 0 : 14, 0),
-                          child: _voiceListening
-                              ? SizedBox.square(
-                                  dimension: 18,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: AppColors.accent,
-                                    semanticsLabel:
-                                        context.l10n.voiceSearchListening,
-                                  ),
-                                )
-                              : const Icon(
-                                  Icons.mic_none_rounded,
-                                  size: 18,
-                                  color: AppColors.textTertiary,
-                                ),
+                          child: Icon(
+                            Icons.mic_none_rounded,
+                            size: 18,
+                            color: _voiceListening
+                                ? AppColors.accent
+                                : AppColors.textTertiary,
+                          ),
                         ),
                         tooltip: _voiceListening
                             ? context.l10n.voiceSearchListening

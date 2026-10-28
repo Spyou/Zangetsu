@@ -84,6 +84,11 @@ Runtime-loaded profile teaser GIF (not bundled)
   Loaded from Custom Doodle when the profile screen is shown and cached on the
   device. The GIF is not included in the repository or app package.
 
+Runtime-loaded voice-search GIF (not bundled)
+  Source: https://media.tenor.com/EjowFmPUajMAAAAj/death-note-l-lawliet.gif
+  L Lawliet voice-search animation hosted by Tenor, fetched when phone voice
+  search opens and cached on the device. Not included in the repository or APK.
+
 ────────────────────────────────────────────────────────────────────────────
 Keeping this file current
 ────────────────────────────────────────────────────────────────────────────

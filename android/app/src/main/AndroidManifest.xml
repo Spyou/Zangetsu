@@ -5,6 +5,9 @@
          providers, downloads). -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <!-- Requested only when the user starts custom phone voice search. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+    <uses-feature android:name="android.hardware.microphone" android:required="false"/>
     <!-- Download progress notification (Android 13+). -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <!-- In-app update: install the downloaded APK via the system installer. -->
@@ -321,6 +324,9 @@
              (package visibility on Android 11+). -->
         <intent>
             <action android:name="android.speech.action.RECOGNIZE_SPEECH"/>
+        </intent>
+        <intent>
+            <action android:name="android.speech.RecognitionService"/>
         </intent>
     </queries>
 </manifest>

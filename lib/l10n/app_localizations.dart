@@ -3088,6 +3088,42 @@ abstract class AppLocalizations {
   /// **'Listening…'**
   String get voiceSearchListening;
 
+  /// No description provided for @voiceSearchPreparing.
+  ///
+  /// In en, this message translates to:
+  /// **'Getting ready…'**
+  String get voiceSearchPreparing;
+
+  /// No description provided for @voiceSearchProcessing.
+  ///
+  /// In en, this message translates to:
+  /// **'Finding the words…'**
+  String get voiceSearchProcessing;
+
+  /// No description provided for @voiceSearchPermission.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow microphone access to use voice search.'**
+  String get voiceSearchPermission;
+
+  /// No description provided for @voiceSearchSpeechPermission.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow speech recognition in Settings to use voice search.'**
+  String get voiceSearchSpeechPermission;
+
+  /// No description provided for @voiceSearchTypingAvailable.
+  ///
+  /// In en, this message translates to:
+  /// **'You can still type your search.'**
+  String get voiceSearchTypingAvailable;
+
+  /// No description provided for @voiceSearchServiceNotice.
+  ///
+  /// In en, this message translates to:
+  /// **'Voice recognition uses your device’s speech service.'**
+  String get voiceSearchServiceNotice;
+
   /// No description provided for @voiceSearchFailed.
   ///
   /// In en, this message translates to:

@@ -1607,6 +1607,27 @@ class AppLocalizationsEn extends AppLocalizations {
   String get voiceSearchListening => 'Listening…';
 
   @override
+  String get voiceSearchPreparing => 'Getting ready…';
+
+  @override
+  String get voiceSearchProcessing => 'Finding the words…';
+
+  @override
+  String get voiceSearchPermission =>
+      'Allow microphone access to use voice search.';
+
+  @override
+  String get voiceSearchSpeechPermission =>
+      'Allow speech recognition in Settings to use voice search.';
+
+  @override
+  String get voiceSearchTypingAvailable => 'You can still type your search.';
+
+  @override
+  String get voiceSearchServiceNotice =>
+      'Voice recognition uses your device’s speech service.';
+
+  @override
   String get voiceSearchFailed => 'Voice search failed. Please try again.';
 
   @override

@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:watch_app/core/di/injector.dart' show sl;
 import 'package:watch_app/core/models/home_section.dart';
 import 'package:watch_app/core/models/media_item.dart';
@@ -24,7 +25,8 @@ import 'package:watch_app/features/home/search_screen.dart';
 
 import '../../support/picker_deps.dart';
 
-const _voiceChannel = MethodChannel('zangetsu/voice_search');
+const _voiceChannel = MethodChannel('zangetsu/phone_voice_search');
+const _permissions = MethodChannel('flutter.baseflow.com/permissions/methods');
 const _micKey = ValueKey('phone-search-voice');
 
 class _FakeSourceRepo implements SourceRepository {
@@ -152,6 +154,10 @@ void main() {
   late Future<String?> Function(String? prompt) onListen;
 
   Widget harness({String? initialQuery}) => MaterialApp(
+    builder: (context, child) => MediaQuery(
+      data: MediaQuery.of(context).copyWith(disableAnimations: true),
+      child: child!,
+    ),
     home: BlocProvider<ActiveSourceCubit>.value(
       value: sl<ActiveSourceCubit>(),
       child: SearchScreen(forceSources: true, initialQuery: initialQuery),
@@ -181,6 +187,10 @@ void main() {
     listenPrompts = [];
     onListen = (_) async => null;
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(_permissions, (call) async {
+          return {Permission.microphone.value: PermissionStatus.granted.index};
+        });
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(_voiceChannel, (call) async {
           switch (call.method) {
             case 'isAvailable':
@@ -196,6 +206,8 @@ void main() {
   tearDown(() async {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(_voiceChannel, null);
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(_permissions, null);
     await disposePickerDeps();
     await sl.reset();
     await Hive.close();
@@ -287,13 +299,8 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(_micKey));
     await tester.pump();
-    expect(
-      find.descendant(
-        of: find.byKey(_micKey),
-        matching: find.byType(CircularProgressIndicator),
-      ),
-      findsOneWidget,
-    );
+    expect(tester.widget<IconButton>(find.byKey(_micKey)).onPressed, isNull);
+    expect(find.text('Getting ready…'), findsOneWidget);
     expect(
       tester.widget<TextField>(find.byType(TextField)).decoration!.hintText,
       'Listening…',
@@ -319,6 +326,9 @@ void main() {
       'Bleach',
     );
     expect(repo.queries, isEmpty);
+    expect(find.text('Try again'), findsOneWidget);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
     expect(tester.widget<IconButton>(find.byKey(_micKey)).onPressed, isNotNull);
     await tester.pump(const Duration(seconds: 3));
     await tester.pumpAndSettle();
@@ -352,8 +362,7 @@ void main() {
 
     await tester.tap(find.byKey(_micKey));
     await tester.pump();
-    await tester.tap(find.byKey(_micKey));
-    await tester.pump();
+    expect(tester.widget<IconButton>(find.byKey(_micKey)).onPressed, isNull);
     expect(listenPrompts, hasLength(1));
 
     pending.complete('Naruto');
@@ -404,4 +413,24 @@ void main() {
     expect(history.added, isEmpty);
     expect(repo.queries, isEmpty);
   });
+
+  testWidgets(
+    'voice completion keeps the keyboard closed and typing still works',
+    (tester) async {
+      final pending = Completer<String?>();
+      onListen = (_) => pending.future;
+      await tester.pumpWidget(harness());
+      await tester.pumpAndSettle();
+      await tester.showKeyboard(find.byType(TextField));
+      expect(tester.testTextInput.isVisible, isTrue);
+      await tester.tap(find.byKey(_micKey));
+      await tester.pumpAndSettle();
+      expect(tester.testTextInput.isVisible, isFalse);
+      pending.complete('Naruto');
+      await tester.pumpAndSettle();
+      expect(tester.testTextInput.isVisible, isFalse);
+      await tester.showKeyboard(find.byType(TextField));
+      expect(tester.testTextInput.isVisible, isTrue);
+    },
+  );
 }

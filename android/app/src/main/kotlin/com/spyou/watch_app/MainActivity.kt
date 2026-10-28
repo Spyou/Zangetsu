@@ -285,6 +285,7 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
     }
 
     override fun onPause() {
+        phoneVoiceSearch?.cancelActive()
         if (current?.get() === this) current = null
         // Fail safe: never leave the volume rocker hijacked for an app that
         // isn't in front. Dart re-enables it when the reader resumes.
@@ -346,6 +347,7 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
     // In-flight TV voice-search dialog, completed in onActivityResult with the
     // recognised phrase (TV search fills the field + runs the query with it).
     private var pendingVoiceResult: MethodChannel.Result? = null
+    private var phoneVoiceSearch: PhoneVoiceSearchBridge? = null
 
     // Cached retriever so rapid scrubbing on one title doesn't re-open the
     // source for every frame (setDataSource is expensive, esp. over network).
@@ -697,6 +699,9 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
                 else -> result.notImplemented()
             }
         }
+
+        phoneVoiceSearch?.dispose()
+        phoneVoiceSearch = PhoneVoiceSearchBridge(this, flutterEngine.dartExecutor.binaryMessenger)
 
         // Voice search (TV): open the system speech dialog and hand the
         // recognised phrase back to Dart. Uses ACTION_RECOGNIZE_SPEECH so no
@@ -1986,6 +1991,8 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
     }
 
     override fun onDestroy() {
+        phoneVoiceSearch?.dispose()
+        phoneVoiceSearch = null
         pip.unregister()
         releaseRetriever()
         executor.shutdown()
