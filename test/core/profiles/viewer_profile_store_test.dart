@@ -33,6 +33,24 @@ void main() {
     if (await directory.exists()) await directory.delete(recursive: true);
   });
 
+  test(
+    'profile deletion retires lock metadata only after local cleanup',
+    () async {
+      final retired = <String>[];
+      final profiles = ViewerProfileStore(
+        onProfileDataDeleted: (owner, id) async {
+          retired.add('$owner:$id');
+        },
+      );
+      await profiles.loadForUser();
+      final profile = (await profiles.create('Private'))!;
+      expect(await profiles.delete(profile.id), isTrue);
+      expect(retired, ['local:${profile.id}']);
+      expect(await profiles.delete(kDefaultProfileId), isFalse);
+      expect(retired, hasLength(1));
+    },
+  );
+
   test('keeps Home and caps the total at four profiles', () async {
     expect(ViewerProfileStore.maxProfiles, 4);
     expect(store.profiles, hasLength(1));

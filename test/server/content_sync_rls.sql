@@ -3,14 +3,14 @@ begin;
 set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"content-test-a"}', true);
 
+insert into sync_api.viewer_profiles (user_key, profile_id, name)
+values ('content-test-a', 'viewer', 'Viewer');
 insert into sync_api.reading_history
   (user_key, source_id, show_id, title, updated_ms, type)
 values ('content-test-a', 'source', 'show', 'Test', 1, 'manga');
 insert into sync_api.profile_reading_history
   (user_key, profile_id, source_id, show_id, title, updated_ms)
 values ('content-test-a', 'viewer', 'source', 'show', 'Test', 1);
-insert into sync_api.viewer_profiles (user_key, profile_id, name)
-values ('content-test-a', 'viewer', 'Viewer');
 insert into sync_api.backups (user_key, payload)
 values ('content-test-a', '{}');
 

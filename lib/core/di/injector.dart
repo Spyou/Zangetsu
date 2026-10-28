@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'package:watch_app/core/hive/safe_box.dart';
 import 'package:watch_app/core/hive/source_icon_store.dart';
@@ -36,6 +37,9 @@ import '../schedule/airing_service.dart';
 import '../schedule/coming_soon_service.dart';
 import '../privacy/incognito_mode.dart';
 import '../profiles/viewer_profile.dart';
+import '../profiles/profile_lock_store.dart';
+import '../profiles/profile_lock_remote.dart';
+import '../profiles/synced_profile_lock_store.dart';
 import '../profiles/profile_avatar_uploader.dart';
 import '../search/title_suggestion_service.dart';
 import '../ui/animation_prefs.dart';
@@ -292,11 +296,26 @@ Future<void> initDependencies() async {
         accessToken: cloudAccessToken,
       ),
       currentUserId: currentUserId,
+      onProfileDataDeleted: (owner, id) =>
+          sl<ProfileLockStore>().forgetDeletedProfile(owner, id),
       deleteAvatar: (url) async {
         final token =
             sl<SupabaseService>().client.auth.currentSession?.accessToken;
         if (token == null) return false;
         return ProfileAvatarUploader(sl<Dio>()).delete(url: url, token: token);
+      },
+    ),
+  );
+  sl.registerSingleton<ProfileLockStore>(
+    SyncedProfileLockStore(
+      remote: PostgrestProfileLockRemote(vpsClient, cloudAccessToken),
+      currentUserId: currentUserId,
+      onGrantsChanged: (grants) {
+        if (grants.isEmpty) {
+          vpsClient.headers.remove('x-profile-grants');
+        } else {
+          vpsClient.headers['x-profile-grants'] = jsonEncode(grants);
+        }
       },
     ),
   );
@@ -821,6 +840,8 @@ Future<void> initDependencies() async {
       ),
       LibraryBackup(),
       SettingsBackup(),
+      authorize: () => (sl<ProfileLockStore>() as SyncedProfileLockStore)
+          .requireBackupAccess(),
     ),
   );
 

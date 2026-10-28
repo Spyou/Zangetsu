@@ -1317,6 +1317,78 @@ abstract class AppLocalizations {
   /// **'Profile'**
   String get profile;
 
+  /// No description provided for @profileLock.
+  ///
+  /// In en, this message translates to:
+  /// **'Profile lock'**
+  String get profileLock;
+
+  /// No description provided for @profileLockSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Ask for a PIN before opening this profile'**
+  String get profileLockSubtitle;
+
+  /// No description provided for @unlockProfile.
+  ///
+  /// In en, this message translates to:
+  /// **'Unlock profile'**
+  String get unlockProfile;
+
+  /// No description provided for @enterProfilePin.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter the PIN for {name}'**
+  String enterProfilePin(Object name);
+
+  /// No description provided for @wrongPin.
+  ///
+  /// In en, this message translates to:
+  /// **'Wrong PIN, try again'**
+  String get wrongPin;
+
+  /// No description provided for @setProfilePin.
+  ///
+  /// In en, this message translates to:
+  /// **'Set profile PIN'**
+  String get setProfilePin;
+
+  /// No description provided for @confirmProfilePin.
+  ///
+  /// In en, this message translates to:
+  /// **'Confirm PIN'**
+  String get confirmProfilePin;
+
+  /// No description provided for @pinMismatch.
+  ///
+  /// In en, this message translates to:
+  /// **'PINs do not match'**
+  String get pinMismatch;
+
+  /// No description provided for @pinTooShort.
+  ///
+  /// In en, this message translates to:
+  /// **'Use at least 4 characters'**
+  String get pinTooShort;
+
+  /// No description provided for @changeProfilePin.
+  ///
+  /// In en, this message translates to:
+  /// **'Change PIN'**
+  String get changeProfilePin;
+
+  /// No description provided for @removeProfileLock.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove lock'**
+  String get removeProfileLock;
+
+  /// No description provided for @useFingerprint.
+  ///
+  /// In en, this message translates to:
+  /// **'Use fingerprint'**
+  String get useFingerprint;
+
   /// No description provided for @changeProfile.
   ///
   /// In en, this message translates to:

@@ -56,6 +56,28 @@ class FakeSettingsBackup implements SettingsBackup {
 // ── Tests ──────────────────────────────────────────────────────────────────────
 
 void main() {
+  test('protected backup export requires authorization for each operation', () async {
+    var allowed = false;
+    final protected = BackupService(FakeSourcesBackup(), FakeLibraryBackup(), FakeSettingsBackup(),
+      authorize: () async { if (!allowed) throw StateError('Profile locked'); });
+    expect(() => protected.build({BackupBundle.library}), throwsStateError);
+    await expectLater(protected.authorize(), throwsStateError);
+    allowed = true;
+    await protected.authorize();
+    expect(protected.build({BackupBundle.library})['app'], 'zangetsu');
+    expect(() => protected.build({BackupBundle.library}), throwsStateError);
+  });
+
+  test('locked backup restore does not merge any records', () async {
+    final library = FakeLibraryBackup();
+    final protected = BackupService(FakeSourcesBackup(), library, FakeSettingsBackup(),
+      authorize: () async { throw StateError('Profile locked'); });
+    final payload = BackupService(FakeSourcesBackup(), library, FakeSettingsBackup())
+      .build({BackupBundle.library});
+    await expectLater(protected.restore(payload, {BackupBundle.library}), throwsStateError);
+    expect(library.mergeCalled, isFalse);
+  });
+
   late FakeSourcesBackup fakeSources;
   late FakeLibraryBackup fakeLibrary;
   late FakeSettingsBackup fakeSettings;

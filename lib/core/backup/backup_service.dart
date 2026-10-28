@@ -13,32 +13,71 @@ class RestoreReport {
 }
 
 class BackupService {
-  BackupService(this._sources, this._library, this._settings, {DateTime Function()? now})
-      : _now = now ?? DateTime.now;
+  BackupService(
+    this._sources,
+    this._library,
+    this._settings, {
+    DateTime Function()? now,
+    Future<void> Function()? authorize,
+  }) : _now = now ?? DateTime.now,
+       _authorize = authorize;
   final SourcesBackup _sources;
   final LibraryBackup _library;
   final SettingsBackup _settings;
   final DateTime Function() _now;
+  final Future<void> Function()? _authorize;
+  bool _authorized = false;
+
+  Future<void> authorize() async {
+    _authorized = false;
+    await _authorize?.call();
+    _authorized = true;
+  }
 
   Map<String, dynamic> build(Set<BackupBundle> bundles) {
+    if (_authorize != null && !_authorized) {
+      throw StateError(
+        'Profile authorization is required before exporting a backup',
+      );
+    }
+    _authorized = false;
     final out = <BackupBundle, Map<String, dynamic>>{};
-    if (bundles.contains(BackupBundle.sources))  out[BackupBundle.sources]  = _sources.build();
-    if (bundles.contains(BackupBundle.library))  out[BackupBundle.library]  = _library.build();
-    if (bundles.contains(BackupBundle.settings)) out[BackupBundle.settings] = _settings.build();
+    if (bundles.contains(BackupBundle.sources)) {
+      out[BackupBundle.sources] = _sources.build();
+    }
+    if (bundles.contains(BackupBundle.library)) {
+      out[BackupBundle.library] = _library.build();
+    }
+    if (bundles.contains(BackupBundle.settings)) {
+      out[BackupBundle.settings] = _settings.build();
+    }
     return wrapPayload(out, createdAtIso: _now().toUtc().toIso8601String());
   }
 
-  Future<RestoreReport> restore(Map<String, dynamic> payload, Set<BackupBundle> bundles) async {
-    final data = unwrapPayload(payload); // throws BackupFormatException on bad app/version
+  Future<RestoreReport> restore(
+    Map<String, dynamic> payload,
+    Set<BackupBundle> bundles,
+  ) async {
+    await authorize();
+    _authorized = false;
+    final data = unwrapPayload(
+      payload,
+    ); // throws BackupFormatException on bad app/version
     final failures = <String>[];
     final restored = <BackupBundle>{};
     for (final b in bundles) {
       final d = data[b];
       if (d == null) continue;
       switch (b) {
-        case BackupBundle.sources:  failures.addAll(await _sources.merge(d)); restored.add(b);
-        case BackupBundle.library:  await _library.merge(d); restored.add(b);
-        case BackupBundle.settings: await _settings.merge(d); restored.add(b);
+        case BackupBundle.sources:
+          failures.addAll(await _sources.merge(d));
+          restored.add(b);
+        case BackupBundle.library:
+          await _library.merge(d);
+          restored.add(b);
+        case BackupBundle.settings:
+          await _settings.merge(d);
+          restored.add(b);
       }
     }
     // A restore rewrites sources, library and settings at once. Unlogged, the

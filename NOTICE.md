@@ -108,3 +108,8 @@ Lucide dock icons
   Six dock icons are rendered from Lucide SVGs with a 1.8 stroke.
   Licenses: ISC (Lucide) and MIT (Feather-derived icons).
   Full notices: assets/icons/lucide/LICENSE
+
+Local Authentication (Flutter)
+  https://pub.dev/packages/local_auth
+  License: BSD-3-Clause
+  Used for optional device-local profile unlock with biometrics.

@@ -46,7 +46,7 @@ const KEEP_SECONDS = 60 * 60 * 24 * 30;
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'POST, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, X-App-Version, X-Device, Authorization',
+  'Access-Control-Allow-Headers': 'Content-Type, X-App-Version, X-Device, Authorization, X-Profile-Grants',
 };
 
 export default {
@@ -128,6 +128,34 @@ export default {
       }
       if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.(?:jpg|gif)$/i.test(file)) {
         return json({ error: 'bad avatar URL' }, 400);
+      }
+      const grants = request.headers.get('x-profile-grants') || '{}';
+      if (grants.length > 2048) return json({ error: 'bad profile proof' }, 400);
+      try {
+        const endpoint = new URL('/rpc/profile_lock', env.PROFILE_LOCK_API_BASE);
+        if (endpoint.protocol !== 'https:' || endpoint.username || endpoint.password) {
+          return json({ error: 'profile authorization unavailable' }, 503);
+        }
+        const access = await fetch(endpoint.toString(), {
+          method: 'POST',
+          redirect: 'error',
+          signal: AbortSignal.timeout(5000),
+          headers: {
+            authorization: request.headers.get('authorization'),
+            'content-type': 'application/json',
+            'x-profile-grants': grants,
+          },
+          body: JSON.stringify({
+            p_action: 'asset_delete_access',
+            p_secret: `avatars/${user}/${file}`,
+          }),
+        });
+        if (access.status === 403) return json({ error: 'profile locked' }, 403);
+        if (!access.ok || (await access.json()).ok !== true) {
+          return json({ error: 'profile authorization unavailable' }, 503);
+        }
+      } catch (_) {
+        return json({ error: 'profile authorization unavailable' }, 503);
       }
       await env.AVATARS.delete(`avatars/${user}/${file}`);
       return json({ ok: true });

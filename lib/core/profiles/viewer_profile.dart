@@ -147,6 +147,7 @@ class ViewerProfileStore {
     ViewerProfileRemote? remote,
     String? Function()? currentUserId,
     Future<bool> Function(String url)? deleteAvatar,
+    this.onProfileDataDeleted,
   }) : _remote = remote,
        _currentUserId = currentUserId,
        _deleteAvatar = deleteAvatar;
@@ -160,6 +161,8 @@ class ViewerProfileStore {
   final ViewerProfileRemote? _remote;
   final String? Function()? _currentUserId;
   final Future<bool> Function(String url)? _deleteAvatar;
+  final Future<void> Function(String owner, String profileId)?
+  onProfileDataDeleted;
   int _loadRequest = 0;
   String? _loadedOwner;
   List<ViewerProfile> _profiles = const [];
@@ -173,6 +176,7 @@ class ViewerProfileStore {
   ViewerProfile get activeProfile =>
       active.value ?? const ViewerProfile(id: kDefaultProfileId, name: 'Home');
   String get activeId => activeProfile.id;
+  String get ownerKey => _loadedOwner ?? _owner;
   bool get adultMetadataAllowed => !activeProfile.isKids;
   bool get isLoadedForCurrentUser => _loadedOwner == _owner;
   bool get askOnLaunch => _box.get(askOnLaunchKey, defaultValue: true) as bool;
@@ -537,9 +541,11 @@ class ViewerProfileStore {
   Future<void> switchTo(String profileId) async {
     final profile = _profiles.where((p) => p.id == profileId).firstOrNull;
     if (profile == null || profile.id == activeId) return;
+    final owner = _loadedOwner ?? _owner;
     await _applyTheme(profile);
+    if (owner != _owner || owner != (_loadedOwner ?? _owner)) return;
     active.value = profile;
-    await _box.put(_activeKey(_loadedOwner ?? _owner), profile.id);
+    await _box.put(_activeKey(owner), profile.id);
     revision.value++;
     contextRevision.value++;
   }
@@ -572,6 +578,7 @@ class ViewerProfileStore {
     await _deleteLocalProfileData(profileId);
     await _saveLocal(_loadedOwner ?? _owner);
     await _setPending(_loadedOwner ?? _owner, profileId, null);
+    await onProfileDataDeleted?.call(_loadedOwner ?? _owner, profileId);
     if (photoUrl != null && !photoIsShared) {
       try {
         await _deleteAvatar?.call(photoUrl);

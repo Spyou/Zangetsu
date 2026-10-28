@@ -24,5 +24,8 @@ for route in "${routes[@]}"; do
   check "$route" invalid-token --header 'Authorization: Bearer invalid-token'
 done
 
+check rpc/profile_lock unauthenticated --request POST --header 'Content-Type: application/json' --data '{"p_action":"status"}'
+check rpc/profile_lock invalid-token --request POST --header 'Authorization: Bearer invalid-token' --header 'Content-Type: application/json' --data '{"p_action":"status"}'
+
 printf 'all %d routes reject unauthenticated and invalid-token requests\n' \
-  "${#routes[@]}"
+  "$((${#routes[@]} + 1))"

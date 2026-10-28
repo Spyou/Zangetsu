@@ -9,6 +9,8 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../core/di/injector.dart';
 import '../../core/profiles/profile_avatar_uploader.dart';
+import '../../core/profiles/profile_lock_store.dart';
+import 'profile_lock_gate.dart';
 import '../../core/profiles/klipy_gif_service.dart';
 import '../../core/profiles/viewer_profile.dart';
 import '../../core/profiles/viewer_profile_avatar.dart';
@@ -194,11 +196,47 @@ class _ViewerProfileEditorScreenState extends State<ViewerProfileEditorScreen> {
   late String? _photoUrl = widget.profile?.photoUrl;
   late String? _coverUrl = widget.profile?.coverUrl;
   bool _uploading = false;
+  bool _locked = false;
   String? _photoError;
   String? _coverError;
   final _uploadedUrls = <String>{};
   String? _uploadToken;
   bool _saved = false;
+
+  ProfileLockStore? get _locks =>
+      sl.isRegistered<ProfileLockStore>() ? sl<ProfileLockStore>() : null;
+
+  @override
+  void initState() {
+    super.initState();
+    final id = widget.profile?.id;
+    final locks = _locks;
+    if (id != null && locks != null) {
+      locks
+          .isLocked(id)
+          .then(
+            (v) {
+              if (mounted) setState(() => _locked = v);
+            },
+            onError: (Object error) {
+              if (mounted) setState(() => _locked = true);
+            },
+          );
+    }
+  }
+
+  Future<void> _manageLock() async {
+    final profile = widget.profile;
+    final locks = _locks;
+    if (profile == null || locks == null) return;
+    final result = await manageProfilePin(
+      context,
+      profileId: profile.id,
+      profileName: profile.name,
+      locks: locks,
+    );
+    if (result != null && mounted) setState(() => _locked = result);
+  }
 
   bool get _canSave =>
       _name.text.trim().isNotEmpty &&
@@ -756,6 +794,26 @@ class _ViewerProfileEditorScreenState extends State<ViewerProfileEditorScreen> {
                       onChanged: (value) => setState(() => _isKids = value),
                     ),
                     onTap: () => setState(() => _isKids = !_isKids),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              SettingsCard(
+                margin: EdgeInsets.zero,
+                children: [
+                  SettingsTile(
+                    icon: Icons.lock_rounded,
+                    title: 'Profile lock',
+                    subtitle: _locked
+                        ? 'PIN required to open this profile'
+                        : 'Ask for a PIN before opening this profile',
+                    trailing: Icon(
+                      _locked ? Icons.lock_rounded : Icons.lock_open_rounded,
+                      color: _locked
+                          ? AppColors.accent
+                          : AppColors.textTertiary,
+                    ),
+                    onTap: _manageLock,
                   ),
                 ],
               ),

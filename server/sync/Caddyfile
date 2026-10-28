@@ -3,7 +3,7 @@ sync.zangetsu.online {
 	handle @klipyRoutes {
 		reverse_proxy 127.0.0.1:3110
 	}
-	@syncRoutes path /history /profile_history /mylist /profile_mylist /list_categories /profile_list_categories /mylist_categories /profile_mylist_categories /mylist_sync_clock /mylist_sync_tombstones /reading_history /profile_reading_history /viewer_profiles /backups
+	@syncRoutes path /history /profile_history /mylist /profile_mylist /list_categories /profile_list_categories /mylist_categories /profile_mylist_categories /mylist_sync_clock /mylist_sync_tombstones /reading_history /profile_reading_history /viewer_profiles /backups /rpc/profile_lock
 	handle @syncRoutes {
 		reverse_proxy 127.0.0.1:3000
 	}

@@ -11,6 +11,8 @@ import '../../core/di/injector.dart';
 import '../../core/models/media_item.dart';
 import '../../core/profiles/viewer_profile.dart';
 import '../../core/profiles/viewer_profile_avatar.dart';
+import '../../core/profiles/profile_lock_store.dart';
+import 'profile_lock_gate.dart';
 import '../../core/profiles/profile_picker_artwork.dart';
 import '../../core/app_config.dart';
 import '../auth/auth_cubit.dart';
@@ -187,20 +189,43 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
     // closes the picker after a selection, so a second tap is always a
     // double-tap, never a new choice.
     if (_selecting) return;
-    _selecting = true;
-    final switching = _profiles.switchTo(profile.id);
-    if (!mounted) return;
-    final onSelected = widget.onSelected;
-    if (onSelected != null) {
-      _enableSelectionHero.value = true;
-      onSelected();
+    final owner = _profiles.ownerKey;
+    if (!await ensureProfileUnlocked(context, profile)) return;
+    if (!mounted ||
+        _profiles.ownerKey != owner ||
+        !_profiles.profiles.any((p) => p.id == profile.id)) {
+      return;
     }
-    await switching;
-    if (!mounted || onSelected != null) return;
-    Navigator.of(context).pop();
+    final locks = sl.isRegistered<ProfileLockStore>()
+        ? sl<ProfileLockStore>()
+        : null;
+    if (_profiles.activeId != profile.id) locks?.approveSwitch(profile.id);
+    _selecting = true;
+    try {
+      await _profiles.switchTo(profile.id);
+      if (_profiles.ownerKey != owner || _profiles.activeId != profile.id) {
+        _selecting = false;
+        return;
+      }
+      final onSelected = widget.onSelected;
+      if (mounted && onSelected != null) {
+        _enableSelectionHero.value = true;
+        onSelected();
+      }
+      if (mounted && onSelected == null) Navigator.of(context).pop();
+    } catch (_) {
+      _selecting = false;
+      rethrow;
+    } finally {
+      locks?.consumeSwitchApproval(profile.id);
+    }
   }
 
   Future<void> _edit([ViewerProfile? profile, int initialAvatar = 0]) async {
+    if (profile != null && !await ensureProfileUnlocked(context, profile)) {
+      return;
+    }
+    if (!mounted) return;
     await openViewerProfileEditor(
       context,
       _profiles,
@@ -210,6 +235,10 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
   }
 
   Future<void> _delete(ViewerProfile profile) async {
+    // A lock that doesn't cover deletion is decoration: removing the profile
+    // wipes the PIN with it.
+    if (!await ensureProfileUnlocked(context, profile)) return;
+    if (!mounted) return;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(

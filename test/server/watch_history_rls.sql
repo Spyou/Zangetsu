@@ -3,6 +3,8 @@
 begin;
 set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"test-user-a"}', true);
+insert into sync_api.viewer_profiles (user_key, profile_id, name)
+values ('test-user-a', 'child', 'Viewer');
 
 insert into sync_api.history
   (user_key, source_id, show_id, episode_number, updated_at)

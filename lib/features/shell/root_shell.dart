@@ -17,6 +17,7 @@ import '../../core/playback/watch_history.dart';
 import '../../core/profiles/viewer_profile.dart';
 import '../../core/profiles/viewer_profile_avatar.dart';
 import '../../core/profiles/profile_shell_scope.dart';
+import '../../core/profiles/profile_lock_store.dart';
 import '../../core/reading/read_history.dart';
 import '../../core/mode/content_mode.dart';
 import '../../core/mode/content_mode_cubit.dart';
@@ -29,6 +30,7 @@ import '../../core/ui/nav_prefs.dart';
 import '../../core/ui/frosted_surface.dart';
 import '../downloads/downloads_screen.dart';
 import '../history/history_screen.dart';
+import '../profiles/profile_lock_gate.dart';
 import '../profiles/viewer_profiles_screen.dart';
 import '../profiles/viewer_profile_home_screen.dart';
 import '../auth/auth_cubit.dart';
@@ -1153,7 +1155,20 @@ Future<void> _switchProfile(
   ViewerProfile profile,
 ) async {
   try {
-    await profiles.switchTo(profile.id);
+    if (!context.mounted) return;
+    final owner = profiles.ownerKey;
+    if (!await ensureProfileUnlocked(context, profile)) return;
+    if (!context.mounted || profiles.ownerKey != owner) return;
+    if (!profiles.profiles.any((p) => p.id == profile.id)) return;
+    final locks = sl.isRegistered<ProfileLockStore>()
+        ? sl<ProfileLockStore>()
+        : null;
+    if (profiles.activeId != profile.id) locks?.approveSwitch(profile.id);
+    try {
+      await profiles.switchTo(profile.id);
+    } finally {
+      locks?.consumeSwitchApproval(profile.id);
+    }
   } catch (_) {
     if (context.mounted) {
       ScaffoldMessenger.maybeOf(context)?.showSnackBar(

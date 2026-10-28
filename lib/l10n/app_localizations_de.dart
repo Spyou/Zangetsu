@@ -640,6 +640,44 @@ class AppLocalizationsDe extends AppLocalizations {
   String get profile => 'Profil';
 
   @override
+  String get profileLock => 'Profile lock';
+
+  @override
+  String get profileLockSubtitle => 'Ask for a PIN before opening this profile';
+
+  @override
+  String get unlockProfile => 'Unlock profile';
+
+  @override
+  String enterProfilePin(Object name) {
+    return 'Enter the PIN for $name';
+  }
+
+  @override
+  String get wrongPin => 'Wrong PIN, try again';
+
+  @override
+  String get setProfilePin => 'Set profile PIN';
+
+  @override
+  String get confirmProfilePin => 'Confirm PIN';
+
+  @override
+  String get pinMismatch => 'PINs do not match';
+
+  @override
+  String get pinTooShort => 'Use at least 4 characters';
+
+  @override
+  String get changeProfilePin => 'Change PIN';
+
+  @override
+  String get removeProfileLock => 'Remove lock';
+
+  @override
+  String get useFingerprint => 'Use fingerprint';
+
+  @override
   String get changeProfile => 'Profil wechseln?';
 
   @override

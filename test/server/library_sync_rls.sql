@@ -2,6 +2,8 @@
 begin;
 set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"library-test-a"}', true);
+insert into sync_api.viewer_profiles (user_key, profile_id, name)
+values ('library-test-a', 'viewer', 'Viewer');
 
 insert into sync_api.mylist (user_key, source_id, item_id, title)
 values ('library-test-a', 'source', 'item', 'Test');

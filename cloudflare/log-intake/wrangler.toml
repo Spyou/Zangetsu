@@ -29,6 +29,7 @@ binding = "AVATARS"
 bucket_name = "zangetsu-avatars"
 
 [vars]
+PROFILE_LOCK_API_BASE = "https://sync.zangetsu.online"
 AVATAR_PUBLIC_BASE = "https://avatars.zangetsu.online"
 # Older saved profile URLs still need to be accepted for deletion.
 AVATAR_LEGACY_PUBLIC_BASE = "https://pub-a8b67f6edb404cb1b7545e19bc2b5b94.r2.dev"

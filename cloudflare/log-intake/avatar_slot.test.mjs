@@ -25,6 +25,15 @@ before(() => {
         headers: { 'content-type': 'application/json' },
       });
     }
+    if (String(input).startsWith('https://sync.example/')) {
+      assert.equal(init.redirect, 'error');
+      assert.equal(JSON.parse(init.body).p_action, 'asset_delete_access');
+      return new Response(JSON.stringify({ok: true}), {status: 200});
+    }
+    if (String(input).startsWith('https://locked.example/')) {
+      return new Response('{}', {status: 403});
+    }
+    if (String(input).startsWith('https://offline.example/')) throw new Error('offline');
     return originalFetch(input, init);
   };
 });
@@ -69,6 +78,7 @@ function environment() {
   return {
     writes,
     deletes,
+    PROFILE_LOCK_API_BASE: 'https://sync.example',
     AVATAR_PUBLIC_BASE: 'https://avatars.example',
     AVATAR_LEGACY_PUBLIC_BASE: 'https://legacy.example',
     AVATARS: {
@@ -398,5 +408,16 @@ for (const [name, options] of [
 
     assert.equal(response.status, 401);
     assert.equal(env.writes.length, 0);
+  });
+}
+
+for (const [host, status] of [['locked', 403], ['offline', 503]]) {
+  test(`avatar deletion fails closed when profile authorization is ${host}`, async () => {
+    const env = environment();
+    env.PROFILE_LOCK_API_BASE = `https://${host}.example`;
+    const response = await worker.fetch(deleteRequest(await token(),
+      `https://avatars.example/avatars/${userId}/12345678-1234-4123-8123-123456789012.jpg`), env);
+    assert.equal(response.status, status);
+    assert.equal(env.deletes.length, 0);
   });
 }
