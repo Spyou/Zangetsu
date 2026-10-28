@@ -936,7 +936,9 @@ class _HomeViewState extends State<_HomeView>
           onInfo: onInfo,
           meta: _heroMeta,
           onArtColor: ThemeController.adaptiveColour
-              ? (c) => _heroTint.value = c == null ? null : tintFromDominant(c)
+              ? (c) => _heroTint.value = c == null
+                    ? null
+                    : tintFromDominant(c, blend: adaptiveColourBlend)
               : null,
           backgroundTint: ThemeController.adaptiveColour ? _heroTint : null,
         );
@@ -952,7 +954,9 @@ class _HomeViewState extends State<_HomeView>
           meta: _heroMeta,
           style: HeroTransition.cinematic,
           onArtColor: ThemeController.adaptiveColour
-              ? (c) => _heroTint.value = c == null ? null : tintFromDominant(c)
+              ? (c) => _heroTint.value = c == null
+                    ? null
+                    : tintFromDominant(c, blend: adaptiveColourBlend)
               : null,
           backgroundTint: ThemeController.adaptiveColour ? _heroTint : null,
           isActive: widget.isTabActive,

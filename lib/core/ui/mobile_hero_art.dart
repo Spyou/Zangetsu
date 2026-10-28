@@ -5,3 +5,9 @@ String? mobileHeroArt(String? cover, String? banner) {
   }
   return banner ?? cover;
 }
+
+/// Detail backgrounds sample the poster first, falling back to the backdrop.
+String? adaptiveArtUrl(String? poster, String? backdrop) {
+  if (poster != null && poster.trim().isNotEmpty) return poster;
+  return backdrop != null && backdrop.trim().isNotEmpty ? backdrop : null;
+}

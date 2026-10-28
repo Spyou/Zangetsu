@@ -180,8 +180,15 @@ class _FeaturedBannerEdgeState extends State<FeaturedBannerEdge>
       widget.onArtColor?.call(null);
       return;
     }
-    final c = await (widget.paletteLoader ?? extractDominantColor)(
-      art,
+    final poster = item.cover?.trim();
+    final backdrop = item.banner?.trim();
+    final sampleArt = adaptiveArtUrl(poster, backdrop) ?? art;
+    final usingBackdrop =
+        (poster == null || poster.isEmpty) &&
+        backdrop != null &&
+        backdrop.isNotEmpty;
+    final c = await (widget.paletteLoader ?? extractAdaptiveColor)(
+      adaptiveSampleUrl(sampleArt, backdrop: usingBackdrop),
       item.coverHeaders,
     );
     if (!mounted ||
@@ -233,19 +240,30 @@ class _FeaturedBannerEdgeState extends State<FeaturedBannerEdge>
                 ),
               ),
               IgnorePointer(
-                child: DecoratedBox(
-                  key: const ValueKey('edgeBannerScrim'),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        const Color(0x66000000),
-                        const Color(0x33000000),
-                        const Color(0xCC0B0B0F),
-                        pageColor,
-                      ],
-                      stops: const [0, 0.28, 0.74, 1],
+                child: TweenAnimationBuilder<Color?>(
+                  tween: ColorTween(end: pageColor),
+                  duration: adaptiveColourDuration,
+                  curve: adaptiveColourCurve,
+                  builder: (context, colour, _) => DecoratedBox(
+                    key: const ValueKey('edgeBannerScrim'),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          if (widget.backgroundTint == null) ...const [
+                            Color(0x66000000),
+                            Color(0x33000000),
+                            Color(0xCC0B0B0F),
+                          ] else ...[
+                            (colour ?? AppColors.bg).withValues(alpha: 0.02),
+                            (colour ?? AppColors.bg).withValues(alpha: 0.12),
+                            (colour ?? AppColors.bg).withValues(alpha: 0.34),
+                          ],
+                          colour ?? AppColors.bg,
+                        ],
+                        stops: const [0, 0.28, 0.74, 1],
+                      ),
                     ),
                   ),
                 ),

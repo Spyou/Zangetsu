@@ -2032,7 +2032,11 @@ class _DetailViewState extends State<_DetailView>
           // while the setting is on. The NestedScrollView's own background is
           // transparent, so the tint shows through the body; the pinned bars
           // paint that same tint themselves so content never shows through.
-          if (ThemeController.adaptiveColour) PosterTintLayer(notifier: _tint),
+          if (ThemeController.adaptiveColour)
+            PosterTintLayer(
+              notifier: _tint,
+              duration: detailAdaptiveColourDuration,
+            ),
           Material(
             type: MaterialType.transparency,
             child: BlocBuilder<DetailCubit, DetailState>(
@@ -2228,12 +2232,26 @@ class _DetailViewState extends State<_DetailView>
     final coverHeaders = detail.coverHeaders ?? item.coverHeaders;
     final hasCover = coverUrl.isNotEmpty;
 
-    if (ThemeController.adaptiveColour && hasCover && _tintUrl != coverUrl) {
-      _tintUrl = coverUrl;
+    final tintPoster = (detail.cover ?? item.cover)?.trim();
+    final tintBackdrop = (detail.banner ?? item.banner)?.trim();
+    final tintArt = adaptiveArtUrl(tintPoster, tintBackdrop);
+    if (ThemeController.adaptiveColour &&
+        tintArt != null &&
+        _tintUrl != tintArt) {
+      _tintUrl = tintArt;
+      final sampleArt = adaptiveSampleUrl(
+        tintArt,
+        backdrop:
+            (tintPoster == null || tintPoster.isEmpty) &&
+            tintBackdrop != null &&
+            tintBackdrop.isNotEmpty,
+      );
       unawaited(
-        extractDominantColor(coverUrl, coverHeaders).then((c) {
-          if (!mounted || _tintUrl != coverUrl) return;
-          _tint.value = c == null ? null : tintFromDominant(c);
+        extractAdaptiveColor(sampleArt, coverHeaders).then((c) {
+          if (!mounted || _tintUrl != tintArt) return;
+          _tint.value = c == null
+              ? null
+              : tintFromDominant(c, blend: adaptiveColourBlend);
         }),
       );
     }

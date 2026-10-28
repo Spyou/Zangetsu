@@ -265,8 +265,15 @@ class _FeaturedCarouselState extends State<FeaturedCarousel> with RouteAware {
       widget.onArtColor?.call(null);
       return;
     }
-    final color = await (widget.paletteLoader ?? extractDominantColor)(
-      art,
+    final poster = item.cover?.trim();
+    final backdrop = item.banner?.trim();
+    final sampleArt = adaptiveArtUrl(poster, backdrop) ?? art;
+    final usingBackdrop =
+        (poster == null || poster.isEmpty) &&
+        backdrop != null &&
+        backdrop.isNotEmpty;
+    final color = await (widget.paletteLoader ?? extractAdaptiveColor)(
+      adaptiveSampleUrl(sampleArt, backdrop: usingBackdrop),
       item.coverHeaders,
     );
     if (!mounted || _pages.isEmpty || !identical(_pages[_realIndex], item)) {

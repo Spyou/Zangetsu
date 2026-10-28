@@ -101,8 +101,8 @@ class _Hero extends StatelessWidget {
               valueListenable: t,
               builder: (context, c, _) => TweenAnimationBuilder<Color?>(
                 tween: ColorTween(end: c ?? AppColors.bg),
-                duration: const Duration(milliseconds: 800),
-                curve: Curves.easeOut,
+                duration: detailAdaptiveColourDuration,
+                curve: adaptiveColourCurve,
                 builder: (context, page, _) {
                   final bg = page ?? AppColors.bg;
                   return DecoratedBox(

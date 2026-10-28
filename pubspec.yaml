@@ -277,6 +277,7 @@ flutter:
   generate: true
   uses-material-design: true
   assets:
+    - assets/licenses/adaptive_palette.txt
     - assets/icons/lucide/
     # Shared with Android's native network security configuration.
     - android/app/src/main/res/raw/trusted_roots.pem

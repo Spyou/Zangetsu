@@ -202,8 +202,8 @@ class _FeaturedHeroState extends State<FeaturedHero> {
           // colour), so the wash is continuous behind the hero too. Morphs on
           // the same clock as the screen-level PosterTintLayer.
           AnimatedContainer(
-            duration: const Duration(milliseconds: 800),
-            curve: Curves.easeOut,
+            duration: adaptiveColourDuration,
+            curve: adaptiveColourCurve,
             color: pageColor,
           ),
 
