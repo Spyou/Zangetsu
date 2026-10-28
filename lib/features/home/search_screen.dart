@@ -7,6 +7,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../search/meta_filter_sheet.dart';
 import 'phone_voice_search_sheet.dart';
+import 'voice_search_artwork.dart';
 import '../../core/ui/app_toast.dart';
 import '../../core/zmode/zmode_module.dart';
 import '../../core/zmode/zmode_ids.dart';
@@ -264,6 +265,7 @@ class _SearchViewState extends State<_SearchView>
   final _focusNode = FocusNode();
 
   static const _voiceChannel = MethodChannel('zangetsu/phone_voice_search');
+  static final _voiceArtwork = VoiceSearchArtwork();
 
   /// Hidden until Android reports a recogniser, so non-Android and boxes
   /// without one keep their unchanged search bar.
@@ -376,8 +378,7 @@ class _SearchViewState extends State<_SearchView>
     try {
       final text = await showPhoneVoiceSearchSheet(
         context,
-        gifUrl:
-            'https://media.tenor.com/EjowFmPUajMAAAAj/death-note-l-lawliet.gif',
+        gifUrl: _voiceArtwork.next(),
       );
       final query = text?.trim() ?? '';
       if (!mounted || request != _voiceRequest || query.isEmpty) return;

@@ -89,6 +89,13 @@ Runtime-loaded voice-search GIF (not bundled)
   L Lawliet voice-search animation hosted by Tenor, fetched when phone voice
   search opens and cached on the device. Not included in the repository or APK.
 
+Runtime-loaded Zoro voice-search GIF (not bundled)
+  Source: https://media1.tenor.com/m/9Y5b3kVpNzsAAAAC/zoro-baron-omatsuri.gif
+  Transparent redraw hosted at:
+  https://avatars.zangetsu.online/voice-search/zoro-hearing-bf88c2298404.gif
+  Fetched when selected for phone voice search and cached on the device.
+  Not included in the repository or app package.
+
 ────────────────────────────────────────────────────────────────────────────
 Keeping this file current
 ────────────────────────────────────────────────────────────────────────────
