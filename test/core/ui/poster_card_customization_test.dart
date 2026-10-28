@@ -31,6 +31,85 @@ void main() {
     await temp.delete(recursive: true);
   });
 
+  testWidgets('poster titles fit two scaled lines without shrinking artwork', (
+    tester,
+  ) async {
+    for (final scale in [1.0, 1.3, 2.0]) {
+      for (final wide in [false, true]) {
+        await tester.runAsync(() async {
+          await PlaybackPrefs().setPosterCardLayout(
+            wide ? PosterCardLayout.wide : PosterCardLayout.portrait,
+          );
+          await PlaybackPrefs().setPosterTitlePlacement(
+            PosterTitlePlacement.below,
+          );
+        });
+        late double width;
+        await tester.pumpWidget(
+          MaterialApp(
+            home: MediaQuery(
+              data: MediaQueryData(textScaler: TextScaler.linear(scale)),
+              child: Builder(
+                builder: (context) {
+                  width = posterRowWidth(context);
+                  return Align(
+                    alignment: Alignment.topLeft,
+                    child: SizedBox(
+                      width: width,
+                      height: posterRowHeight(context),
+                      child: PosterCard(
+                        title: 'Hunter x\nHunter (2011)',
+                        cellWidth: width,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        );
+        final text = tester.widget<Text>(find.text('Hunter x\nHunter (2011)'));
+        final painter = TextPainter(
+          text: TextSpan(text: text.data, style: text.style),
+          textDirection: TextDirection.ltr,
+          textScaler: TextScaler.linear(scale),
+          maxLines: 2,
+        )..layout(maxWidth: width);
+        expect(
+          tester.getSize(find.byType(PosterCardTitle)).height,
+          greaterThanOrEqualTo(painter.height - 0.01),
+        );
+        expect(
+          tester.getSize(find.byType(ClipRSuperellipse)).height,
+          closeTo(wide ? width * 9 / 16 : width * 1.5, 1),
+        );
+        painter.dispose();
+        expect(tester.takeException(), isNull);
+      }
+    }
+  });
+
+  test(
+    'poster geometry preserves default sizes and scales only external titles',
+    () {
+      expect(posterCellHeight(116), 216);
+      expect(posterCellHeight(184, wide: true), 146);
+      expect(posterCellHeight(116, textScaler: TextScaler.linear(2)), 250);
+      expect(
+        posterCellAspect(116, textScaler: TextScaler.linear(2)),
+        116 / 250,
+      );
+      expect(
+        posterCellHeight(
+          116,
+          titleInside: true,
+          textScaler: TextScaler.linear(2),
+        ),
+        posterCellHeight(116, titleInside: true),
+      );
+    },
+  );
+
   test('poster options preserve the existing look by default', () {
     final prefs = PlaybackPrefs();
     expect(prefs.posterCardLayout, PosterCardLayout.portrait);

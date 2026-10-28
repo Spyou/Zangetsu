@@ -858,6 +858,7 @@ class _Results extends StatelessWidget {
     final l10n = context.l10n;
     final aspect = posterCellAspect(
       cellWidth,
+      textScaler: MediaQuery.textScalerOf(context),
       wide: posterLayout(context) == PosterCardLayout.wide,
       titleInside: posterTitleInside(
         context,

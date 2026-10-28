@@ -176,6 +176,7 @@ double posterRowHeight(BuildContext context) {
   final wide = posterLayout(context) == PosterCardLayout.wide;
   return posterCellHeight(
     posterRowWidth(context),
+    textScaler: MediaQuery.textScalerOf(context),
     wide: wide,
     titleInside: posterTitleInside(context, wide: wide),
   );
@@ -269,6 +270,7 @@ class _PosterCardState extends State<PosterCard> {
   Widget build(BuildContext context) {
     final wide = posterLayout(context) == PosterCardLayout.wide;
     final titleInside = posterTitleInside(context, wide: wide);
+    final titleBoxHeight = _posterTitleHeight(MediaQuery.textScalerOf(context));
     final artUrl = wide && widget.wideImageUrl?.isNotEmpty == true
         ? widget.wideImageUrl
         : widget.imageUrl;
@@ -454,12 +456,12 @@ class _PosterCardState extends State<PosterCard> {
                 // the same row. Pinning the text also pins the gap to whatever
                 // follows the row.
                 SizedBox(
-                  height: _titleBoxHeight,
+                  height: titleBoxHeight,
                   child: PosterCardTitle(
                     title: widget.title,
                     logoItem: widget.logoItem,
                     width: widget.cellWidth,
-                    maxHeight: _titleBoxHeight,
+                    maxHeight: titleBoxHeight,
                     inside: false,
                   ),
                 ),
@@ -587,8 +589,11 @@ class _PosterCardTitleState extends State<PosterCardTitle> {
 
 /// Height of exactly two lines of the poster title, derived from the style so a
 /// change to the type scale carries here instead of silently clipping.
-final double _titleBoxHeight =
-    (AppText.caption.fontSize! * AppText.caption.height!) * 2;
+/// Round each line up because paragraph layout rounds fractional line heights.
+double _posterTitleHeight(TextScaler textScaler) =>
+    (textScaler.scale(AppText.caption.fontSize!) * AppText.caption.height!)
+        .ceilToDouble() *
+    2;
 
 /// Gap between the poster art and its title.
 const double _kTitleGap = 8;
@@ -602,28 +607,38 @@ const double _kTitleGap = 8;
 /// different component depending on which screen you were on.
 double posterCellHeight(
   double cellWidth, {
+  TextScaler textScaler = TextScaler.noScaling,
   bool wide = false,
   bool titleInside = false,
 }) {
   final artHeight = wide ? cellWidth * 9 / 16 : cellWidth * 1.5;
-  final titleHeight = titleInside ? 0.0 : _kTitleGap + _titleBoxHeight;
+  final titleHeight = titleInside
+      ? 0.0
+      : _kTitleGap + _posterTitleHeight(textScaler);
   final height = artHeight + titleHeight;
   return titleHeight == 0 ? height : height.ceilToDouble();
 }
 
 double posterCellAspect(
   double cellWidth, {
+  TextScaler textScaler = TextScaler.noScaling,
   bool wide = false,
   bool titleInside = false,
 }) =>
     cellWidth /
-    posterCellHeight(cellWidth, wide: wide, titleInside: titleInside);
+    posterCellHeight(
+      cellWidth,
+      textScaler: textScaler,
+      wide: wide,
+      titleInside: titleInside,
+    );
 
 /// [posterCellAspect] for the app's standard poster grid: three columns, 16px
 /// page padding, 12px between cells. Depends on the screen width, so it cannot
 /// be a constant — which is exactly why the hardcoded 0.62 drifted.
 double posterGridAspect(BuildContext context) => posterCellAspect(
   posterGridCellWidth(context),
+  textScaler: MediaQuery.textScalerOf(context),
   wide: posterLayout(context) == PosterCardLayout.wide,
   titleInside: posterTitleInside(
     context,

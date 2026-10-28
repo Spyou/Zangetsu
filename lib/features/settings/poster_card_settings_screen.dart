@@ -114,6 +114,7 @@ class _PosterCardSettingsScreenState extends State<PosterCardSettingsScreen> {
                       .toDouble();
               final height = posterCellHeight(
                 width,
+                textScaler: MediaQuery.textScalerOf(context),
                 wide: wide,
                 titleInside: posterTitleInside(context, wide: wide),
               );
