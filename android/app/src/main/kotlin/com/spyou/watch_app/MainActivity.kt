@@ -1790,7 +1790,7 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
                 putExtra(RecognizerIntent.EXTRA_PROMPT, prompt ?: "Speak the title")
             }
             if (intent.resolveActivity(packageManager) == null) {
-                result.success(null)
+                result.error("voice_unavailable", "Voice search is unavailable", null)
                 return
             }
             // Complete any stale pending dialog defensively, then wait for this one.
@@ -1800,7 +1800,7 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
         } catch (e: Exception) {
             Log.w(TAG, "startVoiceSearch failed: ${e.message}")
             pendingVoiceResult = null
-            result.success(null)
+            result.error("voice_failed", "Could not start voice search", null)
         }
     }
 
@@ -1872,7 +1872,18 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
         if (requestCode == VOICE_SEARCH_REQUEST) {
             val text = data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
                 ?.firstOrNull()
-            pendingVoiceResult?.let { try { it.success(text) } catch (_: Exception) {} }
+            pendingVoiceResult?.let {
+                try {
+                    when {
+                        resultCode == RESULT_CANCELED -> it.success(null)
+                        resultCode != RESULT_OK ->
+                            it.error("voice_failed", "Voice recognition failed", null)
+                        text.isNullOrBlank() ->
+                            it.error("voice_no_match", "No title recognised", null)
+                        else -> it.success(text)
+                    }
+                } catch (_: Exception) {}
+            }
             pendingVoiceResult = null
             return
         }

@@ -3082,6 +3082,24 @@ abstract class AppLocalizations {
   /// **'Voice search'**
   String get voiceSearch;
 
+  /// No description provided for @voiceSearchListening.
+  ///
+  /// In en, this message translates to:
+  /// **'Listening…'**
+  String get voiceSearchListening;
+
+  /// No description provided for @voiceSearchFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Voice search failed. Please try again.'**
+  String get voiceSearchFailed;
+
+  /// No description provided for @voiceSearchNoMatch.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn’t hear a title. Please try speaking again.'**
+  String get voiceSearchNoMatch;
+
   /// No description provided for @allSources.
   ///
   /// In en, this message translates to:

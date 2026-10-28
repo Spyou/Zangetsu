@@ -1621,6 +1621,16 @@ class AppLocalizationsTr extends AppLocalizations {
   String get voiceSearch => 'Sesli arama';
 
   @override
+  String get voiceSearchListening => 'Listening…';
+
+  @override
+  String get voiceSearchFailed => 'Voice search failed. Please try again.';
+
+  @override
+  String get voiceSearchNoMatch =>
+      'Couldn’t hear a title. Please try speaking again.';
+
+  @override
   String get allSources => 'Tüm kaynaklar';
 
   @override
