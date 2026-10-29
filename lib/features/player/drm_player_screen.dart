@@ -55,10 +55,9 @@ class _DrmPlayerScreenState extends State<DrmPlayerScreen> {
   void initState() {
     super.initState();
     _current = widget.initial;
-    SystemChrome.setPreferredOrientations([
-      DeviceOrientation.landscapeLeft,
-      DeviceOrientation.landscapeRight,
-    ]);
+    SystemChrome.setPreferredOrientations(
+      PlaybackPrefs.orientationLockFor(sl<PlaybackPrefs>().playerOrientation),
+    );
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     WakelockPlus.enable();
   }

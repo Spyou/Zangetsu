@@ -474,26 +474,32 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _initInApp();
   }
 
-  /// Watching upright (the ⟳ button). Starts false — every episode opens
-  /// landscape, as it always has.
-  bool _portraitMode = false;
+  /// Watching upright (the ⟳ button). Starts from the saved Default
+  /// orientation — landscape unless the user picked otherwise.
+  bool _portraitMode = sl<PlaybackPrefs>().playerOrientation == 'portrait';
+
+  /// Follow the device sensor instead of locking, when the saved default is
+  /// 'system'. The ⟳ button still locks to one side for the session.
+  bool _followSensor = sl<PlaybackPrefs>().playerOrientation == 'system';
 
   /// The orientation this player holds right now. Single source of truth: the
   /// screen pins orientation in more than one place (open, and either side of
   /// the Settings trip), and hardcoding landscape at each of them is what would
   /// throw you back to landscape after a detour.
-  List<DeviceOrientation> get _orientationLock => _portraitMode
-      ? const [DeviceOrientation.portraitUp]
-      : const [
-          DeviceOrientation.landscapeLeft,
-          DeviceOrientation.landscapeRight,
-        ];
+  List<DeviceOrientation> get _orientationLock => _followSensor
+      ? DeviceOrientation.values
+      : PlaybackPrefs.orientationLockFor(
+          _portraitMode ? 'portrait' : 'landscape',
+        );
 
   /// Locked either way rather than following the sensor: a phone resting flat
   /// shouldn't flip the video mid-episode, and this still works for people who
   /// keep system auto-rotate switched off.
   void _toggleOrientation() {
-    setState(() => _portraitMode = !_portraitMode);
+    setState(() {
+      _followSensor = false;
+      _portraitMode = !_portraitMode;
+    });
     SystemChrome.setPreferredOrientations(_orientationLock);
     _bumpControls();
   }

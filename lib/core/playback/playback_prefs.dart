@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:hive/hive.dart';
 import 'package:watch_app/core/hive/safe_box.dart';
 
@@ -285,6 +286,31 @@ class PlaybackPrefs {
   /// Whether to keep the screen awake while playing.
   bool get keepScreenOn => _box.get('keepScreenOn', defaultValue: true) as bool;
   Future<void> setKeepScreenOn(bool value) => _box.put('keepScreenOn', value);
+
+  /// Default player orientation: 'landscape' | 'portrait' | 'system'.
+  /// Landscape is the behaviour from before this setting existed, so a
+  /// never-touched install opens exactly as it always has.
+  String get playerOrientation =>
+      _box.get('playerOrientation', defaultValue: 'landscape') as String;
+  Future<void> setPlayerOrientation(String value) =>
+      _box.put('playerOrientation', value);
+
+  /// The [DeviceOrientation] lock for a saved [playerOrientation] choice.
+  /// Unknown values fall back to landscape — never to portrait.
+  static List<DeviceOrientation> orientationLockFor(String choice) {
+    switch (choice) {
+      case 'portrait':
+        return const [DeviceOrientation.portraitUp];
+      case 'system':
+        return DeviceOrientation.values;
+      case 'landscape':
+      default:
+        return const [
+          DeviceOrientation.landscapeLeft,
+          DeviceOrientation.landscapeRight,
+        ];
+    }
+  }
 
   /// Auto-enter Picture-in-Picture when leaving the app mid-playback (Android).
   /// The manual PiP button works regardless of this setting.

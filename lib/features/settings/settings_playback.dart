@@ -274,6 +274,13 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
 
   static const List<(int, String)> _skipOptions = [(5, '5s'), (10, '10s'), (15, '15s'), (30, '30s')];
 
+  // Same triple as the manga reader's Orientation row.
+  static const List<(String, String)> _orientationOptions = [
+    ('landscape', 'Landscape'),
+    ('portrait', 'Portrait'),
+    ('system', 'System'),
+  ];
+
   String _labelFor<T>(List<(T, String)> options, T value, String fallback) {
     for (final (v, label) in options) {
       if (v == value) return label;
@@ -432,6 +439,17 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
     final picked = await _pick<int>(title: context.l10n.doubleTapSkip, options: _skipOptions, current: _prefs.doubleTapSeconds);
     if (picked == null) return;
     await _prefs.setDoubleTapSeconds(picked);
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _pickOrientation() async {
+    final picked = await _pick<String>(
+      title: context.l10n.orientationLock,
+      options: _orientationOptions,
+      current: _prefs.playerOrientation,
+    );
+    if (picked == null) return;
+    await _prefs.setPlayerOrientation(picked);
     if (mounted) setState(() {});
   }
 
@@ -906,6 +924,15 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                   if (mounted) setState(() {});
                 },
               ),
+              // Default player orientation. TV is always landscape, so this
+              // row is phone-only.
+              if (!sl<AppMode>().isTv)
+                SettingsTile(
+                  icon: Icons.screen_rotation,
+                  title: context.l10n.orientationLock,
+                  subtitle: _labelFor(_orientationOptions, _prefs.playerOrientation, _prefs.playerOrientation),
+                  onTap: _pickOrientation,
+                ),
               if (sl<AppMode>().isTv && !isAppleTv)
                 _toggleRow(
                   icon: Icons.tv_outlined,

@@ -221,6 +221,11 @@ final settingsLeaves = <SettingsLeaf>[
   ),
   SettingsLeaf(
     LeafParent.playback,
+    (l) => l.orientationLock,
+    keywords: 'rotate portrait landscape default player',
+  ),
+  SettingsLeaf(
+    LeafParent.playback,
     (l) => l.doubleTapSkip,
     keywords: 'seek seconds gesture',
   ),
