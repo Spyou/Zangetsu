@@ -507,6 +507,7 @@ class _RootShellState extends State<RootShell>
                                 active: _tab,
                                 collapsed: collapsed && !_keepDockExpanded,
                                 glassTint: _navPrefs.glassTint,
+                                glassVisibility: _navPrefs.glassVisibility,
                                 glassQuality: _navPrefs.glassQuality,
                                 glassBlurEnabled: _navPrefs.glassBlurEnabled,
                                 onSelected: _onTabSelected,
@@ -563,6 +564,7 @@ class _LiquidNavDock extends StatelessWidget {
     required this.active,
     required this.collapsed,
     required this.glassTint,
+    required this.glassVisibility,
     required this.glassQuality,
     required this.glassBlurEnabled,
     required this.onSelected,
@@ -574,6 +576,7 @@ class _LiquidNavDock extends StatelessWidget {
   final DockTab active;
   final bool collapsed;
   final double glassTint;
+  final double glassVisibility;
   final GlassQuality glassQuality;
   final bool glassBlurEnabled;
   final ValueChanged<DockTab> onSelected;
@@ -623,11 +626,13 @@ class _LiquidNavDock extends StatelessWidget {
     final glass = liquidNavGlassSettings(
       glassTint,
       extraBlur: glassBlurEnabled,
+      glassVisibility: glassVisibility,
     );
-    final menuGlass = glass.copyWith(
-      glassColor: AppColors.settingsCard.withValues(alpha: 0.84),
-      blur: 8,
-    );
+    final menuGlass =
+        liquidNavGlassSettings(glassTint, extraBlur: glassBlurEnabled).copyWith(
+          glassColor: AppColors.settingsCard.withValues(alpha: 0.84),
+          blur: 8,
+        );
     final glassTabs = [
       for (final tab in tabs)
         GlassTab(

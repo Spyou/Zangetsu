@@ -48,6 +48,7 @@ class _NavTabsScreenState extends State<NavTabsScreen> {
   late double _glassTint = _prefs.glassTint;
   late GlassQuality _glassQuality = _prefs.glassQuality;
   late bool _glassBlurEnabled = _prefs.glassBlurEnabled;
+  late double _glassVisibility = _prefs.glassVisibility;
 
   /// The centre button is drawn from a real [DockTab]'s slot count, so it has
   /// to be mirrored here too: it is always on the bar and never editable.
@@ -130,6 +131,7 @@ class _NavTabsScreenState extends State<NavTabsScreen> {
       _glassTint = _prefs.glassTint;
       _glassQuality = _prefs.glassQuality;
       _glassBlurEnabled = _prefs.glassBlurEnabled;
+      _glassVisibility = _prefs.glassVisibility;
     });
   }
 
@@ -230,6 +232,7 @@ class _NavTabsScreenState extends State<NavTabsScreen> {
                     onChanged: _setGlassBlurEnabled,
                   ),
                 ),
+                _glassVisibilityControl(),
               ],
             ),
           ],
@@ -335,6 +338,52 @@ class _NavTabsScreenState extends State<NavTabsScreen> {
     );
   }
 
+  Widget _glassVisibilityControl() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Navbar visibility',
+                  style: AppText.body.copyWith(color: AppColors.textPrimary),
+                ),
+              ),
+              Text(
+                _glassVisibility == 0
+                    ? 'Off (default)'
+                    : '${(_glassVisibility * 100).round()}%',
+                style: AppText.caption,
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Darkens the whole glass background for clearer icons.',
+            style: AppText.caption,
+          ),
+          Slider(
+            key: const ValueKey('glass-visibility-slider'),
+            value: _glassVisibility,
+            divisions: 20,
+            label: _glassVisibility == 0
+                ? 'Off'
+                : '${(_glassVisibility * 100).round()}%',
+            activeColor: AppColors.accent,
+            onChanged: (value) => setState(() => _glassVisibility = value),
+            onChangeEnd: (value) async {
+              await _prefs.setGlassVisibility(value);
+              if (mounted) setState(() {});
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _dockPreview() => ClipRRect(
     borderRadius: BorderRadius.circular(20),
     child: BackdropFilter(
@@ -363,6 +412,7 @@ class _NavTabsScreenState extends State<NavTabsScreen> {
     final glass = liquidNavGlassSettings(
       _glassTint,
       extraBlur: _glassBlurEnabled,
+      glassVisibility: _glassVisibility,
     );
     return Row(
       children: [

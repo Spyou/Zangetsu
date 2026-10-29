@@ -44,6 +44,7 @@ class NavPrefs extends ChangeNotifier {
   static const String _glassTintKey = 'glassTint';
   static const String _glassQualityKey = 'glassQuality';
   static const String _glassBlurKey = 'glassBlur';
+  static const String _glassVisibilityKey = 'glassVisibility';
   static const double defaultGlassTint = 0.82;
   static const GlassQuality defaultGlassQuality = GlassQuality.premium;
 
@@ -174,6 +175,22 @@ class NavPrefs extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Local-only background strength for the liquid navbar; zero preserves its appearance.
+  double get glassVisibility {
+    final value = _box?.get(_glassVisibilityKey);
+    return value is num && value.isFinite
+        ? value.toDouble().clamp(0.0, 1.0).toDouble()
+        : 0;
+  }
+
+  Future<void> setGlassVisibility(double value) async {
+    await _box?.put(
+      _glassVisibilityKey,
+      value.isFinite ? value.clamp(0.0, 1.0).toDouble() : 0.0,
+    );
+    notifyListeners();
+  }
+
   Future<void> reset() async {
     await _box?.delete(_tabsKey);
     await _box?.delete(_startKey);
@@ -182,6 +199,7 @@ class NavPrefs extends ChangeNotifier {
     await _box?.delete(_glassTintKey);
     await _box?.delete(_glassQualityKey);
     await _box?.delete(_glassBlurKey);
+    await _box?.delete(_glassVisibilityKey);
     notifyListeners();
   }
 
@@ -192,7 +210,8 @@ class NavPrefs extends ChangeNotifier {
       style == NavBarStyle.liquid &&
       glassTint == defaultGlassTint &&
       glassQuality == defaultGlassQuality &&
-      glassBlurEnabled;
+      glassBlurEnabled &&
+      glassVisibility == 0;
 
   /// The validation the getter and setter both apply, exposed so the
   /// invariants can be tested without opening a Hive box.

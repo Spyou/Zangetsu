@@ -110,4 +110,38 @@ void main() {
 
     expect(tester.widget<Switch>(toggle).value, isTrue);
   });
+  testWidgets('navbar visibility is optional and saves only when released', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const MaterialApp(home: NavTabsScreen()));
+    await tester.pumpAndSettle();
+    final sliderFinder = find.byKey(const ValueKey('glass-visibility-slider'));
+    await tester.scrollUntilVisible(
+      sliderFinder,
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
+    var slider = tester.widget<Slider>(sliderFinder);
+    expect(slider.value, 0);
+    expect(find.text('Off (default)'), findsOneWidget);
+    slider.onChanged!(0.65);
+    await tester.pump();
+    expect(NavPrefs().glassVisibility, 0);
+    expect(find.text('65%'), findsOneWidget);
+    slider = tester.widget<Slider>(sliderFinder);
+    await tester.runAsync(() async {
+      slider.onChangeEnd!(0.65);
+      await Future<void>.delayed(Duration.zero);
+      await Hive.box(NavPrefs.boxName).flush();
+    });
+    await tester.pumpAndSettle();
+    expect(NavPrefs().glassVisibility, 0.65);
+  });
+
+  testWidgets('classic dock does not offer navbar visibility', (tester) async {
+    await tester.runAsync(() => NavPrefs().setStyle(NavBarStyle.dock));
+    await tester.pumpWidget(const MaterialApp(home: NavTabsScreen()));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('glass-visibility-slider')), findsNothing);
+  });
 }

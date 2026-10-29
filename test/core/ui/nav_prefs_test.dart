@@ -16,9 +16,13 @@ void main() {
   group('NavPrefs invariants', () {
     test('the pinned tab is added back when missing', () {
       final out = sanitized([DockTab.home, DockTab.downloads, DockTab.myList]);
-      expect(out, contains(DockTab.profile),
-          reason: 'Profile is the only route into Settings — losing it would '
-              'strand the user with no way to fix their own dock');
+      expect(
+        out,
+        contains(DockTab.profile),
+        reason:
+            'Profile is the only route into Settings — losing it would '
+            'strand the user with no way to fix their own dock',
+      );
     });
 
     test('duplicates are collapsed', () {
@@ -95,43 +99,41 @@ void main() {
       await dir.delete(recursive: true);
     });
 
-    test('a saved list naming Search resolves it; unknown entries drop', () async {
-      // What NavPrefs.defaultTabs used to ship as, back when it had 5 slots.
-      // The box key ('tabs') is the persisted format itself — see _tabsKey.
-      await Hive.box(NavPrefs.boxName).put('tabs', [
-        'home',
-        'schedule',
-        'search',
-        'myList',
-        'profile',
-      ]);
-      final out = NavPrefs().tabs;
+    test(
+      'a saved list naming Search resolves it; unknown entries drop',
+      () async {
+        // What NavPrefs.defaultTabs used to ship as, back when it had 5 slots.
+        // The box key ('tabs') is the persisted format itself — see _tabsKey.
+        await Hive.box(
+          NavPrefs.boxName,
+        ).put('tabs', ['home', 'schedule', 'search', 'myList', 'profile']);
+        final out = NavPrefs().tabs;
 
-      expect(out, contains(DockTab.profile));
-      expect(out.length, greaterThanOrEqualTo(NavPrefs.minTabs));
-      // Only the unknown 'schedule' entry drops — 'search' is a real tab now.
-      expect(out, [
-        DockTab.home,
-        DockTab.search,
-        DockTab.myList,
-        DockTab.profile,
-      ]);
-    });
+        expect(out, contains(DockTab.profile));
+        expect(out.length, greaterThanOrEqualTo(NavPrefs.minTabs));
+        // Only the unknown 'schedule' entry drops — 'search' is a real tab now.
+        expect(out, [
+          DockTab.home,
+          DockTab.search,
+          DockTab.myList,
+          DockTab.profile,
+        ]);
+      },
+    );
 
-    test('a saved list that is mostly just Search falls back to default', () async {
-      // Below minTabs: Search resolves but two tabs aren't a dock.
-      await Hive.box(NavPrefs.boxName).put('tabs', ['search', 'profile']);
-      final out = NavPrefs().tabs;
+    test(
+      'a saved list that is mostly just Search falls back to default',
+      () async {
+        // Below minTabs: Search resolves but two tabs aren't a dock.
+        await Hive.box(NavPrefs.boxName).put('tabs', ['search', 'profile']);
+        final out = NavPrefs().tabs;
 
-      expect(out, NavPrefs.defaultTabs);
-    });
+        expect(out, NavPrefs.defaultTabs);
+      },
+    );
 
     test('Search is savable as a tab but is not a default one', () async {
-      await NavPrefs().setTabs([
-        DockTab.home,
-        DockTab.search,
-        DockTab.profile,
-      ]);
+      await NavPrefs().setTabs([DockTab.home, DockTab.search, DockTab.profile]);
       expect(NavPrefs().tabs, contains(DockTab.search));
       expect(NavPrefs.defaultTabs, isNot(contains(DockTab.search)));
       await NavPrefs().reset();
@@ -144,6 +146,44 @@ void main() {
     test('keep-dock-expanded is off by default', () {
       expect(NavPrefs().isDefault, isTrue);
     });
+
+    test(
+      'navbar visibility starts off and preserves existing glass settings',
+      () async {
+        final prefs = NavPrefs();
+        final tint = prefs.glassTint;
+        final quality = prefs.glassQuality;
+        final blur = prefs.glassBlurEnabled;
+        expect(prefs.glassVisibility, 0);
+        await prefs.setGlassVisibility(0.6);
+        expect(NavPrefs().glassVisibility, 0.6);
+        expect(prefs.glassTint, tint);
+        expect(prefs.glassQuality, quality);
+        expect(prefs.glassBlurEnabled, blur);
+        expect(prefs.isDefault, isFalse);
+        await prefs.reset();
+        expect(prefs.glassVisibility, 0);
+        expect(prefs.isDefault, isTrue);
+      },
+    );
+
+    test(
+      'navbar visibility bounds and invalid stored values are safe',
+      () async {
+        final prefs = NavPrefs();
+        await prefs.setGlassVisibility(2);
+        expect(prefs.glassVisibility, 1);
+        await prefs.setGlassVisibility(-1);
+        expect(prefs.glassVisibility, 0);
+        await prefs.setGlassVisibility(double.nan);
+        expect(prefs.glassVisibility, 0);
+        for (final value in ['invalid', double.nan, double.infinity]) {
+          await Hive.box(NavPrefs.boxName).put('glassVisibility', value);
+          expect(prefs.glassVisibility, 0);
+        }
+        await prefs.reset();
+      },
+    );
 
     test('extra glass blur starts on and can be turned off', () async {
       expect(NavPrefs().glassBlurEnabled, isTrue);
