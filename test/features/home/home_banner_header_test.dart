@@ -26,7 +26,7 @@ void main() {
     expect(find.text('old header'), findsNothing);
     expect(find.text('banner'), findsNothing);
 
-    style.value = BannerStyle.defaultId;
+    style.value = 'card';
     await tester.pump();
     expect(find.text('old header'), findsOneWidget);
   });

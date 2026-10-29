@@ -14,7 +14,7 @@ abstract class AppText {
   static String fontFamily = defaultFontFamily;
 
   /// What a fresh install uses.
-  static const String defaultFontFamily = 'Nunito';
+  static const String defaultFontFamily = 'System';
 
   /// Platform CJK fonts. None of the UI families carry CJK glyphs; missing
   /// characters fall through to these (iOS Hiragino/PingFang, Android Noto).

@@ -4,9 +4,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 import 'package:watch_app/core/ui/banner_style.dart';
 
-/// The whole point of this pref is that picking nothing changes nothing: every
-/// install that never opens the picker must keep the banner it already has.
-/// These pin that, and the fallbacks that protect it.
 void main() {
   late Directory tmp;
 
@@ -23,9 +20,9 @@ void main() {
   });
 
   group('what an untouched install gets', () {
-    test('the banner it already had', () {
+    test('Edge is the default banner', () {
       expect(BannerStyle.selectedId, BannerStyle.defaultId);
-      expect(BannerStyle.defaultId, 'card');
+      expect(BannerStyle.defaultId, 'edge');
     });
 
     test('the default is the first option, so the picker leads with it', () {
@@ -81,11 +78,12 @@ void main() {
     });
   });
 
-  test('Edge is selectable while Card remains the default', () async {
-    expect(BannerStyle.options.map((o) => o.id), contains('edge'));
-    await BannerStyle.select('edge');
-    expect(BannerStyle.selectedId, 'edge');
-    expect(BannerStyle.defaultId, 'card');
+  test('an existing saved Card selection survives reopening', () async {
+    await Hive.box(BannerStyle.boxName).put('homeBannerStyle', 'card');
+    await Hive.box(BannerStyle.boxName).close();
+    await Hive.openBox(BannerStyle.boxName);
+    expect(BannerStyle.selectedId, 'card');
+    expect(BannerStyle.options.map((o) => o.id), contains('card'));
   });
 
   test('ids are unique — two options sharing one would make the pref lie', () {

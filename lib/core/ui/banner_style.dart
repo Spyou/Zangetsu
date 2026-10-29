@@ -22,29 +22,22 @@ class BannerStyleOption {
 /// Shaped like [SplashStyle] next to it in Settings, and for the same reason:
 /// the choice is persisted, so the ids are permanent once shipped.
 ///
-/// [defaultId] is the card banner every install already wears, drawn by the
-/// widget it has always been drawn by. The alternative lives in its own file
-/// and only builds when someone picks it, so choosing nothing leaves the Home
-/// screen byte-identical to the one before this feature existed.
+/// Edge is the default; previously saved style ids keep their selection.
 class BannerStyle {
   BannerStyle._();
 
   static const String boxName = 'app_prefs';
   static const String _key = 'homeBannerStyle';
 
-  static const String defaultId = 'card';
+  static const String defaultId = edgeId;
   static const String panelsId = 'panels';
   static const String edgeId = 'edge';
 
   /// [defaultId] first, so the picker leads with what a fresh install wears.
   static const List<BannerStyleOption> options = [
-    BannerStyleOption(
-      id: defaultId,
-      label: 'Card',
-      blurb: 'The banner you have now',
-    ),
-    BannerStyleOption(id: panelsId, label: 'Panels', blurb: 'A manga spread'),
     BannerStyleOption(id: edgeId, label: 'Edge', blurb: 'Full-width artwork'),
+    BannerStyleOption(id: 'card', label: 'Card', blurb: 'Inset artwork card'),
+    BannerStyleOption(id: panelsId, label: 'Panels', blurb: 'A manga spread'),
   ];
 
   /// Falls back to [defaultId] for anything unknown, so a build that drops an

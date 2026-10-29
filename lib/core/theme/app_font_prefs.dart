@@ -26,8 +26,8 @@ class AppFont {
 
 /// The UI font, and the small store behind it.
 ///
-/// Only the default is in the APK — a default has to paint on the first frame
-/// with no network. The rest are fetched on first pick by
+/// System uses the device font. Bundled fonts are available immediately;
+/// the remaining families are fetched on first pick by
 /// [SubtitleFontService], which registers them through [FontLoader]; that is
 /// app-wide, not subtitle-only, so a downloaded family works for the UI.
 class AppFontPrefs {
@@ -40,10 +40,9 @@ class AppFontPrefs {
   /// it does for [ThemeController.revision].
   static final ValueNotifier<int> revision = ValueNotifier<int>(0);
 
-  /// Offered in the picker, in the order shown. Nunito first: it is the
-  /// default and the one the app is designed around. System last: the
-  /// device's own font (no download, always available) — see [isSystem].
+  /// System leads the picker and needs no download — see [isSystem].
   static const List<AppFont> fonts = [
+    AppFont('System', 'System'),
     AppFont('Nunito', 'Nunito', bundled: true),
     AppFont('Inter', 'Inter', bundled: true),
     AppFont('Noto Sans', 'Noto Sans', bundled: true),
@@ -52,7 +51,6 @@ class AppFontPrefs {
     AppFont('Source Sans 3', 'Source Sans 3'),
     AppFont('Montserrat', 'Montserrat'),
     AppFont('Roboto', 'Roboto'),
-    AppFont('System', 'System'),
   ];
 
   /// The device's default font. Not a real family: [AppText] maps it to a

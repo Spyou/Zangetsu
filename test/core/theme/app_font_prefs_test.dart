@@ -22,8 +22,10 @@ void main() {
   });
 
   test('a fresh install is on the default', () {
-    expect(AppFontPrefs.family, AppText.defaultFontFamily);
-    expect(AppText.fontFamily, AppText.defaultFontFamily);
+    expect(AppText.defaultFontFamily, AppFontPrefs.systemFamily);
+    expect(AppFontPrefs.family, AppFontPrefs.systemFamily);
+    expect(AppText.fontFamily, AppFontPrefs.systemFamily);
+    expect(AppText.body.fontFamily, isNull);
   });
 
   test('choosing a font applies it and bumps the revision', () async {
@@ -49,7 +51,7 @@ void main() {
     // FontLoader registrations do not survive a restart, so boot re-fetches.
     // With no network (as here) the font is not on the device — applying it
     // anyway would draw the platform default and look like a broken setting,
-    // so boot must fall back to the bundled default instead.
+    // so boot must fall back to the default instead.
     await AppFontPrefs.setFamily('Montserrat');
     AppText.fontFamily = 'something else entirely';
     await AppFontPrefs.init();
@@ -58,13 +60,16 @@ void main() {
     expect(AppFontPrefs.family, 'Montserrat');
   });
 
-  test('a font that is no longer offered falls back, it does not stick', () async {
-    // A family dropped from the list would otherwise leave the app asking for
-    // one that pubspec never declares — which renders as the platform default
-    // and reads as a bug rather than a choice.
-    await Hive.box(AppFontPrefs.boxName).put('family', 'Comic Sans MS');
-    expect(AppFontPrefs.family, AppText.defaultFontFamily);
-  });
+  test(
+    'a font that is no longer offered falls back, it does not stick',
+    () async {
+      // A family dropped from the list would otherwise leave the app asking for
+      // one that pubspec never declares — which renders as the platform default
+      // and reads as a bug rather than a choice.
+      await Hive.box(AppFontPrefs.boxName).put('family', 'Comic Sans MS');
+      expect(AppFontPrefs.family, AppText.defaultFontFamily);
+    },
+  );
 
   test('a bundled font really is in the APK', () async {
     // pubspec is the contract for these: claiming bundled without declaring it
@@ -80,30 +85,43 @@ void main() {
     }
   });
 
-  test('the default is bundled — it has to paint before any network', () {
-    expect(AppFontPrefs.isBundled(AppText.defaultFontFamily), isTrue);
+  test('the default is available without a font download', () async {
+    expect(AppFontPrefs.isSystem(AppText.defaultFontFamily), isTrue);
+    expect(await AppFontPrefs.ensure(AppText.defaultFontFamily), isTrue);
+    expect(AppFontPrefs.fonts.first.family, AppText.defaultFontFamily);
   });
 
-  test('a downloadable font is NOT bundled, or it costs install size', () async {
-    final pubspec = await File('pubspec.yaml').readAsString();
-    // System is neither bundled nor downloaded — it is the platform font.
-    final fetchable = AppFontPrefs.fonts.where(
-      (f) => !f.bundled && !AppFontPrefs.isSystem(f.family),
-    );
-    for (final f in fetchable) {
-      expect(
-        pubspec.contains('- family: ${f.family}\n'),
-        isFalse,
-        reason: '"${f.family}" is meant to download but is in the APK',
-      );
-      // And the fetcher has to know the filename, or ensure() can never work.
-      expect(
-        subtitleFontFileName(f.family),
-        isNotNull,
-        reason: '"${f.family}" has no file mapping, so it can never download',
-      );
-    }
+  test('an existing saved Nunito choice survives reopening', () async {
+    await Hive.box(AppFontPrefs.boxName).put('family', 'Nunito');
+    await Hive.close();
+    await AppFontPrefs.init();
+    expect(AppFontPrefs.family, 'Nunito');
+    expect(AppText.body.fontFamily, 'Nunito');
   });
+
+  test(
+    'a downloadable font is NOT bundled, or it costs install size',
+    () async {
+      final pubspec = await File('pubspec.yaml').readAsString();
+      // System is neither bundled nor downloaded — it is the platform font.
+      final fetchable = AppFontPrefs.fonts.where(
+        (f) => !f.bundled && !AppFontPrefs.isSystem(f.family),
+      );
+      for (final f in fetchable) {
+        expect(
+          pubspec.contains('- family: ${f.family}\n'),
+          isFalse,
+          reason: '"${f.family}" is meant to download but is in the APK',
+        );
+        // And the fetcher has to know the filename, or ensure() can never work.
+        expect(
+          subtitleFontFileName(f.family),
+          isNotNull,
+          reason: '"${f.family}" has no file mapping, so it can never download',
+        );
+      }
+    },
+  );
 
   test('no single-weight font is offered', () async {
     // Flutter fakes the bold on a single-weight file and every heading here is

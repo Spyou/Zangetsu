@@ -18,11 +18,16 @@ void main() {
     if (await tmp.exists()) await tmp.delete(recursive: true);
   });
 
-  test('an untouched install still gets the wordmark', () {
-    // The whole point of the default: adding this feature must not change what
-    // an existing user sees at launch.
+  test('an untouched install gets Bankai', () {
+    expect(SplashStyle.selectedId, 'bankai');
+    expect(SplashStyle.defaultId, 'bankai');
+  });
+
+  test('an existing saved Wordmark selection survives reopening', () async {
+    await Hive.box(SplashStyle.boxName).put('splashStyleId', 'wordmark');
+    await Hive.box(SplashStyle.boxName).close();
+    await Hive.openBox(SplashStyle.boxName);
     expect(SplashStyle.selectedId, 'wordmark');
-    expect(SplashStyle.defaultId, 'wordmark');
   });
 
   test('a choice is remembered', () async {
@@ -32,12 +37,12 @@ void main() {
 
   test('an id this build no longer ships falls back to the default', () async {
     Hive.box(SplashStyle.boxName).put('splashStyleId', 'some-old-style');
-    expect(SplashStyle.selectedId, 'wordmark');
+    expect(SplashStyle.selectedId, 'bankai');
   });
 
   test('a non-string value falls back rather than throwing', () {
     Hive.box(SplashStyle.boxName).put('splashStyleId', 42);
-    expect(SplashStyle.selectedId, 'wordmark');
+    expect(SplashStyle.selectedId, 'bankai');
   });
 
   test('an unknown id is refused, not stored', () async {

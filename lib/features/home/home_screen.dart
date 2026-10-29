@@ -884,11 +884,6 @@ class _HomeViewState extends State<_HomeView>
 
   /// The banner for [bannerId], with the same items and the same callbacks
   /// whichever one is showing.
-  ///
-  /// [BannerStyle.defaultId] returns the carousel exactly as it was written —
-  /// this switch is the only thing standing between Home and the banner every
-  /// install already has, and the other branch is a separate widget that never
-  /// runs unless someone opts in.
   Widget _featuredBanner(String bannerId, List<MediaItem> heroItems) {
     final reading = sl<ContentModeCubit>().state.isReading;
     void toggleList(MediaItem m) {

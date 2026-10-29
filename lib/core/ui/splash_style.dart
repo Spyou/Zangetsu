@@ -23,14 +23,13 @@ class SplashStyle {
   static const String boxName = 'app_prefs';
   static const String _key = 'splashStyleId';
 
-  /// The wordmark reveal — what the app has always shown. A fresh install is
-  /// unchanged by this feature existing.
-  static const String defaultId = 'wordmark';
+  /// Used when no splash choice has been saved.
+  static const String defaultId = 'bankai';
 
   /// [defaultId] first, so the picker leads with what a fresh install wears.
   static const List<SplashStyleOption> options = [
-    SplashStyleOption(id: 'wordmark', label: 'Wordmark'),
     SplashStyleOption(id: 'bankai', label: 'Bankai'),
+    SplashStyleOption(id: 'wordmark', label: 'Wordmark'),
   ];
 
   /// Falls back to [defaultId] for anything unknown, so a build that drops an
