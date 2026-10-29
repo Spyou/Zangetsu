@@ -78,8 +78,8 @@ class DiscordPresenceBridge(private val activity: Activity, messenger: BinaryMes
         if (!running) return
         running = false
         handler.removeCallbacks(pump)
+        // The SDK needs its Activity for queued unbinds and rejects a null setter.
         nativeClose()
-        DiscordSocialSdkInit.setEngineActivity(null)
     }
 
     fun dispose() {
