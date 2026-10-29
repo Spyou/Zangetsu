@@ -145,7 +145,9 @@ class _SearchScreenState extends State<SearchScreen> {
 
   /// The bloc caches results and its source list, so a scope change has to
   /// build a NEW bloc rather than swap the repo underneath the old one. The
-  /// ValueKey below is what makes BlocProvider dispose and recreate it.
+  /// ValueKey below is what makes BlocProvider dispose and recreate it —
+  /// keyed on the pinned source too, so switching from source A to B
+  /// rebuilds as well: same scope, different answers.
   CatalogueRepository _repoForScope(SearchScope scope) => switch (scope) {
     SearchScope.library => sl<MetadataRepository>(),
     SearchScope.sources => sl<SourceRepository>(),
@@ -153,7 +155,7 @@ class _SearchScreenState extends State<SearchScreen> {
 
   Widget _searchTree(SearchScope scope) {
     return BlocProvider(
-      key: ValueKey(scope),
+      key: ValueKey((scope, widget.fixedSourceId)),
       create: (_) {
         final bloc = SearchBloc(
           repo: _repoForScope(scope),

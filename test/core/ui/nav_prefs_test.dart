@@ -55,9 +55,10 @@ void main() {
       expect(sanitized(NavPrefs.defaultTabs), NavPrefs.defaultTabs);
     });
 
-    // Search left the dock for a Home header icon; Schedule left it for the
-    // card row on Home. Sources went the other way — it was a header icon and
-    // is now a destination, which is why Downloads is no longer a default.
+    // Search is opt-in (header icon while it's off the bar); Schedule left
+    // for the card row on Home. Sources went the other way — it was a header
+    // icon and is now a destination, which is why Downloads is no longer a
+    // default.
     test('the default dock has neither Search nor Schedule', () {
       expect(NavPrefs.defaultTabs, [
         DockTab.home,
@@ -76,12 +77,10 @@ void main() {
     });
   });
 
-  // Task 17: DockTab.search was removed from the enum (Search moved to a
-  // Home header icon, off the dock entirely). A user who saved their dock
-  // while Search still existed has 'search' sitting in their Hive box as a
-  // plain string — this drives that through the real getter (not
-  // sanitizeForTest, which only ever sees already-parsed DockTabs) to prove
-  // it degrades to a sane dock rather than crashing or leaving a blank slot.
+  // Task 17 follow-up: Search is a dock tab again (opt-in, off by default).
+  // A user who saved their dock while it existed has 'search' sitting in
+  // their Hive box as a plain string — this drives that through the real
+  // getter to prove it resolves rather than dropping.
   group('NavPrefs.tabs against a legacy stored value', () {
     late Directory dir;
 
@@ -96,7 +95,7 @@ void main() {
       await dir.delete(recursive: true);
     });
 
-    test('a saved list naming the old Search tab drops just that entry', () async {
+    test('a saved list naming Search resolves it; unknown entries drop', () async {
       // What NavPrefs.defaultTabs used to ship as, back when it had 5 slots.
       // The box key ('tabs') is the persisted format itself — see _tabsKey.
       await Hive.box(NavPrefs.boxName).put('tabs', [
@@ -110,21 +109,32 @@ void main() {
 
       expect(out, contains(DockTab.profile));
       expect(out.length, greaterThanOrEqualTo(NavPrefs.minTabs));
-      // Downloads is in defaultTabs now, but this list was SAVED by the user
-      // and never had it — only the unknown 'search'/'schedule' entries drop.
+      // Only the unknown 'schedule' entry drops — 'search' is a real tab now.
       expect(out, [
         DockTab.home,
+        DockTab.search,
         DockTab.myList,
         DockTab.profile,
       ]);
     });
 
     test('a saved list that is mostly just Search falls back to default', () async {
-      // Below minTabs once the unknown 'search' entry is stripped.
+      // Below minTabs: Search resolves but two tabs aren't a dock.
       await Hive.box(NavPrefs.boxName).put('tabs', ['search', 'profile']);
       final out = NavPrefs().tabs;
 
       expect(out, NavPrefs.defaultTabs);
+    });
+
+    test('Search is savable as a tab but is not a default one', () async {
+      await NavPrefs().setTabs([
+        DockTab.home,
+        DockTab.search,
+        DockTab.profile,
+      ]);
+      expect(NavPrefs().tabs, contains(DockTab.search));
+      expect(NavPrefs.defaultTabs, isNot(contains(DockTab.search)));
+      await NavPrefs().reset();
     });
 
     test('with nothing chosen, the app opens on the leftmost tab', () {
@@ -212,10 +222,11 @@ void main() {
       }
     });
 
-    // Task 17: Search is off the dock entirely, not just hidden by default —
-    // there's no enum member left for it to offer.
-    test('Search is not a dock tab any more', () {
-      expect(DockTab.values.map((t) => t.name), isNot(contains('search')));
+    // Search is back as an opt-in dock tab — a real member, but absent from
+    // the default dock so untouched installs look exactly as before.
+    test('Search is a dock tab but not a default one', () {
+      expect(DockTab.values.map((t) => t.name), contains('search'));
+      expect(NavPrefs.defaultTabs, isNot(contains(DockTab.search)));
     });
   });
 }

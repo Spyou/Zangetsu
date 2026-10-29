@@ -15,6 +15,7 @@ import '../../core/platform/apple_tv.dart';
 import '../../core/mihon/mihon_extension_service.dart';
 import '../../core/mihon/mihon_image_provider.dart';
 import '../../core/mode/content_mode.dart';
+import '../../core/ui/nav_prefs.dart';
 import '../../core/mode/content_mode_cubit.dart';
 import '../../core/models/watch_status.dart';
 import '../../core/tracker/tracker_hub.dart';
@@ -807,7 +808,7 @@ class _HomeViewState extends State<_HomeView>
                   ),
                 );
           final actions = [
-            _headerDownloadButton(edgeBanner: edgeBanner),
+            HomeDownloadsAction(edgeBanner: edgeBanner),
             _notificationBell(context, edgeBanner: edgeBanner),
             HomeSearchAction(
               edgeBanner: edgeBanner,
@@ -962,25 +963,6 @@ class _HomeViewState extends State<_HomeView>
           isActive: widget.isTabActive,
         );
     }
-  }
-
-  /// Header download shortcut → [DownloadsScreen]. Same shape as
-  /// [HomeSearchAction]: flat icon, no badge — the screen itself is the
-  /// progress view, so there's nothing to surface here. Pushed as a normal
-  /// route (with back), unlike the dock tab which suppresses it.
-  Widget _headerDownloadButton({bool edgeBanner = false}) {
-    return IconButton(
-      icon: DockIcon(
-        DockGlyph.download,
-        color: edgeBanner ? Colors.white : AppColors.textSecondary,
-        size: 22,
-      ),
-      tooltip: context.l10n.downloads,
-      style: edgeBanner ? _edgeHeaderButtonStyle() : null,
-      onPressed: () => Navigator.of(
-        context,
-      ).push(MaterialPageRoute<void>(builder: (_) => const DownloadsScreen())),
-    );
   }
 
   /// Flat bell → Notifications screen. The accent dot shows while any
@@ -2175,9 +2157,45 @@ class _HomeViewState extends State<_HomeView>
   }
 }
 
-/// Opens [SearchScreen] — the primary way into search now that it's off the
-/// dock. Normally Search follows Z Mode; Home passes [fixedSourceId] when its
-/// Source Catalogue is selected so the query stays on that source.
+/// Header download shortcut → [DownloadsScreen]. Hidden while Downloads is
+/// a dock tab, so the bar and the header never offer it twice — same rule
+/// as [HomeSearchAction].
+class HomeDownloadsAction extends StatelessWidget {
+  const HomeDownloadsAction({super.key, this.edgeBanner = false});
+
+  final bool edgeBanner;
+
+  @override
+  Widget build(BuildContext context) {
+    // Bare NavPrefs reads no Hive box and returns the default dock (no
+    // Downloads) — the same guard the shell uses for widget tests.
+    final prefs = sl.isRegistered<NavPrefs>() ? sl<NavPrefs>() : NavPrefs();
+    return ListenableBuilder(
+      listenable: prefs,
+      builder: (context, _) => prefs.tabs.contains(DockTab.downloads)
+          ? const SizedBox.shrink()
+          : IconButton(
+              icon: DockIcon(
+                DockGlyph.download,
+                color: edgeBanner ? Colors.white : AppColors.textSecondary,
+                size: 22,
+              ),
+              tooltip: context.l10n.downloads,
+              style: edgeBanner ? _edgeHeaderButtonStyle() : null,
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const DownloadsScreen(),
+                ),
+              ),
+            ),
+    );
+  }
+}
+
+/// Opens [SearchScreen] — the Home header way in. Hidden while Search is a
+/// dock tab, so the bar and the header never offer it twice. Normally Search
+/// follows Z Mode; Home passes [fixedSourceId] when its Source Catalogue is
+/// selected so the query stays on that source.
 class HomeSearchAction extends StatelessWidget {
   const HomeSearchAction({
     super.key,
@@ -2190,19 +2208,27 @@ class HomeSearchAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return IconButton(
-      icon: DockIcon(
-        DockGlyph.search,
-        color: edgeBanner ? Colors.white : AppColors.textSecondary,
-        size: 22,
-      ),
-      tooltip: context.l10n.search,
-      style: edgeBanner ? _edgeHeaderButtonStyle() : null,
-      onPressed: () => Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (_) => SearchScreen(fixedSourceId: fixedSourceId),
-        ),
-      ),
+    // Bare NavPrefs reads no Hive box and returns the default dock (no
+    // Search) — the same guard the shell uses for widget tests.
+    final prefs = sl.isRegistered<NavPrefs>() ? sl<NavPrefs>() : NavPrefs();
+    return ListenableBuilder(
+      listenable: prefs,
+      builder: (context, _) => prefs.tabs.contains(DockTab.search)
+          ? const SizedBox.shrink()
+          : IconButton(
+              icon: DockIcon(
+                DockGlyph.search,
+                color: edgeBanner ? Colors.white : AppColors.textSecondary,
+                size: 22,
+              ),
+              tooltip: context.l10n.search,
+              style: edgeBanner ? _edgeHeaderButtonStyle() : null,
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => SearchScreen(fixedSourceId: fixedSourceId),
+                ),
+              ),
+            ),
     );
   }
 }

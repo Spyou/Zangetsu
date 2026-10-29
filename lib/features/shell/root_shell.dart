@@ -9,6 +9,7 @@ import 'package:fluttertoast/fluttertoast.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
 import '../search/browse_sources_screen.dart';
+import '../home/home_catalogue_prefs.dart';
 import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
 import '../../core/playback/my_list.dart';
@@ -49,17 +50,37 @@ import 'root_shell_tv.dart';
 ///
 /// [searchFocusSignal] is bumped each time the Search rail item is
 /// (re)selected on TV so the embedded search screen can auto-focus its
-/// field. Phone has no Search dock tab any more — Search moved to a Home
-/// header icon — so [RootShell] always passes null here.
+/// field. [RootShell] always passes null — a tapped Search dock tab just
+/// shows its page, and the Home header icon pushes a fresh one.
+///
+/// [searchFixedSourceId] pins the Search page to one source catalogue. TV
+/// leaves it null; the phone dock passes [dockSearchFixedSourceId].
 List<Widget> buildShellPages(
   ValueNotifier<int>? searchFocusSignal, {
   bool homeIsActive = true,
+  String? searchFixedSourceId,
 }) => [
   HomeScreen(isTabActive: homeIsActive),
-  SearchScreen(showBack: false, focusSignal: searchFocusSignal),
+  SearchScreen(
+    showBack: false,
+    focusSignal: searchFocusSignal,
+    fixedSourceId: searchFixedSourceId,
+  ),
   const MyListScreen(),
   const SettingsScreen(),
 ];
+
+/// What the phone dock's Search tab searches: the source catalogue Home is
+/// showing (e.g. AniKoto), or null for metadata search — the same
+/// `fixedSourceId` the Home header icon passes.
+///
+/// Pure read of [HomeCataloguePrefs] so the mapping is unit-testable; the
+/// caller re-reads it on every rebuild (each tab switch), and [SearchScreen]
+/// recreates its bloc on scope change, so the tab follows catalogue picks
+/// with no extra plumbing.
+String? dockSearchFixedSourceId() => HomeCataloguePrefs.sourceSelected
+    ? HomeCataloguePrefs.sourceId
+    : null;
 
 /// App-level navigation shell — a reorderable dock (3-5 tabs, [NavPrefs])
 /// via a custom floating capsule (frosted, hovering over the content; no
@@ -291,16 +312,23 @@ class _RootShellState extends State<RootShell>
   /// One page per visible tab, in the same order the dock draws them, so the
   /// [IndexedStack] index is just the tab's position in that list.
   ///
-  /// Search is no longer a phone dock tab (it's a Home header icon now), so
-  /// this never places `shared[1]`. TV keeps its Settings rail destination.
+  /// Search is an opt-in dock tab that searches what Home is showing (source
+  /// catalogue or metadata) — [dockSearchFixedSourceId], re-read on every
+  /// rebuild so it follows catalogue picks. TV keeps its Settings rail
+  /// destination.
   List<Widget> _pagesFor(List<DockTab> tabs, String profileId) {
-    final shared = buildShellPages(null, homeIsActive: _tab == DockTab.home);
+    final shared = buildShellPages(
+      null,
+      homeIsActive: _tab == DockTab.home,
+      searchFixedSourceId: dockSearchFixedSourceId(),
+    );
     return [
       for (final t in tabs)
         KeyedSubtree(
           key: ValueKey('$profileId:${t.name}'),
           child: switch (t) {
             DockTab.home => shared[0],
+            DockTab.search => shared[1],
             DockTab.myList => shared[2],
             DockTab.profile => const ViewerProfileHomeScreen(),
             // Both normally get pushed with a back button; as tabs they own the

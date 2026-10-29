@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
+import 'package:watch_app/core/di/injector.dart';
+import 'package:watch_app/core/ui/nav_prefs.dart';
 import 'package:watch_app/core/zmode/zmode_prefs.dart';
 import 'package:watch_app/features/home/home_screen.dart';
 import 'package:watch_app/features/home/search_screen.dart';
@@ -124,4 +126,28 @@ void main() {
             as SearchScreen;
     expect(pushedWidget.fixedSourceId, 'cs:selected');
   });
+
+  testWidgets('hidden when Search is already a dock tab', (tester) async {
+    final prefs = _SearchOnDockNavPrefs();
+    await sl.reset();
+    sl.registerSingleton<NavPrefs>(prefs);
+    addTearDown(() async {
+      await sl.reset();
+    });
+
+    await pumpAction(tester);
+    expect(
+      find.byWidgetPredicate(
+        (w) => w is DockIcon && w.glyph == DockGlyph.search,
+      ),
+      findsNothing,
+    );
+  });
+}
+
+/// No Hive writes: the box-backed getter is bypassed so the test proves the
+/// header reacts to the tab list, not the storage layer.
+class _SearchOnDockNavPrefs extends NavPrefs {
+  @override
+  List<DockTab> get tabs => [DockTab.home, DockTab.search, DockTab.profile];
 }
