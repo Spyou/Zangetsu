@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
+import 'package:watch_app/core/mode/content_mode.dart';
 import 'package:watch_app/features/home/home_catalogue_prefs.dart';
 import 'package:watch_app/features/shell/root_shell.dart';
 
@@ -24,21 +25,48 @@ void main() {
 
   test('dock search follows the Home catalogue selection', () async {
     await HomeCataloguePrefs.setSourceSelected(true);
-    await HomeCataloguePrefs.setSourceId('cs:anikoto');
+    await HomeCataloguePrefs.setSourceIdFor(
+      ContentMode.anime,
+      'cs:anikoto',
+    );
 
-    expect(dockSearchFixedSourceId(), 'cs:anikoto');
+    expect(
+      dockSearchFixedSourceId(ContentMode.anime),
+      'cs:anikoto',
+    );
   });
 
   test('dock search is metadata search when Home shows metadata', () async {
     await HomeCataloguePrefs.setSourceSelected(false);
-    await HomeCataloguePrefs.setSourceId('cs:anikoto');
+    await HomeCataloguePrefs.setSourceIdFor(
+      ContentMode.anime,
+      'cs:anikoto',
+    );
 
-    expect(dockSearchFixedSourceId(), isNull);
+    expect(dockSearchFixedSourceId(ContentMode.anime), isNull);
   });
 
   test('a selected catalogue with no id falls back to metadata', () async {
     await HomeCataloguePrefs.setSourceSelected(true);
 
-    expect(dockSearchFixedSourceId(), isNull);
+    expect(dockSearchFixedSourceId(ContentMode.anime), isNull);
+  });
+
+  test('dock search follows the current mode, not the other one', () async {
+    await HomeCataloguePrefs.setSourceSelected(true);
+    await HomeCataloguePrefs.setSourceIdFor(ContentMode.anime, 'cs:anikoto');
+    await HomeCataloguePrefs.setSourceIdFor(
+      ContentMode.manga,
+      'mihon:reader',
+    );
+
+    expect(
+      dockSearchFixedSourceId(ContentMode.anime),
+      'cs:anikoto',
+    );
+    expect(
+      dockSearchFixedSourceId(ContentMode.manga),
+      'mihon:reader',
+    );
   });
 }

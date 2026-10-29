@@ -101,7 +101,9 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
   void initState() {
     super.initState();
     _sourceCatalogueSelected = HomeCataloguePrefs.sourceSelected;
-    _sourceCatalogueSourceId = HomeCataloguePrefs.sourceId;
+    _sourceCatalogueSourceId = HomeCataloguePrefs.sourceIdFor(
+      sl<ContentModeCubit>().state,
+    );
     _sourceCatalogueSelection = HomeCataloguePrefs.sourceSelection
       ..addListener(_onSourceCatalogueSelectionChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -155,7 +157,12 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
       _sourceCatalogueSourceId = sourceId;
       _sourceCatalogueSections = const [];
     });
-    unawaited(HomeCataloguePrefs.setSourceId(sourceId));
+    unawaited(
+      HomeCataloguePrefs.setSourceIdFor(
+        sl<ContentModeCubit>().state,
+        sourceId,
+      ),
+    );
   }
 
   void _setSourceCatalogueSections(List<HomeSection> sections) {
@@ -947,11 +954,11 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
     Widget sourceCatalogueContent(ContentMode contentMode) =>
         SourceCatalogueHomeContent(
           controller: _sourceCatalogueController,
-          initialSourceId: _sourceCatalogueSourceId,
+          initialSourceId: HomeCataloguePrefs.sourceIdFor(contentMode),
           mode: contentMode,
           onSourceSelected: (sourceId) {
             _sourceCatalogueSourceId = sourceId;
-            unawaited(HomeCataloguePrefs.setSourceId(sourceId));
+            unawaited(HomeCataloguePrefs.setSourceIdFor(contentMode, sourceId));
           },
           onSectionsChanged: _setSourceCatalogueSections,
           showSourcePicker: false,

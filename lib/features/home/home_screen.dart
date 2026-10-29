@@ -138,7 +138,9 @@ class _HomeViewState extends State<_HomeView>
   final _sourceCatalogueController = SourceCatalogueHomeController();
   StreamSubscription<ContentMode>? _sourceCatalogueModeSubscription;
   late final ValueNotifier<bool> _sourceCatalogueSelection;
-  String? _sourceCatalogueSourceId = HomeCataloguePrefs.sourceId;
+  // Per-mode pick, loaded in initState (needs the cubit) and reloaded on
+  // every mode switch — a single shared id is what made manga forget anime.
+  String? _sourceCatalogueSourceId;
   List<HomeSection> _sourceCatalogueSections = const [];
   bool _sourceCatalogueSelected = HomeCataloguePrefs.sourceSelected;
 
@@ -172,11 +174,21 @@ class _HomeViewState extends State<_HomeView>
     super.initState();
     _sourceCatalogueSelection = HomeCataloguePrefs.sourceSelection;
     _sourceCatalogueSelection.addListener(_onSourceCatalogueSelectionChanged);
+    _sourceCatalogueSourceId = HomeCataloguePrefs.sourceIdFor(
+      sl<ContentModeCubit>().state,
+    );
     _sourceCatalogueModeSubscription = sl<ContentModeCubit>().stream.listen((
-      _,
+      mode,
     ) {
-      if (mounted && _sourceCatalogueSelected) {
-        setState(() => _sourceCatalogueSections = const []);
+      if (!mounted) return;
+      if (_sourceCatalogueSelected) {
+        // Reload THIS mode's saved source: the content widget resolves its
+        // fallback from the id we hand it, so handing it the other mode's id
+        // would persist a fallback over this mode's real pick.
+        setState(() {
+          _sourceCatalogueSourceId = HomeCataloguePrefs.sourceIdFor(mode);
+          _sourceCatalogueSections = const [];
+        });
       }
     });
     ThemeController.revision.addListener(_onThemeRevision);
@@ -275,7 +287,12 @@ class _HomeViewState extends State<_HomeView>
       _sourceCatalogueSourceId = sourceId;
       _sourceCatalogueSections = const [];
     });
-    unawaited(HomeCataloguePrefs.setSourceId(sourceId));
+    unawaited(
+      HomeCataloguePrefs.setSourceIdFor(
+        sl<ContentModeCubit>().state,
+        sourceId,
+      ),
+    );
   }
 
   void _setSourceCatalogueSections(List<HomeSection> sections) {
@@ -1173,10 +1190,13 @@ class _HomeViewState extends State<_HomeView>
       bloc: sl<ContentModeCubit>(),
       builder: (context, mode) => SourceCatalogueHomeContent(
         controller: _sourceCatalogueController,
-        initialSourceId: _sourceCatalogueSourceId,
+        // Fresh prefs read, not the field: the cubit emits before our stream
+        // listener refreshes the field, and handing the content a stale
+        // (other-mode) id here is exactly what persisted fallbacks over picks.
+        initialSourceId: HomeCataloguePrefs.sourceIdFor(mode),
         onSourceSelected: (sourceId) {
           _sourceCatalogueSourceId = sourceId;
-          unawaited(HomeCataloguePrefs.setSourceId(sourceId));
+          unawaited(HomeCataloguePrefs.setSourceIdFor(mode, sourceId));
         },
         onSectionsChanged: _setSourceCatalogueSections,
         sectionBuilder: (section) =>

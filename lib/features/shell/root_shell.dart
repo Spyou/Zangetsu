@@ -71,16 +71,24 @@ List<Widget> buildShellPages(
 ];
 
 /// What the phone dock's Search tab searches: the source catalogue Home is
-/// showing (e.g. AniKoto), or null for metadata search — the same
-/// `fixedSourceId` the Home header icon passes.
+/// showing in the given mode (e.g. AniKoto), or null for metadata search —
+/// the same `fixedSourceId` the Home header icon passes.
 ///
-/// Pure read of [HomeCataloguePrefs] so the mapping is unit-testable; the
-/// caller re-reads it on every rebuild (each tab switch), and [SearchScreen]
-/// recreates its bloc on scope change, so the tab follows catalogue picks
-/// with no extra plumbing.
-String? dockSearchFixedSourceId() => HomeCataloguePrefs.sourceSelected
-    ? HomeCataloguePrefs.sourceId
-    : null;
+/// Pure read of [HomeCataloguePrefs] so the mapping is unit-testable (pass
+/// [mode] explicitly); the shell passes nothing and the current cubit mode
+/// applies. The caller re-reads it on every rebuild (each tab switch), and
+/// [SearchScreen] recreates its bloc on scope change, so the tab follows
+/// catalogue picks with no extra plumbing.
+String? dockSearchFixedSourceId([ContentMode? mode]) {
+  if (!HomeCataloguePrefs.sourceSelected) return null;
+  final m =
+      mode ??
+      (sl.isRegistered<ContentModeCubit>()
+          ? sl<ContentModeCubit>().state
+          : null);
+  if (m == null) return HomeCataloguePrefs.sourceId;
+  return HomeCataloguePrefs.sourceIdFor(m);
+}
 
 /// App-level navigation shell — a reorderable dock (3-5 tabs, [NavPrefs])
 /// via a custom floating capsule (frosted, hovering over the content; no
