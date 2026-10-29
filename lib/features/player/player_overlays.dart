@@ -253,6 +253,16 @@ class _InfoOverlayState extends State<_InfoOverlay> {
         case 'source':
           final l = c.state.active?.label?.trim();
           out[key] = (l != null && l.isNotEmpty) ? l : '—';
+        case 'provider':
+          // Name + raw id ("HiAnime (ani:7667)") — the session id is just
+          // 'zm' under Z Mode, and Aniyomi ids are opaque numbers, so the
+          // resolver's winner plus the display name keeps it knowable.
+          out[key] = providerInfoLabel(
+            c.playingSourceId,
+            (id) => sl.isRegistered<SourceRepository>()
+                ? sl<SourceRepository>().displayName(id)
+                : id,
+          );
         case 'quality':
           out[key] = c.state.active?.quality ?? 'auto';
         case 'buffer':

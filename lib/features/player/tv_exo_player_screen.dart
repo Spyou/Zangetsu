@@ -20,6 +20,7 @@ import '../../core/models/video_source.dart';
 import '../../core/playback/filler_service.dart';
 import '../../core/playback/hls.dart';
 import '../../core/playback/playback_prefs.dart';
+import '../../core/repository/source_repository.dart';
 import '../../core/playback/resume_store.dart';
 import '../../core/playback/watch_history.dart';
 import '../../core/playback/skip_service.dart';
@@ -978,6 +979,15 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
 
   List<TvMenuOption> _rootSettingsOptions(TvExoController c) {
     final options = <TvMenuOption>[];
+    // Raw id of the provider actually playing (cs:hiAnime) — the session id
+    // is just 'zm' under Z Mode. Info row, not a setting: selecting it is a
+    // no-op.
+    options.add(TvMenuOption(
+      label: 'Provider',
+      trailing: _playingProviderId(),
+      showCheck: false,
+      onSelect: () {},
+    ));
     final servers = sortByQuality(_qualityPool());
     if (servers.length > 1) {
       final active = servers.where((s) => s.url == _activeSource?.url).firstOrNull;
@@ -1027,6 +1037,30 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
       onSelect: () => _pushMenu(_TvSettingsPage.volume),
     ));
     return options;
+  }
+
+  /// Raw id of the provider actually playing (mirrors the phone player's
+  /// info-overlay Provider row): the resolver's winner for the current
+  /// episode, else the session id — plus the display name when the id is an
+  /// opaque number ("HiAnime (ani:7667)").
+  String _playingProviderId() {
+    var id = widget.sourceId;
+    try {
+      final ep = _ep;
+      if (ep != null && sl.isRegistered<PlaybackResolver>()) {
+        final winner = sl<PlaybackResolver>().resolvedSourceId(
+          tvEpisodeUrl(ep.url, _category),
+          category: _category,
+        );
+        if (winner != null && winner.isNotEmpty) id = winner;
+      }
+    } catch (_) {}
+    return providerInfoLabel(
+      id,
+      (sid) => sl.isRegistered<SourceRepository>()
+          ? sl<SourceRepository>().displayName(sid)
+          : sid,
+    );
   }
 
   String? _qualityTrailing(TvExoController c) {

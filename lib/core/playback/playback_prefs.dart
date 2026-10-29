@@ -29,6 +29,7 @@ const List<String> kBundledSubtitleFonts = [
 const List<(String, String)> kPlayerInfoFields = [
   ('resolution', 'Resolution'),
   ('source', 'Source'),
+  ('provider', 'Provider'),
   ('quality', 'Quality'),
   ('vcodec', 'Video codec'),
   ('acodec', 'Audio codec'),
@@ -42,6 +43,17 @@ const List<(String, String)> kPlayerInfoFields = [
   ('strack', 'Subtitle track'),
   ('af', 'Audio boost'),
 ];
+
+/// Provider row text for the in-player info overlay: human name + raw id
+/// ("HiAnime (ani:7667)"), so opaque numeric Aniyomi ids are knowable while
+/// CS slugs stay exact. Falls back to the bare id when no name resolves.
+String providerInfoLabel(String id, String? Function(String) lookup) {
+  try {
+    final name = lookup(id);
+    if (name != null && name.isNotEmpty && name != id) return '$name ($id)';
+  } catch (_) {}
+  return id;
+}
 
 /// The mpv video output (renderer) for a given user [choice].
 ///

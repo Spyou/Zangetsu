@@ -629,6 +629,22 @@ class PlayerCubit extends Cubit<PlayerState> {
 
   Episode get currentEpisode => episodes[state.currentIndex];
 
+  /// The provider actually playing, not the session id: a Z Mode session's
+  /// own id is just 'zm', so read the resolver's winner for the current
+  /// episode and fall back to [sourceId] when nothing resolved yet.
+  String get playingSourceId {
+    try {
+      if (sl.isRegistered<PlaybackResolver>()) {
+        final winner = sl<PlaybackResolver>().resolvedSourceId(
+          _episodeUrl(currentEpisode),
+          category: _activeCategory,
+        );
+        if (winner != null && winner.isNotEmpty) return winner;
+      }
+    } catch (_) {}
+    return sourceId;
+  }
+
   /// Stable per-show key for resume (the show URL, falling back to sourceId) so
   /// episodes with the same id across different shows don't collide.
   String get _showKey => showUrl ?? sourceId;
