@@ -44,6 +44,32 @@ class ShareLink {
   static String shareText(MediaItem item) =>
       '${item.title}\n\nWatch on Zangetsu:\n${forItem(item)}';
 
+  /// "Open in Zangetsu" URL for the Discord Rich Presence button while
+  /// watching: the same https share link, so a friend with the app lands on
+  /// this exact title and one without gets the install page. Null when the
+  /// title identity is incomplete (no source or url to reopen).
+  static String? watchUrl({
+    required String sourceId,
+    required String? url,
+    required String title,
+    required ProviderType type,
+    String? cover,
+    String? savedFrom,
+  }) {
+    if (sourceId.isEmpty || url == null || url.isEmpty) return null;
+    return forItem(
+      MediaItem(
+        id: url,
+        title: title,
+        url: url,
+        type: type,
+        sourceId: sourceId,
+        cover: (cover != null && cover.isNotEmpty) ? cover : null,
+        savedFrom: savedFrom,
+      ),
+    );
+  }
+
   /// Parse a `zangetsu://open?s=…&u=…` deep link into a [MediaItem], or null
   /// when [uri] is not an open-link or is missing the source/url.
   static MediaItem? parse(Uri uri) {

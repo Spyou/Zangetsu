@@ -8,12 +8,18 @@ import 'discord_config.dart';
 import 'discord_presence.dart';
 
 /// Minimal Discord Gateway (v10) client for setting a user's Rich Presence.
-/// Connects, IDENTIFYs with the user token, heartbeats, and pushes presence
-/// (op 3). Auto-reconnects on drop / zombie connection. This is a "self
-/// presence" client — it does not read events beyond what's needed.
+/// Connects, IDENTIFYs with the OAuth Bearer token, heartbeats and pushes
+/// presence (op 3). Auto-reconnects on drop / zombie connection. This is a
+/// "self presence" client — it does not read events beyond what's needed.
+///
+/// The token is the OAuth access token prefixed with `Bearer` (the Social
+/// Layer path — never a user token). When the gateway rejects the session
+/// (op 9) it calls [onAuthFailure] so the owner can refresh and rotate the
+/// token on the live socket via [updateToken] instead of reconnecting blind.
 class DiscordGateway {
-  DiscordGateway(this._token);
-  final String _token;
+  DiscordGateway(this._token, {this.onAuthFailure});
+  String _token;
+  final Future<void> Function()? onAuthFailure;
 
   WebSocketChannel? _ch;
   StreamSubscription<dynamic>? _sub;
@@ -25,6 +31,7 @@ class DiscordGateway {
 
   /// Latest presence to (re)apply once READY / after a reconnect. null = clear.
   DiscordActivity? _pending;
+  String _pendingStatus = 'online';
 
   void connect() {
     _closed = false;
@@ -77,7 +84,8 @@ class DiscordGateway {
         _reconnect();
       case 9: // invalid session
         debugPrint('[discord] gateway invalid session (op 9) — token/identify rejected');
-        _reconnect();
+        unawaited(_onInvalidSession());
+        return;
       case 0: // dispatch
         final t = msg['t'] as String?;
         if (t == 'READY') {
@@ -85,7 +93,7 @@ class DiscordGateway {
           final user = (msg['d'] as Map?)?['user'] as Map?;
           final name = user?['username'] ?? user?['global_name'] ?? '?';
           debugPrint('[discord] gateway READY as $name — pushing presence');
-          _sendPresence(_pending);
+          _sendPresence(_pending, _pendingStatus);
         }
     }
   }
@@ -114,10 +122,11 @@ class DiscordGateway {
   }
 
   /// Set (or clear, with null) the presence. Buffered until READY.
-  void setPresence(DiscordActivity? activity) {
+  void setPresence(DiscordActivity? activity, {String status = 'online'}) {
     _pending = activity;
+    _pendingStatus = status;
     if (_ready) {
-      _sendPresence(activity);
+      _sendPresence(activity, status);
     } else {
       debugPrint(
         '[discord] presence queued until READY: ${activity == null ? "clear" : "type=${activity.type} ${activity.name}"}',
@@ -134,7 +143,7 @@ class DiscordGateway {
     await close();
   }
 
-  void _sendPresence(DiscordActivity? a) {
+  void _sendPresence(DiscordActivity? a, String status) {
     debugPrint(
       a == null
           ? '[discord] sending presence clear'
@@ -143,7 +152,7 @@ class DiscordGateway {
     );
     _send({
       'op': 3,
-      'd': discordPresenceUpdate(a, DiscordConfig.applicationId),
+      'd': discordPresenceUpdate(a, DiscordConfig.applicationId, status: status),
     });
   }
 
@@ -160,6 +169,29 @@ class DiscordGateway {
     });
   }
 
+  /// Session rejected: let the owner refresh first (it rotates the token on
+  /// this socket); a blind reconnect with a dead token just loops op 9.
+  Future<void> _onInvalidSession() async {
+    if (onAuthFailure != null) {
+      await onAuthFailure!();
+      if (_closed) return;
+      // Owner logged out (gateway dropped) or rotated the token (socket
+      // resumed) — either way nothing more to do here.
+      if (_gatewayDropped()) return;
+    }
+    _reconnect();
+  }
+
+  bool _gatewayDropped() => _closed || _ch == null;
+
+  /// Swap the credential on the live connection (post-refresh) without the
+  /// reconnect storm.
+  void updateToken(String token) {
+    _token = token;
+    debugPrint('[discord] gateway token rotated — re-identifying');
+    _reconnect();
+  }
+
   void _sendHeartbeat() {
     _acked = false;
     _send({'op': 1, 'd': _seq});
@@ -174,7 +206,10 @@ class DiscordGateway {
   }
 
   void _onDone() {
-    debugPrint('[discord] gateway socket closed ready=$_ready closed=$_closed');
+    debugPrint(
+      '[discord] gateway socket closed code=${_ch?.closeCode} '
+      'ready=$_ready closed=$_closed',
+    );
     if (!_closed) _scheduleReconnect();
   }
 

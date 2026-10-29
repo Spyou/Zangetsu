@@ -10,8 +10,7 @@ String? discordEpisodeLabel(Episode ep, {int? fallbackNumber}) {
   return '${out.substring(0, 127)}…';
 }
 
-/// Unix-ms timestamps Discord uses to draw a Rich Presence progress bar.
-///
+/// Unix-ms timestamps Discord uses to draw a Rich Presence progress bar.///
 /// Both [startMs] and [endMs] must be set for a bar; start-only is elapsed
 /// time; omitting both (paused / unknown) shows no timer so the bar cannot
 /// keep marching on wall-clock time after a pause.
@@ -29,16 +28,38 @@ String? discordEpisodeLabel(Episode ep, {int? fallbackNumber}) {
   return (startMs: startMs, endMs: startMs + duration.inMilliseconds);
 }
 
+/// Resolve one presence line from the user's chosen source: the app name, the
+/// title being watched, or the episode label. [appText] is what the App source
+/// renders for this line ('Zangetsu' for name, 'on Zangetsu' for state). The
+/// episode source falls back to the title when there is no episode label, so
+/// a name line is never empty.
+String discordSourceLine(
+  String src, {
+  required String title,
+  String? episode,
+  required String appText,
+}) {
+  if (src == 'title') return title;
+  if (src == 'episode') {
+    return (episode == null || episode.isEmpty) ? title : episode;
+  }
+  return appText;
+}
+
 /// Gateway `op: 3` presence payload. A null [activity] is an explicit clear
 /// (`activities: []`) — dropping the socket without this leaves the last
 /// Rich Presence stuck on the profile.
-Map<String, dynamic> discordPresenceUpdate(DiscordActivity? activity, String appId) {
+Map<String, dynamic> discordPresenceUpdate(
+  DiscordActivity? activity,
+  String appId, {
+  String status = 'online',
+}) {
   return {
     'since': null,
     'activities': activity == null
         ? <dynamic>[]
         : [activity.toJson(appId)],
-    'status': 'online',
+    'status': status,
     'afk': false,
   };
 }

@@ -113,6 +113,13 @@
                 <!-- TV pairing QR: zangetsu://pair?code=… (see OpenLinkService). -->
                 <data android:scheme="zangetsu" android:host="pair"/>
             </intent-filter>
+            <!-- Keep the hostless Discord callback separate from tracker hosts. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="discord-1518610045422665748"/>
+            </intent-filter>
             <!-- "Open with" for local video files, so a file manager / Downloads
                  offers Zangetsu the way it offers any other player.
 

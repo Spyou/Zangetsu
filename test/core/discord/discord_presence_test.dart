@@ -71,6 +71,40 @@ void main() {
     });
   });
 
+  group('discordSourceLine', () {
+    test('title source renders the title', () {
+      expect(
+        discordSourceLine('title', title: 'Frieren', episode: 'Episode 4', appText: 'Zangetsu'),
+        'Frieren',
+      );
+    });
+
+    test('episode source falls back to title without an episode', () {
+      expect(
+        discordSourceLine('episode', title: 'Frieren', appText: 'Zangetsu'),
+        'Frieren',
+      );
+      expect(
+        discordSourceLine('episode', title: 'Frieren', episode: 'Episode 4', appText: 'Zangetsu'),
+        'Episode 4',
+      );
+    });
+
+    test('app source renders the per-line app text', () {
+      expect(
+        discordSourceLine('app', title: 'Frieren', episode: 'Episode 4', appText: 'on Zangetsu'),
+        'on Zangetsu',
+      );
+    });
+
+    test('unknown source falls back to the app text', () {
+      expect(
+        discordSourceLine('x', title: 'Frieren', appText: 'Zangetsu'),
+        'Zangetsu',
+      );
+    });
+  });
+
   group('DiscordActivity', () {
     test('watching payload uses type 3 and both timestamps', () {
       final json = DiscordActivity(
@@ -83,6 +117,25 @@ void main() {
       expect(json['type'], 3);
       expect(json['name'], 'Frieren');
       expect(json['timestamps'], {'start': 100, 'end': 200});
+    });
+
+    test('buttons render as labels plus metadata button_urls', () {
+      final json = const DiscordActivity(
+        name: 'Frieren',
+        type: 3,
+        buttons: [(label: 'Open in Zangetsu', url: 'https://zangetsu.online/open/?s=x')],
+      ).toJson('app');
+      expect(json['buttons'], ['Open in Zangetsu']);
+      expect(
+        (json['metadata'] as Map)['button_urls'],
+        ['https://zangetsu.online/open/?s=x'],
+      );
+    });
+
+    test('no buttons key when the list is empty', () {
+      final json = const DiscordActivity(name: 'Frieren', type: 3).toJson('app');
+      expect(json.containsKey('buttons'), isFalse);
+      expect(json.containsKey('metadata'), isFalse);
     });
   });
 
@@ -97,6 +150,15 @@ void main() {
       final payload = discordPresenceUpdate(a, 'app');
       expect(payload['activities'], hasLength(1));
       expect((payload['activities'] as List).single['type'], 3);
+    });
+
+    test('status override is carried on the payload', () {
+      const a = DiscordActivity(name: 'Frieren', type: 3);
+      expect(discordPresenceUpdate(a, 'app')['status'], 'online');
+      expect(
+        discordPresenceUpdate(a, 'app', status: 'idle')['status'],
+        'idle',
+      );
     });
   });
 }

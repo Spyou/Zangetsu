@@ -356,6 +356,7 @@ class PhonePlayerActivity : Activity() {
         exo.addListener(object : Player.Listener {
             override fun onRenderedFirstFrame() {
                 playbackStarted = true
+                sendDiscordPresence()
                 PhonePlayerBridge.channel?.invokeMethod(
                     "playbackStarted",
                     mapOf("index" to currentIndex),
@@ -381,6 +382,14 @@ class PhonePlayerActivity : Activity() {
                 }
             }
 
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                sendDiscordPresence()
+            }
+
+            override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo, newPosition: Player.PositionInfo, reason: Int) {
+                sendDiscordPresence()
+            }
+
             override fun onTracksChanged(tracks: Tracks) {
                 applySubtitlePreference(tracks)
             }
@@ -392,6 +401,7 @@ class PhonePlayerActivity : Activity() {
             }
 
             override fun onIsPlayingChanged(isPlaying: Boolean) {
+                sendDiscordPresence()
                 updateKeepScreenOn()
                 syncPlayIcon()
                 bumpControls()
@@ -1256,6 +1266,21 @@ class PhonePlayerActivity : Activity() {
         } else {
             window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         }
+    }
+
+    /** Activity-only event: it never writes history or changes the player. */
+    private fun sendDiscordPresence() {
+        val p = player ?: return
+        if (reported || !playbackStarted || p.duration <= 0) return
+        PhonePlayerBridge.channel?.invokeMethod(
+            "discordPresence",
+            mapOf(
+                "index" to currentIndex,
+                "positionMs" to p.currentPosition.coerceAtLeast(0L),
+                "durationMs" to p.duration,
+                "playing" to (p.playWhenReady && p.playbackState != Player.STATE_ENDED),
+            ),
+        )
     }
 
     private fun sendProgress() {

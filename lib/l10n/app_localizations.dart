@@ -783,6 +783,132 @@ abstract class AppLocalizations {
   /// **'Rich Presence — show your status'**
   String get discordSubtitle;
 
+  /// No description provided for @discordActivityStatus.
+  ///
+  /// In en, this message translates to:
+  /// **'Activity status'**
+  String get discordActivityStatus;
+
+  /// No description provided for @presenceOnline.
+  ///
+  /// In en, this message translates to:
+  /// **'Online'**
+  String get presenceOnline;
+
+  /// No description provided for @presenceIdle.
+  ///
+  /// In en, this message translates to:
+  /// **'Idle'**
+  String get presenceIdle;
+
+  /// No description provided for @presenceDnd.
+  ///
+  /// In en, this message translates to:
+  /// **'Do not disturb'**
+  String get presenceDnd;
+
+  /// No description provided for @presenceNameShows.
+  ///
+  /// In en, this message translates to:
+  /// **'Name shows'**
+  String get presenceNameShows;
+
+  /// No description provided for @presenceDetailsShows.
+  ///
+  /// In en, this message translates to:
+  /// **'Details show'**
+  String get presenceDetailsShows;
+
+  /// No description provided for @presenceStateShows.
+  ///
+  /// In en, this message translates to:
+  /// **'State shows'**
+  String get presenceStateShows;
+
+  /// No description provided for @presenceSourceApp.
+  ///
+  /// In en, this message translates to:
+  /// **'App name'**
+  String get presenceSourceApp;
+
+  /// No description provided for @presenceSourceTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Title'**
+  String get presenceSourceTitle;
+
+  /// No description provided for @presenceSourceEpisode.
+  ///
+  /// In en, this message translates to:
+  /// **'Episode'**
+  String get presenceSourceEpisode;
+
+  /// No description provided for @presenceLargeImage.
+  ///
+  /// In en, this message translates to:
+  /// **'Large image'**
+  String get presenceLargeImage;
+
+  /// No description provided for @presenceSmallImage.
+  ///
+  /// In en, this message translates to:
+  /// **'Small image'**
+  String get presenceSmallImage;
+
+  /// No description provided for @presenceImagePoster.
+  ///
+  /// In en, this message translates to:
+  /// **'Poster'**
+  String get presenceImagePoster;
+
+  /// No description provided for @presenceImageLogo.
+  ///
+  /// In en, this message translates to:
+  /// **'App logo'**
+  String get presenceImageLogo;
+
+  /// No description provided for @presenceImageOff.
+  ///
+  /// In en, this message translates to:
+  /// **'Off'**
+  String get presenceImageOff;
+
+  /// No description provided for @presenceShowButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Open button'**
+  String get presenceShowButton;
+
+  /// No description provided for @presenceButtonLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Button label'**
+  String get presenceButtonLabel;
+
+  /// No description provided for @presenceButtonLabelHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Open in Zangetsu'**
+  String get presenceButtonLabelHint;
+
+  /// No description provided for @presenceShowWhenPaused.
+  ///
+  /// In en, this message translates to:
+  /// **'Show when paused'**
+  String get presenceShowWhenPaused;
+
+  /// No description provided for @presenceBrowsingTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Show browsing title'**
+  String get presenceBrowsingTitle;
+
+  /// No description provided for @presencePreview.
+  ///
+  /// In en, this message translates to:
+  /// **'Preview'**
+  String get presencePreview;
+
   /// No description provided for @watchParty.
   ///
   /// In en, this message translates to:

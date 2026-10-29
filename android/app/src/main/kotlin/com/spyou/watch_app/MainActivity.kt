@@ -402,12 +402,15 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
      *  dies with this activity, so there is nothing extra to undo here. */
     override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {}
 
+    private var discordPresence: DiscordPresenceBridge? = null
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         // FlutterActivity.configureFlutterEngine did this for us; FlutterFragment
         // only forwards to the host, and FlutterEngine registers nothing on its
         // own, so without this line NO plugin (shared_preferences, path_provider,
         // media_kit …) would be attached and the app would come up dead.
         GeneratedPluginRegister.registerGeneratedPlugins(flutterEngine)
+        discordPresence = DiscordPresenceBridge(this, flutterEngine.dartExecutor.binaryMessenger)
 
         // Bridge mega-repo plugins → our repo list: when a plugin's load() calls
         // RepositoryManager.addRepository(...), forward each URL to Dart so it
@@ -1991,6 +1994,8 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
     }
 
     override fun onDestroy() {
+        discordPresence?.dispose()
+        discordPresence = null
         phoneVoiceSearch?.dispose()
         phoneVoiceSearch = null
         pip.unregister()

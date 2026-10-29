@@ -149,11 +149,10 @@ dependencies:
   flutter_background_service: ^5.1.0
   # Local notifications for "new episode" alerts on subscribed shows.
   flutter_local_notifications: ^17.2.4
-  # Discord Rich Presence: Gateway WebSocket + secure token storage + a WebView
-  # for the Discord login (user-token capture).
+  # Discord Rich Presence: gateway WebSocket + secure storage for the
+  # retired user-token path (OAuth tokens live in Hive, like trackers).
   web_socket_channel: ^3.0.1
   flutter_secure_storage: ^10.3.1
-  webview_flutter: ^4.10.0
   # Capture the OAuth redirect (zangetsu://anilist-auth) back into the app for
   # AniList account linking.
   app_links: ^6.3.2
@@ -278,6 +277,7 @@ flutter:
   uses-material-design: true
   assets:
     - assets/licenses/adaptive_palette.txt
+    - assets/licenses/discord_social_sdk.txt
     - assets/icons/lucide/
     # Shared with Android's native network security configuration.
     - android/app/src/main/res/raw/trusted_roots.pem

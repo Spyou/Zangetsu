@@ -355,6 +355,69 @@ class AppLocalizationsPt extends AppLocalizations {
   String get discordSubtitle => 'Rich Presence — mostre seu status';
 
   @override
+  String get discordActivityStatus => 'Activity status';
+
+  @override
+  String get presenceOnline => 'Online';
+
+  @override
+  String get presenceIdle => 'Idle';
+
+  @override
+  String get presenceDnd => 'Do not disturb';
+
+  @override
+  String get presenceNameShows => 'Name shows';
+
+  @override
+  String get presenceDetailsShows => 'Details show';
+
+  @override
+  String get presenceStateShows => 'State shows';
+
+  @override
+  String get presenceSourceApp => 'App name';
+
+  @override
+  String get presenceSourceTitle => 'Title';
+
+  @override
+  String get presenceSourceEpisode => 'Episode';
+
+  @override
+  String get presenceLargeImage => 'Large image';
+
+  @override
+  String get presenceSmallImage => 'Small image';
+
+  @override
+  String get presenceImagePoster => 'Poster';
+
+  @override
+  String get presenceImageLogo => 'App logo';
+
+  @override
+  String get presenceImageOff => 'Off';
+
+  @override
+  String get presenceShowButton => 'Open button';
+
+  @override
+  String get presenceButtonLabel => 'Button label';
+
+  @override
+  String get presenceButtonLabelHint => 'Open in Zangetsu';
+
+  @override
+  String get presenceShowWhenPaused => 'Show when paused';
+
+  @override
+  String get presenceBrowsingTitle => 'Show browsing title';
+
+  @override
+  String get presencePreview => 'Preview';
+
+  @override
   String get watchParty => 'Assistir juntos';
 
   @override

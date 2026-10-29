@@ -101,6 +101,7 @@
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>zangetsu</string>
+				<string>discord-1518610045422665748</string>
 			</array>
 		</dict>
 	</array>

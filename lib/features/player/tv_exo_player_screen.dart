@@ -11,6 +11,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import '../../core/di/injector.dart';
 import '../../core/discord/discord_presence.dart';
 import '../../core/discord/discord_rpc.dart';
+import '../../core/share/share_link.dart';
 import '../../core/metadata/episode_metadata_service.dart';
 import '../../core/models/episode.dart';
 import '../../core/models/episode_title.dart';
@@ -536,6 +537,15 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
         position: Duration(milliseconds: c?.position.value ?? 0),
         duration: Duration(milliseconds: c?.duration.value ?? 0),
         playing: !_discordPaused,
+        openUrl: ShareLink.watchUrl(
+          sourceId: widget.sourceId,
+          url: widget.showUrl,
+          title: title,
+          type: (widget.scrobbleTitle != null || widget.malId != null)
+              ? ProviderType.anime
+              : ProviderType.movie,
+          cover: widget.cover,
+        ),
       ),
     );
   }

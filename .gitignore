@@ -79,3 +79,8 @@ supabase/.temp/
 
 # Wrangler local scratch (dev cache, telemetry state) — never commit
 **/.wrangler/
+
+# Discord's downloaded native SDK (install locally; not public source).
+/android/discord-sdk
+
+/ios/discord-sdk
