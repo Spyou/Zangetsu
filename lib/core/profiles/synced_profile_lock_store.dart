@@ -4,9 +4,10 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'profile_lock_remote.dart';
 import 'profile_lock_store.dart';
+import 'offline_profile_pin.dart';
 
-/// The VPS authorizes unlocks; this device stores only status and optional
-/// device approval. The inherited local PIN reader is used for migration.
+/// The VPS authorizes cloud access. A device-only verifier permits local
+/// access with the last PIN accepted here. Legacy PINs are migrated online.
 class SyncedProfileLockStore extends ProfileLockStore {
   SyncedProfileLockStore({
     required ProfileLockRemote remote,
@@ -14,6 +15,7 @@ class SyncedProfileLockStore extends ProfileLockStore {
     super.storage,
     super.biometrics,
     this.onGrantsChanged,
+    this.isolateGuestData,
   }) : _remote = remote,
        _currentUserId = currentUserId,
        _secure = storage ?? const FlutterSecureStorage();
@@ -22,10 +24,14 @@ class SyncedProfileLockStore extends ProfileLockStore {
   final String? Function() _currentUserId;
   final FlutterSecureStorage _secure;
   final void Function(Map<String, String>)? onGrantsChanged;
+  final Future<void> Function()? isolateGuestData;
   final _grants = <String, ({String token, int version, DateTime expires})>{};
   final _versions = <String, int>{};
   final _recoveryCodes = <String, String>{};
+  final _offlineUnlocked = <String, int>{};
+  late final _offlinePins = OfflineProfilePin(_secure);
   String? _owner;
+  int _lockRevision = 0;
 
   Future<Map<String, dynamic>> _request(
     String action, {
@@ -59,9 +65,11 @@ class SyncedProfileLockStore extends ProfileLockStore {
     final owner = _currentUserId();
     if (owner != _owner) {
       _owner = owner;
+      _lockRevision++;
       _grants.clear();
       _versions.clear();
       _recoveryCodes.clear();
+      _offlineUnlocked.clear();
       super.clearSwitchApprovals();
       onGrantsChanged?.call(const {});
     }
@@ -97,10 +105,24 @@ class SyncedProfileLockStore extends ProfileLockStore {
 
   Future<void> _cacheStatus(String id, Map<String, dynamic> status) async {
     final owner = _checkOwner();
+    _lockRevision++;
     final statusKey = _key('status', id);
     final deviceKey = _key('device', id);
+    final offlineKey = _key('offline_pin', id);
     if (status['locked'] is! bool) {
       throw const ProfileLockException('invalid_response');
+    }
+    final version = (status['version'] as num?)?.toInt();
+    if (status['locked'] == true && version == null) {
+      throw const ProfileLockException('invalid_response');
+    }
+    _offlineUnlocked.remove(id);
+    if (status['locked'] == false ||
+        !await _offlinePins.hasVersion(offlineKey, version!)) {
+      await _offlinePins.delete(offlineKey);
+      if (_checkOwner() != owner) {
+        throw const ProfileLockException('session_changed');
+      }
     }
     if (status['locked'] == false) {
       _versions.remove(id);
@@ -109,16 +131,21 @@ class SyncedProfileLockStore extends ProfileLockStore {
         throw const ProfileLockException('session_changed');
       }
     }
-    final version = (status['version'] as num?)?.toInt();
     if (version != null) _versions[id] = version;
     if (status['locked'] == false || _grants[id]?.version != version) {
       _grants.remove(id);
       onGrantsChanged?.call(grantHeaders);
     }
-    await _secure.write(
-      key: statusKey,
-      value: jsonEncode({'locked': status['locked'], 'version': version}),
-    );
+    try {
+      await _secure.write(
+        key: statusKey,
+        value: jsonEncode({'locked': status['locked'], 'version': version}),
+      );
+    } catch (_) {
+      // A failed refresh must not leave an older unlocked status trusted.
+      await _secure.delete(key: statusKey);
+      rethrow;
+    }
     if (_checkOwner() != owner) {
       throw const ProfileLockException('session_changed');
     }
@@ -137,38 +164,121 @@ class SyncedProfileLockStore extends ProfileLockStore {
     return result;
   }
 
+  Future<Map<String, dynamic>> _entryStatus(String id) async {
+    final owner = _checkOwner();
+    if (owner == null) throw const ProfileLockException('sign_in_required');
+    final statusKey = _key('status', id);
+    try {
+      return await _status(id);
+    } on ProfileLockException catch (error) {
+      if (error.code != 'online_required') rethrow;
+      final saved = await _read(statusKey);
+      if (_checkOwner() != owner) {
+        throw const ProfileLockException('session_changed');
+      }
+      if (saved == null) {
+        throw const ProfileLockException('offline_pin_unavailable');
+      }
+      if (saved['locked'] is! bool ||
+          (saved['locked'] == true && saved['version'] is! int)) {
+        throw const ProfileLockException('invalid_response');
+      }
+      if (saved['version'] is int) _versions[id] = saved['version'] as int;
+      return saved;
+    }
+  }
+
+  Future<void> _rememberPin(String id, String pin) async {
+    final owner = _checkOwner();
+    final key = _key('offline_pin', id);
+    final version = _versions[id]!;
+    try {
+      await _offlinePins.save(key, pin, version);
+    } catch (_) {
+      lockEntry(id);
+      rethrow;
+    }
+    if (_checkOwner() != owner || _versions[id] != version) {
+      await _offlinePins.delete(key);
+      throw const ProfileLockException('session_changed');
+    }
+  }
+
+  Future<bool> _verifyOffline(String id, String pin) async {
+    final owner = _checkOwner();
+    final revision = _lockRevision;
+    final statusKey = _key('status', id);
+    final pinKey = _key('offline_pin', id);
+    final status = await _read(statusKey);
+    if (_checkOwner() != owner || _lockRevision != revision) {
+      throw const ProfileLockException('session_changed');
+    }
+    if (status?['locked'] != true || status?['version'] is! int) {
+      throw const ProfileLockException('offline_pin_unavailable');
+    }
+    final version = status!['version'] as int;
+    final valid = await _offlinePins.verify(pinKey, pin, version);
+    if (_checkOwner() != owner || _lockRevision != revision) {
+      throw const ProfileLockException('session_changed');
+    }
+    if (valid) {
+      _versions[id] = version;
+      _offlineUnlocked[id] = version;
+    }
+    return valid;
+  }
+
   @override
   Future<bool> isLocked(String profileId) async {
     if (_checkOwner() == null) {
-      if (profileId == 'default') {
-        final saved = await _secure.readAll();
-        if (saved.containsKey('profile_lock_default')) {
-          throw const ProfileLockException('sign_in_required');
-        }
-        for (final entry in saved.entries) {
-          if (entry.key.startsWith('synced_profile_status_') &&
-              entry.key.endsWith('_default')) {
+      final saved = await _secure.readAll();
+      if (_checkOwner() != null) {
+        throw const ProfileLockException('session_changed');
+      }
+      var protectedData = saved.containsKey('profile_lock_$profileId');
+      for (final entry in saved.entries) {
+        if (entry.key.startsWith('synced_profile_status_') &&
+            entry.key.endsWith('_${Uri.encodeComponent(profileId)}')) {
+          try {
             final status = jsonDecode(entry.value);
             if (status is! Map || status['locked'] != false) {
-              throw const ProfileLockException('sign_in_required');
+              protectedData = true;
             }
+          } on FormatException {
+            protectedData = true;
           }
+        }
+      }
+      if (protectedData) {
+        final isolate = isolateGuestData;
+        if (isolate == null) {
+          throw const ProfileLockException('sign_in_required');
+        }
+        await isolate();
+        if (_checkOwner() != null) {
+          throw const ProfileLockException('session_changed');
         }
       }
       return false;
     }
-    // Cached status cannot tell us whether another device added a PIN.
-    final status = await _status(profileId);
+    final status = await _entryStatus(profileId);
     return status['locked'] == true || await super.isLocked(profileId);
   }
 
   @override
-  bool isUnlocked(String profileId) => grantHeaders.containsKey(profileId);
+  bool isUnlocked(String profileId) {
+    final online = grantHeaders.containsKey(profileId);
+    return online ||
+        (_offlineUnlocked.containsKey(profileId) &&
+            _offlineUnlocked[profileId] == _versions[profileId]);
+  }
 
   @override
   void lockEntry(String profileId) {
     _checkOwner();
+    _lockRevision++;
     _grants.remove(profileId);
+    _offlineUnlocked.remove(profileId);
     super.lockEntry(profileId);
     onGrantsChanged?.call(grantHeaders);
   }
@@ -176,7 +286,7 @@ class SyncedProfileLockStore extends ProfileLockStore {
   @override
   Future<bool> needsLegacyPin(String profileId) async =>
       await super.isLocked(profileId) &&
-      (await _status(profileId))['locked'] == true;
+      (await _entryStatus(profileId))['locked'] == true;
 
   Future<void> _accept(String id, Map<String, dynamic> result) async {
     final owner = _checkOwner();
@@ -221,10 +331,14 @@ class SyncedProfileLockStore extends ProfileLockStore {
         result = await _request('set', profileId: profileId, newPin: pin);
       }
       await _accept(profileId, result);
+      await _rememberPin(profileId, pin);
       await super.clear(profileId);
       return true;
     } on ProfileLockException catch (error) {
       if (error.code == 'verification_failed') return false;
+      if (error.code == 'online_required') {
+        return _verifyOffline(profileId, pin);
+      }
       rethrow;
     } catch (_) {
       throw const ProfileLockException('online_required');
@@ -252,6 +366,7 @@ class SyncedProfileLockStore extends ProfileLockStore {
       newPin: pin,
     );
     await _accept(profileId, result);
+    await _rememberPin(profileId, pin);
     await super.clear(profileId);
     await _secure.delete(key: _key('device', profileId));
     return true;
@@ -299,6 +414,7 @@ class SyncedProfileLockStore extends ProfileLockStore {
       secret: code.trim().toLowerCase(),
     );
     await _accept(profileId, result);
+    await _rememberPin(profileId, newPin);
     await super.clear(profileId);
     await _secure.delete(key: _key('device', profileId));
     return true;
@@ -398,7 +514,8 @@ class SyncedProfileLockStore extends ProfileLockStore {
     if (_checkOwner() != owner) {
       throw const ProfileLockException('session_changed');
     }
-    await _status(profileId);
+    await _entryStatus(profileId);
+    final revision = _lockRevision;
     if (_checkOwner() != owner) {
       throw const ProfileLockException('session_changed');
     }
@@ -409,18 +526,37 @@ class SyncedProfileLockStore extends ProfileLockStore {
     if (!await super.authenticateBiometric(reason, profileId: profileId)) {
       return false;
     }
-    if (_checkOwner() != owner) {
+    if (_checkOwner() != owner || _lockRevision != revision) {
       throw const ProfileLockException('session_changed');
     }
     final device = await _read(deviceKey);
     if (_checkOwner() != owner) {
       throw const ProfileLockException('session_changed');
     }
-    final result = await _request(
-      'device_unlock',
-      profileId: profileId,
-      secret: device?['token'] as String?,
-    );
+    final Map<String, dynamic> result;
+    try {
+      result = await _request(
+        'device_unlock',
+        profileId: profileId,
+        secret: device?['token'] as String?,
+      );
+    } on ProfileLockException catch (error) {
+      if (error.code != 'online_required') rethrow;
+      final pinKey = _key('offline_pin', profileId);
+      final version = _versions[profileId];
+      final available =
+          version != null &&
+          device?['version'] == version &&
+          await _offlinePins.hasVersion(pinKey, version);
+      if (_checkOwner() != owner || _lockRevision != revision) {
+        throw const ProfileLockException('session_changed');
+      }
+      if (!available) {
+        throw const ProfileLockException('offline_pin_unavailable');
+      }
+      _offlineUnlocked[profileId] = version;
+      return true;
+    }
     if (_checkOwner() != owner) {
       throw const ProfileLockException('session_changed');
     }
@@ -434,6 +570,7 @@ class SyncedProfileLockStore extends ProfileLockStore {
         '${Uri.encodeComponent(owner)}_${Uri.encodeComponent(profileId)}';
     await _secure.delete(key: 'synced_profile_status_$suffix');
     await _secure.delete(key: 'synced_profile_device_$suffix');
+    await _secure.delete(key: 'synced_profile_offline_pin_$suffix');
     if (_checkOwner() == owner) {
       _versions.remove(profileId);
       _recoveryCodes.remove(profileId);

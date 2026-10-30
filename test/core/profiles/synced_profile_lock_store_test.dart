@@ -92,6 +92,7 @@ class _Biometrics extends LocalAuthentication {
 class _Remote implements ProfileLockRemote {
   bool locked = true;
   bool offline = false;
+  String? failureCode;
   int version = 1;
   int enrollments = 0;
   final actions = <String>[];
@@ -104,6 +105,7 @@ class _Remote implements ProfileLockRemote {
     String? secret,
   }) async {
     if (offline) throw Exception('Network unavailable');
+    if (failureCode != null) throw ProfileLockException(failureCode!);
     actions.add(action);
     if ((action == 'set' || action == 'recover') &&
         !ProfileLockStore.isValidNewPin(newPin ?? '')) {
@@ -164,6 +166,280 @@ void main() {
     owner = 'account-a';
   });
 
+  test('a verified PIN unlocks cached data offline after restart', () async {
+    final locks = create();
+    expect(await locks.verify('private', '1234'), isTrue);
+    remote.offline = true;
+    final restarted = create();
+    expect(await restarted.isLocked('private'), isTrue);
+    expect(await restarted.verify('private', '0000'), isFalse);
+    expect(restarted.isUnlocked('private'), isFalse);
+    expect(await restarted.verify('private', '1234'), isTrue);
+    expect(restarted.isUnlocked('private'), isTrue);
+    expect(restarted.grantHeaders, isEmpty);
+  });
+
+  test('offline PIN approval belongs to its account and profile', () async {
+    await create().verify('private', '1234');
+    remote.offline = true;
+    owner = 'account-b';
+    await expectLater(
+      create().verify('private', '1234'),
+      throwsA(isA<ProfileLockException>()),
+    );
+    owner = 'account-a';
+    await expectLater(
+      create().verify('another-profile', '1234'),
+      throwsA(isA<ProfileLockException>()),
+    );
+  });
+
+  test('seeing a newer PIN version invalidates its offline verifier', () async {
+    final locks = create();
+    await locks.verify('private', '1234');
+    remote.version++;
+    expect(await locks.isLocked('private'), isTrue);
+    remote.offline = true;
+    await expectLater(
+      create().verify('private', '1234'),
+      throwsA(isA<ProfileLockException>()),
+    );
+  });
+
+  test('offline wrong-PIN attempts stay limited after restart', () async {
+    await create().verify('private', '1234');
+    remote.offline = true;
+    for (var i = 0; i < 5; i++) {
+      expect(await create().verify('private', '0000'), isFalse);
+    }
+    await expectLater(
+      create().verify('private', '1234'),
+      throwsA(
+        isA<ProfileLockException>().having(
+          (error) => error.code,
+          'code',
+          'rate_limited',
+        ),
+      ),
+    );
+  });
+
+  test('a server denial never falls back to the saved offline PIN', () async {
+    await create().verify('private', '1234');
+    remote.failureCode = 'sign_in_required';
+    await expectLater(
+      create().verify('private', '1234'),
+      throwsA(
+        isA<ProfileLockException>().having(
+          (error) => error.code,
+          'code',
+          'sign_in_required',
+        ),
+      ),
+    );
+  });
+
+  test(
+    'an offline unlock cannot cross an account switch during storage read',
+    () async {
+      await create().verify('private', '1234');
+      remote.offline = true;
+      final locks = create();
+      storage.onRead = (key) {
+        if (key == 'synced_profile_offline_pin_account-a_private') {
+          owner = 'account-b';
+        }
+      };
+      await expectLater(
+        locks.verify('private', '1234'),
+        throwsA(
+          isA<ProfileLockException>().having(
+            (error) => error.code,
+            'code',
+            'session_changed',
+          ),
+        ),
+      );
+      expect(locks.isUnlocked('private'), isFalse);
+      expect(locks.grantHeaders, isEmpty);
+    },
+  );
+
+  test(
+    'offline PIN attempts cannot race around the local retry limit',
+    () async {
+      final locks = create();
+      await locks.verify('private', '1234');
+      remote.offline = true;
+      final attempts = await Future.wait(
+        List.generate(5, (_) => locks.verify('private', '0000')),
+      );
+      expect(attempts, everyElement(isFalse));
+      await expectLater(
+        locks.verify('private', '1234'),
+        throwsA(
+          isA<ProfileLockException>().having(
+            (error) => error.code,
+            'code',
+            'rate_limited',
+          ),
+        ),
+      );
+    },
+  );
+
+  test(
+    'enrolled biometrics can unlock local data offline but cannot grant cloud access',
+    () async {
+      await create().setBiometricEnabled('private', true, pin: '1234');
+      remote.offline = true;
+      final locks = create();
+      expect(
+        await locks.authenticateBiometric('Unlock', profileId: 'private'),
+        isTrue,
+      );
+      expect(locks.isUnlocked('private'), isTrue);
+      expect(locks.grantHeaders, isEmpty);
+    },
+  );
+
+  test('deleting a profile removes its offline verifier', () async {
+    final locks = create();
+    await locks.verify('private', '1234');
+    await locks.forgetDeletedProfile('account-a', 'private');
+    expect(
+      storage.values.keys,
+      isNot(contains('synced_profile_offline_pin_account-a_private')),
+    );
+    remote.offline = true;
+    await expectLater(
+      create().verify('private', '1234'),
+      throwsA(isA<ProfileLockException>()),
+    );
+  });
+
+  test(
+    'a newer lock observed during offline verification cancels the unlock',
+    () async {
+      final locks = create();
+      await locks.verify('private', '1234');
+      locks.lockEntry('private');
+      remote.offline = true;
+      Future<bool>? refresh;
+      storage.onRead = (key) {
+        if (key == 'synced_profile_offline_pin_account-a_private') {
+          storage.onRead = null;
+          remote.offline = false;
+          remote.version++;
+          refresh = locks.isLocked('private');
+        }
+      };
+      await expectLater(
+        locks.verify('private', '1234'),
+        throwsA(
+          isA<ProfileLockException>().having(
+            (error) => error.code,
+            'code',
+            'session_changed',
+          ),
+        ),
+      );
+      await refresh;
+      expect(locks.isUnlocked('private'), isFalse);
+      remote.offline = true;
+      await expectLater(
+        create().verify('private', '1234'),
+        throwsA(isA<ProfileLockException>()),
+      );
+    },
+  );
+
+  test(
+    'signing out opens isolated guest data without the account PIN',
+    () async {
+      var isolated = false;
+      final locks = SyncedProfileLockStore(
+        remote: remote,
+        currentUserId: () => owner,
+        storage: storage,
+        isolateGuestData: () async {
+          isolated = true;
+        },
+      );
+      await locks.verify('default', '1234');
+      owner = null;
+      remote.offline = true;
+      expect(await locks.isLocked('default'), isFalse);
+      expect(isolated, isTrue);
+      expect(locks.isUnlocked('default'), isFalse);
+      expect(locks.grantHeaders, isEmpty);
+      expect(
+        storage.values.containsKey('synced_profile_status_account-a_default'),
+        isTrue,
+      );
+    },
+  );
+
+  test('a guest cannot bypass lock isolation when storage fails', () async {
+    final locks = SyncedProfileLockStore(
+      remote: remote,
+      currentUserId: () => owner,
+      storage: storage,
+      isolateGuestData: () async {
+        throw StateError('storage unavailable');
+      },
+    );
+    await locks.verify('default', '1234');
+    owner = null;
+    await expectLater(locks.isLocked('default'), throwsA(isA<StateError>()));
+  });
+
+  test('changing the PIN replaces the offline verifier', () async {
+    final locks = create();
+    await locks.verify('private', '1234');
+    expect(await locks.setPin('private', '567890', currentPin: '1234'), isTrue);
+    remote.offline = true;
+    final restarted = create();
+    expect(await restarted.verify('private', '1234'), isFalse);
+    expect(await restarted.verify('private', '567890'), isTrue);
+    expect(restarted.grantHeaders, isEmpty);
+  });
+
+  test('removing the PIN deletes its saved offline verifier', () async {
+    final locks = create();
+    await locks.verify('private', '1234');
+    await locks.clear('private', pin: '1234');
+    expect(
+      storage.values.keys,
+      isNot(contains('synced_profile_offline_pin_account-a_private')),
+    );
+  });
+
+  test('corrupt offline PIN storage denies access', () async {
+    await create().verify('private', '1234');
+    storage.values['synced_profile_offline_pin_account-a_private'] = 'invalid';
+    remote.offline = true;
+    final locks = create();
+    await expectLater(
+      locks.verify('private', '1234'),
+      throwsA(isA<FormatException>()),
+    );
+    expect(locks.isUnlocked('private'), isFalse);
+    expect(locks.grantHeaders, isEmpty);
+  });
+
+  test(
+    'a correct online PIN repairs corrupt offline verification data',
+    () async {
+      await create().verify('private', '1234');
+      storage.values['synced_profile_offline_pin_account-a_private'] =
+          'invalid';
+      expect(await create().verify('private', '1234'), isTrue);
+      remote.offline = true;
+      expect(await create().verify('private', '1234'), isTrue);
+    },
+  );
+
   test(
     'signing out cannot export stale unlocked cloud profile data offline',
     () async {
@@ -194,21 +470,15 @@ void main() {
   );
 
   test(
-    'a newly added remote lock cannot be bypassed using an offline unlocked cache',
+    'last known unlocked status works offline and refreshes on reconnect',
     () async {
       remote.locked = false;
       final locks = create();
       expect(await locks.isLocked('private'), isFalse);
       remote.locked = true;
       remote.offline = true;
-      await expectLater(
-        locks.isLocked('private'),
-        throwsA(isA<ProfileLockException>()),
-      );
-      await expectLater(
-        create().isLocked('private'),
-        throwsA(isA<ProfileLockException>()),
-      );
+      expect(await locks.isLocked('private'), isFalse);
+      expect(await create().isLocked('private'), isFalse);
       remote.offline = false;
       expect(await create().isLocked('private'), isTrue);
     },
@@ -515,40 +785,27 @@ void main() {
     );
   });
 
-  test(
-    'a locked profile cannot unlock offline even after prior verification',
-    () async {
-      final locks = create();
-      await locks.isLocked('private');
-      await locks.verify('private', '1234');
-      remote.offline = true;
-      await expectLater(
-        locks.isLocked('private'),
-        throwsA(isA<ProfileLockException>()),
-      );
-      await expectLater(
-        locks.verify('private', '1234'),
-        throwsA(isA<ProfileLockException>()),
-      );
-    },
-  );
+  test('offline unlock grants local access without a cloud grant', () async {
+    final locks = create();
+    await locks.verify('private', '1234');
+    locks.lockEntry('private');
+    remote.offline = true;
+    expect(await locks.isLocked('private'), isTrue);
+    expect(await locks.verify('private', '1234'), isTrue);
+    expect(locks.isUnlocked('private'), isTrue);
+    expect(locks.grantHeaders, isEmpty);
+  });
 
-  test(
-    'a previously known unlocked signed-in profile requires online verification',
-    () async {
-      remote.locked = false;
-      await create().isLocked('public');
-      remote.offline = true;
-      await expectLater(
-        create().isLocked('public'),
-        throwsA(isA<ProfileLockException>()),
-      );
-      await expectLater(
-        create().isLocked('unknown'),
-        throwsA(isA<ProfileLockException>()),
-      );
-    },
-  );
+  test('only previously checked signed-in profiles can open offline', () async {
+    remote.locked = false;
+    await create().isLocked('public');
+    remote.offline = true;
+    expect(await create().isLocked('public'), isFalse);
+    await expectLater(
+      create().isLocked('unknown'),
+      throwsA(isA<ProfileLockException>()),
+    );
+  });
 
   test(
     'fingerprint is off on another device and needs PIN enrollment',

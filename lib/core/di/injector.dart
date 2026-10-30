@@ -317,9 +317,10 @@ Future<void> initDependencies() async {
           vpsClient.headers['x-profile-grants'] = jsonEncode(grants);
         }
       },
+      isolateGuestData: () => sl<ViewerProfileStore>().isolateGuestData(),
     ),
   );
-  String currentProfileId() => sl<ViewerProfileStore>().activeId;
+  String currentProfileId() => sl<ViewerProfileStore>().dataProfileId;
 
   // Client half of the invisible Appwrite→Supabase account migration. Wired
   // with real closures here (not in migration_bridge.dart) so the bridge

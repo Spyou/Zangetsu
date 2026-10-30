@@ -354,6 +354,7 @@ void main() {
     // 'app_flags' Hive box. Init Hive + mark it seen so that path no-ops
     // (mirrors production, where Hive is initialized before runApp).
     Hive.init('/tmp/zangetsu_nav_test_hive');
+    await ViewerProfileStore.init();
     final flags = await Hive.openBox('app_flags');
     await flags.put('communitySheetSeen', true);
     await Hive.openBox(ThemeController.boxName);

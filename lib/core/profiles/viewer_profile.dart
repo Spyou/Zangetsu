@@ -157,6 +157,7 @@ class ViewerProfileStore {
   static const int maxBioLength = 160;
   static const String boxName = 'viewer_profiles';
   static const String askOnLaunchKey = 'ask_on_launch';
+  static const String _isolatedGuestKey = 'isolated_guest_data';
 
   final ViewerProfileRemote? _remote;
   final String? Function()? _currentUserId;
@@ -176,6 +177,30 @@ class ViewerProfileStore {
   ViewerProfile get activeProfile =>
       active.value ?? const ViewerProfile(id: kDefaultProfileId, name: 'Home');
   String get activeId => activeProfile.id;
+
+  /// Guest mode must not read a signed-in account's legacy default bucket.
+  String get dataProfileId {
+    if (_currentUserId?.call() != null) return activeId;
+    final hasAccountData =
+        _box.get(_isolatedGuestKey) == true ||
+        _box.keys.any(
+          (key) =>
+              key is String &&
+              key.startsWith('profiles:') &&
+              key != _profilesKey('local'),
+        );
+    return hasAccountData ? kGuestProfileId : activeId;
+  }
+
+  Future<void> isolateGuestData() async {
+    if (_box.get(_isolatedGuestKey) == true) return;
+    await _box.put(_isolatedGuestKey, true);
+    if (_currentUserId?.call() != null) return;
+    contextRevision.value++;
+    active.value = activeProfile.copyWith();
+    revision.value++;
+  }
+
   String get ownerKey => _loadedOwner ?? _owner;
   bool get adultMetadataAllowed => !activeProfile.isKids;
   bool get isLoadedForCurrentUser => _loadedOwner == _owner;
@@ -249,6 +274,10 @@ class ViewerProfileStore {
     final request = ++_loadRequest;
     final userId = _currentUserId?.call();
     final owner = userId ?? 'local';
+    if (userId != null && _box.get(_isolatedGuestKey) != true) {
+      await _box.put(_isolatedGuestKey, true);
+      if (request != _loadRequest || owner != _owner) return;
+    }
 
     final local = _readLocal(owner);
     final recoverable = _readProfiles(_recoveryKey(owner));

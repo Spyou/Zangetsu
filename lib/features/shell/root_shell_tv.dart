@@ -455,7 +455,7 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
       shared[3], // Settings; the phone Profile tab uses the same destination.
     ];
     final profileId = sl.isRegistered<ViewerProfileStore>()
-        ? sl<ViewerProfileStore>().activeId
+        ? sl<ViewerProfileStore>().dataProfileId
         : 'default';
     return [
       for (var i = 0; i < pages.length; i++)
@@ -693,7 +693,7 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
         ? sl<ViewerProfileStore>()
         : null;
     final pageContext =
-        '$_index:${profiles?.activeId}:${profiles?.contextRevision.value}';
+        '$_index:${profiles?.dataProfileId}:${profiles?.contextRevision.value}';
     // Opening the dock must not rebuild every Home/Search/Settings page.
     if (_cachedPages == null || _cachedPageContext != pageContext) {
       _cachedPages = _pages;

@@ -3,6 +3,7 @@ import 'dart:convert';
 import '../hive/hive_key.dart';
 
 const String kDefaultProfileId = 'default';
+const String kGuestProfileId = '__device_guest__';
 
 String profileScopePrefix(String profileId) =>
     'p:${hiveKey(profileId, maxBytes: 96)}::';

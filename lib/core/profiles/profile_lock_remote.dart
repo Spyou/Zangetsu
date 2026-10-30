@@ -15,6 +15,8 @@ class ProfileLockException implements Exception {
     'sign_in_required' => 'Sign in to use a synced profile lock.',
     'online_required' =>
       'Connect to the internet to check this profile’s lock.',
+    'offline_pin_unavailable' =>
+      'Connect once and unlock this profile with its PIN to enable offline access on this device.',
     'device_limit' =>
       'Too many fingerprint devices. Change the PIN to reset them.',
     'profile_not_found' => 'This profile is no longer available.',

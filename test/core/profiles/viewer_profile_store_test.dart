@@ -4,6 +4,8 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 import 'package:watch_app/core/profiles/viewer_profile.dart';
+import 'package:watch_app/core/profiles/profile_scope.dart';
+import 'package:watch_app/core/playback/resume_store.dart';
 import 'package:watch_app/core/theme/app_colors.dart';
 import 'package:watch_app/core/theme/theme_controller.dart';
 
@@ -32,6 +34,90 @@ void main() {
     await Hive.deleteFromDisk();
     if (await directory.exists()) await directory.delete(recursive: true);
   });
+
+  test(
+    'logout separates guest data while preserving the account cache',
+    () async {
+      String? owner = 'account-a';
+      final profiles = ViewerProfileStore(currentUserId: () => owner);
+      await profiles.loadForUser();
+      expect(profiles.dataProfileId, kDefaultProfileId);
+      final history = await Hive.openBox('watch_history');
+      await history.put('private-title', {'title': 'Private account title'});
+      owner = null;
+      await profiles.loadForUser();
+      expect(profiles.dataProfileId, isNot(kDefaultProfileId));
+      expect(profileOwnsKey('private-title', profiles.dataProfileId), isFalse);
+      final guestKey = profileScopedKey(profiles.dataProfileId, 'guest-title');
+      await history.put(guestKey, {'title': 'Guest title'});
+      final restarted = ViewerProfileStore(currentUserId: () => owner);
+      await restarted.loadForUser();
+      expect(profileOwnsKey(guestKey, restarted.dataProfileId), isTrue);
+      owner = 'account-a';
+      await restarted.loadForUser();
+      expect(restarted.dataProfileId, kDefaultProfileId);
+      expect(history.get('private-title')['title'], 'Private account title');
+      expect(profileOwnsKey(guestKey, restarted.dataProfileId), isFalse);
+    },
+  );
+
+  test(
+    'a device that never signed in retains its existing guest history',
+    () async {
+      expect(store.dataProfileId, kDefaultProfileId);
+      expect(
+        profileOwnsKey('existing-guest-title', store.dataProfileId),
+        isTrue,
+      );
+    },
+  );
+
+  test(
+    'older account caches are hidden from guest mode without moving rows',
+    () async {
+      await Hive.box(ViewerProfileStore.boxName).put('profiles:old-account', [
+        const ViewerProfile(id: 'default', name: 'Private account').toJson(),
+      ]);
+      expect(store.dataProfileId, isNot(kDefaultProfileId));
+      expect(profileOwnsKey('private-title', store.dataProfileId), isFalse);
+    },
+  );
+
+  test(
+    'guest playback positions stay separate from the signed-in profile',
+    () async {
+      String? owner = 'account-a';
+      final profiles = ViewerProfileStore(currentUserId: () => owner);
+      await profiles.loadForUser();
+      await ResumeStore.init();
+      final resume = ResumeStore(
+        currentProfileId: () => profiles.dataProfileId,
+      );
+      await resume.save(
+        'source',
+        'show',
+        'ep',
+        const Duration(seconds: 90),
+        const Duration(minutes: 24),
+      );
+      owner = null;
+      await profiles.loadForUser();
+      expect(resume.get('source', 'show', 'ep'), isNull);
+      await resume.save(
+        'source',
+        'show',
+        'ep',
+        const Duration(seconds: 45),
+        const Duration(minutes: 24),
+      );
+      owner = 'account-a';
+      await profiles.loadForUser();
+      expect(resume.get('source', 'show', 'ep')!.position.inSeconds, 90);
+      owner = null;
+      await profiles.loadForUser();
+      expect(resume.get('source', 'show', 'ep')!.position.inSeconds, 45);
+    },
+  );
 
   test(
     'profile deletion retires lock metadata only after local cleanup',

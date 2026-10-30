@@ -413,7 +413,7 @@ class _RootShellState extends State<RootShell>
                       children: _pagesFor(
                         visible,
                         sl.isRegistered<ViewerProfileStore>()
-                            ? sl<ViewerProfileStore>().activeId
+                            ? sl<ViewerProfileStore>().dataProfileId
                             : 'default',
                       ),
                     ),
