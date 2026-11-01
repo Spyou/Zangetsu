@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:local_auth/local_auth.dart';
@@ -854,4 +857,62 @@ void main() {
       expect(await locks.canUnlockWithBiometrics('private'), isFalse);
     },
   );
+
+  test(
+    'a known-offline launch check uses the cached status without networking',
+    () async {
+      storage.values['synced_profile_status_account-a_default'] = jsonEncode({
+        'locked': false,
+        'version': 1,
+      });
+      final hanging = _HangingLockRemote();
+      final locks = SyncedProfileLockStore(
+        remote: hanging,
+        currentUserId: () => owner,
+        storage: storage,
+        biometrics: _Biometrics(),
+        isOffline: () => true,
+      );
+      final sw = Stopwatch()..start();
+      expect(await locks.isLocked('default'), isFalse);
+      expect(sw.elapsed, lessThan(const Duration(seconds: 5)));
+      expect(hanging.calls, isZero);
+    },
+  );
+
+  test(
+    'a known-offline launch check without a cache reports unavailable fast',
+    () async {
+      final hanging = _HangingLockRemote();
+      final locks = SyncedProfileLockStore(
+        remote: hanging,
+        currentUserId: () => owner,
+        storage: storage,
+        biometrics: _Biometrics(),
+        isOffline: () => true,
+      );
+      final sw = Stopwatch()..start();
+      await expectLater(
+        locks.isLocked('default'),
+        throwsA(isA<ProfileLockException>()),
+      );
+      expect(sw.elapsed, lessThan(const Duration(seconds: 5)));
+      expect(hanging.calls, isZero);
+    },
+  );
+}
+
+class _HangingLockRemote implements ProfileLockRemote {
+  int calls = 0;
+  @override
+  Future<Map<String, dynamic>> request(
+    String action, {
+    String? profileId,
+    String? pin,
+    String? newPin,
+    String? secret,
+  }) {
+    calls++;
+    return Completer<Map<String, dynamic>>().future;
+  }
 }

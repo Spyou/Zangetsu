@@ -16,6 +16,7 @@ class SyncedProfileLockStore extends ProfileLockStore {
     super.biometrics,
     this.onGrantsChanged,
     this.isolateGuestData,
+    this.isOffline,
   }) : _remote = remote,
        _currentUserId = currentUserId,
        _secure = storage ?? const FlutterSecureStorage();
@@ -25,6 +26,7 @@ class SyncedProfileLockStore extends ProfileLockStore {
   final FlutterSecureStorage _secure;
   final void Function(Map<String, String>)? onGrantsChanged;
   final Future<void> Function()? isolateGuestData;
+  final bool Function()? isOffline;
   final _grants = <String, ({String token, int version, DateTime expires})>{};
   final _versions = <String, int>{};
   final _recoveryCodes = <String, String>{};
@@ -168,24 +170,35 @@ class SyncedProfileLockStore extends ProfileLockStore {
     final owner = _checkOwner();
     if (owner == null) throw const ProfileLockException('sign_in_required');
     final statusKey = _key('status', id);
+    // Boot already probed the network dead: the status RPC below would hang
+    // ~15s before landing on this same cache fallback. Go straight there.
+    if (isOffline?.call() == true) return _cachedStatus(id, owner, statusKey);
     try {
       return await _status(id);
     } on ProfileLockException catch (error) {
       if (error.code != 'online_required') rethrow;
-      final saved = await _read(statusKey);
-      if (_checkOwner() != owner) {
-        throw const ProfileLockException('session_changed');
-      }
-      if (saved == null) {
-        throw const ProfileLockException('offline_pin_unavailable');
-      }
-      if (saved['locked'] is! bool ||
-          (saved['locked'] == true && saved['version'] is! int)) {
-        throw const ProfileLockException('invalid_response');
-      }
-      if (saved['version'] is int) _versions[id] = saved['version'] as int;
-      return saved;
+      return _cachedStatus(id, owner, statusKey);
     }
+  }
+
+  Future<Map<String, dynamic>> _cachedStatus(
+    String id,
+    String owner,
+    String statusKey,
+  ) async {
+    final saved = await _read(statusKey);
+    if (_checkOwner() != owner) {
+      throw const ProfileLockException('session_changed');
+    }
+    if (saved == null) {
+      throw const ProfileLockException('offline_pin_unavailable');
+    }
+    if (saved['locked'] is! bool ||
+        (saved['locked'] == true && saved['version'] is! int)) {
+      throw const ProfileLockException('invalid_response');
+    }
+    if (saved['version'] is int) _versions[id] = saved['version'] as int;
+    return saved;
   }
 
   Future<void> _rememberPin(String id, String pin) async {

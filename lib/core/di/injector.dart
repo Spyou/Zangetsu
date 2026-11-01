@@ -227,7 +227,7 @@ void applySimklConventions(RequestOptions options) {
   options.headers['User-Agent'] = '$kAppName/$kAppVersion';
 }
 
-Future<void> initDependencies() async {
+Future<void> initDependencies({bool Function()? isOffline}) async {
   // Detect device class first so every subsequent registration can gate on it.
   // Wrapped in try/catch: no native handler (tests, iOS, web) → phone behavior.
   // tvOS has no Android `isTv` channel; [isAppleTv] covers Apple TV.
@@ -310,6 +310,7 @@ Future<void> initDependencies() async {
     SyncedProfileLockStore(
       remote: PostgrestProfileLockRemote(vpsClient, cloudAccessToken),
       currentUserId: currentUserId,
+      isOffline: isOffline,
       onGrantsChanged: (grants) {
         if (grants.isEmpty) {
           vpsClient.headers.remove('x-profile-grants');

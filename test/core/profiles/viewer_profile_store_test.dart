@@ -832,6 +832,22 @@ void main() {
     final hive = ViewerProfile.fromJson({'id': 'x', 'name': 'X'});
     expect(hive.photoUrl, isNull);
   });
+
+  test(
+    'attemptRemote false applies local profiles without waiting on the network',
+    () async {
+      String? owner = 'account-offline';
+      final offline = ViewerProfileStore(
+        remote: _HangingProfileRemote(),
+        currentUserId: () => owner,
+      );
+      final sw = Stopwatch()..start();
+      await offline.loadForUser(displayName: 'Account', attemptRemote: false);
+      expect(sw.elapsed, lessThan(const Duration(seconds: 5)));
+      expect(offline.isLoadedForCurrentUser, isTrue);
+      expect(offline.activeProfile.name, 'Account');
+    },
+  );
 }
 
 class _BlockingDeleteProfileRemote implements ViewerProfileRemote {
@@ -909,6 +925,20 @@ class _FailingDeleteProfileRemote implements ViewerProfileRemote {
 
   @override
   Future<void> upsert(String userId, ViewerProfile profile) async {}
+}
+
+class _HangingProfileRemote implements ViewerProfileRemote {
+  @override
+  Future<List<Map<String, dynamic>>> listFor(String userId) =>
+      Completer<List<Map<String, dynamic>>>().future;
+
+  @override
+  Future<void> delete(String userId, String profileId) =>
+      Completer<void>().future;
+
+  @override
+  Future<void> upsert(String userId, ViewerProfile profile) =>
+      Completer<void>().future;
 }
 
 class _AccountSwitchProfileRemote implements ViewerProfileRemote {

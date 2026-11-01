@@ -270,7 +270,10 @@ class ViewerProfileStore {
     });
   }
 
-  Future<void> loadForUser({String displayName = 'Home'}) async {
+  Future<void> loadForUser({
+    String displayName = 'Home',
+    bool attemptRemote = true,
+  }) async {
     final request = ++_loadRequest;
     final userId = _currentUserId?.call();
     final owner = userId ?? 'local';
@@ -293,7 +296,9 @@ class ViewerProfileStore {
     );
 
     final remote = _remote;
-    if (userId == null || remote == null) return;
+    // A blackholed network hangs every RPC until its timeout; when the
+    // caller already probed offline, skip the merge instead of burning ~10s.
+    if (userId == null || remote == null || !attemptRemote) return;
     try {
       await _mergeRemote(
         remote: remote,

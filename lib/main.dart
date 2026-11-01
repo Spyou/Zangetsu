@@ -15,6 +15,7 @@ import 'package:supabase_flutter/supabase_flutter.dart' hide AuthState;
 import 'core/analytics/analytics.dart';
 import 'core/app_config.dart';
 import 'core/app_mode.dart';
+import 'core/boot_network.dart';
 import 'core/di/injector.dart';
 import 'core/ui/splash_style.dart';
 import 'core/hive/safe_box.dart';
@@ -136,14 +137,26 @@ Future<void> main() async {
       // boot always proceeds; cloud features degrade to local-only until the next
       // launch on a live network (SupabaseService.currentUserId tolerates an
       // uninitialized client).
+      // Probe once: on a blackholed network (Wi-Fi with no internet) every
+      // cloud stage below hangs until its multi-second timeout instead of
+      // failing fast, stacking ~40s of serial waiting before the shell shows.
+      // When the probe says offline, boot stays local-only; the retry loop,
+      // resume sync, and lock-status cache cover the reconnect.
+      final bootOffline = await probeBootOffline(
+        host: Uri.tryParse(Environment.vpsSyncUrl)?.host ?? '',
+      );
       var supabaseOk = false;
       try {
+        // initialize() sets the singleton's client synchronously and only
+        // then awaits session restore — a timeout still leaves a usable
+        // client behind (registrations below dereference it), so even a
+        // probed-offline boot runs it with a short fuse instead of skipping.
         await Supabase.initialize(
           url: Environment.supabaseUrl,
           anonKey: Environment.supabaseAnonKey,
           // TV auth uses QR pairing, not OAuth redirect deep links.
           authOptions: FlutterAuthClientOptions(detectSessionInUri: !appleTv),
-        ).timeout(const Duration(seconds: 8));
+        ).timeout(Duration(seconds: bootOffline ? 2 : 8));
         supabaseOk = true;
       } catch (e, st) {
         AppLogger.instance.logError(e, st);
@@ -183,7 +196,7 @@ Future<void> main() async {
       }
       // Dependency init happens inside the boot gate so the splash shows
       // immediately instead of a blank screen.
-      runApp(const WatchApp());
+      runApp(WatchApp(bootOffline: bootOffline));
     },
     (error, stack) {
       AppLogger.instance.logError(error, stack);
@@ -224,9 +237,18 @@ Future<void> _retrySupabaseInit() async {
     }
   }
   // Client is up now → refresh auth so the UI reflects the restored session.
+  // A boot that probed offline also skipped the profile cloud merge — run it
+  // now that the network is back.
   if (_supabaseReady() && sl.isRegistered<AuthCubit>()) {
     try {
       await sl<AuthCubit>().restore();
+    } catch (_) {}
+    try {
+      if (sl.isRegistered<ViewerProfileStore>()) {
+        await sl<ViewerProfileStore>().loadForUser(
+          displayName: sl<AuthCubit>().state.displayName,
+        );
+      }
     } catch (_) {}
   }
 }
@@ -236,7 +258,11 @@ Future<void> _retrySupabaseInit() async {
 /// so pushed routes (login, profile, …) can read them. Providing them below the
 /// Navigator would scope them out of any `Navigator.push`ed route.
 class WatchApp extends StatefulWidget {
-  const WatchApp({super.key});
+  const WatchApp({super.key, this.bootOffline = false});
+
+  /// True when the pre-runApp probe found no connectivity: boot stays
+  /// local-only instead of burning serial network timeouts on the splash.
+  final bool bootOffline;
 
   @override
   State<WatchApp> createState() => _WatchAppState();
@@ -508,7 +534,14 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
   /// the splash for a minimum so the intro animation reads even on fast boots.
   Future<void> _run() async {
     final start = DateTime.now();
-    await initDependencies();
+    // Boot-gate offline hint expires after a couple of minutes: the launch
+    // lock check happens seconds after boot, while later checks (profile
+    // switches) are user-initiated and should see remote lock changes.
+    final offlineUntil = start.add(const Duration(minutes: 2));
+    await initDependencies(
+      isOffline: () =>
+          widget.bootOffline && DateTime.now().isBefore(offlineUntil),
+    );
     if (mounted) {
       setState(() => _depsReady = true);
       if (_bootReady) {
@@ -533,9 +566,14 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
       await sl<AuthCubit>().restore().timeout(const Duration(seconds: 5));
       if (sl<AuthCubit>().state.isLoggedIn) {
         // Bounded: local profiles apply immediately inside loadForUser; the
-        // cloud merge must never trap the splash on a dead network.
+        // cloud merge must never trap the splash on a dead network. A boot
+        // that probed offline skips it (and the sync below) entirely — the
+        // retry loop re-merges when the network returns.
         await sl<ViewerProfileStore>()
-            .loadForUser(displayName: sl<AuthCubit>().state.displayName)
+            .loadForUser(
+              displayName: sl<AuthCubit>().state.displayName,
+              attemptRemote: !widget.bootOffline,
+            )
             .timeout(const Duration(seconds: 15));
         Future<void> cloudSync() async {
           await Future.wait([
@@ -559,17 +597,26 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
         }
 
         // tvOS: never block the splash on cloud I/O — sync after the shell is up.
-        if (isAppleTv) {
-          unawaited(cloudSync().catchError((_) {}));
+        // Offline boot: skip it too (local data is already applied above);
+        // resume hooks and the init retry loop pick it up on reconnect.
+        if (!widget.bootOffline) {
+          if (isAppleTv) {
+            unawaited(cloudSync().catchError((_) {}));
+          } else {
+            await cloudSync();
+          }
         } else {
-          await cloudSync();
+          AppLogger.instance.log('[boot] offline — cloud sync deferred');
         }
       }
     } catch (_) {}
     if (!sl<ViewerProfileStore>().isLoadedForCurrentUser) {
       try {
         await sl<ViewerProfileStore>()
-            .loadForUser(displayName: sl<AuthCubit>().state.displayName)
+            .loadForUser(
+              displayName: sl<AuthCubit>().state.displayName,
+              attemptRemote: !widget.bootOffline,
+            )
             .timeout(const Duration(seconds: 15));
       } catch (_) {}
     }
