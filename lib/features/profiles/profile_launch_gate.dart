@@ -99,10 +99,10 @@ class _ProfileLaunchGateState extends State<ProfileLaunchGate> {
     super.dispose();
   }
 
-  /// The store restores the last-active profile with no questions asked, so
-  /// a locked profile left active resumes straight into unlocked content
-  /// when the picker is off. Force the (gated) picker in that case — every
-  /// choice out of it passes the PIN/biometric gate.
+  /// Decides whether launch stops at the picker. Asking off means straight
+  /// in — even for a locked active profile. The locks stay set (switching
+  /// profiles inside the app still asks), only the launch-time force is
+  /// lifted, so there is deliberately no PIN prompt on this path.
   Future<void> _ensureGate({bool checkLaunchPreference = true}) async {
     if (_pickerShown) return;
     final generation = ++_checkGeneration;
@@ -120,9 +120,19 @@ class _ProfileLaunchGateState extends State<ProfileLaunchGate> {
       if (sl.isRegistered<ProfileLockStore>()) {
         final locks = sl<ProfileLockStore>();
         final active = store.activeProfile;
-        final locked = await locks.isLocked(active.id);
+        bool locked = false;
+        try {
+          locked = await locks.isLocked(active.id);
+        } on ProfileLockException {
+          // Asking is off: launch never enforces the lock, so an unreadable
+          // status (offline with no cache yet, dead backend) must not trap
+          // the user on the error screen — go straight in. Asking on keeps
+          // the existing behavior: surface the failure instead of silently
+          // skipping the picker.
+          if (store.askOnLaunch) rethrow;
+        }
         if (!mounted || generation != _checkGeneration) return;
-        if (locked && !locks.isUnlocked(active.id)) {
+        if (locked && !locks.isUnlocked(active.id) && store.askOnLaunch) {
           _pickerShown = true;
           _showPicker();
           return;

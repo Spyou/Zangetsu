@@ -19,6 +19,8 @@ import 'package:watch_app/features/auth/auth_cubit.dart';
 import 'package:watch_app/core/theme/app_colors.dart';
 import 'package:watch_app/core/tv/tv_list_focusable.dart';
 import 'package:watch_app/features/home/cubit/home_cubit.dart';
+import 'package:watch_app/core/profiles/profile_lock_store.dart';
+import 'package:watch_app/core/profiles/profile_lock_remote.dart';
 import 'package:watch_app/features/profiles/profile_launch_gate.dart';
 import 'package:watch_app/features/profiles/viewer_profiles_screen.dart';
 
@@ -613,6 +615,58 @@ void main() {
     expect(find.text("Who's watching?"), findsNothing);
   });
 
+  testWidgets('locked profile with asking off still opens straight in', (
+    tester,
+  ) async {
+    await tester.runAsync(() => profiles.setAskOnLaunch(false));
+    GetIt.instance.registerSingleton<ProfileLockStore>(_AlwaysLockedStore());
+
+    await tester.pumpWidget(app());
+    await tester.pumpAndSettle();
+
+    expect(find.text('Main screen'), findsOneWidget);
+    expect(find.text("Who's watching?"), findsNothing);
+  });
+
+  testWidgets('locked profile with asking on still forces the picker', (
+    tester,
+  ) async {
+    GetIt.instance.registerSingleton<ProfileLockStore>(_AlwaysLockedStore());
+
+    await tester.pumpWidget(app());
+    await tester.pumpAndSettle();
+
+    expect(find.text("Who's watching?"), findsOneWidget);
+    expect(find.text('Main screen'), findsNothing);
+  });
+
+  testWidgets('unreadable lock with asking off still opens straight in', (
+    tester,
+  ) async {
+    await tester.runAsync(() => profiles.setAskOnLaunch(false));
+    GetIt.instance.registerSingleton<ProfileLockStore>(_ThrowingLockStore());
+
+    await tester.pumpWidget(app());
+    await tester.pumpAndSettle();
+
+    expect(find.text('Main screen'), findsOneWidget);
+    expect(find.text("Who's watching?"), findsNothing);
+    expect(find.text('Retry'), findsNothing);
+  });
+
+  testWidgets('unreadable lock with asking on still shows the picker first', (
+    tester,
+  ) async {
+    GetIt.instance.registerSingleton<ProfileLockStore>(_ThrowingLockStore());
+
+    await tester.pumpWidget(app());
+    await tester.pumpAndSettle();
+
+    expect(find.text("Who's watching?"), findsOneWidget);
+    expect(find.text('Main screen'), findsNothing);
+    expect(find.text('Retry'), findsNothing);
+  });
+
   testWidgets('picker entrance staggers title, avatars, footer', (
     tester,
   ) async {
@@ -966,6 +1020,48 @@ void main() {
     expect(find.text('Ready for the next watch, Home?'), findsOneWidget);
   });
 
+  testWidgets('confirming the warning turns asking off', (tester) async {
+    // Real timers throughout: the confirm path writes to Hive, and the
+    // fake clock wedges teardown after a dialog-driven write.
+    await tester.runAsync(() async {
+      await tester.pumpWidget(
+        const MaterialApp(home: ViewerProfilesScreen(selectionOnly: true)),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Manage profiles'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Ask who is watching on launch'));
+      await tester.pumpAndSettle();
+      expect(find.text("Turn off Who's watching?"), findsOneWidget);
+      await tester.tap(find.text('Turn off'));
+      await tester.pumpAndSettle();
+      expect(profiles.askOnLaunch, isFalse);
+      expect(find.text("Turn off Who's watching?"), findsNothing);
+    });
+  });
+
+  testWidgets('turning asking off warns that launch PIN goes away', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(home: ViewerProfilesScreen(selectionOnly: true)),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Manage profiles'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Ask who is watching on launch'));
+    await tester.pumpAndSettle();
+    expect(find.text("Turn off Who's watching?"), findsOneWidget);
+    expect(profiles.askOnLaunch, isTrue);
+
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(profiles.askOnLaunch, isTrue);
+    expect(find.text("Turn off Who's watching?"), findsNothing);
+  });
+
   testWidgets('picker greeting follows a rename', (tester) async {
     await tester.pumpWidget(
       const MaterialApp(home: ViewerProfilesScreen(selectionOnly: true)),
@@ -979,8 +1075,18 @@ void main() {
   });
 }
 
-class _CountingNavigatorObserver extends NavigatorObserver {
-  int pushes = 0;
+class _AlwaysLockedStore extends ProfileLockStore {
+  @override
+  Future<bool> isLocked(String profileId) async => true;
+}
+
+class _ThrowingLockStore extends ProfileLockStore {
+  @override
+  Future<bool> isLocked(String profileId) async =>
+      throw const ProfileLockException('online_required');
+}
+
+class _CountingNavigatorObserver extends NavigatorObserver {  int pushes = 0;
 
   @override
   void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {

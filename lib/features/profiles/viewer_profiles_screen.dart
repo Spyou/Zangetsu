@@ -234,6 +234,39 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
     );
   }
 
+  /// Turning the launch picker off opens straight into the active profile —
+  /// even a locked one. The locks stay set for switching inside the app, so
+  /// confirm the trade-off explicitly instead of silently dropping launch
+  /// protection the user may have set up for kids.
+  Future<void> _toggleAskOnLaunch() async {
+    if (!_profiles.askOnLaunch) {
+      await _profiles.setAskOnLaunch(true);
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Turn off Who's watching?"),
+        content: const Text(
+          'The app will open straight into the active profile — no PIN at launch. '
+          'Profile PINs stay on for switching profiles inside the app.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Turn off'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || confirmed != true) return;
+    await _profiles.setAskOnLaunch(false);
+  }
+
   Future<void> _delete(ViewerProfile profile) async {
     // A lock that doesn't cover deletion is decoration: removing the profile
     // wipes the PIN with it.
@@ -379,12 +412,13 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
                 SettingsTile(
                   icon: Icons.login_rounded,
                   title: 'Ask who is watching on launch',
-                  subtitle: 'Choose a profile each time the app opens',
+                  subtitle:
+                      'Off opens straight into the active profile, even if it has a PIN.',
                   trailing: Switch.adaptive(
                     value: _profiles.askOnLaunch,
-                    onChanged: _profiles.setAskOnLaunch,
+                    onChanged: (_) => _toggleAskOnLaunch(),
                   ),
-                  onTap: () => _profiles.setAskOnLaunch(!_profiles.askOnLaunch),
+                  onTap: _toggleAskOnLaunch,
                 ),
               ],
             ),
