@@ -15,6 +15,7 @@ import '../search/bloc/search_bloc.dart' show SearchBloc;
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/tv/tv_list_focusable.dart';
+import '../../core/tv/tv_focusable.dart';
 import '../../l10n/l10n.dart';
 
 /// "Test sources" — probes every enabled source concurrently and shows, per
@@ -129,7 +130,9 @@ class _SourceHealthScreenState extends State<SourceHealthScreen> {
     setState(() {
       _testing = true;
       _deep = deep;
-      _results = [for (final s in sources) _ProbeResult(id: s.id, name: s.name)];
+      _results = [
+        for (final s in sources) _ProbeResult(id: s.id, name: s.name),
+      ];
     });
 
     // Fixed-size worker pool over a shared cursor, so at most
@@ -382,21 +385,21 @@ class _SourceHealthScreenState extends State<SourceHealthScreen> {
                               color: AppColors.hairline,
                             ),
                           _HealthRow(
+                            autofocus: i == 0,
                             result: _results[i],
                             present: _present,
                             onDisable: _results[i].isCloudStream
                                 ? null
                                 : () => _disableForSearch(_results[i]),
-                            searchIncluded:
-                                _searchPrefs.isIncluded(_results[i].id),
+                            searchIncluded: _searchPrefs.isIncluded(
+                              _results[i].id,
+                            ),
                             playbackFails: _health.playbackFailures(
                               _results[i].id,
                             ),
                             onManage: canManageSource(_results[i].id)
-                                ? () => openManageSource(
-                                    context,
-                                    _results[i].id,
-                                  )
+                                ? () =>
+                                      openManageSource(context, _results[i].id)
                                 : null,
                           ),
                         ],
@@ -417,9 +420,7 @@ class _SourceHealthScreenState extends State<SourceHealthScreen> {
     setState(() {});
     ScaffoldMessenger.of(context)
       ..clearSnackBars()
-      ..showSnackBar(
-        SnackBar(content: Text('${r.name} removed from search')),
-      );
+      ..showSnackBar(SnackBar(content: Text('${r.name} removed from search')));
   }
 }
 
@@ -434,6 +435,7 @@ class _HealthRow extends StatelessWidget {
     this.onDisable,
     this.playbackFails = 0,
     this.onManage,
+    this.autofocus = false,
   });
 
   final _ProbeResult result;
@@ -450,9 +452,23 @@ class _HealthRow extends StatelessWidget {
   /// Opens the Sources screen that owns this source, where uninstalling lives.
   /// Null when the source has no such screen (Z-Mode).
   final VoidCallback? onManage;
+  final bool autofocus;
 
-  bool get _playbackDead =>
-      playbackFails >= SourceHealthStore.deadAfterTitles;
+  Widget _focusForTv(Widget child) {
+    if (!sl.isRegistered<AppMode>() || !sl<AppMode>().isTv) return child;
+    // Every result needs a remote target, including rows without actions.
+    return TvFocusable(
+      autofocus: autofocus,
+      scale: 1,
+      variant: TvFocusVariant.row,
+      semanticLabel: result.name,
+      isButton: false,
+      onTap: () {},
+      child: child,
+    );
+  }
+
+  bool get _playbackDead => playbackFails >= SourceHealthStore.deadAfterTitles;
 
   String? get _meta {
     if (result.running) return null;
@@ -504,54 +520,56 @@ class _HealthRow extends StatelessWidget {
       child: Row(
         children: [
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  result.name,
-                  style: AppText.headline.copyWith(fontSize: 15),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 3),
-                Row(
-                  children: [
-                    if (result.running)
-                      Text(context.l10n.testing, style: AppText.caption)
-                    else if (p != null) ...[
-                      Icon(p.icon, size: 14, color: p.color),
-                      const SizedBox(width: 5),
-                      Text(
-                        p.label,
-                        style: AppText.caption.copyWith(
-                          color: p.color,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      if (_meta != null) ...[
-                        Text('  ·  ', style: AppText.caption),
-                        Flexible(
-                          child: Text(
-                            _meta!,
-                            style: AppText.caption,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+            child: _focusForTv(
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    result.name,
+                    style: AppText.headline.copyWith(fontSize: 15),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 3),
+                  Row(
+                    children: [
+                      if (result.running)
+                        Text(context.l10n.testing, style: AppText.caption)
+                      else if (p != null) ...[
+                        Icon(p.icon, size: 14, color: p.color),
+                        const SizedBox(width: 5),
+                        Text(
+                          p.label,
+                          style: AppText.caption.copyWith(
+                            color: p.color,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
+                        if (_meta != null) ...[
+                          Text('  ·  ', style: AppText.caption),
+                          Flexible(
+                            child: Text(
+                              _meta!,
+                              style: AppText.caption,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
                       ],
                     ],
-                  ],
-                ),
-                if (!result.running && !searchIncluded) ...[
-                  const SizedBox(height: 3),
-                  Text(
-                    context.l10n.notSearched,
-                    style: AppText.overline.copyWith(
-                      color: AppColors.textTertiary,
-                    ),
                   ),
+                  if (!result.running && !searchIncluded) ...[
+                    const SizedBox(height: 3),
+                    Text(
+                      context.l10n.notSearched,
+                      style: AppText.overline.copyWith(
+                        color: AppColors.textTertiary,
+                      ),
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
           if (result.running)
@@ -570,7 +588,9 @@ class _HealthRow extends StatelessWidget {
                     onTap: onDisable!,
                     child: Padding(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 8),
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
                       child: Text(
                         context.l10n.removeDownloadTooltip,
                         style: AppText.body.copyWith(color: AppColors.accent),
@@ -580,7 +600,8 @@ class _HealthRow extends StatelessWidget {
                 : TextButton(
                     onPressed: onDisable,
                     style: TextButton.styleFrom(
-                        foregroundColor: AppColors.accent),
+                      foregroundColor: AppColors.accent,
+                    ),
                     child: Text(context.l10n.navTabsRemove),
                   )
           // Anything dead that the branch above could not offer an action for.
@@ -598,7 +619,9 @@ class _HealthRow extends StatelessWidget {
                     onTap: onManage!,
                     child: Padding(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 8),
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
                       child: Text(
                         context.l10n.uninstall,
                         style: AppText.body.copyWith(color: AppColors.accent),
@@ -608,7 +631,8 @@ class _HealthRow extends StatelessWidget {
                 : TextButton(
                     onPressed: onManage,
                     style: TextButton.styleFrom(
-                        foregroundColor: AppColors.accent),
+                      foregroundColor: AppColors.accent,
+                    ),
                     child: Text(context.l10n.uninstall),
                   ),
         ],
