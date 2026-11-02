@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 
@@ -34,8 +36,24 @@ void showAppToast(BuildContext context, String message) {
 /// the key's own context sits above the overlay, and the overlay's context
 /// cannot find itself. Both throw "Overlay is null", which is how the Z Mode
 /// provider-fallback notice silently never appeared.
-void showAppToastIn(OverlayState overlay, String message) {
+VoidCallback showAppToastIn(OverlayState overlay, String message) {
+  var dismissed = false;
+  Timer? timer;
   late final OverlayEntry entry;
+  void dismiss() {
+    if (dismissed) return;
+    dismissed = true;
+    timer?.cancel();
+    if (!overlay.mounted) return;
+    try {
+      entry.remove();
+    } on AssertionError {
+      // The overlay already detached this transient entry.
+    } on TypeError {
+      // Release builds report a repeated remove as a null-check error.
+    }
+  }
+
   entry = OverlayEntry(
     builder: (context) => Positioned(
       left: 24,
@@ -55,10 +73,8 @@ void showAppToastIn(OverlayState overlay, String message) {
     ),
   );
   overlay.insert(entry);
-  Future<void>.delayed(_duration, () {
-    // The screen can go before the timer does.
-    if (entry.mounted) entry.remove();
-  });
+  timer = Timer(_duration, dismiss);
+  return dismiss;
 }
 
 const Duration _duration = Duration(seconds: 2);

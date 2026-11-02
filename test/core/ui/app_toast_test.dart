@@ -57,11 +57,40 @@ void main() {
     await t.pump();
 
     expect(
-      find.ancestor(of: find.text('notice'), matching: find.byType(IgnorePointer)),
+      find.ancestor(
+        of: find.text('notice'),
+        matching: find.byType(IgnorePointer),
+      ),
       findsOneWidget,
     );
     await t.pump(const Duration(seconds: 3));
   });
+
+  testWidgets(
+    'toast dismissal is safe after repeated calls or overlay disposal',
+    (t) async {
+      await t.pumpWidget(app());
+      final dismiss = showAppToastIn(
+        rootNavigatorKey.currentState!.overlay!,
+        'notice',
+      );
+      await t.pump();
+
+      dismiss();
+      dismiss();
+      expect(t.takeException(), isNull);
+
+      final dismissAfterDispose = showAppToastIn(
+        rootNavigatorKey.currentState!.overlay!,
+        'notice',
+      );
+      await t.pump();
+      await t.pumpWidget(const SizedBox.shrink());
+      dismissAfterDispose();
+      dismissAfterDispose();
+      expect(t.takeException(), isNull);
+    },
+  );
 
   testWidgets('the ordinary screen toast still works', (t) async {
     // The twelve existing callers all pass a real screen context. This is the
