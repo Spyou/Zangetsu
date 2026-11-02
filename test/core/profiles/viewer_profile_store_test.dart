@@ -834,6 +834,29 @@ void main() {
   });
 
   test(
+    'local startup keeps the saved active profile when cloud hangs',
+    () async {
+      final box = Hive.box(ViewerProfileStore.boxName);
+      await box.put('profiles:startup-user', [
+        const ViewerProfile(id: kDefaultProfileId, name: 'Main').toJson(),
+        const ViewerProfile(id: 'saved-profile', name: 'Saved').toJson(),
+      ]);
+      await box.put('active:startup-user', 'saved-profile');
+      final cached = ViewerProfileStore(
+        remote: _HangingProfileRemote(),
+        currentUserId: () => 'startup-user',
+      );
+
+      await cached.loadForUser(attemptRemote: false);
+
+      expect(cached.isLoadedForCurrentUser, isTrue);
+      expect(cached.activeId, 'saved-profile');
+      expect(cached.activeProfile.name, 'Saved');
+      expect(cached.profiles, hasLength(2));
+    },
+  );
+
+  test(
     'attemptRemote false applies local profiles without waiting on the network',
     () async {
       String? owner = 'account-offline';
