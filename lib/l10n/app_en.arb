@@ -453,6 +453,7 @@
 	"cropBorders": "Crop borders",
 	"trimNearUniformEdgeMarginsFromAPage": "Trim near-uniform edge margins from a page",
 	"preloadPages": "Preload pages",
+	"showPageNumber": "Show page number",
 	"keepScreenOn": "Keep screen on",
 	"readerFullscreen": "Fullscreen",
 	"tapZones": "Tap zones",

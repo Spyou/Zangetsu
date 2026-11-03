@@ -2111,12 +2111,14 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
           // Mihon-style page pill ("08/26"): pops up on every page turn in
           // both modes and fades 1.5s after the last one. Hidden while the
           // chrome (which carries its own counter) is up.
-          _ScrollPagePill(
-            pageIndex: _pageIndexVN,
-            activity: _scrollTickVN,
-            total: pageTotal,
-            visible: !_chromeVisible,
-          ),
+          if (prefs.showPageNumber)
+            _ScrollPagePill(
+              key: const ValueKey('reader-scroll-page-number'),
+              pageIndex: _pageIndexVN,
+              activity: _scrollTickVN,
+              total: pageTotal,
+              visible: !_chromeVisible,
+            ),
           if (_showFloatingMangaTranslation &&
               _pages != null &&
               _pages!.isNotEmpty)
@@ -4280,6 +4282,17 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                         readerSheetSection(context.l10n.display),
                         readerSheetGroup([
                           readerSheetRow(
+                            icon: Icons.format_list_numbered_rounded,
+                            label: context.l10n.showPageNumber,
+                            trailing: Switch(
+                              key: const ValueKey('reader-show-page-number'),
+                              value: prefs.showPageNumber,
+                              activeThumbColor: AppColors.accent,
+                              onChanged: (v) =>
+                                  apply(() => prefs.setShowPageNumber(v)),
+                            ),
+                          ),
+                          readerSheetRow(
                             icon: Icons.fit_screen_outlined,
                             label: context.l10n.fit,
                             trailing: fitOverride != null
@@ -4966,6 +4979,7 @@ enum _ReaderMenuAction {
 /// hidden while the chrome (which carries its own counter) is up.
 class _ScrollPagePill extends StatefulWidget {
   const _ScrollPagePill({
+    super.key,
     required this.pageIndex,
     required this.activity,
     required this.total,

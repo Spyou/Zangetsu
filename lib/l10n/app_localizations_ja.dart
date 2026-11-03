@@ -1145,6 +1145,9 @@ class AppLocalizationsJa extends AppLocalizations {
   String get preloadPages => 'ページを先読み';
 
   @override
+  String get showPageNumber => 'Show page number';
+
+  @override
   String get keepScreenOn => '画面を消灯しない';
 
   @override

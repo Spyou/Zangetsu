@@ -1138,6 +1138,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get preloadPages => '预加载页面';
 
   @override
+  String get showPageNumber => 'Show page number';
+
+  @override
   String get keepScreenOn => '保持屏幕常亮';
 
   @override

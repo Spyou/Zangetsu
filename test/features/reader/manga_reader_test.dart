@@ -1972,6 +1972,7 @@ void main() {
       tester,
     ) async {
       await tester.runAsync(() => sl<ReaderPrefs>().setDirection('vertical'));
+      await tester.runAsync(() => sl<ReaderPrefs>().setShowPageNumber(false));
       ani.register(_FakeReadingProvider('ani:m', {'u1': pages(20)}));
 
       await tester.pumpWidget(harness());
@@ -2027,6 +2028,7 @@ void main() {
     // targets flip 0 -> 1).
     testWidgets('vertical: a single tap still toggles chrome', (tester) async {
       await tester.runAsync(() => sl<ReaderPrefs>().setDirection('vertical'));
+      await tester.runAsync(() => sl<ReaderPrefs>().setShowPageNumber(false));
 
       await tester.pumpWidget(harness());
       await settle(tester);
@@ -2061,6 +2063,7 @@ void main() {
       tester,
     ) async {
       await tester.runAsync(() => sl<ReaderPrefs>().setDirection('vertical'));
+      await tester.runAsync(() => sl<ReaderPrefs>().setShowPageNumber(false));
       ani.register(_FakeReadingProvider('ani:m', {'u1': pages(20)}));
 
       await tester.pumpWidget(harness());
@@ -2102,6 +2105,27 @@ void main() {
       expect(
         find.byKey(const ValueKey('reader-settings-manga-translation')),
         findsOneWidget,
+      );
+      final pageNumberSwitch = find.byKey(
+        const ValueKey('reader-show-page-number'),
+      );
+      await tester.ensureVisible(pageNumberSwitch);
+      await tester.runAsync(() => tester.tap(pageNumberSwitch));
+      await settle(tester);
+      expect(sl<ReaderPrefs>().showPageNumber, isFalse);
+      expect(
+        find.byKey(const ValueKey('reader-scroll-page-number')),
+        findsNothing,
+      );
+      await tester.runAsync(() => tester.tap(pageNumberSwitch));
+      await settle(tester);
+      expect(sl<ReaderPrefs>().showPageNumber, isTrue);
+      expect(
+        find.byKey(const ValueKey('reader-scroll-page-number')),
+        findsOneWidget,
+      );
+      await tester.ensureVisible(
+        find.byKey(const ValueKey('reader-settings-manga-translation')),
       );
       await tester.tap(
         find.byKey(const ValueKey('reader-settings-manga-translation')),

@@ -1177,6 +1177,9 @@ class AppLocalizationsAr extends AppLocalizations {
   String get preloadPages => 'تحميل الصفحات مسبقًا';
 
   @override
+  String get showPageNumber => 'Show page number';
+
+  @override
   String get keepScreenOn => 'إبقاء الشاشة مضاءة';
 
   @override

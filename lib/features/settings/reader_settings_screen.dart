@@ -372,6 +372,15 @@ class _ReaderSettingsScreenState extends State<ReaderSettingsScreen> {
                 current: prefs.fitMode,
                 onPicked: prefs.setFitMode,
               ),
+              _toggleRow(
+                icon: Icons.format_list_numbered_rounded,
+                title: context.l10n.showPageNumber,
+                value: prefs.showPageNumber,
+                onChanged: (v) async {
+                  await prefs.setShowPageNumber(v);
+                  if (mounted) setState(() {});
+                },
+              ),
               _pickerRow(
                 icon: Icons.format_paint_outlined,
                 title: context.l10n.background,

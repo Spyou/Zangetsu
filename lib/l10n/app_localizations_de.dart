@@ -1170,6 +1170,9 @@ class AppLocalizationsDe extends AppLocalizations {
   String get preloadPages => 'Seiten vorladen';
 
   @override
+  String get showPageNumber => 'Show page number';
+
+  @override
   String get keepScreenOn => 'Bildschirm an lassen';
 
   @override

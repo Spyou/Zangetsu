@@ -2253,6 +2253,12 @@ abstract class AppLocalizations {
   /// **'Preload pages'**
   String get preloadPages;
 
+  /// No description provided for @showPageNumber.
+  ///
+  /// In en, this message translates to:
+  /// **'Show page number'**
+  String get showPageNumber;
+
   /// No description provided for @keepScreenOn.
   ///
   /// In en, this message translates to:

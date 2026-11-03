@@ -61,6 +61,12 @@ class ReaderPrefs {
       _box.get('background', defaultValue: 'black') as String;
   Future<void> setBackground(String value) => _box.put('background', value);
 
+  /// Floating manga page counter shown while scrolling or turning pages.
+  bool get showPageNumber =>
+      _box.get('showPageNumber', defaultValue: true) as bool;
+  Future<void> setShowPageNumber(bool value) =>
+      _box.put('showPageNumber', value);
+
   /// Whether to keep the screen awake while reading. Shared by both readers
   /// via `ReaderComfortMixin`.
   bool get keepScreenOn => _box.get('keepScreenOn', defaultValue: true) as bool;

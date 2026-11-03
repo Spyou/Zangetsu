@@ -1173,6 +1173,9 @@ class AppLocalizationsTr extends AppLocalizations {
   String get preloadPages => 'Sayfaları önden yükle';
 
   @override
+  String get showPageNumber => 'Show page number';
+
+  @override
   String get keepScreenOn => 'Ekranı açık tut';
 
   @override

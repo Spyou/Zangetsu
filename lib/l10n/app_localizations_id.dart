@@ -1170,6 +1170,9 @@ class AppLocalizationsId extends AppLocalizations {
   String get preloadPages => 'Muat awal halaman';
 
   @override
+  String get showPageNumber => 'Show page number';
+
+  @override
   String get keepScreenOn => 'Jaga layar tetap menyala';
 
   @override

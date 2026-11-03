@@ -1158,6 +1158,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get preloadPages => 'Preload pages';
 
   @override
+  String get showPageNumber => 'Show page number';
+
+  @override
   String get keepScreenOn => 'Keep screen on';
 
   @override
