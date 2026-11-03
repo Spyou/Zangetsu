@@ -39,8 +39,7 @@ class TilePyramid {
   final int tileSize;
 
   /// The coarsest level — the first power of two at which the whole page fits
-  /// in a single tile. That tile is the base layer: always resident, costing
-  /// almost nothing, so there is something to paint the instant a page appears.
+  /// in a single grid tile. The preview may use a finer level within its budget.
   int get maxSample {
     var sample = 1;
     while ((imageWidth / sample) > tileSize ||
@@ -50,15 +49,30 @@ class TilePyramid {
     return sample;
   }
 
-  TileSpec get baseTile => TileSpec(
-        sample: maxSample,
-        source: Rect.fromLTWH(
-          0,
-          0,
-          imageWidth.toDouble(),
-          imageHeight.toDouble(),
-        ),
-      );
+  /// A clearer full-page preview, capped at 2 MiB and safe texture dimensions.
+  TileSpec get baseTile {
+    var sample = maxSample;
+    while (sample > 1) {
+      final next = sample ~/ 2;
+      final width = (imageWidth / next).ceil();
+      final height = (imageHeight / next).ceil();
+      if (width > tileSize ||
+          height > 4096 ||
+          width * height * 4 > 2 * 1024 * 1024) {
+        break;
+      }
+      sample = next;
+    }
+    return TileSpec(
+      sample: sample,
+      source: Rect.fromLTWH(
+        0,
+        0,
+        imageWidth.toDouble(),
+        imageHeight.toDouble(),
+      ),
+    );
+  }
 
   /// The level to use when the page is drawn at [scale] of its full width.
   ///

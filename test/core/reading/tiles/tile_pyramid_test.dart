@@ -8,19 +8,36 @@ void main() {
     // A tall manhwa page: this is the shape the whole feature exists for.
     final tall = TilePyramid(imageWidth: 1080, imageHeight: 6000);
 
-    test('the base level fits the whole page in one tile', () {
+    test('the base layer covers the whole page at a readable preview size', () {
       final base = tall.baseTile;
-      expect(base.sample, tall.maxSample);
+      expect(base.sample, lessThan(tall.maxSample));
+      expect((tall.imageWidth / base.sample).ceil(), greaterThanOrEqualTo(256));
       expect(base.source, Rect.fromLTWH(0, 0, 1080, 6000));
       // one tile at that level
-      expect(tall.tilesFor(Rect.fromLTWH(0, 0, 1080, 6000), tall.maxSample),
-          hasLength(1));
+      expect(
+        tall.tilesFor(Rect.fromLTWH(0, 0, 1080, 6000), tall.maxSample),
+        hasLength(1),
+      );
     });
 
     test('the coarsest level is small enough to be nearly free', () {
       // 6000 / maxSample must fit inside one 512px tile.
       expect(6000 / tall.maxSample, lessThanOrEqualTo(512));
       expect(1080 / tall.maxSample, lessThanOrEqualTo(512));
+    });
+
+    test('long-page preview is clearer and bounded in memory and size', () {
+      for (final height in [6000, 20000, 100000, 1000000]) {
+        final page = TilePyramid(imageWidth: 1080, imageHeight: height);
+        final sample = page.baseTile.sample;
+        final width = (page.imageWidth / sample).ceil();
+        final decodedHeight = (height / sample).ceil();
+        expect(width * decodedHeight * 4, lessThanOrEqualTo(2 * 1024 * 1024));
+        expect(width, lessThanOrEqualTo(512));
+        expect(decodedHeight, lessThanOrEqualTo(4096));
+      }
+      final long = TilePyramid(imageWidth: 1080, imageHeight: 20000);
+      expect((1080 / long.baseTile.sample).ceil(), greaterThanOrEqualTo(128));
     });
 
     test('full zoom asks for full resolution', () {
@@ -49,8 +66,11 @@ void main() {
       final tiles = tall.tilesFor(visible, 1);
       expect(tiles, isNotEmpty);
       for (final t in tiles) {
-        expect(t.source.overlaps(visible), isTrue,
-            reason: '${t.source} does not touch the viewport');
+        expect(
+          t.source.overlaps(visible),
+          isTrue,
+          reason: '${t.source} does not touch the viewport',
+        );
       }
       // and far less than the whole page
       final whole = tall.tilesFor(Rect.fromLTWH(0, 0, 1080, 6000), 1);
@@ -91,8 +111,10 @@ void main() {
     // 20,000px pages exist. The base layer must stay bounded.
     test('a very tall page still has a one-tile base layer', () {
       final huge = TilePyramid(imageWidth: 1080, imageHeight: 20000);
-      expect(huge.tilesFor(Rect.fromLTWH(0, 0, 1080, 20000), huge.maxSample),
-          hasLength(1));
+      expect(
+        huge.tilesFor(Rect.fromLTWH(0, 0, 1080, 20000), huge.maxSample),
+        hasLength(1),
+      );
     });
 
     test('tiles compare by value, so they work as map keys', () {
@@ -129,9 +151,14 @@ void main() {
         expect(t.source.bottom, 512.0);
       }
       // One covers x: 0-512, the other x: 512-1024
-      expect(tiles.any((t) => t.source.left == 0 && t.source.right == 512), isTrue);
-      expect(tiles.any((t) => t.source.left == 512 && t.source.right == 1024),
-          isTrue);
+      expect(
+        tiles.any((t) => t.source.left == 0 && t.source.right == 512),
+        isTrue,
+      );
+      expect(
+        tiles.any((t) => t.source.left == 512 && t.source.right == 1024),
+        isTrue,
+      );
     });
 
     test('maxSample boundary: power-of-two sample at dimension equality', () {
@@ -156,9 +183,12 @@ void main() {
       // New check: no two tiles overlap.
       for (var i = 0; i < tiles.length; i++) {
         for (var j = i + 1; j < tiles.length; j++) {
-          expect(tiles[i].source.overlaps(tiles[j].source), isFalse,
-              reason:
-                  'Tiles $i (${tiles[i].source}) and $j (${tiles[j].source}) overlap');
+          expect(
+            tiles[i].source.overlaps(tiles[j].source),
+            isFalse,
+            reason:
+                'Tiles $i (${tiles[i].source}) and $j (${tiles[j].source}) overlap',
+          );
         }
       }
     });

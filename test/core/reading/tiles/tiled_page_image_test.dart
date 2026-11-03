@@ -127,6 +127,162 @@ class _HeldTileSource implements TileSource {
 }
 
 void main() {
+  testWidgets('loads detail while scroll updates keep arriving', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(540, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    final source = _HeldTileSource();
+    final controller = ScrollController();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ListView(
+          controller: controller,
+          children: [
+            TiledPageImage(
+              path: '/scrolling.jpg',
+              imageWidth: 540,
+              imageHeight: 6000,
+              decoder: source,
+              fallbackBuilder: () => const SizedBox.shrink(),
+            ),
+          ],
+        ),
+      ),
+    );
+    final base = TilePyramid(imageWidth: 540, imageHeight: 6000).baseTile;
+
+    // Updates arrive faster than the refinement delay, without a scroll pause.
+    for (var i = 1; i <= 12; i++) {
+      controller.jumpTo(i * 20.0);
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    expect(source.calls.keys.where((spec) => spec != base), isNotEmpty);
+    await tester.pumpWidget(const SizedBox.shrink());
+    controller.dispose();
+  });
+
+  testWidgets('a slow decode catches up to the latest visible band', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(540, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    final source = _HeldTileSource();
+    final controller = ScrollController();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ListView(
+          controller: controller,
+          children: [
+            TiledPageImage(
+              path: '/slow.jpg',
+              imageWidth: 540,
+              imageHeight: 6000,
+              decoder: source,
+              fallbackBuilder: () => const SizedBox.shrink(),
+            ),
+          ],
+        ),
+      ),
+    );
+    final base = TilePyramid(imageWidth: 540, imageHeight: 6000).baseTile;
+    await tester.runAsync(() => source.resolve(base));
+    await tester.pump();
+    final oldTile = source.calls.keys.firstWhere((spec) => spec != base);
+
+    controller.jumpTo(3200);
+    await tester.pump(const Duration(milliseconds: 80));
+    await tester.runAsync(() => source.resolve(oldTile));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(source.calls.keys.last.source.top, greaterThanOrEqualTo(3000));
+    expect(source.calls.values, everyElement(1));
+    await tester.pumpWidget(const SizedBox.shrink());
+    controller.dispose();
+  });
+
+  testWidgets('prepares detail before a page enters the viewport', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(540, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    final source = _FakeTileSource();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SingleChildScrollView(
+          child: Column(
+            children: [
+              const SizedBox(height: 1000),
+              TiledPageImage(
+                path: '/next.jpg',
+                imageWidth: 540,
+                imageHeight: 6000,
+                decoder: source,
+                fallbackBuilder: () => const SizedBox.shrink(),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await _settle(tester);
+    final base = TilePyramid(imageWidth: 540, imageHeight: 6000).baseTile;
+    expect(source.requested.where((tile) => tile != base), isNotEmpty);
+    expect(source.requested.where((tile) => tile != base).first.source.top, 0);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('a short reverse scroll reuses nearby sharp tiles', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(540, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    final source = _FakeTileSource();
+    final controller = ScrollController();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SingleChildScrollView(
+          controller: controller,
+          child: TiledPageImage(
+            path: '/reverse.jpg',
+            imageWidth: 540,
+            imageHeight: 6000,
+            decoder: source,
+            fallbackBuilder: () => const SizedBox.shrink(),
+          ),
+        ),
+      ),
+    );
+    await _settle(tester);
+    final first = source.requested.firstWhere((tile) => tile.sample == 1);
+    controller.jumpTo(1200);
+    await tester.pump(const Duration(milliseconds: 50));
+    await _settle(tester);
+    controller.jumpTo(0);
+    await tester.pump(const Duration(milliseconds: 50));
+    await _settle(tester);
+    expect(source.requested.where((tile) => tile == first), hasLength(1));
+    await tester.pumpWidget(const SizedBox.shrink());
+    controller.dispose();
+  });
+
   testWidgets('falls back when the device cannot tile', (tester) async {
     // In a widget test the native library is absent, so tiling is unavailable
     // and the fallback is the ONLY thing that may be shown. This is the
@@ -209,7 +365,6 @@ void main() {
             body: ListView(
               controller: controller,
               children: [
-                const SizedBox(height: 2000),
                 TiledPageImage(
                   path: '/page.jpg',
                   imageWidth: 1080,
@@ -225,31 +380,23 @@ void main() {
       );
       await _settle(tester);
 
-      // Page occupies list-local [2000, 5000] (3000 tall at scale 0.5).
-      // Center the screen on the page's own middle (list-local y = 3500),
-      // leaving both the page's top and its bottom off screen.
-      final viewportHeight = tester.getRect(find.byType(ListView)).height;
-      controller.jumpTo(2000 + 1500 - viewportHeight / 2);
-      await _settle(tester);
-
-      expect(source.requested, isNotEmpty);
-
-      // The base tile (the whole page, coarsest level) is always requested —
-      // it is what stops the page going blank while sharper tiles load.
       final pyramid = TilePyramid(imageWidth: 1080, imageHeight: 6000);
       expect(source.requested, contains(pyramid.baseTile));
+      // Ignore speculative loads made before the viewport moved.
+      source.requested.clear();
+      final viewportHeight = tester.getRect(find.byType(ListView)).height;
+      controller.jumpTo(1500 - viewportHeight / 2);
+      await tester.pump(const Duration(milliseconds: 50));
+      await _settle(tester);
+      expect(source.requested, isNotEmpty);
 
-      // Every requested tile must overlap what's on screen PLUS the half-
-      // screen margin kept either side, so scrolling back does not have to
-      // decode again. The visible band, in full-image pixels, is roughly the
-      // middle third of the page (from the scroll position set above); the
-      // margin is half its height top and bottom.
+      // Requested detail stays within the viewport and its prefetch margin.
       const visibleBand = Rect.fromLTWH(0, 2200, 1080, 1600);
       final keptBand = Rect.fromLTRB(
         visibleBand.left,
-        visibleBand.top - visibleBand.height / 2,
+        visibleBand.top - visibleBand.height * 0.75,
         visibleBand.right,
-        visibleBand.bottom + visibleBand.height / 2,
+        visibleBand.bottom + visibleBand.height * 0.75,
       );
       for (final spec in source.requested) {
         expect(
@@ -289,20 +436,20 @@ void main() {
       final pyramid = TilePyramid(imageWidth: 1080, imageHeight: 6000);
 
       Widget page() => MaterialApp(
-            home: Scaffold(
-              body: ListView(
-                children: [
-                  TiledPageImage(
-                    path: '/page.jpg',
-                    imageWidth: 1080,
-                    imageHeight: 6000,
-                    decoder: source,
-                    fallbackBuilder: () => const SizedBox.shrink(),
-                  ),
-                ],
+        home: Scaffold(
+          body: ListView(
+            children: [
+              TiledPageImage(
+                path: '/page.jpg',
+                imageWidth: 1080,
+                imageHeight: 6000,
+                decoder: source,
+                fallbackBuilder: () => const SizedBox.shrink(),
               ),
-            ),
-          );
+            ],
+          ),
+        ),
+      );
 
       // Frame 0: _requestBase fires and asks for the base tile.
       await tester.pumpWidget(page());
@@ -315,11 +462,16 @@ void main() {
       await tester.runAsync(() => source.resolve(pyramid.baseTile));
       await tester.pump();
 
-      final refinedSpecs =
-          source.calls.keys.where((s) => s != pyramid.baseTile).toList();
-      expect(refinedSpecs, hasLength(1),
-          reason: 'expected exactly one sharper tile requested and stuck '
-              'mid-decode; got $refinedSpecs');
+      final refinedSpecs = source.calls.keys
+          .where((s) => s != pyramid.baseTile)
+          .toList();
+      expect(
+        refinedSpecs,
+        hasLength(1),
+        reason:
+            'expected exactly one sharper tile requested and stuck '
+            'mid-decode; got $refinedSpecs',
+      );
       final stuck = refinedSpecs.single;
       expect(source.calls[stuck], 1);
 
@@ -361,24 +513,24 @@ void main() {
       final pyramid = TilePyramid(imageWidth: 100, imageHeight: 100);
 
       Widget page() => MaterialApp(
-            home: Scaffold(
-              body: ListView(
-                children: [
-                  TiledPageImage(
-                    path: '/page.jpg',
-                    imageWidth: 100,
-                    imageHeight: 100,
-                    decoder: source,
-                    fallbackBuilder: () => const SizedBox.shrink(),
-                  ),
-                  // Something to scroll against: one 100px page in an 800px
-                  // viewport cannot scroll, so the drag below would move
-                  // nothing and refinement would never be asked for.
-                  const SizedBox(height: 2000),
-                ],
+        home: Scaffold(
+          body: ListView(
+            children: [
+              TiledPageImage(
+                path: '/page.jpg',
+                imageWidth: 100,
+                imageHeight: 100,
+                decoder: source,
+                fallbackBuilder: () => const SizedBox.shrink(),
               ),
-            ),
-          );
+              // Something to scroll against: one 100px page in an 800px
+              // viewport cannot scroll, so the drag below would move
+              // nothing and refinement would never be asked for.
+              const SizedBox(height: 2000),
+            ],
+          ),
+        ),
+      );
 
       // Frame 0: _requestBase asks for the base tile (call #1) and hangs.
       await tester.pumpWidget(page());
@@ -406,13 +558,22 @@ void main() {
       ))!;
       await tester.pump();
 
-      expect(first.disposed, isFalse,
-          reason: 'the tile actually in use must not be disposed out from '
-              'under the painter');
-      expect(second.disposed, isTrue,
-          reason: 'a duplicate decode that lands after the spec is already '
-              'held must be disposed, not silently overwrite it (a leaked '
-              'ui.Image on the scroll path)');
+      expect(
+        first.disposed,
+        isFalse,
+        reason:
+            'the tile actually in use must not be disposed out from '
+            'under the painter',
+      );
+      expect(
+        second.disposed,
+        isTrue,
+        reason:
+            'a duplicate decode that lands after the spec is already '
+            'held must be disposed, not silently overwrite it (a leaked '
+            'ui.Image on the scroll path)',
+      );
+      await tester.pump(const Duration(milliseconds: 50));
     },
   );
 }

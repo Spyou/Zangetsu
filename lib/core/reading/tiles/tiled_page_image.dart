@@ -43,6 +43,7 @@ class _TiledPageImageState extends State<TiledPageImage> {
   bool _failed = false;
   bool _baseRequested = false;
   bool _refining = false;
+  bool _refinePending = false;
 
   /// The scrollable this page sits in. Refinement is driven from here rather
   /// than from rebuilds: a sliver TRANSLATES its children while you scroll, it
@@ -51,7 +52,7 @@ class _TiledPageImageState extends State<TiledPageImage> {
   /// say. That is the "blurry until I touch it" bug: the sharp tiles were
   /// never asked for until you interacted.
   ScrollPosition? _position;
-  Timer? _refineDebounce;
+  Timer? _refineTimer;
 
   @override
   void initState() {
@@ -71,18 +72,21 @@ class _TiledPageImageState extends State<TiledPageImage> {
   }
 
   void _onScroll() {
-    // Debounced: during a fling this fires every frame, and decoding tiles for
-    // positions already flown past is work thrown away. Waiting for the scroll
-    // to settle asks only for what you actually stopped on.
-    _refineDebounce?.cancel();
-    _refineDebounce = Timer(const Duration(milliseconds: 40), () {
+    _refinePending = true;
+    _scheduleRefine();
+  }
+
+  void _scheduleRefine() {
+    // Throttle without restarting: continuous scrolling must still get detail.
+    if (_refineTimer?.isActive ?? false) return;
+    _refineTimer = Timer(const Duration(milliseconds: 40), () {
       if (mounted) _refineForViewport();
     });
   }
 
   @override
   void dispose() {
-    _refineDebounce?.cancel();
+    _refineTimer?.cancel();
     _position?.removeListener(_onScroll);
     for (final tile in _tiles.values) {
       tile.dispose();
@@ -96,7 +100,10 @@ class _TiledPageImageState extends State<TiledPageImage> {
     if (_baseRequested) return;
     _baseRequested = true;
     final tile = await widget.decoder.decode(widget.path, _pyramid.baseTile);
-    if (!mounted) return;
+    if (!mounted) {
+      tile?.dispose();
+      return;
+    }
     if (tile == null) {
       // The base layer is the proof that this page can tile at all. If it
       // cannot be had, this page uses the old path entirely.
@@ -111,7 +118,7 @@ class _TiledPageImageState extends State<TiledPageImage> {
   ///
   /// The page lives inside a sliver, so the widget cannot know what part of
   /// itself is visible without asking the viewport it sits in.
-  Rect? _visibleSource() {
+  Rect? _sourceBand({double viewportMargin = 0}) {
     final box = context.findRenderObject() as RenderBox?;
     if (box == null || !box.hasSize || box.size.isEmpty) return null;
     final viewport = RenderAbstractViewport.maybeOf(box);
@@ -132,9 +139,9 @@ class _TiledPageImageState extends State<TiledPageImage> {
 
     return Rect.fromLTWH(
       0,
-      topImagePx,
+      topImagePx - heightImagePx * viewportMargin,
       widget.imageWidth.toDouble(),
-      heightImagePx,
+      heightImagePx * (1 + 2 * viewportMargin),
     ).intersect(
       Rect.fromLTWH(
         0,
@@ -149,11 +156,18 @@ class _TiledPageImageState extends State<TiledPageImage> {
   /// what is not. The base layer is never dropped — it is what stops the page
   /// going blank.
   Future<void> _refineForViewport() async {
-    if (_failed || !mounted || _refining) return;
+    if (_failed || !mounted) return;
+    if (_refining) {
+      _refinePending = true;
+      return;
+    }
     _refining = true;
+    _refinePending = false;
     try {
-      final visible = _visibleSource();
-      if (visible == null || visible.isEmpty) return;
+      final visible = _sourceBand();
+      final band = _sourceBand(viewportMargin: 0.75);
+      if (visible == null || band == null || band.isEmpty) return;
+      final retained = _sourceBand(viewportMargin: 1.25) ?? band;
 
       final box = context.findRenderObject() as RenderBox?;
       if (box == null) return;
@@ -166,38 +180,31 @@ class _TiledPageImageState extends State<TiledPageImage> {
       final scale = box.size.width * dpr / widget.imageWidth;
       final sample = _pyramid.sampleFor(scale);
 
-      // Hold half a screen above and below what is actually visible. Keeping
-      // only the visible band meant every small scroll — and every scroll back
-      // up — threw tiles away and had to decode them again, which is the page
-      // going blurry under you for no reason. The margin costs a few MB and
-      // removes that entirely; a fast fling still outruns it, and nothing can
-      // fix that but decoding faster.
-      final margin = visible.height * 0.5;
-      final band = Rect.fromLTRB(
-        visible.left,
-        visible.top - margin,
-        visible.right,
-        visible.bottom + margin,
-      ).intersect(
-        Rect.fromLTWH(
-          0,
-          0,
-          widget.imageWidth.toDouble(),
-          widget.imageHeight.toDouble(),
-        ),
-      );
+      // Visible detail first; the off-screen margin must not delay reading.
+      final wanted = {
+        ..._pyramid.tilesFor(visible, sample),
+        ..._pyramid.tilesFor(band, sample),
+      };
 
-      final wanted = _pyramid.tilesFor(band, sample).toSet();
-
-      // Free anything that is neither wanted nor the base layer.
+      // Rebuild the painter when evicting, before it can draw released images.
       final base = _pyramid.baseTile;
-      for (final spec in _tiles.keys.toList()) {
-        if (spec != base && !wanted.contains(spec)) {
-          _tiles.remove(spec)?.dispose();
-        }
+      final stale = _tiles.keys
+          .where(
+            (spec) =>
+                spec != base &&
+                (spec.sample != sample || !spec.source.overlaps(retained)),
+          )
+          .toList();
+      if (stale.isNotEmpty) {
+        setState(() {
+          for (final spec in stale) {
+            _tiles.remove(spec)?.dispose();
+          }
+        });
       }
 
       for (final spec in wanted) {
+        if (_refinePending) break;
         if (_tiles.containsKey(spec)) continue;
         final tile = await widget.decoder.decode(widget.path, spec);
         if (tile == null) continue;
@@ -210,6 +217,10 @@ class _TiledPageImageState extends State<TiledPageImage> {
       }
     } finally {
       _refining = false;
+      if (mounted && _refinePending) {
+        // A decode already yielded to the platform; catch up without another delay.
+        scheduleMicrotask(_refineForViewport);
+      }
     }
   }
 
