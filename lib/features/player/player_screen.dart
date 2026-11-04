@@ -16,6 +16,8 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../core/cache/app_image_cache.dart';
 import '../../core/di/injector.dart';
+import '../../core/playback/filler_service.dart';
+import '../../core/repository/catalogue_repository.dart';
 import '../../core/repository/source_repository.dart';
 import '../../core/zmode/playback_resolver.dart';
 import '../../core/tracker/tracker_hub.dart';
@@ -53,6 +55,8 @@ import '../../core/app_mode.dart';
 import '../../core/tv/tv_focusable.dart';
 import '../settings/settings_screen.dart';
 import 'player_controller.dart';
+import 'player_watch_page.dart';
+import 'watch_page_info.dart';
 import 'player_controls_config.dart';
 import 'player_tv_controls.dart';
 import 'seek_preview.dart';
@@ -97,6 +101,33 @@ bool headerGatedButPlayerCant(Map<String, String>? headers, String pkg) {
   });
   if (!gated) return false;
   return !kHeaderForwardingPlayers.any(pkg.startsWith);
+}
+
+/// Sensor-driven presentation switch, used only when the watch page is enabled
+/// and the orientation preference follows the sensor. A physical turn swaps
+/// layouts instead of stranding a portrait fullscreen (a mini video with no
+/// way out but Back): portrait shows the page, landscape the player. Returns
+/// null when nothing should change. Pure so the matrix is unit-testable.
+@visibleForTesting
+PlayerPresentation? rotationPresentation({
+  required bool watchPageEnabled,
+  required bool systemSensor,
+  required Orientation? last,
+  required Orientation current,
+  required PlayerPresentation presentation,
+}) {
+  if (!watchPageEnabled || !systemSensor || last == null || last == current) {
+    return null;
+  }
+  if (current == Orientation.portrait &&
+      presentation == PlayerPresentation.fullscreen) {
+    return PlayerPresentation.watchPage;
+  }
+  if (current == Orientation.landscape &&
+      presentation == PlayerPresentation.watchPage) {
+    return PlayerPresentation.fullscreen;
+  }
+  return null;
 }
 
 /// True when [url] is already served by a local proxy (localhost / 127.0.0.1) —
@@ -152,6 +183,7 @@ class PlayerScreen extends StatefulWidget {
     this.resumePosition = Duration.zero,
     this.history,
     this.showTitle,
+    this.showDescription,
     this.cover,
     this.coverHeaders,
     this.showUrl,
@@ -224,6 +256,7 @@ class PlayerScreen extends StatefulWidget {
   // Optional show-context threaded into history (Continue Watching feed).
   final WatchHistory? history;
   final String? showTitle;
+  final String? showDescription;
   final String? cover;
   final Map<String, String>? coverHeaders;
   final String? showUrl;
@@ -478,6 +511,86 @@ class _PlayerScreenState extends State<PlayerScreen> {
   /// orientation — landscape unless the user picked otherwise.
   bool _portraitMode = sl<PlaybackPrefs>().playerOrientation == 'portrait';
 
+  /// Portrait watch page vs legacy fullscreen. Phone follows the Open-episodes
+  /// setting; TV and external routes always stay fullscreen.
+  PlayerPresentation _presentation = PlayerPresentation.fullscreen;
+
+  bool get _watchPageEnabled =>
+      !sl<AppMode>().isTv &&
+      sl<PlaybackPrefs>().openingLayout == 'watch';
+
+  void _enterFullscreen() {
+    _lastOrientation = MediaQuery.orientationOf(context);
+    setState(() => _presentation = PlayerPresentation.fullscreen);
+    // Fullscreen is landscape: a portrait fullscreen is the stranded mini
+    // (video shrunk inside fullscreen chrome, Back the only exit). Sensor
+    // followers stay unlocked only when the device is already landscape;
+    // otherwise the lock below applies and a turn does nothing.
+    final landscape =
+        MediaQuery.orientationOf(context) == Orientation.landscape;
+    SystemChrome.setPreferredOrientations(
+      _followSensor && landscape
+          ? DeviceOrientation.values
+          : const [
+              DeviceOrientation.landscapeLeft,
+              DeviceOrientation.landscapeRight,
+            ],
+    );
+  }
+
+  void _enterWatchPage() {
+    _lastOrientation = MediaQuery.orientationOf(context);
+    setState(() => _presentation = PlayerPresentation.watchPage);
+    // Sensor followers stay unlocked so a landscape turn goes fullscreen;
+    // everyone else pins portrait with the page.
+    SystemChrome.setPreferredOrientations(
+      _followSensor
+          ? DeviceOrientation.values
+          : const [DeviceOrientation.portraitUp],
+    );
+  }
+
+  /// Physical orientation the last presentation decision was made for. Manual
+  /// switches record it so the sensor hook below doesn't flip straight back.
+  Orientation? _lastOrientation;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Sensor-driven layout switching: only when the page is enabled and the
+    // orientation preference follows the sensor (locked orientations never
+    // turn, so there is nothing to follow).
+    if (!_watchPageEnabled ||
+        sl<PlaybackPrefs>().playerOrientation != 'system') {
+      return;
+    }
+    final current = MediaQuery.orientationOf(context);
+    final next = rotationPresentation(
+      watchPageEnabled: true,
+      systemSensor: true,
+      last: _lastOrientation,
+      current: current,
+      presentation: _presentation,
+    );
+    _lastOrientation = current;
+    if (next == PlayerPresentation.watchPage) {
+      _enterWatchPage();
+    } else if (next == PlayerPresentation.fullscreen) {
+      _enterFullscreen();
+    }
+  }
+
+  /// Fullscreen Back lands on the watch page instead of leaving the player;
+  /// the page's own Back uses the normal close guard.
+  void _handlePlayerBack() {
+    if (_watchPageEnabled &&
+        _presentation == PlayerPresentation.fullscreen) {
+      _enterWatchPage();
+      return;
+    }
+    Navigator.of(context).maybePop();
+  }
+
   /// Follow the device sensor instead of locking, when the saved default is
   /// 'system'. The ⟳ button still locks to one side for the session.
   bool _followSensor = sl<PlaybackPrefs>().playerOrientation == 'system';
@@ -492,10 +605,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
           _portraitMode ? 'portrait' : 'landscape',
         );
 
-  /// Locked either way rather than following the sensor: a phone resting flat
-  /// shouldn't flip the video mid-episode, and this still works for people who
-  /// keep system auto-rotate switched off.
+  /// The ⟳ button. With the watch page enabled, upright watching IS the
+  /// watch page — this goes there instead of portrait-locking the fullscreen
+  /// UI into a stranded mini video. Legacy toggle kept when the page is off.
   void _toggleOrientation() {
+    if (_watchPageEnabled) {
+      _enterWatchPage();
+      _bumpControls();
+      return;
+    }
     setState(() {
       _followSensor = false;
       _portraitMode = !_portraitMode;
@@ -557,7 +675,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   void _initInApp() {
     _routeTeardownLease ??= playerRouteTeardownBarrier.acquire();
-    _turnLandscapeWhenCovered();
+    if (_watchPageEnabled) {
+      _presentation = PlayerPresentation.watchPage;
+    } else {
+      _turnLandscapeWhenCovered();
+    }
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     // Wake-lock is bound to playback in _startSession, once the player exists.
     // The volume swipe sets the real system volume; hide the OS volume bar so
@@ -857,6 +979,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
         peek: widget.peek,
         showUrl: widget.showUrl,
         showTitle: widget.showTitle,
+        showDescription: widget.showDescription,
         cover: widget.cover,
         coverHeaders: widget.coverHeaders,
         category: widget.category ?? 'sub',
@@ -1987,6 +2110,85 @@ class _PlayerScreenState extends State<PlayerScreen> {
     return d.inHours > 0 ? '${d.inHours}:$m:$s' : '$m:$s';
   }
 
+  /// The one stable video surface: the live texture plus the poster that
+  /// covers it until the first frame decodes. Shared by fullscreen and the
+  /// portrait watch page — the [Video] widget re-attaches to the same
+  /// controller, so switching layouts never re-opens the stream.
+  Widget _buildVideoSurface() {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        // The video. NoVideoControls disables media_kit's built-in
+        // controls (which include their own buffering spinner + gestures)
+        // so ONLY our custom Netflix overlay shows — fixes the duplicate
+        // spinner / double controls.
+        Center(
+          child: ValueListenableBuilder<int>(
+            valueListenable: _c.subtitleStyleRev,
+            builder: (context, _, _) => Transform.translate(
+              // Pinch-zoom: scale about centre, then pan. Overflow is
+              // clipped by the Stack so a zoomed frame crops to screen.
+              offset: _zoomPan,
+              child: Transform.scale(
+                scale: _zoom,
+                child: Video(
+                  controller: _c.videoController,
+                  controls: NoVideoControls,
+                  fit: _fits[_fitIndex].$1,
+                  subtitleViewConfiguration: _subtitleConfig(),
+                ),
+              ),
+            ),
+          ),
+        ),
+
+        // Poster-on-start: cover the black surface with the episode's
+        // poster until the first frame decodes, then fade it out. width
+        // emits non-null/>0 once dimensions are known (≈ first frame), and
+        // resets per new media so the poster re-shows each episode.
+        Positioned.fill(
+          child: StreamBuilder<int?>(
+            stream: _c.player.stream.width,
+            initialData: _c.player.state.width,
+            builder: (context, snap) {
+              final hasFrame = (snap.data ?? 0) > 0;
+              final img =
+                  (_c.currentEpisode.thumbnail?.trim().isNotEmpty ?? false)
+                  ? _c.currentEpisode.thumbnail!.trim()
+                  : (widget.cover ?? '');
+              return IgnorePointer(
+                child: AnimatedOpacity(
+                  opacity: hasFrame || img.isEmpty ? 0 : 1,
+                  duration: const Duration(milliseconds: 350),
+                  child: img.isEmpty
+                      ? const ColoredBox(color: Colors.black)
+                      : Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            CachedNetworkImage(
+                              imageUrl: img,
+                              httpHeaders: widget.coverHeaders,
+                              fit: BoxFit.cover,
+                              errorWidget: (c, u, e) =>
+                                  const ColoredBox(color: Colors.black),
+                            ),
+                            // subtle scrim so it reads as a player background
+                            const DecoratedBox(
+                              decoration: BoxDecoration(
+                                color: Color(0x33000000),
+                              ),
+                            ),
+                          ],
+                        ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildUpNextCard() {
     final nextIdx = _c.state.currentIndex + 1;
     final next = nextIdx < _c.episodes.length ? _c.episodes[nextIdx] : null;
@@ -2148,6 +2350,168 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
   }
 
+  // ── Portrait watch page ────────────────────────────────────────────────
+
+  /// Key of the show the lazy description fetch was requested for. Entries
+  /// without a detail snapshot enrich once per show, lazily, and never delay
+  /// playback: a new show (or a changed key) re-arms, anything else reuses.
+  String? _descKey;
+  String? _enrichedDescription;
+
+  /// Show synopsis for entries that arrived without one (anything but Details
+  /// and offline downloads). Fire-and-forget with arrival guards: a changed
+  /// show, a disposed screen, or a failed fetch just leaves the section
+  /// hidden — the title and episodes were already on screen.
+  void _maybeEnrichDescription() {
+    if (widget.localOnly) return;
+    final url = widget.showUrl?.trim() ?? '';
+    if (url.isEmpty) return;
+    if ((widget.showDescription?.trim().isNotEmpty ?? false)) return;
+    final key = '${widget.sourceId}::$url';
+    if (_descKey == key) return;
+    _descKey = key;
+    final requestedKey = key;
+    unawaited(
+      sl<CatalogueRepository>()
+          .detail(url, sourceId: widget.sourceId)
+          .then((d) {
+            if (!mounted || _descKey != requestedKey) return;
+            final desc = d.description?.trim() ?? '';
+            if (desc.isEmpty || _enrichedDescription == desc) return;
+            setState(() => _enrichedDescription = desc);
+          })
+          .catchError((_) {}),
+    );
+  }
+
+  /// The autoplay target under the same rule the Next button and autoplay use
+  /// (auto-skip filler when that pref is on). Null = no next episode.
+  int? _upNextIndex() => nextAutoplayIndex(
+    currentIndex: _c.state.currentIndex,
+    episodes: _c.episodes,
+    fillerEps: _c.fillerEpisodes.value,
+    autoSkipFiller: sl<PlaybackPrefs>().autoSkipFiller,
+  );
+
+  void _openComingSoonSheet() {
+    _sheet<void>(
+      _SheetSurface(
+        child: SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  Icons.chat_bubble_outline_rounded,
+                  color: AppColors.accent,
+                  size: 28,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  context.l10n.watchComments,
+                  style: AppText.title.copyWith(color: Colors.white),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  context.l10n.watchComingSoon,
+                  style: AppText.body.copyWith(
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _setAutoplayNext(bool value) async {
+    await sl<PlaybackPrefs>().setAutoplayNext(value);
+    if (mounted) setState(() {});
+  }
+
+  void _openWatchMorePanel() {
+    _ControlsOverlay.showPlayerMorePanel(
+      context: context,
+      onInteract: _bumpControls,
+      decoderLabel: _shortDecoder(_c.decoderMode),
+      enhanceActive: sl<PlaybackPrefs>().videoShaderStyle != 'off',
+      onDecoder: _openDecoderSheet,
+      onEnhance: _openEnhanceSheet,
+      onColorProfile: _openColorProfileSheet,
+      onScreenshot: _captureScreenshot,
+      sleepActive: _sleepActive,
+      onSleep: _openSleepSheet,
+      onPip: _pipSupported ? _enterPip : null,
+    );
+  }
+
+  /// Portrait watch page: the stable surface on top, episode info below.
+  /// Rebuilt from cubit state, so episode changes refresh the header and
+  /// Up-next — but position ticks never reach here (they stay inside the
+  /// seek row's own StreamBuilders).
+  Widget _buildWatchPage(PlayerState state) {
+    final prefs = sl<PlaybackPrefs>();
+    _maybeEnrichDescription();
+    final header = resolveWatchPageHeader(
+      episode: _c.currentEpisode,
+      showTitle: widget.showTitle,
+      showDescription: widget.showDescription ?? _enrichedDescription,
+    );
+    final nextIdx = _upNextIndex();
+    Episode? next;
+    if (nextIdx != null &&
+        nextIdx >= 0 &&
+        nextIdx < _c.episodes.length &&
+        nextIdx != state.currentIndex) {
+      next = _c.episodes[nextIdx];
+    }
+    final nextNum = next == null ? null : episodeNumberInt(next);
+    return PlayerWatchPage(
+      video: _buildVideoSurface(),
+      header: header,
+      coverHeaders: widget.coverHeaders,
+      positionStream: _c.player.stream.position,
+      durationStream: _c.player.stream.duration,
+      playingStream: _c.player.stream.playing,
+      initialPlaying: _c.player.state.playing,
+      initialPosition: _c.player.state.position,
+      initialDuration: _c.player.state.duration,
+      hasPrevious: state.currentIndex > 0,
+      nextThumb: (next?.thumbnail?.trim().isNotEmpty ?? false)
+          ? next!.thumbnail!.trim()
+          : null,
+      nextLabel: next == null || nextNum == null
+          ? null
+          : (next.season != null ? 'S${next.season} E$nextNum' : 'E$nextNum'),
+      nextTitle: next == null
+          ? null
+          : (episodeDisplayTitle(next, number: nextNum) ??
+                (nextNum != null ? 'Episode $nextNum' : next.title)),
+      autoplay: prefs.autoplayNext,
+      episodeCount: _c.episodes.length,
+      serverName: _c.state.active?.label,
+      onTogglePlay: _c.togglePlay,
+      onSeek: (d) => _c.player.seek(d),
+      onPrevious: () => _c.playPrevious(),
+      onNext: () => _c.playNext(),
+      onFullscreen: _enterFullscreen,
+      onBack: _handleCloseRequest,
+      onServer: _openSourceSheet,
+      onAudio: () => _openAudioSubsSheet(focus: AudioSubsFocus.audio),
+      onSubtitles: () =>
+          _openAudioSubsSheet(focus: AudioSubsFocus.subtitles),
+      onMore: _openWatchMorePanel,
+      onEpisodes: _openEpisodesPanel,
+      onComments: _openComingSoonSheet,
+      onAutoplayChanged: _setAutoplayNext,
+    );
+  }
+
   // ── Sheets ──────────────────────────────────────────────────────────────
 
   Future<T?> _sheet<T>(Widget child) {
@@ -2241,8 +2605,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   /// Netflix-style combined Audio | Subtitles panel (two columns, live
-  /// selection without closing).
-  void _openAudioSubsSheet({bool castMode = false}) {
+  /// selection without closing). Portrait chips pass [focus] to open on one
+  /// column; fullscreen passes nothing and keeps the pair.
+  void _openAudioSubsSheet({bool castMode = false, AudioSubsFocus? focus}) {
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
@@ -2255,6 +2620,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
           top: false,
           child: _AudioSubsSheet(
             controller: _c,
+            focus: focus,
             onInteract: _bumpControls,
             castMode: castMode,
             onSoftSubPicked: (s) => _castSubtitle = s,
@@ -2635,6 +3001,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 ),
               );
             }
+            // Portrait watch page (phone only): the stable surface on top,
+            // episode info below. TV and fullscreen keep the stack below.
+            if (_presentation == PlayerPresentation.watchPage &&
+                !sl<AppMode>().isTv) {
+              return _buildWatchPage(state);
+            }
             // Reset any pinch-zoom when the episode changes.
             if (_zoomIndex != state.currentIndex) {
               _zoomIndex = state.currentIndex;
@@ -2651,76 +3023,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  // 1. The video. NoVideoControls disables media_kit's built-in
-                  // controls (which include their own buffering spinner + gestures)
-                  // so ONLY our custom Netflix overlay shows — fixes the duplicate
-                  // spinner / double controls.
-                  Center(
-                    child: ValueListenableBuilder<int>(
-                      valueListenable: _c.subtitleStyleRev,
-                      builder: (context, _, _) => Transform.translate(
-                        // Pinch-zoom: scale about centre, then pan. Overflow is
-                        // clipped by the Stack so a zoomed frame crops to screen.
-                        offset: _zoomPan,
-                        child: Transform.scale(
-                          scale: _zoom,
-                          child: Video(
-                            controller: _c.videoController,
-                            controls: NoVideoControls,
-                            fit: _fits[_fitIndex].$1,
-                            subtitleViewConfiguration: _subtitleConfig(),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-
-                  // 1b. Poster-on-start: cover the black surface with the episode's
-                  // poster until the first frame decodes, then fade it out. width
-                  // emits non-null/>0 once dimensions are known (≈ first frame), and
-                  // resets per new media so the poster re-shows each episode.
-                  Positioned.fill(
-                    child: StreamBuilder<int?>(
-                      stream: _c.player.stream.width,
-                      initialData: _c.player.state.width,
-                      builder: (context, snap) {
-                        final hasFrame = (snap.data ?? 0) > 0;
-                        final img =
-                            (_c.currentEpisode.thumbnail?.trim().isNotEmpty ??
-                                false)
-                            ? _c.currentEpisode.thumbnail!.trim()
-                            : (widget.cover ?? '');
-                        return IgnorePointer(
-                          child: AnimatedOpacity(
-                            opacity: hasFrame || img.isEmpty ? 0 : 1,
-                            duration: const Duration(milliseconds: 350),
-                            child: img.isEmpty
-                                ? const ColoredBox(color: Colors.black)
-                                : Stack(
-                                    fit: StackFit.expand,
-                                    children: [
-                                      CachedNetworkImage(
-                                        imageUrl: img,
-                                        httpHeaders: widget.coverHeaders,
-                                        fit: BoxFit.cover,
-                                        errorWidget: (c, u, e) =>
-                                            const ColoredBox(
-                                              color: Colors.black,
-                                            ),
-                                      ),
-                                      // subtle scrim so it reads as a player background
-                                      const DecoratedBox(
-                                        decoration: BoxDecoration(
-                                          color: Color(0x33000000),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
+                  _buildVideoSurface(),
 
                   // 2. Input layer — D-pad on TV; touch gestures on phone.
                   // On TV: PlayerTvControls owns the Focus/key-handler + bottom bar.
@@ -3081,7 +3384,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           onInteract: _bumpControls,
                           onRotate: _toggleOrientation,
                           portraitMode: _portraitMode,
-                          onBack: () => Navigator.of(context).maybePop(),
+                          onBack: _handlePlayerBack,
                           onSpeed: _openSpeedSheet,
                           onAudioSubs: _openAudioSubsSheet,
                           onQuality: _openQualitySheet,
@@ -3326,8 +3629,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
     // 'direct' pops straight through (canPop true); the other two are vetoed
     // and routed to _handleCloseRequest. This catches the back button, the
     // system/gesture back, and the cast-panel back — all of which maybePop().
+    // Fullscreen with the watch page enabled intercepts first: Back drops to
+    // the watch page instead of leaving the player.
     return PopScope(
-      canPop: sl<PlaybackPrefs>().closeConfirmation == 'direct',
+      canPop: _presentation == PlayerPresentation.fullscreen &&
+              _watchPageEnabled
+          ? false
+          : sl<PlaybackPrefs>().closeConfirmation == 'direct',
       onPopInvokedWithResult: (didPop, _) {
         AppLogger.instance.log(
           '[player-route] pop didPop=$didPop loading=${_c.state.loadingSources} '
@@ -3335,6 +3643,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
           'deadEnd=$_handlingDeadEnd',
         );
         if (didPop) return;
+        if (_presentation == PlayerPresentation.fullscreen &&
+            _watchPageEnabled) {
+          _enterWatchPage();
+          return;
+        }
         _handleCloseRequest();
       },
       child: scaffold,

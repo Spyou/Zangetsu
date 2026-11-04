@@ -1156,6 +1156,41 @@ class AppLocalizationsIt extends AppLocalizations {
   String get orientationLock => 'Blocco orientamento';
 
   @override
+  String get openEpisodesIn => 'Open episodes in';
+
+  @override
+  String get openingLayoutWatchPage => 'Watch page';
+
+  @override
+  String get openingLayoutFullscreen => 'Fullscreen';
+
+  @override
+  String get watchServer => 'Server';
+
+  @override
+  String get watchUpNext => 'Up next';
+
+  @override
+  String watchAllEpisodes(int count) {
+    return 'All episodes ($count)';
+  }
+
+  @override
+  String get watchComments => 'Comments';
+
+  @override
+  String get watchComingSoon => 'Coming soon';
+
+  @override
+  String get watchAutoplay => 'Auto-play';
+
+  @override
+  String get watchSeeMore => 'See more';
+
+  @override
+  String get watchSeeLess => 'See less';
+
+  @override
   String get doublePageLandscape => 'Doppia pagina (orizzontale)';
 
   @override

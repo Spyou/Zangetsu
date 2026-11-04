@@ -43,4 +43,17 @@
     <string name="phone_player_error_timeout">This is taking too long</string>
     <string name="phone_player_action_retry">Retry</string>
     <string name="phone_player_action_back">Back</string>
+    <!-- Portrait watch-page info panel. Reuses the menu strings above for
+        the action row; only the panel-only labels live here. -->
+    <string name="phone_player_watch_server">Server</string>
+    <string name="phone_player_watch_audio">Audio</string>
+    <string name="phone_player_watch_comments">Comments</string>
+    <string name="phone_player_watch_coming_soon">Coming soon</string>
+    <string name="phone_player_watch_up_next">Up next</string>
+    <string name="phone_player_watch_autoplay">Auto-play</string>
+    <string name="phone_player_watch_all_episodes">All episodes (%1$d)</string>
+    <string name="phone_player_watch_see_more">See more</string>
+    <string name="phone_player_watch_see_less">See less</string>
+    <string name="phone_player_version_sub">Sub</string>
+    <string name="phone_player_version_dub">Dub</string>
 </resources>

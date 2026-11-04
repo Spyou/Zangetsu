@@ -2223,6 +2223,72 @@ abstract class AppLocalizations {
   /// **'Orientation lock'**
   String get orientationLock;
 
+  /// No description provided for @openEpisodesIn.
+  ///
+  /// In en, this message translates to:
+  /// **'Open episodes in'**
+  String get openEpisodesIn;
+
+  /// No description provided for @openingLayoutWatchPage.
+  ///
+  /// In en, this message translates to:
+  /// **'Watch page'**
+  String get openingLayoutWatchPage;
+
+  /// No description provided for @openingLayoutFullscreen.
+  ///
+  /// In en, this message translates to:
+  /// **'Fullscreen'**
+  String get openingLayoutFullscreen;
+
+  /// No description provided for @watchServer.
+  ///
+  /// In en, this message translates to:
+  /// **'Server'**
+  String get watchServer;
+
+  /// No description provided for @watchUpNext.
+  ///
+  /// In en, this message translates to:
+  /// **'Up next'**
+  String get watchUpNext;
+
+  /// No description provided for @watchAllEpisodes.
+  ///
+  /// In en, this message translates to:
+  /// **'All episodes ({count})'**
+  String watchAllEpisodes(int count);
+
+  /// No description provided for @watchComments.
+  ///
+  /// In en, this message translates to:
+  /// **'Comments'**
+  String get watchComments;
+
+  /// No description provided for @watchComingSoon.
+  ///
+  /// In en, this message translates to:
+  /// **'Coming soon'**
+  String get watchComingSoon;
+
+  /// No description provided for @watchAutoplay.
+  ///
+  /// In en, this message translates to:
+  /// **'Auto-play'**
+  String get watchAutoplay;
+
+  /// No description provided for @watchSeeMore.
+  ///
+  /// In en, this message translates to:
+  /// **'See more'**
+  String get watchSeeMore;
+
+  /// No description provided for @watchSeeLess.
+  ///
+  /// In en, this message translates to:
+  /// **'See less'**
+  String get watchSeeLess;
+
   /// No description provided for @doublePageLandscape.
   ///
   /// In en, this message translates to:

@@ -448,6 +448,24 @@
 	"background": "Background",
 	"colourFilter": "Colour filter",
 	"orientationLock": "Orientation lock",
+	"openEpisodesIn": "Open episodes in",
+	"openingLayoutWatchPage": "Watch page",
+	"openingLayoutFullscreen": "Fullscreen",
+	"watchServer": "Server",
+	"watchUpNext": "Up next",
+	"watchAllEpisodes": "All episodes ({count})",
+	"@watchAllEpisodes": {
+		"placeholders": {
+			"count": {
+				"type": "int"
+			}
+		}
+	},
+	"watchComments": "Comments",
+	"watchComingSoon": "Coming soon",
+	"watchAutoplay": "Auto-play",
+	"watchSeeMore": "See more",
+	"watchSeeLess": "See less",
 	"doublePageLandscape": "Double-page (landscape)",
 	"pairFacingPagesInALandscapeSpread": "Pair facing pages in a landscape spread",
 	"cropBorders": "Crop borders",

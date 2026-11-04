@@ -11,6 +11,21 @@
         <item name="android:tint">@color/phone_player_on_surface</item>
     </style>
     <style name="PhonePlayerActionButton.Transport" parent="PhonePlayerActionButton" />
+    <!-- Pill action chip for the portrait watch info row (Server/Audio/…). -->
+    <style name="PhonePlayerWatchAction">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginEnd">8dp</item>
+        <item name="android:background">@drawable/phone_player_action_surface</item>
+        <item name="android:foreground">@drawable/phone_player_icon_ripple</item>
+        <item name="android:clickable">true</item>
+        <item name="android:focusable">true</item>
+        <item name="android:minHeight">48dp</item>
+        <item name="android:paddingHorizontal">14dp</item>
+        <item name="android:textColor">@color/phone_player_on_surface</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
     <style name="PhonePlayerDialog" parent="android:Theme.DeviceDefault.Dialog.Alert">
         <item name="android:dialogCornerRadius">28dp</item>
         <item name="android:windowBackground">@drawable/phone_player_dialog_surface</item>

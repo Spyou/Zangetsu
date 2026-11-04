@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/di/injector.dart';
+import '../../core/repository/catalogue_repository.dart';
 import '../../core/discord/discord_rpc.dart';
 import '../../core/discord/discord_presence.dart';
 import '../../core/share/share_link.dart';
@@ -111,6 +112,11 @@ Map<String, dynamic> phonePlayerArgs({
   String? subtitleFontPath,
   String? cover,
   Map<String, String>? coverHeaders,
+  String openingLayout = 'fullscreen',
+  String? showDescription,
+  List<String>? availableCategories,
+  String category = 'sub',
+  int sessionId = 0,
 }) {
   final mime = source == null ? null : phoneMimeFor(source);
   return <String, dynamic>{
@@ -145,6 +151,11 @@ Map<String, dynamic> phonePlayerArgs({
     'subtitleFontPath': ?subtitleFontPath,
     'cover': ?cover,
     'coverHeaders': coverHeaders ?? const <String, String>{},
+    'openingLayout': openingLayout,
+    'showDescription': ?showDescription,
+    'availableCategories': availableCategories ?? const <String>[],
+    'category': category,
+    'sessionId': sessionId,
   };
 }
 
@@ -215,6 +226,7 @@ Future<bool> launchPhonePlayback({
   Map<String, String>? coverHeaders,
   String category = 'sub',
   List<String> availableCategories = const [],
+  String? showDescription,
   WatchHistory? history,
   VideoSource? initialSource,
   int? malId,
@@ -238,6 +250,7 @@ Future<bool> launchPhonePlayback({
     coverHeaders: coverHeaders,
     category: category,
     availableCategories: availableCategories,
+    showDescription: showDescription,
     history: history,
     initialSource: initialSource,
     malId: malId,
@@ -275,6 +288,9 @@ class PhoneNativePlayer {
   static bool _tmdbIsTv = false;
   static String? _imdbId;
   static String _category = 'sub';
+  static List<String> _availableCategories = const [];
+  static int _sessionId = 0;
+  static String? _showDescription;
   static ResumeStore? _resume;
   static WatchHistory? _history;
   static bool _autoResume = true;
@@ -303,6 +319,7 @@ class PhoneNativePlayer {
     Map<String, String>? coverHeaders,
     String category = 'sub',
     List<String> availableCategories = const [],
+    String? showDescription,
     WatchHistory? history,
     VideoSource? initialSource,
     int? malId,
@@ -328,6 +345,9 @@ class PhoneNativePlayer {
     _tmdbIsTv = tmdbIsTv;
     _imdbId = imdbId;
     _category = category;
+    _availableCategories = availableCategories;
+    _showDescription = showDescription;
+    _sessionId++;
     _resume = resume;
     _history = history;
     if (!_handlerBound) {
@@ -374,6 +394,11 @@ class PhoneNativePlayer {
       subtitleFontPath: subFontPath,
       cover: _cover,
       coverHeaders: _coverHeaders,
+      openingLayout: prefs.openingLayout,
+      showDescription: _showDescription,
+      availableCategories: _availableCategories,
+      category: _category,
+      sessionId: _sessionId,
     );
 
     _closed = Completer<Map<String, dynamic>?>();
@@ -382,8 +407,36 @@ class PhoneNativePlayer {
       _closed = null;
       return false;
     }
+    // Entries without a snapshot (anything but Details) enrich once, lazily:
+    // the show page is already up, and a changed show or a local file skips.
+    unawaited(_pushShowDescription(_sessionId));
     await _closed!.future;
     return true;
+  }
+
+  /// One lazy synopsis fetch per session, pushed to the live player only if
+  /// it is still the session that asked. Local files never trigger resolution.
+  static Future<void> _pushShowDescription(int session) async {
+    if ((_showDescription?.trim().isNotEmpty ?? false)) return;
+    final url = _showUrl;
+    if (url == null || url.isEmpty) return;
+    final seed = _seedSource?.url ?? '';
+    if (seed.startsWith('file://') || seed.startsWith('content://')) return;
+    try {
+      final desc =
+          (await sl<CatalogueRepository>().detail(url, sourceId: _sourceId))
+              .description
+              ?.trim() ??
+          '';
+      if (desc.isEmpty || session != _sessionId) return;
+      _showDescription = desc;
+      await _ch.invokeMethod('updateMetadata', {
+        'sessionId': session,
+        'showDescription': desc,
+      });
+    } catch (_) {
+      // No synopsis is a hidden section, never a failed launch.
+    }
   }
 
   static Future<dynamic> _onNativeCall(MethodCall call) async {
@@ -430,6 +483,36 @@ class PhoneNativePlayer {
           for (var i = 0; i < prepared.length; i++)
             phoneSourceMap(prepared[i], i),
         ];
+      case 'switchCategory': {
+        // Native Audio menu's Sub/Dub row. Same episode, same list, Dart's
+        // normal resolution path — a failed resolve returns null and the
+        // player keeps playing instead of jumping anywhere.
+        final args = _callArgs(call);
+        final cat = args?['category'] as String?;
+        final index = (args?['index'] as num?)?.toInt() ?? -1;
+        if (cat == null ||
+            !_availableCategories.contains(cat) ||
+            index < 0 ||
+            index >= _episodes.length) {
+          return null;
+        }
+        final previous = _category;
+        _category = cat;
+        final payload = await _resolveEpisode(index);
+        if (payload == null) {
+          _category = previous;
+          return null;
+        }
+        payload['positionMs'] =
+            (args?['positionMs'] as num?)?.toInt() ?? payload['positionMs'];
+        return payload;
+      }
+      case 'setAutoplayNext': {
+        final value = _callArgs(call)?['value'] as bool?;
+        if (value == null) return null;
+        await sl<PlaybackPrefs>().setAutoplayNext(value);
+        return null;
+      }
       case 'discordPresence':
         _pushDiscordPresence(_callArgs(call));
         return null;

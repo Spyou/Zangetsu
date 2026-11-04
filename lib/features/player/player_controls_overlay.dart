@@ -89,8 +89,39 @@ class _ControlsOverlay extends StatelessWidget {
   /// Overflow panel that slides in from the RIGHT (like the episodes panel) —
   /// holds the occasional actions so the control bars stay clean.
   void _showMore(BuildContext context) {
-    onInteract();
-    showGeneralDialog<void>(
+    showPlayerMorePanel(
+      context: context,
+      onInteract: onInteract,
+      decoderLabel: decoderLabel,
+      enhanceActive: enhanceActive,
+      onDecoder: onDecoder,
+      onEnhance: onEnhance,
+      onColorProfile: onColorProfile,
+      onScreenshot: onScreenshot,
+      sleepActive: sleepActive,
+      onSleep: onSleep,
+      onPip: onPip,
+    );
+  }
+
+/// Shared overflow panel (decoder / enhance / colour / snapshot / sleep /
+/// PiP). The fullscreen overlay and the portrait watch page open the same
+/// panel so the occasional actions live in exactly one place.
+static void showPlayerMorePanel({
+  required BuildContext context,
+  required VoidCallback onInteract,
+  required String decoderLabel,
+  required bool enhanceActive,
+  required VoidCallback onDecoder,
+  required VoidCallback onEnhance,
+  required VoidCallback onColorProfile,
+  required VoidCallback onScreenshot,
+  required bool sleepActive,
+  required VoidCallback onSleep,
+  required VoidCallback? onPip,
+}) {
+  onInteract();
+  showGeneralDialog<void>(
       context: context,
       barrierDismissible: true,
       barrierLabel: 'More',
@@ -193,7 +224,7 @@ class _ControlsOverlay extends StatelessWidget {
                           label: ctx.l10n.pictureInPicture,
                           onTap: () {
                             Navigator.pop(ctx);
-                            onPip!();
+                            onPip();
                           },
                         ),
                     ],

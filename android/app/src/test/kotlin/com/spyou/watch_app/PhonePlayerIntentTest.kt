@@ -29,6 +29,15 @@ class PhonePlayerIntentTest {
     }
 
     @Test
+    fun `portrait payload keys are stable`() {
+        assertEquals("openingLayout", PhonePlayerIntent.EXTRA_LAYOUT)
+        assertEquals("showDescription", PhonePlayerIntent.EXTRA_SHOW_DESC)
+        assertEquals("availableCategories", PhonePlayerIntent.EXTRA_CATEGORIES)
+        assertEquals("category", PhonePlayerIntent.EXTRA_CATEGORY)
+        assertEquals("sessionId", PhonePlayerIntent.EXTRA_SESSION)
+    }
+
+    @Test
     fun `phone keys do not collide with the TV player's`() {
         // Both Activities read their own extras off their own Intent, so equal
         // string values are harmless — this test exists to make a future

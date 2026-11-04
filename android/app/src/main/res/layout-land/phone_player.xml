@@ -228,4 +228,14 @@
 
     <include layout="@layout/phone_player_loading_overlay" />
 
+    <!-- Same stub as portrait: a landscape start that rotates into the watch
+         page inflates the panel on demand instead of rebuilding the player. -->
+    <ViewStub
+        android:id="@+id/watch_info_stub"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:inflatedId="@+id/watch_info"
+        android:layout="@layout/phone_watch_info" />
+
 </FrameLayout>

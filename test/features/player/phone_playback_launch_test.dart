@@ -159,6 +159,36 @@ void main() {
       expect(a['backBufferMs'], 30000);
     });
 
+    test('carries the watch-page presentation fields', () {
+      final a = phonePlayerArgs(
+        title: 'A Show',
+        episodeLabel: 'Episode 1',
+        episodeLabels: const ['Episode 1', 'Episode 2'],
+        startIndex: 0,
+        accentColor: 0xFFFF4D5E,
+        softwareDecoding: false,
+        defaultSpeed: 1.0,
+        bufferParams: const {},
+        subtitleScale: 1.0,
+        subtitleFgColor: 0xFFFFFFFF,
+        subtitleBgColor: 0x00000000,
+        subtitleEdgeType: 1,
+        subtitleEdgeColor: 0xFF000000,
+        subtitlePreference: '',
+        autoResume: true,
+        keepScreenOn: true,
+        autoplayNext: true,
+        seekSeconds: 10,
+        openingLayout: 'watch',
+        showDescription: 'The show saga.',
+        availableCategories: const ['sub', 'dub'],
+        source: _src(),
+      );
+      expect(a['openingLayout'], 'watch');
+      expect(a['showDescription'], 'The show saga.');
+      expect(a['availableCategories'], ['sub', 'dub']);
+    });
+
     test('carries phone playback settings and subtitle metadata', () {
       final a = args(
         source: _src(

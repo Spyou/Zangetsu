@@ -30,6 +30,21 @@ object PhonePlayerBridge {
         ch.setMethodCallHandler { call, result ->
             when (call.method) {
                 "launch" -> launch(activity, call, result)
+                // Dart-side enrichment (e.g. the show synopsis) arriving after
+                // launch. Session-checked: a stale Dart session's late result
+                // must not paint over the live player's screen.
+                "updateMetadata" -> {
+                    val session = (call.argument<Number>("sessionId") ?: -1).toLong()
+                    val target = PhonePlayerActivity.active
+                    if (target != null && target.sessionId == session) {
+                        target.onMetadataUpdate(
+                            (call.argument<String>("showDescription") ?: "").ifEmpty { null },
+                        )
+                        result.success(true)
+                    } else {
+                        result.success(false)
+                    }
+                }
                 else -> result.notImplemented()
             }
         }
@@ -155,6 +170,22 @@ object PhonePlayerBridge {
                 ?.let { i.putExtra(PhonePlayerIntent.EXTRA_SUB_FONT, it) }
             call.argument<String>("cover")
                 ?.let { i.putExtra(PhonePlayerIntent.EXTRA_COVER, it) }
+            i.putExtra(
+                PhonePlayerIntent.EXTRA_LAYOUT,
+                call.argument<String>("openingLayout") ?: "fullscreen",
+            )
+            call.argument<String>("showDescription")
+                ?.let { i.putExtra(PhonePlayerIntent.EXTRA_SHOW_DESC, it) }
+            call.argument<List<String>>("availableCategories")
+                ?.let { i.putExtra(PhonePlayerIntent.EXTRA_CATEGORIES, it.toTypedArray()) }
+            i.putExtra(
+                PhonePlayerIntent.EXTRA_CATEGORY,
+                call.argument<String>("category") ?: "sub",
+            )
+            i.putExtra(
+                PhonePlayerIntent.EXTRA_SESSION,
+                (call.argument<Number>("sessionId") ?: 0).toLong(),
+            )
             i.putExtra(
                 PhonePlayerIntent.EXTRA_COVER_HEADERS,
                 PhonePlayerIntent.headersToArray(

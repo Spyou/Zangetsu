@@ -1,10 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
-    android:id="@+id/player_root"
+    android:id="@+id/watch_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/phone_player_background">
+    android:background="@color/phone_player_background"
+    android:orientation="vertical">
+
+    <!-- Video + control area. Portrait sizes it 16:9 in code; landscape is
+         full-bleed. Gestures attach here so the info panel never seeks. -->
+    <FrameLayout
+        android:id="@+id/player_root"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
 
     <androidx.media3.ui.PlayerView
         android:id="@+id/player_view"
@@ -228,4 +236,16 @@
 
     <include layout="@layout/phone_player_loading_overlay" />
 
-</FrameLayout>
+    </FrameLayout>
+
+    <!-- Portrait info panel (title, actions, description, up next). Inflated
+         on demand so landscape starts pay nothing; gone in fullscreen. -->
+    <ViewStub
+        android:id="@+id/watch_info_stub"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:inflatedId="@+id/watch_info"
+        android:layout="@layout/phone_watch_info" />
+
+</LinearLayout>

@@ -21,6 +21,16 @@ String _subtitleColourLabel(AppLocalizations l10n, String hex) => switch (hex) {
   _ => hex,
 };
 
+/// Which half of the combined Audio|Subtitles sheet a portrait chip opens.
+/// Fullscreen passes nothing and keeps both columns side by side.
+enum AudioSubsFocus { audio, subtitles }
+
+/// Columns the sheet shows for [focus]: null keeps the fullscreen pair.
+({bool audio, bool subtitles}) audioSubsColumns(AudioSubsFocus? focus) => (
+  audio: focus != AudioSubsFocus.subtitles,
+  subtitles: focus != AudioSubsFocus.audio,
+);
+
 class _AudioSubsSheet extends StatefulWidget {
   const _AudioSubsSheet({
     required this.controller,
@@ -29,6 +39,7 @@ class _AudioSubsSheet extends StatefulWidget {
     required this.onSearchOnline,
     required this.onTranslate,
     this.castMode = false,
+    this.focus,
     this.onAfterChange,
     this.onSoftSubPicked,
     this.onSubtitlesOff,
@@ -41,6 +52,10 @@ class _AudioSubsSheet extends StatefulWidget {
 
   /// Chromecast can't switch muxed in-stream tracks or apply local files.
   final bool castMode;
+
+  /// Portrait entry point: show only the chosen column full-width instead of
+  /// the side-by-side pair. Null (every existing caller) keeps both columns.
+  final AudioSubsFocus? focus;
   final VoidCallback? onAfterChange;
   final ValueChanged<Subtitle>? onSoftSubPicked;
   final VoidCallback? onSubtitlesOff;
@@ -56,6 +71,7 @@ class _AudioSubsSheetState extends State<_AudioSubsSheet> {
   Widget build(BuildContext context) {
     final c = widget.controller;
     final h = MediaQuery.of(context).size.height;
+    final show = audioSubsColumns(widget.focus);
     return StreamBuilder<Track>(
       stream: c.player.stream.track,
       builder: (context, snap) {
@@ -82,13 +98,15 @@ class _AudioSubsSheetState extends State<_AudioSubsSheet> {
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Expanded(child: _audioColumn(c, audioId)),
-                      Container(
-                        width: 0.5,
-                        margin: const EdgeInsets.symmetric(vertical: 8),
-                        color: AppColors.hairline,
-                      ),
-                      Expanded(child: _subColumn(c, subId)),
+                      if (show.audio) Expanded(child: _audioColumn(c, audioId)),
+                      if (show.audio && show.subtitles)
+                        Container(
+                          width: 0.5,
+                          margin: const EdgeInsets.symmetric(vertical: 8),
+                          color: AppColors.hairline,
+                        ),
+                      if (show.subtitles)
+                        Expanded(child: _subColumn(c, subId)),
                     ],
                   ),
                 ),

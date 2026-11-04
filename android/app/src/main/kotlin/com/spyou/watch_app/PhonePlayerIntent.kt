@@ -46,6 +46,14 @@ object PhonePlayerIntent {
     const val EXTRA_COVER = "cover"
     const val EXTRA_COVER_HEADERS = "coverHeaders" // flat String[]: k,v,k,v
 
+    // Portrait watch page. All optional — a launch without them behaves
+    // exactly as before (fullscreen landscape, combined menus).
+    const val EXTRA_LAYOUT = "openingLayout" // "watch" or "fullscreen"
+    const val EXTRA_SHOW_DESC = "showDescription"
+    const val EXTRA_CATEGORIES = "availableCategories" // e.g. ["sub","dub"]
+    const val EXTRA_CATEGORY = "category" // launch version (sub/dub)
+    const val EXTRA_SESSION = "sessionId" // Dart session; guards late updates
+
     // Reported over the channel on close, not via setResult — the phone player
     // is started with startActivity, so there is no onActivityResult to hook.
     const val RESULT_POSITION = "positionMs"

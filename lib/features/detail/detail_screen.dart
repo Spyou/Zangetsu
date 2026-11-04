@@ -1512,6 +1512,7 @@ class _DetailViewState extends State<_DetailView>
               ),
               history: sl<WatchHistory>(),
               showTitle: detail.title,
+              showDescription: detail.description,
               cover: detail.cover ?? widget.item.cover,
               coverHeaders: detail.coverHeaders ?? widget.item.coverHeaders,
               showUrl: widget.item.url,

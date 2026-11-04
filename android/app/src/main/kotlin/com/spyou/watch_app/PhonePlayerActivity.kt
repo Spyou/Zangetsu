@@ -14,7 +14,10 @@ import android.view.MotionEvent
 import android.view.TextureView
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewStub
 import android.view.WindowManager
+import android.widget.Button
+import android.widget.CheckBox
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ProgressBar
@@ -157,6 +160,20 @@ class PhonePlayerActivity : Activity() {
     private var playbackError = false
     private var reported = false
 
+    // ── Portrait watch page ──────────────────────────────────────────────
+    // Same session concept as the Flutter page: the video+controls area
+    // (player_root) stays the live player; the info panel below is
+    // presentation only. Fullscreen (landscape) hides the panel and expands
+    // the same container — ExoPlayer and PlayerView are never rebuilt.
+    var sessionId = 0L
+        private set
+    private var openingLayout = "fullscreen"
+    private var categories: List<String> = emptyList()
+    private var currentCategory = "sub"
+    private var pendingDesc: String? = null
+    private var descExpanded = false
+    private var watchInfo: ViewGroup? = null
+
     private var episodeCount = 1
     private var episodeLabels: Array<String> = emptyArray()
     private var switching = false
@@ -180,6 +197,20 @@ class PhonePlayerActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         keepScreenOn = intent.getBooleanExtra(PhonePlayerIntent.EXTRA_KEEP_SCREEN_ON, true)
+        sessionId = intent.getLongExtra(PhonePlayerIntent.EXTRA_SESSION, 0L)
+        openingLayout = intent.getStringExtra(PhonePlayerIntent.EXTRA_LAYOUT) ?: "fullscreen"
+        categories = intent.getStringArrayExtra(PhonePlayerIntent.EXTRA_CATEGORIES)?.toList() ?: emptyList()
+        currentCategory = intent.getStringExtra(PhonePlayerIntent.EXTRA_CATEGORY) ?: "sub"
+        pendingDesc = intent.getStringExtra(PhonePlayerIntent.EXTRA_SHOW_DESC)
+        // Orientation from the launch layout (manifest is unspecified for
+        // this Activity only): watch page opens upright, anything else keeps
+        // the historical landscape start. Set before inflation so the right
+        // layout variant loads.
+        requestedOrientation = if (openingLayout == "watch") {
+            ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        } else {
+            ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        }
         if (keepScreenOn) {
             window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         } else {
@@ -218,6 +249,8 @@ class PhonePlayerActivity : Activity() {
 
         titleText.text = intent.getStringExtra(PhonePlayerIntent.EXTRA_TITLE) ?: ""
         episodeText.text = intent.getStringExtra(PhonePlayerIntent.EXTRA_EP_LABEL) ?: ""
+        bindWatchInfo()
+        updateOrientationLayout()
 
         currentIndex = intent.getIntExtra(PhonePlayerIntent.EXTRA_START_INDEX, 0)
         episodeCount = intent.getIntExtra(PhonePlayerIntent.EXTRA_EP_COUNT, 1)
@@ -227,7 +260,15 @@ class PhonePlayerActivity : Activity() {
             .coerceAtLeast(1_000L)
         subtitlePreference = intent.getStringExtra(PhonePlayerIntent.EXTRA_SUB_PREFERENCE).orEmpty()
 
-        findViewById<View>(R.id.btn_back).setOnClickListener { finish() }
+        findViewById<View>(R.id.btn_back).setOnClickListener {
+            if (openingLayout == "watch" &&
+                resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+            ) {
+                requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            } else {
+                finish()
+            }
+        }
         btnPlay.setOnClickListener { togglePlay() }
         findViewById<View>(R.id.btn_previous).setOnClickListener {
             bumpControls()
@@ -510,6 +551,7 @@ class PhonePlayerActivity : Activity() {
         next.alpha = if (hasNext) 1f else 0.4f
         prev.isFocusable = hasPrev
         next.isFocusable = hasNext
+        refreshWatchInfo()
     }
 
     private fun bindQuickActions() {
@@ -535,6 +577,23 @@ class PhonePlayerActivity : Activity() {
     }
 
     private fun updateOrientationLayout() {
+        val portrait =
+            resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT
+        val video = findViewById<View>(R.id.player_root)
+        if (portrait) {
+            // 16:9 stage; the info panel takes the rest.
+            val w = resources.displayMetrics.widthPixels
+            video.layoutParams = video.layoutParams.apply {
+                height = (w * 9 / 16).coerceAtLeast(1)
+            }
+            val info = ensureWatchInfo()
+            info?.visibility = View.VISIBLE
+        } else {
+            video.layoutParams = video.layoutParams.apply {
+                height = ViewGroup.LayoutParams.MATCH_PARENT
+            }
+            watchInfo?.visibility = View.GONE
+        }
         val topScrim = controls.findViewById<View>(R.id.top_scrim)
         topScrim.layoutParams = topScrim.layoutParams.apply {
             height = resources.getDimensionPixelSize(R.dimen.phone_player_top_scrim_height)
@@ -553,6 +612,126 @@ class PhonePlayerActivity : Activity() {
         val bottomBarParams = bottomBar.layoutParams as android.widget.FrameLayout.LayoutParams
         bottomBarParams.bottomMargin = resources.getDimensionPixelSize(R.dimen.phone_player_bottom_bar_bottom_margin)
         bottomBar.layoutParams = bottomBarParams
+    }
+
+    /** Late enrichment from Dart; session-checked in [PhonePlayerBridge]. */
+    fun onMetadataUpdate(description: String?) {
+        pendingDesc = description
+        applyPendingDesc()
+    }
+
+    private fun applyPendingDesc() {
+        val info = watchInfo ?: return
+        val desc = pendingDesc?.trim().orEmpty()
+        info.findViewById<TextView>(R.id.watch_description)?.apply {
+            visibility = if (desc.isEmpty()) View.GONE else View.VISIBLE
+            text = desc
+        }
+        info.findViewById<TextView>(R.id.watch_see_more)?.apply {
+            visibility = if (desc.isEmpty()) View.GONE else View.VISIBLE
+            text = getString(R.string.phone_player_watch_see_more)
+        }
+        descExpanded = false
+    }
+
+    private fun bindWatchInfo() {
+        // Panel content refreshes from player state; this only wires static
+        // structure once the stub exists (see updateOrientationLayout).
+        refreshWatchInfo()
+    }
+
+    private fun ensureWatchInfo(): ViewGroup? {
+        watchInfo?.let { return it }
+        val stub = findViewById<ViewStub>(R.id.watch_info_stub) ?: return null
+        val inflated = stub.inflate() as? ViewGroup ?: return null
+        watchInfo = inflated
+        inflated.findViewById<View>(R.id.watch_action_server)?.setOnClickListener {
+            bumpControls(); showSourceMenu()
+        }
+        inflated.findViewById<View>(R.id.watch_action_audio)?.setOnClickListener {
+            bumpControls(); showTracksMenu()
+        }
+        inflated.findViewById<View>(R.id.watch_action_subtitles)?.setOnClickListener {
+            bumpControls(); showTracksMenu()
+        }
+        inflated.findViewById<View>(R.id.watch_action_more)?.setOnClickListener {
+            bumpControls(); showMoreMenu()
+        }
+        inflated.findViewById<View>(R.id.watch_comments)?.setOnClickListener {
+            showComingSoon()
+        }
+        val desc = inflated.findViewById<TextView>(R.id.watch_description)
+        val seeMore = inflated.findViewById<TextView>(R.id.watch_see_more)
+        val toggle: () -> Unit = {
+            descExpanded = !descExpanded
+            desc?.maxLines = if (descExpanded) Int.MAX_VALUE else 3
+            seeMore?.text = getString(
+                if (descExpanded) R.string.phone_player_watch_see_less
+                else R.string.phone_player_watch_see_more,
+            )
+        }
+        desc?.setOnClickListener { toggle() }
+        seeMore?.setOnClickListener { toggle() }
+        inflated.findViewById<CheckBox>(R.id.watch_autoplay)?.apply {
+            isChecked = autoplayNext
+            setOnCheckedChangeListener { _, checked ->
+                autoplayNext = checked
+                PhonePlayerBridge.channel?.invokeMethod(
+                    "setAutoplayNext",
+                    mapOf("value" to checked),
+                )
+                bumpControls()
+            }
+        }
+        inflated.findViewById<Button>(R.id.watch_all_episodes)?.apply {
+            setOnClickListener { bumpControls(); showEpisodeMenu() }
+            setBackgroundColor(
+                intent.getIntExtra(PhonePlayerIntent.EXTRA_ACCENT, -1).let {
+                    if (it == -1) getColor(R.color.phone_player_accent) else it
+                },
+            )
+        }
+        inflated.findViewById<View>(R.id.watch_next_row)?.setOnClickListener {
+            bumpControls()
+            if (currentIndex + 1 < episodeCount) loadEpisode(currentIndex + 1)
+        }
+        applyPendingDesc()
+        refreshWatchInfo()
+        return inflated
+    }
+
+    private fun refreshWatchInfo() {
+        val info = watchInfo ?: return
+        info.findViewById<TextView>(R.id.watch_title)?.text = titleText.text
+        info.findViewById<TextView>(R.id.watch_episode_label)?.text =
+            episodeText.text
+        val hasNext = currentIndex + 1 < episodeCount
+        info.findViewById<View>(R.id.watch_next_row)?.visibility =
+            if (hasNext) View.VISIBLE else View.GONE
+        if (hasNext) {
+            val label = episodeLabels.getOrNull(currentIndex + 1)
+                ?: "Episode ${currentIndex + 2}"
+            info.findViewById<TextView>(R.id.watch_next_title)?.text = label
+            info.findViewById<TextView>(R.id.watch_next_label)?.text =
+                label.substringBefore(" · ").ifEmpty { label }
+        }
+        info.findViewById<Button>(R.id.watch_all_episodes)?.apply {
+            visibility = if (episodeCount > 1) View.VISIBLE else View.GONE
+            text = resources.getString(
+                R.string.phone_player_watch_all_episodes,
+                episodeCount,
+            )
+        }
+    }
+
+    private fun showComingSoon() {
+        handler.removeCallbacks(hideRunnable)
+        android.app.AlertDialog.Builder(this, R.style.PhonePlayerDialog)
+            .setTitle(getString(R.string.phone_player_watch_comments))
+            .setMessage(getString(R.string.phone_player_watch_coming_soon))
+            .setPositiveButton(android.R.string.ok, null)
+            .setOnDismissListener { bumpControls() }
+            .show()
     }
 
     private fun loadStream(
@@ -956,37 +1135,110 @@ class PhonePlayerActivity : Activity() {
         val text = tracks.groups.filter { it.type == C.TRACK_TYPE_TEXT }
         val audioTracks = audio.flatMap { g -> (0 until g.length).map { g to it } }
         val textTracks = text.flatMap { g -> (0 until g.length).map { g to it } }
-        if (audioTracks.size + textTracks.size < 2) {
+        val labels = mutableListOf<String>()
+        val versionFor = mutableListOf<String?>()
+        // Live Sub/Dub switch, routed back through Dart's catalogue
+        // resolution (same episode, position retained). Only when the title
+        // actually offers more than one version.
+        if (categories.size > 1) {
+            for (cat in categories) {
+                val name = when (cat.lowercase()) {
+                    "dub" -> getString(R.string.phone_player_version_dub)
+                    else -> getString(R.string.phone_player_version_sub)
+                }
+                val mark = if (cat == currentCategory) " ✓" else ""
+                labels += "Version: $name$mark"
+                versionFor += cat
+            }
+        }
+        labels += "Audio: Auto"
+        versionFor += null
+        // audioPicks[0] ("Auto") sits at this label index; tracks follow.
+        val audioBase = labels.size - 1
+        if (audioTracks.size + textTracks.size < 2 && versionFor.size <= 1) {
             toast(getString(R.string.phone_player_toast_no_tracks))
             bumpControls()
             return
         }
-        val labels = mutableListOf("Audio: Auto")
         val audioPicks = mutableListOf<TrackSelectionOverride?>(null)
         for ((g, i) in audioTracks) {
             val f = g.getTrackFormat(i)
             labels += "Audio: ${f.label ?: f.language ?: "Track ${labels.size}"}"
+            versionFor += null
             audioPicks += TrackSelectionOverride(g.mediaTrackGroup, i)
         }
         val textBase = labels.size
         labels += "Subtitles: Off"
+        versionFor += null
         val textPicks = mutableListOf<TrackSelectionOverride?>(null)
         for ((g, i) in textTracks) {
             val f = g.getTrackFormat(i)
             labels += "Subtitles: ${f.label ?: f.language ?: "Track ${labels.size}"}"
+            versionFor += null
             textPicks += TrackSelectionOverride(g.mediaTrackGroup, i)
         }
         android.app.AlertDialog.Builder(this, R.style.PhonePlayerDialog)
             .setTitle(getString(R.string.phone_player_title_tracks))
             .setItems(labels.toTypedArray()) { _, which ->
-                if (which < textBase) {
-                    selectAudioTrack(audioPicks[which])
+                val version = versionFor[which]
+                if (version != null) {
+                    if (version != currentCategory) switchCategory(version)
+                    else bumpControls()
+                } else if (which < textBase) {
+                    selectAudioTrack(audioPicks[which - audioBase])
                 } else {
                     selectTextTrack(textPicks[which - textBase])
                 }
             }
             .setOnDismissListener { bumpControls() }
             .show()
+    }
+
+    /** Switch Sub/Dub in place: Dart re-resolves the SAME episode through the
+     * normal catalogue path and hands back a payload whose position is the
+     * one sent up — never episode one, never zero. */
+    private fun switchCategory(category: String) {
+        val ch = PhonePlayerBridge.channel ?: return
+        handler.removeCallbacks(hideRunnable)
+        setBuffering(true)
+        val generation = ++mediaGeneration
+        val position = player?.currentPosition ?: 0L
+        ch.invokeMethod(
+            "switchCategory",
+            mapOf(
+                "category" to category,
+                "index" to currentIndex,
+                "positionMs" to position,
+            ),
+            object : io.flutter.plugin.common.MethodChannel.Result {
+                @Suppress("UNCHECKED_CAST")
+                override fun success(result: Any?) {
+                    if (!uiAlive()) return
+                    setBuffering(false)
+                    val m = result as? Map<String, Any?>
+                    if (generation != mediaGeneration || m == null) {
+                        if (m == null) toast(getString(R.string.phone_player_error_load))
+                        else bumpControls()
+                        return
+                    }
+                    currentCategory = category
+                    applyResolved(currentIndex, m, generation)
+                }
+
+                override fun error(code: String, msg: String?, details: Any?) {
+                    if (!uiAlive()) return
+                    setBuffering(false)
+                    toast(getString(R.string.phone_player_error_load))
+                    bumpControls()
+                }
+
+                override fun notImplemented() {
+                    if (!uiAlive()) return
+                    setBuffering(false)
+                    bumpControls()
+                }
+            },
+        )
     }
 
     private fun showQualityMenu() {
@@ -1925,6 +2177,14 @@ class PhonePlayerActivity : Activity() {
     override fun onBackPressed() {
         if (loadingActions.visibility == View.VISIBLE) { finish(); return }
         if (controls.visibility == View.VISIBLE) { hideControls(); return }
+        // Fullscreen Back drops to the portrait watch page, not out of the
+        // player; the page's own Back exits as before.
+        if (openingLayout == "watch" &&
+            resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+        ) {
+            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            return
+        }
         @Suppress("DEPRECATION")
         super.onBackPressed()
     }

@@ -94,6 +94,16 @@ class PhonePlayerLayoutTest {
 
     @Test
     @Config(manifest = Config.NONE, sdk = [34], qualifiers = "port")
+    fun `portrait layout hosts the watch info stub below the video`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val root = LayoutInflater.from(context).inflate(R.layout.phone_player, null)
+        val stubId = context.resources.getIdentifier("watch_info_stub", "id", context.packageName)
+        assertTrue(stubId != 0)
+        assertNotNull(root.findViewById<View>(stubId))
+    }
+
+    @Test
+    @Config(manifest = Config.NONE, sdk = [34])
     fun `rotation changes quick action layout without replacing the video view`() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val intent = Intent(context, PhonePlayerActivity::class.java)
