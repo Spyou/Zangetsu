@@ -24,6 +24,29 @@ import 'cs_repo_url.dart';
 /// throws past the guards below (failures degrade to empty/safe values).
 const MethodChannel _csChannel = MethodChannel('zangetsu/cloudstream');
 
+/// Keeps the provider's category name and opaque data intact for pagination.
+String csMainPageCategoryId(String name, String data) =>
+    jsonEncode([name, data]);
+
+({String name, String data}) csMainPageCategory(String id) {
+  try {
+    final parts = jsonDecode(id);
+    if (parts is List &&
+        parts.length == 2 &&
+        parts[0] is String &&
+        parts[1] is String) {
+      return (name: parts[0] as String, data: parts[1] as String);
+    }
+  } on FormatException {
+    // Accept category IDs produced by older app builds.
+  }
+  final separator = id.indexOf(' ');
+  return (
+    name: separator < 0 ? id : id.substring(0, separator),
+    data: separator < 0 ? '' : id.substring(separator + 1),
+  );
+}
+
 /// Whether the CloudStream source [apiName] exposes its OWN settings UI
 /// (the plugin's `openSettings`, e.g. AnimePahe's server picker). Android-only;
 /// any failure degrades to `false`.
@@ -659,11 +682,7 @@ class CloudStreamProvider implements BaseProvider {
           : BrowseMore(
               sourceId: sourceId,
               kind: 'cs_mainpage',
-              // Pack name + data with a single space, split back in
-              // [browseMainPage]. CloudStream category names never contain a
-              // space that would confuse the split — data may, so we split on
-              // the FIRST space only.
-              categoryId: '$catName $catData',
+              categoryId: csMainPageCategoryId(catName, catData),
             );
       sections.add(
         HomeSection(
@@ -677,16 +696,12 @@ class CloudStreamProvider implements BaseProvider {
   }
 
   /// One further page of a CloudStream `mainPage` category, for the "See all"
-  /// browse grid's infinite scroll. [categoryId] is the packed `"<name> <data>"`
+  /// browse grid's infinite scroll. [categoryId] preserves both category fields
   /// produced in [_fetchHome]; [page] is 1-based. Android-only; returns `[]` on
   /// any error (never throws) so a failed page just stops the scroll.
   Future<List<MediaItem>> browseMainPage(String categoryId, int page) async {
     if (!Platform.isAndroid) return const [];
-    // Split on the FIRST space: name is a single token, data may itself contain
-    // spaces (it's an opaque category url/path).
-    final sep = categoryId.indexOf(' ');
-    final name = sep < 0 ? categoryId : categoryId.substring(0, sep);
-    final data = sep < 0 ? '' : categoryId.substring(sep + 1);
+    final (:name, :data) = csMainPageCategory(categoryId);
     try {
       final raw = await _csChannel.invokeMethod<List<dynamic>>(
         'getMainPagePaged',
