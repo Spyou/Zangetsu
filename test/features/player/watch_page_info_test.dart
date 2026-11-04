@@ -29,6 +29,32 @@ void main() {
       );
     });
   });
+
+  group('watch page episode list', () {
+    test('labels episodes and marks the current one', () {
+      final eps = [
+        _ep(title: 'The Fall', number: 1, season: 1),
+        _ep(title: 'Episode 2', number: 2),
+      ];
+      final rows = watchPageEpisodes(episodes: eps, currentIndex: 1);
+      expect(rows.length, 2);
+      expect(rows[0].index, 0);
+      expect(rows[0].label, 'The Fall');
+      expect(rows[0].current, isFalse);
+      expect(rows[1].label, 'Episode 2');
+      expect(rows[1].current, isTrue);
+    });
+
+    test('generic titles fall back to Episode N', () {
+      final rows = watchPageEpisodes(
+        episodes: [_ep(title: 'Ep. 3', number: 3)],
+        currentIndex: 0,
+      );
+      expect(rows.single.label, 'Episode 3');
+      expect(rows.single.current, isTrue);
+    });
+  });
+
   group('watch page header', () {
     test('show snapshot fills a missing episode description', () {
       final h = resolveWatchPageHeader(

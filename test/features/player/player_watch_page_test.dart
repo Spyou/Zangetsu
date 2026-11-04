@@ -6,7 +6,7 @@ import 'package:watch_app/features/player/watch_page_info.dart';
 PlayerWatchPage _page({
   String? description = 'A great episode.',
   String? nextTitle = 'The Next One',
-  int episodeCount = 25,
+  List<WatchPageEpisode> episodes = const [],
   void Function()? onServer,
   void Function()? onComments,
   void Function(bool)? onAutoplayChanged,
@@ -29,7 +29,7 @@ PlayerWatchPage _page({
     nextLabel: 'S1 E2',
     nextTitle: nextTitle,
     autoplay: true,
-    episodeCount: episodeCount,
+    episodes: episodes,
     onTogglePlay: () {},
     onSeek: (_) {},
     onPrevious: () {},
@@ -40,7 +40,7 @@ PlayerWatchPage _page({
     onAudio: () {},
     onSubtitles: () {},
     onMore: () {},
-    onEpisodes: () {},
+    onOpenEpisode: (_) {},
     onComments: onComments ?? () {},
     onAutoplayChanged: onAutoplayChanged ?? (_) {},
   );
@@ -51,19 +51,28 @@ Future<void> _pump(WidgetTester tester, PlayerWatchPage page) {
 }
 
 void main() {
-  testWidgets('shows title, actions, description, up next and all episodes',
+  const demoEpisodes = [
+    WatchPageEpisode(index: 0, label: 'First Light', current: false),
+    WatchPageEpisode(index: 1, label: 'Episode 2', current: true),
+  ];
+
+  testWidgets('shows title, actions, description, up next and episodes',
       (tester) async {
-    await _pump(tester, _page());
+    await _pump(
+      tester,
+      _page(episodes: demoEpisodes, nextTitle: 'Episode 2'),
+    );
 
     expect(find.text('The Fall'), findsOneWidget);
+    expect(find.text('First Light'), findsOneWidget);
     expect(find.text('Show · S1 E1'), findsOneWidget);
     expect(find.text('Server'), findsOneWidget);
     expect(find.text('A great episode.'), findsOneWidget);
     expect(find.text('Comments'), findsOneWidget);
     expect(find.text('Coming soon'), findsOneWidget);
     expect(find.text('Up next'), findsOneWidget);
-    expect(find.text('The Next One'), findsOneWidget);
-    expect(find.text('All episodes (25)'), findsOneWidget);
+    expect(find.text('Episodes (2)'), findsOneWidget);
+    expect(find.text('Episode 2'), findsNWidgets(2)); // row + up-next card
     // No fake engagement anywhere.
     expect(find.textContaining('41.9k'), findsNothing);
     expect(find.textContaining('37'), findsNothing);
@@ -76,14 +85,50 @@ void main() {
     expect(find.text('Comments'), findsOneWidget);
     expect(find.text('Up next'), findsOneWidget);
     expect(find.text('The Next One'), findsNothing);
-    expect(find.text('All episodes (25)'), findsOneWidget);
+    expect(find.text('First Light'), findsNothing);
   });
 
-  testWidgets('hides the episodes button for single-episode titles',
-      (tester) async {
-    await _pump(tester, _page(episodeCount: 1));
+  testWidgets('tapping an episode row opens that index', (tester) async {
+    int? opened;
+    await _pump(
+      tester,
+      PlayerWatchPage(
+        video: const ColoredBox(color: Colors.black),
+        header: const WatchPageHeader(
+          title: 'T',
+          subtitle: 'S',
+          description: null,
+        ),
+        positionStream: Stream<Duration>.empty(),
+        durationStream: Stream<Duration?>.empty(),
+        playingStream: Stream.value(false),
+        initialPlaying: false,
+        initialPosition: Duration.zero,
+        initialDuration: Duration.zero,
+        hasPrevious: false,
+        nextThumb: null,
+        nextLabel: null,
+        nextTitle: null,
+        autoplay: true,
+        episodes: demoEpisodes,
+        onOpenEpisode: (i) => opened = i,
+        onTogglePlay: () {},
+        onSeek: (_) {},
+        onPrevious: () {},
+        onNext: () {},
+        onFullscreen: () {},
+        onBack: () {},
+        onServer: () {},
+        onAudio: () {},
+        onSubtitles: () {},
+        onMore: () {},
+        onComments: () {},
+        onAutoplayChanged: (_) {},
+      ),
+    );
 
-    expect(find.textContaining('All episodes'), findsNothing);
+    await tester.tap(find.text('First Light'));
+    expect(opened, 0);
   });
 
   testWidgets('server and comments taps reach the parent', (tester) async {
@@ -134,7 +179,8 @@ void main() {
         nextLabel: null,
         nextTitle: null,
         autoplay: true,
-        episodeCount: 1,
+        episodes: const [],
+        onOpenEpisode: (_) {},
         onTogglePlay: () {},
         onSeek: (_) {},
         onPrevious: () {},
@@ -145,7 +191,6 @@ void main() {
         onAudio: () {},
         onSubtitles: () {},
         onMore: () {},
-        onEpisodes: () {},
         onComments: () {},
         onAutoplayChanged: (_) {},
       ),

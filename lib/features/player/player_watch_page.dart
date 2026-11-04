@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' as ui;
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -30,8 +31,9 @@ class PlayerWatchPage extends StatefulWidget {
     this.nextLabel,
     this.nextTitle,
     required this.autoplay,
-    required this.episodeCount,
+    required this.episodes,
     this.serverName,
+    this.coverUrl,
     required this.onTogglePlay,
     required this.onSeek,
     required this.onPrevious,
@@ -42,7 +44,7 @@ class PlayerWatchPage extends StatefulWidget {
     required this.onAudio,
     required this.onSubtitles,
     required this.onMore,
-    required this.onEpisodes,
+    required this.onOpenEpisode,
     required this.onComments,
     required this.onAutoplayChanged,
   });
@@ -68,8 +70,9 @@ class PlayerWatchPage extends StatefulWidget {
   final String? nextLabel;
   final String? nextTitle;
   final bool autoplay;
-  final int episodeCount;
+  final List<WatchPageEpisode> episodes;
   final String? serverName;
+  final String? coverUrl;
 
   final VoidCallback onTogglePlay;
   final ValueChanged<Duration> onSeek;
@@ -81,7 +84,7 @@ class PlayerWatchPage extends StatefulWidget {
   final VoidCallback onAudio;
   final VoidCallback onSubtitles;
   final VoidCallback onMore;
-  final VoidCallback onEpisodes;
+  final ValueChanged<int> onOpenEpisode;
   final VoidCallback onComments;
   final ValueChanged<bool> onAutoplayChanged;
 
@@ -96,9 +99,16 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
   StreamSubscription<bool>? _playingSub;
   Timer? _hideTimer;
 
+  /// Info scroll drives the ambient glow: full at the top, plain black once
+  /// the list moves. A notifier (not setState) so scrolling never rebuilds
+  /// the page — only the glow repaints.
+  late final ScrollController _scroll;
+  final ValueNotifier<double> _ambient = ValueNotifier(1.0);
+
   @override
   void initState() {
     super.initState();
+    _scroll = ScrollController()..addListener(_fadeAmbient);
     _playingSub = widget.playingStream.listen((p) {
       if (!mounted || p == _playing) return;
       setState(() => _playing = p);
@@ -116,7 +126,14 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
   void dispose() {
     _hideTimer?.cancel();
     _playingSub?.cancel();
+    _scroll.dispose();
+    _ambient.dispose();
     super.dispose();
+  }
+
+  void _fadeAmbient() {
+    if (!_scroll.hasClients) return;
+    _ambient.value = (1 - _scroll.offset / 120).clamp(0.0, 1.0);
   }
 
   void _armHide() {
@@ -138,13 +155,21 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
 
   @override
   Widget build(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    final w = size.width - 24;
+    final videoH = (w * 9 / 16).clamp(0.0, size.height * 0.38);
     return Scaffold(
       backgroundColor: Colors.black,
       body: SafeArea(
         bottom: false,
         child: Column(
           children: [
-            _video(),
+            // The glow bleeds past the card; Clip.none lets it show. It is
+            // purely decorative — taps fall through to the page.
+            Stack(
+              clipBehavior: Clip.none,
+              children: [_ambientGlow(), _video(videoH)],
+            ),
             Expanded(child: _info()),
           ],
         ),
@@ -154,14 +179,41 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
 
   // ── Video ────────────────────────────────────────────────────────────────
 
+  /// YouTube-style ambient glow: the cover art blurred wide behind the mini
+  /// player so its colours bleed onto the page. Fades to plain black as the
+  /// info scrolls — the glow belongs to the video, not the list.
+  Widget _ambientGlow() {
+    final cover = (widget.coverUrl ?? '').trim();
+    if (cover.isEmpty) return const SizedBox.shrink();
+    return Positioned.fill(
+      child: IgnorePointer(
+        child: ValueListenableBuilder<double>(
+          valueListenable: _ambient,
+          builder: (context, t, _) => Opacity(
+            opacity: t * 0.75,
+            child: ImageFiltered(
+              imageFilter: ui.ImageFilter.blur(sigmaX: 36, sigmaY: 36),
+              child: Transform.scale(
+                scale: 1.25,
+                child: CachedNetworkImage(
+                  imageUrl: cover,
+                  httpHeaders: widget.coverHeaders,
+                  fit: BoxFit.cover,
+                  errorWidget: (_, _, _) => const SizedBox.shrink(),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   /// Mini player card: inset box with rounded corners, not full-bleed. Same
   /// transparent scrims as the fullscreen player wash over it so the chrome
   /// stays legible on bright frames.
-  Widget _video() {
-    final size = MediaQuery.sizeOf(context);
+  Widget _video(double h) {
     final pad = MediaQuery.paddingOf(context);
-    final w = size.width - 24;
-    final h = (w * 9 / 16).clamp(0.0, size.height * 0.38);
     return Padding(
       padding: EdgeInsets.fromLTRB(12, pad.top + 4, 12, 0),
       child: ClipRRect(
@@ -385,6 +437,7 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
   Widget _info() {
     final l10n = context.l10n;
     return SingleChildScrollView(
+      controller: _scroll,
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -421,10 +474,8 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
             const SizedBox(height: 8),
             _upNextCard(),
           ],
-          if (widget.episodeCount > 1) ...[
-            const SizedBox(height: 16),
-            _allEpisodes(l10n),
-          ],
+          const SizedBox(height: 16),
+          _episodeList(l10n),
         ],
       ),
     );
@@ -460,7 +511,7 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           decoration: BoxDecoration(
             color: AppColors.surface2,
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(999),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -485,7 +536,7 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
     final l10n = context.l10n;
     return FrostedSurface(
       blur: false,
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(20),
       child: Padding(
         padding: const EdgeInsets.all(14),
         child: Column(
@@ -521,7 +572,7 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
       onTap: widget.onComments,
       child: FrostedSurface(
         blur: false,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(20),
         child: Padding(
           padding: const EdgeInsets.all(14),
           child: Row(
@@ -602,7 +653,7 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
       onTap: widget.onNext,
       child: FrostedSurface(
         blur: false,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(20),
         child: Padding(
           padding: const EdgeInsets.all(12),
           child: Row(
@@ -683,31 +734,69 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
     );
   }
 
-  Widget _allEpisodes(AppLocalizations l10n) {
-    return GestureDetector(
-      onTap: widget.onEpisodes,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(vertical: 14),
-        decoration: BoxDecoration(
-          color: AppColors.accent,
-          borderRadius: BorderRadius.circular(14),
+  /// The episode list, inline — the list IS the picker, so there is no
+  /// All-episodes button. Tapping opens that index; the current row glows.
+  Widget _episodeList(AppLocalizations l10n) {
+    if (widget.episodes.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 8),
+          child: Text(
+            '${l10n.watchEpisodes} (${widget.episodes.length})',
+            style: AppText.caption.copyWith(
+              color: AppColors.textSecondary,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
         ),
-        alignment: Alignment.center,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(
-              Icons.playlist_play_rounded,
-              color: Colors.white,
-              size: 22,
-            ),
-            const SizedBox(width: 8),
-            Text(
-              l10n.watchAllEpisodes(widget.episodeCount),
-              style: AppText.button.copyWith(color: Colors.white),
-            ),
-          ],
+        for (final ep in widget.episodes) _episodeRow(ep),
+      ],
+    );
+  }
+
+  Widget _episodeRow(WatchPageEpisode ep) {
+    final current = ep.current;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: GestureDetector(
+        onTap: () => widget.onOpenEpisode(ep.index),
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+          decoration: BoxDecoration(
+            color: current
+                ? AppColors.accent.withValues(alpha: 0.16)
+                : AppColors.surface2,
+            borderRadius: BorderRadius.circular(16),
+            border: current
+                ? Border.all(color: AppColors.accent, width: 1)
+                : null,
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  ep.label,
+                  style: AppText.body.copyWith(
+                    color: current ? AppColors.accent : Colors.white,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Icon(
+                current
+                    ? Icons.play_arrow_rounded
+                    : Icons.chevron_right_rounded,
+                color: current ? AppColors.accent : AppColors.textSecondary,
+                size: 22,
+              ),
+            ],
+          ),
         ),
       ),
     );

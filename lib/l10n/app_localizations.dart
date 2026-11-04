@@ -2265,6 +2265,12 @@ abstract class AppLocalizations {
   /// **'Comments'**
   String get watchComments;
 
+  /// No description provided for @watchEpisodes.
+  ///
+  /// In en, this message translates to:
+  /// **'Episodes'**
+  String get watchEpisodes;
+
   /// No description provided for @watchComingSoon.
   ///
   /// In en, this message translates to:

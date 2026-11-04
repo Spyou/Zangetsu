@@ -2493,8 +2493,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
           : (episodeDisplayTitle(next, number: nextNum) ??
                 (nextNum != null ? 'Episode $nextNum' : next.title)),
       autoplay: prefs.autoplayNext,
-      episodeCount: _c.episodes.length,
+      episodes: watchPageEpisodes(
+        episodes: _c.episodes,
+        currentIndex: state.currentIndex,
+      ),
       serverName: _c.state.active?.label,
+      coverUrl: widget.cover,
       onTogglePlay: _c.togglePlay,
       onSeek: (d) => _c.player.seek(d),
       onPrevious: () => _c.playPrevious(),
@@ -2506,7 +2510,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       onSubtitles: () =>
           _openAudioSubsSheet(focus: AudioSubsFocus.subtitles),
       onMore: _openWatchMorePanel,
-      onEpisodes: _openEpisodesPanel,
+      onOpenEpisode: (i) => _c.openEpisode(i),
       onComments: _openComingSoonSheet,
       onAutoplayChanged: _setAutoplayNext,
     );

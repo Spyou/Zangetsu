@@ -1153,6 +1153,9 @@ class AppLocalizationsJa extends AppLocalizations {
   String get watchComments => 'Comments';
 
   @override
+  String get watchEpisodes => 'Episodes';
+
+  @override
   String get watchComingSoon => 'Coming soon';
 
   @override

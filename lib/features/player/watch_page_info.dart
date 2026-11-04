@@ -51,11 +51,45 @@ WatchPageHeader resolveWatchPageHeader({
     description: raw.isEmpty ? null : raw,
   );
 }
-
 /// `mm:ss`, or `h:mm:ss` past the hour. Time labels on the watch page.
 String formatWatchTime(Duration d) {
   final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
   final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
   final h = d.inHours;
   return h > 0 ? '$h:$m:$s' : '$m:$s';
+}
+
+/// One row of the inline episode list. [index] is the real episode index —
+/// identity survives any filtering or reordering upstream.
+class WatchPageEpisode {
+  const WatchPageEpisode({
+    required this.index,
+    required this.label,
+    required this.current,
+  });
+  final int index;
+  final String label;
+  final bool current;
+}
+
+/// Display rows for the inline episode list, in player order.
+List<WatchPageEpisode> watchPageEpisodes({
+  required List<Episode> episodes,
+  required int currentIndex,
+}) {
+  return [
+    for (var i = 0; i < episodes.length; i++)
+      WatchPageEpisode(
+        index: i,
+        label:
+            episodeDisplayTitle(
+              episodes[i],
+              number: episodeNumberInt(episodes[i]),
+            ) ??
+            (episodeNumberInt(episodes[i]) != null
+                ? 'Episode ${episodeNumberInt(episodes[i])}'
+                : episodes[i].title),
+        current: i == currentIndex,
+      ),
+  ];
 }
