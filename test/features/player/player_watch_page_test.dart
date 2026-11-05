@@ -156,6 +156,51 @@ void main() {
     expect(reported, isFalse);
   });
 
+  testWidgets('loading shows a spinner inside the mini player', (tester) async {
+    await _pump(
+      tester,
+      PlayerWatchPage(
+        video: const ColoredBox(color: Colors.black),
+        header: const WatchPageHeader(
+          title: 'T',
+          subtitle: 'S',
+          description: null,
+        ),
+        loading: true,
+        positionStream: Stream<Duration>.empty(),
+        durationStream: Stream<Duration?>.empty(),
+        playingStream: Stream.value(false),
+        initialPlaying: false,
+        initialPosition: const Duration(minutes: 1, seconds: 30),
+        initialDuration: const Duration(minutes: 24),
+        hasPrevious: false,
+        nextThumb: null,
+        nextLabel: null,
+        nextTitle: null,
+        autoplay: true,
+        episodes: const [],
+        onOpenEpisode: (_) {},
+        onTogglePlay: () {},
+        onSeek: (_) {},
+        onPrevious: () {},
+        onNext: () {},
+        onFullscreen: () {},
+        onBack: () {},
+        onServer: () {},
+        onAudio: () {},
+        onSubtitles: () {},
+        onMore: () {},
+        onComments: () {},
+        onAutoplayChanged: (_) {},
+      ),
+    );
+
+    // The page stays — title and times visible under the spinner.
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    expect(find.text('T'), findsOneWidget);
+    expect(find.text('01:30'), findsOneWidget);
+  });
+
   testWidgets('shows the live position before the first stream tick', (
     tester,
   ) async {

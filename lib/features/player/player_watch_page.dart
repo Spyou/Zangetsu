@@ -20,6 +20,7 @@ class PlayerWatchPage extends StatefulWidget {
     required this.video,
     required this.header,
     this.coverHeaders,
+    this.loading = false,
     required this.positionStream,
     required this.durationStream,
     required this.playingStream,
@@ -53,6 +54,10 @@ class PlayerWatchPage extends StatefulWidget {
   final Widget video;
   final WatchPageHeader header;
   final Map<String, String>? coverHeaders;
+
+  /// A resolve is in flight (episode switch or first load). The page stays —
+  /// the spinner sits on the mini player instead of a black loader screen.
+  final bool loading;
 
   final Stream<Duration> positionStream;
   final Stream<Duration?> durationStream;
@@ -261,6 +266,12 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
               ),
               // Tap toggles the compact controls. Above the scrims, below
               // the bars.
+              if (widget.loading)
+                const Center(
+                  child: IgnorePointer(
+                    child: CircularProgressIndicator(color: Colors.white),
+                  ),
+                ),
         Positioned.fill(
           child: GestureDetector(
             behavior: HitTestBehavior.translucent,

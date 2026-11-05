@@ -2475,6 +2475,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
       video: _buildVideoSurface(),
       header: header,
       coverHeaders: widget.coverHeaders,
+      coverUrl: widget.cover,
+      loading: state.loadingSources,
       positionStream: _c.player.stream.position,
       durationStream: _c.player.stream.duration,
       playingStream: _c.player.stream.playing,
@@ -2498,7 +2500,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
         currentIndex: state.currentIndex,
       ),
       serverName: _c.state.active?.label,
-      coverUrl: widget.cover,
       onTogglePlay: _c.togglePlay,
       onSeek: (d) => _c.player.seek(d),
       onPrevious: () => _c.playPrevious(),
@@ -2947,6 +2948,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 ),
               );
             }
+            // Portrait watch page (phone only): the stable surface on top,
+            // episode info below. It stays up through source resolves — the
+            // loading spinner sits on the mini player instead of a black
+            // loader screen, and the header is already the new episode
+            // (the cubit emits the index before resolving). Errors and
+            // torrent phases keep their dedicated screens below.
+            if (_presentation == PlayerPresentation.watchPage &&
+                state.torrentPhase == null &&
+                state.error == null) {
+              return _buildWatchPage(state);
+            }
             if (state.loadingSources) {
               return _loadingBackdropBody(
                 'Finding the best source…',
@@ -3004,12 +3016,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   ),
                 ),
               );
-            }
-            // Portrait watch page (phone only): the stable surface on top,
-            // episode info below. TV and fullscreen keep the stack below.
-            if (_presentation == PlayerPresentation.watchPage &&
-                !sl<AppMode>().isTv) {
-              return _buildWatchPage(state);
             }
             // Reset any pinch-zoom when the episode changes.
             if (_zoomIndex != state.currentIndex) {
