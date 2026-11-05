@@ -520,8 +520,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   int? _watchSeason;
 
   bool get _watchPageEnabled =>
-      !sl<AppMode>().isTv &&
-      sl<PlaybackPrefs>().openingLayout == 'watch';
+      !sl<AppMode>().isTv && sl<PlaybackPrefs>().openingLayout == 'watch';
 
   /// Live frames for the watch-page ambient glow. Sampled slowly from the
   /// playing texture (a blurred backdrop needs no frame rate), only while
@@ -669,8 +668,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   /// Fullscreen Back lands on the watch page instead of leaving the player;
   /// the page's own Back uses the normal close guard.
   void _handlePlayerBack() {
-    if (_watchPageEnabled &&
-        _presentation == PlayerPresentation.fullscreen) {
+    if (_watchPageEnabled && _presentation == PlayerPresentation.fullscreen) {
       _enterWatchPage();
       return;
     }
@@ -2506,9 +2504,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 const SizedBox(height: 6),
                 Text(
                   context.l10n.watchComingSoon,
-                  style: AppText.body.copyWith(
-                    color: AppColors.textSecondary,
-                  ),
+                  style: AppText.body.copyWith(color: AppColors.textSecondary),
                 ),
               ],
             ),
@@ -2552,9 +2548,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       showDescription: widget.showDescription ?? _enrichedDescription,
     );
     final seasonSet = seasonsOf(_c.episodes);
-    final seasons = seasonSet.length > 1
-        ? (seasonSet.toList()..sort())
-        : null;
+    final seasons = seasonSet.length > 1 ? (seasonSet.toList()..sort()) : null;
     final nextIdx = _upNextIndex();
     Episode? next;
     if (nextIdx != null &&
@@ -2568,10 +2562,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
       video: _buildVideoSurface(),
       header: header,
       coverHeaders: widget.coverHeaders,
-      coverUrl:
-          (_c.currentEpisode.thumbnail?.trim().isNotEmpty ?? false)
-              ? _c.currentEpisode.thumbnail!.trim()
-              : widget.cover,
+      coverUrl: (_c.currentEpisode.thumbnail?.trim().isNotEmpty ?? false)
+          ? _c.currentEpisode.thumbnail!.trim()
+          : widget.cover,
       loading: state.loadingSources,
       firstFrameStream: _c.player.stream.width,
       initialFirstFrame: _c.player.state.width ?? 0,
@@ -2613,8 +2606,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       onBack: _handleCloseRequest,
       onServer: _openSourceSheet,
       onAudio: () => _openAudioSubsSheet(focus: AudioSubsFocus.audio),
-      onSubtitles: () =>
-          _openAudioSubsSheet(focus: AudioSubsFocus.subtitles),
+      onSubtitles: () => _openAudioSubsSheet(focus: AudioSubsFocus.subtitles),
       onMore: _openWatchMorePanel,
       onOpenEpisode: (i) {
         setState(() => _watchSeason = seasonOf(_c.episodes[i]));
@@ -2968,6 +2960,125 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
   }
 
+  /// Portrait twin of [_loadingBackdropBody]: the same boxed surface card
+  /// (cover art dimmed, loader on top) with skeleton rows below — so opening
+  /// from detail lands straight on the portrait page instead of a fullscreen
+  /// cover interlude that then snaps into portrait. Static: no cubit, no
+  /// streams; it only paints until [_startSession]/[_resolveThenStart] flips
+  /// [_ready], at which point the real watch page takes over with everything
+  /// already in place.
+  Widget _watchPageLoadingShell() {
+    final cover = (widget.cover ?? '').trim();
+    final title = (widget.showTitle ?? '').trim();
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(18),
+                child: AspectRatio(
+                  aspectRatio: 16 / 9,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      if (cover.isNotEmpty)
+                        CachedNetworkImage(
+                          imageUrl: cover,
+                          httpHeaders: widget.coverHeaders,
+                          fit: BoxFit.cover,
+                          memCacheWidth: 1080,
+                          errorWidget: (c, u, e) =>
+                              const ColoredBox(color: Colors.black),
+                          placeholder: (c, u) =>
+                              const ColoredBox(color: Colors.black),
+                        )
+                      else
+                        const ColoredBox(color: Colors.black),
+                      const DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [Color(0x99000000), Color(0xCC000000)],
+                          ),
+                        ),
+                      ),
+                      Center(child: BrandLoader(label: 'Loading…')),
+                      Positioned(
+                        top: 0,
+                        left: 0,
+                        child: IconButton(
+                          icon: const Icon(
+                            Icons.arrow_back_rounded,
+                            color: Colors.white,
+                          ),
+                          onPressed: () => Navigator.of(context).maybePop(),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              child: title.isEmpty
+                  ? const _ShellBar(width: 220, height: 18)
+                  : Text(
+                      title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppText.headline.copyWith(
+                        color: Colors.white,
+                        fontSize: 20,
+                      ),
+                    ),
+            ),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 6, 16, 0),
+              child: _ShellBar(width: 140, height: 12),
+            ),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 14, 16, 8),
+              child: _ShellBar(width: 110, height: 16),
+            ),
+            Expanded(
+              child: ListView.builder(
+                physics: const NeverScrollableScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                itemCount: 5,
+                itemBuilder: (_, _) => const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 10),
+                  child: Row(
+                    children: [
+                      _ShellBar(width: 116, height: 65, radius: 10),
+                      SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _ShellBar(width: double.infinity, height: 14),
+                            SizedBox(height: 6),
+                            _ShellBar(width: 120, height: 12),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // A Watch Together join that couldn't resolve the room's source — explain
@@ -3001,9 +3112,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
         ),
       );
     }
-    // Still resolving the episode list (instant-nav path) — show the branded
-    // loader instead of touching the not-yet-created cubit.
+    // Still resolving the episode list (instant-nav path) — the portrait
+    // shell in watch mode (same boxed surface + skeleton rows, no fullscreen
+    // cover interlude), the branded loader otherwise. Either way we never
+    // touch the not-yet-created cubit.
     if (!_ready) {
+      if (_watchPageEnabled) return _watchPageLoadingShell();
       return Scaffold(
         backgroundColor: Colors.black,
         body: _loadingBackdropBody('Loading…'),
@@ -3750,8 +3864,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
     // Fullscreen with the watch page enabled intercepts first: Back drops to
     // the watch page instead of leaving the player.
     return PopScope(
-      canPop: _presentation == PlayerPresentation.fullscreen &&
-              _watchPageEnabled
+      canPop:
+          _presentation == PlayerPresentation.fullscreen && _watchPageEnabled
           ? false
           : sl<PlaybackPrefs>().closeConfirmation == 'direct',
       onPopInvokedWithResult: (didPop, _) {
@@ -3779,3 +3893,24 @@ class _PlayerScreenState extends State<PlayerScreen> {
 // Hides the Video widget behind it and provides a seek bar + play/pause / ±10s
 // / Stop casting controls bound to CastController's live position/duration.
 // ─────────────────────────────────────────────────────────────────────────────
+
+/// One static skeleton bar for the portrait loading shell.
+class _ShellBar extends StatelessWidget {
+  const _ShellBar({required this.width, required this.height, this.radius = 6});
+
+  final double width;
+  final double height;
+  final double radius;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(
+        color: AppColors.surface2,
+        borderRadius: BorderRadius.circular(radius),
+      ),
+    );
+  }
+}
