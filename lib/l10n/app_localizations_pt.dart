@@ -1200,6 +1200,9 @@ class AppLocalizationsPt extends AppLocalizations {
   String get watchSeeLess => 'See less';
 
   @override
+  String get watchReverseOrder => 'Reverse order';
+
+  @override
   String get doublePageLandscape => 'Página dupla (paisagem)';
 
   @override

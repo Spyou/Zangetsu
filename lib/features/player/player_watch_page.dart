@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/ui/frosted_surface.dart';
+import '../detail/episode_filter.dart';
 import '../../l10n/l10n.dart';
 import 'watch_page_info.dart';
 
@@ -38,6 +39,9 @@ class PlayerWatchPage extends StatefulWidget {
     this.nextTitle,
     required this.autoplay,
     required this.episodes,
+    this.seasons,
+    this.selectedSeason,
+    this.onSelectSeason,
     this.serverName,
     this.coverUrl,
     required this.onTogglePlay,
@@ -90,6 +94,13 @@ class PlayerWatchPage extends StatefulWidget {
   final String? nextTitle;
   final bool autoplay;
   final List<WatchPageEpisode> episodes;
+
+  /// Season chips above the list (detail-screen parity). Null/<=1 season
+  /// hides the row; tapping filters the list in place, identity intact.
+  final List<int>? seasons;
+  final int? selectedSeason;
+  final ValueChanged<int?>? onSelectSeason;
+
   final String? serverName;
   final String? coverUrl;
 
@@ -111,6 +122,8 @@ class PlayerWatchPage extends StatefulWidget {
   State<PlayerWatchPage> createState() => _PlayerWatchPageState();
 }
 
+enum _WatchEpisodeAction { reverse, autoplay }
+
 class _PlayerWatchPageState extends State<PlayerWatchPage> {
   bool _controlsVisible = true;
   bool _expanded = false;
@@ -121,9 +134,18 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
   late final ScrollController _scroll;
   final ValueNotifier<double> _ambientOpacity = ValueNotifier(1);
 
-  /// The row the player is on. The list opens on it and follows it.
-  final GlobalKey _currentKey = GlobalKey();
-  int _scrolledIndex = -1;
+  /// Row keys by real episode index, so scroll-to-current and jump land
+  /// on the right row in list and grid alike.
+  final Map<int, GlobalKey> _rowKeys = {};
+  GlobalKey _rowKey(int index) => _rowKeys.putIfAbsent(index, GlobalKey.new);
+  String _lastFingerprint = '';
+
+  /// Display state (season comes from the parent): range page, reversed
+  /// order, grid vs list. All presentational — tapped rows always carry the
+  /// real episode index, so playback never sees this.
+  int _range = 0;
+  bool _reversed = false;
+  bool _grid = false;
 
   late bool _frameUp;
   StreamSubscription<int?>? _frameSub;
@@ -245,28 +267,89 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
     _ambientOpacity.value = (1 - _scroll.offset / 180).clamp(0.0, 1.0);
   }
 
-  void _scrollToCurrent() {
-    final at = widget.episodes.indexWhere((e) => e.current);
-    if (at == _scrolledIndex) return;
-    _scrolledIndex = at;
+  /// Display order after the reverse toggle.
+  List<WatchPageEpisode> get _ordered =>
+      _reversed ? widget.episodes.reversed.toList() : widget.episodes;
+
+  int get _rangeCount => episodeRangeCount(_ordered.length);
+
+  /// Visible page: the current range slice of the display order.
+  List<WatchPageEpisode> get _paged {
+    final d = _ordered;
+    if (d.length <= kEpisodeRangeChunk) return d;
+    final s = episodeRangeSlice(_range.clamp(0, _rangeCount - 1), d.length);
+    return d.sublist(s.start, s.end);
+  }
+
+  String _rangeLabel(int i) {
+    final s = episodeRangeSlice(i, _ordered.length);
+    return '${s.start + 1}\u2013${s.end}';
+  }
+
+  String _fingerprint(List<WatchPageEpisode> eps) =>
+      '${eps.length}:${eps.isEmpty ? -1 : eps.first.index}'
+      ':${eps.isEmpty ? -1 : eps.last.index}';
+
+  int? _revealedIndex;
+  int _revealRequest = 0;
+
+  /// Materialize the target within its page before scrolling it into view.
+  void _revealEp(int realIndex, {bool force = false}) {
+    if (!force && _revealedIndex == realIndex) return;
+    final at = _ordered.indexWhere((e) => e.index == realIndex);
     if (at < 0) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final ctx = _currentKey.currentContext;
-      if (ctx != null && mounted) {
-        unawaited(
-          Scrollable.ensureVisible(
-            ctx,
-            duration: const Duration(milliseconds: 350),
-            alignment: 0.12,
-          ),
-        );
-      }
-    });
+    final want = at ~/ kEpisodeRangeChunk;
+    if (want != _range) setState(() => _range = want);
+    _revealedIndex = realIndex;
+    final request = ++_revealRequest;
+    void seek(int step) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || request != _revealRequest || !_scroll.hasClients) {
+          return;
+        }
+        final ctx = _rowKey(realIndex).currentContext;
+        if (ctx != null) {
+          unawaited(
+            Scrollable.ensureVisible(
+              ctx,
+              duration: const Duration(milliseconds: 250),
+              alignment: 0.3,
+            ),
+          );
+          return;
+        }
+        if (step > _paged.length + 1) return;
+        final position = _scroll.position;
+        final next = step == 0
+            ? 0.0
+            : (position.pixels + position.viewportDimension * 0.75).clamp(
+                0.0,
+                position.maxScrollExtent,
+              );
+        if (step > 0 && next == position.pixels) return;
+        _scroll.jumpTo(next);
+        seek(step + 1);
+        WidgetsBinding.instance.scheduleFrame();
+      });
+    }
+
+    seek(0);
+  }
+
+  void _scrollToCurrent() {
+    final cur = _ordered.where((e) => e.current);
+    if (cur.isEmpty) return;
+    _revealEp(cur.first.index);
   }
 
   @override
   void didUpdateWidget(PlayerWatchPage oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (_fingerprint(widget.episodes) != _lastFingerprint) {
+      _lastFingerprint = _fingerprint(widget.episodes);
+      _revealedIndex = null;
+      _revealRequest++;
+    }
     _scrollToCurrent();
     if (widget.coverUrl != oldWidget.coverUrl) {
       _sampledCover = null;
@@ -624,12 +707,14 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
 
   Widget _info() {
     final l10n = context.l10n;
-    return SingleChildScrollView(
+    // CustomScrollView + SliverList: a 1000-episode title only builds the
+    // rows on screen instead of inflating every thumbnail up front (that
+    // eager Column is what froze One Piece on entry).
+    return CustomScrollView(
       controller: _scroll,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Stack(
+      slivers: [
+        SliverToBoxAdapter(
+          child: Stack(
             children: [
               _ambientBackdrop(belowVideo: true),
               Padding(
@@ -669,12 +754,33 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
               ),
             ],
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-            child: _episodeList(l10n),
-          ),
-        ],
-      ),
+        ),
+        if (widget.episodes.isNotEmpty)
+          SliverToBoxAdapter(child: _episodesHeader(l10n)),
+        if (_paged.isNotEmpty)
+          _grid
+              ? SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                  sliver: SliverGrid.builder(
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 3,
+                          mainAxisSpacing: 8,
+                          crossAxisSpacing: 8,
+                          childAspectRatio: 16 / 10,
+                        ),
+                    itemCount: _paged.length,
+                    itemBuilder: (context, i) => _episodeTile(_paged[i]),
+                  ),
+                )
+              : SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                  sliver: SliverList.builder(
+                    itemCount: _paged.length,
+                    itemBuilder: (context, i) => _episodeRow(_paged[i]),
+                  ),
+                ),
+      ],
     );
   }
 
@@ -804,27 +910,20 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
     );
   }
 
-  /// The episode list, inline — the list IS the up-next and the picker, so
-  /// there is no separate Up Next card and no All-episodes button. Only what
-  /// is still ahead shows; tapping opens that index.
-  Widget _episodeList(AppLocalizations l10n) {
-    if (widget.episodes.isEmpty) return const SizedBox.shrink();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(left: 4, bottom: 8),
-          child: Row(
+  /// The episode list header, mirroring the detail screen: a season
+  /// dropdown pill on the left, jump / reverse / grid actions on the right,
+  /// and a horizontal 1-50 style range row below for long titles. The
+  /// scrolling rows below ARE the up-next and the picker.
+  Widget _episodesHeader(AppLocalizations l10n) {
+    final multiSeason = widget.seasons != null && widget.seasons!.length > 1;
+    final showRanges = _ordered.length > kEpisodeRangeChunk;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
-              Container(
-                width: 8,
-                height: 8,
-                decoration: BoxDecoration(
-                  color: AppColors.accent,
-                  shape: BoxShape.circle,
-                ),
-              ),
-              const SizedBox(width: 8),
               Text(
                 '${l10n.watchEpisodes} (${widget.episodes.length})',
                 style: AppText.body.copyWith(
@@ -833,21 +932,313 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
                 ),
               ),
               const Spacer(),
-              Text(
-                l10n.watchAutoplay,
-                style: AppText.caption.copyWith(color: AppColors.textSecondary),
+              _roundBtn(
+                Icons.search_rounded,
+                l10n.findEpisode,
+                () => _openJumpDialog(l10n),
               ),
-              Switch(
-                value: widget.autoplay,
-                activeThumbColor: AppColors.accent,
-                onChanged: widget.onAutoplayChanged,
+              const SizedBox(width: 8),
+              _roundBtn(
+                _grid ? Icons.view_list_rounded : Icons.grid_view_rounded,
+                _grid ? l10n.listView : l10n.gridView,
+                () => setState(() => _grid = !_grid),
+              ),
+              const SizedBox(width: 8),
+              _moreMenu(l10n),
+            ],
+          ),
+          if (multiSeason || showRanges)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Row(
+                children: [
+                  if (multiSeason) _seasonPill(l10n),
+                  if (multiSeason && showRanges) const SizedBox(width: 8),
+                  if (showRanges)
+                    Expanded(
+                      child: SizedBox(
+                        height: 32,
+                        child: ListView.separated(
+                          key: const ValueKey('watch_ranges'),
+                          scrollDirection: Axis.horizontal,
+                          padding: EdgeInsets.zero,
+                          clipBehavior: Clip.none,
+                          itemCount: _rangeCount,
+                          separatorBuilder: (_, _) => const SizedBox(width: 8),
+                          itemBuilder: (context, i) {
+                            final sel = i == _range.clamp(0, _rangeCount - 1);
+                            return Material(
+                              color: sel
+                                  ? AppColors.accent
+                                  : AppColors.surface2,
+                              borderRadius: BorderRadius.circular(999),
+                              clipBehavior: Clip.antiAlias,
+                              child: InkWell(
+                                onTap: () => setState(() {
+                                  _revealRequest++;
+                                  _range = i;
+                                }),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                  ),
+                                  child: Center(
+                                    child: Text(
+                                      _rangeLabel(i),
+                                      style: AppText.caption.copyWith(
+                                        color: sel
+                                            ? Colors.white
+                                            : AppColors.textSecondary,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// Round action button, same shape language as the detail header.
+  Widget _roundBtn(IconData icon, String semantic, VoidCallback onTap) {
+    return Semantics(
+      button: true,
+      label: semantic,
+      child: Material(
+        color: AppColors.surface2,
+        shape: const CircleBorder(),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(8),
+            child: Icon(icon, color: AppColors.textPrimary, size: 20),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _moreMenu(AppLocalizations l10n) {
+    return PopupMenuButton<_WatchEpisodeAction>(
+      tooltip: l10n.more,
+      icon: const Icon(Icons.more_vert_rounded, size: 20),
+      padding: EdgeInsets.zero,
+      style: IconButton.styleFrom(
+        backgroundColor: AppColors.surface2,
+        fixedSize: const Size.square(36),
+        minimumSize: const Size.square(36),
+        maximumSize: const Size.square(36),
+        padding: EdgeInsets.zero,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        shape: const CircleBorder(),
+      ),
+      color: AppColors.surface,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      onSelected: (action) {
+        if (action == _WatchEpisodeAction.autoplay) {
+          widget.onAutoplayChanged(!widget.autoplay);
+          return;
+        }
+        setState(() {
+          _reversed = !_reversed;
+          _range = 0;
+          _scrollToCurrent();
+        });
+      },
+      itemBuilder: (_) => [
+        _episodeMenuItem(
+          _WatchEpisodeAction.reverse,
+          Icons.swap_vert_rounded,
+          l10n.watchReverseOrder,
+          _reversed,
+        ),
+        _episodeMenuItem(
+          _WatchEpisodeAction.autoplay,
+          Icons.play_circle_outline_rounded,
+          l10n.watchAutoplay,
+          widget.autoplay,
+        ),
+      ],
+    );
+  }
+
+  PopupMenuItem<_WatchEpisodeAction> _episodeMenuItem(
+    _WatchEpisodeAction action,
+    IconData icon,
+    String label,
+    bool checked,
+  ) => PopupMenuItem(
+    value: action,
+    child: Row(
+      children: [
+        Icon(icon, size: 20),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+        ),
+        const SizedBox(width: 12),
+        SizedBox(
+          width: 20,
+          height: 20,
+          child: checked ? const Icon(Icons.check_rounded, size: 18) : null,
+        ),
+      ],
+    ),
+  );
+
+  /// Season dropdown pill. Opens the same kind of bottom sheet the detail
+  /// screen uses; picking filters the inline list in place.
+  Widget _seasonPill(AppLocalizations l10n) {
+    final selected = widget.selectedSeason ?? widget.seasons!.first;
+    final label = '${l10n.season} $selected';
+    return Material(
+      color: AppColors.surface2,
+      borderRadius: BorderRadius.circular(10),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => _openSeasonSheet(l10n),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 12, 10),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(label, style: AppText.headline),
+              const SizedBox(width: 6),
+              const Icon(
+                Icons.keyboard_arrow_down_rounded,
+                color: AppColors.textPrimary,
+                size: 22,
               ),
             ],
           ),
         ),
-        for (final ep in widget.episodes) _episodeRow(ep),
-      ],
+      ),
     );
+  }
+
+  Future<void> _openSeasonSheet(AppLocalizations l10n) async {
+    final seasons = widget.seasons ?? const <int>[];
+    final picked = await showModalBottomSheet<int?>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      barrierColor: Colors.black54,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 20, 24, 12),
+              child: Text(l10n.season, style: AppText.title),
+            ),
+            const Divider(height: 1, color: AppColors.hairline),
+            Flexible(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(ctx).size.height * 0.6,
+                ),
+                child: ListView(
+                  shrinkWrap: true,
+                  padding: const EdgeInsets.only(bottom: 12),
+                  children: [
+                    for (final s in seasons)
+                      _seasonSheetRow(
+                        ctx,
+                        label: '${l10n.season} $s',
+                        selected: widget.selectedSeason == s,
+                        onTap: () => Navigator.pop(ctx, s),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (picked != widget.selectedSeason ||
+        (picked == null && widget.selectedSeason != null)) {
+      widget.onSelectSeason?.call(picked);
+    }
+  }
+
+  Widget _seasonSheetRow(
+    BuildContext ctx, {
+    required String label,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                label,
+                style: AppText.body.copyWith(
+                  color: selected ? AppColors.accent : AppColors.textPrimary,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
+                ),
+              ),
+            ),
+            if (selected) Icon(Icons.check_rounded, color: AppColors.accent),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Jump to an episode number: switches to its range page, then scrolls
+  /// the row into view. Unknown numbers dismiss quietly.
+  Future<void> _openJumpDialog(AppLocalizations l10n) async {
+    final controller = TextEditingController();
+    final go = await showDialog<int>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(l10n.jumpToEpisode),
+        content: TextField(
+          controller: controller,
+          keyboardType: TextInputType.number,
+          autofocus: true,
+          decoration: InputDecoration(hintText: l10n.episodeNumber),
+          onSubmitted: (v) => Navigator.pop(ctx, int.tryParse(v.trim())),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(l10n.cancel),
+          ),
+          TextButton(
+            onPressed: () =>
+                Navigator.pop(ctx, int.tryParse(controller.text.trim())),
+            child: Text(l10n.go),
+          ),
+        ],
+      ),
+    );
+    if (go == null || !mounted) return;
+    final at = widget.episodes.indexWhere((e) => e.number?.toInt() == go);
+    final target = at >= 0 ? at : go - 1;
+    if (target < 0 || target >= widget.episodes.length) return;
+    _revealEp(widget.episodes[target].index, force: true);
   }
 
   Widget _episodeRow(WatchPageEpisode ep) {
@@ -945,10 +1336,47 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
     );
     if (dead) return Opacity(opacity: 0.55, child: row);
     return GestureDetector(
-      key: ep.current ? _currentKey : null,
+      key: _rowKey(ep.index),
       onTap: () => widget.onOpenEpisode(ep.index),
       behavior: HitTestBehavior.opaque,
       child: row,
+    );
+  }
+
+  /// Numbered grid tile for the grid view. Same identity contract as rows:
+  /// tap opens the real episode index.
+  Widget _episodeTile(WatchPageEpisode ep) {
+    final reason = (ep.unavailableReason ?? '').trim();
+    final dead = reason.isNotEmpty;
+    final label = ep.number != null
+        ? '${ep.number!.toInt()}'
+        : '${ep.index + 1}';
+    final tile = Container(
+      decoration: BoxDecoration(
+        color: ep.current
+            ? AppColors.accent.withValues(alpha: 0.16)
+            : AppColors.surface2,
+        borderRadius: BorderRadius.circular(12),
+        border: ep.current ? Border.all(color: AppColors.accent) : null,
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        label,
+        style: AppText.headline.copyWith(
+          color: dead
+              ? AppColors.textTertiary
+              : ep.current
+              ? AppColors.accent
+              : Colors.white,
+        ),
+      ),
+    );
+    if (dead) return Opacity(opacity: 0.55, child: tile);
+    return GestureDetector(
+      key: _rowKey(ep.index),
+      onTap: () => widget.onOpenEpisode(ep.index),
+      behavior: HitTestBehavior.opaque,
+      child: tile,
     );
   }
 }

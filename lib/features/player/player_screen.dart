@@ -515,6 +515,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
   /// setting; TV and external routes always stay fullscreen.
   PlayerPresentation _presentation = PlayerPresentation.fullscreen;
 
+  /// Season filter for the watch-page episode list. Null = all seasons; a
+  /// new episode resets it so the list always opens on what is playing.
+  int? _watchSeason;
+
   bool get _watchPageEnabled =>
       !sl<AppMode>().isTv &&
       sl<PlaybackPrefs>().openingLayout == 'watch';
@@ -2547,6 +2551,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
       showTitle: widget.showTitle,
       showDescription: widget.showDescription ?? _enrichedDescription,
     );
+    final seasonSet = seasonsOf(_c.episodes);
+    final seasons = seasonSet.length > 1
+        ? (seasonSet.toList()..sort())
+        : null;
     final nextIdx = _upNextIndex();
     Episode? next;
     if (nextIdx != null &&
@@ -2590,7 +2598,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
         episodes: _c.episodes,
         currentIndex: state.currentIndex,
         coverFallback: widget.cover,
+        season: _watchSeason ?? seasonOf(_c.currentEpisode),
       ),
+      seasons: seasons,
+      selectedSeason:
+          _watchSeason ?? seasonOf(_c.currentEpisode) ?? seasons?.first,
+      onSelectSeason: (s) => setState(() => _watchSeason = s),
       serverName: _c.state.active?.label,
       onTogglePlay: _c.togglePlay,
       onSeek: (d) => _c.player.seek(d),
@@ -2603,7 +2616,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
       onSubtitles: () =>
           _openAudioSubsSheet(focus: AudioSubsFocus.subtitles),
       onMore: _openWatchMorePanel,
-      onOpenEpisode: (i) => _c.openEpisode(i),
+      onOpenEpisode: (i) {
+        setState(() => _watchSeason = seasonOf(_c.episodes[i]));
+        _c.openEpisode(i);
+      },
       onComments: _openComingSoonSheet,
       onAutoplayChanged: _setAutoplayNext,
     );

@@ -2295,6 +2295,12 @@ abstract class AppLocalizations {
   /// **'See less'**
   String get watchSeeLess;
 
+  /// No description provided for @watchReverseOrder.
+  ///
+  /// In en, this message translates to:
+  /// **'Reverse order'**
+  String get watchReverseOrder;
+
   /// No description provided for @doublePageLandscape.
   ///
   /// In en, this message translates to:

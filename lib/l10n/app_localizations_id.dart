@@ -1191,6 +1191,9 @@ class AppLocalizationsId extends AppLocalizations {
   String get watchSeeLess => 'See less';
 
   @override
+  String get watchReverseOrder => 'Reverse order';
+
+  @override
   String get doublePageLandscape => 'Dua halaman (landscape)';
 
   @override

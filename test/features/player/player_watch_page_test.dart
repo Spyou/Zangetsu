@@ -15,6 +15,9 @@ PlayerWatchPage _page({
   void Function(bool)? onAutoplayChanged,
   void Function(int)? onOpenEpisode,
   Stream<Uint8List?>? ambientFrameStream,
+  List<int>? seasons,
+  int? selectedSeason,
+  void Function(int?)? onSelectSeason,
 }) {
   return PlayerWatchPage(
     video: const ColoredBox(color: Colors.black),
@@ -47,6 +50,9 @@ PlayerWatchPage _page({
     onSubtitles: () {},
     onMore: () {},
     onOpenEpisode: onOpenEpisode ?? (_) {},
+    seasons: seasons,
+    selectedSeason: selectedSeason,
+    onSelectSeason: onSelectSeason,
     onComments: onComments ?? () {},
     onAutoplayChanged: onAutoplayChanged ?? (_) {},
   );
@@ -79,6 +85,9 @@ void main() {
   testWidgets('shows title, actions, description and episodes', (tester) async {
     await _pump(tester, _page(episodes: demoEpisodes, nextTitle: 'Episode 2'));
 
+    // Auto-scroll lands on the current row; go back up for the top.
+    await tester.drag(find.byType(CustomScrollView), const Offset(0, 400));
+    await tester.pumpAndSettle();
     expect(find.text('The Fall'), findsOneWidget);
     expect(find.text('1. First Light'), findsOneWidget);
     expect(find.text('24 min'), findsOneWidget);
@@ -91,8 +100,11 @@ void main() {
     // No separate Up Next section — the list is the up-next.
     expect(find.text('Up next'), findsNothing);
     expect(find.text('Episodes (2)'), findsOneWidget);
+    // Scroll down to the current row.
+    await tester.drag(find.byType(CustomScrollView), const Offset(0, -600));
+    await tester.pumpAndSettle();
     expect(find.text('Episode 2'), findsOneWidget);
-    expect(find.byType(Switch), findsOneWidget);
+    expect(find.byType(Switch), findsNothing);
     // No fake engagement anywhere.
     expect(find.textContaining('41.9k'), findsNothing);
     expect(find.textContaining('37'), findsNothing);
@@ -111,42 +123,142 @@ void main() {
     int? opened;
     await _pump(
       tester,
-      PlayerWatchPage(
-        video: const ColoredBox(color: Colors.black),
-        header: const WatchPageHeader(
-          title: 'T',
-          subtitle: 'S',
-          description: null,
-        ),
-        positionStream: Stream<Duration>.empty(),
-        durationStream: Stream<Duration?>.empty(),
-        playingStream: Stream.value(false),
-        initialPlaying: false,
-        initialPosition: Duration.zero,
-        initialDuration: Duration.zero,
-        hasPrevious: false,
-        nextThumb: null,
-        nextLabel: null,
-        nextTitle: null,
-        autoplay: true,
-        episodes: demoEpisodes,
+      _page(
         onOpenEpisode: (i) => opened = i,
-        onTogglePlay: () {},
-        onSeek: (_) {},
-        onPrevious: () {},
-        onNext: () {},
-        onFullscreen: () {},
-        onBack: () {},
-        onServer: () {},
-        onAudio: () {},
-        onSubtitles: () {},
-        onMore: () {},
-        onComments: () {},
-        onAutoplayChanged: (_) {},
+        episodes: const [
+          WatchPageEpisode(
+            index: 0,
+            heading: '1. A',
+            label: 'A',
+            thumb: '',
+            current: true,
+          ),
+          WatchPageEpisode(
+            index: 5,
+            heading: '5. F',
+            label: 'F',
+            thumb: '',
+            current: false,
+          ),
+        ],
       ),
     );
 
-    await tester.tap(find.text('1. First Light'));
+    await tester.drag(find.byType(CustomScrollView), const Offset(0, -300));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('5. F'));
+    expect(opened, 5);
+  });
+
+  testWidgets('season pill opens the sheet and picks a season', (tester) async {
+    int? picked;
+    await _pump(
+      tester,
+      _page(
+        onOpenEpisode: (_) {},
+        episodes: const [
+          WatchPageEpisode(
+            index: 0,
+            heading: '1. A',
+            label: 'A',
+            thumb: '',
+            current: true,
+          ),
+          WatchPageEpisode(
+            index: 5,
+            heading: '2. B',
+            label: 'B',
+            thumb: '',
+            current: false,
+          ),
+        ],
+        seasons: const [1, 2],
+        selectedSeason: 1,
+        onSelectSeason: (s) => picked = s,
+      ),
+    );
+
+    // The pill mirrors the detail screen's season selector.
+    await tester.tap(find.text('Season 1'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Season 2').last);
+    await tester.pumpAndSettle();
+    expect(picked, 2);
+  });
+
+  testWidgets('range chips page long lists', (tester) async {
+    await _pump(
+      tester,
+      _page(
+        onOpenEpisode: (_) {},
+        episodes: List.generate(
+          60,
+          (i) => WatchPageEpisode(
+            index: i,
+            heading: 'Episode ${i + 1}',
+            label: 'Episode ${i + 1}',
+            thumb: '',
+            current: false,
+            number: i + 1,
+          ),
+        ),
+      ),
+    );
+
+    // Bring the header into the viewport first.
+    expect(find.byType(CustomScrollView), findsOneWidget);
+    await tester.ensureVisible(find.byKey(const ValueKey('watch_ranges')));
+    await tester.pumpAndSettle();
+    expect(find.text('1\u201350'), findsOneWidget);
+    expect(
+      tester.getSize(find.byKey(const ValueKey('watch_ranges'))).height,
+      32,
+    );
+    await tester.drag(
+      find.byKey(const ValueKey('watch_ranges')),
+      const Offset(-300, 0),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('51\u201360'));
+    await tester.pumpAndSettle();
+    // Second page starts at EP 51.
+    expect(find.text('Episode 51'), findsOneWidget);
+    expect(find.text('Episode 1'), findsNothing);
+  });
+
+  testWidgets('reverse flips the rows but keeps real indices', (tester) async {
+    int? opened;
+    await _pump(
+      tester,
+      _page(
+        onOpenEpisode: (i) => opened = i,
+        episodes: const [
+          WatchPageEpisode(
+            index: 0,
+            heading: '1. A',
+            label: 'A',
+            thumb: '',
+            current: false,
+          ),
+          WatchPageEpisode(
+            index: 1,
+            heading: '2. B',
+            label: 'B',
+            thumb: '',
+            current: false,
+          ),
+        ],
+      ),
+    );
+
+    await tester.tap(find.byIcon(Icons.more_vert_rounded));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Reverse order'));
+    await tester.pumpAndSettle();
+    // Reversed list puts EP 1 at the bottom — scroll to it.
+    await tester.drag(find.byType(CustomScrollView), const Offset(0, -600));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('1. A').first);
     expect(opened, 0);
   });
 
@@ -164,14 +276,18 @@ void main() {
     expect(comments, 1);
   });
 
-  testWidgets('autoplay switch reports the flipped value', (tester) async {
+  testWidgets('autoplay in More reports the flipped value', (tester) async {
     bool? reported;
     await _pump(
       tester,
       _page(episodes: demoEpisodes, onAutoplayChanged: (v) => reported = v),
     );
 
-    await tester.tap(find.byType(Switch));
+    expect(find.text('Auto-play'), findsNothing);
+    await tester.tap(find.byIcon(Icons.more_vert_rounded));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Auto-play'));
+    await tester.pumpAndSettle();
     expect(reported, isFalse);
   });
 
@@ -315,31 +431,58 @@ void main() {
 
   testWidgets('dead rows show their reason and ignore taps', (tester) async {
     int? opened;
-    await _pump(
-      tester,
-      _page(
-        episodes: const [
-          WatchPageEpisode(
-            index: 3,
-            heading: '4. Not out yet',
-            label: 'Not out yet',
-            thumb: '',
-            current: false,
-            meta: 'Not out yet',
-            unavailableReason: 'Not out yet',
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PlayerWatchPage(
+          video: const ColoredBox(color: Colors.black),
+          header: const WatchPageHeader(
+            title: 'T',
+            subtitle: 'S',
+            description: null,
           ),
-        ],
-        onOpenEpisode: (i) => opened = i,
+          positionStream: Stream<Duration>.empty(),
+          durationStream: Stream<Duration?>.empty(),
+          playingStream: Stream.value(false),
+          initialPlaying: false,
+          initialPosition: Duration.zero,
+          initialDuration: Duration.zero,
+          hasPrevious: false,
+          autoplay: true,
+          episodes: const [
+            WatchPageEpisode(
+              index: 3,
+              heading: '4. X',
+              label: 'X',
+              thumb: '',
+              current: false,
+              meta: 'Not out yet',
+              unavailableReason: 'Not out yet',
+            ),
+          ],
+          onOpenEpisode: (i) => opened = i,
+          onTogglePlay: () {},
+          onSeek: (_) {},
+          onPrevious: () {},
+          onNext: () {},
+          onFullscreen: () {},
+          onBack: () {},
+          onServer: () {},
+          onAudio: () {},
+          onSubtitles: () {},
+          onMore: () {},
+          onComments: () {},
+          onAutoplayChanged: (_) {},
+        ),
       ),
     );
-
+    await tester.pumpAndSettle();
     expect(find.text('Not out yet'), findsOneWidget);
     await tester.tap(find.text('Not out yet'));
     expect(opened, isNull);
   });
 
   testWidgets('ambient follows the live frame', (tester) async {
-    // 1x1 PNG. A real frame paints the gradient glow.
+    // 1x1 PNG. A decoded frame paints the wash.
     final frame = base64Decode(
       'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
     );
@@ -347,74 +490,127 @@ void main() {
       tester,
       _page(
         onOpenEpisode: (_) {},
+        episodes: const [],
+        ambientFrameStream: Stream<Uint8List?>.value(frame),
+      ),
+    );
+    await tester.runAsync(() => Future.delayed(const Duration(seconds: 1)));
+    await tester.pumpAndSettle();
+
+    final wash = find.byWidgetPredicate(
+      (widget) =>
+          widget is DecoratedBox &&
+          widget.decoration is BoxDecoration &&
+          (widget.decoration as BoxDecoration).gradient is RadialGradient,
+    );
+    expect(wash, findsOneWidget);
+  });
+
+  testWidgets('grid toggle shows numbered tiles', (tester) async {
+    int? opened;
+    await _pump(
+      tester,
+      _page(
+        onOpenEpisode: (i) => opened = i,
+        episodes: const [
+          WatchPageEpisode(
+            index: 0,
+            heading: '1. A',
+            label: 'A',
+            thumb: '',
+            current: true,
+          ),
+          WatchPageEpisode(
+            index: 1,
+            heading: '2. B',
+            label: 'B',
+            thumb: '',
+            current: false,
+          ),
+        ],
+      ),
+    );
+
+    await tester.tap(find.byIcon(Icons.grid_view_rounded));
+    await tester.pumpAndSettle();
+    expect(find.byType(SliverGrid), findsOneWidget);
+    await tester.tap(find.text('2').first);
+    expect(opened, 1);
+  });
+
+  testWidgets('jump dialog scrolls to the typed episode', (tester) async {
+    await _pump(
+      tester,
+      _page(
+        onOpenEpisode: (_) {},
         episodes: List.generate(
-          20,
+          60,
           (i) => WatchPageEpisode(
             index: i,
             heading: 'Episode ${i + 1}',
             label: 'Episode ${i + 1}',
             thumb: '',
             current: false,
+            number: i + 1,
           ),
         ),
-        ambientFrameStream: Stream<Uint8List?>.value(frame),
       ),
     );
-    // The frame decodes off the fake clock — give it real time.
-    await tester.runAsync(() => Future.delayed(const Duration(seconds: 1)));
-    await tester.pumpAndSettle();
 
-    final glow = find.byWidgetPredicate(
-      (widget) =>
-          widget is DecoratedBox &&
-          widget.decoration is BoxDecoration &&
-          (widget.decoration as BoxDecoration).gradient is RadialGradient,
-    );
-    expect(glow, findsOneWidget);
-    expect(tester.getSize(glow).width, greaterThan(0));
-    expect(tester.getSize(glow).height, greaterThan(0));
-    final infoGlow = find.byKey(const ValueKey('ambient-info'));
-    final videoGlow = find.byKey(const ValueKey('ambient-video'));
-    final before = tester.getRect(infoGlow);
-    final videoBefore = tester.getRect(videoGlow);
-    expect(
-      before.width,
-      tester.view.physicalSize.width / tester.view.devicePixelRatio,
-    );
-    expect(
-      before.bottom,
-      greaterThan(tester.getBottomLeft(find.text('Comments')).dy),
-    );
-    expect(
-      before.bottom,
-      lessThanOrEqualTo(tester.getTopLeft(find.text('Episodes (20)')).dy),
-    );
-
-    await tester.drag(
-      find.byType(SingleChildScrollView).first,
-      const Offset(0, -150),
-    );
+    await tester.tap(find.byIcon(Icons.search_rounded));
     await tester.pumpAndSettle();
-    expect(tester.getRect(infoGlow).top, lessThan(before.top - 120));
-    expect(tester.getRect(videoGlow), videoBefore);
-    expect(tester.getSize(infoGlow).height, greaterThan(0));
-    double opacity(String key) =>
-        tester.widget<Opacity>(find.byKey(ValueKey(key))).opacity;
-    final scroll = tester
-        .widget<SingleChildScrollView>(find.byType(SingleChildScrollView).first)
-        .controller!;
-    scroll.jumpTo(90);
-    await tester.pump();
-    expect(opacity('ambient-video-opacity'), closeTo(0.5, 0.01));
-    expect(opacity('ambient-info-opacity'), closeTo(0.5, 0.01));
-    scroll.jumpTo(180);
-    await tester.pump();
-    expect(opacity('ambient-video-opacity'), 0);
-    expect(opacity('ambient-info-opacity'), 0);
-    scroll.jumpTo(0);
-    await tester.pump();
-    expect(opacity('ambient-video-opacity'), 1);
-    expect(opacity('ambient-info-opacity'), 1);
-    expect(tester.takeException(), isNull);
+    await tester.enterText(find.byType(TextField), '59');
+    await tester.tap(find.text('Go'));
+    await tester.pumpAndSettle();
+    expect(find.text('Episode 59'), findsOneWidget);
   });
+  for (final (numbered, grid, reversed) in [
+    (true, false, false),
+    (false, false, false),
+    (true, true, true),
+    (false, false, true),
+  ]) {
+    testWidgets(
+      'jump finds middle row: numbers=$numbered grid=$grid reverse=$reversed',
+      (tester) async {
+        int? opened;
+        await _pump(
+          tester,
+          _page(
+            onOpenEpisode: (index) => opened = index,
+            episodes: List.generate(
+              120,
+              (i) => WatchPageEpisode(
+                index: i + 200,
+                heading: 'Episode ${i + 1}',
+                label: 'Episode ${i + 1}',
+                thumb: '',
+                current: false,
+                number: numbered ? i + 1 : null,
+              ),
+            ),
+          ),
+        );
+        if (reversed) {
+          await tester.tap(find.byIcon(Icons.more_vert_rounded));
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('Reverse order'));
+          await tester.pumpAndSettle();
+        }
+        if (grid) {
+          await tester.tap(find.byIcon(Icons.grid_view_rounded));
+          await tester.pumpAndSettle();
+        }
+        await tester.tap(find.byIcon(Icons.search_rounded));
+        await tester.pumpAndSettle();
+        await tester.enterText(find.byType(TextField), '75');
+        await tester.tap(find.text('Go'));
+        await tester.pumpAndSettle();
+        final target = find.text(grid ? '75' : 'Episode 75');
+        expect(target.hitTestable(), findsOneWidget);
+        await tester.tap(target);
+        expect(opened, 274);
+      },
+    );
+  }
 }

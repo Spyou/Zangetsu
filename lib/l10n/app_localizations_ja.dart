@@ -1168,6 +1168,9 @@ class AppLocalizationsJa extends AppLocalizations {
   String get watchSeeLess => 'See less';
 
   @override
+  String get watchReverseOrder => 'Reverse order';
+
+  @override
   String get doublePageLandscape => '見開き（横向き）';
 
   @override

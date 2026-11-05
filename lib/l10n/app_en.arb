@@ -467,6 +467,7 @@
 	"watchAutoplay": "Auto-play",
 	"watchSeeMore": "See more",
 	"watchSeeLess": "See less",
+	"watchReverseOrder": "Reverse order",
 	"doublePageLandscape": "Double-page (landscape)",
 	"pairFacingPagesInALandscapeSpread": "Pair facing pages in a landscape spread",
 	"cropBorders": "Crop borders",

@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:watch_app/core/models/episode.dart';
 import 'package:watch_app/core/models/episode_title.dart';
+import '../detail/cubit/detail_cubit.dart' show seasonOf;
 
 /// Immutable display data for the portrait watch page header: the episode
 /// title (UI clamps to two lines), the series/season/episode line, and the
@@ -72,6 +73,7 @@ class WatchPageEpisode {
     required this.label,
     required this.thumb,
     required this.current,
+    this.number,
     this.unavailableReason,
     this.meta = '',
     this.synopsis = '',
@@ -83,6 +85,9 @@ class WatchPageEpisode {
   final String label;
   final String thumb;
   final bool current;
+
+  /// The episode number for jump-to-episode. Null when the source gives none.
+  final num? number;
 
   /// Why this row can never play (unreleased, …). Null = tappable.
   final String? unavailableReason;
@@ -101,6 +106,7 @@ List<WatchPageEpisode> watchPageEpisodes({
   required List<Episode> episodes,
   required int currentIndex,
   String? coverFallback,
+  int? season,
 }) {
   String artOf(Episode ep) {
     final t = (ep.thumbnail ?? '').trim();
@@ -119,7 +125,8 @@ List<WatchPageEpisode> watchPageEpisodes({
 
   return [
     for (var i = 0; i < episodes.length; i++)
-      WatchPageEpisode(
+      if (season == null || (seasonOf(episodes[i]) ?? 1) == season)
+        WatchPageEpisode(
         index: i,
         heading: _headingOf(episodes[i]),
         label:
@@ -132,6 +139,7 @@ List<WatchPageEpisode> watchPageEpisodes({
                 : episodes[i].title),
         thumb: artOf(episodes[i]),
         current: i == currentIndex,
+        number: episodeNumberInt(episodes[i]),
         unavailableReason: episodes[i].unavailable,
         meta: metaOf(episodes[i]),
         synopsis: (episodes[i].description ?? '').trim(),

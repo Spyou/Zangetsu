@@ -42,6 +42,29 @@ void main() {
   });
 
   group('watch page episode list', () {
+    test('episode numbers survive the mapping for jump-to-episode', () {
+      final rows = watchPageEpisodes(
+        episodes: [_ep(title: 'A', number: 47)],
+        currentIndex: -1,
+      );
+      expect(rows.single.number, 47);
+    });
+
+    test('season chips filter the rows but keep real indices', () {
+      final eps = [
+        _ep(title: 'A', number: 1, season: 1),
+        _ep(title: 'B', number: 17, season: 2),
+      ];
+      final rows = watchPageEpisodes(
+        episodes: eps,
+        currentIndex: 1,
+        season: 2,
+      );
+      expect(rows.length, 1);
+      expect(rows.single.index, 1);
+      expect(rows.single.current, isTrue);
+    });
+
     test('lists every episode detail-style with the playing one marked', () {
       final eps = [
         _ep(title: 'The Fall', number: 1, season: 1),
