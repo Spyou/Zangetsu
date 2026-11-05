@@ -519,7 +519,88 @@ class _PlayerScreenState extends State<PlayerScreen> {
       !sl<AppMode>().isTv &&
       sl<PlaybackPrefs>().openingLayout == 'watch';
 
+  /// Live frames for the watch-page ambient glow. Sampled slowly from the
+  /// playing texture (a blurred backdrop needs no frame rate), only while
+  /// the page is visible, never in background.
+  Timer? _ambientTimer;
+  final StreamController<Uint8List?> _ambientFrames =
+      StreamController<Uint8List?>.broadcast();
+
+  /// Set once a glow color is up. A paused frame never changes, so there is
+  /// nothing new to sample — sampling only runs while the picture moves.
+  bool _ambientGlowReady = false;
+
+  /// Permanent give-up kept killing the glow when the player was just slow
+  /// to produce its first frame. Now misses only back the sampler off for
+  /// a minute instead — slow sources still get their glow eventually.
+  int _ambientSkip = 0;
+  int _ambientMisses = 0;
+  int _ambientEp = -1;
+
+  void _startAmbientSampler() {
+    if (_ambientTimer?.isActive ?? false) return;
+    _ambientTimer = Timer.periodic(const Duration(seconds: 6), (_) {
+      _sampleAmbientFrame();
+    });
+    _sampleAmbientFrame();
+  }
+
+  void _stopAmbientSampler() {
+    _ambientTimer?.cancel();
+    _ambientTimer = null;
+  }
+
+  Future<void> _sampleAmbientFrame() async {
+    if (!mounted ||
+        _presentation != PlayerPresentation.watchPage ||
+        WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) {
+      return;
+    }
+    if (_ambientEp != _c.state.currentIndex) {
+      _ambientEp = _c.state.currentIndex;
+      _ambientMisses = 0;
+      _ambientSkip = 0;
+    }
+    // Paused with a glow up: the frame is frozen, sampling it again only
+    // burns battery for identical bytes.
+    if (!_c.player.state.playing && _ambientGlowReady) return;
+    if (_ambientSkip > 0) {
+      _ambientSkip--;
+      return;
+    }
+    if (_ambientMisses >= 3) {
+      // No readable frame three times in a row — back off a minute and
+      // try again instead of giving up for the whole episode.
+      _ambientMisses = 0;
+      _ambientSkip = 10;
+      return;
+    }
+    final sw = Stopwatch()..start();
+    try {
+      final bytes = await _c.player.screenshot();
+      sw.stop();
+      if (!mounted) return;
+      if (bytes == null || bytes.isEmpty) {
+        _ambientMisses++;
+        AppLogger.instance.log(
+          '[watch-ambient] frame missed (${_ambientMisses}x) — '
+          'hw buffers often unreadable, stills carry the glow',
+        );
+        return;
+      }
+      if (sw.elapsedMilliseconds > 800) _ambientSkip = 2;
+      _ambientMisses = 0;
+      _ambientGlowReady = true;
+      if (!_ambientFrames.isClosed) _ambientFrames.add(bytes);
+    } catch (e) {
+      if (!mounted) return;
+      _ambientMisses++;
+      AppLogger.instance.log('[watch-ambient] frame error: $e');
+    }
+  }
+
   void _enterFullscreen() {
+    _stopAmbientSampler();
     _lastOrientation = MediaQuery.orientationOf(context);
     setState(() => _presentation = PlayerPresentation.fullscreen);
     // Fullscreen is landscape: a portrait fullscreen is the stranded mini
@@ -539,6 +620,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   void _enterWatchPage() {
+    _startAmbientSampler();
     _lastOrientation = MediaQuery.orientationOf(context);
     setState(() => _presentation = PlayerPresentation.watchPage);
     // Sensor followers stay unlocked so a landscape turn goes fullscreen;
@@ -677,6 +759,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _routeTeardownLease ??= playerRouteTeardownBarrier.acquire();
     if (_watchPageEnabled) {
       _presentation = PlayerPresentation.watchPage;
+      _startAmbientSampler();
     } else {
       _turnLandscapeWhenCovered();
     }
@@ -1427,6 +1510,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _sleepTimer?.cancel();
     _completedSub?.cancel();
     _playingSub?.cancel();
+    _stopAmbientSampler();
+    _ambientFrames.close();
     _bufferingSub?.cancel();
     _pipSub?.cancel();
     for (final s in _pipStateSubs) {
@@ -2475,8 +2560,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
       video: _buildVideoSurface(),
       header: header,
       coverHeaders: widget.coverHeaders,
-      coverUrl: widget.cover,
+      coverUrl:
+          (_c.currentEpisode.thumbnail?.trim().isNotEmpty ?? false)
+              ? _c.currentEpisode.thumbnail!.trim()
+              : widget.cover,
       loading: state.loadingSources,
+      firstFrameStream: _c.player.stream.width,
+      initialFirstFrame: _c.player.state.width ?? 0,
+      ambientFrameStream: _ambientFrames.stream,
       positionStream: _c.player.stream.position,
       durationStream: _c.player.stream.duration,
       playingStream: _c.player.stream.playing,
@@ -2498,6 +2589,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       episodes: watchPageEpisodes(
         episodes: _c.episodes,
         currentIndex: state.currentIndex,
+        coverFallback: widget.cover,
       ),
       serverName: _c.state.active?.label,
       onTogglePlay: _c.togglePlay,

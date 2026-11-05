@@ -1,3 +1,6 @@
+import 'dart:typed_data';
+
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:watch_app/core/models/episode.dart';
 import 'package:watch_app/features/player/watch_page_info.dart';
@@ -8,14 +11,22 @@ Episode _ep({
   int? season,
   String? description,
   String? metaTitle,
+  String? thumbnail,
+  String? unavailable,
+  int? runtimeMinutes,
+  String? date,
 }) => Episode(
   id: 'e$number',
   title: title,
   number: number,
   url: 'https://x/$number',
   season: season,
+  thumbnail: thumbnail,
   description: description,
   metaTitle: metaTitle,
+  unavailable: unavailable,
+  runtimeMinutes: runtimeMinutes,
+  date: date,
 );
 
 void main() {
@@ -31,27 +42,70 @@ void main() {
   });
 
   group('watch page episode list', () {
-    test('labels episodes and marks the current one', () {
+    test('lists every episode detail-style with the playing one marked', () {
       final eps = [
         _ep(title: 'The Fall', number: 1, season: 1),
-        _ep(title: 'Episode 2', number: 2),
+        _ep(
+          title: 'Second',
+          number: 2,
+          runtimeMinutes: 24,
+          date: '2024-01-01',
+          description: 'A great second episode.',
+        ),
+        _ep(title: 'Third', number: 3),
       ];
       final rows = watchPageEpisodes(episodes: eps, currentIndex: 1);
-      expect(rows.length, 2);
+      expect(rows.length, 3);
       expect(rows[0].index, 0);
-      expect(rows[0].label, 'The Fall');
+      expect(rows[0].heading, '1. The Fall');
       expect(rows[0].current, isFalse);
-      expect(rows[1].label, 'Episode 2');
+      expect(rows[1].index, 1);
       expect(rows[1].current, isTrue);
+      expect(rows[1].meta, '24 min  ·  2024-01-01');
+      expect(rows[1].synopsis, 'A great second episode.');
+      expect(rows[2].current, isFalse);
     });
 
     test('generic titles fall back to Episode N', () {
       final rows = watchPageEpisodes(
         episodes: [_ep(title: 'Ep. 3', number: 3)],
-        currentIndex: 0,
+        currentIndex: -1,
       );
       expect(rows.single.label, 'Episode 3');
+      expect(rows.single.heading, 'Episode 3');
+    });
+
+    test('episode art wins, show cover fills the gaps', () {
+      final rows = watchPageEpisodes(
+        episodes: [
+          _ep(title: 'A', number: 1, thumbnail: 'https://x/ep1.jpg'),
+          _ep(title: 'B', number: 2),
+        ],
+        currentIndex: -1,
+        coverFallback: 'https://x/cover.jpg',
+      );
+      expect(rows[0].thumb, 'https://x/ep1.jpg');
+      expect(rows[1].thumb, 'https://x/cover.jpg');
+    });
+
+    test('the full list always shows, even solo episodes', () {
+      final rows = watchPageEpisodes(
+        episodes: [_ep(title: 'A', number: 1)],
+        currentIndex: 0,
+      );
       expect(rows.single.current, isTrue);
+    });
+
+    test('known-missing episodes carry their reason', () {
+      final rows = watchPageEpisodes(
+        episodes: [
+          _ep(title: 'A', number: 1, unavailable: 'Not out yet'),
+          _ep(title: 'B', number: 2),
+        ],
+        currentIndex: -1,
+      );
+      expect(rows[0].unavailableReason, 'Not out yet');
+      expect(rows[1].unavailableReason, isNull);
     });
   });
 
@@ -142,6 +196,28 @@ void main() {
         ).description,
         'A great ep.',
       );
+    });
+  });
+
+  group('ambient mood color', () {
+    test('averages the frame then boosts warmth', () {
+      // Solid (200, 50, 50): mean 100, chroma x1.5, lifted +22.
+      final bytes = ByteData(16);
+      for (var i = 0; i < 4; i++) {
+        bytes.setUint8(i * 4, 200);
+        bytes.setUint8(i * 4 + 1, 50);
+        bytes.setUint8(i * 4 + 2, 50);
+        bytes.setUint8(i * 4 + 3, 255);
+      }
+      final c = ambientGlowColor(bytes, 2, 2);
+      expect(c.top, const Color(0xFFFF2F2F));
+      expect(c.bottom, const Color(0xFF8C1A1A));
+    });
+
+    test('empty input stays black', () {
+      final c = ambientGlowColor(ByteData(0), 0, 0);
+      expect(c.top, const Color(0xFF000000));
+      expect(c.bottom, const Color(0xFF000000));
     });
   });
 }

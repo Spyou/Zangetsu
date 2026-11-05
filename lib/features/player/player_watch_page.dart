@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:io';
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:cached_network_image/cached_network_image.dart';
@@ -21,6 +23,9 @@ class PlayerWatchPage extends StatefulWidget {
     required this.header,
     this.coverHeaders,
     this.loading = false,
+    this.firstFrameStream,
+    this.initialFirstFrame = 0,
+    this.ambientFrameStream,
     required this.positionStream,
     required this.durationStream,
     required this.playingStream,
@@ -59,6 +64,15 @@ class PlayerWatchPage extends StatefulWidget {
   /// the spinner sits on the mini player instead of a black loader screen.
   final bool loading;
 
+  /// First-frame signal (player width; null = latch off). While no frame has
+  /// decoded the spinner holds — even if the loading flag lapses between
+  /// progressive resolves, and no tap can dismiss it.
+  final Stream<int?>? firstFrameStream;
+  final int initialFirstFrame;
+
+  /// Live video frame for the ambient glow (see [_ambientBackdrop]). Null
+  /// stream = still art only.
+  final Stream<Uint8List?>? ambientFrameStream;
   final Stream<Duration> positionStream;
   final Stream<Duration?> durationStream;
   final Stream<bool> playingStream;
@@ -104,16 +118,42 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
   StreamSubscription<bool>? _playingSub;
   Timer? _hideTimer;
 
-  /// Info scroll drives the ambient glow: full at the top, plain black once
-  /// the list moves. A notifier (not setState) so scrolling never rebuilds
-  /// the page — only the glow repaints.
   late final ScrollController _scroll;
-  final ValueNotifier<double> _ambient = ValueNotifier(1.0);
+  final ValueNotifier<double> _ambientOpacity = ValueNotifier(1);
+
+  /// The row the player is on. The list opens on it and follows it.
+  final GlobalKey _currentKey = GlobalKey();
+  int _scrolledIndex = -1;
+
+  late bool _frameUp;
+  StreamSubscription<int?>? _frameSub;
+  StreamSubscription<Uint8List?>? _ambientSub;
+
+  /// The wash colors sampled from the latest frame (or cover).
+  Color _glowTop = Colors.black;
+  Color _glowBottom = Colors.black;
+
+  /// Bumps per accepted frame so the crossfade always has a new key.
+  int _glowRev = 0;
 
   @override
   void initState() {
     super.initState();
     _scroll = ScrollController()..addListener(_fadeAmbient);
+    _frameUp = widget.firstFrameStream == null || widget.initialFirstFrame > 0;
+    _frameSub = widget.firstFrameStream?.listen((w) {
+      if (!mounted || _frameUp || (w ?? 0) <= 0) return;
+      setState(() => _frameUp = true);
+    });
+    _ambientSub = widget.ambientFrameStream?.listen((bytes) {
+      if (!mounted || bytes == null || bytes.isEmpty) return;
+      unawaited(_applyAmbientBytes(bytes));
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scrollToCurrent();
+      _sampledCover = null;
+      unawaited(_sampleCoverArt());
+    });
     _playingSub = widget.playingStream.listen((p) {
       if (!mounted || p == _playing) return;
       setState(() => _playing = p);
@@ -125,20 +165,113 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
       }
     });
     _armHide();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToCurrent());
   }
 
   @override
   void dispose() {
     _hideTimer?.cancel();
     _playingSub?.cancel();
+    _frameSub?.cancel();
+    _ambientSub?.cancel();
     _scroll.dispose();
-    _ambient.dispose();
+    _ambientOpacity.dispose();
     super.dispose();
   }
 
+  String? _sampledCover;
+
+  /// Decodes one grab tiny and keeps its mood color. Decoding small keeps
+  /// this cheap; a corrupt read never swaps the glow out.
+  Future<void> _applyAmbientBytes(Uint8List bytes) async {
+    try {
+      final codec = await ui.instantiateImageCodec(bytes, targetWidth: 64);
+      final frame = await codec.getNextFrame();
+      final img = frame.image;
+      final data = await img.toByteData(format: ui.ImageByteFormat.rawRgba);
+      final w = img.width;
+      final h = img.height;
+      img.dispose();
+      if (data == null || !mounted) return;
+      final c = ambientGlowColor(data, w, h);
+      if (!mounted) return;
+      // A near-black grab on top of an existing glow adds nothing — a
+      // paused black frame must not paint the wash away.
+      final lum = _luminance(c.top) + _luminance(c.bottom);
+      if (lum < 28 && _glowRev > 0) return;
+      setState(() {
+        _glowTop = c.top;
+        _glowBottom = c.bottom;
+        _glowRev++;
+      });
+    } catch (_) {
+      // Undecodable grab — keep the previous glow.
+    }
+  }
+
+  static int _luminance(Color c) =>
+      ((c.r * 255).round() + (c.g * 255).round() + (c.b * 255).round()) ~/ 3;
+
+  /// Seeds the wash from the cover art so the page glows before (or without)
+  /// any live frame. Runs once per cover; live frames always win afterwards.
+  Future<void> _sampleCoverArt() async {
+    final cover = (widget.coverUrl ?? '').trim();
+    if (cover.isEmpty || !mounted || _sampledCover == cover) return;
+    _sampledCover = cover;
+    final revAtRequest = _glowRev;
+    try {
+      final client = HttpClient();
+      try {
+        final req = await client.getUrl(Uri.parse(cover));
+        widget.coverHeaders?.forEach(req.headers.set);
+        final resp = await req.close().timeout(const Duration(seconds: 8));
+        if (resp.statusCode != HttpStatus.ok) return;
+        final bytes = await resp
+            .fold<BytesBuilder>(BytesBuilder(), (b, d) => b..add(d))
+            .then((b) => b.takeBytes());
+        if (!mounted || widget.coverUrl != cover || _glowRev != revAtRequest) {
+          return;
+        }
+        await _applyAmbientBytes(bytes);
+      } finally {
+        client.close();
+      }
+    } catch (_) {
+      // Offline cover, bad headers — the page stays on plain black.
+    }
+  }
+
   void _fadeAmbient() {
-    if (!_scroll.hasClients) return;
-    _ambient.value = (1 - _scroll.offset / 120).clamp(0.0, 1.0);
+    _ambientOpacity.value = (1 - _scroll.offset / 180).clamp(0.0, 1.0);
+  }
+
+  void _scrollToCurrent() {
+    final at = widget.episodes.indexWhere((e) => e.current);
+    if (at == _scrolledIndex) return;
+    _scrolledIndex = at;
+    if (at < 0) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ctx = _currentKey.currentContext;
+      if (ctx != null && mounted) {
+        unawaited(
+          Scrollable.ensureVisible(
+            ctx,
+            duration: const Duration(milliseconds: 350),
+            alignment: 0.12,
+          ),
+        );
+      }
+    });
+  }
+
+  @override
+  void didUpdateWidget(PlayerWatchPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _scrollToCurrent();
+    if (widget.coverUrl != oldWidget.coverUrl) {
+      _sampledCover = null;
+      unawaited(_sampleCoverArt());
+    }
   }
 
   void _armHide() {
@@ -165,46 +298,73 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
     final videoH = (w * 9 / 16).clamp(0.0, size.height * 0.38);
     return Scaffold(
       backgroundColor: Colors.black,
-      body: SafeArea(
-        bottom: false,
-        child: Column(
-          children: [
-            // The glow bleeds past the card; Clip.none lets it show. It is
-            // purely decorative — taps fall through to the page.
-            Stack(
-              clipBehavior: Clip.none,
-              children: [_ambientGlow(), _video(videoH)],
+      body: Stack(
+        children: [
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            height: MediaQuery.paddingOf(context).top + videoH + 4,
+            child: Stack(children: [_ambientBackdrop()]),
+          ),
+          SafeArea(
+            bottom: false,
+            child: Column(
+              children: [
+                _video(videoH),
+                Expanded(child: _info()),
+              ],
             ),
-            Expanded(child: _info()),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
   // ── Video ────────────────────────────────────────────────────────────────
 
-  /// YouTube-style ambient glow: the cover art blurred wide behind the mini
-  /// player so its colours bleed onto the page. Fades to plain black as the
-  /// info scrolls — the glow belongs to the video, not the list.
-  Widget _ambientGlow() {
-    final cover = (widget.coverUrl ?? '').trim();
-    if (cover.isEmpty) return const SizedBox.shrink();
+  /// Both glows fade with scrolling; the lower one ends below Comments.
+  Widget _ambientBackdrop({bool belowVideo = false}) {
+    if (_glowRev <= 0) return const SizedBox.shrink();
     return Positioned.fill(
       child: IgnorePointer(
         child: ValueListenableBuilder<double>(
-          valueListenable: _ambient,
-          builder: (context, t, _) => Opacity(
-            opacity: t * 0.75,
-            child: ImageFiltered(
-              imageFilter: ui.ImageFilter.blur(sigmaX: 36, sigmaY: 36),
-              child: Transform.scale(
-                scale: 1.25,
-                child: CachedNetworkImage(
-                  imageUrl: cover,
-                  httpHeaders: widget.coverHeaders,
-                  fit: BoxFit.cover,
-                  errorWidget: (_, _, _) => const SizedBox.shrink(),
+          valueListenable: _ambientOpacity,
+          builder: (context, opacity, child) => Opacity(
+            key: ValueKey(
+              belowVideo ? 'ambient-info-opacity' : 'ambient-video-opacity',
+            ),
+            opacity: opacity,
+            child: child,
+          ),
+          child: RepaintBoundary(
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 900),
+              child: SizedBox.expand(
+                key: ValueKey<int>(_glowRev),
+                child: DecoratedBox(
+                  key: ValueKey(belowVideo ? 'ambient-info' : 'ambient-video'),
+                  decoration: BoxDecoration(
+                    gradient: belowVideo
+                        ? LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            stops: const [0, 0.35, 1],
+                            colors: [
+                              _glowBottom.withValues(alpha: 0.65),
+                              _glowBottom.withValues(alpha: 0.35),
+                              _glowBottom.withValues(alpha: 0),
+                            ],
+                          )
+                        : RadialGradient(
+                            center: Alignment.bottomCenter,
+                            radius: 1.4,
+                            colors: [
+                              _glowBottom.withValues(alpha: 0.65),
+                              _glowTop.withValues(alpha: 0.25),
+                            ],
+                          ),
+                  ),
                 ),
               ),
             ),
@@ -218,9 +378,9 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
   /// transparent scrims as the fullscreen player wash over it so the chrome
   /// stays legible on bright frames.
   Widget _video(double h) {
-    final pad = MediaQuery.paddingOf(context);
     return Padding(
-      padding: EdgeInsets.fromLTRB(12, pad.top + 4, 12, 0),
+      // SafeArea already clears the status bar — no double inset.
+      padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(18),
         child: SizedBox(
@@ -266,100 +426,119 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
               ),
               // Tap toggles the compact controls. Above the scrims, below
               // the bars.
-              if (widget.loading)
-                const Center(
+              // No picture yet: hold the spinner. This latches on the first
+              // frame, not the loading flag — progressive resolves lapse
+              // the flag between mirrors, and taps must not dismiss it.
+              if (widget.loading || !_frameUp)
+                Center(
                   child: IgnorePointer(
-                    child: CircularProgressIndicator(color: Colors.white),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const CircularProgressIndicator(color: Colors.white),
+                        const SizedBox(height: 10),
+                        Text(
+                          'Finding the best source…',
+                          style: AppText.caption.copyWith(
+                            color: Colors.white70,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-        Positioned.fill(
-          child: GestureDetector(
-            behavior: HitTestBehavior.translucent,
-            onTap: _poke,
-          ),
-        ),
-        Positioned(
-          top: 0,
-          left: 0,
-          right: 0,
-          child: AnimatedOpacity(
-            opacity: _controlsVisible ? 1 : 0,
-            duration: const Duration(milliseconds: 200),
-            child: IgnorePointer(
-              ignoring: !_controlsVisible,
-              child: Row(
-                children: [
-                  IconButton(
-                    icon: const Icon(
-                      Icons.arrow_back_rounded,
-                      color: Colors.white,
-                    ),
-                    onPressed: widget.onBack,
-                  ),
-                ],
+              Positioned.fill(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.translucent,
+                  onTap: _poke,
+                ),
               ),
-            ),
-          ),
-        ),
-        AnimatedOpacity(
-          opacity: _controlsVisible ? 1 : 0,
-          duration: const Duration(milliseconds: 200),
-          child: IgnorePointer(
-            ignoring: !_controlsVisible,
-            child: Center(
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  IconButton(
-                    iconSize: 34,
-                    icon: Icon(
-                      Icons.skip_previous_rounded,
-                      color: widget.hasPrevious
-                          ? Colors.white
-                          : Colors.white30,
-                    ),
-                    onPressed: widget.hasPrevious ? widget.onPrevious : null,
-                  ),
-                  const SizedBox(width: 12),
-                  GestureDetector(
-                    onTap: () {
-                      widget.onTogglePlay();
-                      _armHide();
-                    },
-                    child: Container(
-                      width: 62,
-                      height: 62,
-                      decoration: BoxDecoration(
-                        color: AppColors.accent,
-                        shape: BoxShape.circle,
-                      ),
-                      alignment: Alignment.center,
-                      child: Icon(
-                        _playing
-                            ? Icons.pause_rounded
-                            : Icons.play_arrow_rounded,
-                        color: Colors.white,
-                        size: 34,
-                      ),
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: AnimatedOpacity(
+                  opacity: _controlsVisible ? 1 : 0,
+                  duration: const Duration(milliseconds: 200),
+                  child: IgnorePointer(
+                    ignoring: !_controlsVisible,
+                    child: Row(
+                      children: [
+                        IconButton(
+                          icon: const Icon(
+                            Icons.arrow_back_rounded,
+                            color: Colors.white,
+                          ),
+                          onPressed: widget.onBack,
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  IconButton(
-                    iconSize: 34,
-                    icon: Icon(
-                      Icons.skip_next_rounded,
-                      color: widget.nextTitle != null
-                          ? Colors.white
-                          : Colors.white30,
-                    ),
-                    onPressed: widget.nextTitle != null ? widget.onNext : null,
-                  ),
-                ],
+                ),
               ),
-            ),
-          ),
-        ),
-        Positioned(left: 0, right: 0, bottom: 0, child: _seekRow()),
+              AnimatedOpacity(
+                opacity: _controlsVisible ? 1 : 0,
+                duration: const Duration(milliseconds: 200),
+                child: IgnorePointer(
+                  ignoring: !_controlsVisible,
+                  child: Center(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          iconSize: 34,
+                          icon: Icon(
+                            Icons.skip_previous_rounded,
+                            color: widget.hasPrevious
+                                ? Colors.white
+                                : Colors.white30,
+                          ),
+                          onPressed: widget.hasPrevious
+                              ? widget.onPrevious
+                              : null,
+                        ),
+                        const SizedBox(width: 12),
+                        GestureDetector(
+                          onTap: () {
+                            widget.onTogglePlay();
+                            _armHide();
+                          },
+                          child: Container(
+                            width: 62,
+                            height: 62,
+                            decoration: BoxDecoration(
+                              color: AppColors.accent,
+                              shape: BoxShape.circle,
+                            ),
+                            alignment: Alignment.center,
+                            child: Icon(
+                              _playing
+                                  ? Icons.pause_rounded
+                                  : Icons.play_arrow_rounded,
+                              color: Colors.white,
+                              size: 34,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        IconButton(
+                          iconSize: 34,
+                          icon: Icon(
+                            Icons.skip_next_rounded,
+                            color: widget.nextTitle != null
+                                ? Colors.white
+                                : Colors.white30,
+                          ),
+                          onPressed: widget.nextTitle != null
+                              ? widget.onNext
+                              : null,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(left: 0, right: 0, bottom: 0, child: _seekRow()),
             ],
           ),
         ),
@@ -387,9 +566,7 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
                 final maxMs = total.inMilliseconds > 0
                     ? total.inMilliseconds.toDouble()
                     : 1.0;
-                final value = pos.inMilliseconds
-                    .toDouble()
-                    .clamp(0.0, maxMs);
+                final value = pos.inMilliseconds.toDouble().clamp(0.0, maxMs);
                 return Padding(
                   padding: const EdgeInsets.fromLTRB(12, 0, 4, 6),
                   child: Row(
@@ -449,44 +626,53 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
     final l10n = context.l10n;
     return SingleChildScrollView(
       controller: _scroll,
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            widget.header.title,
-            style: AppText.headline.copyWith(
-              color: Colors.white,
-              fontSize: 20,
-            ),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
-          if (widget.header.subtitle.isNotEmpty) ...[
-            const SizedBox(height: 4),
-            Text(
-              widget.header.subtitle,
-              style: AppText.caption.copyWith(
-                color: AppColors.textSecondary,
+          Stack(
+            children: [
+              _ambientBackdrop(belowVideo: true),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      widget.header.title,
+                      style: AppText.headline.copyWith(
+                        color: Colors.white,
+                        fontSize: 20,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (widget.header.subtitle.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        widget.header.subtitle,
+                        style: AppText.caption.copyWith(
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 12),
+                    _actionRow(l10n),
+                    if (widget.header.description != null) ...[
+                      const SizedBox(height: 12),
+                      _descriptionCard(),
+                    ],
+                    const SizedBox(height: 12),
+                    _commentsRow(l10n),
+                    const SizedBox(height: 16),
+                  ],
+                ),
               ),
-            ),
-          ],
-          const SizedBox(height: 12),
-          _actionRow(l10n),
-          if (widget.header.description != null) ...[
-            const SizedBox(height: 12),
-            _descriptionCard(),
-          ],
-          const SizedBox(height: 12),
-          _commentsRow(l10n),
-          const SizedBox(height: 16),
-          _upNextHeader(l10n),
-          if (widget.nextTitle != null) ...[
-            const SizedBox(height: 8),
-            _upNextCard(),
-          ],
-          const SizedBox(height: 16),
-          _episodeList(l10n),
+            ],
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+            child: _episodeList(l10n),
+          ),
         ],
       ),
     );
@@ -502,11 +688,7 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
         children: [
           _chip(Icons.dns_outlined, serverLabel, widget.onServer),
           _chip(Icons.headphones_outlined, l10n.audio, widget.onAudio),
-          _chip(
-            Icons.subtitles_outlined,
-            l10n.subtitles,
-            widget.onSubtitles,
-          ),
+          _chip(Icons.subtitles_outlined, l10n.subtitles, widget.onSubtitles),
           _chip(Icons.more_horiz_rounded, l10n.more, widget.onMore),
         ],
       ),
@@ -614,10 +796,7 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
                   ],
                 ),
               ),
-              Icon(
-                Icons.chevron_right_rounded,
-                color: AppColors.textSecondary,
-              ),
+              Icon(Icons.chevron_right_rounded, color: AppColors.textSecondary),
             ],
           ),
         ),
@@ -625,128 +804,9 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
     );
   }
 
-  Widget _upNextHeader(AppLocalizations l10n) {
-    return Row(
-      children: [
-        Container(
-          width: 8,
-          height: 8,
-          decoration: BoxDecoration(
-            color: AppColors.accent,
-            shape: BoxShape.circle,
-          ),
-        ),
-        const SizedBox(width: 8),
-        Text(
-          l10n.watchUpNext,
-          style: AppText.body.copyWith(
-            color: Colors.white,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        const Spacer(),
-        Text(
-          l10n.watchAutoplay,
-          style: AppText.caption.copyWith(color: AppColors.textSecondary),
-        ),
-        Switch(
-          value: widget.autoplay,
-          activeThumbColor: AppColors.accent,
-          onChanged: widget.onAutoplayChanged,
-        ),
-      ],
-    );
-  }
-
-  Widget _upNextCard() {
-    final thumb = (widget.nextThumb ?? '').trim();
-    return GestureDetector(
-      onTap: widget.onNext,
-      child: FrostedSurface(
-        blur: false,
-        borderRadius: BorderRadius.circular(20),
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(
-            children: [
-              if (thumb.isNotEmpty)
-                Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: SizedBox(
-                        width: 118,
-                        height: 66,
-                        child: CachedNetworkImage(
-                          imageUrl: thumb,
-                          httpHeaders: widget.coverHeaders,
-                          fit: BoxFit.cover,
-                          errorWidget: (_, _, _) =>
-                              Container(color: Colors.white10),
-                        ),
-                      ),
-                    ),
-                    Container(
-                      width: 34,
-                      height: 34,
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.6),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.play_arrow_rounded,
-                        color: Colors.white,
-                        size: 22,
-                      ),
-                    ),
-                  ],
-                ),
-              if (thumb.isNotEmpty) const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (widget.nextLabel != null)
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 3,
-                        ),
-                        decoration: BoxDecoration(
-                          color: AppColors.accent.withValues(alpha: 0.18),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          widget.nextLabel!,
-                          style: AppText.caption.copyWith(
-                            color: AppColors.accent,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                    if (widget.nextLabel != null) const SizedBox(height: 6),
-                    Text(
-                      widget.nextTitle!,
-                      style: AppText.body.copyWith(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w600,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// The episode list, inline — the list IS the picker, so there is no
-  /// All-episodes button. Tapping opens that index; the current row glows.
+  /// The episode list, inline — the list IS the up-next and the picker, so
+  /// there is no separate Up Next card and no All-episodes button. Only what
+  /// is still ahead shows; tapping opens that index.
   Widget _episodeList(AppLocalizations l10n) {
     if (widget.episodes.isEmpty) return const SizedBox.shrink();
     return Column(
@@ -754,12 +814,35 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
       children: [
         Padding(
           padding: const EdgeInsets.only(left: 4, bottom: 8),
-          child: Text(
-            '${l10n.watchEpisodes} (${widget.episodes.length})',
-            style: AppText.caption.copyWith(
-              color: AppColors.textSecondary,
-              fontWeight: FontWeight.w700,
-            ),
+          child: Row(
+            children: [
+              Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  color: AppColors.accent,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '${l10n.watchEpisodes} (${widget.episodes.length})',
+                style: AppText.body.copyWith(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                l10n.watchAutoplay,
+                style: AppText.caption.copyWith(color: AppColors.textSecondary),
+              ),
+              Switch(
+                value: widget.autoplay,
+                activeThumbColor: AppColors.accent,
+                onChanged: widget.onAutoplayChanged,
+              ),
+            ],
           ),
         ),
         for (final ep in widget.episodes) _episodeRow(ep),
@@ -768,48 +851,104 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
   }
 
   Widget _episodeRow(WatchPageEpisode ep) {
-    final current = ep.current;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: GestureDetector(
-        onTap: () => widget.onOpenEpisode(ep.index),
-        behavior: HitTestBehavior.opaque,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-          decoration: BoxDecoration(
-            color: current
-                ? AppColors.accent.withValues(alpha: 0.16)
-                : AppColors.surface2,
-            borderRadius: BorderRadius.circular(16),
-            border: current
-                ? Border.all(color: AppColors.accent, width: 1)
-                : null,
-          ),
-          child: Row(
+    final reason = (ep.unavailableReason ?? '').trim();
+    final dead = reason.isNotEmpty;
+    // Detail-screen row, unchanged: no card, no dividers — whitespace only.
+    // The heading glows for the playing episode; dead rows dim with the
+    // catalogue's own reason in the meta line.
+    final row = Padding(
+      padding: const EdgeInsets.fromLTRB(0, 10, 0, 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Expanded(
-                child: Text(
-                  ep.label,
-                  style: AppText.body.copyWith(
-                    color: current ? AppColors.accent : Colors.white,
-                    fontWeight: FontWeight.w600,
+              ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: SizedBox(
+                  width: 116,
+                  height: 65,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      ep.thumb.isEmpty
+                          ? Container(color: AppColors.surface2)
+                          : CachedNetworkImage(
+                              imageUrl: ep.thumb,
+                              httpHeaders: widget.coverHeaders,
+                              fit: BoxFit.cover,
+                              memCacheWidth: 320,
+                              errorWidget: (_, _, _) =>
+                                  Container(color: AppColors.surface2),
+                            ),
+                      if (ep.current)
+                        const Center(
+                          child: Icon(
+                            Icons.play_circle_filled_rounded,
+                            color: Colors.white,
+                            size: 28,
+                          ),
+                        ),
+                    ],
                   ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
                 ),
               ),
-              const SizedBox(width: 10),
-              Icon(
-                current
-                    ? Icons.play_arrow_rounded
-                    : Icons.chevron_right_rounded,
-                color: current ? AppColors.accent : AppColors.textSecondary,
-                size: 22,
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      ep.heading,
+                      style: AppText.body.copyWith(
+                        color: dead
+                            ? AppColors.textTertiary
+                            : ep.current
+                            ? AppColors.accent
+                            : Colors.white,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (ep.meta.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(
+                          ep.meta,
+                          style: AppText.caption.copyWith(
+                            color: AppColors.textSecondary,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                  ],
+                ),
               ),
             ],
           ),
-        ),
+          if (ep.synopsis.isNotEmpty && !dead)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(
+                ep.synopsis,
+                style: AppText.body.copyWith(color: AppColors.textSecondary),
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+        ],
       ),
+    );
+    if (dead) return Opacity(opacity: 0.55, child: row);
+    return GestureDetector(
+      key: ep.current ? _currentKey : null,
+      onTap: () => widget.onOpenEpisode(ep.index),
+      behavior: HitTestBehavior.opaque,
+      child: row,
     );
   }
 }
