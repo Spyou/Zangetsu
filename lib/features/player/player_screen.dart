@@ -73,7 +73,7 @@ part 'player_controls_widgets.dart';
 part 'player_episodes_panel.dart';
 part 'player_sheets.dart';
 
-/// Fullscreen player: a live [Video] with a tap-to-toggle
+/// Netflix-style fullscreen player: a live [Video] with a tap-to-toggle
 /// overlay (auto-hiding), configurable double-tap seek, long-press 2x speed, a
 /// stream-bound seek slider, and Speed / Audio / Quality / Source / Next
 /// controls. Forces landscape + immersive UI while open and restores portrait
@@ -103,35 +103,31 @@ bool headerGatedButPlayerCant(Map<String, String>? headers, String pkg) {
   return !kHeaderForwardingPlayers.any(pkg.startsWith);
 }
 
-/// A landscape turn from the watch page enters fullscreen. A portrait turn
-/// while fullscreen stays fullscreen; Back returns to the watch page.
-/// Returns null when nothing should change.
+/// Sensor-driven presentation switch, used only when the watch page is enabled
+/// and the orientation preference follows the sensor. A physical turn swaps
+/// layouts instead of stranding a portrait fullscreen (a mini video with no
+/// way out but Back): portrait shows the page, landscape the player. Returns
+/// null when nothing should change. Pure so the matrix is unit-testable.
 @visibleForTesting
 PlayerPresentation? rotationPresentation({
+  required bool watchPageEnabled,
+  required bool systemSensor,
   required Orientation? last,
   required Orientation current,
   required PlayerPresentation presentation,
 }) {
-  if (last == null || last == current) {
+  if (!watchPageEnabled || !systemSensor || last == null || last == current) {
     return null;
+  }
+  if (current == Orientation.portrait &&
+      presentation == PlayerPresentation.fullscreen) {
+    return PlayerPresentation.watchPage;
   }
   if (current == Orientation.landscape &&
       presentation == PlayerPresentation.watchPage) {
     return PlayerPresentation.fullscreen;
   }
   return null;
-}
-
-@visibleForTesting
-PlayerPresentation initialPresentation({
-  required bool isTv,
-  required String orientation,
-  required bool isLandscape,
-}) {
-  if (isTv || orientation != 'system' || isLandscape) {
-    return PlayerPresentation.fullscreen;
-  }
-  return PlayerPresentation.watchPage;
 }
 
 /// True when [url] is already served by a local proxy (localhost / 127.0.0.1) —
@@ -515,9 +511,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
   /// orientation — landscape unless the user picked otherwise.
   bool _portraitMode = sl<PlaybackPrefs>().playerOrientation == 'portrait';
 
-  /// Fixed orientation choices start fullscreen. System mode starts on the
-  /// watch page while upright, then enters fullscreen on landscape; fullscreen
-  /// stays fullscreen through rotation until Back returns to the page.
+  /// Portrait watch page vs legacy fullscreen. Phone follows the Open-episodes
+  /// setting; TV and external routes always stay fullscreen.
   PlayerPresentation _presentation = PlayerPresentation.fullscreen;
 
   /// Season filter for the watch-page episode list. Null = all seasons; a
@@ -525,7 +520,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   int? _watchSeason;
 
   bool get _watchPageEnabled =>
-      !sl<AppMode>().isTv && (!Platform.isAndroid || _chosenPlayer.isEmpty);
+      !sl<AppMode>().isTv && sl<PlaybackPrefs>().openingLayout == 'watch';
 
   /// Live frames for the watch-page ambient glow. Sampled slowly from the
   /// playing texture (a blurred backdrop needs no frame rate), only while
@@ -546,7 +541,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   int _ambientEp = -1;
 
   void _startAmbientSampler() {
-    if (!_ready || (_ambientTimer?.isActive ?? false)) return;
+    if (_ambientTimer?.isActive ?? false) return;
     _ambientTimer = Timer.periodic(const Duration(seconds: 6), (_) {
       _sampleAmbientFrame();
     });
@@ -560,7 +555,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   Future<void> _sampleAmbientFrame() async {
     if (!mounted ||
-        !_ready ||
         _presentation != PlayerPresentation.watchPage ||
         WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) {
       return;
@@ -615,16 +609,33 @@ class _PlayerScreenState extends State<PlayerScreen> {
       _duration = _c.player.state.duration;
       _presentation = PlayerPresentation.fullscreen;
     });
-    // Fullscreen holds the saved orientation, or follows the sensor.
-    SystemChrome.setPreferredOrientations(_orientationLock);
+    // Fullscreen is landscape: a portrait fullscreen is the stranded mini
+    // (video shrunk inside fullscreen chrome, Back the only exit). Sensor
+    // followers stay unlocked only when the device is already landscape;
+    // otherwise the lock below applies and a turn does nothing.
+    final landscape =
+        MediaQuery.orientationOf(context) == Orientation.landscape;
+    SystemChrome.setPreferredOrientations(
+      _followSensor && landscape
+          ? DeviceOrientation.values
+          : const [
+              DeviceOrientation.landscapeLeft,
+              DeviceOrientation.landscapeRight,
+            ],
+    );
   }
 
   void _enterWatchPage() {
     _startAmbientSampler();
     _lastOrientation = MediaQuery.orientationOf(context);
     setState(() => _presentation = PlayerPresentation.watchPage);
-    // The page stays rotation-free so a landscape turn can enter fullscreen.
-    SystemChrome.setPreferredOrientations(DeviceOrientation.values);
+    // Sensor followers stay unlocked so a landscape turn goes fullscreen;
+    // everyone else pins portrait with the page.
+    SystemChrome.setPreferredOrientations(
+      _followSensor
+          ? DeviceOrientation.values
+          : const [DeviceOrientation.portraitUp],
+    );
   }
 
   /// Physical orientation the last presentation decision was made for. Manual
@@ -634,25 +645,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (!_watchPageEnabled) return;
-    final current = MediaQuery.orientationOf(context);
-    if (_lastOrientation == null) {
-      _lastOrientation = current;
-      final initial = initialPresentation(
-        isTv: false,
-        orientation: sl<PlaybackPrefs>().playerOrientation,
-        isLandscape: current == Orientation.landscape,
-      );
-      _presentation = initial;
-      if (initial == PlayerPresentation.watchPage) {
-        _startAmbientSampler();
-        SystemChrome.setPreferredOrientations(DeviceOrientation.values);
-      } else {
-        _applyOrientationWhenCovered();
-      }
+    // Sensor-driven layout switching: only when the page is enabled and the
+    // orientation preference follows the sensor (locked orientations never
+    // turn, so there is nothing to follow).
+    if (!_watchPageEnabled ||
+        sl<PlaybackPrefs>().playerOrientation != 'system') {
       return;
     }
+    final current = MediaQuery.orientationOf(context);
     final next = rotationPresentation(
+      watchPageEnabled: true,
+      systemSensor: true,
       last: _lastOrientation,
       current: current,
       presentation: _presentation,
@@ -683,22 +686,21 @@ class _PlayerScreenState extends State<PlayerScreen> {
   /// screen pins orientation in more than one place (open, and either side of
   /// the Settings trip), and hardcoding landscape at each of them is what would
   /// throw you back to landscape after a detour.
-  List<DeviceOrientation> get _orientationLock => sl<AppMode>().isTv
-      ? const [
-          DeviceOrientation.landscapeLeft,
-          DeviceOrientation.landscapeRight,
-        ]
-      : _followSensor
+  List<DeviceOrientation> get _orientationLock => _followSensor
       ? DeviceOrientation.values
       : PlaybackPrefs.orientationLockFor(
           _portraitMode ? 'portrait' : 'landscape',
         );
 
-  /// The ⟳ button (fullscreen only): flips the session between a landscape
-  /// and a portrait hold, dropping any sensor-following. The saved
-  /// orientation preference is untouched — this lasts until the player
-  /// closes.
+  /// The ⟳ button. With the watch page enabled, upright watching IS the
+  /// watch page — this goes there instead of portrait-locking the fullscreen
+  /// UI into a stranded mini video. Legacy toggle kept when the page is off.
   void _toggleOrientation() {
+    if (_watchPageEnabled) {
+      _enterWatchPage();
+      _bumpControls();
+      return;
+    }
     setState(() {
       _followSensor = false;
       _portraitMode = !_portraitMode;
@@ -707,17 +709,18 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _bumpControls();
   }
 
-  /// Prevents the initial orientation request from being applied twice.
-  bool _orientationApplied = false;
+  /// Whether the opening rotation has been asked for. Two paths race to it
+  /// below, so the first one wins and the second is a no-op.
+  bool _turned = false;
 
-  void _applyOrientation() {
-    if (_orientationApplied || !mounted) return;
-    _orientationApplied = true;
+  void _turnLandscape() {
+    if (_turned || !mounted) return;
+    _turned = true;
     SystemChrome.setPreferredOrientations(_orientationLock);
   }
 
-  /// Apply orientation after the opening transition so its snapshot cannot
-  /// bleed into the player while Android animates the turn.
+  /// Ask for landscape once the screen we opened over has faded out, rather
+  /// than the instant this screen is built.
   ///
   /// Android takes a snapshot of the window when a rotation is requested and
   /// composites it into the rotation animation. Asking from initState means
@@ -735,31 +738,36 @@ class _PlayerScreenState extends State<PlayerScreen> {
   /// fully drawn with this player faint on top of it, which is the bug itself.
   /// The outgoing page does not fade here — that only happens through a
   /// delegated transition, which this route does not get.
-  void _applyOrientationWhenCovered() {
+  void _turnLandscapeWhenCovered() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final opening = ModalRoute.of(context)?.animation;
       if (opening == null || opening.status == AnimationStatus.completed) {
-        _applyOrientation();
+        _turnLandscape();
         return;
       }
       void turnOnceCovered() {
         if (opening.value < 0.8) return;
         opening.removeListener(turnOnceCovered);
-        _applyOrientation();
+        _turnLandscape();
       }
 
       opening.addListener(turnOnceCovered);
       // If that value never arrives — the transition is interrupted, the route
       // is swapped underneath us — the player would sit in portrait for good,
       // which is worse than the thing this avoids.
-      Future.delayed(const Duration(milliseconds: 600), _applyOrientation);
+      Future.delayed(const Duration(milliseconds: 600), _turnLandscape);
     });
   }
 
   void _initInApp() {
     _routeTeardownLease ??= playerRouteTeardownBarrier.acquire();
-    if (!_watchPageEnabled) _applyOrientationWhenCovered();
+    if (_watchPageEnabled) {
+      _presentation = PlayerPresentation.watchPage;
+      _startAmbientSampler();
+    } else {
+      _turnLandscapeWhenCovered();
+    }
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     // Wake-lock is bound to playback in _startSession, once the player exists.
     // The volume swipe sets the real system volume; hide the OS volume bar so
@@ -1344,9 +1352,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
       if (done) _onEpisodeComplete();
     });
     if (mounted) setState(() => _ready = true);
-    if (_presentation == PlayerPresentation.watchPage) {
-      _startAmbientSampler();
-    }
     _scheduleHide();
   }
 

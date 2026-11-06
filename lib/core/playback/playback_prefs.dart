@@ -218,10 +218,21 @@ enum PosterTitleStyle { text, artwork }
 
 /// How the built-in mobile player opens an episode:
 /// [PlayerPresentation.watchPage] is the portrait page (video on top, episode
-/// info below); [PlayerPresentation.fullscreen] is the fullscreen player, in
-/// whichever orientation the lock holds. TV always opens fullscreen and
-/// never reads the preference.
+/// info below); [PlayerPresentation.fullscreen] is the legacy fullscreen
+/// player. TV always opens fullscreen and never reads the preference.
 enum PlayerPresentation { watchPage, fullscreen }
+
+/// Which presentation a fresh player session starts in. Pure so the
+/// TV-always-fullscreen rule is unit-testable.
+PlayerPresentation initialPresentation({
+  required bool isTv,
+  required String openingLayout,
+}) {
+  if (isTv) return PlayerPresentation.fullscreen;
+  return openingLayout == 'fullscreen'
+      ? PlayerPresentation.fullscreen
+      : PlayerPresentation.watchPage;
+}
 
 class PlaybackPrefs {
   static const String boxName = 'playback_prefs';
@@ -1084,4 +1095,17 @@ class PlaybackPrefs {
       _box.get('autoDownloadSubtitles', defaultValue: true) as bool;
   Future<void> setAutoDownloadSubtitles(bool value) =>
       _box.put('autoDownloadSubtitles', value);
+
+  /// Which layout opens when an episode starts on phone: 'watch' (portrait
+  /// page, video on top) or 'fullscreen' (legacy player). Watch page is the
+  /// default, including for existing installs with no saved choice; unknown
+  /// stored values fall back to it. Separate from [playerOrientation], which
+  /// keeps controlling the fullscreen orientation lock. TV ignores this.
+  String get openingLayout {
+    final v = _box.get('openingLayout', defaultValue: 'watch') as String;
+    return v == 'fullscreen' ? 'fullscreen' : 'watch';
+  }
+
+  Future<void> setOpeningLayout(String value) =>
+      _box.put('openingLayout', value);
 }

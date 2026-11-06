@@ -159,7 +159,7 @@ void main() {
       expect(a['backBufferMs'], 30000);
     });
 
-    test('carries the orientation and watch-page metadata', () {
+    test('carries the watch-page presentation fields', () {
       final a = phonePlayerArgs(
         title: 'A Show',
         episodeLabel: 'Episode 1',
@@ -179,12 +179,12 @@ void main() {
         keepScreenOn: true,
         autoplayNext: true,
         seekSeconds: 10,
-        playerOrientation: 'system',
+        openingLayout: 'watch',
         showDescription: 'The show saga.',
         availableCategories: const ['sub', 'dub'],
         source: _src(),
       );
-      expect(a['playerOrientation'], 'system');
+      expect(a['openingLayout'], 'watch');
       expect(a['showDescription'], 'The show saga.');
       expect(a['availableCategories'], ['sub', 'dub']);
     });

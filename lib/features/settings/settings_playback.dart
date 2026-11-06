@@ -453,6 +453,23 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
     if (mounted) setState(() {});
   }
 
+  static List<(String, String)> _openingLayoutOptions(AppLocalizations l10n) => [
+    ('watch', l10n.openingLayoutWatchPage),
+    ('fullscreen', l10n.openingLayoutFullscreen),
+  ];
+
+  Future<void> _pickOpeningLayout() async {
+    final l10n = context.l10n;
+    final picked = await _pick<String>(
+      title: l10n.openEpisodesIn,
+      options: _openingLayoutOptions(l10n),
+      current: _prefs.openingLayout,
+    );
+    if (picked == null) return;
+    await _prefs.setOpeningLayout(picked);
+    if (mounted) setState(() {});
+  }
+
   Future<void> _pickCloseConfirmation() async {
     final l10n = context.l10n;
     final picked = await _pick<String>(
@@ -924,13 +941,26 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                   if (mounted) setState(() {});
                 },
               ),
-              // Orientation also controls the phone player's opening layout.
+              // Default player orientation. TV is always landscape, so this
+              // row is phone-only.
               if (!sl<AppMode>().isTv)
                 SettingsTile(
                   icon: Icons.screen_rotation,
                   title: context.l10n.orientationLock,
                   subtitle: _labelFor(_orientationOptions, _prefs.playerOrientation, _prefs.playerOrientation),
                   onTap: _pickOrientation,
+                ),
+              // Opening layout. Phone-only: TV always opens fullscreen.
+              if (!sl<AppMode>().isTv)
+                SettingsTile(
+                  icon: Icons.slideshow_outlined,
+                  title: context.l10n.openEpisodesIn,
+                  subtitle: _labelFor(
+                    _openingLayoutOptions(context.l10n),
+                    _prefs.openingLayout,
+                    context.l10n.openingLayoutWatchPage,
+                  ),
+                  onTap: _pickOpeningLayout,
                 ),
               if (sl<AppMode>().isTv && !isAppleTv)
                 _toggleRow(

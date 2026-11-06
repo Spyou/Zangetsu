@@ -171,8 +171,8 @@ object PhonePlayerBridge {
             call.argument<String>("cover")
                 ?.let { i.putExtra(PhonePlayerIntent.EXTRA_COVER, it) }
             i.putExtra(
-                PhonePlayerIntent.EXTRA_ORIENTATION,
-                call.argument<String>("playerOrientation") ?: "landscape",
+                PhonePlayerIntent.EXTRA_LAYOUT,
+                call.argument<String>("openingLayout") ?: "fullscreen",
             )
             call.argument<String>("showDescription")
                 ?.let { i.putExtra(PhonePlayerIntent.EXTRA_SHOW_DESC, it) }

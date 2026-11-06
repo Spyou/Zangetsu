@@ -167,8 +167,7 @@ class PhonePlayerActivity : Activity() {
     // the same container — ExoPlayer and PlayerView are never rebuilt.
     var sessionId = 0L
         private set
-    private var playerOrientation = "landscape"
-    private var watchPage = false
+    private var openingLayout = "fullscreen"
     private var categories: List<String> = emptyList()
     private var currentCategory = "sub"
     private var pendingDesc: String? = null
@@ -199,21 +198,18 @@ class PhonePlayerActivity : Activity() {
         super.onCreate(savedInstanceState)
         keepScreenOn = intent.getBooleanExtra(PhonePlayerIntent.EXTRA_KEEP_SCREEN_ON, true)
         sessionId = intent.getLongExtra(PhonePlayerIntent.EXTRA_SESSION, 0L)
-        playerOrientation = when (intent.getStringExtra(PhonePlayerIntent.EXTRA_ORIENTATION)) {
-            "portrait" -> "portrait"
-            "system" -> "system"
-            else -> "landscape"
-        }
-        watchPage = playerOrientation == "system" &&
-            resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT
+        openingLayout = intent.getStringExtra(PhonePlayerIntent.EXTRA_LAYOUT) ?: "fullscreen"
         categories = intent.getStringArrayExtra(PhonePlayerIntent.EXTRA_CATEGORIES)?.toList() ?: emptyList()
         currentCategory = intent.getStringExtra(PhonePlayerIntent.EXTRA_CATEGORY) ?: "sub"
         pendingDesc = intent.getStringExtra(PhonePlayerIntent.EXTRA_SHOW_DESC)
-        // Set before inflation so the activity starts in the selected phone orientation.
-        requestedOrientation = when (playerOrientation) {
-            "portrait" -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-            "system" -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-            else -> ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        // Orientation from the launch layout (manifest is unspecified for
+        // this Activity only): watch page opens upright, anything else keeps
+        // the historical landscape start. Set before inflation so the right
+        // layout variant loads.
+        requestedOrientation = if (openingLayout == "watch") {
+            ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        } else {
+            ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
         }
         if (keepScreenOn) {
             window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -265,7 +261,13 @@ class PhonePlayerActivity : Activity() {
         subtitlePreference = intent.getStringExtra(PhonePlayerIntent.EXTRA_SUB_PREFERENCE).orEmpty()
 
         findViewById<View>(R.id.btn_back).setOnClickListener {
-            if (!showWatchPage()) finish()
+            if (openingLayout == "watch" &&
+                resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+            ) {
+                requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            } else {
+                finish()
+            }
         }
         btnPlay.setOnClickListener { togglePlay() }
         findViewById<View>(R.id.btn_previous).setOnClickListener {
@@ -565,16 +567,6 @@ class PhonePlayerActivity : Activity() {
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         moreDialog?.dismiss()
-        if (watchPage) {
-            when (newConfig.orientation) {
-                Configuration.ORIENTATION_LANDSCAPE -> watchPage = false
-                Configuration.ORIENTATION_PORTRAIT -> {
-                    if (requestedOrientation == ActivityInfo.SCREEN_ORIENTATION_PORTRAIT) {
-                        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-                    }
-                }
-            }
-        }
         updateOrientationLayout()
         val parent = quickActions.parent as ViewGroup
         val index = parent.indexOfChild(quickActions)
@@ -588,7 +580,7 @@ class PhonePlayerActivity : Activity() {
         val portrait =
             resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT
         val video = findViewById<View>(R.id.player_root)
-        if (portrait && watchPage) {
+        if (portrait) {
             // 16:9 stage; the info panel takes the rest.
             val w = resources.displayMetrics.widthPixels
             video.layoutParams = video.layoutParams.apply {
@@ -1282,9 +1274,11 @@ class PhonePlayerActivity : Activity() {
     }
 
     private fun toggleRotation() {
-        requestedOrientation = if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE)
+        requestedOrientation = if (requestedOrientation == ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE) {
             ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-        else ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        } else {
+            ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        }
         bumpControls()
     }
 
@@ -2183,21 +2177,16 @@ class PhonePlayerActivity : Activity() {
     override fun onBackPressed() {
         if (loadingActions.visibility == View.VISIBLE) { finish(); return }
         if (controls.visibility == View.VISIBLE) { hideControls(); return }
-        if (showWatchPage()) return
+        // Fullscreen Back drops to the portrait watch page, not out of the
+        // player; the page's own Back exits as before.
+        if (openingLayout == "watch" &&
+            resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+        ) {
+            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            return
+        }
         @Suppress("DEPRECATION")
         super.onBackPressed()
-    }
-
-    private fun showWatchPage(): Boolean {
-        if (watchPage) return false
-        watchPage = true
-        requestedOrientation = if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) {
-            ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-        } else {
-            ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-        }
-        updateOrientationLayout()
-        return true
     }
 
     private fun goImmersive() {

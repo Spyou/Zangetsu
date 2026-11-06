@@ -2,7 +2,6 @@ package com.spyou.watch_app
 
 import android.content.Context
 import android.content.Intent
-import android.content.pm.ActivityInfo
 import android.content.res.Configuration
 import android.view.LayoutInflater
 import android.view.View
@@ -31,64 +30,6 @@ class PhonePlayerLayoutTest {
         "quick_speed",
         "quick_display",
     )
-
-    @Test
-    @Config(manifest = Config.NONE, sdk = [34], qualifiers = "port")
-    fun `portrait orientation preference opens portrait fullscreen`() {
-        val context = ApplicationProvider.getApplicationContext<Context>()
-        val intent = Intent(context, PhonePlayerActivity::class.java)
-            .putExtra(PhonePlayerIntent.EXTRA_URL, "file:///dev/null")
-            .putExtra(PhonePlayerIntent.EXTRA_ORIENTATION, "portrait")
-        val controller = Robolectric.buildActivity(PhonePlayerActivity::class.java, intent)
-            .create().start().resume()
-        val activity = controller.get()
-
-        assertEquals(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT, activity.requestedOrientation)
-        assertEquals(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            activity.findViewById<View>(R.id.player_root).layoutParams.height,
-        )
-        assertEquals(View.GONE, activity.findViewById<View>(R.id.watch_info)?.visibility ?: View.GONE)
-
-        controller.pause().stop().destroy()
-    }
-
-    @Test
-    @Config(manifest = Config.NONE, sdk = [34], qualifiers = "port")
-    fun `system orientation starts on the watch page then keeps fullscreen after rotation`() {
-        val context = ApplicationProvider.getApplicationContext<Context>()
-        val intent = Intent(context, PhonePlayerActivity::class.java)
-            .putExtra(PhonePlayerIntent.EXTRA_URL, "file:///dev/null")
-            .putExtra(PhonePlayerIntent.EXTRA_ORIENTATION, "system")
-        val controller = Robolectric.buildActivity(PhonePlayerActivity::class.java, intent)
-            .create().start().resume()
-        val activity = controller.get()
-
-        assertEquals(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED, activity.requestedOrientation)
-        assertEquals(View.VISIBLE, activity.findViewById<View>(R.id.watch_info).visibility)
-
-        val landscape = Configuration(activity.resources.configuration).apply {
-            orientation = Configuration.ORIENTATION_LANDSCAPE
-        }
-        @Suppress("DEPRECATION")
-        activity.resources.updateConfiguration(landscape, activity.resources.displayMetrics)
-        activity.onConfigurationChanged(landscape)
-        assertEquals(View.GONE, activity.findViewById<View>(R.id.watch_info).visibility)
-        val portrait = Configuration(activity.resources.configuration).apply {
-            orientation = Configuration.ORIENTATION_PORTRAIT
-        }
-        @Suppress("DEPRECATION")
-        activity.resources.updateConfiguration(portrait, activity.resources.displayMetrics)
-        activity.onConfigurationChanged(portrait)
-
-        assertEquals(View.GONE, activity.findViewById<View>(R.id.watch_info).visibility)
-        assertEquals(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            activity.findViewById<View>(R.id.player_root).layoutParams.height,
-        )
-
-        controller.pause().stop().destroy()
-    }
 
     @Test
     @Config(manifest = Config.NONE, sdk = [34], qualifiers = "port")
