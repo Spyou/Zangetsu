@@ -62,6 +62,12 @@ class PhonePlayerActivity : Activity() {
     companion object {
         private const val TAG = "PhonePlayer"
 
+        internal fun megaSkipTarget(position: Long, duration: Long, seconds: Int): Long? {
+            if (duration <= 0) return null
+            val start = position.coerceIn(0L, duration)
+            return start + minOf(seconds.coerceIn(5, 180) * 1000L, duration - start)
+        }
+
         /** Foreground player, so the bridge can push late updates. */
         @JvmStatic
         @Volatile
@@ -97,8 +103,9 @@ class PhonePlayerActivity : Activity() {
     private lateinit var quickActions: ViewGroup
     private lateinit var btnPlay: android.widget.ImageView
     private lateinit var seek: android.widget.SeekBar
-    private lateinit var positionText: android.widget.TextView
-    private lateinit var durationText: android.widget.TextView
+    private lateinit var miniSeekPadding: IntArray
+    private var miniSeekThumbOffset = 0
+    private lateinit var timeText: android.widget.TextView
     private lateinit var titleText: android.widget.TextView
     private lateinit var episodeText: android.widget.TextView
 
@@ -157,6 +164,11 @@ class PhonePlayerActivity : Activity() {
     }
 
     private var currentIndex = 0
+    // The selected episode can change while the previous stream is still loaded.
+    private var loadedEpisodeIndex = 0
+    /** True once the first stream has produced frames: later episode taps
+     * resolve inside the miniplayer instead of the fullscreen loader. */
+    private var everPlayed = false
     private var playbackError = false
     private var reported = false
 
@@ -185,11 +197,21 @@ class PhonePlayerActivity : Activity() {
     private val attemptedUrls = mutableSetOf<String>()
     private var autoplayNext = true
     private var seekMs = 10_000L
+    private var megaSkipEnabled = true
+    private var megaSkipSeconds = 85
     private var keepScreenOn = true
     private var subtitlePreference = ""
     private var subtitlePreferenceApplied = false
     private var playbackStarted = false
     private var resizeIndex = 0
+    private var controlLayout = PhonePlayerControlLayout()
+    private var controlsLocked = false
+    private var unlockControl: View? = null
+    private val controlIconFont by lazy {
+        runCatching {
+            android.graphics.Typeface.createFromAsset(assets, "flutter_assets/fonts/MaterialIcons-Regular.otf")
+        }.getOrNull()
+    }
 
     private var mirrors: List<Map<String, Any?>> = emptyList()
     private var castManager: CastManager? = null
@@ -198,6 +220,9 @@ class PhonePlayerActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        controlLayout = PhonePlayerControlLayout.fromJson(intent.getStringExtra(PhonePlayerIntent.EXTRA_CONTROLS))
+        megaSkipEnabled = intent.getBooleanExtra(PhonePlayerIntent.EXTRA_MEGA_SKIP, true)
+        megaSkipSeconds = intent.getIntExtra(PhonePlayerIntent.EXTRA_MEGA_SKIP_SECONDS, 85).coerceIn(5, 180)
         keepScreenOn = intent.getBooleanExtra(PhonePlayerIntent.EXTRA_KEEP_SCREEN_ON, true)
         sessionId = intent.getLongExtra(PhonePlayerIntent.EXTRA_SESSION, 0L)
         playerOrientation = when (intent.getStringExtra(PhonePlayerIntent.EXTRA_ORIENTATION)) {
@@ -253,8 +278,9 @@ class PhonePlayerActivity : Activity() {
         quickActions = findViewById(R.id.quick_actions)
         btnPlay = findViewById(R.id.btn_play)
         seek = findViewById(R.id.seek)
-        positionText = findViewById(R.id.position)
-        durationText = findViewById(R.id.duration)
+        miniSeekPadding = intArrayOf(seek.paddingLeft, seek.paddingTop, seek.paddingRight, seek.paddingBottom)
+        miniSeekThumbOffset = seek.thumbOffset
+        timeText = findViewById(R.id.time_chip)
         titleText = findViewById(R.id.title)
         episodeText = findViewById(R.id.episode_label)
 
@@ -264,6 +290,7 @@ class PhonePlayerActivity : Activity() {
         updateOrientationLayout()
 
         currentIndex = intent.getIntExtra(PhonePlayerIntent.EXTRA_START_INDEX, 0)
+        loadedEpisodeIndex = currentIndex
         episodeCount = intent.getIntExtra(PhonePlayerIntent.EXTRA_EP_COUNT, 1)
         episodeLabels = intent.getStringArrayExtra(PhonePlayerIntent.EXTRA_EP_LABELS) ?: emptyArray()
         autoplayNext = intent.getBooleanExtra(PhonePlayerIntent.EXTRA_AUTOPLAY_NEXT, true)
@@ -287,10 +314,13 @@ class PhonePlayerActivity : Activity() {
             bumpControls()
             showMoreMenu()
         }
-        bindQuickActions()
+        // The XML inflates the two-row actions; the portrait mini-card swaps
+        // in its single-row variant before anything binds to it.
+        if (isPortraitCard()) inflateQuickActions() else bindQuickActions()
         val cast = CastManager(this)
         castManager = cast
         castSupported = runCatching { cast.init() }.getOrDefault(false)
+        if (!isPortraitCard()) applyFullscreenControls()
         updateEpisodeNavigation()
 
         seek.setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
@@ -299,7 +329,7 @@ class PhonePlayerActivity : Activity() {
                 val d = player?.duration ?: 0L
                 if (d > 0) {
                     val pos = d * value / 1000
-                    positionText.text = fmt(pos)
+                    timeText.text = fmt(pos) + " / " + fmt(d)
                     sb.contentDescription = getString(R.string.phone_player_desc_seek) + ", " + fmt(pos) + " of " + fmt(d)
                 }
             }
@@ -348,7 +378,11 @@ class PhonePlayerActivity : Activity() {
         )
         createGestureOverlays()
         findViewById<View>(R.id.player_root).setOnTouchListener { v, ev ->
-            handlePlayerTouch(v, ev, taps)
+            if (controlsLocked) {
+                if (ev.actionMasked == MotionEvent.ACTION_UP) {
+                    unlockControl?.visibility = if (unlockControl?.visibility == View.VISIBLE) View.GONE else View.VISIBLE
+                }
+            } else handlePlayerTouch(v, ev, taps)
             true
         }
 
@@ -530,6 +564,7 @@ class PhonePlayerActivity : Activity() {
         handler.removeCallbacks(startTimeout)
         loadingOverlay.visibility = View.GONE
         setBuffering(false)
+        everPlayed = true
     }
 
     private fun showLoadError(message: String) {
@@ -559,7 +594,213 @@ class PhonePlayerActivity : Activity() {
         refreshWatchInfo()
     }
 
+    private fun controlSpec(key: String): Triple<Int, Int, () -> Unit>? = when (key) {
+        "speed" -> Triple(R.id.quick_speed, R.string.phone_player_title_speed, { showSpeedMenu() })
+        "tracks" -> Triple(R.id.quick_tracks, R.string.phone_player_title_tracks, { showTracksMenu() })
+        "quality" -> Triple(R.id.quick_quality, R.string.phone_player_title_quality, { showQualityMenu() })
+        "sources" -> Triple(R.id.quick_sources, R.string.phone_player_title_sources, { showSourceMenu() })
+        "more" -> Triple(R.id.quick_more, R.string.phone_player_title_more, { showMoreMenu() })
+        "episodes" -> Triple(R.id.quick_episodes, R.string.phone_player_title_episodes, { showEpisodeMenu() })
+        "rotate" -> Triple(R.id.btn_rotate, R.string.phone_player_menu_rotate, { toggleRotation() })
+        "fit" -> Triple(R.id.quick_display, R.string.phone_player_menu_display, { cycleDisplayMode() })
+        "cast" -> if (castSupported) Triple(R.id.quick_cast, R.string.phone_player_menu_cast, { pickCast() }) else null
+        "info" -> Triple(R.id.quick_info, R.string.phone_player_title_playback_info, { showInfo() })
+        "lock" -> Triple(R.id.btn_controls_lock, R.string.phone_player_lock_controls, { setControlsLocked(true) })
+        "settings" -> Triple(R.id.btn_controls_settings, R.string.phone_player_arrange_controls, { showControlArrangement() })
+        else -> null
+    }
+
+    private val fullscreenIcons = mutableMapOf<String, android.graphics.drawable.Drawable>()
+
+    private fun fullscreenIcon(key: String): android.graphics.drawable.Drawable? {
+        fullscreenIcons[key]?.let { return it }
+        val font = controlIconFont ?: return null
+        val glyph = PhonePlayerControlLayout.iconCodePoints[key] ?: return null
+        val size = dp(when (key) { "play", "pause" -> 34; "previous", "next" -> 26; else -> 24 })
+        val bitmap = android.graphics.Bitmap.createBitmap(size, size, android.graphics.Bitmap.Config.ARGB_8888)
+        bitmap.density = resources.displayMetrics.densityDpi
+        val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            typeface = font
+            textSize = size.toFloat()
+            color = android.graphics.Color.WHITE
+            textAlign = android.graphics.Paint.Align.CENTER
+        }
+        android.graphics.Canvas(bitmap).drawText(String(Character.toChars(glyph)), size / 2f,
+            size / 2f - (paint.ascent() + paint.descent()) / 2f, paint)
+        return android.graphics.drawable.BitmapDrawable(resources, bitmap).also { fullscreenIcons[key] = it }
+    }
+
+    private fun controlButton(key: String): View? {
+        val (viewId, label, action) = controlSpec(key) ?: return null
+        val fallback = when (key) {
+            "speed" -> R.drawable.phone_player_speed
+            "tracks" -> R.drawable.phone_player_tracks
+            "quality" -> R.drawable.phone_player_quality
+            "sources" -> R.drawable.phone_player_sources
+            "more" -> R.drawable.phone_player_more
+            "episodes" -> R.drawable.phone_player_episodes
+            "rotate" -> R.drawable.phone_player_rotate
+            "fit" -> R.drawable.phone_player_display
+            "cast" -> R.drawable.phone_player_cast
+            "info" -> R.drawable.phone_player_info
+            "lock" -> android.R.drawable.ic_lock_lock
+            else -> android.R.drawable.ic_menu_preferences
+        }
+        return android.widget.ImageButton(this).apply {
+            id = viewId
+            setImageDrawable(fullscreenIcon(key) ?: getDrawable(fallback))
+            setPadding(dp(12), dp(12), dp(12), dp(12))
+            scaleType = android.widget.ImageView.ScaleType.CENTER_INSIDE
+            imageTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.WHITE)
+            contentDescription = getString(label)
+            if (android.os.Build.VERSION.SDK_INT >= 26) tooltipText = getString(label)
+            isClickable = true
+            isFocusable = true
+            background = android.graphics.drawable.RippleDrawable(
+                android.content.res.ColorStateList.valueOf(0x33FFFFFF), null,
+                android.graphics.drawable.GradientDrawable().apply {
+                    shape = android.graphics.drawable.GradientDrawable.OVAL
+                    setColor(android.graphics.Color.WHITE)
+                },
+            )
+            setOnClickListener { bumpControls(); action() }
+        }
+    }
+
+    private fun applyFullscreenControls() {
+        if (isPortraitCard()) return
+        val topBar = controls.findViewById<LinearLayout>(R.id.top_bar)
+        var top = topBar.findViewById<LinearLayout>(R.id.fullscreen_top_actions)
+        if (top == null) {
+            top = LinearLayout(this).apply {
+                id = R.id.fullscreen_top_actions
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+            }
+            topBar.addView(top, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, dp(48)))
+        }
+        top.visibility = View.VISIBLE
+        controls.findViewById<View>(R.id.btn_more)?.visibility = View.GONE
+        fun fill(group: LinearLayout, keys: List<String>) {
+            group.removeAllViews()
+            for (key in keys) controlButton(key)?.let {
+                group.addView(it, LinearLayout.LayoutParams(dp(48), dp(48)))
+            }
+            group.visibility = if (group.childCount == 0) View.GONE else View.VISIBLE
+        }
+        fill(top, controlLayout.top + listOf("lock", "settings"))
+        val left = quickActions.findViewById<LinearLayout>(R.id.fullscreen_actions_left) ?: return
+        val right = quickActions.findViewById<LinearLayout>(R.id.fullscreen_actions_right) ?: return
+        fill(left, controlLayout.left)
+        fill(right, controlLayout.right)
+        // The same 48dp controls scroll on narrow windows instead of shrinking hit targets.
+        (left.parent as View).minimumWidth = dp((left.childCount + right.childCount) * 48 + 16)
+    }
+
+    private fun showControlArrangement() {
+        handler.removeCallbacks(hideRunnable)
+        val keys = listOf("speed", "tracks", "quality", "sources", "more", "episodes", "rotate", "fit", "cast", "info")
+        val labels = keys.map { key ->
+            val label = when (key) {
+                "cast" -> getString(R.string.phone_player_menu_cast)
+                else -> getString(controlSpec(key)!!.second)
+            }
+            val slot = controlLayout.asMap().entries.firstOrNull { key in it.value }?.key ?: "hidden"
+            "$label · ${controlSlotLabel(slot)}"
+        }.toTypedArray()
+        android.app.AlertDialog.Builder(this, R.style.PhonePlayerDialog)
+            .setTitle(R.string.phone_player_arrange_controls)
+            .setItems(labels) { _, index ->
+                val key = keys[index]
+                val slots = listOf("top", "left", "right", "hidden")
+                val current = controlLayout.asMap().entries.firstOrNull { key in it.value }?.key ?: "hidden"
+                android.app.AlertDialog.Builder(this, R.style.PhonePlayerDialog)
+                    .setTitle(labels[index].substringBefore(" · "))
+                    .setSingleChoiceItems(slots.map { controlSlotLabel(it) }.toTypedArray(), slots.indexOf(current)) { dialog, choice ->
+                        dialog.dismiss()
+                        val next = controlLayout.move(key, slots[choice])
+                        if (next == null) {
+                            toast(getString(R.string.phone_player_controls_limit))
+                            return@setSingleChoiceItems
+                        }
+                        val channel = PhonePlayerBridge.channel
+                        if (channel == null) {
+                            toast(getString(R.string.phone_player_controls_save_error))
+                            return@setSingleChoiceItems
+                        }
+                        channel.invokeMethod("saveControlLayout", next.asMap() + ("sessionId" to sessionId), object : io.flutter.plugin.common.MethodChannel.Result {
+                            override fun success(result: Any?) {
+                                if (!uiAlive()) return
+                                if (result == true) {
+                                    controlLayout = next
+                                    applyFullscreenControls()
+                                    bumpControls()
+                                } else toast(getString(R.string.phone_player_controls_save_error))
+                            }
+                            override fun error(code: String, message: String?, details: Any?) {
+                                if (uiAlive()) toast(getString(R.string.phone_player_controls_save_error))
+                            }
+                            override fun notImplemented() {
+                                if (uiAlive()) toast(getString(R.string.phone_player_controls_save_error))
+                            }
+                        })
+                    }.setOnDismissListener { bumpControls() }.show()
+            }.setOnDismissListener { bumpControls() }.show()
+    }
+
+    private fun controlSlotLabel(slot: String) = getString(when (slot) {
+        "top" -> R.string.phone_player_controls_top
+        "left" -> R.string.phone_player_controls_left
+        "right" -> R.string.phone_player_controls_right
+        else -> R.string.phone_player_controls_hidden
+    })
+
+    private fun setControlsLocked(locked: Boolean) {
+        controlsLocked = locked
+        if (unlockControl == null) {
+            val column = LinearLayout(this).apply {
+                id = R.id.btn_controls_unlock
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
+                isClickable = true
+                isFocusable = true
+                contentDescription = getString(R.string.phone_player_unlock_controls)
+                setOnClickListener { setControlsLocked(false) }
+            }
+            column.addView(TextView(this).apply {
+                text = String(Character.toChars(PhonePlayerControlLayout.iconCodePoints.getValue("unlock")))
+                typeface = controlIconFont
+                textSize = 24f
+                setTextColor(android.graphics.Color.WHITE)
+                gravity = Gravity.CENTER
+                background = getDrawable(R.drawable.phone_player_transport_disc)
+            }, LinearLayout.LayoutParams(dp(48), dp(48)))
+            column.addView(TextView(this).apply {
+                text = getString(R.string.phone_player_unlock_controls)
+                textSize = 13f
+                setTextColor(android.graphics.Color.WHITE)
+                setPadding(0, dp(8), 0, 0)
+            })
+            (findViewById<View>(R.id.player_root) as ViewGroup).addView(column,
+                FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER))
+            unlockControl = column
+        }
+        unlockControl?.visibility = if (locked) View.VISIBLE else View.GONE
+        if (locked) {
+            handler.removeCallbacks(hideRunnable)
+            controls.animate().cancel()
+            controlsHiding = false
+            controls.visibility = View.GONE
+        } else { restoreControls(); bumpControls() }
+    }
+
     private fun bindQuickActions() {
+        if (quickActions.findViewById<View>(R.id.fullscreen_actions_left) != null) {
+            applyFullscreenControls()
+            return
+        }
         quickActions.findViewById<View>(R.id.btn_rotate).setOnClickListener { toggleRotation() }
         quickActions.findViewById<View>(R.id.quick_episodes).setOnClickListener { showEpisodeMenu() }
         quickActions.findViewById<View>(R.id.quick_sources).setOnClickListener { showSourceMenu() }
@@ -574,12 +815,77 @@ class PhonePlayerActivity : Activity() {
         moreDialog?.dismiss()
         watchPage = newConfig.orientation == Configuration.ORIENTATION_PORTRAIT
         updateOrientationLayout()
+        inflateQuickActions()
+    }
+
+    /** dp→px for the appearance-only layout tweaks below. */
+    private fun dp(value: Int) =
+        (value * resources.displayMetrics.density + 0.5f).toInt()
+
+    /** Mini-card layout: the portrait watch page fits top bar + transport +
+     * single action row + time + seek with no overlap (the card is only as
+     * tall as the 16:9 stage). Landscape keeps the full-size chrome. */
+    private fun isPortraitCard() =
+        watchPage && resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT
+
+    private fun quickActionsLayoutRes() =
+        if (isPortraitCard()) R.layout.phone_player_quick_actions_portrait
+        else R.layout.phone_player_quick_actions
+
+    private fun inflateQuickActions() {
         val parent = quickActions.parent as ViewGroup
         val index = parent.indexOfChild(quickActions)
         parent.removeViewAt(index)
-        quickActions = layoutInflater.inflate(R.layout.phone_player_quick_actions, parent, false) as ViewGroup
+        quickActions = layoutInflater.inflate(quickActionsLayoutRes(), parent, false) as ViewGroup
         parent.addView(quickActions, index)
         bindQuickActions()
+    }
+
+    private fun updateFullscreenTimeRow(mini: Boolean) {
+        val row = timeText.parent as LinearLayout
+        row.gravity = if (mini) Gravity.CENTER else Gravity.START or Gravity.CENTER_VERTICAL
+        var skip = row.findViewById<View>(R.id.quick_mega_skip)
+        if (skip == null && !mini && megaSkipEnabled) {
+            row.addView(android.widget.Space(this).apply { id = R.id.fullscreen_time_spacer },
+                LinearLayout.LayoutParams(0, 1, 1f))
+            val pill = LinearLayout(this).apply {
+                id = R.id.quick_mega_skip
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER
+                setPadding(dp(10), 0, dp(12), 0)
+                background = android.graphics.drawable.GradientDrawable().apply {
+                    setColor(0x4D000000)
+                    cornerRadius = dp(13).toFloat()
+                }
+                isClickable = true
+                isFocusable = true
+                contentDescription = getString(R.string.phone_player_mega_skip_description, megaSkipSeconds)
+                setOnClickListener {
+                    val active = player ?: return@setOnClickListener
+                    val target = megaSkipTarget(active.currentPosition, active.duration, megaSkipSeconds)
+                        ?: return@setOnClickListener
+                    active.seekTo(target)
+                    bumpControls()
+                }
+            }
+            pill.addView(android.widget.ImageView(this).apply {
+                setImageDrawable(fullscreenIcon("megaSkip") ?: getDrawable(R.drawable.phone_player_next))
+                imageTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.WHITE)
+            }, LinearLayout.LayoutParams(dp(18), dp(18)))
+            pill.addView(TextView(this).apply {
+                text = getString(R.string.phone_player_mega_skip_label, megaSkipSeconds)
+                textSize = 13.5f
+                typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
+                includeFontPadding = false
+                setTextColor(android.graphics.Color.WHITE)
+                setPadding(dp(5), 0, 0, 0)
+            })
+            row.addView(pill, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(28)))
+            skip = pill
+        }
+        val visibility = if (!mini && megaSkipEnabled) View.VISIBLE else View.GONE
+        skip?.visibility = visibility
+        row.findViewById<View>(R.id.fullscreen_time_spacer)?.visibility = visibility
     }
 
     private fun updateOrientationLayout() {
@@ -587,36 +893,122 @@ class PhonePlayerActivity : Activity() {
             resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT
         val video = findViewById<View>(R.id.player_root)
         if (portrait && watchPage) {
-            // 16:9 stage; the info panel takes the rest.
+            // 16:9 stage as an inset rounded card (MPV mini-player).
             val w = resources.displayMetrics.widthPixels
+            val m = dp(12)
             video.layoutParams = video.layoutParams.apply {
                 height = (w * 9 / 16).coerceAtLeast(1)
+                if (this is android.widget.LinearLayout.LayoutParams) {
+                    setMargins(m, dp(4), m, 0)
+                }
             }
+            video.background = getDrawable(R.drawable.phone_player_video_card)
+            video.clipToOutline = true
             val info = ensureWatchInfo()
             info?.visibility = View.VISIBLE
         } else {
-            video.layoutParams = video.layoutParams.apply {
-                height = ViewGroup.LayoutParams.MATCH_PARENT
+            val lp = video.layoutParams
+            lp.height = ViewGroup.LayoutParams.MATCH_PARENT
+            if (lp is android.widget.LinearLayout.LayoutParams) {
+                lp.setMargins(0, 0, 0, 0)
             }
+            video.layoutParams = lp
+            video.background = null
+            video.clipToOutline = false
             watchInfo?.visibility = View.GONE
         }
         val topScrim = controls.findViewById<View>(R.id.top_scrim)
+        topScrim.setBackgroundResource(if (portrait && watchPage)
+            R.drawable.phone_player_scrim_top else R.drawable.phone_player_fullscreen_scrim_top)
         topScrim.layoutParams = topScrim.layoutParams.apply {
-            height = resources.getDimensionPixelSize(R.dimen.phone_player_top_scrim_height)
+            height = resources.getDimensionPixelSize(
+                if (portrait && watchPage) R.dimen.phone_player_top_scrim_height_portrait
+                else R.dimen.phone_player_top_scrim_height,
+            )
         }
         val bottomScrim = controls.findViewById<View>(R.id.bottom_scrim)
+        bottomScrim.setBackgroundResource(if (portrait && watchPage)
+            R.drawable.phone_player_scrim_bottom else R.drawable.phone_player_fullscreen_scrim_bottom)
         bottomScrim.layoutParams = bottomScrim.layoutParams.apply {
-            height = resources.getDimensionPixelSize(R.dimen.phone_player_bottom_scrim_height)
+            height = resources.getDimensionPixelSize(
+                if (portrait && watchPage) R.dimen.phone_player_bottom_scrim_height_portrait
+                else R.dimen.phone_player_bottom_scrim_height,
+            )
         }
         val topBar = controls.findViewById<View>(R.id.top_bar)
         val topBarParams = topBar.layoutParams as android.widget.FrameLayout.LayoutParams
-        topBarParams.marginStart = resources.getDimensionPixelSize(R.dimen.phone_player_top_bar_side_margin)
-        topBarParams.marginEnd = resources.getDimensionPixelSize(R.dimen.phone_player_top_bar_side_margin)
-        topBarParams.topMargin = resources.getDimensionPixelSize(R.dimen.phone_player_top_bar_top_margin)
+        val mini = portrait && watchPage
+        updateFullscreenTimeRow(mini)
+        for ((id, key, fallback) in listOf(
+            Triple(R.id.btn_back, "back", R.drawable.phone_player_back),
+            Triple(R.id.btn_previous, "previous", R.drawable.phone_player_previous),
+            Triple(R.id.btn_next, "next", R.drawable.phone_player_next),
+        )) {
+            controls.findViewById<android.widget.ImageView>(id).setImageDrawable(
+                if (mini) getDrawable(fallback) else fullscreenIcon(key) ?: getDrawable(fallback))
+        }
+        // Portrait card insets the stage, so the bar hugs the card edge like
+        // the MPV mini-player back (landscape keeps the fullscreen margins).
+        // The title, episode and ⋮ live again inches below in the info panel,
+        // so the mini card keeps only Back — otherwise top bar + transport +
+        // actions + seek cannot fit the 16:9 stage without overlapping.
+        val topSide = if (mini) dp(2) else
+            resources.getDimensionPixelSize(R.dimen.phone_player_top_bar_side_margin)
+        topBarParams.marginStart = topSide
+        topBarParams.marginEnd = topSide
+        topBarParams.topMargin = if (mini) 0 else
+            resources.getDimensionPixelSize(R.dimen.phone_player_top_bar_top_margin)
+        topBarParams.bottomMargin = if (mini) 0 else dp(8)
         topBar.layoutParams = topBarParams
+        val topPadding = if (mini) dp(4) else 0
+        topBar.setPadding(topPadding, topPadding, topPadding, topPadding)
+        controls.findViewById<View>(R.id.title)?.visibility =
+            if (mini) View.GONE else View.VISIBLE
+        controls.findViewById<View>(R.id.episode_label)?.visibility =
+            if (mini) View.GONE else View.VISIBLE
+        controls.findViewById<View>(R.id.fullscreen_top_actions)?.visibility =
+            if (mini) View.GONE else View.VISIBLE
+        controls.findViewById<View>(R.id.btn_more)?.visibility =
+            if (mini) View.GONE else View.VISIBLE
+        // Mini-player back glyph reads smaller (18dp); fullscreen keeps 24dp.
+        val backPad = dp(if (mini) 15 else 12)
+        controls.findViewById<android.widget.ImageView>(R.id.btn_back)?.setPadding(backPad, backPad, backPad, backPad)
+        // The mini card stacks bar → transport → actions → time → seek with no
+        // overlap; fullscreen centers the transport over the picture.
+        val transport = controls.findViewById<View>(R.id.transport_row)
+        val transportParams = transport.layoutParams as android.widget.FrameLayout.LayoutParams
+        transportParams.gravity = if (mini)
+            android.view.Gravity.TOP or android.view.Gravity.CENTER_HORIZONTAL
+        else android.view.Gravity.CENTER
+        transportParams.topMargin = if (mini) dp(64) else 0
+        transport.layoutParams = transportParams
+        // Slightly smaller play disc in the mini card so the stack fits.
+        val playBox = btnPlay.parent as View
+        val playBoxParams = playBox.layoutParams
+        playBoxParams.width = dp(if (mini) 48 else 58)
+        playBoxParams.height = dp(if (mini) 48 else 58)
+        playBox.layoutParams = playBoxParams
+        val playPad = dp(if (mini) 7 else 12)
+        btnPlay.setPadding(playPad, playPad, playPad, playPad)
+        // Match the compact fullscreen seek row without changing the mini card.
         val bottomBar = controls.findViewById<View>(R.id.bottom_bar)
+        bottomBar.setPadding(dp(4), 0, dp(4), 0)
+        val seekBar = controls.findViewById<View>(R.id.seek)
+        val seekParams = seekBar.layoutParams
+        seekParams.height = dp(if (mini) 40 else 26)
+        seekBar.layoutParams = seekParams
+        if (mini) {
+            seek.setPadding(miniSeekPadding[0], miniSeekPadding[1], miniSeekPadding[2], miniSeekPadding[3])
+            seek.thumbOffset = miniSeekThumbOffset
+        } else {
+            // The thumb must fit inside the view at both ends of the track.
+            val radius = seek.thumb.intrinsicWidth / 2
+            seek.setPadding(radius, dp(6), radius, dp(6))
+            seek.thumbOffset = radius
+        }
         val bottomBarParams = bottomBar.layoutParams as android.widget.FrameLayout.LayoutParams
-        bottomBarParams.bottomMargin = resources.getDimensionPixelSize(R.dimen.phone_player_bottom_bar_bottom_margin)
+        bottomBarParams.bottomMargin = if (mini) dp(4) else
+            resources.getDimensionPixelSize(R.dimen.phone_player_bottom_bar_bottom_margin)
         bottomBar.layoutParams = bottomBarParams
     }
 
@@ -765,6 +1157,7 @@ class PhonePlayerActivity : Activity() {
         val sourceFactory =
             DefaultMediaSourceFactory(DefaultDataSource.Factory(this, httpFactory))
         p.setMediaSource(sourceFactory.createMediaSource(builder.build()))
+        loadedEpisodeIndex = currentIndex
         if (positionMs > 0) p.seekTo(positionMs)
         p.prepare()
         p.playWhenReady = true
@@ -798,7 +1191,22 @@ class PhonePlayerActivity : Activity() {
         playbackStarted = false
         handler.removeCallbacks(startTimeout)
         switching = true
-        showLoading(episodeLabels.getOrNull(index))
+        if (!everPlayed) {
+            showLoading(episodeLabels.getOrNull(index))
+        } else {
+            // Miniplayer-contained switch (MPV watch-page parity): the page and
+            // chrome stay up with the new episode's header while the source
+            // resolves — no fullscreen backdrop. The index moves first so a
+            // retry/failover during the switch targets the new episode
+            // (progress for the old one was already saved above).
+            currentIndex = index
+            episodeText.text = episodeLabels.getOrNull(index) ?: ""
+            loadingEpisode.text = episodeText.text
+            updateEpisodeNavigation()
+            refreshWatchInfo()
+            bumpControls()
+            setBuffering(true)
+        }
         handler.postDelayed(resolveTimeout, 30_000L)
         ch.invokeMethod(
             "resolveEpisode",
@@ -1286,6 +1694,14 @@ class PhonePlayerActivity : Activity() {
         bumpControls()
     }
 
+    private fun cycleDisplayMode() {
+        val modes = intArrayOf(AspectRatioFrameLayout.RESIZE_MODE_FIT,
+            AspectRatioFrameLayout.RESIZE_MODE_FILL, AspectRatioFrameLayout.RESIZE_MODE_ZOOM)
+        resizeIndex = (resizeIndex + 1) % modes.size
+        playerView.resizeMode = modes[resizeIndex]
+        bumpControls()
+    }
+
     private fun showDisplayMenu() {
         handler.removeCallbacks(hideRunnable)
         val modes = intArrayOf(
@@ -1349,6 +1765,11 @@ class PhonePlayerActivity : Activity() {
             icons += R.drawable.phone_player_cast
             actions += { pickCast() }
         }
+        if (!isPortraitCard()) {
+            labels += getString(R.string.phone_player_arrange_controls)
+            icons += android.R.drawable.ic_menu_preferences
+            actions += { showControlArrangement() }
+        }
         labels += getString(R.string.phone_player_menu_info)
         icons += R.drawable.phone_player_info
         actions += { showInfo() }
@@ -1367,7 +1788,7 @@ class PhonePlayerActivity : Activity() {
                 setColor(surfaceColor)
                 val radius = dp(28).toFloat()
                 cornerRadii = if (landscape) {
-                    floatArrayOf(radius, radius, 0f, 0f, 0f, 0f, radius, radius)
+                    FloatArray(8) { radius }
                 } else {
                     floatArrayOf(radius, radius, radius, radius, 0f, 0f, 0f, 0f)
                 }
@@ -1386,8 +1807,6 @@ class PhonePlayerActivity : Activity() {
         }, android.widget.LinearLayout.LayoutParams(0, dp(52), 1f))
         header.addView(android.widget.ImageView(this).apply {
             setImageResource(R.drawable.phone_player_close)
-            background = getDrawable(R.drawable.phone_player_action_surface)
-            clipToOutline = true
             foreground = getDrawable(R.drawable.phone_player_icon_ripple)
             contentDescription = getString(android.R.string.cancel)
             isClickable = true
@@ -1421,9 +1840,7 @@ class PhonePlayerActivity : Activity() {
                 gravity = android.view.Gravity.CENTER_VERTICAL
                 minimumHeight = dp(54)
                 orientation = android.widget.LinearLayout.HORIZONTAL
-                setPadding(dp(14), dp(8), dp(14), dp(8))
-                background = getDrawable(R.drawable.phone_player_action_surface)
-                clipToOutline = true
+                setPadding(dp(13), dp(11), dp(13), dp(11))
                 foreground = getDrawable(R.drawable.phone_player_icon_ripple)
                 isClickable = true
                 isFocusable = true
@@ -1436,19 +1853,14 @@ class PhonePlayerActivity : Activity() {
             row.addView(android.widget.ImageView(this).apply {
                 setImageResource(icons[index])
                 imageTintList = android.content.res.ColorStateList.valueOf(mutedColor)
-            }, android.widget.LinearLayout.LayoutParams(dp(24), dp(24)))
+            }, android.widget.LinearLayout.LayoutParams(dp(20), dp(20)))
             row.addView(android.widget.TextView(this).apply {
                 text = labels[index]
-                textSize = 15f
+                textSize = 14f
                 setTextColor(textColor)
-                setTypeface(typeface, android.graphics.Typeface.BOLD)
+                setTypeface(typeface, android.graphics.Typeface.NORMAL)
             }, android.widget.LinearLayout.LayoutParams(0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                marginStart = dp(14)
-            })
-            row.addView(android.widget.TextView(this).apply {
-                text = "›"
-                textSize = 23f
-                setTextColor(mutedColor)
+                marginStart = dp(12)
             })
             list.addView(row, android.widget.LinearLayout.LayoutParams(
                 android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
@@ -1474,10 +1886,10 @@ class PhonePlayerActivity : Activity() {
             setBackgroundDrawableResource(android.R.color.transparent)
             addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
             setDimAmount(0.56f)
-            setGravity(if (landscape) android.view.Gravity.END else android.view.Gravity.BOTTOM)
+            setGravity(if (landscape) android.view.Gravity.CENTER else android.view.Gravity.BOTTOM)
             setLayout(
-                if (landscape) dp(370) else WindowManager.LayoutParams.MATCH_PARENT,
-                if (landscape) WindowManager.LayoutParams.MATCH_PARENT
+                if (landscape) dp(480).coerceAtMost(resources.displayMetrics.widthPixels - dp(48)) else WindowManager.LayoutParams.MATCH_PARENT,
+                if (landscape) (resources.displayMetrics.heightPixels * 0.85f).toInt()
                 else (resources.displayMetrics.heightPixels * 0.78f).toInt(),
             )
         }
@@ -1531,7 +1943,7 @@ class PhonePlayerActivity : Activity() {
         PhonePlayerBridge.channel?.invokeMethod(
             "discordPresence",
             mapOf(
-                "index" to currentIndex,
+                "index" to loadedEpisodeIndex,
                 "positionMs" to p.currentPosition.coerceAtLeast(0L),
                 "durationMs" to p.duration,
                 "playing" to (p.playWhenReady && p.playbackState != Player.STATE_ENDED),
@@ -1545,7 +1957,7 @@ class PhonePlayerActivity : Activity() {
         PhonePlayerBridge.channel?.invokeMethod(
             "saveProgress",
             mapOf(
-                "index" to currentIndex,
+                "index" to loadedEpisodeIndex,
                 "positionMs" to p.currentPosition.coerceAtLeast(0L),
                 "durationMs" to p.duration.coerceAtLeast(0L),
             ),
@@ -1606,7 +2018,7 @@ class PhonePlayerActivity : Activity() {
                     LinearLayout.LayoutParams((110 * density).toInt(), (4 * density).toInt()).apply {
                         marginStart = (10 * density).toInt()
                     }
-                progressTintList = ColorStateList.valueOf(0xFFFF626DL.toInt())
+                progressTintList = ColorStateList.valueOf(0xFFFF4D57L.toInt())
                 progressBackgroundTintList = ColorStateList.valueOf(0x40FFFFFFL.toInt())
             }
         hudPill.addView(hudLabel)
@@ -1959,7 +2371,9 @@ class PhonePlayerActivity : Activity() {
             .setInterpolator(interpolator)
             .withEndAction {
                 if (btnPlay.tag != resource) return@withEndAction
-                btnPlay.setImageResource(resource)
+                if (isPortraitCard()) btnPlay.setImageResource(resource)
+                else btnPlay.setImageDrawable(fullscreenIcon(
+                    if (resource == R.drawable.ic_pip_pause) "pause" else "play") ?: getDrawable(resource))
                 btnPlay.animate()
                     .alpha(1f)
                     .scaleX(1f)
@@ -1976,7 +2390,6 @@ class PhonePlayerActivity : Activity() {
         val d = p.duration
         if (d > 0) {
             val pos = p.currentPosition
-            durationText.text = fmt(d)
             if (!scrubbing) {
                 val progress = (pos * 1000 / d).toInt().coerceIn(0, 1000)
                 if (android.os.Build.VERSION.SDK_INT >= 24) {
@@ -1984,7 +2397,7 @@ class PhonePlayerActivity : Activity() {
                 } else {
                     seek.progress = progress
                 }
-                positionText.text = fmt(pos)
+                timeText.text = fmt(pos) + " / " + fmt(d)
                 seek.contentDescription = getString(R.string.phone_player_desc_seek) + ", " + fmt(pos) + " of " + fmt(d)
             }
         }
@@ -2000,6 +2413,7 @@ class PhonePlayerActivity : Activity() {
     }
 
     private fun showControls() {
+        if (controlsLocked) { unlockControl?.visibility = View.VISIBLE; return }
         controlsHiding = false
         controls.animate().cancel()
         controls.visibility = View.VISIBLE
@@ -2058,6 +2472,7 @@ class PhonePlayerActivity : Activity() {
 
     /** Restart the auto-hide countdown; paused playback keeps the bar up. */
     private fun bumpControls() {
+        if (controlsLocked) return
         if (controlsHiding) restoreControls()
         handler.removeCallbacks(hideRunnable)
         if (player?.isPlaying == true) handler.postDelayed(hideRunnable, 4_000L)
@@ -2138,7 +2553,7 @@ class PhonePlayerActivity : Activity() {
             mapOf(
                 PhonePlayerIntent.RESULT_POSITION to (p?.currentPosition ?: 0L),
                 PhonePlayerIntent.RESULT_DURATION to (p?.duration ?: 0L).coerceAtLeast(0L),
-                PhonePlayerIntent.RESULT_EP_INDEX to currentIndex,
+                PhonePlayerIntent.RESULT_EP_INDEX to loadedEpisodeIndex,
                 PhonePlayerIntent.RESULT_PLAYBACK_ERROR to playbackError,
             ),
         )
@@ -2183,6 +2598,7 @@ class PhonePlayerActivity : Activity() {
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
+        if (controlsLocked) { setControlsLocked(false); return }
         if (loadingActions.visibility == View.VISIBLE) { finish(); return }
         if (controls.visibility == View.VISIBLE) { hideControls(); return }
         if (showWatchPage()) return

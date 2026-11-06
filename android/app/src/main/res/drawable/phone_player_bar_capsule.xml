@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MPV-matched bar capsule: 30% black rounded backdrop grouping the
+     action buttons instead of one chip per icon. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="@color/phone_player_capsule" />
+    <corners android:radius="26dp" />
+</shape>

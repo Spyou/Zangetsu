@@ -63,7 +63,7 @@
                 android:clickable="true"
                 android:contentDescription="@string/phone_player_desc_back"
                 android:focusable="true"
-                android:padding="13dp"
+                android:padding="12dp"
                 android:scaleType="centerInside"
                 android:src="@drawable/phone_player_back"
                 android:tint="@color/phone_player_on_surface" />
@@ -71,7 +71,7 @@
             <LinearLayout
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="10dp"
+                android:layout_marginStart="4dp"
                 android:layout_weight="1"
                 android:orientation="vertical"
                 android:paddingTop="4dp"
@@ -85,7 +85,7 @@
                     android:includeFontPadding="false"
                     android:maxLines="1"
                     android:textColor="@color/phone_player_on_surface"
-                    android:textSize="18sp"
+                    android:textSize="17sp"
                     android:textStyle="bold" />
 
                 <TextView
@@ -97,7 +97,7 @@
                     android:includeFontPadding="false"
                     android:maxLines="1"
                     android:textColor="@color/phone_player_on_surface_variant"
-                    android:textSize="13sp" />
+                    android:textSize="12sp" />
             </LinearLayout>
 
             <ImageView
@@ -114,6 +114,7 @@
         </LinearLayout>
 
         <LinearLayout
+            android:id="@+id/transport_row"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_gravity="center"
@@ -122,30 +123,30 @@
 
             <ImageView
                 android:id="@+id/btn_previous"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
-                android:background="@drawable/phone_player_icon_ripple"
+                android:layout_width="46dp"
+                android:layout_height="46dp"
+                android:background="@drawable/phone_player_transport_disc"
                 android:clickable="true"
                 android:contentDescription="@string/phone_player_desc_previous"
                 android:focusable="true"
-                android:padding="13dp"
+                android:padding="10dp"
                 android:scaleType="centerInside"
                 android:src="@drawable/phone_player_previous"
                 android:tint="@color/phone_player_on_surface" />
 
             <FrameLayout
-                android:layout_width="56dp"
-                android:layout_height="56dp"
-                android:layout_marginHorizontal="16dp">
+                android:layout_width="58dp"
+                android:layout_height="58dp"
+                android:layout_marginHorizontal="24dp">
 
                 <ImageView
                     android:id="@+id/btn_play"
                     android:layout_width="match_parent"
                     android:layout_height="match_parent"
-                    android:background="@drawable/phone_player_primary_button"
+                    android:background="@drawable/phone_player_transport_disc"
                     android:contentDescription="@string/phone_player_desc_play"
-                    android:foreground="@drawable/phone_player_primary_ripple"
-                    android:padding="15dp"
+                    android:foreground="@drawable/phone_player_icon_ripple"
+                    android:padding="12dp"
                     android:scaleType="centerInside"
                     android:src="@drawable/ic_pip_pause"
                     android:tint="@color/phone_player_on_surface" />
@@ -153,13 +154,13 @@
 
             <ImageView
                 android:id="@+id/btn_next"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
-                android:background="@drawable/phone_player_icon_ripple"
+                android:layout_width="46dp"
+                android:layout_height="46dp"
+                android:background="@drawable/phone_player_transport_disc"
                 android:clickable="true"
                 android:contentDescription="@string/phone_player_desc_next"
                 android:focusable="true"
-                android:padding="13dp"
+                android:padding="10dp"
                 android:scaleType="centerInside"
                 android:src="@drawable/phone_player_next"
                 android:tint="@color/phone_player_on_surface" />
@@ -170,8 +171,8 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_gravity="bottom"
-            android:layout_marginStart="16dp"
-            android:layout_marginEnd="16dp"
+            android:layout_marginStart="40dp"
+            android:layout_marginEnd="40dp"
             android:layout_marginBottom="@dimen/phone_player_bottom_bar_bottom_margin"
             android:orientation="vertical"
             android:paddingHorizontal="4dp"
@@ -180,47 +181,34 @@
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:gravity="center_vertical"
+                android:gravity="center"
                 android:orientation="horizontal"
                 android:paddingHorizontal="4dp">
 
                 <TextView
-                    android:id="@+id/position"
+                    android:id="@+id/time_chip"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
+                    android:background="@drawable/phone_player_time_chip"
                     android:fontFamily="monospace"
                     android:importantForAccessibility="no"
-                    android:minWidth="48dp"
-                    android:text="0:00"
-                    android:textColor="@color/phone_player_on_surface"
-                    android:textSize="12sp"
-                    android:textStyle="bold" />
-
-                <SeekBar
-                    android:id="@+id/seek"
-                    android:layout_width="0dp"
-                    android:layout_height="48dp"
-                    android:layout_marginHorizontal="12dp"
-                    android:layout_weight="1"
-                    android:contentDescription="@string/phone_player_desc_seek"
-                    android:max="1000"
-                    android:progressDrawable="@drawable/phone_player_seek_track"
-                    android:thumb="@drawable/phone_player_seek_thumb" />
-
-                <TextView
-                    android:id="@+id/duration"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:fontFamily="monospace"
-                    android:gravity="end"
-                    android:importantForAccessibility="no"
-                    android:minWidth="46dp"
-                    android:text="0:00"
+                    android:paddingHorizontal="8dp"
+                    android:paddingVertical="2dp"
+                    android:text="0:00 / 0:00"
                     android:textColor="@color/phone_player_on_surface"
                     android:textSize="12sp"
                     android:textStyle="bold" />
 
             </LinearLayout>
+
+            <SeekBar
+                android:id="@+id/seek"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:max="1000"
+                android:contentDescription="@string/phone_player_desc_seek"
+                android:progressDrawable="@drawable/phone_player_seek_track"
+                android:thumb="@drawable/phone_player_seek_thumb" />
 
             <include layout="@layout/phone_player_quick_actions" />
         </LinearLayout>

@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Portrait mini-card single action row: the same seven controls as the
+     two-row version (same ids, same actions), in one capsule like the MPV
+     narrow bar. Horizontal scroll keeps every button reachable. -->
+<HorizontalScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/quick_actions"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:clipToPadding="false"
+    android:scrollbars="none">
+
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="40dp"
+        android:layout_gravity="center"
+        android:background="@drawable/phone_player_bar_capsule"
+        android:gravity="center"
+        android:orientation="horizontal"
+        android:paddingHorizontal="4dp">
+
+        <ImageButton
+            android:id="@+id/quick_episodes"
+            android:layout_width="44dp"
+            android:layout_height="40dp"
+            android:background="@drawable/phone_player_icon_ripple"
+            android:clickable="true"
+            android:contentDescription="@string/phone_player_title_episodes"
+            android:focusable="true"
+            android:padding="8dp"
+            android:scaleType="centerInside"
+            android:src="@drawable/phone_player_episodes"
+            android:tint="@color/phone_player_on_surface" />
+
+        <ImageButton
+            android:id="@+id/quick_sources"
+            android:layout_width="44dp"
+            android:layout_height="40dp"
+            android:background="@drawable/phone_player_icon_ripple"
+            android:clickable="true"
+            android:contentDescription="@string/phone_player_title_sources"
+            android:focusable="true"
+            android:padding="8dp"
+            android:scaleType="centerInside"
+            android:src="@drawable/phone_player_sources"
+            android:tint="@color/phone_player_on_surface" />
+
+        <ImageButton
+            android:id="@+id/quick_tracks"
+            android:layout_width="44dp"
+            android:layout_height="40dp"
+            android:background="@drawable/phone_player_icon_ripple"
+            android:clickable="true"
+            android:contentDescription="@string/phone_player_title_tracks"
+            android:focusable="true"
+            android:padding="8dp"
+            android:scaleType="centerInside"
+            android:src="@drawable/phone_player_tracks"
+            android:tint="@color/phone_player_on_surface" />
+
+        <ImageButton
+            android:id="@+id/quick_quality"
+            android:layout_width="44dp"
+            android:layout_height="40dp"
+            android:background="@drawable/phone_player_icon_ripple"
+            android:clickable="true"
+            android:contentDescription="@string/phone_player_quick_quality"
+            android:focusable="true"
+            android:padding="8dp"
+            android:scaleType="centerInside"
+            android:src="@drawable/phone_player_quality"
+            android:tint="@color/phone_player_on_surface" />
+
+        <ImageButton
+            android:id="@+id/quick_speed"
+            android:layout_width="44dp"
+            android:layout_height="40dp"
+            android:background="@drawable/phone_player_icon_ripple"
+            android:clickable="true"
+            android:contentDescription="@string/phone_player_quick_speed"
+            android:focusable="true"
+            android:padding="8dp"
+            android:scaleType="centerInside"
+            android:src="@drawable/phone_player_speed"
+            android:tint="@color/phone_player_on_surface" />
+
+        <ImageButton
+            android:id="@+id/quick_display"
+            android:layout_width="44dp"
+            android:layout_height="40dp"
+            android:background="@drawable/phone_player_icon_ripple"
+            android:clickable="true"
+            android:contentDescription="@string/phone_player_menu_display"
+            android:focusable="true"
+            android:padding="8dp"
+            android:scaleType="centerInside"
+            android:src="@drawable/phone_player_display"
+            android:tint="@color/phone_player_on_surface" />
+
+        <ImageButton
+            android:id="@+id/btn_rotate"
+            android:layout_width="44dp"
+            android:layout_height="40dp"
+            android:background="@drawable/phone_player_icon_ripple"
+            android:clickable="true"
+            android:contentDescription="@string/phone_player_menu_rotate"
+            android:focusable="true"
+            android:padding="8dp"
+            android:scaleType="centerInside"
+            android:src="@drawable/phone_player_rotate"
+            android:tint="@color/phone_player_on_surface" />
+    </LinearLayout>
+</HorizontalScrollView>

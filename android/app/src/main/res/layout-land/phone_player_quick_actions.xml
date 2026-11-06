@@ -1,106 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@+id/quick_actions"
-    android:layout_width="match_parent"
-    android:layout_height="48dp">
-
-    <LinearLayout
-        android:layout_width="wrap_content"
-        android:layout_height="48dp"
-        android:layout_gravity="center"
-        android:gravity="center"
-        android:orientation="horizontal">
-
-        <ImageButton
-            android:id="@+id/quick_episodes"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:background="@drawable/phone_player_icon_ripple"
-            android:clickable="true"
-            android:contentDescription="@string/phone_player_title_episodes"
-            android:focusable="true"
-            android:padding="12dp"
-            android:scaleType="centerInside"
-            android:src="@drawable/phone_player_episodes"
-            android:tint="@color/phone_player_on_surface" />
-
-        <ImageButton
-            android:id="@+id/quick_sources"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:background="@drawable/phone_player_icon_ripple"
-            android:clickable="true"
-            android:contentDescription="@string/phone_player_title_sources"
-            android:focusable="true"
-            android:padding="12dp"
-            android:scaleType="centerInside"
-            android:src="@drawable/phone_player_sources"
-            android:tint="@color/phone_player_on_surface" />
-
-        <ImageButton
-            android:id="@+id/quick_tracks"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:background="@drawable/phone_player_icon_ripple"
-            android:clickable="true"
-            android:contentDescription="@string/phone_player_title_tracks"
-            android:focusable="true"
-            android:padding="12dp"
-            android:scaleType="centerInside"
-            android:src="@drawable/phone_player_tracks"
-            android:tint="@color/phone_player_on_surface" />
-
-        <ImageButton
-            android:id="@+id/quick_quality"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:background="@drawable/phone_player_icon_ripple"
-            android:clickable="true"
-            android:contentDescription="@string/phone_player_quick_quality"
-            android:focusable="true"
-            android:padding="12dp"
-            android:scaleType="centerInside"
-            android:src="@drawable/phone_player_quality"
-            android:tint="@color/phone_player_on_surface" />
-
-        <ImageButton
-            android:id="@+id/quick_speed"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:background="@drawable/phone_player_icon_ripple"
-            android:clickable="true"
-            android:contentDescription="@string/phone_player_quick_speed"
-            android:focusable="true"
-            android:padding="12dp"
-            android:scaleType="centerInside"
-            android:src="@drawable/phone_player_speed"
-            android:tint="@color/phone_player_on_surface" />
-
-        <ImageButton
-            android:id="@+id/quick_display"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:background="@drawable/phone_player_icon_ripple"
-            android:clickable="true"
-            android:contentDescription="@string/phone_player_menu_display"
-            android:focusable="true"
-            android:padding="12dp"
-            android:scaleType="centerInside"
-            android:src="@drawable/phone_player_display"
-            android:tint="@color/phone_player_on_surface" />
+<HorizontalScrollView xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/quick_actions" android:layout_width="match_parent" android:layout_height="48dp" android:fillViewport="true" android:scrollbars="none">
+    <LinearLayout android:layout_width="wrap_content" android:layout_height="48dp" android:orientation="horizontal" android:gravity="center_vertical">
+        <LinearLayout android:id="@+id/fullscreen_actions_left" android:layout_width="wrap_content" android:layout_height="48dp" android:orientation="horizontal" android:gravity="center_vertical" android:paddingHorizontal="4dp" android:background="@drawable/phone_player_bar_capsule">
+            <ImageButton android:id="@+id/quick_speed" android:layout_width="48dp" android:layout_height="48dp" android:background="@drawable/phone_player_icon_ripple" android:clickable="true" android:contentDescription="@string/phone_player_quick_speed" android:focusable="true" android:padding="12dp" android:scaleType="centerInside" android:src="@drawable/phone_player_speed" android:tint="@color/phone_player_on_surface" />
+            <ImageButton android:id="@+id/quick_tracks" android:layout_width="48dp" android:layout_height="48dp" android:background="@drawable/phone_player_icon_ripple" android:clickable="true" android:contentDescription="@string/phone_player_title_tracks" android:focusable="true" android:padding="12dp" android:scaleType="centerInside" android:src="@drawable/phone_player_tracks" android:tint="@color/phone_player_on_surface" />
+            <ImageButton android:id="@+id/quick_quality" android:layout_width="48dp" android:layout_height="48dp" android:background="@drawable/phone_player_icon_ripple" android:clickable="true" android:contentDescription="@string/phone_player_quick_quality" android:focusable="true" android:padding="12dp" android:scaleType="centerInside" android:src="@drawable/phone_player_quality" android:tint="@color/phone_player_on_surface" />
+            <ImageButton android:id="@+id/quick_sources" android:layout_width="48dp" android:layout_height="48dp" android:background="@drawable/phone_player_icon_ripple" android:clickable="true" android:contentDescription="@string/phone_player_title_sources" android:focusable="true" android:padding="12dp" android:scaleType="centerInside" android:src="@drawable/phone_player_sources" android:tint="@color/phone_player_on_surface" />
+            <ImageButton android:id="@+id/quick_more" android:layout_width="48dp" android:layout_height="48dp" android:background="@drawable/phone_player_icon_ripple" android:clickable="true" android:contentDescription="@string/phone_player_title_more" android:focusable="true" android:padding="12dp" android:scaleType="centerInside" android:src="@drawable/phone_player_more" android:tint="@color/phone_player_on_surface" />
+        </LinearLayout>
+        <Space android:layout_width="0dp" android:layout_height="1dp" android:layout_weight="1" />
+        <LinearLayout android:id="@+id/fullscreen_actions_right" android:layout_width="wrap_content" android:layout_height="48dp" android:orientation="horizontal" android:gravity="center_vertical" android:paddingHorizontal="4dp" android:background="@drawable/phone_player_bar_capsule">
+            <ImageButton android:id="@+id/quick_episodes" android:layout_width="48dp" android:layout_height="48dp" android:background="@drawable/phone_player_icon_ripple" android:clickable="true" android:contentDescription="@string/phone_player_title_episodes" android:focusable="true" android:padding="12dp" android:scaleType="centerInside" android:src="@drawable/phone_player_episodes" android:tint="@color/phone_player_on_surface" />
+            <ImageButton android:id="@+id/btn_rotate" android:layout_width="48dp" android:layout_height="48dp" android:background="@drawable/phone_player_icon_ripple" android:clickable="true" android:contentDescription="@string/phone_player_menu_rotate" android:focusable="true" android:padding="12dp" android:scaleType="centerInside" android:src="@drawable/phone_player_rotate" android:tint="@color/phone_player_on_surface" />
+            <ImageButton android:id="@+id/quick_display" android:layout_width="48dp" android:layout_height="48dp" android:background="@drawable/phone_player_icon_ripple" android:clickable="true" android:contentDescription="@string/phone_player_menu_display" android:focusable="true" android:padding="12dp" android:scaleType="centerInside" android:src="@drawable/phone_player_display" android:tint="@color/phone_player_on_surface" />
+        </LinearLayout>
     </LinearLayout>
-
-    <ImageButton
-        android:id="@+id/btn_rotate"
-        android:layout_width="48dp"
-        android:layout_height="48dp"
-        android:layout_gravity="end|center_vertical"
-        android:background="@drawable/phone_player_icon_ripple"
-        android:clickable="true"
-        android:contentDescription="@string/phone_player_menu_rotate"
-        android:focusable="true"
-        android:padding="12dp"
-        android:scaleType="centerInside"
-        android:src="@drawable/phone_player_rotate"
-        android:tint="@color/phone_player_on_surface" />
-</FrameLayout>
+</HorizontalScrollView>

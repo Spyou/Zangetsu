@@ -63,6 +63,9 @@ object PhonePlayerBridge {
         val url = call.argument<String>("url").orEmpty()
         try {
             val i = Intent(activity, PhonePlayerActivity::class.java)
+            call.argument<Map<String, Any?>>("controlLayout")?.let {
+                i.putExtra(PhonePlayerIntent.EXTRA_CONTROLS, org.json.JSONObject(it).toString())
+            }
             if (url.isNotEmpty()) i.putExtra(PhonePlayerIntent.EXTRA_URL, url)
             i.putExtra(
                 PhonePlayerIntent.EXTRA_HEADERS,
@@ -122,6 +125,9 @@ object PhonePlayerBridge {
                 PhonePlayerIntent.EXTRA_AUTOPLAY_NEXT,
                 call.argument<Boolean>("autoplayNext") ?: true,
             )
+            i.putExtra(PhonePlayerIntent.EXTRA_MEGA_SKIP, call.argument<Boolean>("megaSkip") ?: true)
+            i.putExtra(PhonePlayerIntent.EXTRA_MEGA_SKIP_SECONDS,
+                (call.argument<Number>("megaSkipSeconds") ?: 85).toInt().coerceIn(5, 180))
             i.putExtra(
                 PhonePlayerIntent.EXTRA_SEEK_SECONDS,
                 (call.argument<Number>("seekSeconds") ?: 10).toInt(),

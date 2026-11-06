@@ -11,6 +11,7 @@ package com.spyou.watch_app
  * Map needs Serializable and is dropped silently by some OEM ROMs.
  */
 object PhonePlayerIntent {
+    const val EXTRA_CONTROLS = "controlLayout"
     const val EXTRA_URL = "url"
     const val EXTRA_HEADERS = "headers"          // flat String[]: k,v,k,v
     const val EXTRA_MIME = "mimeType"
@@ -38,6 +39,8 @@ object PhonePlayerIntent {
     const val EXTRA_AUTO_RESUME = "autoResume"
     const val EXTRA_KEEP_SCREEN_ON = "keepScreenOn"
     const val EXTRA_AUTOPLAY_NEXT = "autoplayNext"
+    const val EXTRA_MEGA_SKIP = "megaSkip"
+    const val EXTRA_MEGA_SKIP_SECONDS = "megaSkipSeconds"
     const val EXTRA_SEEK_SECONDS = "seekSeconds"
     const val EXTRA_BUF_MIN_MS = "minBufferMs"
     const val EXTRA_BUF_MAX_MS = "maxBufferMs"

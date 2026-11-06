@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="oval">
-    <size android:width="12dp" android:height="12dp" />
-    <solid android:color="@color/phone_player_accent" />
-    <stroke android:width="2dp" android:color="@color/phone_player_on_surface" />
+    <size android:width="14dp" android:height="14dp" />
+    <solid android:color="@android:color/white" />
 </shape>

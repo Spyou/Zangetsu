@@ -21,7 +21,28 @@ import '../../core/playback/watch_history.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/tracker/tracker_hub.dart';
 import 'subtitle_font_service.dart';
+import 'player_controls_config.dart';
 import 'subtitle_style.dart';
+
+/// Rejects stale sessions and malformed writes before touching saved controls.
+PlayerControlsConfig? phoneControlLayoutForSave(
+  Map<String, dynamic>? args, {
+  required int sessionId,
+  required bool playerOpen,
+}) {
+  if (!playerOpen || args?['sessionId'] != sessionId) return null;
+  List<String>? read(String key) {
+    final value = args?[key];
+    if (value is! List || value.any((item) => item is! String)) return null;
+    return value.cast<String>();
+  }
+
+  final top = read('top');
+  final left = read('left');
+  final right = read('right');
+  if (top == null || left == null || right == null) return null;
+  return PlayerControlsConfig(top: top, left: left, right: right).sanitised();
+}
 
 /// Container → MIME hint. A tokenised url carries no extension, so without an
 /// explicit MIME ExoPlayer builds the wrong MediaSource and never starts.
@@ -109,10 +130,13 @@ Map<String, dynamic> phonePlayerArgs({
   required bool keepScreenOn,
   required bool autoplayNext,
   required int seekSeconds,
+  bool megaSkip = true,
+  int megaSkipSeconds = 85,
   String? subtitleFontPath,
   String? cover,
   Map<String, String>? coverHeaders,
   String playerOrientation = 'landscape',
+  Map<String, List<String>>? controlLayout,
   String? showDescription,
   List<String>? availableCategories,
   String category = 'sub',
@@ -142,6 +166,11 @@ Map<String, dynamic> phonePlayerArgs({
     'keepScreenOn': keepScreenOn,
     'autoplayNext': autoplayNext,
     'seekSeconds': seekSeconds,
+    'megaSkip': megaSkip,
+    'megaSkipSeconds': megaSkipSeconds.clamp(
+      PlaybackPrefs.megaSkipMin,
+      PlaybackPrefs.megaSkipMax,
+    ),
     'subtitleScale': subtitleScale,
     'subtitleFgColor': subtitleFgColor,
     'subtitleBgColor': subtitleBgColor,
@@ -152,6 +181,7 @@ Map<String, dynamic> phonePlayerArgs({
     'cover': ?cover,
     'coverHeaders': coverHeaders ?? const <String, String>{},
     'playerOrientation': playerOrientation,
+    'controlLayout': ?controlLayout,
     'showDescription': ?showDescription,
     'availableCategories': availableCategories ?? const <String>[],
     'category': category,
@@ -391,10 +421,17 @@ class PhoneNativePlayer {
       keepScreenOn: prefs.keepScreenOn,
       autoplayNext: prefs.autoplayNext,
       seekSeconds: prefs.seekSeconds,
+      megaSkip: prefs.megaSkip,
+      megaSkipSeconds: prefs.megaSkipSeconds,
       subtitleFontPath: subFontPath,
       cover: _cover,
       coverHeaders: _coverHeaders,
       playerOrientation: prefs.playerOrientation,
+      controlLayout: {
+        'top': prefs.playerBarTop ?? PlayerControlsConfig.defaultTop,
+        'left': prefs.playerBarLeft ?? PlayerControlsConfig.defaultLeft,
+        'right': prefs.playerBarRight ?? PlayerControlsConfig.defaultRight,
+      },
       showDescription: _showDescription,
       availableCategories: _availableCategories,
       category: _category,
@@ -424,9 +461,10 @@ class PhoneNativePlayer {
     if (seed.startsWith('file://') || seed.startsWith('content://')) return;
     try {
       final desc =
-          (await sl<CatalogueRepository>().detail(url, sourceId: _sourceId))
-              .description
-              ?.trim() ??
+          (await sl<CatalogueRepository>().detail(
+            url,
+            sourceId: _sourceId,
+          )).description?.trim() ??
           '';
       if (desc.isEmpty || session != _sessionId) return;
       _showDescription = desc;
@@ -483,36 +521,53 @@ class PhoneNativePlayer {
           for (var i = 0; i < prepared.length; i++)
             phoneSourceMap(prepared[i], i),
         ];
-      case 'switchCategory': {
-        // Native Audio menu's Sub/Dub row. Same episode, same list, Dart's
-        // normal resolution path — a failed resolve returns null and the
-        // player keeps playing instead of jumping anywhere.
-        final args = _callArgs(call);
-        final cat = args?['category'] as String?;
-        final index = (args?['index'] as num?)?.toInt() ?? -1;
-        if (cat == null ||
-            !_availableCategories.contains(cat) ||
-            index < 0 ||
-            index >= _episodes.length) {
+      case 'switchCategory':
+        {
+          // Native Audio menu's Sub/Dub row. Same episode, same list, Dart's
+          // normal resolution path — a failed resolve returns null and the
+          // player keeps playing instead of jumping anywhere.
+          final args = _callArgs(call);
+          final cat = args?['category'] as String?;
+          final index = (args?['index'] as num?)?.toInt() ?? -1;
+          if (cat == null ||
+              !_availableCategories.contains(cat) ||
+              index < 0 ||
+              index >= _episodes.length) {
+            return null;
+          }
+          final previous = _category;
+          _category = cat;
+          final payload = await _resolveEpisode(index);
+          if (payload == null) {
+            _category = previous;
+            return null;
+          }
+          payload['positionMs'] =
+              (args?['positionMs'] as num?)?.toInt() ?? payload['positionMs'];
+          return payload;
+        }
+      case 'setAutoplayNext':
+        {
+          final value = _callArgs(call)?['value'] as bool?;
+          if (value == null) return null;
+          await sl<PlaybackPrefs>().setAutoplayNext(value);
           return null;
         }
-        final previous = _category;
-        _category = cat;
-        final payload = await _resolveEpisode(index);
-        if (payload == null) {
-          _category = previous;
-          return null;
+      case 'saveControlLayout':
+        {
+          final layout = phoneControlLayoutForSave(
+            _callArgs(call),
+            sessionId: _sessionId,
+            playerOpen: _closed?.isCompleted == false,
+          );
+          if (layout == null) return false;
+          await sl<PlaybackPrefs>().setPlayerBar(
+            layout.top,
+            layout.left,
+            layout.right,
+          );
+          return true;
         }
-        payload['positionMs'] =
-            (args?['positionMs'] as num?)?.toInt() ?? payload['positionMs'];
-        return payload;
-      }
-      case 'setAutoplayNext': {
-        final value = _callArgs(call)?['value'] as bool?;
-        if (value == null) return null;
-        await sl<PlaybackPrefs>().setAutoplayNext(value);
-        return null;
-      }
       case 'discordPresence':
         _pushDiscordPresence(_callArgs(call));
         return null;

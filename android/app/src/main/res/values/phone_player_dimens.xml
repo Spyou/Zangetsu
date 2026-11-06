@@ -1,8 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <dimen name="phone_player_top_scrim_height">120dp</dimen>
-    <dimen name="phone_player_bottom_scrim_height">290dp</dimen>
-    <dimen name="phone_player_top_bar_side_margin">16dp</dimen>
+    <dimen name="phone_player_top_scrim_height">110dp</dimen>
+    <dimen name="phone_player_bottom_scrim_height">170dp</dimen>
+    <!-- Mini-player (portrait card) washes: shallower than fullscreen. -->
+    <dimen name="phone_player_top_scrim_height_portrait">64dp</dimen>
+    <dimen name="phone_player_bottom_scrim_height_portrait">110dp</dimen>
+    <dimen name="phone_player_top_bar_side_margin">28dp</dimen>
     <dimen name="phone_player_top_bar_top_margin">12dp</dimen>
-    <dimen name="phone_player_bottom_bar_bottom_margin">22dp</dimen>
+    <dimen name="phone_player_bottom_bar_bottom_margin">10dp</dimen>
 </resources>

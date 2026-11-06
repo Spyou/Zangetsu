@@ -56,4 +56,15 @@
     <string name="phone_player_watch_see_less">See less</string>
     <string name="phone_player_version_sub">Sub</string>
     <string name="phone_player_version_dub">Dub</string>
+    <string name="phone_player_arrange_controls">Arrange player controls</string>
+    <string name="phone_player_lock_controls">Lock controls</string>
+    <string name="phone_player_unlock_controls">Tap to unlock</string>
+    <string name="phone_player_controls_top">Top bar</string>
+    <string name="phone_player_controls_left">Left side</string>
+    <string name="phone_player_controls_right">Right side</string>
+    <string name="phone_player_controls_hidden">Hidden</string>
+    <string name="phone_player_controls_limit">The top bar can hold five controls</string>
+    <string name="phone_player_controls_save_error">Could not save the control layout</string>
+    <string name="phone_player_mega_skip_label">+%1$ds</string>
+    <string name="phone_player_mega_skip_description">Skip forward %1$d seconds</string>
 </resources>

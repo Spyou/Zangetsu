@@ -2,26 +2,26 @@
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:id="@android:id/background" android:gravity="center_vertical">
         <shape android:shape="rectangle">
-            <size android:height="3dp" />
-            <solid android:color="@color/phone_player_outline" />
-            <corners android:radius="2dp" />
+            <size android:height="6dp" />
+            <solid android:color="@color/phone_player_track_inactive" />
+            <corners android:radius="3dp" />
         </shape>
     </item>
     <item android:id="@android:id/secondaryProgress" android:gravity="center_vertical">
         <clip android:clipOrientation="horizontal" android:gravity="left">
             <shape android:shape="rectangle">
-                <size android:height="3dp" />
-                <solid android:color="@color/phone_player_ripple" />
-                <corners android:radius="2dp" />
+                <size android:height="6dp" />
+                <solid android:color="@color/phone_player_buffered" />
+                <corners android:radius="3dp" />
             </shape>
         </clip>
     </item>
     <item android:id="@android:id/progress" android:gravity="center_vertical">
         <clip android:clipOrientation="horizontal" android:gravity="left">
             <shape android:shape="rectangle">
-                <size android:height="3dp" />
+                <size android:height="6dp" />
                 <solid android:color="@color/phone_player_accent" />
-                <corners android:radius="2dp" />
+                <corners android:radius="3dp" />
             </shape>
         </clip>
     </item>

@@ -8,8 +8,10 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="48dp"
+        android:background="@drawable/phone_player_bar_capsule"
         android:gravity="center"
-        android:orientation="horizontal">
+        android:orientation="horizontal"
+        android:paddingHorizontal="4dp">
 
         <ImageButton
             android:id="@+id/quick_episodes"
@@ -60,8 +62,10 @@
             android:layout_width="wrap_content"
             android:layout_height="48dp"
             android:layout_gravity="center"
+            android:background="@drawable/phone_player_bar_capsule"
             android:gravity="center"
-            android:orientation="horizontal">
+            android:orientation="horizontal"
+            android:paddingHorizontal="4dp">
 
             <ImageButton
                 android:id="@+id/quick_quality"

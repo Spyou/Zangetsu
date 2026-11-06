@@ -119,8 +119,9 @@ class PhonePlayerLayoutTest {
     @Config(manifest = Config.NONE, sdk = [34], qualifiers = "land")
     fun `landscape player keeps playback controls and exposes all quick actions`() {
         val quick = assertPlayerControls()
-        assertEquals(2, quick.childCount)
-        assertEquals(6, (quick.getChildAt(0) as ViewGroup).childCount)
+        assertEquals(1, quick.childCount)
+        assertEquals(5, quick.findViewById<ViewGroup>(R.id.fullscreen_actions_left).childCount)
+        assertEquals(3, quick.findViewById<ViewGroup>(R.id.fullscreen_actions_right).childCount)
     }
 
     @Test
@@ -181,11 +182,15 @@ class PhonePlayerLayoutTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val intent = Intent(context, PhonePlayerActivity::class.java)
             .putExtra(PhonePlayerIntent.EXTRA_URL, "file:///dev/null")
+            .putExtra(PhonePlayerIntent.EXTRA_ORIENTATION, "system")
         val controller = Robolectric.buildActivity(PhonePlayerActivity::class.java, intent)
             .create().start().resume()
         val activity = controller.get()
         val playerView = activity.findViewById<View>(R.id.player_view)
         val portraitQuick = activity.findViewById<ViewGroup>(R.id.quick_actions)
+        val seek = activity.findViewById<android.widget.SeekBar>(R.id.seek)
+        val portraitSeekGeometry = listOf(seek.paddingLeft, seek.paddingTop, seek.paddingRight,
+            seek.paddingBottom, seek.thumbOffset, seek.layoutParams.height)
         val landscape = Configuration(activity.resources.configuration).apply {
             orientation = Configuration.ORIENTATION_LANDSCAPE
         }
@@ -195,20 +200,25 @@ class PhonePlayerLayoutTest {
         activity.onConfigurationChanged(landscape)
 
         val landscapeQuick = activity.findViewById<ViewGroup>(R.id.quick_actions)
-        assertEquals(dp(activity, 80), activity.findViewById<View>(R.id.top_scrim).layoutParams.height)
-        assertEquals(dp(activity, 210), activity.findViewById<View>(R.id.bottom_scrim).layoutParams.height)
+        assertEquals(dp(activity, 26), seek.layoutParams.height)
+        assertEquals(seek.thumb.intrinsicWidth / 2, seek.paddingLeft)
+        assertEquals(View.VISIBLE, activity.findViewById<View>(R.id.quick_mega_skip).visibility)
+        assertEquals(android.view.Gravity.START,
+            (activity.findViewById<TextView>(R.id.time_chip).parent as android.widget.LinearLayout).gravity and android.view.Gravity.RELATIVE_HORIZONTAL_GRAVITY_MASK)
+        assertEquals(dp(activity, 110), activity.findViewById<View>(R.id.top_scrim).layoutParams.height)
+        assertEquals(dp(activity, 170), activity.findViewById<View>(R.id.bottom_scrim).layoutParams.height)
         assertEquals(
-            dp(activity, 8),
+            0,
             (activity.findViewById<View>(R.id.top_bar).layoutParams as android.widget.FrameLayout.LayoutParams).topMargin,
         )
         assertEquals(
-            dp(activity, 12),
+            dp(activity, 14),
             (activity.findViewById<View>(R.id.bottom_bar).layoutParams as android.widget.FrameLayout.LayoutParams).bottomMargin,
         )
         assertSame(playerView, activity.findViewById<View>(R.id.player_view))
         assertNotSame(portraitQuick, landscapeQuick)
-        assertEquals(2, landscapeQuick.childCount)
-        assertEquals(6, (landscapeQuick.getChildAt(0) as ViewGroup).childCount)
+        assertEquals(1, landscapeQuick.childCount)
+        assertEquals(5, landscapeQuick.findViewById<ViewGroup>(R.id.fullscreen_actions_left).childCount)
         val orientationBeforeRotate = activity.requestedOrientation
         landscapeQuick.findViewById<View>(R.id.btn_rotate).performClick()
         assertTrue(activity.requestedOrientation != orientationBeforeRotate)
@@ -219,16 +229,73 @@ class PhonePlayerLayoutTest {
         @Suppress("DEPRECATION")
         activity.resources.updateConfiguration(portrait, activity.resources.displayMetrics)
         activity.onConfigurationChanged(portrait)
-        assertEquals(dp(activity, 120), activity.findViewById<View>(R.id.top_scrim).layoutParams.height)
-        assertEquals(dp(activity, 290), activity.findViewById<View>(R.id.bottom_scrim).layoutParams.height)
+        assertEquals(View.GONE, activity.findViewById<View>(R.id.quick_mega_skip).visibility)
+        assertEquals(portraitSeekGeometry, listOf(seek.paddingLeft, seek.paddingTop, seek.paddingRight,
+            seek.paddingBottom, seek.thumbOffset, seek.layoutParams.height))
+        assertEquals(dp(activity, 64), activity.findViewById<View>(R.id.top_scrim).layoutParams.height)
+        assertEquals(dp(activity, 110), activity.findViewById<View>(R.id.bottom_scrim).layoutParams.height)
         assertEquals(
-            dp(activity, 16),
+            dp(activity, 2),
             (activity.findViewById<View>(R.id.top_bar).layoutParams as android.widget.FrameLayout.LayoutParams).marginStart,
         )
         assertEquals(
-            dp(activity, 22),
+            dp(activity, 4),
             (activity.findViewById<View>(R.id.bottom_bar).layoutParams as android.widget.FrameLayout.LayoutParams).bottomMargin,
         )
+        controller.pause().stop().destroy()
+    }
+
+    @Test
+    @Config(manifest = Config.NONE, sdk = [34], qualifiers = "port")
+    fun `portrait mini card stacks chrome with no overlap`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val intent = Intent(context, PhonePlayerActivity::class.java)
+            .putExtra(PhonePlayerIntent.EXTRA_URL, "file:///dev/null")
+            .putExtra(PhonePlayerIntent.EXTRA_ORIENTATION, "portrait")
+        val controller = Robolectric.buildActivity(PhonePlayerActivity::class.java, intent)
+            .create().start().resume()
+        val activity = controller.get()
+        // Single action row in the mini card; the title lives in the info
+        // panel below, so the card keeps only Back.
+        assertTrue(
+            activity.findViewById<View>(R.id.quick_actions) is android.widget.HorizontalScrollView,
+        )
+        assertEquals(View.GONE, activity.findViewById<View>(R.id.title).visibility)
+        assertEquals(View.GONE, activity.findViewById<View>(R.id.episode_label).visibility)
+        assertEquals(View.GONE, activity.findViewById<View>(R.id.btn_more).visibility)
+        // Stack parameters that fit the 16:9 card with no overlap (title lives
+        // in the info panel, so the mini card keeps only Back). Pixel proof
+        // comes from on-device bounds; Robolectric's fallback fonts measure
+        // taller than real ones, so measured-pixel overlap assertions here
+        // would test the fake font, not the dp budget.
+        val card = activity.findViewById<View>(R.id.player_root)
+        val transport = activity.findViewById<View>(R.id.transport_row)
+        val transportParams =
+            transport.layoutParams as android.widget.FrameLayout.LayoutParams
+        assertEquals(
+            android.view.Gravity.TOP or android.view.Gravity.CENTER_HORIZONTAL,
+            transportParams.gravity,
+        )
+        assertEquals(dp(activity, 64), transportParams.topMargin)
+        val playBox = activity.findViewById<View>(R.id.btn_play).parent as View
+        assertEquals(dp(activity, 48), playBox.layoutParams.width)
+        assertEquals(dp(activity, 48), playBox.layoutParams.height)
+        assertEquals(dp(activity, 40), activity.findViewById<View>(R.id.seek).layoutParams.height)
+        // The portrait action row carries the same seven actions at 40dp.
+        val portraitRow = android.view.LayoutInflater.from(context).inflate(
+            R.layout.phone_player_quick_actions_portrait,
+            null,
+        ) as ViewGroup
+        val inner = portraitRow.getChildAt(0) as ViewGroup
+        for (name in quickActions + "btn_rotate") {
+            val action = findByName(context, portraitRow, name)
+            assertNotNull("Missing portrait quick action: $name", action)
+            assertEquals(
+                "Portrait quick action not 40dp: $name",
+                dp(activity, 40),
+                action!!.layoutParams.height,
+            )
+        }
         controller.pause().stop().destroy()
     }
 

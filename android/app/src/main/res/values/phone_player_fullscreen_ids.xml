@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <item name="fullscreen_top_actions" type="id" />
+    <item name="quick_more" type="id" />
+    <item name="quick_cast" type="id" />
+    <item name="quick_info" type="id" />
+    <item name="btn_controls_lock" type="id" />
+    <item name="btn_controls_settings" type="id" />
+    <item name="btn_controls_unlock" type="id" />
+    <item name="quick_mega_skip" type="id" />
+    <item name="fullscreen_time_spacer" type="id" />
+</resources>

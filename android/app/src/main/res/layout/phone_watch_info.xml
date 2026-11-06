@@ -223,7 +223,7 @@
                 android:layout_width="48dp"
                 android:layout_height="48dp"
                 android:layout_marginStart="12dp"
-                android:background="@drawable/phone_player_primary_button"
+                android:background="@drawable/phone_player_transport_disc"
                 android:gravity="center"
                 android:text="▶"
                 android:textColor="@color/phone_player_on_surface"

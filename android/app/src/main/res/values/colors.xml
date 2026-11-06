@@ -15,12 +15,19 @@
     <color name="phone_player_background">#FF0B0B0F</color>
     <color name="phone_player_surface">#FF211E26</color>
     <color name="phone_player_surface_container">#E6302A33</color>
-    <color name="phone_player_accent">#FFFF626D</color>
-    <color name="phone_player_ripple">#55FF626D</color>
+    <!-- MPV default accent (Coral) + matching ripple. -->
+    <color name="phone_player_accent">#FFFF4D57</color>
+    <color name="phone_player_ripple">#554D57FF</color>
     <color name="phone_player_primary_ripple">#55FFFFFF</color>
-    <color name="phone_player_on_primary">#FF390B13</color>
+    <color name="phone_player_on_primary">#FFFFFFFF</color>
     <color name="phone_player_on_surface">#FFF9F4F5</color>
     <color name="phone_player_on_surface_variant">#FFC7BEC2</color>
     <color name="phone_player_outline">#52FFFFFF</color>
+    <!-- MPV-matched chrome: 45% black transport discs, 30% black capsules
+         (bars, time chip), 24% white seek base, 55% white buffered. -->
+    <color name="phone_player_disc">#73000000</color>
+    <color name="phone_player_capsule">#4D000000</color>
+    <color name="phone_player_track_inactive">#3DFFFFFF</color>
+    <color name="phone_player_buffered">#8CFFFFFF</color>
     <color name="phone_player_scrim">#D90B0B0F</color>
 </resources>
