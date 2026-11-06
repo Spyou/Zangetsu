@@ -29,8 +29,8 @@ class PhonePlayerIntentTest {
     }
 
     @Test
-    fun `portrait payload keys are stable`() {
-        assertEquals("openingLayout", PhonePlayerIntent.EXTRA_LAYOUT)
+    fun `portrait player preference key is stable`() {
+        assertEquals("playerOrientation", PhonePlayerIntent.EXTRA_ORIENTATION)
         assertEquals("showDescription", PhonePlayerIntent.EXTRA_SHOW_DESC)
         assertEquals("availableCategories", PhonePlayerIntent.EXTRA_CATEGORIES)
         assertEquals("category", PhonePlayerIntent.EXTRA_CATEGORY)

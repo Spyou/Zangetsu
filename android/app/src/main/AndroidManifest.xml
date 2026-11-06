@@ -245,11 +245,9 @@
             android:screenOrientation="landscape"
             android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode" />
-        <!-- Native phone video player (PhonePlayerActivity). Orientation comes
-            from the launch payload (EXTRA_LAYOUT): portrait watch page or
-            fullscreen. "unspecified" lets onCreate request it before the first
-            frame; the player controls still allow switching after. Scoped to
-            this Activity only — TV entries keep their own fixed orientation. -->
+        <!-- Native phone video player (PhonePlayerActivity). The phone's
+            orientation preference controls its initial layout and rotation.
+            This is scoped to this Activity; TV keeps its fixed orientation. -->
         <activity
             android:name=".PhonePlayerActivity"
             android:exported="false"

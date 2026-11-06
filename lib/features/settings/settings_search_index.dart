@@ -226,11 +226,6 @@ final settingsLeaves = <SettingsLeaf>[
   ),
   SettingsLeaf(
     LeafParent.playback,
-    (l) => l.openEpisodesIn,
-    keywords: 'watch page fullscreen portrait layout default open',
-  ),
-  SettingsLeaf(
-    LeafParent.playback,
     (l) => l.doubleTapSkip,
     keywords: 'seek seconds gesture',
   ),

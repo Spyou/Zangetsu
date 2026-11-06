@@ -5,24 +5,22 @@ import 'package:watch_app/features/player/player_screen.dart';
 
 void main() {
   group('rotation presentation', () {
-    test('portrait turn in fullscreen lands on the watch page', () {
+    test('portrait turn in fullscreen stays fullscreen', () {
+      // No more dropping to the page — rotation lands on the portrait
+      // fullscreen; Back is the way out.
       expect(
         rotationPresentation(
-          watchPageEnabled: true,
-          systemSensor: true,
           last: Orientation.landscape,
           current: Orientation.portrait,
           presentation: PlayerPresentation.fullscreen,
         ),
-        PlayerPresentation.watchPage,
+        isNull,
       );
     });
 
     test('landscape turn on the page goes fullscreen', () {
       expect(
         rotationPresentation(
-          watchPageEnabled: true,
-          systemSensor: true,
           last: Orientation.portrait,
           current: Orientation.landscape,
           presentation: PlayerPresentation.watchPage,
@@ -31,11 +29,20 @@ void main() {
       );
     });
 
+    test('landscape turn already fullscreen stays', () {
+      expect(
+        rotationPresentation(
+          last: Orientation.portrait,
+          current: Orientation.landscape,
+          presentation: PlayerPresentation.fullscreen,
+        ),
+        isNull,
+      );
+    });
+
     test('no turn means no switch', () {
       expect(
         rotationPresentation(
-          watchPageEnabled: true,
-          systemSensor: true,
           last: Orientation.portrait,
           current: Orientation.portrait,
           presentation: PlayerPresentation.fullscreen,
@@ -47,8 +54,6 @@ void main() {
     test('first build never switches', () {
       expect(
         rotationPresentation(
-          watchPageEnabled: true,
-          systemSensor: true,
           last: null,
           current: Orientation.portrait,
           presentation: PlayerPresentation.fullscreen,
@@ -56,30 +61,61 @@ void main() {
         isNull,
       );
     });
+  });
 
-    test('locked orientation never switches', () {
+  group('initial player presentation', () {
+    test('TV always opens fullscreen', () {
       expect(
-        rotationPresentation(
-          watchPageEnabled: true,
-          systemSensor: false,
-          last: Orientation.landscape,
-          current: Orientation.portrait,
-          presentation: PlayerPresentation.fullscreen,
+        initialPresentation(
+          isTv: true,
+          orientation: 'system',
+          isLandscape: false,
         ),
-        isNull,
+        PlayerPresentation.fullscreen,
       );
     });
 
-    test('watch page off never switches', () {
+    test('phone landscape lock opens fullscreen', () {
       expect(
-        rotationPresentation(
-          watchPageEnabled: false,
-          systemSensor: true,
-          last: Orientation.landscape,
-          current: Orientation.portrait,
-          presentation: PlayerPresentation.fullscreen,
+        initialPresentation(
+          isTv: false,
+          orientation: 'landscape',
+          isLandscape: false,
         ),
-        isNull,
+        PlayerPresentation.fullscreen,
+      );
+    });
+
+    test('phone portrait lock opens fullscreen', () {
+      expect(
+        initialPresentation(
+          isTv: false,
+          orientation: 'portrait',
+          isLandscape: false,
+        ),
+        PlayerPresentation.fullscreen,
+      );
+    });
+
+    test('system orientation starts in the portrait watch page', () {
+      expect(
+        initialPresentation(
+          isTv: false,
+          orientation: 'system',
+          isLandscape: false,
+        ),
+        PlayerPresentation.watchPage,
+      );
+    });
+
+    test('system orientation already in landscape opens fullscreen', () {
+      expect(
+        initialPresentation(
+          isTv: false,
+          orientation: 'system',
+          isLandscape: true,
+        ),
+        PlayerPresentation.fullscreen,
       );
     });
   });
