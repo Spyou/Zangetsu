@@ -605,7 +605,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
   void _enterFullscreen() {
     _stopAmbientSampler();
     _lastOrientation = MediaQuery.orientationOf(context);
-    setState(() => _presentation = PlayerPresentation.fullscreen);
+    setState(() {
+      _duration = _c.player.state.duration;
+      _presentation = PlayerPresentation.fullscreen;
+    });
     // Fullscreen is landscape: a portrait fullscreen is the stranded mini
     // (video shrunk inside fullscreen chrome, Back the only exit). Sensor
     // followers stay unlocked only when the device is already landscape;
@@ -2207,7 +2210,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       children: [
         // The video. NoVideoControls disables media_kit's built-in
         // controls (which include their own buffering spinner + gestures)
-        // so ONLY our custom Netflix overlay shows — fixes the duplicate
+        // so only our custom controls show — fixes the duplicate
         // spinner / double controls.
         Center(
           child: ValueListenableBuilder<int>(
@@ -2566,6 +2569,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
           ? _c.currentEpisode.thumbnail!.trim()
           : widget.cover,
       loading: state.loadingSources,
+      bufferingStream: _c.player.stream.buffering,
+      initialBuffering: _c.player.state.buffering,
       firstFrameStream: _c.player.stream.width,
       initialFirstFrame: _c.player.state.width ?? 0,
       ambientFrameStream: _ambientFrames.stream,
@@ -2981,8 +2986,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
               padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(18),
-                child: AspectRatio(
-                  aspectRatio: 16 / 9,
+                child: SizedBox(
+                  height: ((MediaQuery.sizeOf(context).width - 24) * 9 / 16)
+                      .clamp(0.0, MediaQuery.sizeOf(context).height * 0.38),
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
@@ -3008,16 +3014,29 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           ),
                         ),
                       ),
-                      Center(child: BrandLoader(label: 'Loading…')),
-                      Positioned(
-                        top: 0,
-                        left: 0,
-                        child: IconButton(
-                          icon: const Icon(
-                            Icons.arrow_back_rounded,
-                            color: Colors.white,
+                      Positioned.fill(
+                        bottom: 60,
+                        child: Align(
+                          alignment: const Alignment(0, 0.5),
+                          child: WatchPlayerButton(
+                            icon: Icons.play_arrow_rounded,
+                            label: context.l10n.loading,
+                            size: 56,
+                            iconSize: 32,
+                            busy: true,
+                            onTap: null,
                           ),
-                          onPressed: () => Navigator.of(context).maybePop(),
+                        ),
+                      ),
+                      Positioned(
+                        top: 6,
+                        left: 6,
+                        child: WatchPlayerButton(
+                          icon: Icons.arrow_back_ios_new_rounded,
+                          label: context.l10n.back,
+                          size: 32,
+                          iconSize: 18,
+                          onTap: () => Navigator.of(context).maybePop(),
                         ),
                       ),
                     ],

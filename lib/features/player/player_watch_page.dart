@@ -24,6 +24,8 @@ class PlayerWatchPage extends StatefulWidget {
     required this.header,
     this.coverHeaders,
     this.loading = false,
+    this.bufferingStream,
+    this.initialBuffering = false,
     this.firstFrameStream,
     this.initialFirstFrame = 0,
     this.ambientFrameStream,
@@ -67,6 +69,8 @@ class PlayerWatchPage extends StatefulWidget {
   /// A resolve is in flight (episode switch or first load). The page stays —
   /// the spinner sits on the mini player instead of a black loader screen.
   final bool loading;
+  final Stream<bool>? bufferingStream;
+  final bool initialBuffering;
 
   /// First-frame signal (player width; null = latch off). While no frame has
   /// decoded the spinner holds — even if the loading flag lapses between
@@ -467,6 +471,7 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
       child: ClipRRect(
         borderRadius: BorderRadius.circular(18),
         child: SizedBox(
+          key: const ValueKey('watch-video'),
           height: h,
           width: double.infinity,
           child: Stack(
@@ -507,29 +512,6 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
                   ),
                 ),
               ),
-              // Tap toggles the compact controls. Above the scrims, below
-              // the bars.
-              // No picture yet: hold the spinner. This latches on the first
-              // frame, not the loading flag — progressive resolves lapse
-              // the flag between mirrors, and taps must not dismiss it.
-              if (widget.loading || !_frameUp)
-                Center(
-                  child: IgnorePointer(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const CircularProgressIndicator(color: Colors.white),
-                        const SizedBox(height: 10),
-                        Text(
-                          'Finding the best source…',
-                          style: AppText.caption.copyWith(
-                            color: Colors.white70,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
               Positioned.fill(
                 child: GestureDetector(
                   behavior: HitTestBehavior.translucent,
@@ -537,88 +519,100 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
                 ),
               ),
               Positioned(
-                top: 0,
-                left: 0,
-                right: 0,
+                top: 6,
+                left: 6,
                 child: AnimatedOpacity(
                   opacity: _controlsVisible ? 1 : 0,
                   duration: const Duration(milliseconds: 200),
                   child: IgnorePointer(
                     ignoring: !_controlsVisible,
-                    child: Row(
-                      children: [
-                        IconButton(
-                          icon: const Icon(
-                            Icons.arrow_back_rounded,
-                            color: Colors.white,
-                          ),
-                          onPressed: widget.onBack,
-                        ),
-                      ],
+                    child: WatchPlayerButton(
+                      key: const ValueKey('watch-back'),
+                      icon: Icons.arrow_back_ios_new_rounded,
+                      label: context.l10n.back,
+                      size: 32,
+                      iconSize: 18,
+                      onTap: widget.onBack,
                     ),
                   ),
                 ),
               ),
-              AnimatedOpacity(
-                opacity: _controlsVisible ? 1 : 0,
-                duration: const Duration(milliseconds: 200),
-                child: IgnorePointer(
-                  ignoring: !_controlsVisible,
-                  child: Center(
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          iconSize: 34,
-                          icon: Icon(
-                            Icons.skip_previous_rounded,
-                            color: widget.hasPrevious
-                                ? Colors.white
-                                : Colors.white30,
+              Positioned.fill(
+                bottom: 60,
+                child: StreamBuilder<bool>(
+                  stream: widget.bufferingStream,
+                  initialData: widget.initialBuffering,
+                  builder: (context, snapshot) {
+                    final busy =
+                        widget.loading || !_frameUp || snapshot.data == true;
+                    return AnimatedOpacity(
+                      opacity: _controlsVisible || busy ? 1 : 0,
+                      duration: const Duration(milliseconds: 200),
+                      child: IgnorePointer(
+                        ignoring: !_controlsVisible && !busy,
+                        child: Align(
+                          alignment: const Alignment(0, 0.5),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Visibility(
+                                visible: _controlsVisible,
+                                maintainState: true,
+                                maintainAnimation: true,
+                                maintainSize: true,
+                                child: WatchPlayerButton(
+                                  icon: Icons.skip_previous_rounded,
+                                  label: context.l10n.previousEpisode,
+                                  size: 44,
+                                  iconSize: 24,
+                                  onTap: widget.hasPrevious
+                                      ? widget.onPrevious
+                                      : null,
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              WatchPlayerButton(
+                                key: const ValueKey('watch-play'),
+                                icon: _playing
+                                    ? Icons.pause_rounded
+                                    : Icons.play_arrow_rounded,
+                                label: busy
+                                    ? context.l10n.loading
+                                    : (_playing
+                                          ? context.l10n.pause
+                                          : context.l10n.play),
+                                size: 56,
+                                iconSize: 32,
+                                busy: busy,
+                                onTap: busy
+                                    ? null
+                                    : () {
+                                        widget.onTogglePlay();
+                                        _armHide();
+                                      },
+                              ),
+                              const SizedBox(width: 16),
+                              Visibility(
+                                visible: _controlsVisible,
+                                maintainState: true,
+                                maintainAnimation: true,
+                                maintainSize: true,
+                                child: WatchPlayerButton(
+                                  icon: Icons.skip_next_rounded,
+                                  label: context.l10n.nextEpisode,
+                                  size: 44,
+                                  iconSize: 24,
+                                  onTap: widget.nextTitle != null
+                                      ? widget.onNext
+                                      : null,
+                                ),
+                              ),
+                            ],
                           ),
-                          onPressed: widget.hasPrevious
-                              ? widget.onPrevious
-                              : null,
                         ),
-                        const SizedBox(width: 12),
-                        GestureDetector(
-                          onTap: () {
-                            widget.onTogglePlay();
-                            _armHide();
-                          },
-                          child: Container(
-                            width: 62,
-                            height: 62,
-                            decoration: BoxDecoration(
-                              color: AppColors.accent,
-                              shape: BoxShape.circle,
-                            ),
-                            alignment: Alignment.center,
-                            child: Icon(
-                              _playing
-                                  ? Icons.pause_rounded
-                                  : Icons.play_arrow_rounded,
-                              color: Colors.white,
-                              size: 34,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        IconButton(
-                          iconSize: 34,
-                          icon: Icon(
-                            Icons.skip_next_rounded,
-                            color: widget.nextTitle != null
-                                ? Colors.white
-                                : Colors.white30,
-                          ),
-                          onPressed: widget.nextTitle != null
-                              ? widget.onNext
-                              : null,
-                        ),
-                      ],
-                    ),
-                  ),
+                      ),
+                    );
+                  },
                 ),
               ),
               Positioned(left: 0, right: 0, bottom: 0, child: _seekRow()),
@@ -651,28 +645,30 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
                     : 1.0;
                 final value = pos.inMilliseconds.toDouble().clamp(0.0, maxMs);
                 return Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 0, 4, 6),
-                  child: Row(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text(
-                        formatWatchTime(pos),
-                        style: AppText.caption.copyWith(color: Colors.white),
-                      ),
-                      Expanded(
+                      SizedBox(
+                        height: 24,
                         child: SliderTheme(
                           data: SliderTheme.of(context).copyWith(
                             activeTrackColor: AppColors.accent,
-                            inactiveTrackColor: Colors.white24,
+                            inactiveTrackColor: Colors.white.withValues(
+                              alpha: 0.35,
+                            ),
                             thumbColor: AppColors.accent,
                             thumbShape: const RoundSliderThumbShape(
-                              enabledThumbRadius: 6,
+                              enabledThumbRadius: 5,
                             ),
                             overlayShape: const RoundSliderOverlayShape(
-                              overlayRadius: 12,
+                              overlayRadius: 10,
                             ),
                             trackHeight: 3,
+                            trackShape: const RectangularSliderTrackShape(),
                           ),
                           child: Slider(
+                            padding: EdgeInsets.zero,
                             value: value,
                             max: maxMs,
                             onChanged: (v) => widget.onSeek(
@@ -681,16 +677,33 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
                           ),
                         ),
                       ),
-                      Text(
-                        formatWatchTime(total),
-                        style: AppText.caption.copyWith(color: Colors.white70),
-                      ),
-                      IconButton(
-                        icon: const Icon(
-                          Icons.fullscreen_rounded,
-                          color: Colors.white,
+                      SizedBox(
+                        height: 32,
+                        child: Row(
+                          children: [
+                            Text(
+                              '${formatWatchTime(pos)} / ${formatWatchTime(total)}',
+                              style: AppText.caption.copyWith(
+                                color: Colors.white,
+                                fontSize: 13,
+                              ),
+                            ),
+                            const Spacer(),
+                            IconButton(
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints.tightFor(
+                                width: 32,
+                                height: 32,
+                              ),
+                              icon: const Icon(
+                                Icons.fullscreen_rounded,
+                                color: Colors.white,
+                                size: 24,
+                              ),
+                              onPressed: widget.onFullscreen,
+                            ),
+                          ],
                         ),
-                        onPressed: widget.onFullscreen,
                       ),
                     ],
                   ),
@@ -718,25 +731,31 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
             children: [
               _ambientBackdrop(belowVideo: true),
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+                padding: const EdgeInsets.only(top: 14),
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Text(
-                      widget.header.title,
-                      style: AppText.headline.copyWith(
-                        color: Colors.white,
-                        fontSize: 20,
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Text(
+                        widget.header.title,
+                        style: AppText.headline.copyWith(
+                          color: Colors.white,
+                          fontSize: 20,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
                     ),
                     if (widget.header.subtitle.isNotEmpty) ...[
                       const SizedBox(height: 4),
-                      Text(
-                        widget.header.subtitle,
-                        style: AppText.caption.copyWith(
-                          color: AppColors.textSecondary,
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: Text(
+                          widget.header.subtitle,
+                          style: AppText.caption.copyWith(
+                            color: AppColors.textSecondary,
+                          ),
                         ),
                       ),
                     ],
@@ -744,10 +763,16 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
                     _actionRow(l10n),
                     if (widget.header.description != null) ...[
                       const SizedBox(height: 12),
-                      _descriptionCard(),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: _descriptionCard(),
+                      ),
                     ],
                     const SizedBox(height: 12),
-                    _commentsRow(l10n),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: _commentsRow(l10n),
+                    ),
                     const SizedBox(height: 16),
                   ],
                 ),
@@ -790,6 +815,7 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
         : l10n.watchServer;
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
+      padding: const EdgeInsetsDirectional.only(start: 16, end: 8),
       child: Row(
         children: [
           _chip(Icons.dns_outlined, serverLabel, widget.onServer),
@@ -803,7 +829,7 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
 
   Widget _chip(IconData icon, String label, VoidCallback onTap) {
     return Padding(
-      padding: const EdgeInsets.only(right: 8),
+      padding: const EdgeInsetsDirectional.only(end: 8),
       child: GestureDetector(
         onTap: onTap,
         child: Container(
@@ -1377,6 +1403,79 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
       onTap: () => widget.onOpenEpisode(ep.index),
       behavior: HitTestBehavior.opaque,
       child: tile,
+    );
+  }
+}
+
+/// Shared portrait control so resolving and playing use the same chrome.
+class WatchPlayerButton extends StatelessWidget {
+  const WatchPlayerButton({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.size,
+    required this.iconSize,
+    required this.onTap,
+    this.busy = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final double size;
+  final double iconSize;
+  final VoidCallback? onTap;
+  final bool busy;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      label: label,
+      button: !busy,
+      enabled: onTap != null && !busy,
+      child: Material(
+        color: Colors.transparent,
+        shape: const CircleBorder(),
+        clipBehavior: Clip.antiAlias,
+        child: AbsorbPointer(
+          absorbing: busy,
+          child: InkWell(
+            onTap: busy ? null : onTap,
+            child: SizedBox.square(
+              dimension: size < 48 ? 48 : size,
+              child: Center(
+                child: Container(
+                  width: size,
+                  height: size,
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.5),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.14),
+                    ),
+                  ),
+                  child: Center(
+                    child: busy
+                        ? const SizedBox.square(
+                            dimension: 24,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2.5,
+                            ),
+                          )
+                        : Icon(
+                            icon,
+                            size: iconSize,
+                            color: onTap != null
+                                ? Colors.white
+                                : Colors.white30,
+                          ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

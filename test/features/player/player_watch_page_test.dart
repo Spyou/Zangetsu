@@ -1,16 +1,25 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:watch_app/features/player/player_watch_page.dart';
+import 'package:watch_app/core/theme/app_colors.dart';
 import 'package:watch_app/features/player/watch_page_info.dart';
 
 PlayerWatchPage _page({
+  Stream<bool>? bufferingStream,
   String? description = 'A great episode.',
   String? nextTitle = 'The Next One',
   List<WatchPageEpisode> episodes = const [],
   void Function()? onServer,
+  VoidCallback? onBack,
+  VoidCallback? onTogglePlay,
+  VoidCallback? onPrevious,
+  VoidCallback? onNext,
+  VoidCallback? onFullscreen,
+  ValueChanged<Duration>? onSeek,
   void Function()? onComments,
   void Function(bool)? onAutoplayChanged,
   void Function(int)? onOpenEpisode,
@@ -33,18 +42,19 @@ PlayerWatchPage _page({
     initialPosition: Duration.zero,
     initialDuration: Duration.zero,
     hasPrevious: true,
+    bufferingStream: bufferingStream,
     ambientFrameStream: ambientFrameStream,
     nextThumb: null,
     nextLabel: 'S1 E2',
     nextTitle: nextTitle,
     autoplay: true,
     episodes: episodes,
-    onTogglePlay: () {},
-    onSeek: (_) {},
-    onPrevious: () {},
-    onNext: () {},
-    onFullscreen: () {},
-    onBack: () {},
+    onTogglePlay: onTogglePlay ?? () {},
+    onSeek: onSeek ?? (_) {},
+    onPrevious: onPrevious ?? () {},
+    onNext: onNext ?? () {},
+    onFullscreen: onFullscreen ?? () {},
+    onBack: onBack ?? () {},
     onServer: onServer ?? () {},
     onAudio: () {},
     onSubtitles: () {},
@@ -332,9 +342,16 @@ void main() {
 
     // The page stays — title and times visible under the spinner.
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
-    expect(find.text('Finding the best source…'), findsOneWidget);
+    expect(find.byIcon(Icons.play_arrow_rounded), findsNothing);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('watch-play')),
+        matching: find.byType(CircularProgressIndicator),
+      ),
+      findsOneWidget,
+    );
     expect(find.text('T'), findsOneWidget);
-    expect(find.text('01:30'), findsOneWidget);
+    expect(find.text('01:30 / 24:00'), findsOneWidget);
   });
 
   testWidgets('shows the live position before the first stream tick', (
@@ -378,8 +395,7 @@ void main() {
     );
 
     // Silent streams must not read 00:00 — the handoff carries the values.
-    expect(find.text('01:30'), findsOneWidget);
-    expect(find.text('24:00'), findsOneWidget);
+    expect(find.text('01:30 / 24:00'), findsOneWidget);
   });
 
   testWidgets('spinner stays up until the first frame, loading or not', (
@@ -613,4 +629,178 @@ void main() {
       },
     );
   }
+  for (final width in [320.0, 390.0, 600.0]) {
+    testWidgets('portrait overlay layout at $width pixels', (tester) async {
+      tester.view.physicalSize = Size(width, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await _pump(tester, _page());
+      await tester.pump();
+      final video = tester.getRect(find.byKey(const ValueKey('watch-video')));
+      final back = tester.getRect(find.byKey(const ValueKey('watch-back')));
+      expect(back.top - video.top, 6);
+      expect(back.left - video.left, 6);
+      expect(back.size, const Size(48, 48));
+      final play = tester.getRect(find.byKey(const ValueKey('watch-play')));
+      expect(play.width, 56);
+      expect(play.center.dx, closeTo(video.center.dx, 0.1));
+      final seek = tester.getRect(find.byType(Slider));
+      final time = tester.getRect(find.text('00:00 / 24:00'));
+      expect(seek.width, greaterThan(video.width * 0.85));
+      expect(seek.left - video.left, 16);
+      expect(video.right - seek.right, 16);
+      expect(time.top, greaterThanOrEqualTo(seek.bottom));
+      expect(play.bottom, lessThanOrEqualTo(seek.top));
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('portrait overlay keeps playback callbacks', (tester) async {
+    var back = 0, play = 0, previous = 0, next = 0, fullscreen = 0;
+    Duration? seek;
+    await _pump(
+      tester,
+      _page(
+        onBack: () => back++,
+        onTogglePlay: () => play++,
+        onPrevious: () => previous++,
+        onNext: () => next++,
+        onFullscreen: () => fullscreen++,
+        onSeek: (value) => seek = value,
+      ),
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('watch-back')));
+    await tester.tap(find.byKey(const ValueKey('watch-play')));
+    await tester.tap(find.byIcon(Icons.skip_previous_rounded));
+    await tester.tap(find.byIcon(Icons.skip_next_rounded));
+    await tester.tap(find.byIcon(Icons.fullscreen_rounded));
+    tester.widget<Slider>(find.byType(Slider)).onChanged!(5000);
+    expect([back, play, previous, next, fullscreen], [1, 1, 1, 1, 1]);
+    expect(seek, const Duration(seconds: 5));
+  });
+  testWidgets(
+    'buffering replaces Play with one loader, even with hidden controls',
+    (tester) async {
+      final buffering = StreamController<bool>();
+      addTearDown(buffering.close);
+      var played = 0;
+      await _pump(
+        tester,
+        _page(bufferingStream: buffering.stream, onTogglePlay: () => played++),
+      );
+      await tester.pump();
+      buffering.add(true);
+      await tester.pump();
+      await tester.pump();
+      expect(find.byIcon(Icons.play_arrow_rounded), findsNothing);
+      final play = find.byKey(const ValueKey('watch-play'));
+      expect(
+        find.descendant(
+          of: play,
+          matching: find.byType(CircularProgressIndicator),
+        ),
+        findsOneWidget,
+      );
+      await tester.tap(play);
+      expect(played, 0);
+      await tester.tapAt(
+        tester.getTopLeft(find.byKey(const ValueKey('watch-video'))) +
+            const Offset(120, 12),
+      );
+      await tester.pump(const Duration(milliseconds: 250));
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(
+        tester
+            .widget<AnimatedOpacity>(
+              find
+                  .ancestor(of: play, matching: find.byType(AnimatedOpacity))
+                  .first,
+            )
+            .opacity,
+        1,
+      );
+      buffering.add(false);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 250));
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      await tester.tapAt(
+        tester.getTopLeft(find.byKey(const ValueKey('watch-video'))) +
+            const Offset(120, 12),
+      );
+      await tester.pump(const Duration(milliseconds: 250));
+      await tester.tap(play);
+      expect(played, 1);
+    },
+  );
+  testWidgets(
+    'shared loading-screen button has compact visuals and a large touch area',
+    (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Center(
+            child: WatchPlayerButton(
+              key: const ValueKey('shared-back'),
+              icon: Icons.arrow_back_ios_new_rounded,
+              label: 'Back',
+              size: 32,
+              iconSize: 18,
+              onTap: () {},
+            ),
+          ),
+        ),
+      );
+      final button = find.byKey(const ValueKey('shared-back'));
+      expect(tester.getSize(button), const Size(48, 48));
+      final circle = find.descendant(
+        of: button,
+        matching: find.byType(Container),
+      );
+      expect(tester.getSize(circle), const Size(32, 32));
+      expect(
+        (tester.widget<Container>(circle).decoration as BoxDecoration).color,
+        Colors.black.withValues(alpha: 0.5),
+      );
+    },
+  );
+  testWidgets(
+    'portrait actions scroll to the screen edges without an inset cutoff',
+    (tester) async {
+      tester.view.physicalSize = const Size(320, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      var opened = 0;
+      await _pump(tester, _page(onServer: () => opened++));
+      await tester.pump();
+      final actions = find.ancestor(
+        of: find.byIcon(Icons.dns_outlined),
+        matching: find.byType(SingleChildScrollView),
+      );
+      final viewport = tester.getRect(actions);
+      expect(viewport.left, 0);
+      expect(viewport.right, 320);
+      final before = tester.getRect(find.byIcon(Icons.dns_outlined));
+      await tester.timedDrag(
+        actions,
+        const Offset(-20, 0),
+        const Duration(milliseconds: 500),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        tester.getRect(find.byIcon(Icons.dns_outlined)).left,
+        lessThan(before.left),
+      );
+      await tester.tap(find.text('Server'));
+      expect(opened, 1);
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets('mini-player seek bar uses the app accent', (tester) async {
+    await _pump(tester, _page());
+    final theme = SliderTheme.of(tester.element(find.byType(Slider)));
+    expect(theme.activeTrackColor, AppColors.accent);
+    expect(theme.thumbColor, AppColors.accent);
+  });
 }

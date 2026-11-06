@@ -720,6 +720,7 @@ static void showPlayerMorePanel({
                     // Duration tracker (off-screen listener via StreamBuilder).
                     StreamBuilder<Duration>(
                       stream: c.player.stream.duration,
+                      initialData: c.player.state.duration,
                       builder: (context, snap) {
                         final d = snap.data ?? duration;
                         WidgetsBinding.instance.addPostFrameCallback((_) {

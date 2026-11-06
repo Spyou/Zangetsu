@@ -119,6 +119,7 @@ class _SeekRowState extends State<_SeekRow> {
     final max = totalMs > 0 ? totalMs.toDouble() : 1.0;
     return StreamBuilder<Duration>(
       stream: _livePosition,
+      initialData: widget.controller.player.state.position,
       builder: (context, snap) {
         final streamMs = (snap.data ?? Duration.zero).inMilliseconds
             .clamp(0, max.toInt())
