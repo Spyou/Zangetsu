@@ -46,9 +46,8 @@ object PhonePlayerIntent {
     const val EXTRA_COVER = "cover"
     const val EXTRA_COVER_HEADERS = "coverHeaders" // flat String[]: k,v,k,v
 
-    // Portrait watch page. All optional — a launch without them behaves
-    // exactly as before (fullscreen landscape, combined menus).
-    const val EXTRA_LAYOUT = "openingLayout" // "watch" or "fullscreen"
+    // Phone orientation preference; TV uses its own Activity and extras.
+    const val EXTRA_ORIENTATION = "playerOrientation" // landscape, portrait, system
     const val EXTRA_SHOW_DESC = "showDescription"
     const val EXTRA_CATEGORIES = "availableCategories" // e.g. ["sub","dub"]
     const val EXTRA_CATEGORY = "category" // launch version (sub/dub)

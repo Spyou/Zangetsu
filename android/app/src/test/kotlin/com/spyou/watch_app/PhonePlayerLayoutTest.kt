@@ -2,6 +2,7 @@ package com.spyou.watch_app
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ActivityInfo
 import android.content.res.Configuration
 import android.view.LayoutInflater
 import android.view.View
@@ -30,6 +31,78 @@ class PhonePlayerLayoutTest {
         "quick_speed",
         "quick_display",
     )
+
+    @Test
+    @Config(manifest = Config.NONE, sdk = [34], qualifiers = "port")
+    fun `portrait orientation preference opens the watch page`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val intent = Intent(context, PhonePlayerActivity::class.java)
+            .putExtra(PhonePlayerIntent.EXTRA_URL, "file:///dev/null")
+            .putExtra(PhonePlayerIntent.EXTRA_ORIENTATION, "portrait")
+        val controller = Robolectric.buildActivity(PhonePlayerActivity::class.java, intent)
+            .create().start().resume()
+        val activity = controller.get()
+
+        assertEquals(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT, activity.requestedOrientation)
+        assertEquals(
+            activity.resources.displayMetrics.widthPixels * 9 / 16,
+            activity.findViewById<View>(R.id.player_root).layoutParams.height,
+        )
+        assertEquals(View.VISIBLE, activity.findViewById<View>(R.id.watch_info).visibility)
+
+        controller.pause().stop().destroy()
+    }
+
+    @Test
+    @Config(manifest = Config.NONE, sdk = [34], qualifiers = "port")
+    fun `system orientation switches the page and fullscreen on rotation`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val intent = Intent(context, PhonePlayerActivity::class.java)
+            .putExtra(PhonePlayerIntent.EXTRA_URL, "file:///dev/null")
+            .putExtra(PhonePlayerIntent.EXTRA_ORIENTATION, "system")
+        val controller = Robolectric.buildActivity(PhonePlayerActivity::class.java, intent)
+            .create().start().resume()
+        val activity = controller.get()
+
+        assertEquals(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED, activity.requestedOrientation)
+        assertEquals(View.VISIBLE, activity.findViewById<View>(R.id.watch_info).visibility)
+        val observerField = PhonePlayerActivity::class.java.getDeclaredField("orientationObserver")
+            .apply { isAccessible = true }
+        val observer = observerField.get(activity) as PhoneOrientationObserver
+        observer.onOrientationChanged(0)
+        val video = activity.findViewById<View>(R.id.player_view)
+        activity.findViewById<View>(R.id.btn_rotate).performClick()
+        assertEquals(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE, activity.requestedOrientation)
+        observer.onOrientationChanged(90)
+        assertEquals(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED, activity.requestedOrientation)
+
+        val landscape = Configuration(activity.resources.configuration).apply {
+            orientation = Configuration.ORIENTATION_LANDSCAPE
+        }
+        @Suppress("DEPRECATION")
+        activity.resources.updateConfiguration(landscape, activity.resources.displayMetrics)
+        activity.onConfigurationChanged(landscape)
+        assertEquals(View.GONE, activity.findViewById<View>(R.id.watch_info).visibility)
+        activity.findViewById<View>(R.id.btn_back).performClick()
+        assertEquals(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT, activity.requestedOrientation)
+        observer.onOrientationChanged(0)
+        assertEquals(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED, activity.requestedOrientation)
+        assertSame(video, activity.findViewById<View>(R.id.player_view))
+        val portrait = Configuration(activity.resources.configuration).apply {
+            orientation = Configuration.ORIENTATION_PORTRAIT
+        }
+        @Suppress("DEPRECATION")
+        activity.resources.updateConfiguration(portrait, activity.resources.displayMetrics)
+        activity.onConfigurationChanged(portrait)
+
+        assertEquals(View.VISIBLE, activity.findViewById<View>(R.id.watch_info).visibility)
+        assertEquals(
+            activity.resources.displayMetrics.widthPixels * 9 / 16,
+            activity.findViewById<View>(R.id.player_root).layoutParams.height,
+        )
+
+        controller.pause().stop().destroy()
+    }
 
     @Test
     @Config(manifest = Config.NONE, sdk = [34], qualifiers = "port")

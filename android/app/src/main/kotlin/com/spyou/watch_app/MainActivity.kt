@@ -274,6 +274,7 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
 
     override fun onResume() {
         super.onResume()
+        playerOrientationObserver?.enable()
         current = java.lang.ref.WeakReference(this)
         // CloudStream plugins that store their own settings grab a per-plugin
         // SharedPreferences via CommonActivity.getActivity().getSharedPreferences(name)
@@ -285,6 +286,7 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
     }
 
     override fun onPause() {
+        playerOrientationObserver?.disable()
         phoneVoiceSearch?.cancelActive()
         if (current?.get() === this) current = null
         // Fail safe: never leave the volume rocker hijacked for an app that
@@ -402,6 +404,7 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
      *  dies with this activity, so there is nothing extra to undo here. */
     override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {}
 
+    private var playerOrientationObserver: PhoneOrientationObserver? = null
     private var discordPresence: DiscordPresenceBridge? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -410,6 +413,19 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
         // own, so without this line NO plugin (shared_preferences, path_provider,
         // media_kit …) would be attached and the app would come up dead.
         GeneratedPluginRegister.registerGeneratedPlugins(flutterEngine)
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, "zangetsu/player_orientation")
+            .setStreamHandler(object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, events: EventChannel.EventSink) {
+                    playerOrientationObserver?.disable()
+                    playerOrientationObserver = PhoneOrientationObserver(this@MainActivity) {
+                        events.success(it)
+                    }.also { it.enable() }
+                }
+                override fun onCancel(arguments: Any?) {
+                    playerOrientationObserver?.disable()
+                    playerOrientationObserver = null
+                }
+            })
         discordPresence = DiscordPresenceBridge(this, flutterEngine.dartExecutor.binaryMessenger)
 
         // Bridge mega-repo plugins → our repo list: when a plugin's load() calls
@@ -1994,6 +2010,8 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
     }
 
     override fun onDestroy() {
+        playerOrientationObserver?.disable()
+        playerOrientationObserver = null
         discordPresence?.dispose()
         discordPresence = null
         phoneVoiceSearch?.dispose()
