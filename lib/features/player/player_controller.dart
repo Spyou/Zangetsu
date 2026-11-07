@@ -3259,11 +3259,20 @@ class PlayerCubit extends Cubit<PlayerState> {
   /// Advisory only. It feeds the health screen; it never affects search order,
   /// never skips a source, and never removes anything.
   Future<List<VideoSource>> _resolveNoted(String epUrl) async {
+    final sw = Stopwatch()..start();
     try {
       final out = await _resolveSources(epUrl);
+      sw.stop();
+      debugPrint(
+        '[player-timing] resolve ${sw.elapsedMilliseconds}ms (${out.length} links)',
+      );
       _notePlayback(ok: out.isNotEmpty);
       return out;
     } catch (_) {
+      sw.stop();
+      debugPrint(
+        '[player-timing] resolve FAILED after ${sw.elapsedMilliseconds}ms',
+      );
       _notePlayback(ok: false);
       rethrow;
     }

@@ -16,6 +16,7 @@ import '../../core/models/provider_info.dart';
 import '../../core/models/episode.dart';
 import '../../core/models/video_source.dart';
 import '../../core/playback/playback_prefs.dart';
+import '../../core/playback/title_prefs.dart';
 import '../../core/playback/resume_store.dart';
 import '../../core/playback/source_selection.dart';
 import '../../core/playback/subtitle_encode_skew.dart';
@@ -466,6 +467,7 @@ class PhoneNativePlayer {
     _availableCategories = availableCategories;
     _showDescription = showDescription;
     _sessionId++;
+    _prefetchedEpisodes.clear();
     _resume = resume;
     _history = history;
     if (!_handlerBound) {
@@ -906,7 +908,9 @@ class PhoneNativePlayer {
         _pushDiscordPresence(_callArgs(call));
         return null;
       case 'saveProgress':
-        await _saveProgress(_callArgs(call), flush: true);
+        final args = _callArgs(call);
+        await _saveProgress(args, flush: true);
+        _preheatNearEnd(args);
         return null;
       case 'playerClosed':
         if (!_peek &&
@@ -918,6 +922,7 @@ class PhoneNativePlayer {
         await _saveProgress(args, flush: true);
         if (_closed?.isCompleted == false) _closed!.complete(args);
         _closed = null;
+        _prefetchedEpisodes.clear();
         _downloadChoice = null;
         _downloadToken++;
         return null;
@@ -976,6 +981,8 @@ class PhoneNativePlayer {
   }
 
   static Future<Map<String, dynamic>?> _resolveEpisode(int index) async {
+    final session = _sessionId;
+    final category = _category;
     final ep = _episodes[index];
     final seed = !_seedUsed && _seedSource != null && index == _startIndex
         ? _seedSource
@@ -985,7 +992,9 @@ class PhoneNativePlayer {
         ? await _resolveSources(ep)
         : <VideoSource>[seed];
     final prepared = await _prepareSources(sources);
-    if (prepared.isEmpty) return null;
+    if (session != _sessionId || category != _category || prepared.isEmpty) {
+      return null;
+    }
     final src = seed == null ? _pickSource(prepared) : prepared.first;
     if (src == null) return null;
     final position = index == _startIndex
@@ -1003,7 +1012,37 @@ class PhoneNativePlayer {
   static VideoSource? _pickSource(List<VideoSource> sources) => pickDefault(
     sources,
     prefer: _category == 'dub' ? AudioKind.dub : AudioKind.sub,
+    preferQuality: _preferredQuality(),
   );
+
+  static String _preferredQuality() {
+    final url = _showUrl;
+    return (url != null && url.isNotEmpty && sl.isRegistered<TitlePrefsStore>()
+            ? sl<TitlePrefsStore>().quality(_sourceId, url)
+            : null) ??
+        sl<PlaybackPrefs>().defaultQuality;
+  }
+
+  static final _prefetchedEpisodes = <(int, String)>{};
+
+  static void _preheatNearEnd(Map<String, dynamic>? args) {
+    if (_peek || _closed?.isCompleted != false || args == null) return;
+    final index = (args['index'] as num?)?.toInt() ?? -1;
+    final position = (args['positionMs'] as num?)?.toInt() ?? 0;
+    final duration = (args['durationMs'] as num?)?.toInt() ?? 0;
+    if (index < 0 ||
+        index + 1 >= _episodes.length ||
+        duration <= 0 ||
+        position < duration * 0.85) {
+      return;
+    }
+    if (!_prefetchedEpisodes.add((index, _category))) return;
+    unawaited(
+      _resolveSources(
+        _episodes[index + 1],
+      ).catchError((_) => const <VideoSource>[]),
+    );
+  }
 
   static int _indexOfSource(List<VideoSource> sources, VideoSource target) {
     final index = sources.indexWhere((source) => source.url == target.url);
