@@ -47,6 +47,7 @@ import 'package:watch_app/core/tracker/tracker_hub.dart';
 import 'package:watch_app/core/trailer/trailer_service.dart';
 import 'package:watch_app/features/detail/detail_screen.dart';
 import 'package:watch_app/features/player/player_screen.dart';
+import 'package:watch_app/features/player/mpv_player_pool.dart';
 import 'package:watch_app/features/reader/novel_reader_screen.dart';
 import 'package:watch_app/features/auth/auth_cubit.dart';
 
@@ -347,7 +348,13 @@ class _FakeTrailerService extends TrailerService {
 /// Hive-backed in reality; overrides just the getters _openPlayer's
 /// preserved anime path reads, matching the real defaults.
 class _FakePlaybackPrefs extends PlaybackPrefs {
-  _FakePlaybackPrefs({this.batchStyle = 'classic'});
+  _FakePlaybackPrefs({this.batchStyle = 'classic', this.playerPackage = ''});
+
+  final String playerPackage;
+  @override
+  String get externalPlayerPackage => playerPackage;
+  @override
+  bool get styledSubtitles => false;
 
   final String batchStyle;
 
@@ -359,6 +366,15 @@ class _FakePlaybackPrefs extends PlaybackPrefs {
 
   @override
   String get batchDownloadStyle => batchStyle;
+}
+
+class _WarmupPool extends MpvPlayerPool {
+  int preparations = 0;
+  int clears = 0;
+  @override
+  void warmUp({required bool libass}) => preparations++;
+  @override
+  Future<void> clear() async => clears++;
 }
 
 class _DownloadRepository extends _StubSourceRepository {
@@ -591,6 +607,57 @@ void main() {
     if (await readerPrefsDir.exists()) {
       await readerPrefsDir.delete(recursive: true);
     }
+  });
+
+  for (final reading in [true, false]) {
+    testWidgets(
+      reading
+          ? 'reading detail does not prepare a video player'
+          : 'external player selection does not prepare mpv',
+      (tester) async {
+        final pool = _WarmupPool();
+        sl.registerSingleton<MpvPlayerPool>(pool);
+        if (!reading) {
+          sl.unregister<PlaybackPrefs>();
+          sl.registerSingleton<PlaybackPrefs>(
+            _FakePlaybackPrefs(playerPackage: 'external.player'),
+          );
+        }
+        final stub = _StubSourceRepository(
+          reading ? _novelDetail : _animeDetail,
+        );
+        sl.registerSingleton<SourceRepository>(stub);
+        sl.registerSingleton<CatalogueRepository>(stub);
+        await tester.pumpWidget(
+          MaterialApp(
+            home: DetailScreen(item: reading ? _novelItem : _animeItem),
+          ),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(seconds: 1));
+        expect(pool.preparations, 0);
+        await tester.pumpWidget(const SizedBox());
+      },
+    );
+  }
+
+  testWidgets('video preparation is deferred and freed when detail closes', (
+    tester,
+  ) async {
+    final pool = _WarmupPool();
+    sl.registerSingleton<MpvPlayerPool>(pool);
+    final stub = _StubSourceRepository(_animeDetail);
+    sl.registerSingleton<SourceRepository>(stub);
+    sl.registerSingleton<CatalogueRepository>(stub);
+    await tester.pumpWidget(
+      const MaterialApp(home: DetailScreen(item: _animeItem)),
+    );
+    await tester.pump();
+    expect(pool.preparations, 0);
+    await tester.pump(const Duration(seconds: 1));
+    expect(pool.preparations, 1);
+    await tester.pumpWidget(const SizedBox());
+    expect(pool.clears, 1);
   });
 
   testWidgets(

@@ -89,6 +89,7 @@ import '../../core/tracker/tracker.dart';
 import '../../core/tracker/tracker_binding_store.dart';
 import '../../core/tracker/tracker_hub.dart';
 import '../../core/playback/playback_prefs.dart';
+import '../player/mpv_player_pool.dart';
 import '../../core/playback/resume_store.dart';
 import '../../core/playback/title_prefs.dart';
 import '../../core/playback/watch_history.dart';
@@ -552,6 +553,7 @@ class _DetailViewState extends State<_DetailView>
     _tint.addListener(_onTintChanged);
     ThemeController.revision.addListener(_onThemeRevision);
     _loadLogo();
+    _schedulePlayerWarmup();
     // Discord Rich Presence: "Looking at <title>" while this detail is open.
     if (sl.isRegistered<DiscordRpc>()) {
       sl<DiscordRpc>().setBrowsing(
@@ -559,6 +561,32 @@ class _DetailViewState extends State<_DetailView>
         posterUrl: widget.item.cover,
       );
     }
+  }
+
+  Timer? _playerWarmupTimer;
+  MpvPlayerPool? _playerWarmupPool;
+
+  void _schedulePlayerWarmup() {
+    if (!sl.isRegistered<MpvPlayerPool>() ||
+        sl<AppMode>().isTv ||
+        widget.item.type == ProviderType.manga ||
+        widget.item.type == ProviderType.novel) {
+      return;
+    }
+    // Do not construct a native core during the detail-page transition.
+    _playerWarmupTimer = Timer(_prefetchStayDelay, () {
+      if (!mounted) return;
+      final route = ModalRoute.of(context);
+      if (route?.isCurrent != true ||
+          (route?.animation != null &&
+              route!.animation!.status != AnimationStatus.completed)) {
+        return;
+      }
+      final prefs = sl<PlaybackPrefs>();
+      if (prefs.externalPlayerPackage.isNotEmpty) return;
+      _playerWarmupPool = sl<MpvPlayerPool>();
+      _playerWarmupPool!.warmUp(libass: prefs.styledSubtitles);
+    });
   }
 
   /// Repaint the pinned app bar in the new tint: it paints the same wash as the
@@ -615,6 +643,9 @@ class _DetailViewState extends State<_DetailView>
   @override
   void dispose() {
     _routeAnimation?.removeStatusListener(_onRouteStatusChanged);
+    _playerWarmupTimer?.cancel();
+    final prepared = _playerWarmupPool;
+    if (prepared != null) unawaited(prepared.clear());
     // Leaving before the stay-delay elapsed: no viewer is here to warm a menu
     // for, so the pending resolve never starts.
     _prefetchTimer?.cancel();

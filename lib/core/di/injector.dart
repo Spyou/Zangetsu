@@ -33,6 +33,7 @@ import '../ui/streaming_prefs.dart';
 import '../ui/nav_prefs.dart';
 import '../playback/search_source_prefs.dart';
 import '../playback/source_health_store.dart';
+import '../../features/player/mpv_player_pool.dart';
 import '../schedule/airing_service.dart';
 import '../schedule/coming_soon_service.dart';
 import '../privacy/incognito_mode.dart';
@@ -458,6 +459,10 @@ Future<void> initDependencies({bool Function()? isOffline}) async {
   await HomeCache.init();
   await PlaybackPrefs.init();
   sl.registerSingleton<PlaybackPrefs>(PlaybackPrefs());
+  sl.registerLazySingleton<MpvPlayerPool>(
+    MpvPlayerPool.new,
+    dispose: (pool) => pool.clear(),
+  );
   await ReaderPrefs.init();
   sl.registerSingleton<ReaderPrefs>(ReaderPrefs());
   await ReaderOverrideStore.init();

@@ -38,6 +38,7 @@ import '../../core/playback/title_prefs.dart';
 import '../../core/playback/watch_history.dart';
 import '../../core/playback/subtitle_download_service.dart';
 import '../../core/playback/subtitle_translate_service.dart';
+import 'mpv_player_pool.dart';
 import '../../core/repository/catalogue_repository.dart';
 import '../../core/repository/source_repository.dart';
 import '../../core/zmode/playback_resolver.dart';
@@ -383,18 +384,9 @@ class PlayerCubit extends Cubit<PlayerState> {
   /// episode URL's `/sub/` ↔ `/dub/` segment to this. Persisted per-title.
   String _activeCategory;
 
-  final Player player = Player(
-    configuration: PlayerConfiguration(
-      // Render subtitles via mpv/libass (real ASS styling — fonts, positions,
-      // karaoke, signs) when the user opts in. media_kit then draws subs into
-      // the video texture and hides its Flutter overlay. The Android font is
-      // libass's fallback (system fonts aren't visible to libass on Android);
-      // _setupSubtitleFonts / applySubtitleStyle refine sub-fonts-dir/sub-font
-      // after open. Off → default Player() behaviour (Flutter text overlay).
-      libass: sl<PlaybackPrefs>().styledSubtitles,
-      libassAndroidFont: 'assets/fonts/NotoSans-Regular.ttf',
-      libassAndroidFontName: 'Noto Sans',
-    ),
+  // Only unused preparation is shared; every session owns and disposes its core.
+  late final Player player = sl<MpvPlayerPool>().acquire(
+    libass: sl<PlaybackPrefs>().styledSubtitles,
   );
   final PlayerLifecycleGate _lifecycle = PlayerLifecycleGate();
   Future<void>? _nativeTeardown;
