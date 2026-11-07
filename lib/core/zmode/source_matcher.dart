@@ -673,6 +673,7 @@ class SourceMatcher {
     // of sweeping. Picking "Auto Resolve" has to forget that too, or the very
     // next resolve snaps straight back to it and the choice does nothing.
     await _prefs.clearLastGood(c.kind);
+    await _store.clearLastPlayed(c);
   }
 
   /// The Cloudflare-challenge url for a [kind] candidate that got flagged

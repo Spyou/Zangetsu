@@ -178,6 +178,8 @@ class MatchStore {
     return v is String && v.isNotEmpty ? v : null;
   }
 
+  Future<void> clearLastPlayed(ZCanonical c) => _box.delete(_lastKey(c));
+
   /// Remember which source served this title on the last successful play.
   Future<void> rememberLastPlayed(ZCanonical c, String sourceId) => _box.put(
     _lastKey(c),

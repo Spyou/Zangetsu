@@ -74,6 +74,208 @@ void main() {
     candidates: (_) => (src as _ProgSrc).loadedSources,
   );
 
+  group('remembered show source', () {
+    const ep1 = 'zm://anime/mal:100/ep/1';
+
+    Future<void> rememberA() async {
+      await store.save(
+        show,
+        const SourceMatch(
+          sourceId: 'src-a',
+          showUrl: 'https://a/show',
+          showId: 'a',
+          showTitle: 'FMA',
+          pinned: false,
+        ),
+      );
+      await store.rememberLastPlayed(show, 'src-a');
+    }
+
+    for (final progressive in [true, false]) {
+      test(
+        'episode 2 asks only the previous source: progressive=$progressive',
+        () async {
+          final src = _ProgSrc.fastSlow(
+            aSourcesDelay: Duration.zero,
+            bSourcesDelay: Duration.zero,
+          );
+          final r = resolver(sources: src, matcher: matcherFor(src));
+          if (progressive) {
+            await r.resolveProgressive(ep1).toList();
+          } else {
+            await r.sources(ep1, fast: true);
+          }
+          expect(store.lastPlayed(show), 'src-a');
+          src.log.clear();
+          if (progressive) {
+            final events = await r.resolveProgressive(ep2).toList();
+            expect(events.last.match.sourceId, 'src-a');
+            expect(events.last.done, isTrue);
+          } else {
+            expect(await r.sources(ep2, fast: true), isNotEmpty);
+          }
+          expect(src.log, [
+            'episodes:https://a/show:src-a',
+            'sources:https://a/2:src-a',
+          ]);
+        },
+      );
+    }
+
+    test(
+      'missing next episode falls back instead of repeating episode 1',
+      () async {
+        await rememberA();
+        final src = _ProgSrc.fastSlow(
+          aHasEp2: false,
+          aSourcesDelay: Duration.zero,
+          bSourcesDelay: Duration.zero,
+        );
+        final r = resolver(sources: src, matcher: matcherFor(src));
+        final events = await r.resolveProgressive(ep2).toList();
+        expect(events.last.match.sourceId, 'src-b');
+        expect(
+          src.log.where((e) => e == 'episodes:https://a/show:src-a'),
+          hasLength(1),
+        );
+        expect(src.log, isNot(contains('sources:https://a/1:src-a')));
+        expect(src.log, contains('sources:https://b/2:src-b'));
+      },
+    );
+
+    for (final kind in [ZKind.movie, ZKind.tv]) {
+      test('remembered source is reused for $kind titles', () async {
+        const match = SourceMatch(
+          sourceId: 'src-a',
+          showUrl: 'https://a/show',
+          showId: 'a',
+          showTitle: 'FMA',
+          pinned: false,
+        );
+        final title = ZCanonical(kind, 'tmdb:100');
+        await store.save(title, match);
+        await store.rememberLastPlayed(title, 'src-a');
+        final src = _ProgSrc.fastSlow(
+          aSourcesDelay: Duration.zero,
+          bSourcesDelay: Duration.zero,
+        );
+        final r = resolver(sources: src, matcher: matcherFor(src));
+        await r.resolveProgressive(ZmodeIds.episodeUrl(title, 1)).toList();
+        expect(src.log, [
+          'episodes:https://a/show:src-a',
+          'sources:https://a/1:src-a',
+        ]);
+      });
+    }
+
+    test('remembered source stays scoped to its own title', () async {
+      await rememberA();
+      const otherAnime = ZCanonical(ZKind.anime, 'mal:101');
+      const movie = ZCanonical(ZKind.movie, 'mal:100');
+      expect(store.lastPlayed(otherAnime), isNull);
+      expect(store.lastPlayed(movie), isNull);
+      expect(store.get(movie, 'src-a'), isNull);
+      final src = _ProgSrc.fastSlow(
+        aSourcesDelay: Duration.zero,
+        bSourcesDelay: Duration.zero,
+      );
+      final r = resolver(sources: src, matcher: matcherFor(src));
+      await r.resolveProgressive(ZmodeIds.episodeUrl(otherAnime, 1)).toList();
+      expect(src.log, contains('search:src-b'));
+      expect(src.log, contains('sources:https://b/1:src-b'));
+      expect(store.lastPlayed(show), 'src-a');
+    });
+
+    test('manual source choice overrides the remembered source', () async {
+      await rememberA();
+      final src = _ProgSrc.fastSlow(
+        aSourcesDelay: Duration.zero,
+        bSourcesDelay: Duration.zero,
+      );
+      await prefs.set(show.kind, 'src-b');
+      final r = resolver(sources: src, matcher: matcherFor(src));
+      final events = await r.resolveProgressive(ep2).toList();
+      expect(events.last.match.sourceId, 'src-b');
+      expect(src.log.any((e) => e.endsWith('src-a')), isFalse);
+    });
+
+    test(
+      'explicit Auto Resolve searches again after a remembered match',
+      () async {
+        await rememberA();
+        final src = _ProgSrc.fastSlow(
+          aSourcesDelay: Duration.zero,
+          bSourcesDelay: Duration.zero,
+        );
+        final matcher = matcherFor(src);
+        final r = resolver(sources: src, matcher: matcher);
+        matcher.bindSourceChanged(r.invalidateShow);
+        await matcher.clearAuto(show);
+        await r.resolveProgressive(ep2).toList();
+        expect(src.log, contains('sources:https://b/2:src-b'));
+      },
+    );
+
+    test('uninstalled remembered source is ignored', () async {
+      await rememberA();
+      final src = _ProgSrc.fastSlow(bSourcesDelay: Duration.zero);
+      final r = resolver(
+        sources: src,
+        matcher: matcherFor(src),
+        candidates: [(id: 'src-b', name: 'B')],
+      );
+      final events = await r.resolveProgressive(ep2).toList();
+      expect(events.last.match.sourceId, 'src-b');
+      expect(src.log.any((e) => e.endsWith('src-a')), isFalse);
+    });
+
+    test('failed playback source is skipped on fallback', () async {
+      await rememberA();
+      final src = _ProgSrc.fastSlow(bSourcesDelay: Duration.zero);
+      final r = resolver(sources: src, matcher: matcherFor(src));
+      r.markSourceUnplayable(ep2, 'src-a');
+      final events = await r.resolveProgressive(ep2).toList();
+      expect(events.last.match.sourceId, 'src-b');
+      expect(src.log.any((e) => e.endsWith('src-a')), isFalse);
+    });
+
+    test(
+      'remembered title still requests the selected audio category',
+      () async {
+        await rememberA();
+        final src = _ProgSrc.fastSlow(
+          aSourcesDelay: Duration.zero,
+          bSourcesDelay: Duration.zero,
+        );
+        final r = resolver(sources: src, matcher: matcherFor(src));
+        await r.resolveProgressive(ep2, category: 'dub').toList();
+        expect(src.categories, ['dub']);
+        expect(r.resolvedSourceId(ep2), isNull);
+        expect(r.resolvedSourceId(ep2, category: 'dub'), 'src-a');
+      },
+    );
+
+    test(
+      'download filtering does not replace the remembered playback source',
+      () async {
+        await rememberA();
+        final src = _ProgSrc.fastSlow(
+          aSourcesDelay: Duration.zero,
+          bSourcesDelay: Duration.zero,
+        );
+        final r = resolver(sources: src, matcher: matcherFor(src));
+        final result = await r.resolveForPlayback(
+          ep2,
+          accept: (streams) =>
+              streams.any((s) => s.url.startsWith('https://b/')),
+        );
+        expect(result.match.sourceId, 'src-b');
+        expect(store.lastPlayed(show), 'src-a');
+        expect(r.resolvedSourceId(ep2), isNull);
+      },
+    );
+  });
+
   group('resolveProgressive', () {
     test(
       'TV stops after the winning wave without starting more sources',
@@ -406,6 +608,7 @@ class _ProgSrc implements SourceRepository {
 
   /// Every episode-list and stream fetch, per source.
   final log = <String>[];
+  final categories = <String>[];
   final fastFlags = <bool>[];
 
   @override
@@ -468,6 +671,7 @@ class _ProgSrc implements SourceRepository {
     String? sourceId,
   }) async {
     log.add('episodes:$url:$sourceId');
+    categories.add(category);
     if (sourceId == 'src-a') {
       if (aEpisodesDelay != Duration.zero) {
         await Future<void>.delayed(aEpisodesDelay);
