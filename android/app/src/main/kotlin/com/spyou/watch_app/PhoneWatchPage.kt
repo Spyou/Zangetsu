@@ -17,7 +17,7 @@ internal data class PhoneWatchEpisode(
     val index: Int, val heading: String, val number: Double?, val season: Int?,
     val thumb: String = "", val meta: String = "", val synopsis: String = "",
     val title: String = "", val subtitle: String = "", val description: String = "",
-    val unavailable: String = "",
+    val unavailable: String = "", val watched: Boolean = false,
 ) {
     companion object {
         fun from(data: Map<String, Any?>, labels: Array<String>): List<PhoneWatchEpisode> {
@@ -29,7 +29,7 @@ internal data class PhoneWatchEpisode(
                 PhoneWatchEpisode(index, text("heading").ifBlank { label },
                     (row["number"] as? Number)?.toDouble(), (row["season"] as? Number)?.toInt(),
                     text("thumb"), text("meta"), text("synopsis"), text("title"), text("subtitle"),
-                    text("synopsis"), text("unavailable"))
+                    text("synopsis"), text("unavailable"), row["watched"] == true)
             }
         }
     }
@@ -49,6 +49,15 @@ internal class PhoneWatchPage(
         layoutParams = RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
     }
     val episodes = PhoneWatchEpisode.from(data, labels)
+    var onEpisodeMenu: ((Int) -> Unit)? = null
+    var onEpisodeDownload: ((Int) -> Unit)? = null
+    private val canDownload = data["canDownload"] == true
+    private val watched = episodes.filter { it.watched }.map { it.index }.toMutableSet()
+    fun isWatched(index: Int) = index in watched
+    fun setWatched(index: Int, value: Boolean) {
+        if (value) watched.add(index) else watched.remove(index)
+        adapter.notifyDataSetChanged()
+    }
     private val surface = (data["surface"] as? Number)?.toInt() ?: 0xFF202024.toInt()
     private val secondary = (data["secondary"] as? Number)?.toInt() ?: 0xFFBDBDC6.toInt()
     private val images = PhoneWatchImages(context,
@@ -90,6 +99,7 @@ internal class PhoneWatchPage(
                     typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
                     setPadding(dp(14), dp(10), dp(14), dp(10))
                     compoundDrawablePadding = dp(6)
+                    PhoneWatchMotion.press(this)
                     icon(actions[i])?.mutate()?.let { drawable ->
                         drawable.setBounds(0, 0, dp(18), dp(18))
                         setCompoundDrawablesRelative(drawable, null, null, null)
@@ -103,7 +113,7 @@ internal class PhoneWatchPage(
                 setImageDrawable(icon(if (grid) "list" else "grid"))
                 contentDescription = context.getString(if (grid) R.string.phone_player_watch_list else R.string.phone_player_watch_grid)
             }
-            adapter.notifyDataSetChanged()
+            PhoneWatchMotion.viewMode(list) { adapter.notifyDataSetChanged() }
         }
         button(R.id.watch_episode_more, "more") { more() }
         header.findViewById<ImageView>(R.id.watch_comments_icon).apply {
@@ -120,6 +130,7 @@ internal class PhoneWatchPage(
             background = shape(999, surface)
             setImageDrawable(icon(glyph))
             setOnClickListener { action() }
+            PhoneWatchMotion.press(this)
         }
     }
     fun row(index: Int) = episodes.getOrNull(index)
@@ -133,32 +144,44 @@ internal class PhoneWatchPage(
         if (changed) range = ordered().indexOfFirst { it.index == index }.coerceAtLeast(0) / 50
         rebuild()
     }
-    private fun rebuild() {
+    private fun rebuild(previousRange: Int? = null) {
         val ordered = ordered()
         range = range.coerceIn(0, ((ordered.size - 1).coerceAtLeast(0) / 50))
         shown = ordered.drop(range * 50).take(50)
         header.findViewById<TextView>(R.id.watch_episode_count).text = context.getString(R.string.phone_player_watch_count, episodes.size)
         val ranges = header.findViewById<LinearLayout>(R.id.watch_ranges)
+        val oldSeasonLabel = (ranges.getChildAt(0) as? TextView)?.text?.toString()
         ranges.removeAllViews()
         val seasons = episodes.map { it.season ?: 1 }.distinct().sorted()
-        fun pill(label: String, selected: Boolean, action: () -> Unit) {
+        fun pill(label: String, selected: Boolean, wasSelected: Boolean = selected, seasonLabel: Boolean = false, action: () -> Unit) {
             ranges.addView(TextView(context).apply {
                 text = label; textSize = 12f; gravity = Gravity.CENTER
+                if (seasonLabel && oldSeasonLabel != null && oldSeasonLabel != label) {
+                    text = oldSeasonLabel
+                    post { PhoneWatchMotion.text(this, label) }
+                }
                 setTextColor(if (selected) Color.WHITE else secondary)
                 setPadding(dp(12), 0, dp(12), 0)
-                background = shape(999, if (selected) accent else surface)
+                val fill = shape(999, if (wasSelected) accent else surface)
+                background = fill
+                if (previousRange != null && selected != wasSelected) {
+                    post { PhoneWatchMotion.color(this, fill, if (wasSelected) accent else surface, if (selected) accent else surface) }
+                }
+                PhoneWatchMotion.press(this)
                 isFocusable = true; setOnClickListener { action() }
             }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(32)).apply { marginEnd = dp(8) })
         }
         if (seasons.size > 1) pill(season?.let { context.getString(R.string.phone_player_watch_season, it) }
-            ?: context.getString(R.string.phone_player_watch_all_seasons), false) {
+            ?: context.getString(R.string.phone_player_watch_all_seasons), false, seasonLabel = true) {
             val choices = listOf(context.getString(R.string.phone_player_watch_all_seasons)) + seasons.map { context.getString(R.string.phone_player_watch_season, it) }
             AlertDialog.Builder(context, R.style.PhonePlayerDialog).setItems(choices.toTypedArray()) { _, which ->
                 season = if (which == 0) null else seasons[which - 1]; range = 0; rebuild()
-            }.show()
+            }.show().also { PhoneWatchMotion.enter(it) }
         }
         if (ordered.size > 50) for (i in 0..((ordered.size - 1) / 50)) {
-            pill("${i * 50 + 1}–${minOf((i + 1) * 50, ordered.size)}", i == range) { range = i; rebuild() }
+            pill("${i * 50 + 1}–${minOf((i + 1) * 50, ordered.size)}", i == range, i == (previousRange ?: range)) {
+                val old = range; range = i; rebuild(old)
+            }
         }
         header.findViewById<View>(R.id.watch_ranges_scroll).visibility = if (ranges.childCount > 0) View.VISIBLE else View.GONE
         adapter.notifyDataSetChanged()
@@ -196,7 +219,7 @@ internal class PhoneWatchPage(
                 range = target / 50
                 rebuild()
                 manager.scrollToPositionWithOffset(target % 50 + 1, dp(8))
-            }.setNegativeButton(android.R.string.cancel, null).show()
+            }.setNegativeButton(android.R.string.cancel, null).show().also { PhoneWatchMotion.enter(it) }
     }
     private fun open(ep: PhoneWatchEpisode) {
         if (ep.unavailable.isEmpty()) onEpisode(ep.index)
@@ -230,36 +253,65 @@ internal class PhoneWatchPage(
                 texts.addView(TextView(context).apply { tag = "heading"; textSize = 15f; maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END; typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL) })
                 texts.addView(TextView(context).apply { tag = "meta"; textSize = 13f; maxLines = 1; setTextColor(secondary) })
                 line.addView(texts, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+                line.addView(ImageButton(context).apply {
+                    tag = "download"; contentDescription = context.getString(R.string.phone_player_watch_download)
+                    foreground = context.getDrawable(R.drawable.phone_player_icon_ripple)
+                    background = null; setImageDrawable(icon("download")); setColorFilter(Color.WHITE)
+                    setPadding(dp(12), dp(12), dp(12), dp(12))
+                }, LinearLayout.LayoutParams(dp(48), dp(48)))
                 row.addView(line)
-                row.addView(TextView(context).apply { tag = "synopsis"; textSize = 15f; maxLines = 3; ellipsize = android.text.TextUtils.TruncateAt.END; setTextColor(secondary); setPadding(0, dp(6), 0, 0) })
+                row.addView(TextView(context).apply { tag = "synopsis"; textSize = 13f; typeface = Typeface.create("sans-serif", Typeface.ITALIC); setLineSpacing(0f, 1.4f); maxLines = 3; ellipsize = android.text.TextUtils.TruncateAt.END; setTextColor(secondary); setPadding(0, dp(6), 0, 0) })
             }
+            row.foreground = android.graphics.drawable.RippleDrawable(
+                android.content.res.ColorStateList.valueOf((accent and 0x00FFFFFF) or 0x24000000),
+                null, shape(10, Color.WHITE))
             return Holder(row)
         }
         override fun onBindViewHolder(holder: Holder, position: Int) {
             if (position == 0) return
             val ep = shown[position - 1]
             val root = holder.itemView
+            val sameRow = root.tag == ep.index
+            root.tag = ep.index
             root.alpha = if (ep.unavailable.isEmpty()) 1f else .55f
             root.contentDescription = ep.heading
             root.isFocusable = true
             root.setOnClickListener { open(ep) }
+            root.setOnLongClickListener {
+                val menu = onEpisodeMenu
+                if (menu == null) false else { menu(ep.index); true }
+            }
+            root.findViewWithTag<View>("download")?.apply {
+                visibility = if (canDownload && onEpisodeDownload != null && ep.unavailable.isEmpty()) View.VISIBLE else View.GONE
+                setOnClickListener { onEpisodeDownload?.invoke(ep.index) }
+            }
             if (grid) {
                 root.findViewWithTag<TextView>("number").apply {
                     text = ep.number?.toInt()?.toString() ?: (ep.index + 1).toString()
-                    setTextColor(if (ep.index == current) accent else Color.WHITE)
+                    PhoneWatchMotion.textColor(this, if (ep.index == current) accent else if (isWatched(ep.index)) secondary else Color.WHITE, sameRow)
                     background = shape(12, if (ep.index == current) (accent and 0x00FFFFFF) or 0x29000000 else surface).apply {
                         if (ep.index == this@PhoneWatchPage.current) setStroke(dp(1), accent)
                     }
                 }
             } else {
-                root.findViewWithTag<TextView>("heading").apply { text = ep.heading; setTextColor(if (ep.index == current) accent else Color.WHITE) }
+                root.findViewWithTag<TextView>("heading").apply {
+                    text = ep.heading
+                    PhoneWatchMotion.textColor(this, if (ep.index == current) accent else if (isWatched(ep.index)) secondary else Color.WHITE, sameRow)
+                }
                 root.findViewWithTag<TextView>("meta").apply { text = ep.meta; visibility = if (ep.meta.isEmpty()) View.GONE else View.VISIBLE }
                 root.findViewWithTag<TextView>("synopsis").apply { text = ep.synopsis; visibility = if (ep.synopsis.isEmpty()) View.GONE else View.VISIBLE }
-                root.findViewWithTag<View>("playing").visibility = if (ep.index == current) View.VISIBLE else View.GONE
+                root.findViewWithTag<ImageView>("playing").apply {
+                    setImageDrawable(icon(if (ep.index == current) "play" else "watched"))
+                    visibility = if (ep.index == current || isWatched(ep.index)) View.VISIBLE else View.GONE
+                }
                 images.load(root.findViewWithTag("thumbnail"), ep.thumb)
             }
         }
         override fun onViewRecycled(holder: Holder) {
+            holder.itemView.animate().cancel()
+            holder.itemView.scaleX = 1f; holder.itemView.scaleY = 1f
+            holder.itemView.findViewWithTag<TextView>("heading")?.let { (it.getTag(R.id.watch_color_motion) as? android.animation.ValueAnimator)?.cancel() }
+            holder.itemView.findViewWithTag<TextView>("number")?.let { (it.getTag(R.id.watch_color_motion) as? android.animation.ValueAnimator)?.cancel() }
             holder.itemView.findViewWithTag<ImageView>("thumbnail")?.let { images.clear(it) }
         }
     }

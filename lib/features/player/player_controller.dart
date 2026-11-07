@@ -2088,6 +2088,7 @@ class PlayerCubit extends Cubit<PlayerState> {
     int index, {
     bool fromRoom = false,
     bool resetSourceCooldowns = true,
+    VideoSource? sourceOverride,
   }) async {
     if (_isRoomViewer && !fromRoom) return;
     final gen = ++_gen;
@@ -2127,6 +2128,12 @@ class PlayerCubit extends Cubit<PlayerState> {
       sl<PlaybackResolver>().invalidateWinner(_episodeUrl(currentEpisode));
     }
     try {
+      if (sourceOverride != null) {
+        if (gen != _gen || isClosed) return;
+        initialSource = null;
+        await _openResolved([sourceOverride], gen);
+        return;
+      }
       final epUrl = _episodeUrl(currentEpisode);
       final downloaded = await _resolveDownloadedSources?.call(epUrl);
       if (gen != _gen || isClosed) return;

@@ -24,7 +24,7 @@ internal data class PhonePlayerControlLayout(
             "comments" to 0xf62f, "fullscreen" to 0xf7a6, "subtitles" to 0xf3fd,
             "miniBack" to 0xf570,
             "megaSkip" to 0xf0348,
-            "play" to 0xf00a0,
+            "play" to 0xf00a0, "watched" to 0xf635, "download" to 0xf05b,
             "pause" to 0xf0056,
             "previous" to 0xf0193,
             "next" to 0xf0192,

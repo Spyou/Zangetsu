@@ -12,6 +12,7 @@ import '../../core/ui/frosted_surface.dart';
 import '../detail/episode_filter.dart';
 import '../../l10n/l10n.dart';
 import 'watch_page_info.dart';
+import 'watch_page_motion.dart';
 
 /// Portrait watch page: the stable video surface on top, episode info below.
 ///
@@ -57,6 +58,10 @@ class PlayerWatchPage extends StatefulWidget {
     required this.onSubtitles,
     required this.onMore,
     required this.onOpenEpisode,
+    this.onSetWatched,
+    this.onPlayMirror,
+    this.downloadButton,
+    this.isEpisodeWatched,
     required this.onComments,
     required this.onAutoplayChanged,
   });
@@ -119,6 +124,10 @@ class PlayerWatchPage extends StatefulWidget {
   final VoidCallback onSubtitles;
   final VoidCallback onMore;
   final ValueChanged<int> onOpenEpisode;
+  final void Function(int, bool)? onSetWatched;
+  final ValueChanged<int>? onPlayMirror;
+  final Widget Function(WatchPageEpisode)? downloadButton;
+  final bool Function(int)? isEpisodeWatched;
   final VoidCallback onComments;
   final ValueChanged<bool> onAutoplayChanged;
 
@@ -127,6 +136,8 @@ class PlayerWatchPage extends StatefulWidget {
 }
 
 enum _WatchEpisodeAction { reverse, autoplay }
+
+enum _WatchRowAction { watched, mirror }
 
 class _PlayerWatchPageState extends State<PlayerWatchPage> {
   bool _controlsVisible = true;
@@ -723,89 +734,99 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
     // CustomScrollView + SliverList: a 1000-episode title only builds the
     // rows on screen instead of inflating every thumbnail up front (that
     // eager Column is what froze One Piece on entry).
-    return CustomScrollView(
-      controller: _scroll,
-      slivers: [
-        SliverToBoxAdapter(
-          child: Stack(
-            children: [
-              _ambientBackdrop(belowVideo: true),
-              Padding(
-                padding: const EdgeInsets.only(top: 14),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Text(
-                        widget.header.title,
-                        style: AppText.headline.copyWith(
-                          color: Colors.white,
-                          fontSize: 20,
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    if (widget.header.subtitle.isNotEmpty) ...[
-                      const SizedBox(height: 4),
+    return WatchPageChange(
+      value: _grid,
+      move: false,
+      child: CustomScrollView(
+        controller: _scroll,
+        slivers: [
+          SliverToBoxAdapter(
+            child: Stack(
+              children: [
+                _ambientBackdrop(belowVideo: true),
+                Padding(
+                  padding: const EdgeInsets.only(top: 14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: Text(
-                          widget.header.subtitle,
-                          style: AppText.caption.copyWith(
-                            color: AppColors.textSecondary,
+                        child: WatchPageChange(
+                          value: widget.header.title,
+                          child: Text(
+                            widget.header.title,
+                            style: AppText.headline.copyWith(
+                              color: Colors.white,
+                              fontSize: 20,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                       ),
-                    ],
-                    const SizedBox(height: 12),
-                    _actionRow(l10n),
-                    if (widget.header.description != null) ...[
+                      if (widget.header.subtitle.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: WatchPageChange(
+                            value: widget.header.subtitle,
+                            child: Text(
+                              widget.header.subtitle,
+                              style: AppText.caption.copyWith(
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 12),
+                      _actionRow(l10n),
+                      if (widget.header.description != null) ...[
+                        const SizedBox(height: 12),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: _descriptionCard(),
+                        ),
+                      ],
                       const SizedBox(height: 12),
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: _descriptionCard(),
+                        child: _commentsRow(l10n),
                       ),
+                      const SizedBox(height: 16),
                     ],
-                    const SizedBox(height: 12),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: _commentsRow(l10n),
-                    ),
-                    const SizedBox(height: 16),
-                  ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
-        if (widget.episodes.isNotEmpty)
-          SliverToBoxAdapter(child: _episodesHeader(l10n)),
-        if (_paged.isNotEmpty)
-          _grid
-              ? SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                  sliver: SliverGrid.builder(
-                    gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 3,
-                          mainAxisSpacing: 8,
-                          crossAxisSpacing: 8,
-                          childAspectRatio: 16 / 10,
-                        ),
-                    itemCount: _paged.length,
-                    itemBuilder: (context, i) => _episodeTile(_paged[i]),
+          if (widget.episodes.isNotEmpty)
+            SliverToBoxAdapter(child: _episodesHeader(l10n)),
+          if (_paged.isNotEmpty)
+            _grid
+                ? SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                    sliver: SliverGrid.builder(
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 3,
+                            mainAxisSpacing: 8,
+                            crossAxisSpacing: 8,
+                            childAspectRatio: 16 / 10,
+                          ),
+                      itemCount: _paged.length,
+                      itemBuilder: (context, i) => _episodeTile(_paged[i]),
+                    ),
+                  )
+                : SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                    sliver: SliverList.builder(
+                      itemCount: _paged.length,
+                      itemBuilder: (context, i) => _episodeRow(_paged[i]),
+                    ),
                   ),
-                )
-              : SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                  sliver: SliverList.builder(
-                    itemCount: _paged.length,
-                    itemBuilder: (context, i) => _episodeRow(_paged[i]),
-                  ),
-                ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -830,27 +851,29 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
   Widget _chip(IconData icon, String label, VoidCallback onTap) {
     return Padding(
       padding: const EdgeInsetsDirectional.only(end: 8),
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          decoration: BoxDecoration(
-            color: AppColors.surface2,
-            borderRadius: BorderRadius.circular(999),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, color: Colors.white, size: 18),
-              const SizedBox(width: 6),
-              Text(
-                label,
-                style: AppText.body.copyWith(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600,
+      child: WatchPagePress(
+        child: GestureDetector(
+          onTap: onTap,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: AppColors.surface2,
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, color: Colors.white, size: 18),
+                const SizedBox(width: 6),
+                Text(
+                  label,
+                  style: AppText.body.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -862,31 +885,41 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
     return FrostedSurface(
       blur: false,
       borderRadius: BorderRadius.circular(20),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              widget.header.description!,
-              style: AppText.body.copyWith(color: AppColors.textSecondary),
-              maxLines: _expanded ? null : 3,
-              overflow: _expanded ? null : TextOverflow.ellipsis,
-            ),
-            GestureDetector(
-              onTap: () => setState(() => _expanded = !_expanded),
-              child: Padding(
-                padding: const EdgeInsets.only(top: 6),
+      child: AnimatedSize(
+        duration: watchPageMotionEnabled(context)
+            ? const Duration(milliseconds: 220)
+            : Duration.zero,
+        curve: Curves.easeOutCubic,
+        alignment: Alignment.topCenter,
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              WatchPageChange(
+                value: widget.header.description,
                 child: Text(
-                  _expanded ? l10n.watchSeeLess : l10n.watchSeeMore,
-                  style: AppText.body.copyWith(
-                    color: AppColors.accent,
-                    fontWeight: FontWeight.w700,
+                  widget.header.description!,
+                  style: AppText.body.copyWith(color: AppColors.textSecondary),
+                  maxLines: _expanded ? null : 3,
+                  overflow: _expanded ? null : TextOverflow.ellipsis,
+                ),
+              ),
+              GestureDetector(
+                onTap: () => setState(() => _expanded = !_expanded),
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text(
+                    _expanded ? l10n.watchSeeLess : l10n.watchSeeMore,
+                    style: AppText.body.copyWith(
+                      color: AppColors.accent,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -994,6 +1027,9 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
                           itemBuilder: (context, i) {
                             final sel = i == _range.clamp(0, _rangeCount - 1);
                             return Material(
+                              animationDuration: watchPageMotionEnabled(context)
+                                  ? const Duration(milliseconds: 180)
+                                  : Duration.zero,
                               color: sel
                                   ? AppColors.accent
                                   : AppColors.surface2,
@@ -1139,7 +1175,10 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(label, style: AppText.headline),
+              WatchPageChange(
+                value: label,
+                child: Text(label, style: AppText.headline),
+              ),
               const SizedBox(width: 6),
               const Icon(
                 Icons.keyboard_arrow_down_rounded,
@@ -1163,38 +1202,48 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (ctx) => SafeArea(
-        top: false,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 20, 24, 12),
-              child: Text(l10n.season, style: AppText.title),
-            ),
-            const Divider(height: 1, color: AppColors.hairline),
-            Flexible(
-              child: ConstrainedBox(
-                constraints: BoxConstraints(
-                  maxHeight: MediaQuery.of(ctx).size.height * 0.6,
-                ),
-                child: ListView(
-                  shrinkWrap: true,
-                  padding: const EdgeInsets.only(bottom: 12),
-                  children: [
-                    for (final s in seasons)
-                      _seasonSheetRow(
-                        ctx,
-                        label: '${l10n.season} $s',
-                        selected: widget.selectedSeason == s,
-                        onTap: () => Navigator.pop(ctx, s),
-                      ),
-                  ],
+      sheetAnimationStyle: watchPageMotionEnabled(context)
+          ? const AnimationStyle(
+              duration: Duration(milliseconds: 200),
+              reverseDuration: Duration(milliseconds: 180),
+            )
+          : (MediaQuery.disableAnimationsOf(context)
+                ? AnimationStyle.noAnimation
+                : null),
+      builder: (ctx) => WatchPageMenuEntrance(
+        child: SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 20, 24, 12),
+                child: Text(l10n.season, style: AppText.title),
+              ),
+              const Divider(height: 1, color: AppColors.hairline),
+              Flexible(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxHeight: MediaQuery.of(ctx).size.height * 0.6,
+                  ),
+                  child: ListView(
+                    shrinkWrap: true,
+                    padding: const EdgeInsets.only(bottom: 12),
+                    children: [
+                      for (final s in seasons)
+                        _seasonSheetRow(
+                          ctx,
+                          label: '${l10n.season} $s',
+                          selected: widget.selectedSeason == s,
+                          onTap: () => Navigator.pop(ctx, s),
+                        ),
+                    ],
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -1267,6 +1316,59 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
     _revealEp(widget.episodes[target].index, force: true);
   }
 
+  Future<void> _episodeMenu(WatchPageEpisode ep) async {
+    final watched = widget.isEpisodeWatched?.call(ep.index) ?? ep.watched;
+    final action = await showModalBottomSheet<_WatchRowAction>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => WatchPageMenuEntrance(
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                child: Text(
+                  ep.heading,
+                  style: AppText.headline,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              if (widget.onSetWatched != null)
+                ListTile(
+                  leading: Icon(
+                    watched
+                        ? Icons.remove_done_rounded
+                        : Icons.check_circle_outline_rounded,
+                  ),
+                  title: Text(
+                    watched ? 'Mark as unwatched' : 'Mark as watched',
+                  ),
+                  onTap: () => Navigator.pop(ctx, _WatchRowAction.watched),
+                ),
+              if (widget.onPlayMirror != null &&
+                  (ep.unavailableReason ?? '').trim().isEmpty)
+                ListTile(
+                  leading: const Icon(Icons.swap_horiz_rounded),
+                  title: Text(context.l10n.playMirror),
+                  onTap: () => Navigator.pop(ctx, _WatchRowAction.mirror),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (!mounted) return;
+    if (action == _WatchRowAction.watched) {
+      widget.onSetWatched?.call(ep.index, !watched);
+    }
+    if (action == _WatchRowAction.mirror) widget.onPlayMirror?.call(ep.index);
+  }
+
   Widget _episodeRow(WatchPageEpisode ep) {
     final reason = (ep.unavailableReason ?? '').trim();
     final dead = reason.isNotEmpty;
@@ -1299,6 +1401,18 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
                               errorWidget: (_, _, _) =>
                                   Container(color: AppColors.surface2),
                             ),
+                      if (ep.watched && !ep.current)
+                        const Align(
+                          alignment: Alignment.bottomRight,
+                          child: Padding(
+                            padding: EdgeInsets.all(4),
+                            child: Icon(
+                              Icons.check_circle_rounded,
+                              color: Colors.white,
+                              size: 20,
+                            ),
+                          ),
+                        ),
                       if (ep.current)
                         const Center(
                           child: Icon(
@@ -1317,18 +1431,25 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(
-                      ep.heading,
+                    AnimatedDefaultTextStyle(
+                      duration: watchPageMotionEnabled(context)
+                          ? const Duration(milliseconds: 180)
+                          : Duration.zero,
                       style: AppText.body.copyWith(
                         color: dead
                             ? AppColors.textTertiary
                             : ep.current
                             ? AppColors.accent
+                            : ep.watched
+                            ? AppColors.textSecondary
                             : Colors.white,
                         fontWeight: FontWeight.w600,
                       ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
+                      child: Text(
+                        ep.heading,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
                     if (ep.meta.isNotEmpty)
                       Padding(
@@ -1345,6 +1466,10 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
                   ],
                 ),
               ),
+              if (!dead && widget.downloadButton != null) ...[
+                const SizedBox(width: 8),
+                widget.downloadButton!(ep),
+              ],
             ],
           ),
           if (ep.synopsis.isNotEmpty && !dead)
@@ -1352,7 +1477,11 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
               padding: const EdgeInsets.only(top: 6),
               child: Text(
                 ep.synopsis,
-                style: AppText.body.copyWith(color: AppColors.textSecondary),
+                style: AppText.caption.copyWith(
+                  color: AppColors.textSecondary,
+                  fontStyle: FontStyle.italic,
+                  height: 1.4,
+                ),
                 maxLines: 3,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -1360,24 +1489,34 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
         ],
       ),
     );
-    if (dead) return Opacity(opacity: 0.55, child: row);
-    return GestureDetector(
-      key: _rowKey(ep.index),
-      onTap: () => widget.onOpenEpisode(ep.index),
-      behavior: HitTestBehavior.opaque,
-      child: row,
+    final interactive = Material(
+      type: MaterialType.transparency,
+      child: InkWell(
+        key: _rowKey(ep.index),
+        onTap: dead ? null : () => widget.onOpenEpisode(ep.index),
+        onLongPress: widget.onSetWatched == null && widget.onPlayMirror == null
+            ? null
+            : () => _episodeMenu(ep),
+        splashColor: AppColors.accentSoft,
+        highlightColor: AppColors.surface,
+        child: row,
+      ),
     );
+    return dead ? Opacity(opacity: .55, child: interactive) : interactive;
   }
 
-  /// Numbered grid tile for the grid view. Same identity contract as rows:
-  /// tap opens the real episode index.
   Widget _episodeTile(WatchPageEpisode ep) {
     final reason = (ep.unavailableReason ?? '').trim();
     final dead = reason.isNotEmpty;
     final label = ep.number != null
         ? '${ep.number!.toInt()}'
         : '${ep.index + 1}';
-    final tile = Container(
+    final tile = AnimatedContainer(
+      key: _rowKey(ep.index),
+      duration: watchPageMotionEnabled(context)
+          ? const Duration(milliseconds: 180)
+          : Duration.zero,
+      curve: Curves.easeOutCubic,
       decoration: BoxDecoration(
         color: ep.current
             ? AppColors.accent.withValues(alpha: 0.16)
@@ -1386,24 +1525,35 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
         border: ep.current ? Border.all(color: AppColors.accent) : null,
       ),
       alignment: Alignment.center,
-      child: Text(
-        label,
-        style: AppText.headline.copyWith(
-          color: dead
-              ? AppColors.textTertiary
-              : ep.current
-              ? AppColors.accent
-              : Colors.white,
+      child: Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          splashColor: AppColors.accentSoft,
+          highlightColor: AppColors.surface,
+          onTap: dead ? null : () => widget.onOpenEpisode(ep.index),
+          onLongPress:
+              widget.onSetWatched == null && widget.onPlayMirror == null
+              ? null
+              : () => _episodeMenu(ep),
+          child: Center(
+            child: Text(
+              label,
+              style: AppText.headline.copyWith(
+                color: dead
+                    ? AppColors.textTertiary
+                    : ep.current
+                    ? AppColors.accent
+                    : ep.watched
+                    ? AppColors.textSecondary
+                    : Colors.white,
+              ),
+            ),
+          ),
         ),
       ),
     );
-    if (dead) return Opacity(opacity: 0.55, child: tile);
-    return GestureDetector(
-      key: _rowKey(ep.index),
-      onTap: () => widget.onOpenEpisode(ep.index),
-      behavior: HitTestBehavior.opaque,
-      child: tile,
-    );
+    return dead ? Opacity(opacity: .55, child: tile) : tile;
   }
 }
 

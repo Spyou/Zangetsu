@@ -77,4 +77,17 @@
     <string name="phone_player_watch_season">Season %1$d</string>
     <string name="phone_player_watch_all_seasons">All seasons</string>
     <string name="phone_player_watch_fullscreen">Fullscreen</string>
+    <string name="phone_player_watch_mark_watched">Mark as watched</string>
+    <string name="phone_player_watch_mark_unwatched">Mark as unwatched</string>
+    <string name="phone_player_watch_play_mirror">Play mirror</string>
+    <string name="phone_player_watch_loading_mirrors">Loading mirrors…</string>
+    <string name="phone_player_watch_update_failed">Could not update watched status</string>
+    <string name="phone_player_watch_download">Download episode</string>
+    <string name="phone_player_watch_download_choose">Download · choose server</string>
+    <string name="phone_player_watch_download_empty">No download sources found</string>
+    <string name="phone_player_watch_download_failed">Couldn’t load download options</string>
+    <string name="phone_player_watch_download_added">Added to downloads</string>
+    <string name="phone_player_watch_download_pause">Pause download</string>
+    <string name="phone_player_watch_download_resume">Resume download</string>
+    <string name="phone_player_watch_download_cancel">Cancel download</string>
 </resources>

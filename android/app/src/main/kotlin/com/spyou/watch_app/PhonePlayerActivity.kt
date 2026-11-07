@@ -1088,7 +1088,7 @@ class PhonePlayerActivity : Activity() {
         val desc = watchPanel?.row(currentIndex)?.description?.ifBlank { null } ?: pendingDesc?.trim().orEmpty()
         info.findViewById<TextView>(R.id.watch_description)?.apply {
             visibility = if (desc.isEmpty()) View.GONE else View.VISIBLE
-            text = desc
+            PhoneWatchMotion.text(this, desc)
         }
         info.findViewById<TextView>(R.id.watch_see_more)?.apply {
             visibility = if (desc.isEmpty()) View.GONE else View.VISIBLE
@@ -1116,6 +1116,8 @@ class PhonePlayerActivity : Activity() {
                 if (index != currentIndex) loadEpisode(index)
             }
         watchPanel = panel
+        panel.onEpisodeMenu = { showWatchEpisodeMenu(it) }
+        panel.onEpisodeDownload = { showWatchDownload(it) }
         val header = panel.header
         header.findViewById<View>(R.id.watch_action_server)?.setOnClickListener {
             bumpControls(); showSourceMenu()
@@ -1135,12 +1137,14 @@ class PhonePlayerActivity : Activity() {
         val desc = header.findViewById<TextView>(R.id.watch_description)
         val seeMore = header.findViewById<TextView>(R.id.watch_see_more)
         val toggle: () -> Unit = {
+            PhoneWatchMotion.resize(header.findViewById<ViewGroup>(R.id.watch_description_card)) {
             descExpanded = !descExpanded
             desc?.maxLines = if (descExpanded) Int.MAX_VALUE else 3
             seeMore?.text = getString(
                 if (descExpanded) R.string.phone_player_watch_see_less
                 else R.string.phone_player_watch_see_more,
             )
+            }
         }
         desc?.setOnClickListener { toggle() }
         seeMore?.setOnClickListener { toggle() }
@@ -1163,13 +1167,103 @@ class PhonePlayerActivity : Activity() {
     private fun refreshWatchInfo() {
         val panel = watchPanel ?: return
         val row = panel.row(currentIndex)
-        panel.header.findViewById<TextView>(R.id.watch_title).text = row?.title?.ifBlank { null } ?: titleText.text
-        panel.header.findViewById<TextView>(R.id.watch_episode_label).text = row?.subtitle?.ifBlank { null } ?: episodeText.text
+        PhoneWatchMotion.text(panel.header.findViewById(R.id.watch_title), row?.title?.ifBlank { null } ?: titleText.text)
+        PhoneWatchMotion.text(panel.header.findViewById(R.id.watch_episode_label), row?.subtitle?.ifBlank { null } ?: episodeText.text)
         val description = row?.description?.ifBlank { null } ?: pendingDesc.orEmpty()
         panel.header.findViewById<View>(R.id.watch_description_card).visibility = if (description.isEmpty()) View.GONE else View.VISIBLE
-        panel.header.findViewById<TextView>(R.id.watch_description).text = description
+        PhoneWatchMotion.text(panel.header.findViewById(R.id.watch_description), description)
         panel.update(currentIndex)
     }
+
+    private var watchDownloadSheet: PhoneWatchDownloadSheet? = null
+
+    private fun showWatchDownload(index: Int) {
+        if (!isPortraitCard() || index !in episodeLabels.indices) return
+        val channel = PhonePlayerBridge.channel ?: return
+        watchDownloadSheet?.dismiss()
+        watchDownloadSheet = PhoneWatchDownloadSheet(this, channel, sessionId, index,
+            watchPanel?.row(index)?.heading ?: episodeLabels[index],
+            intent.getIntExtra(PhonePlayerIntent.EXTRA_ACCENT, getColor(R.color.phone_player_accent)),
+            PhonePlayerBridge.watchDataFor(sessionId), fullscreenIcon("download")).also { it.show() }
+    }
+
+    private fun showWatchEpisodeMenu(index: Int) {
+        if (!isPortraitCard() || index !in episodeLabels.indices) return
+        val channel = PhonePlayerBridge.channel ?: return
+        val session = sessionId
+        channel.invokeMethod("watchEpisodeState", mapOf("sessionId" to session, "index" to index), object : io.flutter.plugin.common.MethodChannel.Result {
+            override fun success(result: Any?) {
+                if (!uiAlive() || session != sessionId || !isPortraitCard()) return
+                val state = result as? Map<*, *> ?: return
+                val watched = state["watched"] == true
+                watchPanel?.setWatched(index, watched)
+                val canPlay = watchPanel?.row(index)?.unavailable.isNullOrEmpty()
+                val labels = mutableListOf(getString(if (watched) R.string.phone_player_watch_mark_unwatched else R.string.phone_player_watch_mark_watched))
+                if (canPlay) labels.add(getString(R.string.phone_player_watch_play_mirror))
+                android.app.AlertDialog.Builder(this@PhonePlayerActivity, R.style.PhonePlayerDialog)
+                    .setTitle(watchPanel?.row(index)?.heading ?: episodeLabels[index])
+                    .setItems(labels.toTypedArray()) { _, action ->
+                        if (action == 0) setWatchEpisodeWatched(index, !watched) else chooseWatchEpisodeMirror(index)
+                    }.showForPlayer()
+            }
+            override fun error(code: String, message: String?, details: Any?) { if (uiAlive()) toast(getString(R.string.phone_player_watch_update_failed)) }
+            override fun notImplemented() {}
+        })
+    }
+
+    private fun setWatchEpisodeWatched(index: Int, watched: Boolean) {
+        PhonePlayerBridge.channel?.invokeMethod("setWatchEpisodeWatched", mapOf("sessionId" to sessionId, "index" to index, "watched" to watched), object : io.flutter.plugin.common.MethodChannel.Result {
+            override fun success(result: Any?) {
+                if (!uiAlive()) return
+                if (result == true) watchPanel?.setWatched(index, watched)
+                else toast(getString(R.string.phone_player_watch_update_failed))
+            }
+            override fun error(code: String, message: String?, details: Any?) { if (uiAlive()) toast(getString(R.string.phone_player_watch_update_failed)) }
+            override fun notImplemented() {}
+        })
+    }
+
+    private fun chooseWatchEpisodeMirror(index: Int) {
+        val channel = PhonePlayerBridge.channel ?: return
+        val generation = mediaGeneration
+        val waiting = android.app.AlertDialog.Builder(this, R.style.PhonePlayerDialog)
+            .setMessage(R.string.phone_player_watch_loading_mirrors).create()
+        var canceled = false
+        waiting.setOnCancelListener { canceled = true }
+        waiting.show()
+        PhoneWatchMotion.enter(waiting)
+        channel.invokeMethod("watchEpisodeMirrors", mapOf("sessionId" to sessionId, "index" to index), object : io.flutter.plugin.common.MethodChannel.Result {
+            override fun success(result: Any?) {
+                waiting.dismiss()
+                if (canceled || !uiAlive() || generation != mediaGeneration || !isPortraitCard()) return
+                val choices = mapList(result)
+                if (choices.isEmpty()) { toast(getString(R.string.phone_player_error_load)); return }
+                val labels = choices.mapIndexed { i, source -> (source["label"] as? String).orEmpty().ifBlank { "Server ${i + 1}" } }
+                android.app.AlertDialog.Builder(this@PhonePlayerActivity, R.style.PhonePlayerDialog)
+                    .setTitle(R.string.phone_player_watch_play_mirror)
+                    .setItems(labels.toTypedArray()) { _, which ->
+                        if (!uiAlive() || generation != mediaGeneration) return@setItems
+                        val selected = choices[which].toMutableMap()
+                        if (index == loadedEpisodeIndex && playbackStarted) selected["positionMs"] = player?.currentPosition ?: 0L
+                        sendProgress()
+                        player?.pause()
+                        if (index != loadedEpisodeIndex) resetZoom()
+                        mirrors = choices
+                        val nextGeneration = ++mediaGeneration
+                        handler.removeCallbacks(resolveTimeout)
+                        attemptedUrls.clear()
+                        switching = true
+                        applyResolved(index, selected, nextGeneration)
+                        refreshWatchInfo()
+                    }.showForPlayer()
+            }
+            override fun error(code: String, message: String?, details: Any?) { waiting.dismiss(); if (!canceled && uiAlive()) toast(getString(R.string.phone_player_error_load)) }
+            override fun notImplemented() { waiting.dismiss() }
+        })
+    }
+
+    private fun android.app.AlertDialog.Builder.showForPlayer(): android.app.AlertDialog =
+        show().also { if (isPortraitCard()) PhoneWatchMotion.enter(it) }
 
     private fun showComingSoon() {
         handler.removeCallbacks(hideRunnable)
@@ -1178,7 +1272,7 @@ class PhonePlayerActivity : Activity() {
             .setMessage(getString(R.string.phone_player_watch_coming_soon))
             .setPositiveButton(android.R.string.ok, null)
             .setOnDismissListener { bumpControls() }
-            .show()
+            .showForPlayer()
     }
 
     private fun loadStream(
@@ -1224,7 +1318,7 @@ class PhonePlayerActivity : Activity() {
                 if (which != currentIndex) loadEpisode(which)
             }
             .setOnDismissListener { bumpControls() }
-            .show()
+            .showForPlayer()
     }
 
     /** Ask Dart for [index]'s stream, then play it. */
@@ -1355,7 +1449,7 @@ class PhonePlayerActivity : Activity() {
                             if (which != selected) playMirror(mirrors[which])
                         }
                         .setOnDismissListener { bumpControls() }
-                        .show()
+                        .showForPlayer()
                 }
 
                 override fun error(code: String, msg: String?, details: Any?) {
@@ -1550,7 +1644,7 @@ class PhonePlayerActivity : Activity() {
                 selectTextTrack(picks[which])
             }
             .setOnDismissListener { bumpControls() }
-            .show()
+            .showForPlayer()
     }
 
     private fun showSpeedMenu() {
@@ -1567,7 +1661,7 @@ class PhonePlayerActivity : Activity() {
                 bumpControls()
             }
             .setOnDismissListener { bumpControls() }
-            .show()
+            .showForPlayer()
     }
 
     private fun selectAudioTrack(pick: TrackSelectionOverride?) {
@@ -1654,7 +1748,7 @@ class PhonePlayerActivity : Activity() {
                 }
             }
             .setOnDismissListener { bumpControls() }
-            .show()
+            .showForPlayer()
     }
 
     /** Switch Sub/Dub in place: Dart re-resolves the SAME episode through the
@@ -1733,7 +1827,7 @@ class PhonePlayerActivity : Activity() {
                 bumpControls()
             }
             .setOnDismissListener { bumpControls() }
-            .show()
+            .showForPlayer()
     }
 
     private fun toggleRotation() {
@@ -1772,7 +1866,7 @@ class PhonePlayerActivity : Activity() {
                 bumpControls()
             }
             .setOnDismissListener { bumpControls() }
-            .show()
+            .showForPlayer()
     }
 
     private fun pickCast() {
@@ -1931,6 +2025,7 @@ class PhonePlayerActivity : Activity() {
         }
         moreDialog = dialog
         dialog.show()
+        if (isPortraitCard()) PhoneWatchMotion.enter(dialog)
         dialog.window?.apply {
             setBackgroundDrawableResource(android.R.color.transparent)
             addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
@@ -1971,7 +2066,7 @@ class PhonePlayerActivity : Activity() {
             .setMessage(message)
             .setPositiveButton(android.R.string.ok, null)
             .setOnDismissListener { bumpControls() }
-            .show()
+            .showForPlayer()
     }
 
     private fun updateKeepScreenOn() {
@@ -2630,6 +2725,8 @@ class PhonePlayerActivity : Activity() {
     }
 
     override fun onDestroy() {
+        watchDownloadSheet?.dismiss()
+        watchDownloadSheet = null
         orientationObserver?.disable()
         orientationObserver = null
         watchPanel?.close()

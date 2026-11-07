@@ -18,6 +18,32 @@ import org.robolectric.annotation.Config
 @Config(manifest = Config.NONE, sdk = [34], qualifiers = "port")
 class PhoneWatchPageTest {
     @Suppress("UNCHECKED_CAST")
+    @Test fun `download icon opens only its episode and synopsis matches detail typography`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val list = RecyclerView(context)
+        val opened = mutableListOf<Int>()
+        val downloads = mutableListOf<Int>()
+        val page = PhoneWatchPage(list, mapOf("canDownload" to true), Array(100) { "Episode ${it + 1}" },
+            android.graphics.Color.RED, { null }, { opened.add(it) })
+        page.onEpisodeDownload = { downloads.add(it) }
+        try {
+            page.update(52)
+            val adapter = list.adapter as RecyclerView.Adapter<RecyclerView.ViewHolder>
+            val holder = adapter.createViewHolder(list, adapter.getItemViewType(1))
+            adapter.bindViewHolder(holder, 1)
+            val button = holder.itemView.findViewWithTag<View>("download")
+            assertEquals(View.VISIBLE, button.visibility)
+            button.performClick()
+            assertEquals(listOf(50), downloads)
+            assertTrue(opened.isEmpty())
+            assertEquals(android.graphics.Typeface.ITALIC, org.robolectric.Shadows.shadowOf(holder.itemView.findViewWithTag<android.widget.TextView>("synopsis").typeface).fontDescription.style)
+            page.onEpisodeDownload = null
+            adapter.bindViewHolder(holder, 1)
+            assertEquals(View.GONE, button.visibility)
+        } finally { page.close() }
+    }
+
+    @Suppress("UNCHECKED_CAST")
     @Test fun `long lists build one range and taps keep the original index in list and grid`() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val list = RecyclerView(context)
@@ -38,6 +64,35 @@ class PhoneWatchPageTest {
             assertEquals(2, adapter.getItemViewType(1))
             tapFirst()
             assertEquals(listOf(50, 50), opened)
+        } finally { page.close() }
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    @Test fun `long press opens actions without playing and uses highlight instead of scale`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val list = RecyclerView(context)
+        val opened = mutableListOf<Int>()
+        val menus = mutableListOf<Int>()
+        val page = PhoneWatchPage(list, emptyMap(), Array(100) { "Episode ${it + 1}" },
+            android.graphics.Color.RED, { null }, { opened.add(it) })
+        page.onEpisodeMenu = { menus.add(it) }
+        try {
+            page.update(52)
+            val adapter = list.adapter as RecyclerView.Adapter<RecyclerView.ViewHolder>
+            repeat(2) {
+                val holder = adapter.createViewHolder(list, adapter.getItemViewType(1))
+                adapter.bindViewHolder(holder, 1)
+                assertTrue(holder.itemView.performLongClick())
+                assertTrue(opened.isEmpty())
+                assertTrue(holder.itemView.foreground is android.graphics.drawable.RippleDrawable)
+                assertEquals(1f, holder.itemView.scaleX)
+                page.header.findViewById<View>(R.id.watch_grid).performClick()
+            }
+            assertEquals(listOf(50, 50), menus)
+            page.setWatched(50, true)
+            assertTrue(page.isWatched(50))
+            page.setWatched(50, false)
+            assertFalse(page.isWatched(50))
         } finally { page.close() }
     }
 

@@ -60,6 +60,23 @@ VideoSource _src({
 );
 
 void main() {
+  test('watch actions reject stale sessions and invalid episode indices', () {
+    int? index(Map<String, dynamic>? args, {bool open = true}) =>
+        phoneWatchActionIndex(
+          args,
+          sessionId: 7,
+          episodeCount: 3,
+          playerOpen: open,
+        );
+    expect(index({'sessionId': 7, 'index': 2}), 2);
+    expect(index({'sessionId': 6, 'index': 2}), isNull);
+    expect(index({'sessionId': 7, 'index': 2}, open: false), isNull);
+    for (final value in [-1, 3, 1.5, '1', null]) {
+      expect(index({'sessionId': 7, 'index': value}), isNull);
+    }
+    expect(index(null), isNull);
+  });
+
   group('phoneMimeFor', () {
     test('an HLS container is hinted even when the url has no extension', () {
       // Tokenised urls carry no .m3u8, so without the hint ExoPlayer builds a

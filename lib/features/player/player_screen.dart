@@ -24,6 +24,10 @@ import '../../core/tracker/tracker_hub.dart';
 import '../../core/playback/external_player.dart';
 import '../../core/logging/app_logger.dart';
 import 'phone_playback_launch.dart';
+import '../../core/download/download_manager.dart';
+import '../../core/download/download_record.dart';
+import '../downloads/episode_download_icon.dart';
+import '../downloads/episode_download_source_sheet.dart';
 import '../../core/playback/playback_prefs.dart';
 import 'subtitle_style.dart';
 import 'subtitle_font_service.dart';
@@ -33,6 +37,9 @@ import '../../core/models/episode.dart';
 import '../../core/models/episode_title.dart';
 import '../../core/models/video_source.dart';
 import '../../core/playback/resume_store.dart';
+import '../../core/playback/tv_track_helpers.dart' show tvEpisodeUrl;
+import '../../core/ui/episode_player_sheet.dart' show showMirrorSheet;
+import '../../core/ui/app_toast.dart';
 import '../../core/playback/skip_service.dart';
 import '../../core/playback/source_selection.dart';
 import '../../core/playback/subtitle_language.dart';
@@ -56,6 +63,7 @@ import '../../core/tv/tv_focusable.dart';
 import '../settings/settings_screen.dart';
 import 'player_controller.dart';
 import 'player_watch_page.dart';
+import 'watch_page_motion.dart';
 import 'watch_page_info.dart';
 import 'player_controls_config.dart';
 import 'player_tv_controls.dart';
@@ -195,6 +203,7 @@ class PlayerScreen extends StatefulWidget {
     this.cover,
     this.coverHeaders,
     this.showUrl,
+    this.downloadShowId,
     this.category,
     this.malId,
     this.scrobbleTitle,
@@ -219,6 +228,7 @@ class PlayerScreen extends StatefulWidget {
   /// reading [PlaybackPrefs.externalPlayerPackage].
   final String? playerOverride;
 
+  final String? downloadShowId;
   final String sourceId;
   final ResumeStore resume;
   final Future<List<VideoSource>> Function(String episodeUrl) resolveSources;
@@ -1088,6 +1098,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
         resumePosition: widget.resumePosition.inMilliseconds,
         peek: widget.peek,
         showUrl: widget.showUrl,
+        downloadShowId: widget.downloadShowId,
+        allowDownloads: !widget.localOnly,
         showTitle: widget.showTitle,
         showDescription: widget.showDescription,
         cover: widget.cover,
@@ -2551,6 +2563,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   void _openWatchMorePanel() {
     _ControlsOverlay.showPlayerMorePanel(
       context: context,
+      animatePortraitEntrance: true,
       onInteract: _bumpControls,
       decoderLabel: _shortDecoder(_c.decoderMode),
       enhanceActive: sl<PlaybackPrefs>().videoShaderStyle != 'off',
@@ -2568,6 +2581,223 @@ class _PlayerScreenState extends State<PlayerScreen> {
   /// Rebuilt from cubit state, so episode changes refresh the header and
   /// Up-next — but position ticks never reach here (they stay inside the
   /// seek row's own StreamBuilders).
+  bool _watchEpisodeWatched(int index) =>
+      index >= 0 &&
+      index < _c.episodes.length &&
+      (widget.resume
+              .get(
+                widget.sourceId,
+                widget.showUrl ?? widget.sourceId,
+                _c.episodes[index].id,
+              )
+              ?.finished ??
+          false);
+
+  Future<void> _setWatchEpisodeWatched(int index, bool watched) async {
+    if (index < 0 || index >= _c.episodes.length) return;
+    final ep = _c.episodes[index];
+    try {
+      await widget.resume.setWatched(
+        widget.sourceId,
+        widget.showUrl ?? widget.sourceId,
+        ep.id,
+        watched: watched,
+      );
+      if (!mounted) return;
+      setState(() {});
+      showAppToast(
+        context,
+        watched ? context.l10n.markedAsWatched : context.l10n.markedUnwatched,
+      );
+      if (watched) {
+        unawaited(
+          phoneScrobbleOnLaunch(
+            episode: ep,
+            episodes: _c.episodes,
+            malId: widget.malId,
+            scrobbleTitle: widget.scrobbleTitle ?? widget.showTitle,
+            tmdbId: widget.tmdbId,
+            tmdbIsTv: widget.tmdbIsTv,
+            imdbId: widget.imdbId,
+            auto: false,
+          ),
+        );
+      }
+    } catch (_) {
+      if (mounted) showAppToast(context, 'Could not update watched status');
+    }
+  }
+
+  Future<void> _playWatchEpisodeMirror(int index) async {
+    if (index < 0 || index >= _c.episodes.length || _c.isClosed) return;
+    final ep = _c.episodes[index];
+    final playingIndex = _c.state.currentIndex;
+    final url = _c.categories.length > 1
+        ? tvEpisodeUrl(ep.url, _c.activeCategory)
+        : ep.url;
+    final navigator = Navigator.of(context, rootNavigator: true);
+    final loading = DialogRoute<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+    var done = false;
+    var canceled = false;
+    unawaited(
+      navigator.push(loading).then((_) {
+        if (!done) canceled = true;
+      }),
+    );
+    List<VideoSource> sources;
+    try {
+      sources = sl.isRegistered<CatalogueRepository>()
+          ? await sl<CatalogueRepository>().sources(
+              url,
+              sourceId: widget.sourceId,
+              fast: false,
+            )
+          : await widget.resolveSources(url);
+    } catch (_) {
+      sources = const [];
+    } finally {
+      if (!loading.isActive) canceled = true;
+      done = true;
+      if (loading.isActive) navigator.removeRoute(loading);
+    }
+    if (!mounted ||
+        canceled ||
+        _c.isClosed ||
+        _c.state.currentIndex != playingIndex) {
+      return;
+    }
+    if (sources.isEmpty) {
+      showAppToast(context, context.l10n.noSourcesFoundForThisEpisode);
+      return;
+    }
+    final picked = await showMirrorSheet(
+      context,
+      episodeLabel: ep.title,
+      sources: sources,
+    );
+    if (picked == null ||
+        !mounted ||
+        _c.isClosed ||
+        _c.state.currentIndex != playingIndex) {
+      return;
+    }
+    if (index == _c.state.currentIndex) {
+      await _c.switchSource(picked);
+    } else {
+      setState(() => _watchSeason = seasonOf(ep));
+      await _c.openEpisode(index, sourceOverride: picked);
+    }
+  }
+
+  String? _resolvedWatchDownloadId;
+  bool _watchDownloadPending = false;
+
+  Future<void> _downloadWatchEpisode(int index) async {
+    if (_watchDownloadPending ||
+        index < 0 ||
+        index >= _c.episodes.length ||
+        widget.localOnly ||
+        (widget.showUrl?.isEmpty ?? true)) {
+      return;
+    }
+    _watchDownloadPending = true;
+    try {
+      final manager = sl<DownloadManager>();
+      final episode = _c.episodes[index];
+      final category = _c.activeCategory;
+      final episodeId = episode.id;
+      final downloadShowId = await resolveEpisodeDownloadShowId(
+        sourceId: widget.sourceId,
+        showUrl: widget.showUrl!,
+        knownId: widget.downloadShowId ?? _resolvedWatchDownloadId,
+        downloads: manager.all,
+        loadShowId: () async => (await sl<CatalogueRepository>().detail(
+          widget.showUrl!,
+          sourceId: widget.sourceId,
+        )).id,
+      );
+      if (!mounted) return;
+      setState(() => _resolvedWatchDownloadId = downloadShowId);
+      final record = manager.recordFor(
+        widget.sourceId,
+        downloadShowId,
+        episodeId,
+      );
+      if (record != null &&
+          {
+            DownloadStatus.downloading,
+            DownloadStatus.paused,
+            DownloadStatus.queued,
+            DownloadStatus.resolving,
+          }.contains(record.status)) {
+        EpisodeDownloadIcon.showDownloadMenu(context, manager, record);
+        return;
+      }
+      final choice = await showModalBottomSheet<SingleEpisodeDownloadChoice>(
+        context: context,
+        backgroundColor: AppColors.surface,
+        isScrollControlled: true,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        builder: (_) => EpisodeDownloadSourceSheet(
+          title: episode.title,
+          episode: episode,
+          category: category,
+          availableCategories: _c.categories,
+          resolveEpisodes: (cut) async {
+            final episodes = await sl<CatalogueRepository>().episodes(
+              widget.showUrl ?? widget.sourceId,
+              sourceId: widget.sourceId,
+              category: cut,
+            );
+            return {
+              for (final season
+                  in episodes.map((ep) => seasonOf(ep) ?? 1).toSet())
+                season: episodes
+                    .where((ep) => (seasonOf(ep) ?? 1) == season)
+                    .toList(),
+            };
+          },
+          resolve: (ep) => sl.isRegistered<CatalogueRepository>()
+              ? sl<CatalogueRepository>().sources(
+                  ep.url,
+                  sourceId: widget.sourceId,
+                  fast: false,
+                )
+              : widget.resolveSources(ep.url),
+        ),
+      );
+      if (choice == null || !mounted) return;
+      await manager.enqueueSource(
+        sourceId: widget.sourceId,
+        showId: downloadShowId,
+        showTitle: widget.showTitle ?? '',
+        cover: widget.cover,
+        coverHeaders: widget.coverHeaders,
+        showUrl: widget.showUrl ?? widget.sourceId,
+        category: choice.category,
+        episode: choice.episode,
+        source: choice.chosen,
+        qualityLabel: choice.chosen.quality ?? 'auto',
+        fallbacks: choice.all,
+        nowMs: DateTime.now().millisecondsSinceEpoch,
+        malId: widget.malId,
+      );
+      if (mounted) showAppToast(context, context.l10n.addedToDownloads);
+    } catch (_) {
+      if (mounted) {
+        showAppToast(context, context.l10n.couldntLoadDownloadOptions);
+      }
+    } finally {
+      _watchDownloadPending = false;
+    }
+  }
+
   Widget _buildWatchPage(PlayerState state) {
     final prefs = sl<PlaybackPrefs>();
     _maybeEnrichDescription();
@@ -2623,6 +2853,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
         currentIndex: state.currentIndex,
         coverFallback: widget.cover,
         season: _watchSeason ?? seasonOf(_c.currentEpisode),
+        isWatched: (ep) =>
+            widget.resume
+                .get(widget.sourceId, widget.showUrl ?? widget.sourceId, ep.id)
+                ?.finished ??
+            false,
       ),
       seasons: seasons,
       selectedSeason:
@@ -2639,6 +2874,24 @@ class _PlayerScreenState extends State<PlayerScreen> {
       onAudio: () => _openAudioSubsSheet(focus: AudioSubsFocus.audio),
       onSubtitles: () => _openAudioSubsSheet(focus: AudioSubsFocus.subtitles),
       onMore: _openWatchMorePanel,
+      onSetWatched: _setWatchEpisodeWatched,
+      onPlayMirror: widget.localOnly ? null : _playWatchEpisodeMirror,
+      downloadButton:
+          widget.localOnly ||
+              (widget.showUrl?.isEmpty ?? true) ||
+              !sl.isRegistered<DownloadManager>()
+          ? null
+          : (ep) => EpisodeDownloadIcon(
+              sourceId: widget.sourceId,
+              showId:
+                  widget.downloadShowId ??
+                  _resolvedWatchDownloadId ??
+                  widget.showUrl ??
+                  widget.sourceId,
+              episodeId: _c.episodes[ep.index].id,
+              onTap: () => _downloadWatchEpisode(ep.index),
+            ),
+      isEpisodeWatched: _watchEpisodeWatched,
       onOpenEpisode: (i) {
         setState(() => _watchSeason = seasonOf(_c.episodes[i]));
         _c.openEpisode(i);
@@ -2651,11 +2904,23 @@ class _PlayerScreenState extends State<PlayerScreen> {
   // ── Sheets ──────────────────────────────────────────────────────────────
 
   Future<T?> _sheet<T>(Widget child) {
+    final portraitMotion =
+        _presentation == PlayerPresentation.watchPage &&
+        MediaQuery.orientationOf(context) == Orientation.portrait;
     return showModalBottomSheet<T>(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (_) => _SheetSurface(child: SafeArea(top: false, child: child)),
+      sheetAnimationStyle:
+          portraitMotion && MediaQuery.disableAnimationsOf(context)
+          ? AnimationStyle.noAnimation
+          : null,
+      builder: (_) {
+        final surface = _SheetSurface(
+          child: SafeArea(top: false, child: child),
+        );
+        return portraitMotion ? WatchPageMenuEntrance(child: surface) : surface;
+      },
     );
   }
 
@@ -2744,41 +3009,51 @@ class _PlayerScreenState extends State<PlayerScreen> {
   /// selection without closing). Portrait chips pass [focus] to open on one
   /// column; fullscreen passes nothing and keeps the pair.
   void _openAudioSubsSheet({bool castMode = false, AudioSubsFocus? focus}) {
+    final portraitMotion =
+        _presentation == PlayerPresentation.watchPage &&
+        MediaQuery.orientationOf(context) == Orientation.portrait;
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (_) => _SheetSurface(
-        blur: true,
-        opacity: 0.82,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-        child: SafeArea(
-          top: false,
-          child: _AudioSubsSheet(
-            controller: _c,
-            focus: focus,
-            onInteract: _bumpControls,
-            castMode: castMode,
-            onSoftSubPicked: (s) => _castSubtitle = s,
-            onSubtitlesOff: () => _castSubtitle = null,
-            onAfterChange: () {
-              unawaited(_maybeRecast());
-            },
-            onLoadFile: () {
-              Navigator.pop(context);
-              _loadSubtitleFromFile();
-            },
-            onSearchOnline: () {
-              Navigator.pop(context);
-              _openOnlineSubtitleSheet();
-            },
-            onTranslate: () {
-              Navigator.pop(context);
-              _openTranslateSheet();
-            },
+      sheetAnimationStyle:
+          portraitMotion && MediaQuery.disableAnimationsOf(context)
+          ? AnimationStyle.noAnimation
+          : null,
+      builder: (_) {
+        final surface = _SheetSurface(
+          blur: true,
+          opacity: 0.82,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          child: SafeArea(
+            top: false,
+            child: _AudioSubsSheet(
+              controller: _c,
+              focus: focus,
+              onInteract: _bumpControls,
+              castMode: castMode,
+              onSoftSubPicked: (s) => _castSubtitle = s,
+              onSubtitlesOff: () => _castSubtitle = null,
+              onAfterChange: () {
+                unawaited(_maybeRecast());
+              },
+              onLoadFile: () {
+                Navigator.pop(context);
+                _loadSubtitleFromFile();
+              },
+              onSearchOnline: () {
+                Navigator.pop(context);
+                _openOnlineSubtitleSheet();
+              },
+              onTranslate: () {
+                Navigator.pop(context);
+                _openTranslateSheet();
+              },
+            ),
           ),
-        ),
-      ),
+        );
+        return portraitMotion ? WatchPageMenuEntrance(child: surface) : surface;
+      },
     );
   }
 

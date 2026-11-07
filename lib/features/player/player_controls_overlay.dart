@@ -104,29 +104,36 @@ class _ControlsOverlay extends StatelessWidget {
     );
   }
 
-/// Shared overflow panel (decoder / enhance / colour / snapshot / sleep /
-/// PiP). The fullscreen overlay and the portrait watch page open the same
-/// panel so the occasional actions live in exactly one place.
-static void showPlayerMorePanel({
-  required BuildContext context,
-  required VoidCallback onInteract,
-  required String decoderLabel,
-  required bool enhanceActive,
-  required VoidCallback onDecoder,
-  required VoidCallback onEnhance,
-  required VoidCallback onColorProfile,
-  required VoidCallback onScreenshot,
-  required bool sleepActive,
-  required VoidCallback onSleep,
-  required VoidCallback? onPip,
-}) {
-  onInteract();
-  showGeneralDialog<void>(
+  /// Shared overflow panel (decoder / enhance / colour / snapshot / sleep /
+  /// PiP). The fullscreen overlay and the portrait watch page open the same
+  /// panel so the occasional actions live in exactly one place.
+  static void showPlayerMorePanel({
+    required BuildContext context,
+    required VoidCallback onInteract,
+    required String decoderLabel,
+    required bool enhanceActive,
+    required VoidCallback onDecoder,
+    required VoidCallback onEnhance,
+    required VoidCallback onColorProfile,
+    required VoidCallback onScreenshot,
+    required bool sleepActive,
+    required VoidCallback onSleep,
+    required VoidCallback? onPip,
+    bool animatePortraitEntrance = false,
+  }) {
+    final portrait =
+        animatePortraitEntrance &&
+        MediaQuery.orientationOf(context) == Orientation.portrait;
+    final reduced = portrait && MediaQuery.disableAnimationsOf(context);
+    onInteract();
+    showGeneralDialog<void>(
       context: context,
       barrierDismissible: true,
       barrierLabel: 'More',
       barrierColor: Colors.black54,
-      transitionDuration: const Duration(milliseconds: 240),
+      transitionDuration: reduced
+          ? Duration.zero
+          : const Duration(milliseconds: 240),
       pageBuilder: (ctx, _, _) {
         // Same width and surface as the episodes panel — this slides in from
         // the same edge with the same motion, so looking different was just
@@ -235,13 +242,35 @@ static void showPlayerMorePanel({
           ),
         );
       },
-      transitionBuilder: (ctx, anim, _, child) => SlideTransition(
-        position: Tween(
-          begin: const Offset(1, 0),
-          end: Offset.zero,
-        ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
-        child: child,
-      ),
+      transitionBuilder: (ctx, anim, _, child) => portrait
+          ? (reduced
+                ? child
+                : FadeTransition(
+                    opacity: CurvedAnimation(
+                      parent: anim,
+                      curve: Curves.easeOut,
+                    ),
+                    child: SlideTransition(
+                      position:
+                          Tween(
+                            begin: const Offset(0, .03),
+                            end: Offset.zero,
+                          ).animate(
+                            CurvedAnimation(
+                              parent: anim,
+                              curve: Curves.easeOutCubic,
+                            ),
+                          ),
+                      child: child,
+                    ),
+                  ))
+          : SlideTransition(
+              position: Tween(begin: const Offset(1, 0), end: Offset.zero)
+                  .animate(
+                    CurvedAnimation(parent: anim, curve: Curves.easeOutCubic),
+                  ),
+              child: child,
+            ),
     );
   }
 

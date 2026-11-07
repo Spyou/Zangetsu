@@ -25,6 +25,18 @@ void main() {
     expect(mark.finished, false);
   });
 
+  test('manual watched marks survive progress saves and explicit unwatch clears them', () async {
+    final store = ResumeStore();
+    await store.setWatched('source', 'show', 'episode', watched: true);
+    await store.save('source', 'show', 'episode', const Duration(minutes: 3), const Duration(minutes: 24));
+    expect(store.get('source', 'show', 'episode')!.markedWatched, isTrue);
+    expect(store.get('source', 'show', 'episode')!.position.inMinutes, 3);
+    await store.setWatched('source', 'show', 'episode', watched: false);
+    expect(store.get('source', 'show', 'episode'), isNull);
+    await store.save('source', 'show', 'episode', const Duration(minutes: 3), const Duration(minutes: 24));
+    expect(store.get('source', 'show', 'episode')!.finished, isFalse);
+  });
+
   test('get returns null for unknown episode', () {
     expect(ResumeStore().get('allanime', 'show-1', 'nope'), isNull);
   });

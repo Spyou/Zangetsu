@@ -11,4 +11,6 @@
     <item name="fullscreen_time_spacer" type="id" />
     <item name="watch_thumbnail_request" type="id" />
     <item name="watch_expand" type="id" />
+    <item name="watch_color_motion" type="id" />
+    <item name="watch_height_motion" type="id" />
 </resources>

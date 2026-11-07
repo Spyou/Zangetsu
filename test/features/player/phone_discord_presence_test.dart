@@ -44,6 +44,8 @@ class _Presence extends DiscordRpc {
 class _Resume extends ResumeStore {
   int saves = 0;
   @override
+  ResumeMark? get(String sourceId, String showId, String episodeId) => null;
+  @override
   Future<void> save(
     String sourceId,
     String showId,

@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:watch_app/features/player/player_watch_page.dart';
 import 'package:watch_app/core/theme/app_colors.dart';
+import 'package:watch_app/core/ui/frosted_surface.dart';
+import 'package:watch_app/features/player/watch_page_motion.dart';
 import 'package:watch_app/features/player/watch_page_info.dart';
 
 PlayerWatchPage _page({
@@ -23,6 +25,9 @@ PlayerWatchPage _page({
   void Function()? onComments,
   void Function(bool)? onAutoplayChanged,
   void Function(int)? onOpenEpisode,
+  void Function(int, bool)? onSetWatched,
+  void Function(int)? onPlayMirror,
+  Widget Function(WatchPageEpisode)? downloadButton,
   Stream<Uint8List?>? ambientFrameStream,
   List<int>? seasons,
   int? selectedSeason,
@@ -60,6 +65,9 @@ PlayerWatchPage _page({
     onSubtitles: () {},
     onMore: () {},
     onOpenEpisode: onOpenEpisode ?? (_) {},
+    onSetWatched: onSetWatched,
+    onPlayMirror: onPlayMirror,
+    downloadButton: downloadButton,
     seasons: seasons,
     selectedSeason: selectedSeason,
     onSelectSeason: onSelectSeason,
@@ -91,6 +99,126 @@ void main() {
       current: true,
     ),
   ];
+
+  testWidgets(
+    'episode download button is separate from playback and synopsis is italic',
+    (tester) async {
+      final opened = <int>[];
+      final downloaded = <int>[];
+      await _pump(
+        tester,
+        _page(
+          episodes: const [
+            WatchPageEpisode(
+              index: 8,
+              heading: '9. Test',
+              label: 'Test',
+              thumb: '',
+              current: false,
+              synopsis: 'Episode synopsis',
+            ),
+          ],
+          onOpenEpisode: opened.add,
+          downloadButton: (ep) => IconButton(
+            tooltip: 'Download episode',
+            onPressed: () => downloaded.add(ep.index),
+            icon: const Icon(Icons.download_rounded),
+          ),
+        ),
+      );
+      await tester.ensureVisible(find.byTooltip('Download episode'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Download episode'));
+      expect(downloaded, [8]);
+      expect(opened, isEmpty);
+      expect(
+        tester.widget<Text>(find.text('Episode synopsis')).style?.fontStyle,
+        FontStyle.italic,
+      );
+    },
+  );
+
+  testWidgets(
+    'episode long press opens actions without playing and keeps its real index',
+    (tester) async {
+      final opened = <int>[];
+      final marks = <(int, bool)>[];
+      final mirrors = <int>[];
+      await _pump(
+        tester,
+        _page(
+          episodes: const [
+            WatchPageEpisode(
+              index: 17,
+              heading: '18. Test episode',
+              label: 'Test episode',
+              thumb: '',
+              current: false,
+            ),
+          ],
+          onOpenEpisode: opened.add,
+          onSetWatched: (i, w) => marks.add((i, w)),
+          onPlayMirror: mirrors.add,
+        ),
+      );
+      await tester.ensureVisible(find.text('18. Test episode'));
+      await tester.pumpAndSettle();
+      await tester.longPress(find.text('18. Test episode'));
+      await tester.pumpAndSettle();
+      expect(opened, isEmpty);
+      expect(marks, isEmpty);
+      expect(find.text('Play mirror'), findsOneWidget);
+      await tester.tap(find.text('Mark as watched'));
+      await tester.pumpAndSettle();
+      expect(marks, [(17, true)]);
+      expect(opened, isEmpty);
+      await tester.longPress(find.text('18. Test episode'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Play mirror'));
+      await tester.pumpAndSettle();
+      expect(mirrors, [17]);
+      expect(opened, isEmpty);
+      expect(
+        find.ancestor(
+          of: find.text('18. Test episode'),
+          matching: find.byType(WatchPagePress),
+        ),
+        findsNothing,
+      );
+    },
+  );
+
+  testWidgets('description grows smoothly while See less updates immediately', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final description = List.filled(
+      35,
+      'A longer episode description.',
+    ).join(' ');
+    await _pump(tester, _page(description: description));
+    await tester.pumpAndSettle();
+    final card = find
+        .ancestor(
+          of: find.text(description),
+          matching: find.byType(FrostedSurface),
+        )
+        .first;
+    final collapsed = tester.getSize(card).height;
+    await tester.ensureVisible(find.text('See more'));
+    await tester.tap(find.text('See more'));
+    await tester.pump();
+    expect(find.text('See less'), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 70));
+    final during = tester.getSize(card).height;
+    await tester.pumpAndSettle();
+    final expanded = tester.getSize(card).height;
+    expect(during, greaterThan(collapsed));
+    expect(during, lessThan(expanded));
+  });
 
   testWidgets('shows title, actions, description and episodes', (tester) async {
     await _pump(tester, _page(episodes: demoEpisodes, nextTitle: 'Episode 2'));

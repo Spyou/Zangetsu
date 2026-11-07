@@ -35,6 +35,8 @@ import '../../core/ui/episode_unavailable_dialog.dart';
 import '../../core/zmode/playback_resolver.dart';
 import 'episode_sources_sheet.dart';
 import '../downloads/downloads_screen.dart';
+import '../downloads/episode_download_icon.dart';
+import '../downloads/episode_download_source_sheet.dart';
 import '../auth/auth_cubit.dart';
 import 'epub_export_sheet.dart';
 import 'chapter_download_range_sheet.dart';
@@ -57,7 +59,6 @@ import '../../core/download/chapter_download.dart';
 import '../../core/download/chapter_download_store.dart';
 import '../../core/download/chapter_downloader.dart';
 import '../../core/download/download_manager.dart';
-import '../../core/download/download_record.dart';
 import '../../core/mode/content_mode.dart';
 import '../../core/models/episode.dart';
 import '../../core/models/episode_title.dart';
@@ -1516,6 +1517,7 @@ class _DetailViewState extends State<_DetailView>
               cover: detail.cover ?? widget.item.cover,
               coverHeaders: detail.coverHeaders ?? widget.item.coverHeaders,
               showUrl: widget.item.url,
+              downloadShowId: widget.item.id,
               category: launchCategory,
               malId: malId,
               scrobbleTitle: scrobbleTitle,

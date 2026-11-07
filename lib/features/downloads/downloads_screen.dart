@@ -999,6 +999,7 @@ Future<void> launchDownloadedEpisode(
         cover: record.cover,
         coverHeaders: record.coverHeaders,
         showUrl: record.showUrl,
+        downloadShowId: record.showId,
         category: record.category,
         malId: record.malId,
         scrobbleTitle: scrobbleTitle,

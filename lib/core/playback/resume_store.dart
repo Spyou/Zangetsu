@@ -61,9 +61,12 @@ class ResumeStore {
     Duration duration,
   ) async {
     if (IncognitoMode.on) return; // incognito: don't remember playback position
-    await _box.put(_key(sourceId, showId, episodeId), {
+    final key = _key(sourceId, showId, episodeId);
+    final manuallyWatched = _box.get(key)?['markedWatched'] == true;
+    await _box.put(key, {
       'positionMs': position.inMilliseconds,
       'durationMs': duration.inMilliseconds,
+      if (manuallyWatched) 'markedWatched': true,
     });
     // Logged because its ABSENCE is the interesting case. The flush runs from
     // the player's dispose(), so when Android kills the app straight out of

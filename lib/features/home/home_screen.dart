@@ -693,6 +693,7 @@ class _HomeViewState extends State<_HomeView>
           cover: item.cover,
           coverHeaders: item.coverHeaders,
           showUrl: item.url,
+          downloadShowId: item.id,
           category: category,
           malId: item.malId,
           scrobbleTitle: item.type == ProviderType.anime ? item.title : null,

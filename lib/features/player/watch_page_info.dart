@@ -40,21 +40,19 @@ WatchPageHeader resolveWatchPageHeader({
   if (n == null) {
     subtitle = show;
   } else {
-    final label = episode.season != null
-        ? 'S${episode.season} E$n'
-        : 'E$n';
+    final label = episode.season != null ? 'S${episode.season} E$n' : 'E$n';
     subtitle = show.isEmpty ? label : '$show · $label';
   }
-  final raw =
-      (episode.description?.trim().isNotEmpty ?? false)
-          ? episode.description!.trim()
-          : (showDescription ?? '').trim();
+  final raw = (episode.description?.trim().isNotEmpty ?? false)
+      ? episode.description!.trim()
+      : (showDescription ?? '').trim();
   return WatchPageHeader(
     title: title,
     subtitle: subtitle,
     description: raw.isEmpty ? null : raw,
   );
 }
+
 /// `mm:ss`, or `h:mm:ss` past the hour. Time labels on the watch page.
 String formatWatchTime(Duration d) {
   final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
@@ -73,6 +71,7 @@ class WatchPageEpisode {
     required this.label,
     required this.thumb,
     required this.current,
+    this.watched = false,
     this.number,
     this.unavailableReason,
     this.meta = '',
@@ -85,6 +84,7 @@ class WatchPageEpisode {
   final String label;
   final String thumb;
   final bool current;
+  final bool watched;
 
   /// The episode number for jump-to-episode. Null when the source gives none.
   final num? number;
@@ -107,6 +107,7 @@ List<WatchPageEpisode> watchPageEpisodes({
   required int currentIndex,
   String? coverFallback,
   int? season,
+  bool Function(Episode)? isWatched,
 }) {
   String artOf(Episode ep) {
     final t = (ep.thumbnail ?? '').trim();
@@ -127,23 +128,24 @@ List<WatchPageEpisode> watchPageEpisodes({
     for (var i = 0; i < episodes.length; i++)
       if (season == null || (seasonOf(episodes[i]) ?? 1) == season)
         WatchPageEpisode(
-        index: i,
-        heading: _headingOf(episodes[i]),
-        label:
-            episodeDisplayTitle(
-              episodes[i],
-              number: episodeNumberInt(episodes[i]),
-            ) ??
-            (episodeNumberInt(episodes[i]) != null
-                ? 'Episode ${episodeNumberInt(episodes[i])}'
-                : episodes[i].title),
-        thumb: artOf(episodes[i]),
-        current: i == currentIndex,
-        number: episodeNumberInt(episodes[i]),
-        unavailableReason: episodes[i].unavailable,
-        meta: metaOf(episodes[i]),
-        synopsis: (episodes[i].description ?? '').trim(),
-      ),
+          index: i,
+          heading: _headingOf(episodes[i]),
+          label:
+              episodeDisplayTitle(
+                episodes[i],
+                number: episodeNumberInt(episodes[i]),
+              ) ??
+              (episodeNumberInt(episodes[i]) != null
+                  ? 'Episode ${episodeNumberInt(episodes[i])}'
+                  : episodes[i].title),
+          thumb: artOf(episodes[i]),
+          current: i == currentIndex,
+          watched: isWatched?.call(episodes[i]) ?? false,
+          number: episodeNumberInt(episodes[i]),
+          unavailableReason: episodes[i].unavailable,
+          meta: metaOf(episodes[i]),
+          synopsis: (episodes[i].description ?? '').trim(),
+        ),
   ];
 }
 
@@ -163,7 +165,11 @@ String _headingOf(Episode ep) {
 /// with a deeper twin for the wash's lower half (like the reference, which
 /// glows bright up top and melts into black below). Pure and unit-testable;
 /// decoding stays with the caller.
-({Color top, Color bottom}) ambientGlowColor(ByteData bytes, int width, int height) {
+({Color top, Color bottom}) ambientGlowColor(
+  ByteData bytes,
+  int width,
+  int height,
+) {
   var r = 0, g = 0, b = 0, n = 0;
   if (width > 0 && height > 0 && bytes.lengthInBytes >= width * height * 4) {
     for (var i = 0; i < width * height; i++) {
@@ -185,6 +191,11 @@ String _headingOf(Episode ep) {
   final tb = boost(b).clamp(0, 255);
   return (
     top: Color.fromARGB(255, tr, tg, tb),
-    bottom: Color.fromARGB(255, (tr * 0.55).round(), (tg * 0.55).round(), (tb * 0.55).round()),
+    bottom: Color.fromARGB(
+      255,
+      (tr * 0.55).round(),
+      (tg * 0.55).round(),
+      (tb * 0.55).round(),
+    ),
   );
 }
