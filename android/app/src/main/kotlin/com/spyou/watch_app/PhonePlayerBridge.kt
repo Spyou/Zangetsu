@@ -25,6 +25,16 @@ object PhonePlayerBridge {
     var channel: MethodChannel? = null
         private set
 
+    // Display rows stay in-process: long libraries must not fill an Intent parcel.
+    private var watchData: Pair<Long, Map<String, Any?>>? = null
+
+    internal fun watchDataFor(session: Long): Map<String, Any?> =
+        watchData?.takeIf { it.first == session }?.second.orEmpty()
+
+    internal fun clearWatchData(session: Long) {
+        if (watchData?.first == session) watchData = null
+    }
+
     fun register(engine: FlutterEngine, activity: Activity) {
         val ch = MethodChannel(engine.dartExecutor.binaryMessenger, CHANNEL)
         ch.setMethodCallHandler { call, result ->
@@ -52,6 +62,7 @@ object PhonePlayerBridge {
     }
 
     fun dispose() {
+        watchData = null
         channel?.setMethodCallHandler(null)
         channel = null
     }
@@ -62,6 +73,8 @@ object PhonePlayerBridge {
         // screen and asks Dart to resolve the first episode.
         val url = call.argument<String>("url").orEmpty()
         try {
+            watchData = ((call.argument<Number>("sessionId") ?: 0).toLong() to
+                call.argument<Map<String, Any?>>("watchData").orEmpty())
             val i = Intent(activity, PhonePlayerActivity::class.java)
             call.argument<Map<String, Any?>>("controlLayout")?.let {
                 i.putExtra(PhonePlayerIntent.EXTRA_CONTROLS, org.json.JSONObject(it).toString())
@@ -204,6 +217,7 @@ object PhonePlayerBridge {
             activity.startActivity(i)
             result.success(true)
         } catch (e: Exception) {
+            clearWatchData((call.argument<Number>("sessionId") ?: 0).toLong())
             Log.w(TAG, "launch failed: ${e.message}")
             result.success(false)
         }

@@ -103,8 +103,6 @@ class PhonePlayerActivity : Activity() {
     private lateinit var quickActions: ViewGroup
     private lateinit var btnPlay: android.widget.ImageView
     private lateinit var seek: android.widget.SeekBar
-    private lateinit var miniSeekPadding: IntArray
-    private var miniSeekThumbOffset = 0
     private lateinit var timeText: android.widget.TextView
     private lateinit var titleText: android.widget.TextView
     private lateinit var episodeText: android.widget.TextView
@@ -187,6 +185,7 @@ class PhonePlayerActivity : Activity() {
     private var pendingDesc: String? = null
     private var descExpanded = false
     private var watchInfo: ViewGroup? = null
+    private var watchPanel: PhoneWatchPage? = null
 
     private var episodeCount = 1
     private var episodeLabels: Array<String> = emptyArray()
@@ -278,17 +277,12 @@ class PhonePlayerActivity : Activity() {
         quickActions = findViewById(R.id.quick_actions)
         btnPlay = findViewById(R.id.btn_play)
         seek = findViewById(R.id.seek)
-        miniSeekPadding = intArrayOf(seek.paddingLeft, seek.paddingTop, seek.paddingRight, seek.paddingBottom)
-        miniSeekThumbOffset = seek.thumbOffset
         timeText = findViewById(R.id.time_chip)
         titleText = findViewById(R.id.title)
         episodeText = findViewById(R.id.episode_label)
 
         titleText.text = intent.getStringExtra(PhonePlayerIntent.EXTRA_TITLE) ?: ""
         episodeText.text = intent.getStringExtra(PhonePlayerIntent.EXTRA_EP_LABEL) ?: ""
-        bindWatchInfo()
-        updateOrientationLayout()
-
         currentIndex = intent.getIntExtra(PhonePlayerIntent.EXTRA_START_INDEX, 0)
         loadedEpisodeIndex = currentIndex
         episodeCount = intent.getIntExtra(PhonePlayerIntent.EXTRA_EP_COUNT, 1)
@@ -297,6 +291,9 @@ class PhonePlayerActivity : Activity() {
         seekMs = (intent.getIntExtra(PhonePlayerIntent.EXTRA_SEEK_SECONDS, 10) * 1000L)
             .coerceAtLeast(1_000L)
         subtitlePreference = intent.getStringExtra(PhonePlayerIntent.EXTRA_SUB_PREFERENCE).orEmpty()
+
+        bindWatchInfo()
+        updateOrientationLayout()
 
         findViewById<View>(R.id.btn_back).setOnClickListener {
             if (!showWatchPage()) finish()
@@ -329,7 +326,7 @@ class PhonePlayerActivity : Activity() {
                 val d = player?.duration ?: 0L
                 if (d > 0) {
                     val pos = d * value / 1000
-                    timeText.text = fmt(pos) + " / " + fmt(d)
+                    timeText.text = if (isPortraitCard()) fmt(pos).padStart(5, '0') + " / " + fmt(d).padStart(5, '0') else fmt(pos) + " / " + fmt(d)
                     sb.contentDescription = getString(R.string.phone_player_desc_seek) + ", " + fmt(pos) + " of " + fmt(d)
                 }
             }
@@ -555,8 +552,9 @@ class PhonePlayerActivity : Activity() {
     /** The center pause button is the same solid accent circle the indicator
      *  draws over; hide it while buffering or the morph reads as one blob. */
     private fun setBuffering(visible: Boolean) {
-        loading.visibility = if (visible) View.VISIBLE else View.GONE
-        btnPlay.visibility = if (visible) View.INVISIBLE else View.VISIBLE
+        val busy = visible || (isPortraitCard() && !playbackStarted && loadingActions.visibility != View.VISIBLE)
+        loading.visibility = if (busy) View.VISIBLE else View.GONE
+        btnPlay.visibility = if (busy) View.INVISIBLE else View.VISIBLE
     }
 
     private fun hideLoading() {
@@ -839,11 +837,12 @@ class PhonePlayerActivity : Activity() {
         quickActions = layoutInflater.inflate(quickActionsLayoutRes(), parent, false) as ViewGroup
         parent.addView(quickActions, index)
         bindQuickActions()
+        quickActions.visibility = if (isPortraitCard()) View.GONE else View.VISIBLE
     }
 
     private fun updateFullscreenTimeRow(mini: Boolean) {
         val row = timeText.parent as LinearLayout
-        row.gravity = if (mini) Gravity.CENTER else Gravity.START or Gravity.CENTER_VERTICAL
+        row.gravity = Gravity.START or Gravity.CENTER_VERTICAL
         var skip = row.findViewById<View>(R.id.quick_mega_skip)
         if (skip == null && !mini && megaSkipEnabled) {
             row.addView(android.widget.Space(this).apply { id = R.id.fullscreen_time_spacer },
@@ -892,12 +891,13 @@ class PhonePlayerActivity : Activity() {
         val portrait =
             resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT
         val video = findViewById<View>(R.id.player_root)
+        findViewById<View>(R.id.watch_root).setBackgroundColor(if (portrait && watchPage) android.graphics.Color.BLACK else getColor(R.color.phone_player_background))
         if (portrait && watchPage) {
             // 16:9 stage as an inset rounded card (MPV mini-player).
             val w = resources.displayMetrics.widthPixels
             val m = dp(12)
             video.layoutParams = video.layoutParams.apply {
-                height = (w * 9 / 16).coerceAtLeast(1)
+                height = minOf((w - 2 * m) * 9 / 16, (resources.displayMetrics.heightPixels * .38f).toInt()).coerceAtLeast(1)
                 if (this is android.widget.LinearLayout.LayoutParams) {
                     setMargins(m, dp(4), m, 0)
                 }
@@ -945,22 +945,22 @@ class PhonePlayerActivity : Activity() {
             Triple(R.id.btn_next, "next", R.drawable.phone_player_next),
         )) {
             controls.findViewById<android.widget.ImageView>(id).setImageDrawable(
-                if (mini) getDrawable(fallback) else fullscreenIcon(key) ?: getDrawable(fallback))
+                fullscreenIcon(if (mini && key == "back") "miniBack" else key) ?: getDrawable(fallback))
         }
         // Portrait card insets the stage, so the bar hugs the card edge like
         // the MPV mini-player back (landscape keeps the fullscreen margins).
         // The title, episode and ⋮ live again inches below in the info panel,
         // so the mini card keeps only Back — otherwise top bar + transport +
         // actions + seek cannot fit the 16:9 stage without overlapping.
-        val topSide = if (mini) dp(2) else
+        val topSide = if (mini) dp(6) else
             resources.getDimensionPixelSize(R.dimen.phone_player_top_bar_side_margin)
         topBarParams.marginStart = topSide
         topBarParams.marginEnd = topSide
-        topBarParams.topMargin = if (mini) 0 else
+        topBarParams.topMargin = if (mini) dp(6) else
             resources.getDimensionPixelSize(R.dimen.phone_player_top_bar_top_margin)
         topBarParams.bottomMargin = if (mini) 0 else dp(8)
         topBar.layoutParams = topBarParams
-        val topPadding = if (mini) dp(4) else 0
+        val topPadding = 0
         topBar.setPadding(topPadding, topPadding, topPadding, topPadding)
         controls.findViewById<View>(R.id.title)?.visibility =
             if (mini) View.GONE else View.VISIBLE
@@ -971,7 +971,13 @@ class PhonePlayerActivity : Activity() {
         controls.findViewById<View>(R.id.btn_more)?.visibility =
             if (mini) View.GONE else View.VISIBLE
         // Mini-player back glyph reads smaller (18dp); fullscreen keeps 24dp.
-        val backPad = dp(if (mini) 15 else 12)
+        val backPad = dp(if (mini) 7 else 12)
+        controls.findViewById<View>(R.id.btn_back).apply {
+            layoutParams = layoutParams.apply { width = dp(if (mini) 32 else 48); height = width }
+            background = if (mini) android.graphics.drawable.GradientDrawable().apply {
+                shape = android.graphics.drawable.GradientDrawable.OVAL; setColor(0x80000000.toInt())
+            } else getDrawable(R.drawable.phone_player_icon_ripple)
+        }
         controls.findViewById<android.widget.ImageView>(R.id.btn_back)?.setPadding(backPad, backPad, backPad, backPad)
         // The mini card stacks bar → transport → actions → time → seek with no
         // overlap; fullscreen centers the transport over the picture.
@@ -980,36 +986,95 @@ class PhonePlayerActivity : Activity() {
         transportParams.gravity = if (mini)
             android.view.Gravity.TOP or android.view.Gravity.CENTER_HORIZONTAL
         else android.view.Gravity.CENTER
-        transportParams.topMargin = if (mini) dp(64) else 0
+        transportParams.topMargin = if (mini) ((video.layoutParams.height - dp(116)) * .75f).toInt().coerceAtLeast(0) else 0
+        for (id in listOf(R.id.btn_previous, R.id.btn_next)) {
+            controls.findViewById<View>(id).apply {
+                layoutParams = (layoutParams as android.widget.LinearLayout.LayoutParams).apply {
+                    width = dp(if (mini) 44 else 46); height = width
+                    if (id == R.id.btn_previous) marginEnd = dp(if (mini) 16 else 24)
+                    else marginStart = dp(if (mini) 16 else 24)
+                }
+            }
+        }
+        val loadingParams = loading.layoutParams as android.widget.FrameLayout.LayoutParams
+        loadingParams.gravity = if (mini) Gravity.TOP or Gravity.CENTER_HORIZONTAL else Gravity.CENTER
+        loadingParams.topMargin = if (mini) transportParams.topMargin else 0
+        loading.layoutParams = loadingParams
         transport.layoutParams = transportParams
         // Slightly smaller play disc in the mini card so the stack fits.
         val playBox = btnPlay.parent as View
         val playBoxParams = playBox.layoutParams
-        playBoxParams.width = dp(if (mini) 48 else 58)
-        playBoxParams.height = dp(if (mini) 48 else 58)
+        playBoxParams.width = dp(if (mini) 56 else 58)
+        playBoxParams.height = dp(if (mini) 56 else 58)
         playBox.layoutParams = playBoxParams
-        val playPad = dp(if (mini) 7 else 12)
+        val playPad = dp(12)
         btnPlay.setPadding(playPad, playPad, playPad, playPad)
         // Match the compact fullscreen seek row without changing the mini card.
         val bottomBar = controls.findViewById<View>(R.id.bottom_bar)
         bottomBar.setPadding(dp(4), 0, dp(4), 0)
         val seekBar = controls.findViewById<View>(R.id.seek)
         val seekParams = seekBar.layoutParams
-        seekParams.height = dp(if (mini) 40 else 26)
+        seekParams.height = dp(if (mini) 24 else 26)
         seekBar.layoutParams = seekParams
+        seek.thumb = getDrawable(if (mini) R.drawable.phone_watch_seek_thumb else R.drawable.phone_player_seek_thumb)
+        seek.progressDrawable = getDrawable(if (mini) R.drawable.phone_watch_seek_track else R.drawable.phone_player_seek_track)
+        val radius = seek.thumb.intrinsicWidth / 2
+        seek.setPadding(radius, dp(if (mini) 7 else 6), radius, dp(if (mini) 7 else 6))
+        seek.thumbOffset = radius
         if (mini) {
-            seek.setPadding(miniSeekPadding[0], miniSeekPadding[1], miniSeekPadding[2], miniSeekPadding[3])
-            seek.thumbOffset = miniSeekThumbOffset
+            val accent = intent.getIntExtra(PhonePlayerIntent.EXTRA_ACCENT, getColor(R.color.phone_player_accent))
+            seek.thumbTintList = android.content.res.ColorStateList.valueOf(accent)
+            seek.progressTintList = android.content.res.ColorStateList.valueOf(accent)
         } else {
-            // The thumb must fit inside the view at both ends of the track.
-            val radius = seek.thumb.intrinsicWidth / 2
-            seek.setPadding(radius, dp(6), radius, dp(6))
-            seek.thumbOffset = radius
+            seek.thumbTintList = null
+            seek.progressTintList = null
         }
+        val timeRow = timeText.parent as ViewGroup
+        val bar = bottomBar as ViewGroup
+        bar.removeView(timeRow)
+        bar.addView(timeRow, if (mini) 1 else 0)
+        timeRow.setPadding(0, 0, 0, 0)
+        timeText.apply {
+            textSize = if (mini) 13f else 12.5f
+            typeface = android.graphics.Typeface.create(if (mini) "sans-serif" else "sans-serif-medium", if (mini) android.graphics.Typeface.NORMAL else android.graphics.Typeface.BOLD)
+            background = if (mini) null else getDrawable(R.drawable.phone_player_time_chip)
+            setPadding(dp(if (mini) 0 else 8), dp(if (mini) 0 else 2), dp(if (mini) 0 else 8), dp(if (mini) 0 else 2))
+        }
+        quickActions.visibility = if (mini) View.GONE else View.VISIBLE
+        var expand = timeRow.findViewById<View>(R.id.watch_expand)
+        if (expand == null && mini) {
+            expand = android.widget.ImageButton(this).apply {
+                id = R.id.watch_expand
+                setImageDrawable(fullscreenIcon("fullscreen"))
+                background = null
+                setPadding(dp(4), dp(4), dp(4), dp(4))
+                contentDescription = getString(R.string.phone_player_watch_fullscreen)
+                setOnClickListener { toggleRotation() }
+            }
+            timeRow.addView(expand, LinearLayout.LayoutParams(dp(32), dp(32)))
+        }
+        expand?.visibility = if (mini) View.VISIBLE else View.GONE
+        var miniSpace = timeRow.findViewWithTag<View>("mini_time_spacer")
+        if (miniSpace == null && mini) {
+            miniSpace = android.widget.Space(this).apply { tag = "mini_time_spacer" }
+            timeRow.addView(miniSpace, timeRow.indexOfChild(expand), LinearLayout.LayoutParams(0, 1, 1f))
+        }
+        miniSpace?.visibility = if (mini) View.VISIBLE else View.GONE
         val bottomBarParams = bottomBar.layoutParams as android.widget.FrameLayout.LayoutParams
+        bottomBarParams.marginStart = dp(if (mini) 12 else 40)
+        bottomBarParams.marginEnd = dp(if (mini) 12 else 40)
         bottomBarParams.bottomMargin = if (mini) dp(4) else
             resources.getDimensionPixelSize(R.dimen.phone_player_bottom_bar_bottom_margin)
         bottomBar.layoutParams = bottomBarParams
+        if (mini) {
+            timeText.setTextColor(android.graphics.Color.WHITE)
+            timeText.text = fmt(player?.currentPosition ?: 0L).padStart(5, '0') + " / " + fmt((player?.duration ?: 0L).coerceAtLeast(0L)).padStart(5, '0')
+            if (loadingOverlay.visibility == View.VISIBLE && loadingActions.visibility != View.VISIBLE) {
+                loadingOverlay.visibility = View.GONE
+                controls.visibility = View.VISIBLE
+                setBuffering(!playbackStarted)
+            }
+        }
     }
 
     /** Late enrichment from Dart; session-checked in [PhonePlayerBridge]. */
@@ -1019,8 +1084,8 @@ class PhonePlayerActivity : Activity() {
     }
 
     private fun applyPendingDesc() {
-        val info = watchInfo ?: return
-        val desc = pendingDesc?.trim().orEmpty()
+        val info = watchPanel?.header ?: return
+        val desc = watchPanel?.row(currentIndex)?.description?.ifBlank { null } ?: pendingDesc?.trim().orEmpty()
         info.findViewById<TextView>(R.id.watch_description)?.apply {
             visibility = if (desc.isEmpty()) View.GONE else View.VISIBLE
             text = desc
@@ -1029,6 +1094,7 @@ class PhonePlayerActivity : Activity() {
             visibility = if (desc.isEmpty()) View.GONE else View.VISIBLE
             text = getString(R.string.phone_player_watch_see_more)
         }
+        info.findViewById<View>(R.id.watch_description_card).visibility = if (desc.isEmpty()) View.GONE else View.VISIBLE
         descExpanded = false
     }
 
@@ -1041,25 +1107,33 @@ class PhonePlayerActivity : Activity() {
     private fun ensureWatchInfo(): ViewGroup? {
         watchInfo?.let { return it }
         val stub = findViewById<ViewStub>(R.id.watch_info_stub) ?: return null
-        val inflated = stub.inflate() as? ViewGroup ?: return null
+        val inflated = stub.inflate() as? androidx.recyclerview.widget.RecyclerView ?: return null
         watchInfo = inflated
-        inflated.findViewById<View>(R.id.watch_action_server)?.setOnClickListener {
+        val panel = PhoneWatchPage(inflated, PhonePlayerBridge.watchDataFor(sessionId), episodeLabels,
+            intent.getIntExtra(PhonePlayerIntent.EXTRA_ACCENT, getColor(R.color.phone_player_accent)),
+            { fullscreenIcon(it)?.constantState?.newDrawable(resources)?.mutate() }) { index ->
+                bumpControls()
+                if (index != currentIndex) loadEpisode(index)
+            }
+        watchPanel = panel
+        val header = panel.header
+        header.findViewById<View>(R.id.watch_action_server)?.setOnClickListener {
             bumpControls(); showSourceMenu()
         }
-        inflated.findViewById<View>(R.id.watch_action_audio)?.setOnClickListener {
+        header.findViewById<View>(R.id.watch_action_audio)?.setOnClickListener {
             bumpControls(); showTracksMenu()
         }
-        inflated.findViewById<View>(R.id.watch_action_subtitles)?.setOnClickListener {
+        header.findViewById<View>(R.id.watch_action_subtitles)?.setOnClickListener {
             bumpControls(); showTracksMenu()
         }
-        inflated.findViewById<View>(R.id.watch_action_more)?.setOnClickListener {
+        header.findViewById<View>(R.id.watch_action_more)?.setOnClickListener {
             bumpControls(); showMoreMenu()
         }
-        inflated.findViewById<View>(R.id.watch_comments)?.setOnClickListener {
+        header.findViewById<View>(R.id.watch_comments)?.setOnClickListener {
             showComingSoon()
         }
-        val desc = inflated.findViewById<TextView>(R.id.watch_description)
-        val seeMore = inflated.findViewById<TextView>(R.id.watch_see_more)
+        val desc = header.findViewById<TextView>(R.id.watch_description)
+        val seeMore = header.findViewById<TextView>(R.id.watch_see_more)
         val toggle: () -> Unit = {
             descExpanded = !descExpanded
             desc?.maxLines = if (descExpanded) Int.MAX_VALUE else 3
@@ -1070,7 +1144,7 @@ class PhonePlayerActivity : Activity() {
         }
         desc?.setOnClickListener { toggle() }
         seeMore?.setOnClickListener { toggle() }
-        inflated.findViewById<CheckBox>(R.id.watch_autoplay)?.apply {
+        header.findViewById<CheckBox>(R.id.watch_autoplay)?.apply {
             isChecked = autoplayNext
             setOnCheckedChangeListener { _, checked ->
                 autoplayNext = checked
@@ -1081,45 +1155,20 @@ class PhonePlayerActivity : Activity() {
                 bumpControls()
             }
         }
-        inflated.findViewById<Button>(R.id.watch_all_episodes)?.apply {
-            setOnClickListener { bumpControls(); showEpisodeMenu() }
-            setBackgroundColor(
-                intent.getIntExtra(PhonePlayerIntent.EXTRA_ACCENT, -1).let {
-                    if (it == -1) getColor(R.color.phone_player_accent) else it
-                },
-            )
-        }
-        inflated.findViewById<View>(R.id.watch_next_row)?.setOnClickListener {
-            bumpControls()
-            if (currentIndex + 1 < episodeCount) loadEpisode(currentIndex + 1)
-        }
         applyPendingDesc()
         refreshWatchInfo()
         return inflated
     }
 
     private fun refreshWatchInfo() {
-        val info = watchInfo ?: return
-        info.findViewById<TextView>(R.id.watch_title)?.text = titleText.text
-        info.findViewById<TextView>(R.id.watch_episode_label)?.text =
-            episodeText.text
-        val hasNext = currentIndex + 1 < episodeCount
-        info.findViewById<View>(R.id.watch_next_row)?.visibility =
-            if (hasNext) View.VISIBLE else View.GONE
-        if (hasNext) {
-            val label = episodeLabels.getOrNull(currentIndex + 1)
-                ?: "Episode ${currentIndex + 2}"
-            info.findViewById<TextView>(R.id.watch_next_title)?.text = label
-            info.findViewById<TextView>(R.id.watch_next_label)?.text =
-                label.substringBefore(" · ").ifEmpty { label }
-        }
-        info.findViewById<Button>(R.id.watch_all_episodes)?.apply {
-            visibility = if (episodeCount > 1) View.VISIBLE else View.GONE
-            text = resources.getString(
-                R.string.phone_player_watch_all_episodes,
-                episodeCount,
-            )
-        }
+        val panel = watchPanel ?: return
+        val row = panel.row(currentIndex)
+        panel.header.findViewById<TextView>(R.id.watch_title).text = row?.title?.ifBlank { null } ?: titleText.text
+        panel.header.findViewById<TextView>(R.id.watch_episode_label).text = row?.subtitle?.ifBlank { null } ?: episodeText.text
+        val description = row?.description?.ifBlank { null } ?: pendingDesc.orEmpty()
+        panel.header.findViewById<View>(R.id.watch_description_card).visibility = if (description.isEmpty()) View.GONE else View.VISIBLE
+        panel.header.findViewById<TextView>(R.id.watch_description).text = description
+        panel.update(currentIndex)
     }
 
     private fun showComingSoon() {
@@ -2397,7 +2446,7 @@ class PhonePlayerActivity : Activity() {
                 } else {
                     seek.progress = progress
                 }
-                timeText.text = fmt(pos) + " / " + fmt(d)
+                timeText.text = if (isPortraitCard()) fmt(pos).padStart(5, '0') + " / " + fmt(d).padStart(5, '0') else fmt(pos) + " / " + fmt(d)
                 seek.contentDescription = getString(R.string.phone_player_desc_seek) + ", " + fmt(pos) + " of " + fmt(d)
             }
         }
@@ -2583,6 +2632,8 @@ class PhonePlayerActivity : Activity() {
     override fun onDestroy() {
         orientationObserver?.disable()
         orientationObserver = null
+        watchPanel?.close()
+        PhonePlayerBridge.clearWatchData(sessionId)
         reportClosed()
         handler.removeCallbacksAndMessages(null)
         moreDialog?.setOnDismissListener(null)

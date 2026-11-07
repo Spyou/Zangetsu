@@ -19,6 +19,10 @@ internal data class PhonePlayerControlLayout(
 
     companion object {
         val iconCodePoints = mapOf(
+            "search" to 0xf013d, "grid" to 0xf7c4, "list" to 0xf028a,
+            "server" to 0xefd4, "audio" to 0xf0ed, "moreHorizontal" to 0xf8d9,
+            "comments" to 0xf62f, "fullscreen" to 0xf7a6, "subtitles" to 0xf3fd,
+            "miniBack" to 0xf570,
             "megaSkip" to 0xf0348,
             "play" to 0xf00a0,
             "pause" to 0xf0056,

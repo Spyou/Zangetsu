@@ -67,4 +67,14 @@
     <string name="phone_player_controls_save_error">Could not save the control layout</string>
     <string name="phone_player_mega_skip_label">+%1$ds</string>
     <string name="phone_player_mega_skip_description">Skip forward %1$d seconds</string>
+    <string name="phone_player_watch_search">Find episode</string>
+    <string name="phone_player_watch_grid">Grid view</string>
+    <string name="phone_player_watch_list">List view</string>
+    <string name="phone_player_watch_reverse">Reverse order</string>
+    <string name="phone_player_watch_count">Episodes (%1$d)</string>
+    <string name="phone_player_watch_find_hint">Episode number</string>
+    <string name="phone_player_watch_no_match">No matching episode</string>
+    <string name="phone_player_watch_season">Season %1$d</string>
+    <string name="phone_player_watch_all_seasons">All seasons</string>
+    <string name="phone_player_watch_fullscreen">Fullscreen</string>
 </resources>

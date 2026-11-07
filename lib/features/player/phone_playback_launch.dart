@@ -23,6 +23,8 @@ import '../../core/tracker/tracker_hub.dart';
 import 'subtitle_font_service.dart';
 import 'player_controls_config.dart';
 import 'subtitle_style.dart';
+import 'watch_page_info.dart';
+import '../detail/cubit/detail_cubit.dart' show seasonOf;
 
 /// Rejects stale sessions and malformed writes before touching saved controls.
 PlayerControlsConfig? phoneControlLayoutForSave(
@@ -42,6 +44,43 @@ PlayerControlsConfig? phoneControlLayoutForSave(
   final right = read('right');
   if (top == null || left == null || right == null) return null;
   return PlayerControlsConfig(top: top, left: left, right: right).sanitised();
+}
+
+/// Display-only rows retain the original index used by native episode taps.
+Map<String, dynamic> phoneWatchPageData({
+  required List<Episode> episodes,
+  String? showTitle,
+  String? showDescription,
+  String? cover,
+}) {
+  final rows = watchPageEpisodes(
+    episodes: episodes,
+    currentIndex: -1,
+    coverFallback: cover,
+  );
+  return {
+    'episodes': rows.map((row) {
+      final ep = episodes[row.index];
+      final header = resolveWatchPageHeader(
+        episode: ep,
+        showTitle: showTitle,
+        showDescription: showDescription,
+      );
+      return <String, dynamic>{
+        'index': row.index,
+        'heading': row.heading,
+        'label': row.label,
+        'thumb': row.thumb,
+        'meta': row.meta,
+        'synopsis': row.synopsis,
+        'number': row.number,
+        'season': seasonOf(ep),
+        'unavailable': row.unavailableReason,
+        'title': header.title,
+        'subtitle': header.subtitle,
+      };
+    }).toList(),
+  };
 }
 
 /// Container → MIME hint. A tokenised url carries no extension, so without an
@@ -137,6 +176,7 @@ Map<String, dynamic> phonePlayerArgs({
   Map<String, String>? coverHeaders,
   String playerOrientation = 'landscape',
   Map<String, List<String>>? controlLayout,
+  Map<String, dynamic>? watchData,
   String? showDescription,
   List<String>? availableCategories,
   String category = 'sub',
@@ -182,6 +222,7 @@ Map<String, dynamic> phonePlayerArgs({
     'coverHeaders': coverHeaders ?? const <String, String>{},
     'playerOrientation': playerOrientation,
     'controlLayout': ?controlLayout,
+    'watchData': ?watchData,
     'showDescription': ?showDescription,
     'availableCategories': availableCategories ?? const <String>[],
     'category': category,
@@ -431,6 +472,17 @@ class PhoneNativePlayer {
         'top': prefs.playerBarTop ?? PlayerControlsConfig.defaultTop,
         'left': prefs.playerBarLeft ?? PlayerControlsConfig.defaultLeft,
         'right': prefs.playerBarRight ?? PlayerControlsConfig.defaultRight,
+      },
+      watchData: {
+        ...phoneWatchPageData(
+          episodes: _episodes,
+          showTitle: _showTitle,
+          showDescription: _showDescription,
+          cover: _cover,
+        ),
+        'coverHeaders': _coverHeaders ?? const <String, String>{},
+        'surface': AppColors.surface2.toARGB32(),
+        'secondary': AppColors.textSecondary.toARGB32(),
       },
       showDescription: _showDescription,
       availableCategories: _availableCategories,

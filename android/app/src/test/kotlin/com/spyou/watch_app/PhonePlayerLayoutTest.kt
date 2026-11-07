@@ -45,7 +45,7 @@ class PhonePlayerLayoutTest {
 
         assertEquals(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT, activity.requestedOrientation)
         assertEquals(
-            activity.resources.displayMetrics.widthPixels * 9 / 16,
+            minOf((activity.resources.displayMetrics.widthPixels - dp(activity, 24)) * 9 / 16, (activity.resources.displayMetrics.heightPixels * .38f).toInt()),
             activity.findViewById<View>(R.id.player_root).layoutParams.height,
         )
         assertEquals(View.VISIBLE, activity.findViewById<View>(R.id.watch_info).visibility)
@@ -97,7 +97,7 @@ class PhonePlayerLayoutTest {
 
         assertEquals(View.VISIBLE, activity.findViewById<View>(R.id.watch_info).visibility)
         assertEquals(
-            activity.resources.displayMetrics.widthPixels * 9 / 16,
+            minOf((activity.resources.displayMetrics.widthPixels - dp(activity, 24)) * 9 / 16, (activity.resources.displayMetrics.heightPixels * .38f).toInt()),
             activity.findViewById<View>(R.id.player_root).layoutParams.height,
         )
 
@@ -235,7 +235,7 @@ class PhonePlayerLayoutTest {
         assertEquals(dp(activity, 64), activity.findViewById<View>(R.id.top_scrim).layoutParams.height)
         assertEquals(dp(activity, 110), activity.findViewById<View>(R.id.bottom_scrim).layoutParams.height)
         assertEquals(
-            dp(activity, 2),
+            dp(activity, 6),
             (activity.findViewById<View>(R.id.top_bar).layoutParams as android.widget.FrameLayout.LayoutParams).marginStart,
         )
         assertEquals(
@@ -276,11 +276,11 @@ class PhonePlayerLayoutTest {
             android.view.Gravity.TOP or android.view.Gravity.CENTER_HORIZONTAL,
             transportParams.gravity,
         )
-        assertEquals(dp(activity, 64), transportParams.topMargin)
+        assertEquals(((card.layoutParams.height - dp(activity, 116)) * .75f).toInt().coerceAtLeast(0), transportParams.topMargin)
         val playBox = activity.findViewById<View>(R.id.btn_play).parent as View
-        assertEquals(dp(activity, 48), playBox.layoutParams.width)
-        assertEquals(dp(activity, 48), playBox.layoutParams.height)
-        assertEquals(dp(activity, 40), activity.findViewById<View>(R.id.seek).layoutParams.height)
+        assertEquals(dp(activity, 56), playBox.layoutParams.width)
+        assertEquals(dp(activity, 56), playBox.layoutParams.height)
+        assertEquals(dp(activity, 24), activity.findViewById<View>(R.id.seek).layoutParams.height)
         // The portrait action row carries the same seven actions at 40dp.
         val portraitRow = android.view.LayoutInflater.from(context).inflate(
             R.layout.phone_player_quick_actions_portrait,
