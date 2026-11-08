@@ -24,6 +24,22 @@ void main() {
       expect(lifecycle.canCreatePlayer, isTrue);
     });
 
+    test('waits for the detail route to settle before creating a player', () {
+      final lifecycle = TrailerRouteLifecycle();
+      lifecycle.setRouteSettled(false);
+      expect(lifecycle.canCreatePlayer, isFalse);
+      lifecycle.setRouteSettled(true);
+      expect(lifecycle.canCreatePlayer, isTrue);
+      lifecycle.cover();
+      lifecycle.setRouteSettled(true);
+      expect(lifecycle.canCreatePlayer, isFalse);
+      lifecycle.uncover();
+      expect(lifecycle.canCreatePlayer, isTrue);
+      lifecycle.beginDispose();
+      lifecycle.setRouteSettled(true);
+      expect(lifecycle.canCreatePlayer, isFalse);
+    });
+
     test('does not permit widget updates after disposal begins', () {
       final lifecycle = TrailerRouteLifecycle();
 

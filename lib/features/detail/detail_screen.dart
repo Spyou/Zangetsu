@@ -4,10 +4,12 @@ import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cue/cue.dart';
 import 'package:flutter/cupertino.dart' show CupertinoPicker;
-import 'package:flutter/foundation.dart' show ValueListenable;
+import 'package:flutter/foundation.dart'
+    show ValueListenable, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:video_player/video_player.dart' as preview;
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:share_plus/share_plus.dart';
@@ -131,6 +133,7 @@ import 'wrong_title_sheet.dart';
 import '../../l10n/l10n.dart';
 
 part 'detail_hero.dart';
+part 'detail_native_trailer.dart';
 part 'detail_info.dart';
 part 'detail_episodes.dart';
 part 'detail_sheets.dart';
@@ -516,7 +519,6 @@ class _DetailViewState extends State<_DetailView>
   // hero swaps its static cover backdrop for an autoplaying, muted, looping
   // player (Netflix-style).
   Future<String?>? _trailerFuture;
-  String? _trailerId;
 
   /// Poster-tinted background colour for the adaptive wash (null → normal
   /// theme background). Extraction runs once per hero-art URL.
@@ -528,23 +530,14 @@ class _DetailViewState extends State<_DetailView>
   /// memory + Hive, so repeat opens don't pop.
   String? _logoUrl;
 
-  /// Kick off (once) the YouTube-id lookup for the resolved detail. When it
-  /// completes with a non-null id, store it in [_trailerId] and rebuild so the
-  /// hero can mount the trailer player.
+  /// Resolve once; only the hero listens for the result.
   void _resolveTrailer(MediaDetail detail) {
-    if (_trailerFuture != null) return;
-    _trailerFuture =
-        sl<TrailerService>().youtubeId(
-          title: detail.title,
-          englishTitle: detail.englishTitle,
-          type: detail.type,
-          year: detail.year,
-        )..then((id) {
-          if (!mounted) return;
-          if (id != null && id.isNotEmpty && id != _trailerId) {
-            setState(() => _trailerId = id);
-          }
-        });
+    _trailerFuture ??= sl<TrailerService>().youtubeId(
+      title: detail.title,
+      englishTitle: detail.englishTitle,
+      type: detail.type,
+      year: detail.year,
+    );
   }
 
   @override
@@ -2290,8 +2283,7 @@ class _DetailViewState extends State<_DetailView>
       );
     }
 
-    // Kick off the trailer lookup (once). When it resolves, _trailerId is set
-    // and the hero swaps its static backdrop for the autoplaying trailer.
+    // The hero handles the lookup result without rebuilding the page.
     _resolveTrailer(detail);
 
     // Season data. PRESERVED.
@@ -2438,13 +2430,11 @@ class _DetailViewState extends State<_DetailView>
                 coverHeaders: coverHeaders,
                 hasCover: hasCover,
                 tint: ThemeController.adaptiveColour ? _tint : null,
-                trailerId: _trailerId,
+                trailer: _trailerFuture,
                 // Pause the trailer once the hero has scrolled past (reuses
                 // the same signal that fades in the app-bar title).
                 collapsed: _showAppBarTitle,
-                onTapFullscreen: _trailerId != null
-                    ? () => _openTrailer(_trailerId!)
-                    : null,
+                onTapFullscreen: _openTrailer,
               ),
             ),
           ),

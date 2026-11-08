@@ -12,6 +12,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
+import 'package:video_player/video_player.dart' as preview;
+import 'package:video_player_platform_interface/video_player_platform_interface.dart';
+import 'package:watch_app/core/ui/route_observer.dart';
+import 'package:watch_app/features/player/player_lifecycle.dart';
 import 'package:watch_app/core/app_mode.dart';
 import 'package:watch_app/core/di/injector.dart';
 import 'package:watch_app/core/download/chapter_download_store.dart';
@@ -46,6 +50,82 @@ import 'package:watch_app/core/zmode/source_matcher.dart';
 import 'package:watch_app/core/zmode/zmode_ids.dart';
 import 'package:watch_app/features/detail/detail_screen.dart';
 import 'package:watch_app/features/detail/wrong_title_sheet.dart';
+
+class _PreviewPlatform extends VideoPlayerPlatform {
+  final streams = <int, StreamController<VideoEvent>>{};
+  final calls = <String>[];
+  Duration position = Duration.zero;
+  Completer<void>? disposeGate;
+  final disposed = Completer<void>();
+  bool fail = false;
+  bool failFirst = false;
+  bool deferInitialization = false;
+  bool deferFirstInitialization = false;
+
+  @override
+  Future<void> init() async {}
+  @override
+  Future<int?> createWithOptions(VideoCreationOptions options) async {
+    final id = streams.length;
+    final events = streams[id] = StreamController<VideoEvent>();
+    calls.add('create');
+    if (fail || (failFirst && id == 0)) {
+      events.addError(
+        PlatformException(code: 'VideoError', message: 'Test preview error'),
+      );
+    } else if (!deferInitialization && !(deferFirstInitialization && id == 0)) {
+      events.add(
+        VideoEvent(
+          eventType: VideoEventType.initialized,
+          size: const Size(640, 360),
+          duration: const Duration(seconds: 30),
+        ),
+      );
+    }
+    return id;
+  }
+
+  @override
+  Stream<VideoEvent> videoEventsFor(int playerId) => streams[playerId]!.stream;
+  @override
+  Future<void> dispose(int playerId) async {
+    calls.add('dispose');
+    if (!disposed.isCompleted) disposed.complete();
+    final gate = disposeGate;
+    if (gate != null) await gate.future;
+    unawaited(streams[playerId]!.close());
+  }
+
+  @override
+  Future<void> play(int playerId) async {
+    calls.add('play');
+  }
+
+  @override
+  Future<void> pause(int playerId) async {
+    calls.add('pause');
+  }
+
+  @override
+  Future<void> setVolume(int playerId, double volume) async {
+    calls.add('volume:$volume');
+  }
+
+  @override
+  Future<void> setLooping(int playerId, bool looping) async {
+    calls.add('loop:$looping');
+  }
+
+  @override
+  Future<void> setPlaybackSpeed(int playerId, double speed) async {}
+  @override
+  Future<void> seekTo(int playerId, Duration position) async {}
+  @override
+  Future<Duration> getPosition(int playerId) async => position;
+  @override
+  Widget buildViewWithOptions(VideoViewOptions options) =>
+      const SizedBox.expand();
+}
 
 // ── Minimal stubs — same shapes as reading_detail_routing_test.dart ────────
 
@@ -230,7 +310,23 @@ class _FakeDownloadManager extends ChangeNotifier implements DownloadManager {
 }
 
 class _FakeTrailerService extends TrailerService {
-  _FakeTrailerService() : super(Dio());
+  _FakeTrailerService({this.result}) : super(Dio());
+
+  @override
+  Future<({String video, String audio})?> streamUrlHd(String youtubeId) async =>
+      (
+        video: 'https://example.test/hd.mp4',
+        audio: 'https://example.test/audio.m4a',
+      );
+
+  final Future<String?>? result;
+  int streamCalls = 0;
+
+  @override
+  Future<String?> streamUrl(String youtubeId, {bool low = false}) async {
+    streamCalls++;
+    return 'https://example.test/trailer.mp4';
+  }
 
   @override
   Future<String?> youtubeId({
@@ -238,10 +334,18 @@ class _FakeTrailerService extends TrailerService {
     String? englishTitle,
     required ProviderType type,
     String? year,
-  }) async => null;
+  }) async => result;
 }
 
 class _FakePlaybackPrefs extends PlaybackPrefs {
+  _FakePlaybackPrefs({this.hd = false});
+  final bool hd;
+  @override
+  bool get autoplayTrailer => true;
+
+  @override
+  bool get trailerHd => hd;
+
   @override
   bool get autoAddToMyList => false;
 
@@ -298,6 +402,7 @@ const _plainDetail = MediaDetail(
 void main() {
   late ZSourcePrefs prefs;
   late Directory tempDir;
+  late _PreviewPlatform previewPlatform;
 
   setUpAll(() {
     TestWidgetsFlutterBinding.ensureInitialized();
@@ -311,6 +416,8 @@ void main() {
         );
 
     await sl.reset();
+    previewPlatform = _PreviewPlatform();
+    VideoPlayerPlatform.instance = previewPlatform;
     sl.registerSingleton<AppMode>(const AppMode(isTv: false));
     sl.registerSingleton<MyListStore>(_FakeMyListStore());
     sl.registerSingleton<ListStatusStore>(_FakeListStatusStore());
@@ -362,11 +469,29 @@ void main() {
     }
   });
 
+  Future<void> drainPreviewTeardown(WidgetTester tester) async {
+    var idle = false;
+    final waiting = playerRouteTeardownBarrier.waitUntilIdle().then(
+      (_) => idle = true,
+    );
+    for (var i = 0; i < 20 && !idle; i++) {
+      await tester.pump();
+      await tester.runAsync(() async {});
+    }
+    expect(
+      idle,
+      isTrue,
+      reason: 'Preview disposal must release the playback barrier',
+    );
+    await waiting;
+  }
+
   Future<void> pumpDetail(
     WidgetTester tester,
     MediaItem item,
     MediaDetail detail, {
     _StubSourceRepository? source,
+    bool entering = false,
   }) async {
     final stub = source ?? _StubSourceRepository(detail);
     sl.registerSingleton<SourceRepository>(stub);
@@ -384,10 +509,274 @@ void main() {
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
 
-    await tester.pumpWidget(MaterialApp(home: DetailScreen(item: item)));
+    await tester.pumpWidget(
+      MaterialApp(
+        navigatorObservers: [appRouteObserver],
+        home: entering
+            ? Builder(
+                builder: (context) => TextButton(
+                  onPressed: () => Navigator.of(context).push(
+                    PageRouteBuilder<void>(
+                      transitionDuration: const Duration(seconds: 1),
+                      pageBuilder: (_, _, _) => DetailScreen(item: item),
+                    ),
+                  ),
+                  child: const Text('Open detail'),
+                ),
+              )
+            : DetailScreen(item: item),
+      ),
+    );
+    if (entering) {
+      await tester.tap(find.text('Open detail'));
+      await tester.pump();
+    }
     await tester.pump(); // let the cubit's load() resolve
     await tester.pump(); // MatchLine's own build-time resolve, if any
   }
+
+  testWidgets('trailer lookup updates only the hero during entry', (
+    tester,
+  ) async {
+    final trailer = Completer<String?>();
+    await sl.unregister<TrailerService>();
+    final service = _FakeTrailerService(result: trailer.future);
+    sl.registerSingleton<TrailerService>(service);
+    await pumpDetail(tester, _plainItem, _plainDetail, entering: true);
+    final title = tester.widget<Text>(find.text('Test Anime').last);
+    trailer.complete('test-trailer');
+    await tester.pump();
+    expect(tester.widget<Text>(find.text('Test Anime').last), same(title));
+    expect(tester.takeException(), isNull);
+    expect(service.streamCalls, 1);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+  });
+
+  testWidgets(
+    'trailer uses a muted looping native preview and waits for progress',
+    (tester) async {
+      await sl.unregister<TrailerService>();
+      sl.registerSingleton<TrailerService>(
+        _FakeTrailerService(result: Future.value('trailer')),
+      );
+      await pumpDetail(tester, _plainItem, _plainDetail);
+      await tester.pump();
+      await tester.pump();
+      expect(previewPlatform.calls, contains('create'));
+      expect(previewPlatform.calls, contains('volume:0.0'));
+      expect(previewPlatform.calls, contains('loop:true'));
+      expect(previewPlatform.calls, contains('play'));
+      final fade = find
+          .ancestor(
+            of: find.byType(preview.VideoPlayer),
+            matching: find.byType(AnimatedOpacity),
+          )
+          .first;
+      expect(tester.widget<AnimatedOpacity>(fade).opacity, 0);
+      previewPlatform.position = const Duration(milliseconds: 100);
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(tester.widget<AnimatedOpacity>(fade).opacity, 1);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+      await tester.runAsync(
+        () =>
+            previewPlatform.disposed.future.timeout(const Duration(seconds: 2)),
+      );
+      expect(previewPlatform.calls, contains('dispose'));
+      await drainPreviewTeardown(tester);
+    },
+  );
+
+  testWidgets(
+    'trailer releases on cover and restores without overriding pause',
+    (tester) async {
+      await sl.unregister<TrailerService>();
+      sl.registerSingleton<TrailerService>(
+        _FakeTrailerService(result: Future.value('trailer')),
+      );
+      await pumpDetail(tester, _plainItem, _plainDetail);
+      await tester.pump();
+      await tester.pump();
+      await tester.tap(find.byIcon(Icons.pause_rounded));
+      await tester.pump();
+      final plays = previewPlatform.calls.where((c) => c == 'play').length;
+      final nav = Navigator.of(tester.element(find.byType(DetailScreen)));
+      unawaited(
+        nav.push(
+          MaterialPageRoute<void>(
+            builder: (_) => const Scaffold(body: Text('Covered')),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.runAsync(
+        () =>
+            previewPlatform.disposed.future.timeout(const Duration(seconds: 2)),
+      );
+      expect(previewPlatform.calls, contains('dispose'));
+      nav.pop();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump();
+      expect(previewPlatform.calls.where((c) => c == 'create'), hasLength(2));
+      expect(previewPlatform.calls.where((c) => c == 'play'), hasLength(plays));
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+      await drainPreviewTeardown(tester);
+    },
+  );
+
+  testWidgets(
+    'leaving during trailer initialization disposes without waiting for media',
+    (tester) async {
+      previewPlatform.deferInitialization = true;
+      await sl.unregister<TrailerService>();
+      sl.registerSingleton<TrailerService>(
+        _FakeTrailerService(result: Future.value('trailer')),
+      );
+      await pumpDetail(tester, _plainItem, _plainDetail);
+      await tester.pump();
+      final nav = Navigator.of(tester.element(find.byType(DetailScreen)));
+      unawaited(
+        nav.push(
+          MaterialPageRoute<void>(
+            builder: (_) => const Scaffold(body: Text('Covered')),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump();
+      await tester.runAsync(
+        () =>
+            previewPlatform.disposed.future.timeout(const Duration(seconds: 2)),
+      );
+      expect(previewPlatform.calls, contains('dispose'));
+      expect(previewPlatform.calls, isNot(contains('play')));
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+      await drainPreviewTeardown(tester);
+    },
+  );
+
+  testWidgets('failed trailer keeps artwork and releases its controller', (
+    tester,
+  ) async {
+    previewPlatform.fail = true;
+    await sl.unregister<TrailerService>();
+    sl.registerSingleton<TrailerService>(
+      _FakeTrailerService(result: Future.value('trailer')),
+    );
+    await pumpDetail(tester, _plainItem, _plainDetail);
+    await tester.pump();
+    expect(find.byType(preview.VideoPlayer), findsNothing);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+    await tester.runAsync(
+      () => previewPlatform.disposed.future.timeout(const Duration(seconds: 2)),
+    );
+    expect(previewPlatform.calls, contains('dispose'));
+    await drainPreviewTeardown(tester);
+  });
+
+  testWidgets('HD preview failure falls back to the standard stream', (
+    tester,
+  ) async {
+    previewPlatform.failFirst = true;
+    await sl.unregister<PlaybackPrefs>();
+    sl.registerSingleton<PlaybackPrefs>(_FakePlaybackPrefs(hd: true));
+    await sl.unregister<TrailerService>();
+    final service = _FakeTrailerService(result: Future.value('trailer'));
+    sl.registerSingleton<TrailerService>(service);
+    await pumpDetail(tester, _plainItem, _plainDetail);
+    await tester.pump();
+    await tester.runAsync(
+      () => previewPlatform.disposed.future.timeout(const Duration(seconds: 2)),
+    );
+    await tester.pump();
+    await tester.pump();
+    expect(service.streamCalls, 1);
+    expect(previewPlatform.calls.where((c) => c == 'create'), hasLength(2));
+    expect(previewPlatform.calls, contains('play'));
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+    await drainPreviewTeardown(tester);
+  });
+
+  testWidgets('HD preparation timeout falls back to the standard stream', (
+    tester,
+  ) async {
+    previewPlatform.deferFirstInitialization = true;
+    await sl.unregister<PlaybackPrefs>();
+    sl.registerSingleton<PlaybackPrefs>(_FakePlaybackPrefs(hd: true));
+    await sl.unregister<TrailerService>();
+    final service = _FakeTrailerService(result: Future.value('trailer'));
+    sl.registerSingleton<TrailerService>(service);
+    await pumpDetail(tester, _plainItem, _plainDetail);
+    await tester.pump();
+    expect(previewPlatform.calls.where((c) => c == 'create'), hasLength(1));
+    await tester.pump(const Duration(seconds: 8));
+    await tester.runAsync(
+      () => previewPlatform.disposed.future.timeout(const Duration(seconds: 2)),
+    );
+    await tester.pump();
+    await tester.pump();
+    expect(service.streamCalls, 1);
+    expect(previewPlatform.calls.where((c) => c == 'create'), hasLength(2));
+    expect(previewPlatform.calls, contains('play'));
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+    await drainPreviewTeardown(tester);
+  });
+
+  testWidgets('replacement playback waits until the native preview releases', (
+    tester,
+  ) async {
+    final released = previewPlatform.disposeGate = Completer<void>();
+    await sl.unregister<TrailerService>();
+    sl.registerSingleton<TrailerService>(
+      _FakeTrailerService(result: Future.value('trailer')),
+    );
+    await pumpDetail(tester, _plainItem, _plainDetail);
+    await tester.pump();
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+    await tester.runAsync(
+      () => previewPlatform.disposed.future.timeout(const Duration(seconds: 2)),
+    );
+    var replacementReady = false;
+    final waiting = playerRouteTeardownBarrier.waitUntilIdle().then(
+      (_) => replacementReady = true,
+    );
+    await tester.pump();
+    expect(replacementReady, isFalse);
+    released.complete();
+    await drainPreviewTeardown(tester);
+    await waiting;
+    expect(replacementReady, isTrue);
+  });
+
+  testWidgets('a late trailer lookup does not start after leaving detail', (
+    tester,
+  ) async {
+    final trailer = Completer<String?>();
+    final service = _FakeTrailerService(result: trailer.future);
+    await sl.unregister<TrailerService>();
+    sl.registerSingleton<TrailerService>(service);
+    await pumpDetail(tester, _plainItem, _plainDetail, entering: true);
+    await tester.pumpWidget(const SizedBox.shrink());
+    trailer.complete('late-trailer');
+    await tester.pump();
+    expect(service.streamCalls, 0);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets(
     'a zm:// item shows the selector under the action buttons, above the synopsis',

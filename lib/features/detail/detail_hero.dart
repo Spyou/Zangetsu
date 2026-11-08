@@ -11,7 +11,7 @@ class _Hero extends StatelessWidget {
     required this.coverUrl,
     required this.coverHeaders,
     required this.hasCover,
-    this.trailerId,
+    this.trailer,
     this.collapsed = false,
     this.onTapFullscreen,
     this.tint,
@@ -21,14 +21,14 @@ class _Hero extends StatelessWidget {
   final Map<String, String>? coverHeaders;
   final bool hasCover;
 
-  /// Resolved YouTube id, or null while still loading / when none exists.
-  final String? trailerId;
+  /// The lookup is shared across rebuilds; only this hero listens to it.
+  final Future<String?>? trailer;
 
   /// True once the hero has scrolled past — the trailer pauses while collapsed.
   final bool collapsed;
 
   /// Opens the fullscreen trailer when the banner is tapped. Null disables it.
-  final VoidCallback? onTapFullscreen;
+  final ValueChanged<String>? onTapFullscreen;
 
   /// Current adaptive background tint (null → flat theme background).
   final ValueListenable<Color?>? tint;
@@ -71,7 +71,6 @@ class _Hero extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final id = trailerId;
     final t = tint;
     return Stack(
       fit: StackFit.expand,
@@ -79,14 +78,31 @@ class _Hero extends StatelessWidget {
         // Backdrop: autoplaying trailer once an id resolves, else the cover
         // image. The cover image always sits underneath as placeholder/fallback
         // so there's never a blank/black flash.
-        (id != null && id.isNotEmpty)
-            ? _HeroTrailer(
+        FutureBuilder<String?>(
+          future: trailer,
+          builder: (context, snapshot) {
+            final id = snapshot.data;
+            if (id == null || id.isEmpty) return _coverBackdrop();
+            if (defaultTargetPlatform == TargetPlatform.android) {
+              return _NativeHeroTrailer(
                 videoId: id,
                 collapsed: collapsed,
-                onTapFullscreen: onTapFullscreen,
+                onTapFullscreen: onTapFullscreen == null
+                    ? null
+                    : () => onTapFullscreen!(id),
                 placeholder: _coverBackdrop(),
-              )
-            : _coverBackdrop(),
+              );
+            }
+            return _HeroTrailer(
+              videoId: id,
+              collapsed: collapsed,
+              onTapFullscreen: onTapFullscreen == null
+                  ? null
+                  : () => onTapFullscreen!(id),
+              placeholder: _coverBackdrop(),
+            );
+          },
+        ),
         // Gradients render OVER the video for title readability. No top
         // fade: the back chip below carries its own background.
         if (t == null)

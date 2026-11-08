@@ -70,6 +70,7 @@ dependencies:
   sqflite_tvos:
     path: third_party/sqflite_tvos
   # Transitive via flutter_widget_from_html (etc.); needs a tvOS implementation.
+  video_player: ^2.14.0
   video_player_tvos: ^0.0.1
   wakelock_plus_tvos: ^0.0.1
   firebase_core_tvos: ^0.0.2
@@ -175,6 +176,7 @@ dependencies:
   dynamic_color: ^2.1.0
   local_auth: ^3.0.2
 dev_dependencies:
+  video_player_platform_interface: ^6.9.0
   # Test-only: gives the EPUB tests a REAL XML parse, which catches what a
   # hand-rolled tag-balance check cannot (an unescaped '&', a bad attribute)
   # — exactly what a strict e-reader rejects the whole file over.

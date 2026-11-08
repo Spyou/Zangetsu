@@ -5,10 +5,13 @@
 class TrailerRouteLifecycle {
   bool _isCovered = false;
   bool _isDisposing = false;
+  bool _isRouteSettled = true;
 
   bool get isCovered => _isCovered;
 
-  bool get canCreatePlayer => !_isCovered && !_isDisposing;
+  bool get canCreatePlayer => _isRouteSettled && !_isCovered && !_isDisposing;
+
+  void setRouteSettled(bool settled) => _isRouteSettled = settled;
 
   bool get canUpdateUi => !_isDisposing;
 
