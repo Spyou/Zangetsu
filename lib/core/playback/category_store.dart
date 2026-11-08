@@ -188,6 +188,9 @@ class CategoryStore {
   final String? Function()? _currentProfileId;
   final String _backendNamespace;
   String get _profileId => _currentProfileId?.call() ?? kDefaultProfileId;
+
+  /// Scope of the current category reads, including derived UI caches.
+  String get profileId => _profileId;
   String? _remoteProfileId(String id) => id == kDefaultProfileId ? null : id;
 
   static const String boxName = 'list_categories';

@@ -37,6 +37,7 @@ import 'package:watch_app/core/models/media_item.dart';
 import 'package:watch_app/core/models/provider_info.dart';
 import 'package:watch_app/core/models/watch_status.dart';
 import 'package:watch_app/core/playback/list_status_store.dart';
+import 'package:watch_app/core/playback/category_store.dart';
 import 'package:watch_app/core/playback/my_list.dart';
 import 'package:watch_app/core/playback/watch_history.dart';
 import 'package:watch_app/core/reading/read_history.dart';
@@ -50,6 +51,7 @@ import 'package:watch_app/features/auth/auth_cubit.dart';
 import 'package:watch_app/features/home/continue_section.dart';
 import 'package:watch_app/features/home/home_screen.dart' show readerFor;
 import 'package:watch_app/features/home/my_list_screen.dart';
+import 'package:watch_app/features/home/library_tabs.dart';
 import 'package:watch_app/features/reader/manga_reader_screen.dart';
 import 'package:watch_app/features/reader/novel_reader_screen.dart';
 
@@ -110,6 +112,29 @@ class _RecordingNavigatorObserver extends NavigatorObserver {
   void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
     pushed.add(route);
   }
+}
+
+class _CountingCategoryStore implements CategoryStore {
+  @override
+  final revision = ValueNotifier<int>(0);
+  @override
+  String get profileId => 'profile';
+  int reads = 0;
+  bool member = true;
+  @override
+  List<ListCategory> all() => const [
+    ListCategory(id: 'cat', name: 'Favorites', position: 0, kind: 'anime'),
+  ];
+  @override
+  Set<String> categoriesOf(MediaItem item) {
+    reads++;
+    return member ? {'cat'} : {};
+  }
+
+  @override
+  bool isIn(MediaItem item, String id) => member && id == 'cat';
+  @override
+  noSuchMethod(Invocation i) => super.noSuchMethod(i);
 }
 
 void main() {
@@ -745,6 +770,44 @@ void main() {
     tearDown(() async {
       await sl.reset();
     });
+
+    testWidgets(
+      'resizing reuses category counts; assignment changes refresh them',
+      (tester) async {
+        const item = MediaItem(
+          id: 'a',
+          title: 'Anime',
+          url: '/a',
+          sourceId: 's',
+          type: ProviderType.anime,
+        );
+        final cats = _CountingCategoryStore();
+        sl.registerSingleton<CategoryStore>(cats);
+        sl.registerSingleton<MyListStore>(_FakeMyListStore([item]));
+        sl.registerSingleton<ContentModeCubit>(
+          _FakeContentModeCubit(ContentMode.anime),
+        );
+        tester.view.physicalSize = const Size(800, 1000);
+        addTearDown(tester.view.reset);
+        await tester.pumpWidget(authed(const MyListScreen()));
+        await tester.pumpAndSettle();
+        expect(cats.reads, 1);
+        LibraryTab category() => tester
+            .widget<LibraryTabs>(find.byType(LibraryTabs))
+            .tabs
+            .singleWhere((t) => t.id == 'cat:cat');
+        expect(category().count, 1);
+        tester.view.physicalSize = const Size(820, 1100);
+        await tester.pumpAndSettle();
+        expect(cats.reads, 1);
+        cats.member = false;
+        cats.revision.value++;
+        await tester.pumpAndSettle();
+        expect(category().count, 0);
+        expect(cats.reads, 2);
+        await tester.pumpWidget(const SizedBox.shrink());
+        },
+    );
 
     testWidgets('anime mode, list truly empty — unchanged wording, no button '
         '(regression)', (tester) async {

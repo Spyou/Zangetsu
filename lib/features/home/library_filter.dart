@@ -1,6 +1,8 @@
 import 'dart:math';
 
 import '../../core/models/watch_status.dart';
+import '../../core/mode/content_mode.dart';
+import '../../core/playback/category_store.dart';
 import 'cubit/my_list_cubit.dart';
 
 /// Picks one entry from the already-filtered library view, or null when it is
@@ -39,4 +41,50 @@ List<MyListEntry> filterLibraryEntries(
           (inCategory == null || inCategory(e)))
         e,
   ];
+}
+
+/// Reuses category counts across layout changes without retaining another
+/// profile's assignments or stale list/category data.
+class LibraryCategoryCounts {
+  LibraryCategoryCounts(this.store);
+
+  final CategoryStore store;
+  String? _profile;
+  int? _revision;
+  List<MyListEntry>? _entries;
+  final _byKind = <ContentMode, Map<String, int>>{};
+  final _totals = <String, int>{};
+
+  void _syncScope() {
+    final profile = store.profileId;
+    final revision = store.revision.value;
+    if (profile == _profile && revision == _revision) return;
+    _profile = profile;
+    _revision = revision;
+    _byKind.clear();
+    _totals.clear();
+  }
+
+  Map<String, int> forEntries(List<MyListEntry> entries, ContentMode kind) {
+    _syncScope();
+    if (!identical(entries, _entries)) {
+      _entries = entries;
+      _byKind.clear();
+    }
+    return _byKind.putIfAbsent(kind, () {
+      final counts = <String, int>{};
+      for (final entry in entries) {
+        if (!kind.matchesProvider(entry.item.type)) continue;
+        for (final id in store.categoriesOf(entry.item)) {
+          counts.update(id, (n) => n + 1, ifAbsent: () => 1);
+        }
+      }
+      return Map.unmodifiable(counts);
+    });
+  }
+
+  int total(String categoryId) {
+    _syncScope();
+    return _totals.putIfAbsent(categoryId, () => store.countIn(categoryId));
+  }
 }

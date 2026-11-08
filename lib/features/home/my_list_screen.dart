@@ -136,6 +136,12 @@ class _MyListViewState extends State<_MyListView> with WidgetsBindingObserver {
   CategoryStore? get _cats =>
       sl.isRegistered<CategoryStore>() ? sl<CategoryStore>() : null;
 
+  LibraryCategoryCounts? _categoryCounts;
+
+  void _onCategoriesChanged() {
+    if (mounted) setState(() {});
+  }
+
   /// Null until the user picks one — the default then depends on which list is
   /// showing (your own keeps insertion order, a tracker leads with score), and
   /// that can change under us when the source switcher moves.
@@ -183,6 +189,11 @@ class _MyListViewState extends State<_MyListView> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    final cats = _cats;
+    if (cats != null && !sl<AppMode>().isTv) {
+      _categoryCounts = LibraryCategoryCounts(cats);
+      cats.revision.addListener(_onCategoriesChanged);
+    }
     // Cross-device My List freshness is handled by the app-wide foreground
     // poll in main.dart (stale-gated). A 15s force-pull here doubled PostgREST
     // traffic whenever this screen stayed mounted (including the TV branch).
@@ -191,6 +202,7 @@ class _MyListViewState extends State<_MyListView> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _categoryCounts?.store.revision.removeListener(_onCategoriesChanged);
     _searchController.dispose();
     super.dispose();
   }
@@ -996,6 +1008,9 @@ class _MyListViewState extends State<_MyListView> with WidgetsBindingObserver {
     // picks the sort defaults below — the tracker lists share this widget.
     final trackerState = context.read<TrackerListCubit>().state;
     final isMyList = trackerState.isMyList;
+    final categoryCounts = isMyList
+        ? (_categoryCounts?.forEntries(entries, mode) ?? const <String, int>{})
+        : const <String, int>{};
 
     // The account's own list names first — a list created but not yet filled
     // still deserves a tab. Anything an entry claims to be in is unioned on
@@ -1036,12 +1051,12 @@ class _MyListViewState extends State<_MyListView> with WidgetsBindingObserver {
       // under Manga and Novel as an empty tab.
       if (isMyList)
         for (final c in (_cats?.all() ?? const <ListCategory>[]).where(
-          _categoryFitsKind(modeEntries),
+          _categoryFitsKind(categoryCounts),
         ))
           LibraryTab(
             id: 'cat:${c.id}',
             label: c.name,
-            count: _categoryCount(modeEntries, c),
+            count: categoryCounts[c.id] ?? 0,
             test: (e) => _cats?.isIn(e.item, c.id) ?? false,
             onLongPress: () => _manageCategory(context, c),
           ),
@@ -1215,14 +1230,6 @@ class _MyListViewState extends State<_MyListView> with WidgetsBindingObserver {
     );
   }
 
-  /// How many of [entries] — already narrowed to the kind on screen — are in
-  /// [c].
-  int _categoryCount(List<MyListEntry> entries, ListCategory c) {
-    final cats = _cats;
-    if (cats == null) return 0;
-    return entries.where((e) => cats.isIn(e.item, c.id)).length;
-  }
-
   /// Drop the selected category when it does not belong to [k].
   ///
   /// The mode row only ever changed the kind, and [_categoryFitsKind] keeps
@@ -1254,15 +1261,15 @@ class _MyListViewState extends State<_MyListView> with WidgetsBindingObserver {
   /// they are empty everywhere. That last rule is why a new category used to
   /// appear in all three modes, and it is left alone here so the categories
   /// already on people's devices do not look deleted from two of them.
-  bool Function(ListCategory) _categoryFitsKind(List<MyListEntry> entries) {
+  bool Function(ListCategory) _categoryFitsKind(Map<String, int> counts) {
     final cats = _cats;
     return (c) {
       if (cats == null) return false;
       if (_categoryFilter == c.id) return true;
       final madeIn = c.kind;
       if (madeIn != null) return madeIn == _kind.name;
-      if (_categoryCount(entries, c) > 0) return true;
-      return cats.countIn(c.id) == 0;
+      if ((counts[c.id] ?? 0) > 0) return true;
+      return (_categoryCounts?.total(c.id) ?? 0) == 0;
     };
   }
 
