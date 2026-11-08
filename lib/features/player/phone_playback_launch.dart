@@ -25,6 +25,7 @@ import '../../core/playback/tv_track_helpers.dart';
 import '../../core/playback/watch_history.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/tracker/tracker_hub.dart';
+import '../../core/tracker/simkl_playback_session.dart';
 import 'subtitle_font_service.dart';
 import 'player_controls_config.dart';
 import 'subtitle_style.dart';
@@ -272,6 +273,7 @@ Future<void> phoneScrobbleOnLaunch({
   String? imdbId,
   bool peek = false,
   bool auto = true,
+  bool simklLive = false,
 }) async {
   if (peek) return;
   final number = episode.number;
@@ -293,6 +295,7 @@ Future<void> phoneScrobbleOnLaunch({
       season: episode.season,
       seasonEpisode: seasonEpisodeOf(episodes, episode),
       auto: auto,
+      simklLive: simklLive,
     ),
   );
 }
@@ -422,6 +425,8 @@ class PhoneNativePlayer {
   static int _resumeOverride = 0;
   static bool _seedUsed = false;
   static bool _scrobbled = false;
+  static SimklPlaybackSession? _simklPlayback;
+  static int _simklIndex = -1;
   static bool _isMovie = false;
 
   /// Returns false when the Activity cannot be started; stream errors are
@@ -495,6 +500,9 @@ class PhoneNativePlayer {
     _resumeOverride = resumePosition;
     _seedUsed = false;
     _scrobbled = false;
+    _simklPlayback?.stop();
+    _simklPlayback = null;
+    _simklIndex = -1;
     final subFontPath = await _stageSubtitleFont(prefs.subtitleFont);
     final args = phonePlayerArgs(
       title: _showTitle,
@@ -630,6 +638,7 @@ class PhoneNativePlayer {
             tmdbId: _tmdbId,
             tmdbIsTv: _tmdbIsTv,
             imdbId: _imdbId,
+            simklLive: true,
           ),
         );
         return null;
@@ -919,7 +928,9 @@ class PhoneNativePlayer {
           return true;
         }
       case 'discordPresence':
-        _pushDiscordPresence(_callArgs(call));
+        final args = _callArgs(call);
+        _syncSimkl(args);
+        _pushDiscordPresence(args);
         return null;
       case 'saveProgress':
         final args = _callArgs(call);
@@ -927,6 +938,16 @@ class PhoneNativePlayer {
         _preheatNearEnd(args);
         return null;
       case 'playerClosed':
+        final closingArgs = _callArgs(call);
+        if (closingArgs?['sessionId'] == _sessionId) {
+          _syncSimkl({
+            ...?closingArgs,
+            'index': closingArgs?['episodeIndex'],
+            'actualPlaying': false,
+            'completed': true,
+          });
+          _simklPlayback?.stop();
+        }
         if (!_peek &&
             _closed?.isCompleted == false &&
             sl.isRegistered<DiscordRpc>()) {
@@ -942,6 +963,41 @@ class PhoneNativePlayer {
         return null;
     }
     return null;
+  }
+
+  static void _syncSimkl(Map<String, dynamic>? args) {
+    if (_peek ||
+        _closed?.isCompleted != false ||
+        args?['sessionId'] != _sessionId ||
+        !sl.isRegistered<TrackerHub>()) {
+      return;
+    }
+    final index = (args?['index'] as num?)?.toInt() ?? -1;
+    if (index < 0 || index >= _episodes.length) return;
+    if (index != _simklIndex) {
+      _simklPlayback?.stop();
+      _simklPlayback = null;
+      _simklIndex = index;
+    }
+    final ep = _episodes[index];
+    final n = ep.number;
+    _simklPlayback ??= sl<TrackerHub>().simklPlayback(
+      malId: _malId,
+      tmdbId: _tmdbId,
+      tmdbIsTv: _tmdbIsTv,
+      imdbId: _imdbId,
+      episode: n != null && n.isFinite && n > 0 && n == n.truncateToDouble()
+          ? n.toInt()
+          : null,
+      season: ep.season,
+      seasonEpisode: seasonEpisodeOf(_episodes, ep),
+    );
+    _simklPlayback?.update(
+      positionMs: (args?['positionMs'] as num?)?.toInt() ?? 0,
+      durationMs: (args?['durationMs'] as num?)?.toInt() ?? 0,
+      playing: args?['actualPlaying'] == true,
+      completed: args?['completed'] == true,
+    );
   }
 
   static void _pushDiscordPresence(Map<String, dynamic>? args) {

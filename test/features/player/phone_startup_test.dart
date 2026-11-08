@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:dio/dio.dart';
+
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
@@ -10,6 +12,8 @@ import 'package:watch_app/core/models/video_source.dart';
 import 'package:watch_app/core/playback/playback_prefs.dart';
 import 'package:watch_app/core/playback/resume_store.dart';
 import 'package:watch_app/core/playback/title_prefs.dart';
+import 'package:watch_app/core/tracker/simkl_service.dart';
+import 'package:watch_app/core/tracker/tracker_hub.dart';
 import 'package:watch_app/features/player/phone_playback_launch.dart';
 
 void main() {
@@ -89,6 +93,7 @@ void main() {
       showUrl: 'https://show/title',
       showTitle: 'Title',
       showDescription: 'Synopsis',
+      malId: 21,
     );
     await launched.future;
   });
@@ -108,6 +113,80 @@ void main() {
     expect(payload['url'], 'https://low.test/video');
     expect(resolved, ['https://site/dub/1']);
   });
+
+  test(
+    'native Simkl tracks live episode switches without first-frame history',
+    () async {
+      await SimklService.init();
+      await Hive.box(
+        SimklService.boxName,
+      ).putAll({'accessToken': 'test', 'viewerName': 'tester'});
+      final requests = <RequestOptions>[];
+      final stopped = Completer<void>();
+      final dio = Dio()
+        ..interceptors.add(
+          InterceptorsWrapper(
+            onRequest: (options, handler) {
+              requests.add(options);
+              handler.resolve(
+                Response(requestOptions: options, statusCode: 201),
+              );
+              if (options.path.endsWith('/stop') &&
+                  options.data['episode']['number'] == 2) {
+                stopped.complete();
+              }
+            },
+          ),
+        );
+      final simkl = SimklService(dio);
+      sl.registerSingleton<TrackerHub>(TrackerHub([simkl]));
+      addTearDown(simkl.dispose);
+      final session = launchArgs!['sessionId'];
+      Future<dynamic> state(
+        int index,
+        int position,
+        bool playing, {
+        int? sessionId,
+      }) => send('discordPresence', {
+        'sessionId': sessionId ?? session,
+        'index': index,
+        'positionMs': position,
+        'durationMs': 100000,
+        'actualPlaying': playing,
+        'playing': playing,
+      });
+      await state(0, 1000, true, sessionId: -1);
+      await state(0, 1000, true);
+      await send('playbackStarted', {'index': 0});
+      await state(0, 30000, false);
+      await state(0, 30000, true);
+      await state(1, 1000, true);
+      await send('playerClosed', {
+        'sessionId': session,
+        'episodeIndex': 1,
+        'positionMs': 2000,
+        'durationMs': 100000,
+      });
+      await stopped.future.timeout(const Duration(seconds: 3));
+      expect(requests.map((r) => r.uri.path), [
+        '/scrobble/start',
+        '/scrobble/pause',
+        '/scrobble/start',
+        '/scrobble/stop',
+        '/scrobble/start',
+        '/scrobble/stop',
+      ]);
+      expect(requests.map((r) => r.data['episode']['number']), [
+        1,
+        1,
+        1,
+        1,
+        2,
+        2,
+      ]);
+      expect(requests.last.data['progress'], 2);
+    },
+  );
 
   test('native title quality wins over global preference', () async {
     await sl<TitlePrefsStore>().setQuality(

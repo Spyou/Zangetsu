@@ -154,9 +154,17 @@ class PhonePlayerActivity : Activity() {
     private lateinit var dblLeft: TextView
     private lateinit var dblRight: TextView
 
+    private var lastPresenceAt = 0L
     private val ticker = object : Runnable {
         override fun run() {
             syncProgress()
+            // A slow heartbeat keeps live tracking (Simkl) advancing during
+            // continuous playback; events alone only report the first second.
+            val now = android.os.SystemClock.elapsedRealtime()
+            if (now - lastPresenceAt >= 10_000L) {
+                lastPresenceAt = now
+                if (player?.isPlaying == true) sendDiscordPresence()
+            }
             handler.postDelayed(this, 250L)
         }
     }
@@ -445,6 +453,7 @@ class PhonePlayerActivity : Activity() {
             }
 
             override fun onPlaybackStateChanged(state: Int) {
+                sendDiscordPresence()
                 updateKeepScreenOn()
                 setBuffering(
                     state == Player.STATE_BUFFERING &&
@@ -2099,9 +2108,12 @@ class PhonePlayerActivity : Activity() {
             "discordPresence",
             mapOf(
                 "index" to loadedEpisodeIndex,
+                "sessionId" to sessionId,
                 "positionMs" to p.currentPosition.coerceAtLeast(0L),
                 "durationMs" to p.duration,
                 "playing" to (p.playWhenReady && p.playbackState != Player.STATE_ENDED),
+                "actualPlaying" to p.isPlaying,
+                "completed" to (p.playbackState == Player.STATE_ENDED),
             ),
         )
     }
@@ -2706,6 +2718,7 @@ class PhonePlayerActivity : Activity() {
         PhonePlayerBridge.channel?.invokeMethod(
             "playerClosed",
             mapOf(
+                "sessionId" to sessionId,
                 PhonePlayerIntent.RESULT_POSITION to (p?.currentPosition ?: 0L),
                 PhonePlayerIntent.RESULT_DURATION to (p?.duration ?: 0L).coerceAtLeast(0L),
                 PhonePlayerIntent.RESULT_EP_INDEX to loadedEpisodeIndex,

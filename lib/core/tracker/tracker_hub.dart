@@ -5,6 +5,8 @@ import '../playback/playback_prefs.dart';
 import '../privacy/incognito_mode.dart';
 import 'mangabaka_service.dart';
 import 'tracker.dart';
+import 'simkl_service.dart';
+import 'simkl_playback_session.dart';
 
 /// Fans every list/progress write out to all connected trackers at once
 /// (AniList + MyAnimeList + Simkl). Each tracker self-gates (skips when
@@ -39,6 +41,30 @@ class TrackerHub {
   /// behaves as it always did rather than silently going quiet.
   static bool get _autoTrackOn =>
       !sl.isRegistered<PlaybackPrefs>() || sl<PlaybackPrefs>().autoTrack;
+
+  SimklPlaybackSession? simklPlayback({
+    int? malId,
+    int? tmdbId,
+    bool tmdbIsTv = false,
+    String? imdbId,
+    int? episode,
+    int? season,
+    int? seasonEpisode,
+  }) {
+    for (final tracker in trackers.whereType<SimklService>()) {
+      return tracker.playbackSession(
+        malId: malId,
+        tmdbId: tmdbId,
+        tmdbIsTv: tmdbIsTv,
+        imdbId: imdbId,
+        episode: episode,
+        season: season,
+        seasonEpisode: seasonEpisode,
+        allowed: () => _autoTrackOn && !IncognitoMode.on,
+      );
+    }
+    return null;
+  }
 
   Future<void> markWatching({
     int? malId,
@@ -75,24 +101,27 @@ class TrackerHub {
     MediaKind kind = MediaKind.anime,
     bool novel = false,
     bool auto = true,
+    bool simklLive = false,
   }) async {
     // [auto] false = the user asked for this one by hand ("Mark as watched"),
     // so the auto-track preference doesn't apply. Incognito still does.
     if (auto && !_autoTrackOn) return;
     if (IncognitoMode.on) return; // incognito: pause auto-scrobble
     await _fan(
-      (t) => t.scrobble(
-        malId: malId,
-        title: title,
-        tmdbId: tmdbId,
-        tmdbIsTv: tmdbIsTv,
-        imdbId: imdbId,
-        episode: episode,
-        season: season,
-        seasonEpisode: seasonEpisode,
-        kind: kind,
-        novel: novel,
-      ),
+      (t) => auto && simklLive && t is SimklService
+          ? Future<void>.value()
+          : t.scrobble(
+              malId: malId,
+              title: title,
+              tmdbId: tmdbId,
+              tmdbIsTv: tmdbIsTv,
+              imdbId: imdbId,
+              episode: episode,
+              season: season,
+              seasonEpisode: seasonEpisode,
+              kind: kind,
+              novel: novel,
+            ),
     );
   }
 

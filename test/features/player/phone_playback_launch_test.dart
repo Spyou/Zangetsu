@@ -34,6 +34,7 @@ class _RecordingTrackerHub extends TrackerHub {
     MediaKind kind = MediaKind.anime,
     bool novel = false,
     bool auto = true,
+    bool simklLive = false,
   }) async {
     calls++;
     this.malId = malId;

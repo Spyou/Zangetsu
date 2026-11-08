@@ -14,6 +14,7 @@ import '../models/watch_status.dart';
 import '../zmode/simkl_catalogue.dart';
 import '../platform/apple_tv.dart';
 import 'tracker.dart';
+import 'simkl_playback_session.dart';
 
 /// Simkl tracker (movies + TV + anime). OAuth2 authorization-code with a client
 /// secret; tokens don't expire. Every API call carries `Authorization: Bearer`
@@ -30,6 +31,7 @@ class SimklService extends ChangeNotifier implements Tracker {
   }
 
   final Dio _dio;
+  Future<void> _playbackQueue = Future<void>.value();
   final AppLinks _appLinks = AppLinks();
   StreamSubscription<Uri>? _linkSub;
   Completer<bool>? _pending;
@@ -200,7 +202,9 @@ class SimklService extends ChangeNotifier implements Tracker {
           validateStatus: (s) => s != null && s < 500,
         ),
       );
-      final ok = res.statusCode != null && res.statusCode! < 300;
+      final ok = res.statusCode != null &&
+          (res.statusCode! < 300 ||
+              (path.startsWith('/scrobble/') && res.statusCode == 409));
       // A rejected sync used to be completely silent — the bool came back
       // false and every caller dropped it, so "Simkl isn't tracking me" had
       // nothing behind it in a shared log. Only the failures are logged;
@@ -229,7 +233,90 @@ class SimklService extends ChangeNotifier implements Tracker {
     String simklStatus,
   ) async {
     if (t == null) return;
-    await _post('/sync/add-to-list', _body(t, {'ids': t.ids, 'to': simklStatus}));
+    await _post(
+      '/sync/add-to-list',
+      _body(t, {'ids': t.ids, 'to': simklStatus}),
+    );
+  }
+
+  @visibleForTesting
+  static Map<String, dynamic>? playbackBody({
+    int? malId,
+    int? tmdbId,
+    bool tmdbIsTv = false,
+    String? imdbId,
+    int? episode,
+    int? season,
+    int? seasonEpisode,
+  }) {
+    final ids = <String, dynamic>{
+      if (malId != null && malId > 0) 'mal': '$malId',
+      if (tmdbId != null && tmdbId > 0) 'tmdb': '$tmdbId',
+      if (imdbId?.isNotEmpty == true) 'imdb': imdbId,
+    };
+    if (ids.isEmpty) return null;
+    final anime = ids.containsKey('mal');
+    final movie = !anime && !tmdbIsTv;
+    if (!movie && (episode == null || episode <= 0)) return null;
+    if (!anime && tmdbIsTv && ids.containsKey('tmdb')) ids['type'] = 'tv';
+    final seasoned =
+        !anime &&
+        season != null &&
+        season > 0 &&
+        seasonEpisode != null &&
+        seasonEpisode > 0;
+    return {
+      if (movie)
+        'movie': {'ids': ids}
+      else if (anime)
+        'anime': {'ids': ids}
+      else
+        'show': {'ids': ids},
+      if (!movie)
+        'episode': {
+          if (seasoned) 'season': season,
+          'number': seasoned ? seasonEpisode : episode,
+        },
+    };
+  }
+
+  SimklPlaybackSession? playbackSession({
+    int? malId,
+    int? tmdbId,
+    bool tmdbIsTv = false,
+    String? imdbId,
+    int? episode,
+    int? season,
+    int? seasonEpisode,
+    required bool Function() allowed,
+  }) {
+    if (!isConnected || !autoSync || !allowed()) return null;
+    final body = playbackBody(
+      malId: malId,
+      tmdbId: tmdbId,
+      tmdbIsTv: tmdbIsTv,
+      imdbId: imdbId,
+      episode: episode,
+      season: season,
+      seasonEpisode: seasonEpisode,
+    );
+    if (body == null) return null;
+    final token = _box.get('accessToken');
+    return SimklPlaybackSession((action, progress) {
+      // Simkl requires ordered requests; never delay the player for the network.
+      _playbackQueue = _playbackQueue
+          .then((_) async {
+            if (!isConnected ||
+                !autoSync ||
+                !allowed() ||
+                token != _box.get('accessToken')) {
+              return;
+            }
+            await _post('/scrobble/$action', {...body, 'progress': progress});
+            if (action != 'start') invalidateListCache();
+          })
+          .catchError((Object _) {});
+    });
   }
 
   @override
