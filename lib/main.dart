@@ -53,6 +53,7 @@ import 'core/tv/tv_route_pop_guard.dart';
 import 'core/tv/tv_viewport.dart';
 import 'l10n/app_localizations.dart';
 import 'core/ui/global_messenger.dart';
+import 'core/theme/theme_repaint_observer.dart';
 import 'features/auth/auth_cubit.dart';
 import 'features/home/cubit/home_cubit.dart';
 import 'features/onboarding/boot_error_screen.dart';
@@ -281,6 +282,9 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
 
   /// Drives the already-mounted tvOS initial route directly. Rebuilding
   /// MaterialApp does not update that route on physical Apple TV.
+  /// Rebuilds live routes when the theme's mutable colours change.
+  final ThemeRepaintObserver _themeRepaint = ThemeRepaintObserver();
+
   final ValueNotifier<bool> _tvShellGate = ValueNotifier<bool>(false);
   bool _bootFailed = false;
   Object? _bootError;
@@ -783,9 +787,14 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
             resolveAppLocale(locale, supported),
         scaffoldMessengerKey: shellFeatures ? rootMessengerKey : null,
         navigatorKey: rootNavigatorKey,
-        navigatorObservers: shellFeatures
-            ? [Analytics.observer, appRouteObserver, TvRoutePopGuardObserver()]
-            : const [],
+        navigatorObservers: [
+          _themeRepaint,
+          if (shellFeatures) ...[
+            Analytics.observer,
+            appRouteObserver,
+            TvRoutePopGuardObserver(),
+          ],
+        ],
         home: _buildHome(),
         builder: (_, child) {
           final content = shellFeatures

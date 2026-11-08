@@ -19,6 +19,7 @@ class ThemeController {
   static const String _materialYouKey = 'materialYou';
   static const String _adaptiveKey = 'adaptiveColour';
   static const String _titleLogoKey = 'titleLogo';
+  static const String _bgKey = 'backgroundColour';
 
   /// Near-black palette used when AMOLED is on (bg + card surfaces).
   static const Color amoledBg = Color(0xFF000000);
@@ -149,10 +150,47 @@ class ThemeController {
       AppColors.surface = d.surface;
       AppColors.surface2 = d.surface2;
     } else {
-      AppColors.bg = AppColors.defaultBg;
+      final custom = backgroundColour;
+      AppColors.bg = custom == null ? AppColors.defaultBg : darkened(custom);
       AppColors.surface = AppColors.defaultSurface;
       AppColors.surface2 = AppColors.defaultSurface2;
     }
+  }
+
+  /// Ceiling for a custom background's HSV value (#6B). The app draws white
+  /// text on it, so anything lighter would drop body text below 4.5:1. The
+  /// background picker caps its brightness slider here too, so the wheel never
+  /// offers shades that would be silently darkened.
+  static const double maxBackgroundValue = 0.42;
+
+  /// The picked app background, or null while the stock background is in use.
+  /// Device-wide, like [adaptiveColour].
+  static Color? get backgroundColour {
+    if (!Hive.isBoxOpen(boxName)) return null;
+    final v = _box.get(_bgKey) as int?;
+    return v == null ? null : Color(v);
+  }
+
+  /// Persist a custom app background and rebuild listeners. Home and Detail
+  /// keep the adaptive poster tint when that is on; every other screen uses
+  /// this colour.
+  static Future<void> setBackgroundColour(Color? colour) async {
+    if (colour == null) {
+      await _box.delete(_bgKey);
+    } else {
+      await _box.put(_bgKey, colour.toARGB32());
+    }
+    _applyColors();
+    revision.value++;
+  }
+
+  /// Clamps a pick to a dark tone, keeping its hue and saturation. Only the
+  /// value changes, so a vivid red still reads as red — just a background red.
+  static Color darkened(Color colour) {
+    final hsv = HSVColor.fromColor(colour);
+    return hsv.value <= maxBackgroundValue
+        ? colour
+        : hsv.withValue(maxBackgroundValue).toColor();
   }
 
   /// Opens the box and applies the saved accent + AMOLED choice. Call once

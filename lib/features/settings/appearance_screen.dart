@@ -47,12 +47,27 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
   );
 
   Future<void> _pickCustom() async {
-    var temp = AppColors.accent;
-    final result = await showDialog<Color>(
+    final result = await _showColourPicker(
+      title: context.l10n.customColour,
+      initial: AppColors.accent,
+    );
+    if (result != null) {
+      await _updateProfileTheme(accentColor: result.toARGB32());
+    }
+  }
+
+  /// The accent colour wheel. (The background has its own picker below —
+  /// the wheel's brightness track cannot be capped.)
+  Future<Color?> _showColourPicker({
+    required String title,
+    required Color initial,
+  }) {
+    var temp = initial;
+    return showDialog<Color>(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.surface,
-        title: Text(context.l10n.customColour, style: AppText.headline),
+        title: Text(title, style: AppText.headline),
         content: SingleChildScrollView(
           child: ColorPicker(
             pickerColor: temp,
@@ -82,9 +97,289 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
         ],
       ),
     );
-    if (result != null) {
-      await _updateProfileTheme(accentColor: result.toARGB32());
+  }
+
+  /// Background picker: sliders instead of the wheel, whose brightness track
+  /// paints the whole range no matter what. Here the slider simply ends at
+  /// [ThemeController.maxBackgroundValue] — the top IS the readable maximum,
+  /// so nothing the picker offers gets silently darkened afterwards.
+  Future<Color?> _showBackgroundPicker() {
+    var hsv = HSVColor.fromColor(AppColors.bg);
+    if (hsv.value > ThemeController.maxBackgroundValue) {
+      hsv = hsv.withValue(ThemeController.maxBackgroundValue);
     }
+
+    String hueName(double h) => const [
+      'Red',
+      'Orange',
+      'Yellow',
+      'Lime',
+      'Green',
+      'Teal',
+      'Cyan',
+      'Azure',
+      'Blue',
+      'Indigo',
+      'Violet',
+      'Magenta',
+    ][((h % 360) / 30).floor() % 12];
+    String satName(double s) => s < 0.15
+        ? 'Muted'
+        : s < 0.45
+        ? 'Soft'
+        : s < 0.75
+        ? 'Rich'
+        : 'Full';
+    String brightName(double v) => v < 0.14
+        ? 'Dim'
+        : v < 0.28
+        ? 'Soft'
+        : v < 0.4
+        ? 'Deep'
+        : 'Max';
+
+    return showDialog<Color>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) {
+          final colour = hsv.toColor();
+
+          Widget trackRow(
+            String label,
+            String valueLabel,
+            List<Color> gradient,
+            double value,
+            double max,
+            HSVColor Function(double) apply,
+          ) => Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Text(
+                    label,
+                    style: AppText.body.copyWith(
+                      color: const Color(0xFFE9E9EF),
+                      fontWeight: FontWeight.w600,
+                      fontSize: 12.5,
+                    ),
+                  ),
+                  const Spacer(),
+                  Text(valueLabel, style: AppText.caption),
+                ],
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                height: 34,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 11),
+                      child: Container(
+                        height: 12,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(8),
+                          gradient: LinearGradient(colors: gradient),
+                          border: Border.all(color: AppColors.hairline),
+                        ),
+                      ),
+                    ),
+                    SliderTheme(
+                      data: SliderTheme.of(context).copyWith(
+                        trackHeight: 12,
+                        activeTrackColor: Colors.transparent,
+                        inactiveTrackColor: Colors.transparent,
+                        overlayShape: SliderComponentShape.noOverlay,
+                        thumbShape: const RoundSliderThumbShape(
+                          enabledThumbRadius: 11,
+                          elevation: 5,
+                        ),
+                        thumbColor: Colors.white,
+                      ),
+                      child: Slider(
+                        value: value,
+                        max: max,
+                        onChanged: (v) => setDialogState(() => hsv = apply(v)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 17),
+            ],
+          );
+
+          return Dialog(
+            backgroundColor: AppColors.surface,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(26),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text('Background colour', style: AppText.headline),
+                    const SizedBox(height: 16),
+                    // A Stack, not `color` + `gradient` in one BoxDecoration:
+                    // when a gradient is present Flutter ignores the colour, so
+                    // the preview would stay the dialog's surface colour.
+                    Container(
+                      height: 88,
+                      clipBehavior: Clip.antiAlias,
+                      decoration: BoxDecoration(
+                        color: colour,
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(color: AppColors.hairline),
+                      ),
+                      child: Stack(
+                        children: [
+                          Positioned.fill(
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.centerRight,
+                                  colors: [
+                                    Colors.white.withValues(alpha: 0.14),
+                                    Colors.transparent,
+                                  ],
+                                  stops: const [0, 0.42],
+                                ),
+                              ),
+                            ),
+                          ),
+                          Positioned(
+                            left: 10,
+                            bottom: 10,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 9,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withValues(alpha: 0.4),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Text(
+                                '${hueName(hsv.hue)} · preview',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    trackRow(
+                      'Hue',
+                      hueName(hsv.hue),
+                      const [
+                        Color(0xFFF43F5E),
+                        Color(0xFFF59E0B),
+                        Color(0xFF84CC16),
+                        Color(0xFF10B981),
+                        Color(0xFF06B6D4),
+                        Color(0xFF3B82F6),
+                        Color(0xFF8B5CF6),
+                        Color(0xFFEC4899),
+                        Color(0xFFF43F5E),
+                      ],
+                      hsv.hue,
+                      360,
+                      (v) => hsv.withHue(v),
+                    ),
+                    trackRow(
+                      'Saturation',
+                      satName(hsv.saturation),
+                      [
+                        HSVColor.fromAHSV(1, hsv.hue, 0, hsv.value).toColor(),
+                        HSVColor.fromAHSV(1, hsv.hue, 1, hsv.value).toColor(),
+                      ],
+                      hsv.saturation,
+                      1,
+                      (v) => hsv.withSaturation(v),
+                    ),
+                    trackRow(
+                      'Brightness',
+                      brightName(hsv.value),
+                      [
+                        const Color(0xFF050507),
+                        Color.lerp(Colors.black, colour, 0.55)!,
+                        colour,
+                      ],
+                      hsv.value,
+                      ThemeController.maxBackgroundValue,
+                      (v) => hsv.withValue(v),
+                    ),
+                    const SizedBox(height: 2),
+                    Row(
+                      children: [
+                        TextButton(
+                          onPressed: () =>
+                              Navigator.pop(ctx, AppColors.defaultBg),
+                          child: Text(
+                            'Reset',
+                            style: TextStyle(color: AppColors.textSecondary),
+                          ),
+                        ),
+                        const Spacer(),
+                        TextButton(
+                          onPressed: () => Navigator.pop(ctx),
+                          child: Text(
+                            context.l10n.cancel,
+                            style: TextStyle(color: AppColors.textSecondary),
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        FilledButton(
+                          style: FilledButton.styleFrom(
+                            backgroundColor: AppColors.accent,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 22,
+                              vertical: 11,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            textStyle: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          onPressed: () => Navigator.pop(ctx, hsv.toColor()),
+                          child: Text(context.l10n.apply),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _pickBackground() async {
+    if (_blockedByMaterialYou()) return;
+    if (ThemeController.amoled) {
+      showAppToast(context, 'Turn off Pure black background first');
+      return;
+    }
+    final result = await _showBackgroundPicker();
+    if (result == null) return;
+    await ThemeController.setBackgroundColour(result);
+    if (mounted) setState(() {});
   }
 
   Future<void> _updateProfileTheme({
@@ -177,6 +472,23 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
                 subtitle: context.l10n.trueBlackForOLED,
                 value: ThemeController.amoled,
                 onChanged: (value) => _updateProfileTheme(amoled: value),
+              ),
+              SettingsTile(
+                icon: Icons.format_color_fill_rounded,
+                title: 'Background colour',
+                subtitle:
+                    'Behind every screen; Home and Detail use the adaptive tint while it is on. Kept dark for readable text',
+                subtitleMaxLines: null,
+                trailing: Container(
+                  width: 22,
+                  height: 22,
+                  decoration: BoxDecoration(
+                    color: AppColors.bg,
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: AppColors.hairline),
+                  ),
+                ),
+                onTap: _pickBackground,
               ),
               _switchTile(
                 icon: Icons.auto_awesome_outlined,

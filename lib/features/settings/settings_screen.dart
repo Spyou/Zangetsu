@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../../core/theme/theme_controller.dart';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -1348,8 +1349,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
       connectedCount: connectedCount,
     );
 
+    if (!_isTv) {
+      // Screens paint AppColors directly at build time, so rebuild the hub
+      // whenever the theme's mutable colours change; otherwise the section
+      // you just edited keeps its old background until the app restarts.
+      return ValueListenableBuilder<int>(
+        valueListenable: ThemeController.revision,
+        builder: (_, _, _) => _buildHub(entries),
+      );
+    }
     final hub = _buildHub(entries);
-    if (!_isTv) return hub;
 
     // Nested navigator keeps leaf settings beside the left rail. An outer
     // PopScope owns system/TV Back (NavigatorPopHandler alone was unreliable

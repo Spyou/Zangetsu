@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../../core/theme/theme_controller.dart';
 import 'dart:math' as math;
 
 import 'package:cached_network_image/cached_network_image.dart';
@@ -333,7 +334,12 @@ class _RootShellState extends State<RootShell>
     return [
       for (final t in tabs)
         KeyedSubtree(
-          key: ValueKey('$profileId:${t.name}'),
+          // The revision in the key remounts the tabs when theme colours
+          // change: their scaffolds read AppColors once and would otherwise
+          // keep painting the old background.
+          key: ValueKey(
+            '$profileId:${t.name}:${ThemeController.revision.value}',
+          ),
           child: switch (t) {
             DockTab.home => shared[0],
             DockTab.search => shared[1],
@@ -406,15 +412,18 @@ class _RootShellState extends State<RootShell>
                   // RepaintBoundary → the page is a single cached layer the transition
                   // just composites (opacity + translate), so no repaint per frame.
                   child: RepaintBoundary(
-                    child: IndexedStack(
-                      // indexOf can be -1 for one frame if the mode flipped before
-                      // the listener ran; clamp rather than throw.
-                      index: active < 0 ? 0 : active,
-                      children: _pagesFor(
-                        visible,
-                        sl.isRegistered<ViewerProfileStore>()
-                            ? sl<ViewerProfileStore>().dataProfileId
-                            : 'default',
+                    child: ValueListenableBuilder<int>(
+                      valueListenable: ThemeController.revision,
+                      builder: (context, _, _) => IndexedStack(
+                        // indexOf can be -1 for one frame if the mode flipped before
+                        // the listener ran; clamp rather than throw.
+                        index: active < 0 ? 0 : active,
+                        children: _pagesFor(
+                          visible,
+                          sl.isRegistered<ViewerProfileStore>()
+                              ? sl<ViewerProfileStore>().dataProfileId
+                              : 'default',
+                        ),
                       ),
                     ),
                   ),
