@@ -11,6 +11,7 @@ import 'package:watch_app/features/player/watch_page_motion.dart';
 import 'package:watch_app/features/player/watch_page_info.dart';
 
 PlayerWatchPage _page({
+  bool isMovie = false,
   Stream<bool>? bufferingStream,
   String? description = 'A great episode.',
   String? nextTitle = 'The Next One',
@@ -34,6 +35,7 @@ PlayerWatchPage _page({
   void Function(int?)? onSelectSeason,
 }) {
   return PlayerWatchPage(
+    isMovie: isMovie,
     video: const ColoredBox(color: Colors.black),
     header: WatchPageHeader(
       title: 'The Fall',
@@ -99,6 +101,36 @@ void main() {
       current: true,
     ),
   ];
+
+  testWidgets('movie keeps a playable row under a Movie heading', (
+    tester,
+  ) async {
+    final opened = <int>[];
+    await _pump(
+      tester,
+      _page(
+        isMovie: true,
+        nextTitle: null,
+        episodes: const [
+          WatchPageEpisode(
+            index: 7,
+            heading: 'Film title',
+            label: 'Film title',
+            thumb: '',
+            current: false,
+          ),
+        ],
+        onOpenEpisode: opened.add,
+      ),
+    );
+    expect(find.text('Movie'), findsOneWidget);
+    expect(find.text('Episodes (1)'), findsNothing);
+    expect(find.byIcon(Icons.grid_view_rounded), findsNothing);
+    await tester.ensureVisible(find.text('Film title'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Film title'));
+    expect(opened, [7]);
+  });
 
   testWidgets(
     'episode download button is separate from playback and synopsis is italic',

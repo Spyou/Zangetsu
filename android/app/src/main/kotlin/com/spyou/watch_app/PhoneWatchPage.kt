@@ -48,6 +48,7 @@ internal class PhoneWatchPage(
     val header = (LayoutInflater.from(context).inflate(R.layout.phone_watch_info_header, null) as ViewGroup).apply {
         layoutParams = RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
     }
+    private val isMovie = data["isMovie"] == true
     val episodes = PhoneWatchEpisode.from(data, labels)
     var onEpisodeMenu: ((Int) -> Unit)? = null
     var onEpisodeDownload: ((Int) -> Unit)? = null
@@ -107,6 +108,7 @@ internal class PhoneWatchPage(
                 }
             }
         button(R.id.watch_search, "search") { search() }
+        header.findViewById<View>(R.id.watch_search).visibility = if (isMovie) View.GONE else View.VISIBLE
         button(R.id.watch_grid, "grid") {
             grid = !grid
             header.findViewById<ImageButton>(R.id.watch_grid).apply {
@@ -115,6 +117,8 @@ internal class PhoneWatchPage(
             }
             PhoneWatchMotion.viewMode(list) { adapter.notifyDataSetChanged() }
         }
+        header.findViewById<View>(R.id.watch_grid).visibility =
+            if (isMovie && episodes.size == 1) View.GONE else View.VISIBLE
         button(R.id.watch_episode_more, "more") { more() }
         header.findViewById<ImageView>(R.id.watch_comments_icon).apply {
             setImageDrawable(icon("comments")); setColorFilter(accent)
@@ -148,7 +152,10 @@ internal class PhoneWatchPage(
         val ordered = ordered()
         range = range.coerceIn(0, ((ordered.size - 1).coerceAtLeast(0) / 50))
         shown = ordered.drop(range * 50).take(50)
-        header.findViewById<TextView>(R.id.watch_episode_count).text = context.getString(R.string.phone_player_watch_count, episodes.size)
+        header.findViewById<TextView>(R.id.watch_episode_count).apply {
+            text = if (isMovie) context.getString(R.string.phone_player_watch_movie)
+                else context.getString(R.string.phone_player_watch_count, episodes.size)
+        }
         val ranges = header.findViewById<LinearLayout>(R.id.watch_ranges)
         val oldSeasonLabel = (ranges.getChildAt(0) as? TextView)?.text?.toString()
         ranges.removeAllViews()

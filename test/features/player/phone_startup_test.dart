@@ -20,6 +20,7 @@ void main() {
   late Directory dir;
   late Future<bool> playback;
   late List<String> resolved;
+  Map<String, dynamic>? launchArgs;
 
   Future<dynamic> send(String method, Map<String, dynamic> args) {
     final result = Completer<dynamic>();
@@ -54,7 +55,10 @@ void main() {
     resolved = [];
     final launched = Completer<void>();
     messenger.setMockMethodCallHandler(channel, (call) async {
-      if (call.method == 'launch') launched.complete();
+      if (call.method == 'launch') {
+        launchArgs = Map<String, dynamic>.from(call.arguments as Map);
+        launched.complete();
+      }
       return true;
     });
     playback = PhoneNativePlayer.play(
@@ -141,4 +145,38 @@ void main() {
       expect(resolved, ['https://site/dub/1', 'https://site/dub/2']);
     },
   );
+
+  test('a film launches with isMovie and no episode pill label', () async {
+    await send('playerClosed', {'index': 0, 'positionMs': 0, 'durationMs': 0});
+    await playback;
+    final relaunch = Completer<void>();
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      if (call.method == 'launch') {
+        launchArgs = Map<String, dynamic>.from(call.arguments as Map);
+        relaunch.complete();
+      }
+      return true;
+    });
+    final relaunched = PhoneNativePlayer.play(
+      sourceId: 'source',
+      episodes: const [
+        Episode(
+          id: '1',
+          title: 'Episode 1',
+          number: 1,
+          url: 'https://site/sub/1',
+        ),
+      ],
+      startIndex: 0,
+      resume: ResumeStore(),
+      resolveSources: (url) async => const [],
+      showTitle: 'Film',
+      isMovie: true,
+    );
+    await relaunch.future;
+    expect(launchArgs?['isMovie'], isTrue);
+    expect(launchArgs?['episodeLabel'], 'Film');
+    await send('playerClosed', {'index': 0, 'positionMs': 0, 'durationMs': 0});
+    await relaunched;
+  });
 }

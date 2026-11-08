@@ -35,6 +35,8 @@ class _EpisodesTab extends StatefulWidget {
     this.resumeChapter,
     this.onSwitchSource,
     this.isReading = false,
+    this.filmMeta,
+    this.filmTitle,
   });
 
   /// Opens the source picker for this title. Set only for catalogue titles,
@@ -105,6 +107,11 @@ class _EpisodesTab extends StatefulWidget {
   /// of "Episodes" (single-season case only; multi-season keeps the season
   /// pill either way).
   final bool isReading;
+
+  /// Non-null when this title is a film: the episodes tab becomes a single
+  /// "Movie · 1h 52m" line. Null keeps the normal episode/chapter list.
+  final String? filmMeta;
+  final String? filmTitle;
 
   @override
   State<_EpisodesTab> createState() => _EpisodesTabState();
@@ -316,7 +323,9 @@ class _EpisodesTabState extends State<_EpisodesTab> {
       slivers: [
         SliverToBoxAdapter(
           child: _EpisodesHeader(
-            hasMultipleSeasons: widget.hasMultipleSeasons,
+            movieLabel: widget.filmMeta,
+            hasMultipleSeasons:
+                widget.hasMultipleSeasons && widget.filmMeta == null,
             seasons: widget.seasonSet.toList()..sort(),
             currentSeason: widget.currentSeason,
             onSelectSeason: widget.onSelectSeason,
@@ -401,7 +410,7 @@ class _EpisodesTabState extends State<_EpisodesTab> {
               }),
             ),
           ),
-        if (_grid)
+        if (_grid && widget.filmMeta == null)
           _buildGrid(store, visible, slice.start, total)
         else
           _buildList(store, visible, slice.start, total),
@@ -625,7 +634,11 @@ class _EpisodesTabState extends State<_EpisodesTab> {
             ? total - offset - i
             : offset + i + 1;
         final epNum = ep.number?.toInt() ?? fallbackNumber;
-        final displayTitle = widget.hasMultipleSeasons
+        final singleMovie = widget.filmMeta != null && widget.eps.length == 1;
+        final displayTitle =
+            singleMovie && (widget.filmTitle?.isNotEmpty ?? false)
+            ? widget.filmTitle!
+            : widget.hasMultipleSeasons
             ? cleanTitle(ep.title)
             : ep.title;
         if (widget.isReading) {
@@ -653,6 +666,7 @@ class _EpisodesTabState extends State<_EpisodesTab> {
           child: _EpisodeRow(
             ep: ep,
             epNum: epNum,
+            isMovie: singleMovie,
             displayTitle: displayTitle,
             filler: widget.fillerEps.contains(epNum),
             coverUrl: widget.coverUrl,
@@ -725,6 +739,7 @@ class _EpisodesTabState extends State<_EpisodesTab> {
 
 class _EpisodesHeader extends StatelessWidget {
   const _EpisodesHeader({
+    this.movieLabel,
     required this.hasMultipleSeasons,
     required this.seasons,
     required this.currentSeason,
@@ -739,6 +754,7 @@ class _EpisodesHeader extends StatelessWidget {
     this.onBulkDownload,
   });
 
+  final String? movieLabel;
   final bool hasMultipleSeasons;
   final List<int> seasons;
   final int currentSeason;
@@ -834,7 +850,10 @@ class _EpisodesHeader extends StatelessWidget {
                       ),
                     )
                   : Text(
-                      isReading ? context.l10n.chapters : context.l10n.episodes,
+                      movieLabel ??
+                          (isReading
+                              ? context.l10n.chapters
+                              : context.l10n.episodes),
                       style: AppText.headline,
                     ),
             ),
@@ -859,14 +878,16 @@ class _EpisodesHeader extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
               ],
-              _circle(
-                grid ? Icons.view_list_rounded : Icons.grid_view_rounded,
-                onToggleView,
-                semanticLabel: grid
-                    ? context.l10n.listView
-                    : context.l10n.gridView,
-              ),
-              const SizedBox(width: 8),
+              if (movieLabel == null) ...[
+                _circle(
+                  grid ? Icons.view_list_rounded : Icons.grid_view_rounded,
+                  onToggleView,
+                  semanticLabel: grid
+                      ? context.l10n.listView
+                      : context.l10n.gridView,
+                ),
+                const SizedBox(width: 8),
+              ],
               PopupMenuButton<_EpisodesHeaderAction>(
                 tooltip: context.l10n.more,
                 icon: const Icon(Icons.more_vert_rounded, size: 20),
@@ -1436,6 +1457,7 @@ class _ChapterRow extends StatelessWidget {
 
 class _EpisodeRow extends StatelessWidget {
   const _EpisodeRow({
+    this.isMovie = false,
     required this.ep,
     required this.epNum,
     required this.displayTitle,
@@ -1453,6 +1475,7 @@ class _EpisodeRow extends StatelessWidget {
     this.filler = false,
   });
 
+  final bool isMovie;
   final Episode ep;
   final int epNum;
   final String displayTitle;
@@ -1515,7 +1538,9 @@ class _EpisodeRow extends StatelessWidget {
     final srcTitle = displayTitle.trim();
     final titleText =
         episodeDisplayTitle(ep, sourceTitle: srcTitle, number: epNum) ?? '';
-    final heading = titleText.isNotEmpty
+    final heading = isMovie
+        ? (srcTitle.isNotEmpty ? srcTitle : context.l10n.movie)
+        : titleText.isNotEmpty
         ? '$epNum. $titleText'
         : context.l10n.episodeLabel(epNum);
 

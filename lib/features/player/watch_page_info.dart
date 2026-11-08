@@ -30,9 +30,24 @@ WatchPageHeader resolveWatchPageHeader({
   required Episode episode,
   String? showTitle,
   String? showDescription,
+  bool isMovie = false,
 }) {
   final n = episodeNumberInt(episode);
   final show = (showTitle ?? '').trim();
+  if (isMovie) {
+    final movieTitle = show.isNotEmpty
+        ? show
+        : (episodeDisplayTitle(episode, number: n) ?? 'Movie');
+    return WatchPageHeader(
+      title: movieTitle,
+      subtitle: '',
+      description: (episode.description?.trim().isNotEmpty ?? false)
+          ? episode.description!.trim()
+          : (showDescription ?? '').trim().isEmpty
+          ? null
+          : (showDescription ?? '').trim(),
+    );
+  }
   final title =
       episodeDisplayTitle(episode, number: n) ??
       (n != null ? 'Episode $n' : (show.isNotEmpty ? show : 'Episode'));
@@ -107,6 +122,8 @@ List<WatchPageEpisode> watchPageEpisodes({
   required int currentIndex,
   String? coverFallback,
   int? season,
+  bool isMovie = false,
+  String? showTitle,
   bool Function(Episode)? isWatched,
 }) {
   String artOf(Episode ep) {
@@ -124,24 +141,33 @@ List<WatchPageEpisode> watchPageEpisodes({
     ].join('  ·  ');
   }
 
+  final singleMovie = isMovie && episodes.length == 1;
+  final movieTitle = (showTitle ?? '').trim();
+  String heading(Episode ep) => singleMovie
+      ? (movieTitle.isNotEmpty
+            ? movieTitle
+            : (episodeDisplayTitle(ep, number: episodeNumberInt(ep)) ??
+                  'Movie'))
+      : _headingOf(ep);
   return [
     for (var i = 0; i < episodes.length; i++)
       if (season == null || (seasonOf(episodes[i]) ?? 1) == season)
         WatchPageEpisode(
           index: i,
-          heading: _headingOf(episodes[i]),
-          label:
-              episodeDisplayTitle(
-                episodes[i],
-                number: episodeNumberInt(episodes[i]),
-              ) ??
-              (episodeNumberInt(episodes[i]) != null
-                  ? 'Episode ${episodeNumberInt(episodes[i])}'
-                  : episodes[i].title),
+          heading: heading(episodes[i]),
+          label: singleMovie
+              ? heading(episodes[i])
+              : episodeDisplayTitle(
+                      episodes[i],
+                      number: episodeNumberInt(episodes[i]),
+                    ) ??
+                    (episodeNumberInt(episodes[i]) != null
+                        ? 'Episode ${episodeNumberInt(episodes[i])}'
+                        : episodes[i].title),
           thumb: artOf(episodes[i]),
           current: i == currentIndex,
           watched: isWatched?.call(episodes[i]) ?? false,
-          number: episodeNumberInt(episodes[i]),
+          number: singleMovie ? null : episodeNumberInt(episodes[i]),
           unavailableReason: episodes[i].unavailable,
           meta: metaOf(episodes[i]),
           synopsis: (episodes[i].description ?? '').trim(),

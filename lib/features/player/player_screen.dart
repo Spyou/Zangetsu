@@ -34,6 +34,7 @@ import 'subtitle_font_service.dart';
 import 'player_lifecycle.dart';
 import '../../core/torrent/torrent_util.dart';
 import '../../core/models/episode.dart';
+import '../../core/models/film.dart';
 import '../../core/models/episode_title.dart';
 import '../../core/models/video_source.dart';
 import '../../core/playback/resume_store.dart';
@@ -215,12 +216,25 @@ class PlayerScreen extends StatefulWidget {
     this.joinRoomCode,
     this.playerOverride,
     this.initialSource,
-  });
+    bool? isMovie,
+  }) : _isMovie = isMovie;
 
   /// A mirror picked from the episode list's long-press menu, opened instead
   /// of the adaptive default. One-shot: the cubit clears it after the first
   /// episode so nothing later is affected.
   final VideoSource? initialSource;
+
+  /// Uses movie wording without changing the playable entries.
+  final bool? _isMovie;
+  bool get isMovie =>
+      _isMovie ??
+      isFilmContent(
+        episodes: episodes,
+        showTitle: showTitle,
+        tmdbId: tmdbId,
+        tmdbIsTv: tmdbIsTv,
+        zmUrl: showUrl,
+      );
 
   /// Set by the episode list's long-press sheet: play this one episode here,
   /// ignoring the Settings default. Empty string means the built-in player
@@ -1113,6 +1127,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
         tmdbId: widget.tmdbId,
         tmdbIsTv: widget.tmdbIsTv,
         imdbId: widget.imdbId,
+        isMovie: widget.isMovie,
       );
       if (!opened) {
         if (!mounted) return;
@@ -2805,6 +2820,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       episode: _c.currentEpisode,
       showTitle: widget.showTitle,
       showDescription: widget.showDescription ?? _enrichedDescription,
+      isMovie: widget.isMovie,
     );
     final seasonSet = seasonsOf(_c.episodes);
     final seasons = seasonSet.length > 1 ? (seasonSet.toList()..sort()) : null;
@@ -2820,6 +2836,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     return PlayerWatchPage(
       video: _buildVideoSurface(),
       header: header,
+      isMovie: widget.isMovie,
       coverHeaders: widget.coverHeaders,
       coverUrl: (_c.currentEpisode.thumbnail?.trim().isNotEmpty ?? false)
           ? _c.currentEpisode.thumbnail!.trim()
@@ -2851,6 +2868,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
       episodes: watchPageEpisodes(
         episodes: _c.episodes,
         currentIndex: state.currentIndex,
+        isMovie: widget.isMovie,
+        showTitle: widget.showTitle,
         coverFallback: widget.cover,
         season: _watchSeason ?? seasonOf(_c.currentEpisode),
         isWatched: (ep) =>

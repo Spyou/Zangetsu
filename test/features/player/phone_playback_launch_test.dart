@@ -60,6 +60,22 @@ VideoSource _src({
 );
 
 void main() {
+  test('native movie display data retains the real playable row', () {
+    final data = phoneWatchPageData(
+      episodes: const [
+        Episode(id: 'film', title: 'Episode 1', number: 1, url: '/film'),
+      ],
+      showTitle: 'Film title',
+      isMovie: true,
+    );
+    final row = (data['episodes'] as List).single as Map;
+    expect(row['index'], 0);
+    expect(row['heading'], 'Film title');
+    expect(row['title'], 'Film title');
+    expect(row['subtitle'], isEmpty);
+    expect(row['number'], isNull);
+  });
+
   test('watch actions reject stale sessions and invalid episode indices', () {
     int? index(Map<String, dynamic>? args, {bool open = true}) =>
         phoneWatchActionIndex(

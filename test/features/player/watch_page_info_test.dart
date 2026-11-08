@@ -55,11 +55,7 @@ void main() {
         _ep(title: 'A', number: 1, season: 1),
         _ep(title: 'B', number: 17, season: 2),
       ];
-      final rows = watchPageEpisodes(
-        episodes: eps,
-        currentIndex: 1,
-        season: 2,
-      );
+      final rows = watchPageEpisodes(episodes: eps, currentIndex: 1, season: 2);
       expect(rows.length, 1);
       expect(rows.single.index, 1);
       expect(rows.single.current, isTrue);
@@ -192,6 +188,62 @@ void main() {
       );
       expect(h.title, 'The Movie');
       expect(h.subtitle, 'The Movie');
+    });
+
+    test('a movie row keeps its playback index without episode numbering', () {
+      final rows = watchPageEpisodes(
+        episodes: const [
+          Episode(
+            id: 'movie',
+            title: 'Episode 1',
+            number: 1,
+            url: '/movie',
+            runtimeMinutes: 110,
+          ),
+        ],
+        currentIndex: 0,
+        isMovie: true,
+        showTitle: 'Film title',
+      );
+      expect(rows.single.index, 0);
+      expect(rows.single.current, isTrue);
+      expect(rows.single.heading, 'Film title');
+      expect(rows.single.label, 'Film title');
+      expect(rows.single.number, isNull);
+      expect(rows.single.meta, '110 min');
+      final header = resolveWatchPageHeader(
+        episode: const Episode(
+          id: 'm',
+          title: 'Episode 1',
+          number: 1,
+          url: '/m',
+        ),
+        showTitle: 'Film title',
+        isMovie: true,
+      );
+      expect(header.title, 'Film title');
+      expect(header.subtitle, isEmpty);
+    });
+
+    test('a film shows the movie title with no episode subtitle', () {
+      final h = resolveWatchPageHeader(
+        episode: const Episode(id: '1', title: 'Suzume', number: 1, url: '/e'),
+        showTitle: 'Suzume',
+        showDescription: 'A door opens.',
+        isMovie: true,
+      );
+      expect(h.title, 'Suzume');
+      expect(h.subtitle, isEmpty);
+      expect(h.description, 'A door opens.');
+    });
+
+    test('a film with no episode title falls back to the show title', () {
+      final h = resolveWatchPageHeader(
+        episode: const Episode(id: '1', title: '', number: 1, url: '/e'),
+        showTitle: 'Suzume',
+        isMovie: true,
+      );
+      expect(h.title, 'Suzume');
     });
 
     test('missing season shows only the episode number', () {

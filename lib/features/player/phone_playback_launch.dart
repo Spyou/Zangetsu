@@ -58,20 +58,25 @@ Map<String, dynamic> phoneWatchPageData({
   String? showDescription,
   String? cover,
   bool Function(Episode)? isWatched,
+  bool isMovie = false,
 }) {
   final rows = watchPageEpisodes(
     episodes: episodes,
     currentIndex: -1,
+    isMovie: isMovie,
+    showTitle: showTitle,
     coverFallback: cover,
     isWatched: isWatched,
   );
   return {
+    'isMovie': isMovie,
     'episodes': rows.map((row) {
       final ep = episodes[row.index];
       final header = resolveWatchPageHeader(
         episode: ep,
         showTitle: showTitle,
         showDescription: showDescription,
+        isMovie: isMovie,
       );
       return <String, dynamic>{
         'index': row.index,
@@ -194,6 +199,7 @@ Map<String, dynamic> phonePlayerArgs({
   required bool keepScreenOn,
   required bool autoplayNext,
   required int seekSeconds,
+  bool isMovie = false,
   bool megaSkip = true,
   int megaSkipSeconds = 85,
   String? subtitleFontPath,
@@ -222,6 +228,7 @@ Map<String, dynamic> phonePlayerArgs({
     'episodeLabel': episodeLabel,
     'episodeLabels': episodeLabels,
     'episodeCount': episodeLabels.length,
+    'isMovie': isMovie,
     'startIndex': startIndex,
     'accentColor': accentColor,
     'softwareDecoding': softwareDecoding,
@@ -334,6 +341,7 @@ Future<bool> launchPhonePlayback({
   int? tmdbId,
   bool tmdbIsTv = false,
   String? imdbId,
+  bool isMovie = false,
 }) async {
   return PhoneNativePlayer.play(
     sourceId: sourceId,
@@ -360,6 +368,7 @@ Future<bool> launchPhonePlayback({
     tmdbId: tmdbId,
     tmdbIsTv: tmdbIsTv,
     imdbId: imdbId,
+    isMovie: isMovie,
   );
 }
 
@@ -413,6 +422,7 @@ class PhoneNativePlayer {
   static int _resumeOverride = 0;
   static bool _seedUsed = false;
   static bool _scrobbled = false;
+  static bool _isMovie = false;
 
   /// Returns false when the Activity cannot be started; stream errors are
   /// shown inside the native player so the user can retry or leave.
@@ -442,6 +452,7 @@ class PhoneNativePlayer {
     int? tmdbId,
     bool tmdbIsTv = false,
     String? imdbId,
+    bool isMovie = false,
   }) async {
     if (startIndex < 0 || startIndex >= episodes.length) return false;
     _resolve = resolveSources;
@@ -468,6 +479,7 @@ class PhoneNativePlayer {
     _showDescription = showDescription;
     _sessionId++;
     _prefetchedEpisodes.clear();
+    _isMovie = isMovie;
     _resume = resume;
     _history = history;
     if (!_handlerBound) {
@@ -488,6 +500,7 @@ class PhoneNativePlayer {
       title: _showTitle,
       episodeLabel: _episodeLabel(ep),
       episodeLabels: [for (final e in _episodes) _episodeLabel(e)],
+      isMovie: _isMovie,
       startIndex: startIndex,
       accentColor: AppColors.accent.toARGB32(),
       softwareDecoding: prefs.videoDecoder == 'sw',
@@ -530,6 +543,7 @@ class PhoneNativePlayer {
           cover: _cover,
           isWatched: (ep) =>
               _resume?.get(_sourceId, _showId, ep.id)?.finished ?? false,
+          isMovie: _isMovie,
         ),
         'coverHeaders': _coverHeaders ?? const <String, String>{},
         'canDownload':
@@ -1155,6 +1169,13 @@ class PhoneNativePlayer {
   }
 
   static String _episodeLabel(Episode ep) {
+    if (_isMovie) {
+      if (_episodes.length == 1 && _showTitle.trim().isNotEmpty) {
+        return _showTitle.trim();
+      }
+      final t = ep.title.trim();
+      return t.isNotEmpty ? t : _showTitle;
+    }
     final n = ep.number;
     final base = n == null ? '' : 'Episode ${n % 1 == 0 ? n.toInt() : n}';
     // Episode.title is non-nullable (episode.dart:31) but can be empty.

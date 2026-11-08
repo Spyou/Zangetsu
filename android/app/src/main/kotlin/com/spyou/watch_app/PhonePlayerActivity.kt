@@ -189,6 +189,7 @@ class PhonePlayerActivity : Activity() {
 
     private var episodeCount = 1
     private var episodeLabels: Array<String> = emptyArray()
+    private var isMovie = false
     private var switching = false
     private var mediaGeneration = 0
     private var failoverInFlight = false
@@ -280,9 +281,11 @@ class PhonePlayerActivity : Activity() {
         timeText = findViewById(R.id.time_chip)
         titleText = findViewById(R.id.title)
         episodeText = findViewById(R.id.episode_label)
+        isMovie = intent.getBooleanExtra(PhonePlayerIntent.EXTRA_IS_MOVIE, false)
 
         titleText.text = intent.getStringExtra(PhonePlayerIntent.EXTRA_TITLE) ?: ""
-        episodeText.text = intent.getStringExtra(PhonePlayerIntent.EXTRA_EP_LABEL) ?: ""
+        episodeText.text = if (isMovie) "" else (intent.getStringExtra(PhonePlayerIntent.EXTRA_EP_LABEL) ?: "")
+        episodeText.visibility = if (isMovie) View.GONE else View.VISIBLE
         currentIndex = intent.getIntExtra(PhonePlayerIntent.EXTRA_START_INDEX, 0)
         loadedEpisodeIndex = currentIndex
         episodeCount = intent.getIntExtra(PhonePlayerIntent.EXTRA_EP_COUNT, 1)
@@ -581,8 +584,8 @@ class PhonePlayerActivity : Activity() {
         val next = findViewById<View>(R.id.btn_next)
         val hasPrev = currentIndex > 0
         val hasNext = currentIndex + 1 < episodeCount
-        prev.visibility = if (hasPrev) View.VISIBLE else View.INVISIBLE
-        next.visibility = if (hasNext) View.VISIBLE else View.INVISIBLE
+        prev.visibility = if (hasPrev && !isMovie) View.VISIBLE else View.INVISIBLE
+        next.visibility = if (hasNext && !isMovie) View.VISIBLE else View.INVISIBLE
         prev.isEnabled = hasPrev
         next.isEnabled = hasNext
         prev.alpha = if (hasPrev) 1f else 0.4f
@@ -598,7 +601,8 @@ class PhonePlayerActivity : Activity() {
         "quality" -> Triple(R.id.quick_quality, R.string.phone_player_title_quality, { showQualityMenu() })
         "sources" -> Triple(R.id.quick_sources, R.string.phone_player_title_sources, { showSourceMenu() })
         "more" -> Triple(R.id.quick_more, R.string.phone_player_title_more, { showMoreMenu() })
-        "episodes" -> Triple(R.id.quick_episodes, R.string.phone_player_title_episodes, { showEpisodeMenu() })
+        "episodes" -> if (isMovie) null else
+            Triple(R.id.quick_episodes, R.string.phone_player_title_episodes, { showEpisodeMenu() })
         "rotate" -> Triple(R.id.btn_rotate, R.string.phone_player_menu_rotate, { toggleRotation() })
         "fit" -> Triple(R.id.quick_display, R.string.phone_player_menu_display, { cycleDisplayMode() })
         "cast" -> if (castSupported) Triple(R.id.quick_cast, R.string.phone_player_menu_cast, { pickCast() }) else null
@@ -699,6 +703,7 @@ class PhonePlayerActivity : Activity() {
     private fun showControlArrangement() {
         handler.removeCallbacks(hideRunnable)
         val keys = listOf("speed", "tracks", "quality", "sources", "more", "episodes", "rotate", "fit", "cast", "info")
+            .filter { it != "episodes" || !isMovie }
         val labels = keys.map { key ->
             val label = when (key) {
                 "cast" -> getString(R.string.phone_player_menu_cast)
@@ -800,7 +805,10 @@ class PhonePlayerActivity : Activity() {
             return
         }
         quickActions.findViewById<View>(R.id.btn_rotate).setOnClickListener { toggleRotation() }
-        quickActions.findViewById<View>(R.id.quick_episodes).setOnClickListener { showEpisodeMenu() }
+        quickActions.findViewById<View>(R.id.quick_episodes)?.apply {
+            visibility = if (isMovie) View.GONE else View.VISIBLE
+            setOnClickListener { showEpisodeMenu() }
+        }
         quickActions.findViewById<View>(R.id.quick_sources).setOnClickListener { showSourceMenu() }
         quickActions.findViewById<View>(R.id.quick_tracks).setOnClickListener { showTracksMenu() }
         quickActions.findViewById<View>(R.id.quick_quality).setOnClickListener { showQualityMenu() }
@@ -965,7 +973,7 @@ class PhonePlayerActivity : Activity() {
         controls.findViewById<View>(R.id.title)?.visibility =
             if (mini) View.GONE else View.VISIBLE
         controls.findViewById<View>(R.id.episode_label)?.visibility =
-            if (mini) View.GONE else View.VISIBLE
+            if (mini || isMovie) View.GONE else View.VISIBLE
         controls.findViewById<View>(R.id.fullscreen_top_actions)?.visibility =
             if (mini) View.GONE else View.VISIBLE
         controls.findViewById<View>(R.id.btn_more)?.visibility =
@@ -1309,6 +1317,7 @@ class PhonePlayerActivity : Activity() {
     }
 
     private fun showEpisodeMenu() {
+        if (isMovie) return
         if (episodeLabels.isEmpty()) return
         handler.removeCallbacks(hideRunnable) // a dialog must not race the auto-hide
         android.app.AlertDialog.Builder(this, R.style.PhonePlayerDialog)
@@ -1881,28 +1890,30 @@ class PhonePlayerActivity : Activity() {
             getString(R.string.phone_player_title_tracks),
             getString(R.string.phone_player_title_quality),
             getString(R.string.phone_player_menu_sources),
-            getString(R.string.phone_player_menu_episodes),
-            getString(R.string.phone_player_menu_display),
-            getString(R.string.phone_player_menu_rotate)
         )
         val icons = mutableListOf(
             R.drawable.phone_player_speed,
             R.drawable.phone_player_tracks,
             R.drawable.phone_player_quality,
             R.drawable.phone_player_sources,
-            R.drawable.phone_player_episodes,
-            R.drawable.phone_player_display,
-            R.drawable.phone_player_rotate
         )
         val actions = mutableListOf<() -> Unit>(
             { showSpeedMenu() },
             { showTracksMenu() },
             { showQualityMenu() },
             { showSourceMenu() },
-            { showEpisodeMenu() },
-            { showDisplayMenu() },
-            { toggleRotation() }
         )
+        if (!isMovie) {
+            labels += getString(R.string.phone_player_menu_episodes)
+            icons += R.drawable.phone_player_episodes
+            actions += { showEpisodeMenu() }
+        }
+        labels += getString(R.string.phone_player_menu_display)
+        icons += R.drawable.phone_player_display
+        actions += { showDisplayMenu() }
+        labels += getString(R.string.phone_player_menu_rotate)
+        icons += R.drawable.phone_player_rotate
+        actions += { toggleRotation() }
         if (castSupported) {
             labels += getString(R.string.phone_player_menu_cast)
             icons += R.drawable.phone_player_cast

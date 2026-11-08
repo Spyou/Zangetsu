@@ -64,7 +64,11 @@ class PlayerWatchPage extends StatefulWidget {
     this.isEpisodeWatched,
     required this.onComments,
     required this.onAutoplayChanged,
+    this.isMovie = false,
   });
+
+  /// Uses movie wording while retaining the playable rows and their actions.
+  final bool isMovie;
 
   /// The one video surface, built by the parent. This page only sizes it.
   final Widget video;
@@ -803,7 +807,7 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
           if (widget.episodes.isNotEmpty)
             SliverToBoxAdapter(child: _episodesHeader(l10n)),
           if (_paged.isNotEmpty)
-            _grid
+            _grid && !(widget.isMovie && widget.episodes.length == 1)
                 ? SliverPadding(
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
                     sliver: SliverGrid.builder(
@@ -984,25 +988,31 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
           Row(
             children: [
               Text(
-                '${l10n.watchEpisodes} (${widget.episodes.length})',
+                widget.isMovie
+                    ? l10n.movie
+                    : '${l10n.watchEpisodes} (${widget.episodes.length})',
                 style: AppText.body.copyWith(
                   color: Colors.white,
                   fontWeight: FontWeight.w700,
                 ),
               ),
               const Spacer(),
-              _roundBtn(
-                Icons.search_rounded,
-                l10n.findEpisode,
-                () => _openJumpDialog(l10n),
-              ),
-              const SizedBox(width: 8),
-              _roundBtn(
-                _grid ? Icons.view_list_rounded : Icons.grid_view_rounded,
-                _grid ? l10n.listView : l10n.gridView,
-                () => setState(() => _grid = !_grid),
-              ),
-              const SizedBox(width: 8),
+              if (!widget.isMovie) ...[
+                _roundBtn(
+                  Icons.search_rounded,
+                  l10n.findEpisode,
+                  () => _openJumpDialog(l10n),
+                ),
+                const SizedBox(width: 8),
+              ],
+              if (!widget.isMovie || widget.episodes.length > 1) ...[
+                _roundBtn(
+                  _grid ? Icons.view_list_rounded : Icons.grid_view_rounded,
+                  _grid ? l10n.listView : l10n.gridView,
+                  () => setState(() => _grid = !_grid),
+                ),
+                const SizedBox(width: 8),
+              ],
               _moreMenu(l10n),
             ],
           ),

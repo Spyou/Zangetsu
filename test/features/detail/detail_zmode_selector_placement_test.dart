@@ -535,6 +535,31 @@ void main() {
     await tester.pump(); // MatchLine's own build-time resolve, if any
   }
 
+  testWidgets('movie detail keeps a list row without episode wording', (
+    tester,
+  ) async {
+    await pumpDetail(
+      tester,
+      _plainItem,
+      _plainDetail.copyWith(
+        title: 'Film title',
+        format: 'MOVIE',
+        durationMins: 110,
+      ),
+    );
+    expect(find.text('Film title'), findsWidgets);
+    expect(find.text('Movie'), findsOneWidget);
+    expect(find.text('Movie · 1h 50m'), findsOneWidget);
+    expect(find.text('1 Episode'), findsNothing);
+    expect(find.text('Episode 1'), findsNothing);
+    final row = find.ancestor(
+      of: find.text('Film title').last,
+      matching: find.byType(InkWell),
+    );
+    expect(row, findsWidgets);
+    expect(tester.widget<InkWell>(row.first).onTap, isNotNull);
+  });
+
   testWidgets('trailer lookup updates only the hero during entry', (
     tester,
   ) async {

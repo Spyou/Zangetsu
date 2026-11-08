@@ -22,6 +22,7 @@ import '../../core/ui/detail_prefs.dart';
 import '../../core/ui/poster_palette.dart';
 import '../../core/ui/mobile_hero_art.dart';
 import '../../core/metadata/synopsis.dart';
+import '../../core/models/film.dart';
 import '../../core/mode/content_mode_cubit.dart';
 import '../../core/zmode/metadata_filters.dart';
 import '../../core/zmode/zmode_module.dart';
@@ -1551,6 +1552,7 @@ class _DetailViewState extends State<_DetailView>
               imdbId: detail.imdbId ?? widget.item.imdbId,
               availableCategories: availableCategories,
               peek: peek,
+              isMovie: detail.isFilm,
             ),
           ),
           // Same reason as the reader's [_refreshAfterReading]: ResumeStore has no
@@ -1707,6 +1709,16 @@ class _DetailViewState extends State<_DetailView>
       }
     }
     return false;
+  }
+
+  /// A film shows "Movie · 1h 52m" where an episode list would be.
+  String? _filmMeta(MediaDetail detail) {
+    if (!detail.isFilm) return null;
+    final m = detail.durationMins;
+    if (m == null || m <= 0) return context.l10n.movie;
+    return m >= 60
+        ? '${context.l10n.movie} · ${m ~/ 60}h ${m % 60}m'
+        : '${context.l10n.movie} · $m min';
   }
 
   /// Walk episodes and return the best resume target index. PRESERVED.
@@ -2247,7 +2259,9 @@ class _DetailViewState extends State<_DetailView>
               ? context.l10n.continueLabel
               : context.l10n.read)
         : (resume.hasResume
-              ? context.l10n.continueEpisode(episodeNum)
+              ? (detail.isFilm
+                    ? context.l10n.continueLabel
+                    : context.l10n.continueEpisode(episodeNum))
               : context.l10n.play);
 
     // Tall phone hero: prefer TMDB's portrait art; other sources stay as-is.
@@ -2325,12 +2339,14 @@ class _DetailViewState extends State<_DetailView>
     if ((detail.year ?? '').isNotEmpty) metaParts.add(detail.year!);
     // A film has no episode count to fill the middle slot, so its run time
     // takes it — there it IS the thing worth knowing before pressing play.
-    if (!isReading && eps.length <= 1 && (detail.durationMins ?? 0) > 0) {
+    if (!isReading &&
+        (detail.isFilm || eps.length <= 1) &&
+        (detail.durationMins ?? 0) > 0) {
       metaParts.add('${detail.durationMins}m');
     }
-    if (hasMultipleSeasons) {
+    if (!detail.isFilm && hasMultipleSeasons) {
       metaParts.add(context.l10n.seasonCount(seasonSet.length));
-    } else if (eps.isNotEmpty) {
+    } else if (!detail.isFilm && eps.isNotEmpty) {
       metaParts.add(
         isReading
             ? context.l10n.chapterCount(eps.length)
@@ -2342,12 +2358,14 @@ class _DetailViewState extends State<_DetailView>
 
     // ── Download button label: "Download S{season}:E{n}" when we can derive
     // the first episode of the current season, else a plain "Download". ──────
-    final downloadLabel = _downloadLabel(
-      context.l10n,
-      seasonEps,
-      hasMultipleSeasons,
-      currentSeason,
-    );
+    final downloadLabel = detail.isFilm
+        ? context.l10n.download
+        : _downloadLabel(
+            context.l10n,
+            seasonEps,
+            hasMultipleSeasons,
+            currentSeason,
+          );
 
     // ── Starring / Creators (Genres fallback) muted lines ───────────────────
     // Prefer enriched cast (AniList/TMDB) when available, else the provider's.
@@ -2794,7 +2812,9 @@ class _DetailViewState extends State<_DetailView>
                 Tab(
                   text: isReading
                       ? context.l10n.chapters
-                      : context.l10n.episodes,
+                      : (detail.isFilm
+                            ? context.l10n.movie
+                            : context.l10n.episodes),
                 ),
                 Tab(
                   text: isReading ? context.l10n.characters : context.l10n.cast,
@@ -2854,6 +2874,8 @@ class _DetailViewState extends State<_DetailView>
             // Only a catalogue title has another source to fall back on.
             onSwitchSource: ZmodeIds.isZ(item.url) ? _switchSource : null,
             isReading: isReading,
+            filmMeta: _filmMeta(detail),
+            filmTitle: detail.title,
           ),
           // ── Cast ────────────────────────────────────────────────────────────
           _CastTab(
@@ -2880,6 +2902,7 @@ class _DetailViewState extends State<_DetailView>
             genres: detail.genres,
             studios: detail.studios,
             episodeCount: eps.length,
+            isMovie: detail.isFilm,
             year: detail.year,
             description: cleanSynopsis(detail.description),
             detail: detail,

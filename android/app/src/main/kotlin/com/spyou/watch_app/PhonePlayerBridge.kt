@@ -101,6 +101,10 @@ object PhonePlayerBridge {
                 (call.argument<Number>("episodeCount") ?: 1).toInt(),
             )
             i.putExtra(
+                PhonePlayerIntent.EXTRA_IS_MOVIE,
+                call.argument<Boolean>("isMovie") ?: false,
+            )
+            i.putExtra(
                 PhonePlayerIntent.EXTRA_START_INDEX,
                 (call.argument<Number>("startIndex") ?: 0).toInt(),
             )

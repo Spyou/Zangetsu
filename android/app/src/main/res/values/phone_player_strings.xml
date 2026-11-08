@@ -71,6 +71,7 @@
     <string name="phone_player_watch_grid">Grid view</string>
     <string name="phone_player_watch_list">List view</string>
     <string name="phone_player_watch_reverse">Reverse order</string>
+    <string name="phone_player_watch_movie">Movie</string>
     <string name="phone_player_watch_count">Episodes (%1$d)</string>
     <string name="phone_player_watch_find_hint">Episode number</string>
     <string name="phone_player_watch_no_match">No matching episode</string>

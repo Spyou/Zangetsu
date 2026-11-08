@@ -20,6 +20,7 @@ object PhonePlayerIntent {
     const val EXTRA_EP_LABEL = "episodeLabel"
     const val EXTRA_EP_LABELS = "episodeLabels"
     const val EXTRA_EP_COUNT = "episodeCount"
+    const val EXTRA_IS_MOVIE = "isMovie"
     const val EXTRA_START_INDEX = "startIndex"
     const val EXTRA_SUB_URLS = "subUrls"
     const val EXTRA_SUB_LANGS = "subLangs"

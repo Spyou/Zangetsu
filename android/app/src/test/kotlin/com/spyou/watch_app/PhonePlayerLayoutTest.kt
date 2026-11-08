@@ -8,6 +8,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
+import androidx.recyclerview.widget.RecyclerView
 import androidx.test.core.app.ApplicationProvider
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -297,6 +298,59 @@ class PhonePlayerLayoutTest {
             )
         }
         controller.pause().stop().destroy()
+    }
+
+    @Test
+    @Config(manifest = Config.NONE, sdk = [34], qualifiers = "land")
+    fun `film hides every episode affordance in the player chrome`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val intent = Intent(context, PhonePlayerActivity::class.java)
+            .putExtra(PhonePlayerIntent.EXTRA_URL, "file:///dev/null")
+            .putExtra(PhonePlayerIntent.EXTRA_IS_MOVIE, true)
+            .putExtra(PhonePlayerIntent.EXTRA_EP_COUNT, 3)
+            .putExtra(PhonePlayerIntent.EXTRA_EP_LABELS, arrayOf("Film 1", "Film 2", "Film 3"))
+        val controller = Robolectric.buildActivity(PhonePlayerActivity::class.java, intent)
+            .create().start().resume()
+        val activity = controller.get()
+
+        assertEquals(View.GONE, activity.findViewById<View>(R.id.episode_label).visibility)
+        val episodesAction = activity.findViewById<View>(R.id.quick_episodes)
+        assertTrue(
+            "Film quick actions must not offer episodes",
+            episodesAction == null || episodesAction.visibility == View.GONE,
+        )
+        // A stale multi-entry film list must not leave episode navigation up.
+        assertEquals(View.INVISIBLE, activity.findViewById<View>(R.id.btn_previous).visibility)
+        assertEquals(View.INVISIBLE, activity.findViewById<View>(R.id.btn_next).visibility)
+
+        controller.pause().stop().destroy()
+    }
+
+    @Test
+    @Config(manifest = Config.NONE, sdk = [34])
+    fun `film watch page keeps its playable row with a movie heading`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val list = RecyclerView(context)
+        val page = PhoneWatchPage(
+            list,
+            mapOf(
+                "isMovie" to true,
+                "episodes" to listOf(mapOf("index" to 0, "heading" to "Film")),
+            ),
+            arrayOf("Film"),
+            android.graphics.Color.RED,
+            { null },
+            {},
+        )
+        try {
+            assertEquals(1, page.episodes.size)
+            assertEquals(0, page.episodes.single().index)
+            assertEquals(View.GONE, page.header.findViewById<View>(R.id.watch_grid).visibility)
+            page.update(0)
+            assertEquals("Movie", page.header.findViewById<TextView>(R.id.watch_episode_count).text.toString())
+        } finally {
+            page.close()
+        }
     }
 
     private fun dp(activity: PhonePlayerActivity, value: Int): Int =
