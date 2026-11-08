@@ -124,6 +124,7 @@ import '../../core/ui/badge.dart';
 import '../../core/ui/route_observer.dart';
 import '../../core/ui/states.dart';
 import '../player/player_screen.dart';
+import '../player/episode_player_route.dart';
 import '../player/tv_playback_launch.dart';
 import '../reader/manga_reader_screen.dart';
 import '../reader/novel_reader_screen.dart';
@@ -1515,7 +1516,7 @@ class _DetailViewState extends State<_DetailView>
 
     Navigator.of(context)
         .push(
-          MaterialPageRoute(
+          EpisodePlayerRoute(
             builder: (_) => PlayerScreen(
               playerOverride: playerOverride?.package,
               initialSource: initialSource,
