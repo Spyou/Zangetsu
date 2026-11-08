@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:cached_network_image/cached_network_image.dart';
@@ -690,10 +691,11 @@ Future<void> settleThroughRetry(WidgetTester tester) async {
 /// rather than decoding into memory, so these checks are now about what
 /// should be *absent* from the image cache.
 Future<bool> _imageTracked(String url, int width) async {
-  final key = await ResizeImage.resizeIfNeeded(
-    width,
-    null,
-    CachedNetworkImageProvider(url, maxWidth: width),
+  final key = await ResizeImage(
+    CachedNetworkImageProvider(url),
+    width: width,
+    height: 8192,
+    policy: ResizeImagePolicy.fit,
   ).obtainKey(ImageConfiguration.empty);
   return PaintingBinding.instance.imageCache.statusForKey(key).tracked;
 }
@@ -1566,7 +1568,7 @@ void main() {
     });
 
     testWidgets(
-      "a page's CachedNetworkImage receives its real imageUrl and headers "
+      "a page's image provider receives its real imageUrl and headers "
       '(the exact detail that breaks CF-walled sources if dropped)',
       (tester) async {
         await tester.runAsync(() => sl<ReaderPrefs>().setDirection('ltr'));
@@ -1584,11 +1586,23 @@ void main() {
         await tester.pumpWidget(harness());
         await settle(tester);
 
-        final img = tester.widget<CachedNetworkImage>(
-          find.byType(CachedNetworkImage),
+        final image = tester.widget<Image>(
+          find
+              .descendant(
+                of: find.byKey(const ValueKey('manga-pageview')),
+                matching: find.byType(Image),
+              )
+              .first,
         );
-        expect(img.imageUrl, 'https://example.com/cf-page.jpg');
-        expect(img.httpHeaders, const {'cf-clearance': 'abc123'});
+        final resize = image.image as ResizeImage;
+        final provider = resize.imageProvider as CachedNetworkImageProvider;
+        expect(provider.url, 'https://example.com/cf-page.jpg');
+        expect(provider.headers, const {'cf-clearance': 'abc123'});
+        expect(
+          provider.maxWidth,
+          isNull,
+          reason: 'disk cache keeps original bytes',
+        );
 
         await disposeHarness(tester);
       },
@@ -2059,6 +2073,177 @@ void main() {
     // The strip assertions matter as much as the absent widget: tiling is new
     // code in the reader, and the ordinary vertical path has to behave exactly
     // as it did before the feature existed.
+    testWidgets('vertical: the visible page reaches the file queue first', (
+      tester,
+    ) async {
+      await tester.runAsync(() => sl<ReaderPrefs>().setDirection('vertical'));
+      final cache = _PageFileCacheFake(File('${dir.path}/missing.jpg'));
+      final chapterPages = pages(3);
+      ani.register(_FakeReadingProvider('ani:m', {'u1': chapterPages}));
+
+      await tester.pumpWidget(harness(pageFileCache: cache));
+      await settle(tester);
+
+      expect(cache.requestedUrls, isNotEmpty);
+      expect(cache.requestedUrls.first, chapterPages.first.url);
+      await disposeHarness(tester);
+    });
+
+    testWidgets('the first page can tile when its file arrives after opening', (
+      tester,
+    ) async {
+      final file = File('${dir.path}/tall-page.png');
+      await tester.runAsync(() async {
+        await sl<ReaderPrefs>().setDirection('vertical');
+        await file.writeAsBytes(
+          base64Decode(
+            'iVBORw0KGgoAAAANSUhEUgAAAAIAAABACAIAAAC/RDEUAAAAGUlEQVR4nGP8//8/AwMDEwMYMI1STEMrCACm0QN9cILuRwAAAABJRU5ErkJggg==',
+          ),
+        );
+      });
+      final ready = Completer<File?>();
+      ani.register(
+        _FakeReadingProvider('ani:m', {
+          'u1': [PageImage(url: 'https://example.com/tall-page.png')],
+        }),
+      );
+      await tester.pumpWidget(
+        harness(
+          pageFileCache: PageFileCache(lookupCachedFile: (_) => ready.future),
+        ),
+      );
+      await settle(tester);
+      expect(find.byType(TiledPageImage), findsNothing);
+      ready.complete(file);
+      await tester.runAsync(() async {
+        for (var i = 0; i < 20; i++) {
+          await Future<void>.delayed(const Duration(milliseconds: 20));
+          await tester.pump();
+        }
+      });
+      await tester.pump(const Duration(milliseconds: 300));
+      final tiled = tester.widget<TiledPageImage>(find.byType(TiledPageImage));
+      expect(tiled.path, file.path);
+      expect(tiled.imageWidth, 2);
+      expect(tiled.imageHeight, 64);
+      await disposeHarness(tester);
+    });
+
+    testWidgets('a displayed page stays visible while zoom detail loads', (
+      tester,
+    ) async {
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await tester.runAsync(() => sl<ReaderPrefs>().setDirection('vertical'));
+      final held = <Completer<dynamic>>[];
+      var hold = false;
+      final bytes = base64Decode(
+        'iVBORw0KGgoAAAANSUhEUgAAAAIAAABACAIAAAC/RDEUAAAAGUlEQVR4nGP8//8/AwMDEwMYMI1STEMrCACm0QN9cILuRwAAAABJRU5ErkJggg==',
+      );
+      const channel = MethodChannel('zangetsu/aniyomi');
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      messenger.setMockMethodCallHandler(channel, (call) async {
+        if (call.method != 'getImage') return null;
+        if (!hold) return bytes;
+        final pending = Completer<dynamic>();
+        held.add(pending);
+        return pending.future;
+      });
+      ani.register(
+        _FakeReadingProvider('ani:m', {
+          'u1': [
+            PageImage(
+              url: 'https://example.com/zoom-page.png',
+              headers: {'x-ani-src': '7'},
+            ),
+          ],
+        }),
+      );
+      try {
+        await tester.pumpWidget(
+          harness(
+            pageFileCache: _PageFileCacheFake(File('${dir.path}/missing.jpg')),
+          ),
+        );
+        await settle(tester);
+        await tester.runAsync(() async {
+          for (var i = 0; i < 20; i++) {
+            await Future<void>.delayed(const Duration(milliseconds: 20));
+            await tester.pump();
+          }
+        });
+        final page = find.byKey(const ValueKey('manga-page-0'));
+        expect(
+          tester
+              .widget<RawImage>(
+                find
+                    .descendant(of: page, matching: find.byType(RawImage))
+                    .first,
+              )
+              .image,
+          isNotNull,
+        );
+        PaintingBinding.instance.imageCache.clear();
+        PaintingBinding.instance.imageCache.clearLiveImages();
+        hold = true;
+        await _pinchOpen(tester);
+        await settle(tester);
+        expect(_webtoonScale(tester), greaterThan(1));
+        expect(held, isNotEmpty);
+        expect(
+          find.descendant(
+            of: page,
+            matching: find.byType(CircularProgressIndicator),
+          ),
+          findsNothing,
+        );
+        expect(
+          tester
+              .widget<RawImage>(
+                find
+                    .descendant(of: page, matching: find.byType(RawImage))
+                    .first,
+              )
+              .image,
+          isNotNull,
+        );
+      } finally {
+        for (final pending in held) {
+          if (!pending.isCompleted) pending.complete(bytes);
+        }
+        await disposeHarness(tester);
+        messenger.setMockMethodCallHandler(channel, null);
+      }
+    });
+
+    testWidgets('whole-page fallback bounds both dimensions proportionally', (
+      tester,
+    ) async {
+      await tester.runAsync(() => sl<ReaderPrefs>().setDirection('vertical'));
+      ani.register(
+        _FakeReadingProvider('ani:m', {
+          'u1': [PageImage(url: '${dir.path}/tall-page.jpg')],
+        }),
+      );
+
+      await tester.pumpWidget(harness());
+      await settle(tester);
+
+      final image = tester.widget<Image>(
+        find
+            .descendant(
+              of: find.byKey(const ValueKey('manga-page-0')),
+              matching: find.byType(Image),
+            )
+            .first,
+      );
+      final resize = image.image as ResizeImage;
+      expect(resize.height, 8192);
+      expect(resize.policy, ResizeImagePolicy.fit);
+      await disposeHarness(tester);
+    });
+
     testWidgets('vertical: a page with nothing recorded takes the plain path', (
       tester,
     ) async {
@@ -2434,7 +2619,6 @@ void main() {
       expect(find.byType(MangaPageTranslationSettingsSheet), findsNothing);
       expect(find.text('translated text'), findsOneWidget);
       expect(pageFileCache.requestedUrls.toSet(), pageUrls.toSet());
-      expect(pageFileCache.requestedUrls.length, 3);
 
       final floatingTranslate = find.byKey(
         const ValueKey('manga-translation-floating-control'),

@@ -12,6 +12,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/reading/reader_image_budget.dart';
 import '../../core/reading/crop_borders.dart';
 import '../../core/reading/reader_page_queue.dart';
+import '../../core/reading/reader_page_image.dart';
 import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:visibility_detector/visibility_detector.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
@@ -115,11 +116,6 @@ class MangaReaderScreen extends StatefulWidget {
   @override
   State<MangaReaderScreen> createState() => _MangaReaderScreenState();
 }
-
-/// How long a page takes to fade in once its image lands. Short on purpose:
-/// this plays while someone is still scrolling, and the package's 500ms
-/// default is long enough to look like the page is struggling.
-const Duration _kPageFade = Duration(milliseconds: 220);
 
 class _MangaReaderScreenState extends State<MangaReaderScreen>
     with ReaderComfortMixin<MangaReaderScreen>, TickerProviderStateMixin {
@@ -548,8 +544,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
   /// strip as sideways slices, which is unreadable. Deliberately off the build
   /// path: [_effectiveDirection] runs on every build and only reads the result.
   ///
-  /// The provider is built the way [_pagedItem]/[_verticalItem] build theirs
-  /// (CachedNetworkImage wraps its provider in a ResizeImage), so this reads
+  /// The provider is the same bounded one the page widgets use, so this reads
   /// the page the reader is already decoding instead of fetching a second,
   /// full-size copy. A page that never resolves leaves the flag null and the
   /// reader keeps whatever direction was asked for.
@@ -623,11 +618,14 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
     final width = _effectiveDirection(sl<ReaderPrefs>()) == 'vertical'
         ? _webtoonDecodeWidth(context)
         : _decodeWidth(context);
-    final window = preloadWindow(
-      index,
-      pages.length,
-      count: sl<ReaderPrefs>().preloadCount,
-    );
+    final window = [
+      if (index >= 0 && index < pages.length) index,
+      ...preloadWindow(
+        index,
+        pages.length,
+        count: sl<ReaderPrefs>().preloadCount,
+      ),
+    ];
 
     // Through the queue, one at a time, nearest first — NOT all at once.
     //
@@ -643,11 +641,12 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
     _pageQueue.keepOnly(keep);
     for (final i in window) {
       final p = pages[i];
+      // add starts the worker synchronously, so its task must already exist.
+      _queueTasks[p.url] = () => _fetchPageBytes(p, i, width);
       _pageQueue.add(
         p.url,
         i == index ? PagePriority.current : PagePriority.adjacent,
       );
-      _queueTasks[p.url] = () => _fetchPageBytes(p, i, width);
     }
     _warmNextChapter(index, pages.length);
     // Within a couple of pages of the strip's end — pull the next chapter on.
@@ -751,10 +750,8 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
   /// Deliberately NOT precacheImage. A page decodes to width x height x 4 —
   /// around 28MB at our decode width — so precaching even a few pushed the
   /// already-decoded ones straight back out of the image cache and the reader
-  /// paid to decode them again on the way past. This is the same call
-  /// CachedNetworkImage makes for maxWidthDiskCache, so the file lands under
-  /// the key the visible page resolves to; only the page being looked at ends
-  /// up decoded in memory.
+  /// paid to decode them again on the way past. Cache the original bytes;
+  /// resizing on disk can squash tall images before the tile decoder sees them.
   Future<void> _fetchPageBytes(PageImage p, int index, int width) async {
     // A tile crop needs a real file on disk, which most pages do not start
     // with — resolve one here, off the same preload pass that measures the
@@ -762,7 +759,6 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
     if (!_pageFile.containsKey(p.url)) {
       final f = await _pageFiles.fileFor(p.url, p.headers);
       if (f != null && mounted) {
-        _pageFile[p.url] = f.path;
         // Read the TRUE pixel size here rather than leaving it to the measure
         // paths below, because neither can supply it for every page kind: a
         // page the native side draws never reaches [_measureFromFile], and
@@ -770,7 +766,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
         // the size the file really is. Getting that wrong means a tile crop
         // addressed in the wrong space — and a page cropped wrong is a visibly
         // broken page, not a slow one.
-        await _recordPixelSize(f, p.url);
+        await _recordPageFile(f, p.url);
       }
     }
     // A page the NATIVE side draws must be measured from what the native side
@@ -789,13 +785,14 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
       await _measureFromProvider(p, width);
       return;
     }
-    final stream = DefaultCacheManager().getImageFile(
+    final stream = DefaultCacheManager().getFileStream(
       p.url,
       headers: p.headers,
-      maxWidth: width,
     );
     await for (final r in stream) {
       if (r is FileInfo) {
+        if (!mounted) return;
+        await _recordPageFile(r.file, p.url);
         // Shape read off the file BEFORE the page is ever built — see
         // [_measureFromFile] for why that matters so much here.
         if (!_aspect.containsKey(p.url)) {
@@ -887,8 +884,8 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
   /// [PageFileCache] resolved for it. Header-only on purpose: the point is to
   /// avoid decoding the page, so pulling the whole thing in to ask how big it
   /// is would defeat the feature it serves.
-  Future<void> _recordPixelSize(File file, String url) async {
-    if (_pixelSize.containsKey(url)) return;
+  Future<void> _recordPageFile(File file, String url) async {
+    if (_pageFile[url] == file.path && _pixelSize.containsKey(url)) return;
     ui.ImmutableBuffer? buffer;
     ui.ImageDescriptor? desc;
     try {
@@ -897,6 +894,8 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
       final w = desc.width, h = desc.height;
       if (w <= 0 || h <= 0 || !mounted) return;
       _pixelSize[url] = Size(w.toDouble(), h.toDouble());
+      _pageFile[url] = file.path;
+      _flushAspects();
     } catch (_) {
       // Unreadable means no tiling for this page, which is the same as not
       // having a file at all — the plain path draws it.
@@ -2864,41 +2863,28 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
           final image = Center(
             child: _cropIfEnabled(
               _withPageTranslation(
-                _drawnLocally(page)
-                    ? Image(
-                        image: _pageProvider(page, width),
-                        fit: fit,
-                        // Same gap as the strip had: nothing at all while
-                        // the page decodes.
-                        frameBuilder: (context, child, frame, wasSync) {
-                          if (frame != null) _loaded.add(index);
-                          if (wasSync || frame != null) return child;
-                          return Center(
-                            child: _shimmerSlot(context, label: '${index + 1}'),
-                          );
-                        },
-                        errorBuilder: (_, _, _) => const Icon(
-                          Icons.broken_image_outlined,
-                          color: Colors.white24,
-                        ),
-                      )
-                    : CachedNetworkImage(
-                        imageUrl: page.url,
-                        httpHeaders: page.headers,
-                        memCacheWidth: width,
-                        maxWidthDiskCache: width,
-                        fit: fit,
-                        // Static, not an animated spinner — see ColoredBox usage in
-                        // poster_card.dart/continue_card.dart for the same convention.
-                        placeholder: (_, _) => SizedBox.expand(
+                ReaderPageImage(
+                  pageUrl: page.url,
+                  image: _pageProvider(page, width),
+                  fit: fit,
+                  onLoaded: () => _loaded.add(index),
+                  placeholderBuilder: (context, progress) => _drawnLocally(page)
+                      ? Center(
+                          child: _shimmerSlot(
+                            context,
+                            label: '${index + 1}',
+                            progress: progress,
+                          ),
+                        )
+                      : SizedBox.expand(
                           child: ColoredBox(color: AppColors.surface2),
                         ),
-                        errorWidget: (_, _, _) => const Icon(
-                          Icons.broken_image_outlined,
-                          color: Colors.white38,
-                          size: 48,
-                        ),
-                      ),
+                  errorBuilder: (_, _, _) => const Icon(
+                    Icons.broken_image_outlined,
+                    color: Colors.white38,
+                    size: 48,
+                  ),
+                ),
                 page: page,
                 index: index,
                 fit: fit,
@@ -3030,16 +3016,14 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
   /// load-bearing — a page with no recorded file or no true pixel size takes
   /// the plain path, not a guessed one.
   Widget _verticalPageImage(BuildContext context, PageImage page, int index) {
-    final aspect = _aspect[page.url];
     final pixels = _pixelSize[page.url];
     final file = _pageFile[page.url];
     final canTile =
-        aspect != null &&
         pixels != null &&
         file != null &&
         // Below about two screens there is nothing to win and the plain path
         // is simpler and faster.
-        (aspect * _webtoonDecodeWidth(context)) >
+        (pixels.height / pixels.width * _webtoonDecodeWidth(context)) >
             MediaQuery.sizeOf(context).height * 2;
 
     if (canTile) {
@@ -3058,85 +3042,23 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
   /// possible for this page, and as [TiledPageImage]'s fallback.
   Widget _plainPageImage(BuildContext context, PageImage page, int index) {
     final width = _webtoonDecodeWidth(context);
-    return _drawnLocally(page)
-        ? Image(
-            image: _pageProvider(page, width),
-            width: double.infinity,
-            fit: _verticalBoxFit(_effectiveFit(sl<ReaderPrefs>())),
-            // A downloaded/CBZ page needs no fetch — it is there.
-            // A local page decodes fast but not instantly, and it used
-            // to cut straight from placeholder to art. Same short fade
-            // the network path gets, so both read the same way.
-            // Until the first frame decodes this shows the SAME
-            // placeholder the network path shows.
-            //
-            // It used to fade in from opacity 0, which on this path
-            // means the page is simply invisible while it loads — no
-            // spinner, no page number, nothing. And this is not a rare
-            // path: a source that rewrites its image bytes serves every
-            // page through the native bridge (see [nativePageProvider]),
-            // which is most long manhwa. That is the "it just shows
-            // black" report — the progress ring was only ever on the
-            // branch those pages never take.
-            frameBuilder: (context, child, frame, wasSync) {
-              if (frame != null) _loaded.add(index);
-              if (wasSync) return child;
-              if (frame == null) return _pagePlaceholder(context, index);
-              return AnimatedOpacity(
-                opacity: 1,
-                duration: _kPageFade,
-                curve: Curves.easeOut,
-                child: child,
-              );
-            },
-            errorBuilder: (_, _, _) => const SizedBox(
-              height: 200,
-              child: Icon(Icons.broken_image_outlined, color: Colors.white24),
-            ),
-          )
-        : CachedNetworkImage(
-            imageUrl: page.url,
-            httpHeaders: page.headers,
-            width: double.infinity,
-            memCacheWidth: width,
-            maxWidthDiskCache: width,
-            fit: _verticalBoxFit(_effectiveFit(sl<ReaderPrefs>())),
-            // The package default is 500ms, which is a long time to
-            // watch a page arrive while you are still scrolling. Short
-            // enough to feel immediate, long enough not to be a cut.
-            fadeInDuration: _kPageFade,
-            fadeOutDuration: _kPageFade,
-            // The placeholder is already on screen holding the page's
-            // space — fading it IN as well just delays it.
-            placeholderFadeInDuration: Duration.zero,
-            // The page is on screen for real from here. Scrolling PAST a
-            // placeholder is not reading it, and that distinction is what
-            // keeps a fast scroll from marking the chapter read.
-            imageBuilder: (context, imageProvider) {
-              _loaded.add(index);
-              return Image(
-                image: imageProvider,
-                width: double.infinity,
-                fit: _verticalBoxFit(_effectiveFit(sl<ReaderPrefs>())),
-              );
-            },
-            // A page that has not arrived reserves its real height
-            // (see [_reservedHeight]) so the list does not jump, and
-            // shows how far along the download actually is. A shimmer
-            // says "something is happening"; a percentage says whether
-            // it is nearly there or barely started, which on a slow
-            // source is the difference between waiting and giving up.
-            progressIndicatorBuilder: (_, _, progress) =>
-                _pagePlaceholder(context, index, progress.progress),
-            errorWidget: (_, _, _) => const SizedBox(
-              height: 200,
-              child: Icon(
-                Icons.broken_image_outlined,
-                color: Colors.white38,
-                size: 48,
-              ),
-            ),
-          );
+    return ReaderPageImage(
+      pageUrl: page.url,
+      image: _pageProvider(page, width),
+      width: double.infinity,
+      fit: _verticalBoxFit(_effectiveFit(sl<ReaderPrefs>())),
+      onLoaded: () => _loaded.add(index),
+      placeholderBuilder: (context, progress) =>
+          _pagePlaceholder(context, index, progress),
+      errorBuilder: (_, _, _) => const SizedBox(
+        height: 200,
+        child: Icon(
+          Icons.broken_image_outlined,
+          color: Colors.white38,
+          size: 48,
+        ),
+      ),
+    );
   }
 
   /// The strip, before there are any pages to put in it.
@@ -3955,42 +3877,31 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
   /// path, not a URL, and CachedNetworkImage can't load one.
   static bool _isLocal(String url) => !url.startsWith('http');
 
-  /// The image for a page: inside a saved `.cbz`, a loose saved file, or the
-  /// network. One place, so the two page builders and the webtoon probe can't
-  /// disagree about what they're loading.
-  /// Whether [_pageProvider] should draw this page rather than
-  /// CachedNetworkImage.
-  ///
-  /// True for a downloaded/CBZ page, and for one the bridge marked as needing
-  /// its source's own client — see [nativePageProvider]. Both end up as a
-  /// plain [Image], so the network widget keeps its cache for every ordinary
-  /// page.
+  /// Pages whose shape must be measured through their image provider.
   static bool _drawnLocally(PageImage page) =>
       _isLocal(page.url) ||
       CbzImage.tryParse(page.url) != null ||
       nativePageProvider(page.url, page.headers) != null;
 
+  /// Uses the same provider and proportional decode bounds for display and measurement.
   static ImageProvider _pageProvider(PageImage page, int width) {
     final cbz = CbzImage.tryParse(page.url);
-    if (cbz != null) return ResizeImage.resizeIfNeeded(width, null, cbz);
-    if (_isLocal(page.url)) {
-      return ResizeImage.resizeIfNeeded(width, null, FileImage(File(page.url)));
-    }
     // A source that serves its pages scrambled puts the descrambler on its own
     // OkHttp client, and fetching the url ourselves never touches that client —
     // the reader drew the raw scrambled bytes and the page looked torn into
     // squares. The bridge marks those pages, and the fix is the one covers have
     // used all along: go and get them natively instead.
     final native = nativePageProvider(page.url, page.headers);
-    if (native != null) return ResizeImage.resizeIfNeeded(width, null, native);
-    return ResizeImage.resizeIfNeeded(
-      width,
-      null,
-      CachedNetworkImageProvider(
-        page.url,
-        headers: page.headers,
-        maxWidth: width,
-      ),
+    final provider =
+        cbz ??
+        (_isLocal(page.url) ? FileImage(File(page.url)) : native) ??
+        CachedNetworkImageProvider(page.url, headers: page.headers);
+    // Bound both dimensions before GPU upload; width-only decoding squashes tall strips.
+    return ResizeImage(
+      provider,
+      width: width,
+      height: 8192,
+      policy: ResizeImagePolicy.fit,
     );
   }
 
