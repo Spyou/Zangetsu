@@ -284,10 +284,29 @@ class TvPlayerActivity : Activity() {
             reportTiming(positionMs = t)
         }
     }
+    private var lastTrackingAt = 0L
     private val ticker = object : Runnable {
         override fun run() {
             updateProgress()
             updateSkip()
+            // Slow heartbeat: keeps the live tracker's progress moving during
+            // continuous playback (event reports alone only cover the start).
+            val now = android.os.SystemClock.elapsedRealtime()
+            if (now - lastTrackingAt >= 10_000L) {
+                lastTrackingAt = now
+                val p = player
+                if (p != null && p.isPlaying && p.duration > 0) {
+                    MainActivity.tvBridge?.invokeMethod(
+                        "trackingTick",
+                        mapOf(
+                            "index" to currentIndex,
+                            "positionMs" to p.currentPosition.coerceAtLeast(0L),
+                            "durationMs" to p.duration,
+                            "playing" to true,
+                        ),
+                    )
+                }
+            }
             handler.postDelayed(this, 500)
         }
     }

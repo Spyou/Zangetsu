@@ -1,5 +1,6 @@
 import '../di/injector.dart';
 import '../models/episode.dart';
+import '../tracker/simkl_playback_session.dart';
 import '../tracker/tracker_hub.dart';
 import 'tv_playback_helpers.dart';
 
@@ -26,6 +27,8 @@ class TvPlaybackTracker {
   final TrackerHub? _hub;
   final _scrobbled = <int>{};
   bool _markedWatching = false;
+  SimklPlaybackSession? _live;
+  int _liveIndex = -1;
 
   bool get hasTitleId =>
       malId != null ||
@@ -39,6 +42,52 @@ class TvPlaybackTracker {
   void reset() {
     _scrobbled.clear();
     _markedWatching = false;
+    stopLive();
+  }
+
+  /// Feed the TV player's timeline to Simkl. Call on every progress event (the
+  /// native players send one every few seconds); no-op without a title id or a
+  /// connected Simkl.
+  void liveProgress({
+    required int index,
+    required Episode episode,
+    required int positionMs,
+    required int durationMs,
+    bool playing = true,
+    bool completed = false,
+  }) {
+    if (!hasTitleId) return;
+    final hub = _tracker;
+    if (hub == null) return;
+    if (index != _liveIndex) {
+      _live?.stop();
+      _live = null;
+      _liveIndex = index;
+    }
+    final epNum = episode.number ?? (index + 1).toDouble();
+    _live ??= hub.simklPlayback(
+      malId: malId,
+      tmdbId: tmdbId,
+      tmdbIsTv: tmdbIsTv,
+      imdbId: imdbId,
+      episode: epNum > 0 && epNum == epNum.truncateToDouble()
+          ? epNum.toInt()
+          : null,
+      season: episode.season,
+    );
+    _live?.update(
+      positionMs: positionMs,
+      durationMs: durationMs,
+      playing: playing,
+      completed: completed,
+    );
+  }
+
+  /// The player closed or switched away: flush one final Simkl stop.
+  void stopLive() {
+    _live?.stop();
+    _live = null;
+    _liveIndex = -1;
   }
 
   void maybeMarkWatching() {
@@ -86,6 +135,9 @@ class TvPlaybackTracker {
       tmdbIsTv: tmdbIsTv,
       imdbId: imdbId,
       episode: epNum.toInt(),
+      // Simkl already has the live session for this episode; a second
+      // history write would double-count it.
+      simklLive: _live != null && durationMs > 0,
       // No episode list here, so the position inside the season is unknown
       // and the source's own number can't stand in for it — see
       // SimklService.watchedBody. Falls back to the flat shape.

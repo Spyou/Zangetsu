@@ -9,6 +9,7 @@ import 'package:watch_app/core/models/watch_status.dart';
 import 'package:watch_app/core/playback/playback_prefs.dart';
 import 'package:watch_app/core/playback/tv_playback_tracker.dart';
 import 'package:watch_app/core/privacy/incognito_mode.dart';
+import 'package:watch_app/core/tracker/simkl_playback_session.dart';
 import 'package:watch_app/core/tracker/tracker.dart';
 import 'package:watch_app/core/tracker/tracker_hub.dart';
 
@@ -98,8 +99,7 @@ class _CountingTracker extends ChangeNotifier implements Tracker {
     String? pinnedId,
     MediaKind kind = MediaKind.anime,
     bool novel = false,
-  }) async =>
-      null;
+  }) async => null;
 
   @override
   Future<void> updateEntry({
@@ -119,8 +119,7 @@ class _CountingTracker extends ChangeNotifier implements Tracker {
   Future<List<TrackerSearchResult>> searchEntries(
     String query, {
     MediaKind kind = MediaKind.anime,
-  }) async =>
-      const [];
+  }) async => const [];
 
   @override
   Future<List<TrackerListItem>> fetchList() async => const [];
@@ -132,8 +131,62 @@ class _CountingTracker extends ChangeNotifier implements Tracker {
   Future<void> importSession(Map<String, dynamic> session) async {}
 }
 
-Episode _ep(int number) =>
-    Episode(id: 'e$number', title: 'Episode $number', url: '/$number', number: number.toDouble());
+class _LiveHub extends TrackerHub {
+  _LiveHub(super.trackers);
+
+  final live = <(String, double)>[];
+  bool? simklLiveOnScrobble;
+
+  @override
+  SimklPlaybackSession? simklPlayback({
+    int? malId,
+    int? tmdbId,
+    bool tmdbIsTv = false,
+    String? imdbId,
+    int? episode,
+    int? season,
+    int? seasonEpisode,
+  }) => SimklPlaybackSession((a, p) => live.add((a, p)));
+
+  @override
+  Future<void> scrobble({
+    int? malId,
+    String? title,
+    int? tmdbId,
+    bool tmdbIsTv = false,
+    String? imdbId,
+    required int episode,
+    int? season,
+    int? seasonEpisode,
+    MediaKind kind = MediaKind.anime,
+    bool novel = false,
+    bool auto = true,
+    bool simklLive = false,
+  }) {
+    simklLiveOnScrobble = simklLive;
+    return super.scrobble(
+      malId: malId,
+      title: title,
+      tmdbId: tmdbId,
+      tmdbIsTv: tmdbIsTv,
+      imdbId: imdbId,
+      episode: episode,
+      season: season,
+      seasonEpisode: seasonEpisode,
+      kind: kind,
+      novel: novel,
+      auto: auto,
+      simklLive: simklLive,
+    );
+  }
+}
+
+Episode _ep(int number) => Episode(
+  id: 'e$number',
+  title: 'Episode $number',
+  url: '/$number',
+  number: number.toDouble(),
+);
 
 void main() {
   late Directory tempDir;
@@ -160,11 +213,8 @@ void main() {
     IncognitoMode.set(false);
   });
 
-  TvPlaybackTracker makeTracker() => TvPlaybackTracker(
-        malId: 42,
-        scrobbleTitle: 'Show',
-        hub: hub,
-      );
+  TvPlaybackTracker makeTracker() =>
+      TvPlaybackTracker(malId: 42, scrobbleTitle: 'Show', hub: hub);
 
   group('TvPlaybackTracker', () {
     test('scrobbles at/after 92%', () {
@@ -261,6 +311,58 @@ void main() {
       );
       expect(tracker.watching, 0);
       expect(tracker.scrobbles, 0);
+    });
+
+    test('live progress feeds Simkl and stops on completion', () {
+      final liveHub = _LiveHub([tracker]);
+      final t = TvPlaybackTracker(
+        malId: 42,
+        scrobbleTitle: 'Show',
+        hub: liveHub,
+      );
+      t.liveProgress(
+        index: 0,
+        episode: _ep(1),
+        positionMs: 5000,
+        durationMs: 100000,
+      );
+      t.liveProgress(
+        index: 0,
+        episode: _ep(1),
+        positionMs: 35000,
+        durationMs: 100000,
+      );
+      t.liveProgress(
+        index: 0,
+        episode: _ep(1),
+        positionMs: 100000,
+        durationMs: 100000,
+        playing: false,
+        completed: true,
+      );
+      expect(liveHub.live, [('start', 5), ('start', 35), ('stop', 100)]);
+    });
+
+    test('the end scrobble defers to the live Simkl session', () {
+      final liveHub = _LiveHub([tracker]);
+      final t = TvPlaybackTracker(
+        malId: 42,
+        scrobbleTitle: 'Show',
+        hub: liveHub,
+      );
+      t.liveProgress(
+        index: 0,
+        episode: _ep(1),
+        positionMs: 5000,
+        durationMs: 100000,
+      );
+      t.maybeScrobble(
+        index: 0,
+        episode: _ep(1),
+        positionMs: 9500,
+        durationMs: 10000,
+      );
+      expect(liveHub.simklLiveOnScrobble, isTrue);
     });
 
     test('reset clears scrobbled state', () {

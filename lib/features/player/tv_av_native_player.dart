@@ -79,6 +79,7 @@ class TvAvNativePlayer {
       );
     }
   }
+
   static Future<bool> play({
     required String sourceId,
     required List<Episode> episodes,
@@ -182,9 +183,7 @@ class TvAvNativePlayer {
     );
     _tracker?.maybeMarkWatching();
 
-    final warm = malId != null
-        ? FillerService.instance.peekCache(malId)
-        : null;
+    final warm = malId != null ? FillerService.instance.peekCache(malId) : null;
     final fillerFlags = _fillerFlags(_episodes, warm ?? const {});
     if (malId != null) {
       unawaited(
@@ -250,6 +249,7 @@ class TvAvNativePlayer {
     final posMs = (res?['positionMs'] as num?)?.toInt() ?? 0;
     final durMs = (res?['durationMs'] as num?)?.toInt() ?? 0;
     _saveProgress(index, posMs, durMs);
+    _tracker?.stopLive();
     _announceBrowsing();
     return true;
   }
@@ -292,6 +292,14 @@ class TvAvNativePlayer {
         final completed = args['completed'] as bool? ?? false;
         _saveProgress(index, posMs, durMs, completed: completed);
         if (index >= 0 && index < _episodes.length) {
+          _tracker?.liveProgress(
+            index: index,
+            episode: _episodes[index],
+            positionMs: posMs,
+            durationMs: durMs,
+            playing: args['playing'] as bool? ?? true,
+            completed: completed,
+          );
           _announceWatching(
             _episodes[index],
             positionMs: posMs,
@@ -299,6 +307,21 @@ class TvAvNativePlayer {
             playing: args['playing'] as bool? ?? true,
           );
         }
+        return null;
+      case 'trackingTick':
+        // Slow heartbeat from the native player while it plays. Position-only:
+        // no resume/history write, just the live tracker timeline.
+        final args = (call.arguments as Map).cast<String, dynamic>();
+        final index = (args['index'] as num?)?.toInt() ?? -1;
+        if (index < 0 || index >= _episodes.length) return null;
+        _tracker?.liveProgress(
+          index: index,
+          episode: _episodes[index],
+          positionMs: (args['positionMs'] as num?)?.toInt() ?? 0,
+          durationMs: (args['durationMs'] as num?)?.toInt() ?? 0,
+          playing: args['playing'] as bool? ?? true,
+          completed: args['completed'] as bool? ?? false,
+        );
         return null;
       case 'setCategory':
         // Same as Android TvNativePlayer: persist the choice and re-fetch via
@@ -485,13 +508,19 @@ class TvAvNativePlayer {
         final args = (call.arguments as Map).cast<String, dynamic>();
         final streamUrl = args['streamUrl'] as String? ?? '';
         final subtitleUrl = args['subtitleUrl'] as String? ?? '';
-        final streamDuration = (args['streamDuration'] as num?)?.toDouble() ?? 0;
+        final streamDuration =
+            (args['streamDuration'] as num?)?.toDouble() ?? 0;
         final hdrs = <String, String>{};
         final rawH = args['headers'];
         if (rawH is Map) {
           rawH.forEach((k, v) => hdrs['$k'] = '$v');
         }
-        return _probeVttEncodeSkew(streamUrl, subtitleUrl, streamDuration, hdrs);
+        return _probeVttEncodeSkew(
+          streamUrl,
+          subtitleUrl,
+          streamDuration,
+          hdrs,
+        );
       case 'subtitleTimingLog':
         final msg = (call.arguments as Map?)?['message'] as String?;
         if (msg != null) debugPrint('[zangetsu-sub-timing] $msg');
@@ -570,7 +599,10 @@ class TvAvNativePlayer {
 
   /// Swap `_episodes` to [category] when URL rewrite can't express the cut.
   /// Returns the index to resolve (clamped if the other list is shorter).
-  static Future<int> _ensureEpisodesForCategory(int index, String category) async {
+  static Future<int> _ensureEpisodesForCategory(
+    int index,
+    String category,
+  ) async {
     if (index < 0 || index >= _episodes.length) return index;
     final current = _episodes[index];
     if (!categorySwitchNeedsEpisodeRefetch(current.url, category)) {
@@ -823,7 +855,8 @@ class TvAvNativePlayer {
               connectTimeout: const Duration(seconds: 12),
               receiveTimeout: const Duration(seconds: 15),
               responseType: ResponseType.bytes,
-              validateStatus: (code) => code != null && code >= 200 && code < 400,
+              validateStatus: (code) =>
+                  code != null && code >= 200 && code < 400,
               headers: {
                 'User-Agent': _cdnUserAgent,
                 'Range': 'bytes=0-1048575',
@@ -894,7 +927,8 @@ class TvAvNativePlayer {
           '[zangetsu-sub-timing] HLS epoch magic[$idx] ${hlsSegmentMagic(segBytes)} '
           '(${segBytes.length}B)',
         );
-        final media = hlsUnwrapSegment(segBytes) ??
+        final media =
+            hlsUnwrapSegment(segBytes) ??
             (initBytes != null ? hlsUnwrapSegment(initBytes) : null);
         if (media == null) continue;
         if (!identical(media, segBytes)) {
@@ -920,7 +954,9 @@ class TvAvNativePlayer {
         }
 
         final inspect = mpegTsInspect(media);
-        debugPrint('[zangetsu-sub-timing] HLS epoch TS[$idx] ${inspect.summary}');
+        debugPrint(
+          '[zangetsu-sub-timing] HLS epoch TS[$idx] ${inspect.summary}',
+        );
         if (inspect.ptsSamples.isNotEmpty) {
           debugPrint(
             '[zangetsu-sub-timing] HLS epoch PTS samples[$idx] '
@@ -1045,10 +1081,7 @@ class TvAvNativePlayer {
       }
     }
 
-    Future<Map<String, String>> collectMedia(
-      String seed,
-      String label,
-    ) async {
+    Future<Map<String, String>> collectMedia(String seed, String label) async {
       final out = <String, String>{};
 
       Future<void> ingest(String url, String body) async {
@@ -1147,7 +1180,8 @@ class TvAvNativePlayer {
       final lead = inRange.first.value;
       return {
         'seconds': lead,
-        'reason': 'EXTINF leading ${lead.toStringAsFixed(3)}s '
+        'reason':
+            'EXTINF leading ${lead.toStringAsFixed(3)}s '
             'via ${inRange.first.key}',
       };
     }
@@ -1157,7 +1191,8 @@ class TvAvNativePlayer {
       if (same) {
         return {
           'seconds': values.first,
-          'reason': 'EXTINF leading ${values.first.toStringAsFixed(3)}s '
+          'reason':
+              'EXTINF leading ${values.first.toStringAsFixed(3)}s '
               '(${inRange.length} pairs)',
         };
       }
@@ -1173,9 +1208,9 @@ class TvAvNativePlayer {
       'reason': hits.isEmpty
           ? 'no EXTINF alignment across renditions'
           : zero > 0
-              ? 'EXTINF aligned at start on $zero pair(s); '
-                  'duration gap is tail — not applied'
-              : 'no 8–30s EXTINF leading skew',
+          ? 'EXTINF aligned at start on $zero pair(s); '
+                'duration gap is tail — not applied'
+          : 'no 8–30s EXTINF leading skew',
     };
   }
 }
