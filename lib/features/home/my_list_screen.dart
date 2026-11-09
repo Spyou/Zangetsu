@@ -20,6 +20,8 @@ import '../../core/ui/anilist_custom_lists_sheet.dart';
 import '../../core/prefs/list_sort.dart';
 import '../../core/models/watch_status.dart';
 import '../../core/playback/my_list.dart';
+import '../../core/stremio/stremio_library_badge.dart';
+import '../../core/stremio/stremio_ref.dart';
 import '../../core/playback/list_status_store.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
@@ -1145,6 +1147,10 @@ class _MyListViewState extends State<_MyListView> with WidgetsBindingObserver {
               child: PosterCard(
                 title: entry.item.title,
                 logoItem: entry.item,
+                topRightBadge:
+                    isMyList && entry.item.sourceId == stremioSourceId
+                    ? const StremioLibraryBadge()
+                    : null,
                 imageUrl: entry.item.cover,
                 wideImageUrl: entry.item.banner,
                 genres: entry.item.genres,
