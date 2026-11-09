@@ -2,6 +2,16 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:watch_app/core/ui/mobile_hero_art.dart';
 
 void main() {
+  test(
+    'wide Stremio heroes keep full-HD decode while other providers stay unchanged',
+    () {
+      expect(mobileHeroDecodeWidth('stremio', 1080), 1920);
+      expect(mobileHeroDecodeWidth('stremio', 2560), 2560);
+      expect(mobileHeroDecodeWidth('tmdb', 1080), 1080);
+      expect(mobileHeroDecodeWidth('cs:source', 1080), 1080);
+    },
+  );
+
   test('detail tint uses the poster then falls back to the backdrop', () {
     const poster = 'https://image.tmdb.org/t/p/w500/poster.jpg';
     const backdrop = 'https://image.tmdb.org/t/p/w780/backdrop.jpg';

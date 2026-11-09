@@ -105,6 +105,11 @@ class VideoSource extends Equatable {
   @JsonKey(includeFromJson: false, includeToJson: false)
   final String? proxyUrl;
 
+  /// Explicit torrent file choice for a magnet built from a Stremio link.
+  /// Runtime-only: never serialized, never inferred.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  final int? torrentFileIndex;
+
   /// ClearKey DRM key id + key (base64url, no padding — the exact JWK form
   /// ExoPlayer wants), set only for encrypted CENC/DASH sources (e.g. CNC/PlayzTV
   /// live channels). mpv can't decrypt DRM, so a source with these is routed to
@@ -115,7 +120,8 @@ class VideoSource extends Equatable {
   final String? drmKey;
 
   /// True when this is an encrypted source only ExoPlayer (not mpv) can play.
-  bool get isDrm => (drmKid?.isNotEmpty ?? false) && (drmKey?.isNotEmpty ?? false);
+  bool get isDrm =>
+      (drmKid?.isNotEmpty ?? false) && (drmKey?.isNotEmpty ?? false);
 
   const VideoSource({
     required this.url,
@@ -129,6 +135,7 @@ class VideoSource extends Equatable {
     this.subtitleSkewSeconds,
     this.subtitleSkewAfterSeconds,
     this.proxyUrl,
+    this.torrentFileIndex,
     this.drmKid,
     this.drmKey,
   });
@@ -147,6 +154,7 @@ class VideoSource extends Equatable {
     kind,
     audioLang,
     subtitles,
+    torrentFileIndex,
     subtitleSkewSeconds,
     subtitleSkewAfterSeconds,
   ];

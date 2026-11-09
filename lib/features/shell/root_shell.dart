@@ -81,7 +81,7 @@ List<Widget> buildShellPages(
 /// [SearchScreen] recreates its bloc on scope change, so the tab follows
 /// catalogue picks with no extra plumbing.
 String? dockSearchFixedSourceId([ContentMode? mode]) {
-  if (!HomeCataloguePrefs.sourceSelected) return null;
+  if (!HomeCataloguePrefs.catalogueShown) return null;
   final m =
       mode ??
       (sl.isRegistered<ContentModeCubit>()

@@ -42,6 +42,8 @@ import '../../core/playback/subtitle_translate_service.dart';
 import 'mpv_player_pool.dart';
 import '../../core/repository/catalogue_repository.dart';
 import '../../core/repository/source_repository.dart';
+import '../../core/stremio/stremio_provider.dart';
+import '../../core/stremio/stremio_ref.dart';
 import '../../core/zmode/playback_resolver.dart';
 import '../../core/zmode/source_matcher.dart';
 import '../../core/zmode/zmode_ids.dart';
@@ -2647,6 +2649,7 @@ class PlayerCubit extends Cubit<PlayerState> {
       final t = await sl<TorrentService>().startStream(
         s.url,
         allowMobileData: sl<TorrentPrefs>().allowMobileData,
+        fileIndex: s.torrentFileIndex,
       );
       await _torrentSub?.cancel();
       _torrentSub = null;
@@ -3284,7 +3287,15 @@ class PlayerCubit extends Cubit<PlayerState> {
   Future<List<VideoSource>> _resolveNoted(String epUrl) async {
     final sw = Stopwatch()..start();
     try {
-      final out = await _resolveSources(epUrl);
+      final out =
+          sourceId == stremioSourceId &&
+              Platform.isAndroid &&
+              sl.isRegistered<StremioProvider>()
+          ? await sl<StremioProvider>().getVideoSources(
+              epUrl,
+              allowTorrent: true,
+            )
+          : await _resolveSources(epUrl);
       sw.stop();
       debugPrint(
         '[player-timing] resolve ${sw.elapsedMilliseconds}ms (${out.length} links)',

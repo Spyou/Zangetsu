@@ -35,7 +35,7 @@ dependencies:
   zangetsu_source_bridge:
     git:
       url: https://github.com/Spyou/Zangetsu-Source-Bridge.git
-      ref: c006c8c
+      ref: 3b46cb1c803f7c1a2754c30683b2a7ad3fa5ddec
   flutter_localizations:
     sdk: flutter
   intl: any
@@ -176,6 +176,7 @@ dependencies:
   dynamic_color: ^2.1.0
   local_auth: ^3.0.2
 dev_dependencies:
+  http: ^1.6.0
   video_player_platform_interface: ^6.9.0
   # Test-only: gives the EPUB tests a REAL XML parse, which catches what a
   # hand-rolled tag-balance check cannot (an unescaped '&', a bad attribute)
@@ -190,12 +191,7 @@ dev_dependencies:
   json_serializable: ^6.9.0
   flutter_launcher_icons: ^0.14.1
 
-# ── media_kit → Predidit performance fork (feat/mediakit-fork) ───────────────
-# Same media_kit Dart API (no code changes), but a newer native mpv 0.41 +
-# out-of-tree ffmpeg patches that play the malformed HLS/DASH streams scraped
-# sources serve — the reason several anime apps run this fork. It's a
-# monorepo, so every package points at its subdir path. Pinned to AnymeX's
-# proven commit. To revert: delete this whole block and `flutter pub get`.
+# Keep the player runtime and native libraries on the same fork revision.
 dependency_overrides:
   # d4rt currently declares analyzer <9, while this app already resolves 10.0.1.
   analyzer: 10.0.1

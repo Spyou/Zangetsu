@@ -43,6 +43,7 @@ import '../downloads/episode_download_source_sheet.dart';
 import '../auth/auth_cubit.dart';
 import 'epub_export_sheet.dart';
 import 'chapter_download_range_sheet.dart';
+import 'stremio_episode_links_sheet.dart';
 import 'chapter_download_selection.dart';
 import '../../core/ui/jump_prompt.dart';
 import '../../core/app_mode.dart';
@@ -91,6 +92,8 @@ import '../../core/tracker/airing_countdown.dart';
 import '../../core/tracker/tracker.dart';
 import '../../core/tracker/tracker_binding_store.dart';
 import '../../core/tracker/tracker_hub.dart';
+import '../../core/stremio/stremio_manager.dart';
+import '../../core/stremio/stremio_ref.dart';
 import '../../core/playback/playback_prefs.dart';
 import '../player/mpv_player_pool.dart';
 import '../../core/playback/resume_store.dart';
@@ -454,6 +457,7 @@ class _DetailViewState extends State<_DetailView>
   // The episode url we've already kicked a background source-prefetch for, so we
   // don't re-fire it on every rebuild (see _maybePrefetch).
   String? _prefetchedEpUrl;
+  bool _stremioSheetOpen = false;
   final Map<(String, String), Future<ReadEntry?>> _cloudReadHistoryLookups = {};
   final Set<(String, String)> _cloudReadHistoryChecked = {};
 
@@ -662,6 +666,7 @@ class _DetailViewState extends State<_DetailView>
   /// source is already matched, so opening a detail page never starts an
   /// Auto Resolve sweep across every installed provider.
   void _maybePrefetch(String epUrl, String sourceId) {
+    if (sourceId == stremioSourceId) return;
     if (_prefetchedEpUrl == epUrl) return;
     final zMode = sourceId == ZmodeIds.sourceId;
     if (zMode && _zModeMatchedSource() == null) return;
@@ -1210,6 +1215,10 @@ class _DetailViewState extends State<_DetailView>
         showAppToast(context, context.l10n.linksReloaded);
 
       case EpisodeAction.playMirror:
+        if (usesStremioLinks(widget.item.sourceId)) {
+          await _openPlayer(episodes, index, detail, category);
+          return;
+        }
         // Scraping takes seconds, unlike every other row here, so the wait is
         // shown rather than left as a dead long-press.
         final sources = await _resolveWithProgress(ep);
@@ -1334,6 +1343,55 @@ class _DetailViewState extends State<_DetailView>
     }
   }
 
+  /// Pick a link, then check that the episode and addon are still valid.
+  Future<VideoSource?> _pickStremioSource(
+    List<Episode> episodes,
+    int index,
+    MediaDetail detail,
+  ) async {
+    if (_stremioSheetOpen ||
+        index < 0 ||
+        index >= episodes.length ||
+        !StremioRef.isRef(episodes[index].url)) {
+      return null;
+    }
+    final ref = StremioRef.parse(episodes[index].url);
+    final manager = sl<StremioManager>();
+    final revision = manager.byId(ref.installationId)?.revision;
+    if (!manager.canOpen(ref)) {
+      _snack('This addon is no longer installed');
+      return null;
+    }
+    _stremioSheetOpen = true;
+    try {
+      final title = episodes[index].title.isEmpty
+          ? detail.title
+          : '${detail.title} · ${episodes[index].title}';
+      final picked = await showStremioEpisodeLinksSheet(
+        context,
+        manager: manager,
+        ref: ref,
+        title: title,
+      );
+      if (!mounted || picked == null) return null;
+      if (!manager.canOpen(ref, revision: revision)) {
+        _snack('Addon changed — pick the link again');
+        return null;
+      }
+      if (index >= episodes.length ||
+          StremioRef.parse(episodes[index].url) != ref) {
+        _snack('Episode changed — pick the link again');
+        return null;
+      }
+      return picked;
+    } catch (_) {
+      if (mounted) _snack('Could not open Stremio links');
+      return null;
+    } finally {
+      _stremioSheetOpen = false;
+    }
+  }
+
   Future<void> _openPlayer(
     List<Episode> episodes,
     int index,
@@ -1384,6 +1442,19 @@ class _DetailViewState extends State<_DetailView>
       }
     }
     if (!mounted) return;
+    if (usesStremioLinks(widget.item.sourceId, initialSource: initialSource)) {
+      final picked = await _pickStremioSource(episodes, index, detail);
+      if (!mounted || picked == null) return;
+      await _openPlayer(
+        episodes,
+        index,
+        detail,
+        category,
+        playerOverride: playerOverride,
+        initialSource: picked,
+      );
+      return;
+    }
     // The catalogue lists this episode but the one source we checked stops
     // short of it (see [Episode.unavailable]). Say which source, and let the
     // viewer decide whether to spend the sweep — asking every installed
@@ -2446,6 +2517,7 @@ class _DetailViewState extends State<_DetailView>
             background: RepaintBoundary(
               child: _Hero(
                 coverUrl: coverUrl,
+                imageDecodeWidth: mobileHeroDecodeWidth(item.sourceId, 800),
                 coverHeaders: coverHeaders,
                 hasCover: hasCover,
                 tint: ThemeController.adaptiveColour ? _tint : null,

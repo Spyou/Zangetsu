@@ -1096,7 +1096,7 @@ packages:
     source: hosted
     version: "0.15.7"
   http:
-    dependency: transitive
+    dependency: "direct dev"
     description:
       name: http
       sha256: "87721a4a50b19c7f1d49001e51409bddc46303966ce89a65af4f4e6004896412"
@@ -2605,8 +2605,8 @@ packages:
     dependency: "direct main"
     description:
       path: "."
-      ref: c006c8c
-      resolved-ref: c006c8c33e21fb7cf844855e109d64ead977eeb8
+      ref: "3b46cb1c803f7c1a2754c30683b2a7ad3fa5ddec"
+      resolved-ref: "3b46cb1c803f7c1a2754c30683b2a7ad3fa5ddec"
       url: "https://github.com/Spyou/Zangetsu-Source-Bridge.git"
     source: git
     version: "0.1.0"

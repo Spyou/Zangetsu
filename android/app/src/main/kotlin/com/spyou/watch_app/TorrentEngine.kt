@@ -57,10 +57,11 @@ class TorrentEngine(
                 "startStream" -> {
                     val uri = call.argument<String>("uri")
                     val allowMobileData = call.argument<Boolean>("allowMobileData") ?: false
+                    val fileIndex = (call.argument<Number>("fileIndex"))?.toInt()
                     if (uri.isNullOrBlank()) {
                         result.error("bad_args", "uri required", null)
                     } else {
-                        startStream(uri, allowMobileData, result)
+                        startStream(uri, allowMobileData, fileIndex, result)
                     }
                 }
                 "stopStream" -> {
@@ -105,6 +106,7 @@ class TorrentEngine(
     private fun startStream(
         uri: String,
         allowMobileData: Boolean,
+        requestedFileIndex: Int?,
         result: MethodChannel.Result,
     ) {
         // Wi-Fi gate: refuse on a metered network unless the user opted in.
@@ -161,19 +163,14 @@ class TorrentEngine(
                 // Sequential download for smooth streaming.
                 h.setFlags(TorrentFlags.SEQUENTIAL_DOWNLOAD)
 
-                // Pick the largest video file; download only it.
+                // Keep explicit addon file choices, including index zero.
                 val files = ti.files()
-                var fileIndex = -1
-                var bestSize = -1L
-                for (i in 0 until files.numFiles()) {
-                    val name = files.fileName(i).lowercase()
-                    val isVideo = VIDEO_EXTS.any { name.endsWith(it) }
-                    if (isVideo && files.fileSize(i) > bestSize) {
-                        bestSize = files.fileSize(i)
-                        fileIndex = i
-                    }
-                }
-                if (fileIndex < 0) throw IllegalStateException("no_video_in_torrent")
+                val fileIndex = TorrentFileSelection.select(
+                    files.numFiles(),
+                    requestedFileIndex,
+                    { files.fileSize(it) },
+                    { files.fileName(it) },
+                )
                 for (i in 0 until files.numFiles()) {
                     h.filePriority(i, if (i == fileIndex) Priority.DEFAULT else Priority.IGNORE)
                 }
@@ -365,9 +362,5 @@ class TorrentEngine(
                 try { raf.close() } catch (_: Throwable) {}
             }
         }
-    }
-
-    companion object {
-        private val VIDEO_EXTS = listOf(".mp4", ".mkv", ".avi", ".webm", ".mov", ".m4v", ".ts", ".flv")
     }
 }

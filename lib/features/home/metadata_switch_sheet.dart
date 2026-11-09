@@ -5,6 +5,7 @@ import '../../core/mode/content_mode.dart';
 import '../../core/mode/content_mode_cubit.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
+import 'home_catalogue_prefs.dart';
 import '../../core/tracker/tracker_hub.dart';
 import '../../core/zmode/metadata_provider_prefs.dart';
 import '../../core/zmode/zmode_prefs.dart';
@@ -12,7 +13,7 @@ import '../../l10n/l10n.dart';
 
 enum _MetadataSheetAction { sourceCatalogue }
 
-enum HomeCatalogueSelection { metadata, source }
+enum HomeCatalogueSelection { metadata, source, stremio }
 
 /// Which metadata setting matches where the user is standing. The sheet shows
 /// both either way; this only decides which one it puts first.
@@ -61,9 +62,15 @@ typedef _Brand = ({
 /// A no-op when the preference isn't registered, same guard Settings uses.
 Future<HomeCatalogueSelection?> showMetadataSwitchSheet(
   BuildContext context, {
-  bool sourceCatalogueSelected = false,
+  bool? sourceCatalogueSelected,
+  bool? stremioCatalogueSelected,
 }) async {
   if (!sl.isRegistered<MetadataProviderPrefs>()) return null;
+  final stremioSelected =
+      stremioCatalogueSelected ?? HomeCataloguePrefs.stremioSelected;
+  final sourceSelected =
+      sourceCatalogueSelected ?? HomeCataloguePrefs.sourceSelected;
+  final sourceCatalogueActive = sourceSelected && !stremioSelected;
   final prefs = sl<MetadataProviderPrefs>();
   final l10n = context.l10n;
   // Both sections, always. Hiding the one you are not standing in made the
@@ -78,7 +85,7 @@ Future<HomeCatalogueSelection?> showMetadataSwitchSheet(
     for (final p in AnimeProvider.values)
       _ProviderRow(
         brand: _animeBrand(p),
-        selected: !sourceCatalogueSelected && prefs.anime == p,
+        selected: !sourceSelected && !stremioSelected && prefs.anime == p,
         // Only worth saying while it is actually true.
         warning: p == AnimeProvider.mal && malListNeedsLogin()
             ? l10n.malLoginForLists
@@ -92,7 +99,7 @@ Future<HomeCatalogueSelection?> showMetadataSwitchSheet(
     for (final p in VideoProvider.values)
       _ProviderRow(
         brand: _videoBrand(p),
-        selected: !sourceCatalogueSelected && prefs.video == p,
+        selected: !sourceSelected && !stremioSelected && prefs.video == p,
         onTap: () => Navigator.of(sheet).pop(p),
       ),
   ];
@@ -136,6 +143,26 @@ Future<HomeCatalogueSelection?> showMetadataSwitchSheet(
                   const SizedBox(height: 6),
                   ...animeSection(sheet),
                 ],
+                ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: AppColors.accentSoft,
+                    child: Icon(
+                      Icons.movie_filter_outlined,
+                      color: AppColors.accent,
+                    ),
+                  ),
+                  title: const Text('Stremio'),
+                  subtitle: Text(
+                    stremioSelected
+                        ? 'Showing installed addon catalogues'
+                        : 'Browse with your installed addons',
+                  ),
+                  trailing: stremioSelected
+                      ? Icon(Icons.check_rounded, color: AppColors.accent)
+                      : null,
+                  onTap: () =>
+                      Navigator.of(sheet).pop(HomeCatalogueSelection.stremio),
+                ),
                 const Divider(height: 18, indent: 20, endIndent: 20),
                 ListTile(
                   leading: CircleAvatar(
@@ -148,7 +175,7 @@ Future<HomeCatalogueSelection?> showMetadataSwitchSheet(
                   title: const Text('Source Catalogue'),
                   subtitle: const Text('Show installed source lists in Home'),
                   trailing: Switch(
-                    value: sourceCatalogueSelected,
+                    value: sourceCatalogueActive,
                     activeThumbColor: AppColors.accent,
                     onChanged: (selected) => Navigator.of(sheet).pop(
                       selected
@@ -157,7 +184,7 @@ Future<HomeCatalogueSelection?> showMetadataSwitchSheet(
                     ),
                   ),
                   onTap: () => Navigator.of(sheet).pop(
-                    sourceCatalogueSelected
+                    sourceCatalogueActive
                         ? HomeCatalogueSelection.metadata
                         : _MetadataSheetAction.sourceCatalogue,
                   ),
@@ -177,6 +204,9 @@ Future<HomeCatalogueSelection?> showMetadataSwitchSheet(
   }
   if (picked == HomeCatalogueSelection.metadata) {
     return HomeCatalogueSelection.metadata;
+  }
+  if (picked == HomeCatalogueSelection.stremio) {
+    return HomeCatalogueSelection.stremio;
   }
   if (picked is VideoProvider) {
     await prefs.setVideo(picked);

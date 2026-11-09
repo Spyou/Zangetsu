@@ -94,6 +94,7 @@ class HomeState extends Equatable {
   List<MediaItem> get heroItems {
     final s = sections;
     if (s == null || s.isEmpty) return const [];
+    if (s.first.more?.sourceId == 'stremio') return stremioHeroItems(s);
     for (final section in s) {
       if (section.title.startsWith('Trending')) return section.items;
     }

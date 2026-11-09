@@ -19,28 +19,30 @@ class TorrentProgress {
   final String? error;
 
   static TorrentProgress fromMap(Map<dynamic, dynamic> m) => TorrentProgress(
-        id: (m['id'] ?? '') as String,
-        state: _stateFrom(m['state'] as String?),
-        bufferPct: ((m['bufferPct'] ?? 0) as num).toDouble(),
-        peers: ((m['peers'] ?? 0) as num).toInt(),
-        downSpeedBps: ((m['downSpeedBps'] ?? 0) as num).toInt(),
-        error: m['error'] as String?,
-      );
+    id: (m['id'] ?? '') as String,
+    state: _stateFrom(m['state'] as String?),
+    bufferPct: ((m['bufferPct'] ?? 0) as num).toDouble(),
+    peers: ((m['peers'] ?? 0) as num).toInt(),
+    downSpeedBps: ((m['downSpeedBps'] ?? 0) as num).toInt(),
+    error: m['error'] as String?,
+  );
 
   static TorrentState _stateFrom(String? s) => switch (s) {
-        'finding' => TorrentState.finding,
-        'buffering' => TorrentState.buffering,
-        'ready' => TorrentState.ready,
-        'error' => TorrentState.error,
-        _ => TorrentState.finding,
-      };
+    'finding' => TorrentState.finding,
+    'buffering' => TorrentState.buffering,
+    'ready' => TorrentState.ready,
+    'error' => TorrentState.error,
+    _ => TorrentState.finding,
+  };
 }
 
 class TorrentService {
-  static const MethodChannel _method =
-      MethodChannel('com.spyou.watch_app/torrent');
-  static const EventChannel _events =
-      EventChannel('com.spyou.watch_app/torrent/events');
+  static const MethodChannel _method = MethodChannel(
+    'com.spyou.watch_app/torrent',
+  );
+  static const EventChannel _events = EventChannel(
+    'com.spyou.watch_app/torrent/events',
+  );
 
   /// Starts streaming a magnet/.torrent; returns the torrent id + a local URL
   /// the player can open. Throws on Wi-Fi block (a `wifi_only` PlatformException
@@ -48,10 +50,18 @@ class TorrentService {
   Future<({String id, String localUrl})> startStream(
     String uri, {
     bool allowMobileData = false,
+    int? fileIndex,
   }) async {
+    final args = <String, dynamic>{
+      'uri': uri,
+      'allowMobileData': allowMobileData,
+    };
+    // Omitted when not requested, so every existing caller keeps the
+    // engine's largest-video default.
+    if (fileIndex != null) args['fileIndex'] = fileIndex;
     final res = await _method.invokeMapMethod<String, dynamic>(
       'startStream',
-      {'uri': uri, 'allowMobileData': allowMobileData},
+      args,
     );
     return (
       id: (res?['id'] ?? '') as String,
@@ -59,9 +69,9 @@ class TorrentService {
     );
   }
 
-  Stream<TorrentProgress> events() => _events
-      .receiveBroadcastStream()
-      .map((e) => TorrentProgress.fromMap(e as Map));
+  Stream<TorrentProgress> events() => _events.receiveBroadcastStream().map(
+    (e) => TorrentProgress.fromMap(e as Map),
+  );
 
   Future<void> stop(String id) =>
       _method.invokeMethod('stopStream', {'id': id});

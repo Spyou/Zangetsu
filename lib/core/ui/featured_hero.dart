@@ -265,9 +265,10 @@ class _FeaturedHeroState extends State<FeaturedHero> {
         children: [
           if (provider != null)
             Image(
-              // Decode at the screen's actual size (not full source res) — same
-              // visible sharpness, a fraction of the memory + decode cost.
-              image: ResizeImage(provider, width: memW),
+              image: ResizeImage(
+                provider,
+                width: mobileHeroDecodeWidth(widget.item.sourceId, memW),
+              ),
               fit: BoxFit.cover,
               frameBuilder: imageFadeIn,
               // Crop from the top so the poster's own printed title block (and
