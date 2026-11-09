@@ -522,7 +522,10 @@ class MyListStore {
     // reinstalls + syncs across devices. Null when the item has no status. Every
     // upsert carries the CURRENT local status so a re-sync never wipes it.
     'status': _statusOf?.call(m),
-    'added_at': DateTime.now().millisecondsSinceEpoch,
+    'added_at':
+        (_box.get(_key(m, profileId))?['savedAtMs'] as num?)?.toInt() ??
+        m.savedAtMs ??
+        DateTime.now().millisecondsSinceEpoch,
   };
 
   /// Best-effort push of [m]'s current local watch status to its cloud row.
@@ -820,6 +823,11 @@ class MyListStore {
       'url': row['url'],
       'type': row['type'],
       'sourceId': row['source_id'],
+      'savedAtMs':
+          _box.get(
+            _keyFromIds(row['source_id'], row['item_id'], profileId),
+          )?['savedAtMs'] ??
+          ((row['added_at'] as num?)?.toInt() == 0 ? null : row['added_at']),
     };
     MediaItem item;
     try {

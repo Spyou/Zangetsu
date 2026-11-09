@@ -5,7 +5,10 @@ import 'package:hive/hive.dart';
 import 'package:watch_app/core/models/media_item.dart';
 import 'package:watch_app/core/models/provider_info.dart';
 import 'package:watch_app/core/playback/my_list.dart';
+import 'package:watch_app/core/playback/list_status_store.dart';
+import 'package:watch_app/core/prefs/list_sort.dart';
 import 'package:watch_app/core/supabase/supabase_service.dart';
+import 'package:watch_app/features/home/cubit/my_list_cubit.dart';
 
 /// In-memory fake for [MyListRemote] so the store's pending-queue and
 /// pull-merge logic can be tested without a live Supabase project.
@@ -250,6 +253,88 @@ void main() {
     expect(row['title'], 'Title');
     expect(row['url'], 'https://x/id');
   });
+
+  test('sync and deleting another title keep the newest title first', () async {
+    await ListStatusStore.init();
+    final cubit = MyListCubit(store, ListStatusStore());
+    addTearDown(cubit.close);
+    final old = _item(id: 'old').copyWith(savedAtMs: 100);
+    final newest = _item(id: 'newest').copyWith(savedAtMs: 200);
+    await store.add(old);
+    await store.add(newest);
+    await store.add(_item(id: 'middle').copyWith(savedAtMs: 150));
+
+    await store.pullFromCloud();
+    await store.remove(old);
+
+    expect(
+      store.all().firstWhere((item) => item.id == 'newest').savedAtMs,
+      200,
+    );
+    expect(
+      cubit.state
+          .firstWhere((entry) => entry.item.id == 'newest')
+          .item
+          .savedAtMs,
+      200,
+    );
+    expect(
+      sortLibrary(
+        cubit.state,
+        ListSort.added,
+        true,
+      ).map((entry) => entry.item.id),
+      ['newest', 'middle'],
+    );
+  });
+
+  test(
+    'cloud restores the added date and status writes do not replace it',
+    () async {
+      final item = _item().copyWith(savedAtMs: 123456);
+      await store.add(item);
+      expect(fake.rows.single['added_at'], 123456);
+      await Hive.box<Map>(MyListStore.boxName).clear();
+
+      await store.pullFromCloud();
+      expect(store.all().single.savedAtMs, 123456);
+
+      await store.pushStatus(_item());
+      expect(fake.rows.single['added_at'], 123456);
+    },
+  );
+
+  test(
+    'incremental sync repairs a missing date and updates the visible list',
+    () async {
+      await ListStatusStore.init();
+      await store.add(_item());
+      await store.pullFromCloud();
+      final box = Hive.box<Map>(MyListStore.boxName);
+      await box.put('src::id', _item().toJson());
+      final cubit = MyListCubit(store, ListStatusStore());
+      addTearDown(cubit.close);
+      expect(cubit.state.single.item.savedAtMs, isNull);
+
+      await fake.upsert({...fake.rows.single, 'added_at': 987654});
+      await store.pullFromCloud();
+
+      expect(store.all().single.savedAtMs, 987654);
+      expect(cubit.state.single.item.savedAtMs, 987654);
+    },
+  );
+
+  test(
+    'legacy cloud rows without a date preserve the local save date',
+    () async {
+      await store.add(_item().copyWith(savedAtMs: 123456));
+      await fake.upsert({...fake.rows.single, 'added_at': 0});
+
+      await store.pullFromCloud();
+
+      expect(store.all().single.savedAtMs, 123456);
+    },
+  );
 
   test(
     'profile scoped lists stay separate while the default keeps legacy keys',
