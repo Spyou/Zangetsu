@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../di/injector.dart';
 import '../metadata/title_logo_service.dart';
 import '../models/media_item.dart';
+import '../stremio/stremio_ref.dart';
 
 import '../theme/app_colors.dart';
 import '../theme/app_text.dart';
@@ -59,17 +60,30 @@ class _BannerTitleLogoState extends State<BannerTitleLogo> {
   @override
   void didUpdateWidget(BannerTitleLogo old) {
     super.didUpdateWidget(old);
-    if (old.item.id != widget.item.id) {
+    if (old.item.id != widget.item.id ||
+        (widget.item.sourceId == stremioSourceId &&
+            old.item.titleLogo != widget.item.titleLogo)) {
       _url = null;
       _load();
     }
   }
 
-  Future<void> _load() async {
+  Future<void> _load({String? failedUrl}) async {
     if (!sl.isRegistered<TitleLogoService>()) return;
+    if (failedUrl != null && failedUrl != _url) return;
+    final item = widget.item;
     try {
-      final url = await sl<TitleLogoService>().logoFor(widget.item);
-      if (mounted && url != null && url.isNotEmpty) setState(() => _url = url);
+      final service = sl<TitleLogoService>();
+      final url = failedUrl == null
+          ? await service.logoFor(item)
+          : await service.fallbackFor(item, failedUrl);
+      if (!mounted ||
+          widget.item.id != item.id ||
+          widget.item.sourceId != item.sourceId ||
+          widget.item.titleLogo != item.titleLogo) {
+        return;
+      }
+      if (url != null || failedUrl != null) setState(() => _url = url);
     } catch (_) {
       /* stays text */
     }
@@ -78,6 +92,7 @@ class _BannerTitleLogoState extends State<BannerTitleLogo> {
   @override
   Widget build(BuildContext context) {
     final w = MediaQuery.sizeOf(context).width;
+    final logoUrl = _url;
     final child = _url == null
         ? _text()
         : ConstrainedBox(
@@ -86,7 +101,7 @@ class _BannerTitleLogoState extends State<BannerTitleLogo> {
               maxWidth: w * widget.maxWidthFactor,
             ),
             child: CachedNetworkImage(
-              imageUrl: _url!,
+              imageUrl: logoUrl!,
               fit: BoxFit.contain,
               alignment: widget.align == TextAlign.start
                   ? AlignmentDirectional.centerStart.resolve(
@@ -94,6 +109,9 @@ class _BannerTitleLogoState extends State<BannerTitleLogo> {
                     )
                   : Alignment.center,
               fadeInDuration: const Duration(milliseconds: 250),
+              errorListener: widget.item.sourceId == stremioSourceId
+                  ? (_) => _load(failedUrl: logoUrl)
+                  : null,
               errorWidget: (_, _, _) => _text(),
             ),
           );

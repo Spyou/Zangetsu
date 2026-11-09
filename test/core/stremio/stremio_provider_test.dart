@@ -6,6 +6,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:watch_app/core/models/provider_info.dart';
+import 'package:watch_app/core/models/media_item.dart';
 import 'package:watch_app/core/stremio/stremio_manager.dart';
 import 'package:watch_app/core/stremio/stremio_provider.dart';
 import 'package:watch_app/core/stremio/stremio_ref.dart';
@@ -47,6 +48,7 @@ const _seriesMeta = {
     'name': 'Game of Thrones',
     'poster': 'https://img.example/poster.jpg',
     'background': 'https://img.example/bg.jpg',
+    'logo': 'https://img.example/detail-title.png',
     'description': 'Noble families fight.',
     'releaseInfo': '2011-2019',
     'genres': ['Drama', 'Fantasy'],
@@ -160,6 +162,7 @@ class _Server {
             'type': 'movie',
             'name': 'Batman Begins',
             'poster': 'https://img.example/bb.jpg',
+            'logo': 'https://img.example/catalogue-title.png',
           },
           {
             'id': 'tt0944947',
@@ -372,10 +375,37 @@ void main() {
     final first = sections.first.items.first;
     expect(first.sourceId, 'stremio');
     expect(first.id, 'movie:tt0372784');
+    expect(first.titleLogo, 'https://img.example/catalogue-title.png');
     expect(first.url, startsWith('stremio://ref?'));
     expect(StremioRef.parse(first.url).installationId, installation.id);
     expect(sections.first.more?.kind, 'stremio_catalog');
     expect(sections.first.more?.sourceId, 'stremio');
+  });
+
+  test('title logos reuse the same metadata request as detail', () async {
+    final server = _Server();
+    final (_, provider, installation) = await setup(server: server);
+    final ref = StremioRef(
+      installationId: installation.id,
+      type: 'series',
+      itemId: 'tt0944947',
+    );
+    final item = MediaItem(
+      id: 'series:tt0944947',
+      title: 'Example',
+      url: ref.encode(),
+      type: ProviderType.movie,
+      sourceId: 'stremio',
+    );
+    final results = await Future.wait<Object?>([
+      provider.getDetail(item.url),
+      provider.titleLogoFor(item),
+    ]);
+    expect(results.last, 'https://img.example/detail-title.png');
+    expect(
+      server.requests.where((u) => u.path.contains('/meta/')),
+      hasLength(1),
+    );
   });
 
   test('search dedupes across installations and pages with skip', () async {

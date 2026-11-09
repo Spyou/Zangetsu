@@ -628,12 +628,23 @@ class _DetailViewState extends State<_DetailView>
   /// Best-effort TMDB title-logo lookup (no-op unless the toggle is on).
   /// Stays text until (and unless) a logo resolves; a genuine "no logo"
   /// simply never sets [_logoUrl].
-  Future<void> _loadLogo() async {
+  Future<void> _loadLogo({String? failedUrl}) async {
     if (!ThemeController.titleLogo) return;
     if (!sl.isRegistered<TitleLogoService>()) return;
+    if (failedUrl != null && failedUrl != _logoUrl) return;
+    final item = widget.item;
     try {
-      final url = await sl<TitleLogoService>().logoFor(widget.item);
-      if (mounted && url != null && url.isNotEmpty && _logoUrl != url) {
+      final service = sl<TitleLogoService>();
+      final url = failedUrl == null
+          ? await service.logoFor(item)
+          : await service.fallbackFor(item, failedUrl);
+      if (!mounted ||
+          !ThemeController.titleLogo ||
+          widget.item.id != item.id ||
+          widget.item.sourceId != item.sourceId) {
+        return;
+      }
+      if (_logoUrl != url && (url != null || failedUrl != null)) {
         setState(() => _logoUrl = url);
       }
     } catch (_) {}
@@ -2288,6 +2299,7 @@ class _DetailViewState extends State<_DetailView>
     bool sourceMetadataReady = true,
   }) {
     final item = widget.item;
+    final logoUrl = _logoUrl;
     final cubit = context.read<DetailCubit>();
     final category = state.category;
     final selectedSeason = state.selectedSeason;
@@ -2502,12 +2514,15 @@ class _DetailViewState extends State<_DetailView>
                 ? Align(
                     alignment: Alignment.centerLeft,
                     child: CachedNetworkImage(
-                      imageUrl: _logoUrl!,
+                      imageUrl: logoUrl!,
                       height: 24,
                       fit: BoxFit.contain,
                       alignment: Alignment.centerLeft,
                       fadeInDuration: const Duration(milliseconds: 250),
                       errorWidget: (_, _, _) => _barTitleText(detail.title),
+                      errorListener: widget.item.sourceId == stremioSourceId
+                          ? (_) => _loadLogo(failedUrl: logoUrl)
+                          : null,
                     ),
                   )
                 : _barTitleText(detail.title),
@@ -2564,7 +2579,7 @@ class _DetailViewState extends State<_DetailView>
                                 maxWidth: 220,
                               ),
                               child: CachedNetworkImage(
-                                imageUrl: _logoUrl!,
+                                imageUrl: logoUrl!,
                                 fit: BoxFit.contain,
                                 alignment: Alignment.centerLeft,
                                 fadeInDuration: const Duration(
@@ -2572,6 +2587,10 @@ class _DetailViewState extends State<_DetailView>
                                 ),
                                 errorWidget: (_, _, _) =>
                                     _headerTitleText(detail.title),
+                                errorListener:
+                                    widget.item.sourceId == stremioSourceId
+                                    ? (_) => _loadLogo(failedUrl: logoUrl)
+                                    : null,
                               ),
                             )
                           : _headerTitleText(detail.title),
