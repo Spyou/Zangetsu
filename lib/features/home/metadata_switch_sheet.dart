@@ -143,26 +143,6 @@ Future<HomeCatalogueSelection?> showMetadataSwitchSheet(
                   const SizedBox(height: 6),
                   ...animeSection(sheet),
                 ],
-                ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: AppColors.accentSoft,
-                    child: Icon(
-                      Icons.movie_filter_outlined,
-                      color: AppColors.accent,
-                    ),
-                  ),
-                  title: const Text('Stremio'),
-                  subtitle: Text(
-                    stremioSelected
-                        ? 'Showing installed addon catalogues'
-                        : 'Browse with your installed addons',
-                  ),
-                  trailing: stremioSelected
-                      ? Icon(Icons.check_rounded, color: AppColors.accent)
-                      : null,
-                  onTap: () =>
-                      Navigator.of(sheet).pop(HomeCatalogueSelection.stremio),
-                ),
                 const Divider(height: 18, indent: 20, endIndent: 20),
                 ListTile(
                   leading: CircleAvatar(
@@ -187,6 +167,35 @@ Future<HomeCatalogueSelection?> showMetadataSwitchSheet(
                     sourceCatalogueActive
                         ? HomeCatalogueSelection.metadata
                         : _MetadataSheetAction.sourceCatalogue,
+                  ),
+                ),
+                ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: AppColors.accentSoft,
+                    child: Icon(
+                      Icons.movie_filter_outlined,
+                      color: AppColors.accent,
+                    ),
+                  ),
+                  title: const Text('Stremio'),
+                  subtitle: Text(
+                    stremioSelected
+                        ? 'Showing installed addon catalogues'
+                        : 'Browse with your installed addons',
+                  ),
+                  trailing: Switch(
+                    value: stremioSelected,
+                    activeThumbColor: AppColors.accent,
+                    onChanged: (selected) => Navigator.of(sheet).pop(
+                      selected
+                          ? HomeCatalogueSelection.stremio
+                          : HomeCatalogueSelection.metadata,
+                    ),
+                  ),
+                  onTap: () => Navigator.of(sheet).pop(
+                    stremioSelected
+                        ? HomeCatalogueSelection.metadata
+                        : HomeCatalogueSelection.stremio,
                   ),
                 ),
                 const SizedBox(height: 10),
