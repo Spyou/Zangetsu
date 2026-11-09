@@ -34,7 +34,6 @@ class MediaDetail extends Equatable {
   /// detail hero. Null outside Z Mode — every existing source keeps
   /// rendering its hero from [cover], exactly as before this field existed.
   final String? banner;
-
   final String url;
   final String? description;
 

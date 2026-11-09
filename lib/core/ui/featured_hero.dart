@@ -11,7 +11,6 @@ import 'poster_palette.dart';
 import '../di/injector.dart';
 import 'native_cover_provider.dart';
 import '../metadata/title_logo_service.dart';
-import '../stremio/stremio_ref.dart';
 import '../models/media_item.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text.dart';
@@ -136,9 +135,7 @@ class _FeaturedHeroState extends State<FeaturedHero> {
     // Keyed on the ITEM, not on its artwork. Two different titles can share one
     // cover URL (same art, or both with no cover), and keying on the art left the
     // previous title's TMDB logo sitting on the new hero — the "old header".
-    if (!_sameItem(old.item, widget.item) ||
-        (widget.item.sourceId == stremioSourceId &&
-            old.item.titleLogo != widget.item.titleLogo)) {
+    if (!_sameItem(old.item, widget.item)) {
       _artColor = null;
       _logoUrl = null;
       _loadPalette();
@@ -162,21 +159,11 @@ class _FeaturedHeroState extends State<FeaturedHero> {
 
   /// Best-effort TMDB title-logo lookup; on a hit, swap the text title for the
   /// logo image. Stays as text until (and unless) a logo resolves.
-  Future<void> _loadLogo({String? failedUrl}) async {
+  Future<void> _loadLogo() async {
     if (!sl.isRegistered<TitleLogoService>()) return;
-    if (failedUrl != null && failedUrl != _logoUrl) return;
-    final item = widget.item;
     try {
-      final service = sl<TitleLogoService>();
-      final url = failedUrl == null
-          ? await service.logoFor(item)
-          : await service.fallbackFor(item, failedUrl);
-      if (!mounted ||
-          !_sameItem(item, widget.item) ||
-          item.titleLogo != widget.item.titleLogo) {
-        return;
-      }
-      if (url != null || failedUrl != null) {
+      final url = await sl<TitleLogoService>().logoFor(widget.item);
+      if (mounted && url != null && url.isNotEmpty) {
         setState(() => _logoUrl = url);
       }
     } catch (_) {}
@@ -271,7 +258,6 @@ class _FeaturedHeroState extends State<FeaturedHero> {
   }
 
   Widget _card(ImageProvider? provider, Color tint, int memW, Color pageColor) {
-    final logoUrl = _logoUrl;
     return ClipRRect(
       borderRadius: BorderRadius.circular(28),
       child: Stack(
@@ -354,16 +340,12 @@ class _FeaturedHeroState extends State<FeaturedHero> {
                       ? ConstrainedBox(
                           constraints: const BoxConstraints(maxHeight: 96),
                           child: CachedNetworkImage(
-                            imageUrl: logoUrl!,
+                            imageUrl: _logoUrl!,
                             fit: BoxFit.contain,
                             memCacheWidth: memW,
                             fadeInDuration: const Duration(milliseconds: 250),
                             // If the logo image itself fails, fall back to text.
                             errorWidget: (_, _, _) => _titleText(),
-                            errorListener:
-                                widget.item.sourceId == stremioSourceId
-                                ? (_) => _loadLogo(failedUrl: logoUrl)
-                                : null,
                           ),
                         )
                       : _titleText(),

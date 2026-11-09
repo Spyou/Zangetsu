@@ -5,7 +5,6 @@ import 'package:watch_app/core/hive/safe_box.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 import '../models/media_item.dart';
-import '../stremio/stremio_ref.dart';
 import 'tmdb.dart';
 
 /// Best-effort TMDB "title logo" (the stylized title-art PNG) for a hero item,
@@ -20,15 +19,12 @@ import 'tmdb.dart';
 /// cached, so a later attempt can still succeed once TMDB is reachable. Any
 /// failure yields null → the banner keeps its text title.
 class TitleLogoService {
-  TitleLogoService(this._dio, {this.addonLogoFor});
+  TitleLogoService(this._dio);
   final Dio _dio;
-  final Future<String?> Function(MediaItem)? addonLogoFor;
 
   static const String _boxName = 'logo_cache';
 
   final Map<String, String> _mem = {}; // '' = known "no logo"
-  final Set<String> _failedAddonLogos = {};
-  final Map<String, Future<String?>> _stremioLookups = {};
   Future<void> _posterLogoQueue = Future<void>.value();
   Box<String>? _boxRef;
   Box<String> get _box => _boxRef ??= Hive.box<String>(_boxName);
@@ -58,9 +54,6 @@ class TitleLogoService {
   /// the time a banner rotates in, its logo is already cached → no pop-in.
   Future<void> prefetch(List<MediaItem> items) async {
     for (final it in items) {
-      if (it.sourceId == stremioSourceId && _imageUrl(it.titleLogo) == null) {
-        continue;
-      }
       try {
         await logoFor(it);
       } catch (_) {
@@ -70,75 +63,9 @@ class TitleLogoService {
   }
 
   Future<String?> logoFor(MediaItem item) async {
-    if (item.sourceId != stremioSourceId) return _tmdbLogoFor(item);
-    final key = '${item.id}|${item.titleLogo ?? ''}';
-    return _stremioLookups.putIfAbsent(
-      key,
-      () => _stremioLogoFor(item).whenComplete(() {
-        _stremioLookups.remove(key);
-      }),
-    );
-  }
-
-  Future<String?> _stremioLogoFor(MediaItem item) async {
-    final addonKey = 'stremio-title:${item.id}';
-    final cached =
-        _mem[addonKey] ??
-        (Hive.isBoxOpen(_boxName) ? _box.get(addonKey) : null);
-    var addonLogo = _imageUrl(item.titleLogo) ?? cached;
-    if (addonLogo == null && addonLogoFor != null) {
-      try {
-        addonLogo = _imageUrl(
-          await addonLogoFor!(item).timeout(const Duration(seconds: 5)),
-        );
-      } catch (_) {
-        // Missing addon metadata still permits the existing TMDB fallback.
-      }
-    }
-    if (addonLogo != null && !_failedAddonLogos.contains(addonLogo)) {
-      _mem[addonKey] = addonLogo;
-      if (cached != addonLogo && Hive.isBoxOpen(_boxName)) {
-        try {
-          await _box.put(addonKey, addonLogo);
-        } catch (_) {
-          // A disposable cache must not hide an available logo.
-        }
-      }
-      return addonLogo;
-    }
-    return _tmdbLogoFor(item);
-  }
-
-  /// Only a failed addon image may trigger the TMDB fallback.
-  Future<String?> fallbackFor(MediaItem item, String failedUrl) async {
-    if (item.sourceId != stremioSourceId) return null;
-    final key = 'stremio-title:${item.id}';
-    final addonLogo =
-        _imageUrl(item.titleLogo) ??
-        _mem[key] ??
-        (Hive.isBoxOpen(_boxName) ? _box.get(key) : null);
-    if (addonLogo != failedUrl) return null;
-    _failedAddonLogos.add(failedUrl);
-    final fallback = await logoFor(item);
-    return fallback == failedUrl ? null : fallback;
-  }
-
-  static String? _imageUrl(String? value) {
-    final text = value?.trim();
-    final uri = text == null ? null : Uri.tryParse(text);
-    return uri != null &&
-            uri.host.isNotEmpty &&
-            (uri.scheme == 'https' || uri.scheme == 'http')
-        ? text
-        : null;
-  }
-
-  static String _key(MediaItem item) => item.tmdbId != null
-      ? 'id:${item.tmdbId}:${item.tmdbIsTv}'
-      : 'q:${(item.englishTitle ?? item.title).toLowerCase()}';
-
-  Future<String?> _tmdbLogoFor(MediaItem item) async {
-    final key = _key(item);
+    final key = item.tmdbId != null
+        ? 'id:${item.tmdbId}:${item.tmdbIsTv}'
+        : 'q:${(item.englishTitle ?? item.title).toLowerCase()}';
 
     final cached = _mem[key] ?? _box.get(key);
     if (cached != null) {

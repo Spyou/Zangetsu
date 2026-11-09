@@ -27,9 +27,6 @@ class StremioProvider implements BaseProvider {
 
   List<StremioInstallation> get _enabled => manager.enabled;
 
-  Future<String?> titleLogoFor(MediaItem item) async =>
-      (await _metadataFor(StremioRef.parse(item.url)))?.logo;
-
   @override
   Future<ProviderInfo> getInfo() async => const ProviderInfo(
     name: 'Stremio',
@@ -325,7 +322,6 @@ class StremioProvider implements BaseProvider {
       title: meta.name,
       cover: meta.poster,
       banner: meta.background,
-      titleLogo: meta.logo,
       url: StremioRef(
         installationId: installation.id,
         type: type,
