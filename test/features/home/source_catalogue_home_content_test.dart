@@ -92,6 +92,55 @@ void main() {
   });
   tearDown(() => sl.reset());
 
+  testWidgets('same-named Stremio rows all render in catalogue order', (
+    tester,
+  ) async {
+    final gate = Completer<List<HomeSection>>();
+    final repository = _GatedSourceRepository(const [
+      (id: 'stremio', name: 'Stremio'),
+    ], gate);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: SourceCatalogueHomeContent(
+              repository: repository,
+              initialSourceId: 'stremio',
+              showSourcePicker: false,
+              sectionBuilder: (section) =>
+                  Text('${section.title}: ${section.items.single.id}'),
+            ),
+          ),
+        ),
+      ),
+    );
+    gate.complete([
+      for (final addon in ['first', 'second'])
+        HomeSection(
+          title: 'Popular',
+          more: const BrowseMore(sourceId: 'stremio', kind: 'stremio_catalog'),
+          items: [
+            MediaItem(
+              id: addon,
+              title: addon,
+              url: '/$addon',
+              type: ProviderType.movie,
+              sourceId: 'stremio',
+            ),
+          ],
+        ),
+    ]);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Popular: first'), findsOneWidget);
+    expect(find.text('Popular: second'), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.text('Popular: first')).dy,
+      lessThan(tester.getTopLeft(find.text('Popular: second')).dy),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   test(
     'Stremio catalogue retains addon ownership without metadata matching',
     () async {

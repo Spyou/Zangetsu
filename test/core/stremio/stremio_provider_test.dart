@@ -117,6 +117,7 @@ class _FakeSecrets implements StremioSecretStore {
 class _Server {
   final requests = <Uri>[];
   final failMetadataHosts = <String>{};
+  final failCatalogHosts = <String>{};
 
   Future<http.Response> handle(http.Request request) async {
     requests.add(request.url);
@@ -155,6 +156,9 @@ class _Server {
       return http.Response('', 404);
     }
     if (path.contains('/catalog/')) {
+      if (failCatalogHosts.contains(request.url.host)) {
+        return http.Response('', 503);
+      }
       return _json({
         'metas': [
           {
@@ -284,58 +288,80 @@ void main() {
     },
   );
 
-  test(
-    'Home rows follow the top catalogue addon and update after reordering',
-    () async {
-      final server = _Server();
-      final manager = makeManager(server);
-      final first = await manager.install('https://first.example');
-      final second = await manager.install('https://second.example');
-      final provider = StremioProvider(manager);
-      final rows = await provider.getHome();
-      expect(rows, hasLength(2));
-      expect(
-        rows!.every(
-          (row) => jsonDecode(row.more!.categoryId!)['i'] == first.id,
-        ),
-        isTrue,
-      );
-      expect(
-        server.requests.where(
-          (u) => u.host == 'second.example' && u.path.contains('/catalog/'),
-        ),
-        isEmpty,
-      );
-      await manager.move(second.id, -1);
-      final reordered = await provider.getHome();
-      expect(reordered, hasLength(2));
-      expect(
-        reordered!.every(
-          (row) => jsonDecode(row.more!.categoryId!)['i'] == second.id,
-        ),
-        isTrue,
-      );
-    },
-  );
+  test('Home includes every enabled catalogue addon in saved order', () async {
+    final server = _Server();
+    final manager = makeManager(server);
+    final first = await manager.install('https://first.example');
+    final second = await manager.install('https://second.example');
+    final provider = StremioProvider(manager);
+    final rows = await provider.getHome();
+    expect(rows, hasLength(4));
+    expect(rows!.map((row) => row.title), [
+      'Top Movies',
+      'Shows',
+      'Top Movies',
+      'Shows',
+    ]);
+    expect(rows.map((row) => jsonDecode(row.more!.categoryId!)['i']), [
+      first.id,
+      first.id,
+      second.id,
+      second.id,
+    ]);
+    expect(
+      server.requests.where(
+        (u) => u.host == 'second.example' && u.path.contains('/catalog/'),
+      ),
+      hasLength(2),
+    );
+    await manager.move(second.id, -1);
+    final reordered = await provider.getHome();
+    expect(reordered, hasLength(4));
+    expect(reordered!.map((row) => jsonDecode(row.more!.categoryId!)['i']), [
+      second.id,
+      second.id,
+      first.id,
+      first.id,
+    ]);
+  });
 
   test(
-    'Home uses the top catalogue addon even when addon identities differ',
+    'Home includes catalogue addons with different manifest identities',
     () async {
       final manager = makeManager(_Server());
       await manager.install('https://first.example');
       await manager.install('https://unique.example');
-      expect(await StremioProvider(manager).getHome(), hasLength(2));
+      expect(await StremioProvider(manager).getHome(), hasLength(4));
     },
   );
 
-  test('hiding one row keeps Home on the same selected addon', () async {
+  test('hiding one row leaves the other addons visible', () async {
     final manager = makeManager(_Server());
     final first = await manager.install('https://first.example');
-    await manager.install('https://second.example');
+    final second = await manager.install('https://second.example');
     await manager.setCatalogVisible(first.id, 'movie', 'top', false);
     final rows = await StremioProvider(manager).getHome();
-    expect(rows, hasLength(1));
-    expect(rows!.single.title, 'Shows');
+    expect(rows, hasLength(3));
+    expect(rows!.map((row) => jsonDecode(row.more!.categoryId!)['i']), [
+      first.id,
+      second.id,
+      second.id,
+    ]);
+  });
+
+  test('a failing catalogue addon does not hide the other addons', () async {
+    final server = _Server()..failCatalogHosts.add('first.example');
+    final manager = makeManager(server);
+    await manager.install('https://first.example');
+    final second = await manager.install('https://second.example');
+
+    final rows = await StremioProvider(manager).getHome();
+
+    expect(rows, hasLength(2));
+    expect(rows!.map((row) => jsonDecode(row.more!.categoryId!)['i']), [
+      second.id,
+      second.id,
+    ]);
   });
 
   test('disabled metadata addons are not used as fallback', () async {

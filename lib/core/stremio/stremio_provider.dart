@@ -61,7 +61,6 @@ class StremioProvider implements BaseProvider {
           jobs.add((installation, catalog));
         }
       }
-      if (jobs.isNotEmpty) break;
     }
     for (var offset = 0; offset < jobs.length; offset += 4) {
       final batch = jobs.skip(offset).take(4);
@@ -76,7 +75,13 @@ class StremioProvider implements BaseProvider {
           );
           if (items.isEmpty) return null;
           final duplicateName =
-              jobs.where((j) => j.$2.name == catalog.name).length > 1;
+              jobs
+                  .where(
+                    (j) =>
+                        j.$1.id == installation.id && j.$2.name == catalog.name,
+                  )
+                  .length >
+              1;
           return HomeSection(
             title: duplicateName
                 ? '${catalog.name} · ${catalog.type == 'series' ? 'Series' : 'Movies'}'
