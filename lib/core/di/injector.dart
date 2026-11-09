@@ -602,7 +602,14 @@ Future<void> initDependencies({bool Function()? isOffline}) async {
   // text when absent). Cached per title (in-memory + a persisted Hive box, so
   // the logo doesn't re-resolve / pop-in on later launches).
   await TitleLogoService.init();
-  sl.registerSingleton<TitleLogoService>(TitleLogoService(dio));
+  sl.registerSingleton<TitleLogoService>(
+    TitleLogoService(
+      dio,
+      addonLogoFor: (item) => sl.isRegistered<StremioProvider>()
+          ? sl<StremioProvider>().titleLogoFor(item)
+          : Future.value(null),
+    ),
+  );
 
   // Accurate OP/ED skip times for anime (AniList → MAL id → AniSkip).
   sl.registerSingleton<SkipService>(SkipService(dio));
