@@ -63,6 +63,8 @@ import '../provider/provider_repo_registry.dart';
 import '../repository/catalogue_repository.dart';
 import '../repository/provider_settings_repository.dart';
 import '../repository/source_domain_overrides.dart';
+import '../stremio/stremio_manager.dart';
+import '../stremio/stremio_provider.dart';
 import '../repository/source_repository.dart';
 import '../state/active_source_cubit.dart';
 import '../locale/locale_controller.dart';
@@ -600,7 +602,14 @@ Future<void> initDependencies({bool Function()? isOffline}) async {
   // text when absent). Cached per title (in-memory + a persisted Hive box, so
   // the logo doesn't re-resolve / pop-in on later launches).
   await TitleLogoService.init();
-  sl.registerSingleton<TitleLogoService>(TitleLogoService(dio));
+  sl.registerSingleton<TitleLogoService>(
+    TitleLogoService(
+      dio,
+      addonLogoFor: (item) => sl.isRegistered<StremioProvider>()
+          ? sl<StremioProvider>().titleLogoFor(item)
+          : Future.value(null),
+    ),
+  );
 
   // Accurate OP/ED skip times for anime (AniList → MAL id → AniSkip).
   sl.registerSingleton<SkipService>(SkipService(dio));
@@ -1107,6 +1116,13 @@ Future<void> initDependencies({bool Function()? isOffline}) async {
   sl.registerSingleton<ContentModeCubit>(
     await ContentModeCubit.create(sl<ActiveSourceCubit>()),
   );
+
+  // Addon settings are local; configured URLs stay in secure storage.
+  final stremioManager = StremioManager();
+  await stremioManager.init();
+  await stremioManager.ensureDefaultMetadata();
+  sl.registerSingleton<StremioManager>(stremioManager);
+  sl.registerSingleton<StremioProvider>(StremioProvider(stremioManager));
 
   sl.registerSingleton<SourceRepository>(
     SourceRepository(

@@ -79,6 +79,7 @@ void _driftGuard() {
       'mangabaka': 'oauth token',
       'discord': 'rpc token',
       'auth_cache': 'session cache',
+      'stremio_installations': 'requires device-local secure addon URLs',
       // Device-specific: holds a SAF content:// URI that is meaningless (and
       // unwritable) on another device.
       'download_prefs': 'device-specific download location',

@@ -10,6 +10,54 @@ VideoSource _source(String id, String quality, AudioKind kind) => VideoSource(
 );
 
 void main() {
+  group('Stremio resume recovery', () {
+    test('a deliberate pause preserves the saved checkpoint', () {
+      expect(
+        shouldResetStremioResume(
+          playingThroughout: false,
+          position: Duration.zero,
+          target: const Duration(minutes: 5),
+        ),
+        isFalse,
+      );
+    });
+
+    test('a reached or nearly reached checkpoint is never reset', () {
+      for (final seconds in [292, 300, 320]) {
+        expect(
+          shouldResetStremioResume(
+            playingThroughout: true,
+            position: Duration(seconds: seconds),
+            target: const Duration(minutes: 5),
+          ),
+          isFalse,
+        );
+      }
+    });
+
+    test('a manual seek that cleared the resume target is respected', () {
+      expect(
+        shouldResetStremioResume(
+          playingThroughout: true,
+          position: Duration.zero,
+          target: Duration.zero,
+        ),
+        isFalse,
+      );
+    });
+
+    test('a genuinely stuck resume can still recover', () {
+      expect(
+        shouldResetStremioResume(
+          playingThroughout: true,
+          position: const Duration(seconds: 2),
+          target: const Duration(minutes: 5),
+        ),
+        isTrue,
+      );
+    });
+  });
+
   test('late mirrors are collected without dropping the first link', () async {
     var pollCount = 0;
     final initial = [_source('first', '720p', AudioKind.sub)];
@@ -179,17 +227,11 @@ void main() {
 
   test('does not apply a software retry error after a newer source opens', () {
     expect(
-      isCurrentSoftwareDecoderRetry(
-        retryGeneration: 4,
-        currentGeneration: 5,
-      ),
+      isCurrentSoftwareDecoderRetry(retryGeneration: 4, currentGeneration: 5),
       isFalse,
     );
     expect(
-      isCurrentSoftwareDecoderRetry(
-        retryGeneration: 5,
-        currentGeneration: 5,
-      ),
+      isCurrentSoftwareDecoderRetry(retryGeneration: 5, currentGeneration: 5),
       isTrue,
     );
   });

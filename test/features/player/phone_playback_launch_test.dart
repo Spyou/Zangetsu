@@ -270,6 +270,28 @@ void main() {
   });
 
   group('phoneSourceMap', () {
+    test(
+      'native subtitle labels include the addon without changing language',
+      () {
+        final map = phoneSourceMap(
+          _src(
+            subtitles: const [
+              Subtitle(
+                url: 'https://subs/en.srt',
+                lang: 'eng',
+                label: 'English',
+                providerName: 'Subtitle Addon',
+              ),
+            ],
+          ),
+          0,
+        );
+        expect(map['subLabels'], ['English · Subtitle Addon']);
+        expect(map['subLangs'], ['eng']);
+        expect(map['subUrls'], ['https://subs/en.srt']);
+      },
+    );
+
     test('carries source and subtitle metadata for the native picker', () {
       final map = phoneSourceMap(
         _src(

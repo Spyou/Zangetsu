@@ -377,6 +377,21 @@ class TvNativePlayer {
           }
         }
         return null;
+      case 'rememberSubtitle':
+        // Native track pick — remember it for this show, same as the mpv
+        // player's in-player picker. 'off' is a real choice, not empty.
+        final choice = (call.arguments as Map)['choice'] as String?;
+        if (choice != null &&
+            choice.isNotEmpty &&
+            _showUrl != null &&
+            _showUrl!.isNotEmpty) {
+          await sl<TitlePrefsStore>().setSubtitleChoice(
+            _sourceId,
+            _showUrl!,
+            choice,
+          );
+        }
+        return null;
       case 'setSubtitleScale':
         // In-player subtitle-size change — persist so it sticks next launch.
         final s = (call.arguments as Map)['scale'] as num?;
@@ -415,7 +430,11 @@ class TvNativePlayer {
         return await stageSubtitleFont(font);
       case 'searchSubtitles':
         // OpenSubtitles search for the current show; results cached for download.
-        final pref = sl<PlaybackPrefs>().subtitlePreference;
+        // The show's own pick beats the global preference for the search lang.
+        final showSub = (_showUrl != null && _showUrl!.isNotEmpty)
+            ? sl<TitlePrefsStore>().subtitleChoice(_sourceId, _showUrl!)
+            : null;
+        final pref = showSub ?? sl<PlaybackPrefs>().subtitlePreference;
         final lang = (pref.isEmpty || pref == 'off') ? 'en' : pref;
         try {
           _subResults = await SubtitleSearchService().search(

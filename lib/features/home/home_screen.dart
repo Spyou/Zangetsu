@@ -96,6 +96,7 @@ import '../../core/zmode/playback_resolver.dart';
 import '../../core/zmode/zmode_ids.dart';
 import 'streaming_services_row.dart';
 import 'cubit/home_cubit.dart';
+import 'cubit/home_rows_composer.dart';
 import 'home_screen_tv.dart';
 import 'lists_hub_screen.dart';
 import 'genres_screen.dart';
@@ -142,7 +143,7 @@ class _HomeViewState extends State<_HomeView>
   // every mode switch — a single shared id is what made manga forget anime.
   String? _sourceCatalogueSourceId;
   List<HomeSection> _sourceCatalogueSections = const [];
-  bool _sourceCatalogueSelected = HomeCataloguePrefs.sourceSelected;
+  bool _sourceCatalogueSelected = HomeCataloguePrefs.catalogueShown;
 
   /// Hero metadata cache: key = "sourceId:id". Futures are stored so they're
   /// never re-fetched on carousel rotation; pre-warmed when hero items load.
@@ -174,6 +175,7 @@ class _HomeViewState extends State<_HomeView>
     super.initState();
     _sourceCatalogueSelection = HomeCataloguePrefs.sourceSelection;
     _sourceCatalogueSelection.addListener(_onSourceCatalogueSelectionChanged);
+    HomeCataloguePrefs.revision.addListener(_onCatalogueRevision);
     _sourceCatalogueSourceId = HomeCataloguePrefs.sourceIdFor(
       sl<ContentModeCubit>().state,
     );
@@ -248,6 +250,7 @@ class _HomeViewState extends State<_HomeView>
     _sourceCatalogueSelection.removeListener(
       _onSourceCatalogueSelectionChanged,
     );
+    HomeCataloguePrefs.revision.removeListener(_onCatalogueRevision);
     _slashCtrl.dispose();
     ThemeController.revision.removeListener(_onThemeRevision);
     _heroTint.dispose();
@@ -259,13 +262,29 @@ class _HomeViewState extends State<_HomeView>
   }
 
   void _onSourceCatalogueSelectionChanged() {
-    final selected = _sourceCatalogueSelection.value;
-    if (!mounted || selected == _sourceCatalogueSelected) return;
+    _refreshCatalogueSelection();
+  }
+
+  void _onCatalogueRevision() {
+    _refreshCatalogueSelection();
+  }
+
+  void _refreshCatalogueSelection() {
+    if (!mounted) return;
+    final selected = HomeCataloguePrefs.catalogueShown;
+    final sourceId = HomeCataloguePrefs.sourceIdFor(
+      sl<ContentModeCubit>().state,
+    );
+    if (selected == _sourceCatalogueSelected &&
+        sourceId == _sourceCatalogueSourceId) {
+      return;
+    }
     setState(() {
       _sourceCatalogueSelected = selected;
+      _sourceCatalogueSourceId = sourceId;
       _sourceCatalogueSections = const [];
-      if (selected) {
-        _sourceCatalogueSourceId ??= sl<ActiveSourceCubit>().state;
+      if (selected && sourceId == null) {
+        _sourceCatalogueSourceId = sl<ActiveSourceCubit>().state;
       }
     });
   }
@@ -273,12 +292,18 @@ class _HomeViewState extends State<_HomeView>
   Future<void> _openHomeCataloguePicker() async {
     final selection = await showMetadataSwitchSheet(
       context,
-      sourceCatalogueSelected: _sourceCatalogueSelected,
+      sourceCatalogueSelected: HomeCataloguePrefs.sourceSelected,
+      stremioCatalogueSelected: HomeCataloguePrefs.stremioSelected,
     );
     if (!mounted || selection == null) return;
-    final showSourceCatalogue = selection == HomeCatalogueSelection.source;
-    if (showSourceCatalogue == _sourceCatalogueSelected) return;
-    await HomeCataloguePrefs.setSourceSelected(showSourceCatalogue);
+    final mode = sl<ContentModeCubit>().state;
+    final kind = switch (selection) {
+      HomeCatalogueSelection.metadata => HomeCatalogueKind.metadata,
+      HomeCatalogueSelection.source => HomeCatalogueKind.source,
+      HomeCatalogueSelection.stremio => HomeCatalogueKind.stremio,
+    };
+    if (kind == HomeCataloguePrefs.catalogueKind) return;
+    await HomeCataloguePrefs.setCatalogue(mode, kind);
   }
 
   void _selectHomeCatalogueSource(String sourceId) {
@@ -288,10 +313,7 @@ class _HomeViewState extends State<_HomeView>
       _sourceCatalogueSections = const [];
     });
     unawaited(
-      HomeCataloguePrefs.setSourceIdFor(
-        sl<ContentModeCubit>().state,
-        sourceId,
-      ),
+      HomeCataloguePrefs.setSourceIdFor(sl<ContentModeCubit>().state, sourceId),
     );
   }
 
@@ -303,6 +325,9 @@ class _HomeViewState extends State<_HomeView>
   List<MediaItem> get _sourceCatalogueHeroItems {
     final sections = _sourceCatalogueSections;
     if (sections.isEmpty) return const [];
+    if (_sourceCatalogueSourceId == 'stremio') {
+      return stremioHeroItems(sections);
+    }
     for (final section in sections) {
       if (section.title.startsWith('Trending')) return section.items;
     }
@@ -778,6 +803,7 @@ class _HomeViewState extends State<_HomeView>
   /// Floating brand header — always positioned on top of the hero or bg.
   Widget _buildHeader({bool edgeBanner = false}) {
     Widget sourceSwitcher() {
+      if (HomeCataloguePrefs.stremioSelected) return const SizedBox.shrink();
       if (!_sourceCatalogueSelected) return const HomeSourceSwitcherSlot();
       final sourceId = _sourceCatalogueSourceId;
       if (sourceId == null) return const SizedBox.shrink();
@@ -848,7 +874,8 @@ class _HomeViewState extends State<_HomeView>
                         valueListenable: ZModePrefs.revision,
                         builder: (context, _, _) {
                           final showSource =
-                              _sourceCatalogueSelected || !ZModePrefs.enabled;
+                              !HomeCataloguePrefs.stremioSelected &&
+                              (_sourceCatalogueSelected || !ZModePrefs.enabled);
                           return ValueListenableBuilder<bool>(
                             valueListenable: IncognitoMode.notifier,
                             builder: (context, incognito, _) {

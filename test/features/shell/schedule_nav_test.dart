@@ -1,11 +1,17 @@
 // ignore_for_file: invalid_use_of_protected_member
 
+import 'dart:io';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
+import 'package:watch_app/core/ui/nav_prefs.dart';
+import 'package:watch_app/features/home/home_catalogue_prefs.dart';
+import 'package:watch_app/features/shell/mode_bar.dart';
 import 'package:watch_app/core/ui/dock_visibility.dart';
 import 'package:watch_app/core/ui/frosted_surface.dart';
 import 'package:watch_app/core/appwrite/appwrite_service.dart';
@@ -345,7 +351,7 @@ void main() {
     TestWidgetsFlutterBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
           const MethodChannel('plugins.flutter.io/path_provider'),
-          (call) async => '/tmp',
+          (call) async => Directory.systemTemp.path,
         );
 
     await sl.reset();
@@ -353,7 +359,7 @@ void main() {
     // Home's launch sequence shows a one-time community sheet backed by the
     // 'app_flags' Hive box. Init Hive + mark it seen so that path no-ops
     // (mirrors production, where Hive is initialized before runApp).
-    Hive.init('/tmp/zangetsu_nav_test_hive');
+    Hive.init('${Directory.systemTemp.path}/zangetsu_nav_test_hive');
     await ViewerProfileStore.init();
     final flags = await Hive.openBox('app_flags');
     await flags.put('communitySheetSeen', true);
@@ -448,6 +454,95 @@ void main() {
     of: find.byType(AnimatedSlide),
     matching: find.text(label),
   );
+
+  for (final style in NavBarStyle.values) {
+    testWidgets('Stremio hides only the mode dock (${style.name})', (
+      tester,
+    ) async {
+      sl.registerSingleton<AppMode>(const AppMode(isTv: false));
+      final nav = NavPrefs();
+      sl.registerSingleton<NavPrefs>(nav);
+      await tester.runAsync(() async {
+        await Hive.openBox(HomeCataloguePrefs.boxName);
+        await HomeCataloguePrefs.setCatalogue(
+          ContentMode.anime,
+          HomeCatalogueKind.metadata,
+        );
+        await NavPrefs.init();
+        await nav.setStyle(style);
+        await nav.setKeepDockExpanded(false);
+        await ZModePrefs.setEnabled(true);
+      });
+      await tester.pumpWidget(wrap(const RootShell()));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 5));
+      final modes = style == NavBarStyle.liquid
+          ? find.byType(GlassMenu)
+          : find.byType(ModeFab);
+      final navigation = style == NavBarStyle.liquid
+          ? find.byType(GlassTabBar)
+          : find.byKey(const ValueKey('dockPill'));
+      expect(modes, findsOneWidget);
+      expect(navigation, findsOneWidget);
+      final expandedWidth = tester.getSize(navigation).width;
+      double? collapsedWidth;
+      if (style == NavBarStyle.liquid) {
+        addTearDown(DockScrollCollapse.reset);
+        dockCollapsedByScroll.value = true;
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
+        collapsedWidth = tester.getSize(navigation).width;
+        DockScrollCollapse.reset();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
+      }
+
+      await tester.runAsync(
+        () => HomeCataloguePrefs.setCatalogue(
+          ContentMode.anime,
+          HomeCatalogueKind.stremio,
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 5));
+      expect(modes, findsNothing);
+      expect(navigation, findsOneWidget);
+      if (style == NavBarStyle.liquid) {
+        expect(tester.getSize(navigation).width, closeTo(expandedWidth, 1));
+        dockCollapsedByScroll.value = true;
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
+        expect(tester.getSize(navigation).width, closeTo(collapsedWidth!, 1));
+        DockScrollCollapse.reset();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
+      }
+
+      await tester.runAsync(() => contentMode.setMode(ContentMode.manga));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 5));
+      expect(modes, findsOneWidget);
+      expect(navigation, findsOneWidget);
+
+      await tester.runAsync(() => contentMode.setMode(ContentMode.anime));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 5));
+      expect(modes, findsNothing);
+
+      await tester.runAsync(
+        () => HomeCataloguePrefs.setCatalogue(
+          ContentMode.anime,
+          HomeCatalogueKind.metadata,
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 5));
+      expect(modes, findsOneWidget);
+      expect(navigation, findsOneWidget);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(seconds: 5));
+    });
+  }
 
   // Schedule left the dock for the card row on Home, beside the Manga/Novel
   // mode cards — two doors to one screen was the point of removing it — and

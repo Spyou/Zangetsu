@@ -40,6 +40,10 @@ import '../../core/models/video_source.dart';
 import '../../core/playback/resume_store.dart';
 import '../../core/playback/tv_track_helpers.dart' show tvEpisodeUrl;
 import '../../core/ui/episode_player_sheet.dart' show showMirrorSheet;
+import '../../core/stremio/stremio_manager.dart';
+import '../../core/stremio/stremio_ref.dart';
+import '../../core/stremio/stremio_stream_mapping.dart';
+import '../detail/stremio_episode_links_sheet.dart';
 import '../../core/ui/app_toast.dart';
 import '../../core/playback/skip_service.dart';
 import '../../core/playback/source_selection.dart';
@@ -333,8 +337,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
   /// the initState hand-off, the header-gated proxy path, and the launch call.
   /// Reading prefs directly in each is how an override gets honoured by two of
   /// them and silently dropped by the third.
-  String get _chosenPlayer =>
-      widget.playerOverride ?? sl<PlaybackPrefs>().externalPlayerPackage;
+  String get _chosenPlayer => stremioPlayerPackage(
+    widget.sourceId,
+    widget.initialSource,
+    widget.playerOverride ?? sl<PlaybackPrefs>().externalPlayerPackage,
+  );
 
   late final PlayerCubit _c;
   final WatchTogetherController _room = sl<WatchTogetherController>();
@@ -1160,7 +1167,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
         if (i >= 0) idx = i;
       }
       final ep = eps[idx.clamp(0, eps.length - 1)];
-      final sources = await widget.resolveSources(ep.url);
+      final sources =
+          stremioSeedSources(widget.sourceId, widget.initialSource) ??
+          await widget.resolveSources(ep.url);
       final prefer = widget.category == 'dub' ? AudioKind.dub : AudioKind.sub;
       final src = pickDefault(sources, prefer: prefer);
       if (src == null) throw StateError('no source');
@@ -2841,7 +2850,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
       coverUrl: (_c.currentEpisode.thumbnail?.trim().isNotEmpty ?? false)
           ? _c.currentEpisode.thumbnail!.trim()
           : widget.cover,
-      loading: state.loadingSources,
+      loading: state.loadingSources || state.torrentPhase != null,
+      loadingStatus: state.torrentPhase,
       bufferingStream: _c.player.stream.buffering,
       initialBuffering: _c.player.state.buffering,
       firstFrameStream: _c.player.stream.width,
@@ -3211,7 +3221,31 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _sheet<void>(_SheetColumn(header: context.l10n.quality, children: rows));
   }
 
+  Future<void> _openStremioSourceSheet() async {
+    final index = _c.state.currentIndex;
+    final episode = _c.currentEpisode;
+    final picked = await showStremioEpisodeLinksSheet(
+      context,
+      manager: sl<StremioManager>(),
+      ref: StremioRef.parse(episode.url),
+      title: episode.title,
+    );
+    if (picked == null ||
+        !mounted ||
+        _c.isClosed ||
+        _c.state.currentIndex != index) {
+      return;
+    }
+    await _c.selectSource(picked);
+    await _maybeRecast();
+    _bumpControls();
+  }
+
   void _openSourceSheet() {
+    if (widget.sourceId == stremioSourceId && !widget.localOnly) {
+      unawaited(_openStremioSourceSheet());
+      return;
+    }
     final kinds = availableKinds(_c.state.sources);
     _sheet<void>(
       _SheetColumn(
@@ -3513,10 +3547,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
             // episode info below. It stays up through source resolves — the
             // loading spinner sits on the mini player instead of a black
             // loader screen, and the header is already the new episode
-            // (the cubit emits the index before resolving). Errors and
-            // torrent phases keep their dedicated screens below.
+            // (the cubit emits the index before resolving). Torrent progress
+            // stays in the miniplayer; errors keep their screen below.
             if (_presentation == PlayerPresentation.watchPage &&
-                state.torrentPhase == null &&
                 state.error == null) {
               return _buildWatchPage(state);
             }
