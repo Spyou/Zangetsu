@@ -218,5 +218,34 @@ void main() {
 
       expect(selection, HomeCatalogueSelection.metadata);
     });
+
+    testWidgets('Stremio row shows the Stremio brand logo', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: FilledButton(
+                onPressed: () => showMetadataSwitchSheet(context),
+                child: const Text('Choose catalogue'),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('Choose catalogue'));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('Stremio'));
+      await tester.pumpAndSettle();
+
+      final logo = find.byWidgetPredicate(
+        (w) =>
+            w is Image &&
+            w.image is AssetImage &&
+            (w.image as AssetImage).assetName ==
+                'assets/icon/providers/stremio.png',
+      );
+      expect(logo, findsOneWidget);
+    });
   });
 }

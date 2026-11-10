@@ -170,11 +170,19 @@ Future<HomeCatalogueSelection?> showMetadataSwitchSheet(
                   ),
                 ),
                 ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: AppColors.accentSoft,
-                    child: Icon(
-                      Icons.movie_filter_outlined,
-                      color: AppColors.accent,
+                  // Match the provider rows, with an initials fallback.
+                  leading: ClipRRect(
+                    borderRadius: BorderRadius.circular(9),
+                    child: SizedBox(
+                      width: 40,
+                      height: 40,
+                      child: Image.asset(
+                        _stremioBrand().asset,
+                        fit: BoxFit.cover,
+                        filterQuality: FilterQuality.medium,
+                        errorBuilder: (_, _, _) =>
+                            _InitialsMark(brand: _stremioBrand()),
+                      ),
                     ),
                   ),
                   title: const Text('Stremio'),
@@ -282,6 +290,14 @@ _Brand _videoBrand(VideoProvider p) => p == VideoProvider.simkl
         name: 'TMDB',
         blurb: 'Full artwork, genres and filters',
       );
+
+_Brand _stremioBrand() => (
+  asset: 'assets/icon/providers/stremio.png',
+  mark: 'ST',
+  colour: const Color(0xFF7B5BF5),
+  name: 'Stremio',
+  blurb: 'Browse with your installed addons',
+);
 
 class _ProviderRow extends StatelessWidget {
   const _ProviderRow({
