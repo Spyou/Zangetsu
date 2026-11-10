@@ -12,7 +12,6 @@ import '../../core/stremio/stremio_manager.dart';
 import '../../core/stremio/stremio_addon_icon.dart';
 import '../../core/stremio/stremio_ref.dart';
 import '../../core/stremio/stremio_stream_mapping.dart';
-import '../../core/stremio/stremio_subtitles.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 
@@ -69,7 +68,6 @@ class _StremioLinksSheetState extends State<_StremioLinksSheet> {
   List<StremioLinkGroup> _groups = const [];
   var _done = false;
   var _picked = false;
-  var _picking = false;
   var _dismissed = false;
 
   @override
@@ -116,8 +114,8 @@ class _StremioLinksSheetState extends State<_StremioLinksSheet> {
   bool get _allowTorrent =>
       Platform.isAndroid && !(sl.isRegistered<AppMode>() && sl<AppMode>().isTv);
 
-  Future<void> _choose(StremioLinkChoice choice) async {
-    if (_picked || _picking || _dismissed) return;
+  void _choose(StremioLinkChoice choice) {
+    if (_picked || _dismissed) return;
     if (_session?.isCurrent(choice) != true) {
       setState(_start);
       return;
@@ -125,33 +123,19 @@ class _StremioLinksSheetState extends State<_StremioLinksSheet> {
     if (stremioVideoSource(choice, allowTorrent: _allowTorrent) == null) {
       return;
     }
-    _picking = true;
-    setState(() {});
-
-    // Subtitle enrichment gets a short budget; a slow subtitle addon must not
-    // delay or cancel playback.
-    final extras = await stremioSubtitlesFor(
-      widget.manager,
-      widget.ref,
-      choice.stream,
-    );
-    if (_dismissed || !mounted) return;
-    if (_session?.isCurrent(choice) != true) {
-      setState(() {
-        _picking = false;
-        _start();
-      });
-      return;
-    }
     final source = stremioVideoSource(
       choice,
-      extraSubtitles: extras,
+      streamAddonName: widget.manager.byId(choice.installationId)?.name,
       allowTorrent: _allowTorrent,
     );
     if (source == null) {
-      setState(() => _picking = false);
       return;
     }
+    widget.manager.rememberSubtitleStream(
+      choice.ref,
+      source.url,
+      choice.stream,
+    );
     _picked = true;
     Navigator.of(context).pop(source);
   }
@@ -253,7 +237,7 @@ class _StremioLinksSheetState extends State<_StremioLinksSheet> {
         if (choice == null) return _group(group);
         return ListTile(
           dense: true,
-          enabled: !_picked && !_picking,
+          enabled: !_picked,
           title: Text(
             choice.label,
             style: AppText.body,
@@ -269,7 +253,7 @@ class _StremioLinksSheetState extends State<_StremioLinksSheet> {
                   overflow: TextOverflow.ellipsis,
                 ),
           trailing: const Icon(Icons.play_arrow_rounded, size: 20),
-          onTap: _picking ? null : () => _choose(choice),
+          onTap: () => _choose(choice),
         );
       },
     );

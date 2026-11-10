@@ -19,6 +19,42 @@ class StremioProvider implements BaseProvider {
 
   final StremioManager manager;
 
+  ({
+    String url,
+    bool allowTorrent,
+    int revision,
+    DateTime at,
+    Future<List<VideoSource>> sources,
+  })?
+  _prefetched;
+
+  Future<void> prefetchVideoSources(
+    String url, {
+    bool allowTorrent = false,
+  }) async {
+    final previous = _prefetched;
+    if (previous != null &&
+        previous.url == url &&
+        previous.allowTorrent == allowTorrent &&
+        previous.revision == manager.revision &&
+        DateTime.now().difference(previous.at) < const Duration(minutes: 2)) {
+      await previous.sources;
+      return;
+    }
+    final future = getVideoSources(
+      url,
+      allowTorrent: allowTorrent,
+    ).catchError((_) => <VideoSource>[]);
+    _prefetched = (
+      url: url,
+      allowTorrent: allowTorrent,
+      revision: manager.revision,
+      at: DateTime.now(),
+      sources: future,
+    );
+    await future;
+  }
+
   @override
   String get sourceId => stremioSourceId;
 
@@ -224,6 +260,20 @@ class StremioProvider implements BaseProvider {
     if (!manager.canOpen(ref)) {
       throw const StremioInstallException('addon is not installed');
     }
+    final warmed = _prefetched;
+    if (fast &&
+        warmed != null &&
+        warmed.url == episodeUrl &&
+        warmed.allowTorrent == allowTorrent) {
+      _prefetched = null;
+      if (warmed.revision == manager.revision &&
+          DateTime.now().difference(warmed.at) < const Duration(minutes: 2)) {
+        final cached = await warmed.sources;
+        if (warmed.revision == manager.revision && cached.isNotEmpty) {
+          return cached;
+        }
+      }
+    }
     final session = manager.openLinks(ref);
     try {
       await session.done;
@@ -232,8 +282,15 @@ class StremioProvider implements BaseProvider {
       for (final group in session.currentGroups) {
         for (final choice in group.choices) {
           if (!session.isCurrent(choice)) continue;
-          final source = stremioVideoSource(choice, allowTorrent: allowTorrent);
-          if (source != null && seen.add(source.url)) sources.add(source);
+          final source = stremioVideoSource(
+            choice,
+            streamAddonName: group.installation.name,
+            allowTorrent: allowTorrent,
+          );
+          if (source != null && seen.add(source.url)) {
+            manager.rememberSubtitleStream(ref, source.url, choice.stream);
+            sources.add(source);
+          }
         }
       }
       return sources;

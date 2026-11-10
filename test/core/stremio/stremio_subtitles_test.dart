@@ -7,6 +7,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:watch_app/core/stremio/stremio_manager.dart';
+import 'package:watch_app/core/models/video_source.dart';
 import 'package:watch_app/core/stremio/stremio_ref.dart';
 import 'package:watch_app/core/stremio/stremio_subtitles.dart';
 import 'package:zangetsu_source_bridge/stremio.dart';
@@ -38,6 +39,7 @@ class _Server {
   Map<String, Object> manifest = _manifest;
   Completer<void>? gate;
   bool failSecond = false;
+  String subtitleUrl = 'https://subs.example/en.srt';
 
   Future<http.Response> handle(http.Request request) async {
     requests.add(request.url);
@@ -51,7 +53,7 @@ class _Server {
       }
       return _json({
         'subtitles': [
-          {'url': 'https://subs.example/en.srt', 'lang': 'English'},
+          {'url': subtitleUrl, 'lang': 'English'},
         ],
       });
     }
@@ -99,6 +101,63 @@ void main() {
     type: 'series',
     itemId: 'tt1',
     videoId: 'tt1:1:1',
+  );
+
+  test(
+    'OpenSubtitles opaque download URLs retain their SubRip format',
+    () async {
+      server.manifest = {..._manifest, 'id': 'org.stremio.opensubtitlesv3'};
+      server.subtitleUrl = 'https://subs.example/download/1234';
+      final opensubs = await manager.install('https://opensubs.example/addon');
+      await manager.setEnabled(first.id, false);
+      await manager.setEnabled(second.id, false);
+      final tracks = await stremioSubtitlesFor(
+        manager,
+        refFor(opensubs),
+        const StremioStream(kind: StremioStreamKind.direct),
+      );
+      expect(tracks.single.url, server.subtitleUrl);
+      expect(tracks.single.format, 'srt');
+    },
+  );
+
+  test(
+    'player subtitle fetch keeps selected-stream metadata and inline tracks',
+    () async {
+      final ref = refFor(first);
+      const source = VideoSource(
+        url: 'https://video.test/chosen',
+        subtitles: [
+          Subtitle(url: 'https://subs.example/inline.srt', lang: 'eng'),
+        ],
+      );
+      manager.rememberSubtitleStream(
+        ref,
+        source.url,
+        const StremioStream(
+          kind: StremioStreamKind.direct,
+          fileName: 'Chosen.S01E02.mkv',
+          videoHash: 'hash',
+          videoSize: 123,
+        ),
+      );
+      final enriched = await stremioSourceWithSubtitles(manager, ref, source);
+      expect(enriched.url, source.url);
+      expect(enriched.subtitles.map((s) => s.url), [
+        'https://subs.example/inline.srt',
+        'https://subs.example/en.srt',
+      ]);
+      expect(
+        server.requests.where((u) => u.path.contains('/subtitles/')).first.path,
+        contains('Chosen.S01E02.mkv'),
+      );
+      expect(
+        manager
+            .subtitleStream(ref.withVideo('tt123:1:99'), source.url)
+            .fileName,
+        isNull,
+      );
+    },
   );
 
   test(
@@ -156,6 +215,24 @@ void main() {
     );
     expect(uri.path, contains('tt1%3A1%3A1/filename='));
   });
+
+  test(
+    'subtitle tracks retain their addon name and readable language',
+    () async {
+      final tracks = await stremioSubtitlesFor(
+        manager,
+        refFor(first),
+        const StremioStream(
+          kind: StremioStreamKind.direct,
+          url: 'https://cdn.example/v.mkv',
+        ),
+      );
+
+      expect(tracks.single.providerName, first.name);
+      expect(tracks.single.displayLabel, 'English · ${first.name}');
+      expect(tracks.single.lang, 'English');
+    },
+  );
 
   test('one failing addon does not drop the working tracks', () async {
     server.failSecond = true;

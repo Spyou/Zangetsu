@@ -43,6 +43,9 @@ import 'mpv_player_pool.dart';
 import '../../core/repository/catalogue_repository.dart';
 import '../../core/repository/source_repository.dart';
 import '../../core/stremio/stremio_provider.dart';
+import '../../core/stremio/stremio_manager.dart';
+import '../../core/stremio/stremio_subtitles.dart';
+import '../../core/privacy/incognito_mode.dart';
 import '../../core/stremio/stremio_ref.dart';
 import '../../core/zmode/playback_resolver.dart';
 import '../../core/zmode/source_matcher.dart';
@@ -104,6 +107,8 @@ class PlayerState extends Equatable {
     this.currentIndex = 0,
     this.tracks = const Tracks(),
     this.torrentPhase,
+    this.loadingAddonSubtitles = false,
+    this.addonSubtitlesChecked = false,
   });
 
   /// True while sources for the current episode are being resolved.
@@ -135,6 +140,8 @@ class PlayerState extends Equatable {
   /// show as a buffering overlay ("Finding peers…", "Buffering 12%"). Null for
   /// every non-torrent source, so normal playback is unaffected.
   final String? torrentPhase;
+  final bool loadingAddonSubtitles;
+  final bool addonSubtitlesChecked;
 
   PlayerState copyWith({
     bool? loadingSources,
@@ -146,6 +153,8 @@ class PlayerState extends Equatable {
     int? currentIndex,
     Tracks? tracks,
     String? Function()? torrentPhase,
+    bool? loadingAddonSubtitles,
+    bool? addonSubtitlesChecked,
   }) => PlayerState(
     loadingSources: loadingSources ?? this.loadingSources,
     error: error != null ? error() : this.error,
@@ -156,6 +165,8 @@ class PlayerState extends Equatable {
     currentIndex: currentIndex ?? this.currentIndex,
     tracks: tracks ?? this.tracks,
     torrentPhase: torrentPhase != null ? torrentPhase() : this.torrentPhase,
+    loadingAddonSubtitles: loadingAddonSubtitles ?? this.loadingAddonSubtitles,
+    addonSubtitlesChecked: addonSubtitlesChecked ?? this.addonSubtitlesChecked,
   );
 
   @override
@@ -169,6 +180,8 @@ class PlayerState extends Equatable {
     currentIndex,
     tracks,
     torrentPhase,
+    loadingAddonSubtitles,
+    addonSubtitlesChecked,
   ];
 }
 
@@ -464,6 +477,7 @@ class PlayerCubit extends Cubit<PlayerState> {
   Duration _lastPos = Duration.zero;
   Duration _lastDur = Duration.zero;
   bool _playing = true;
+  int _resumePauseEpoch = 0;
   // The resume position we still need to reach. Set when a resume mark is
   // applied on open and cleared once playback actually reaches it. While set, a
   // re-open (e.g. the default-quality switch that fires right after resume, when
@@ -1105,6 +1119,7 @@ class PlayerCubit extends Cubit<PlayerState> {
     _subs.add(
       player.stream.playing.listen((v) {
         _playing = v;
+        if (sourceId == stremioSourceId && !v) _resumePauseEpoch++;
         _syncSimkl();
         if (v) {
           _discordPaused = false;
@@ -1195,7 +1210,16 @@ class PlayerCubit extends Cubit<PlayerState> {
             p >= _lastDur * 0.85) {
           _prefetchedNextForIndex = idx;
           final nextUrl = _episodeUrl(episodes[idx + 1]);
-          if (sourceId == ZmodeIds.sourceId) {
+          if (sourceId == stremioSourceId &&
+              Platform.isAndroid &&
+              sl.isRegistered<StremioProvider>()) {
+            unawaited(
+              sl<StremioProvider>().prefetchVideoSources(
+                nextUrl,
+                allowTorrent: true,
+              ),
+            );
+          } else if (sourceId == ZmodeIds.sourceId) {
             // Z Mode used to skip this entirely, because SourceRepository's
             // own prefetch throws for the zm pseudo source — so every episode
             // of a binge paid the full resolve again (7.3s median across 139
@@ -1706,6 +1730,49 @@ class PlayerCubit extends Cubit<PlayerState> {
           ? 'Styled subtitles (libass): On — reopen this episode to apply'
           : 'Styled subtitles (libass): Off — reopen this episode to apply',
       duration: const Duration(seconds: 4),
+    );
+  }
+
+  VideoSource? _stremioSubtitleSource;
+
+  Future<void> loadAddonSubtitles({bool retry = false}) async {
+    if (sourceId != stremioSourceId ||
+        localOnly ||
+        isClosed ||
+        !sl.isRegistered<StremioManager>() ||
+        state.loadingAddonSubtitles ||
+        (state.addonSubtitlesChecked && !retry)) {
+      return;
+    }
+    final active = state.active;
+    final source = _stremioSubtitleSource;
+    if (active == null || source == null) return;
+    final generation = _gen;
+    final episodeUrl = currentEpisode.url;
+    if (!StremioRef.isRef(episodeUrl)) return;
+    emit(state.copyWith(loadingAddonSubtitles: true));
+    final enriched = await stremioSourceWithSubtitles(
+      sl<StremioManager>(),
+      StremioRef.parse(episodeUrl),
+      source,
+    );
+    if (isClosed ||
+        generation != _gen ||
+        currentEpisode.url != episodeUrl ||
+        !identical(state.active, active)) {
+      return;
+    }
+    final updated = active.withSubtitles(enriched.subtitles);
+    emit(
+      state.copyWith(
+        active: () => updated,
+        sources: [
+          for (final item in state.sources)
+            identical(item, active) ? updated : item,
+        ],
+        loadingAddonSubtitles: false,
+        addonSubtitlesChecked: true,
+      ),
     );
   }
 
@@ -2327,6 +2394,8 @@ class PlayerCubit extends Cubit<PlayerState> {
     initialSource = null;
     final fromPick = chosen == null
         ? null
+        : sourceId == stremioSourceId
+        ? chosen
         : resolved.firstWhere((s) => s.url == chosen.url, orElse: () => chosen);
     // Otherwise the source remembered for this title (e.g. Hindi), else the
     // adaptive default.
@@ -2484,6 +2553,12 @@ class PlayerCubit extends Cubit<PlayerState> {
   VideoSource? _preferredSource(List<VideoSource> sources) {
     final url = showUrl;
     if (url == null) return null;
+    if (sourceId == stremioSourceId) {
+      return sl<TitlePrefsStore>().preferredStremioLink(
+        currentEpisode.url,
+        sources,
+      );
+    }
     final saved = sl<TitlePrefsStore>().sourceLabel(sourceId, url);
     if (saved == null) return null;
     for (final s in sources) {
@@ -2714,6 +2789,16 @@ class PlayerCubit extends Cubit<PlayerState> {
     bool softwareDecodeRetry = false,
   }) async {
     final g = gen ?? ++_gen;
+    if (sourceId == stremioSourceId) {
+      _stremioSubtitleSource = s;
+      if (!peek && !IncognitoMode.on && sl.isRegistered<TitlePrefsStore>()) {
+        unawaited(
+          sl<TitlePrefsStore>()
+              .rememberStremioLink(currentEpisode.url, s)
+              .catchError((_) {}),
+        );
+      }
+    }
     _simklPlayback?.update(
       positionMs: _lastPos.inMilliseconds,
       durationMs: _lastDur.inMilliseconds,
@@ -2768,7 +2853,14 @@ class PlayerCubit extends Cubit<PlayerState> {
       }
       _failoverFromStall();
     });
-    emit(state.copyWith(active: () => s, error: () => null));
+    emit(
+      state.copyWith(
+        active: () => s,
+        error: () => null,
+        loadingAddonSubtitles: false,
+        addonSubtitlesChecked: false,
+      ),
+    );
     // When auto-resume is off, ignore the saved resume mark and start from the
     // explicit seek (a mid-session source/quality switch) or the very start.
     // In a Watch Together room the room position is authoritative, not the
@@ -3293,6 +3385,7 @@ class PlayerCubit extends Cubit<PlayerState> {
               sl.isRegistered<StremioProvider>()
           ? await sl<StremioProvider>().getVideoSources(
               epUrl,
+              fast: true,
               allowTorrent: true,
             )
           : await _resolveSources(epUrl);
@@ -3428,8 +3521,19 @@ class PlayerCubit extends Cubit<PlayerState> {
     await Future.delayed(const Duration(seconds: 15));
     if (g != _gen) return;
     final before = _lastPos;
+    final wasPlaying = _playing;
+    final pauseEpoch = _resumePauseEpoch;
     await Future.delayed(const Duration(seconds: 4));
     if (g != _gen) return;
+    if (sourceId == stremioSourceId &&
+        !shouldResetStremioResume(
+          playingThroughout:
+              wasPlaying && _playing && pauseEpoch == _resumePauseEpoch,
+          position: _lastPos,
+          target: _pendingResume,
+        )) {
+      return;
+    }
     // Position hasn't advanced in 4s → playback is frozen (the resume seek
     // stalled on a deep / corrupted-mark target the host can't serve). Abandon
     // the resume, restart from 0, and reset the bad mark so the title plays.

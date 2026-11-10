@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'package:crypto/crypto.dart';
+import '../models/video_source.dart';
 import 'package:hive/hive.dart';
 import 'package:watch_app/core/hive/safe_box.dart';
 import 'package:watch_app/core/hive/hive_key.dart';
@@ -57,6 +60,39 @@ class TitlePrefsStore {
     await _box.put(k, m);
   }
 
+  VideoSource? preferredStremioLink(
+    String episodeUrl,
+    List<VideoSource> sources,
+  ) {
+    final saved = _box.get(_key('stremio', episodeUrl));
+    if (saved == null) return null;
+    for (final source in sources) {
+      if (sha256.convert(utf8.encode(source.url)).toString() ==
+          saved['linkHash']) {
+        return source;
+      }
+    }
+    final label = saved['linkLabel'];
+    if (label is String && label.isNotEmpty) {
+      for (final source in sources) {
+        if (source.label == label) return source;
+      }
+    }
+    return null;
+  }
+
+  Future<void> rememberStremioLink(
+    String episodeUrl,
+    VideoSource source,
+  ) async {
+    final key = _key('stremio', episodeUrl);
+    await _box.put(key, {
+      ...?_box.get(key),
+      'linkHash': sha256.convert(utf8.encode(source.url)).toString(),
+      'linkLabel': source.label,
+    });
+  }
+
   /// Remembered embedded audio-track choice for this title (language/label),
   /// e.g. 'hin'. Re-applied on reopen for multi-audio files (e.g. 4khdhub).
   String? audioTrack(String sourceId, String showUrl) {
@@ -86,11 +122,7 @@ class TitlePrefsStore {
     return (v is String && v.isNotEmpty) ? v : null;
   }
 
-  Future<void> setQuality(
-    String sourceId,
-    String showUrl,
-    String pref,
-  ) async {
+  Future<void> setQuality(String sourceId, String showUrl, String pref) async {
     final k = _key(sourceId, showUrl);
     final m = _box.get(k) == null
         ? <String, dynamic>{}
@@ -107,11 +139,7 @@ class TitlePrefsStore {
     return v is num ? v.toDouble() : null;
   }
 
-  Future<void> setSpeed(
-    String sourceId,
-    String showUrl,
-    double rate,
-  ) async {
+  Future<void> setSpeed(String sourceId, String showUrl, double rate) async {
     final k = _key(sourceId, showUrl);
     final m = _box.get(k) == null
         ? <String, dynamic>{}

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -39,12 +40,14 @@ class _Server {
   int streamCalls = 0;
   bool failFirst = false;
   int extraLinks = 0;
+  Completer<void>? subtitleGate;
 
   Future<http.Response> handle(http.Request request) async {
     if (request.url.path.endsWith('/manifest.json')) {
       return _json(_manifest);
     }
     if (request.url.path.contains('/subtitles/')) {
+      await subtitleGate?.future;
       return _json({
         'subtitles': [
           {'url': 'https://subs.example/en.srt', 'lang': 'English'},
@@ -180,12 +183,30 @@ void main() {
     expect(picked!.url, 'https://cdn.example/video.m3u8');
     expect(picked!.headers, {'Referer': 'https://ref/'});
     expect(
-      picked!.subtitles.map((s) => s.url),
-      containsAll([
-        'https://subs.example/inline.srt',
-        'https://subs.example/en.srt',
-      ]),
+      picked!.subtitles.every((sub) => sub.providerName == 'Test Addon'),
+      isTrue,
     );
+    expect(
+      picked!.subtitles.map((s) => s.url),
+      equals(['https://subs.example/inline.srt']),
+    );
+  });
+
+  testWidgets('choosing a link never waits for subtitle addons', (
+    tester,
+  ) async {
+    server.subtitleGate = Completer<void>();
+    VideoSource? picked;
+    await openSheet(tester, () => picked, (value) => picked = value);
+    await tester.tap(find.text('4K · WEB-DL').first);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text('Checking subtitles…'), findsNothing);
+    expect(picked, isNotNull);
+    expect(picked!.subtitles.map((s) => s.url), [
+      'https://subs.example/inline.srt',
+    ]);
+    server.subtitleGate!.complete();
   });
 
   testWidgets('large addon responses build only visible links', (tester) async {

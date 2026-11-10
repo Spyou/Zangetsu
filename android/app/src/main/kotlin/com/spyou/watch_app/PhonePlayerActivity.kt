@@ -210,6 +210,8 @@ class PhonePlayerActivity : Activity() {
     private var keepScreenOn = true
     private var subtitlePreference = ""
     private var subtitlePreferenceApplied = false
+    private var pendingAddonSubtitleId: String? = null
+    private var currentSourceFactory: DefaultMediaSourceFactory? = null
     private var playbackStarted = false
     private var resizeIndex = 0
     private var controlLayout = PhonePlayerControlLayout()
@@ -480,6 +482,19 @@ class PhonePlayerActivity : Activity() {
             }
 
             override fun onTracksChanged(tracks: Tracks) {
+                val pending = pendingAddonSubtitleId
+                if (pending != null) {
+                    for (group in tracks.groups.filter { it.type == C.TRACK_TYPE_TEXT }) {
+                        for (index in 0 until group.length) {
+                            if (group.getTrackFormat(index).id == pending) {
+                                pendingAddonSubtitleId = null
+                                selectTextTrack(TrackSelectionOverride(group.mediaTrackGroup, index))
+                                return
+                            }
+                        }
+                    }
+                    return
+                }
                 applySubtitlePreference(tracks)
             }
 
@@ -1303,6 +1318,7 @@ class PhonePlayerActivity : Activity() {
         p.pause()
         playbackStarted = false
         subtitlePreferenceApplied = false
+        pendingAddonSubtitleId = null
         currentUrl = url
         attemptedUrls.add(url)
         val httpFactory = DefaultHttpDataSource.Factory()
@@ -1316,6 +1332,7 @@ class PhonePlayerActivity : Activity() {
         // keep the headers and redirect handling above.
         val sourceFactory =
             DefaultMediaSourceFactory(DefaultDataSource.Factory(this, httpFactory))
+        currentSourceFactory = sourceFactory
         p.setMediaSource(sourceFactory.createMediaSource(builder.build()))
         loadedEpisodeIndex = currentIndex
         if (positionMs > 0) p.seekTo(positionMs)
@@ -1323,6 +1340,11 @@ class PhonePlayerActivity : Activity() {
         p.playWhenReady = true
         handler.removeCallbacks(startTimeout)
         handler.postDelayed(startTimeout, 30_000L)
+        if (intent.getBooleanExtra(PhonePlayerIntent.EXTRA_STREMIO_SUBTITLES, false)) {
+            PhonePlayerBridge.channel?.invokeMethod("rememberStremioLink", mapOf(
+                "sessionId" to sessionId, "index" to currentIndex, "url" to url,
+            ))
+        }
     }
 
     private fun showEpisodeMenu() {
@@ -1730,7 +1752,8 @@ class PhonePlayerActivity : Activity() {
         versionFor += null
         // audioPicks[0] ("Auto") sits at this label index; tracks follow.
         val audioBase = labels.size - 1
-        if (audioTracks.size + textTracks.size < 2 && versionFor.size <= 1) {
+        val addonSubtitles = intent.getBooleanExtra(PhonePlayerIntent.EXTRA_STREMIO_SUBTITLES, false)
+        if (!addonSubtitles && audioTracks.size + textTracks.size < 2 && versionFor.size <= 1) {
             toast(getString(R.string.phone_player_toast_no_tracks))
             bumpControls()
             return
@@ -1752,9 +1775,18 @@ class PhonePlayerActivity : Activity() {
             versionFor += null
             textPicks += TrackSelectionOverride(g.mediaTrackGroup, i)
         }
+        val addonRow = if (addonSubtitles) labels.size else -1
+        if (addonSubtitles) {
+            labels += "Addon subtitles…"
+            versionFor += null
+        }
         android.app.AlertDialog.Builder(this, R.style.PhonePlayerDialog)
             .setTitle(getString(R.string.phone_player_title_tracks))
             .setItems(labels.toTypedArray()) { _, which ->
+                if (which == addonRow) {
+                    showAddonSubtitles()
+                    return@setItems
+                }
                 val version = versionFor[which]
                 if (version != null) {
                     if (version != currentCategory) switchCategory(version)
@@ -1767,6 +1799,66 @@ class PhonePlayerActivity : Activity() {
             }
             .setOnDismissListener { bumpControls() }
             .showForPlayer()
+    }
+
+    private fun showAddonSubtitles() {
+        val ch = PhonePlayerBridge.channel ?: return
+        val generation = mediaGeneration
+        val url = currentUrl
+        val loading = android.app.AlertDialog.Builder(this, R.style.PhonePlayerDialog)
+            .setMessage("Loading addon subtitles…")
+            .setNegativeButton(android.R.string.cancel, null)
+            .showForPlayer()
+        ch.invokeMethod("addonSubtitles", mapOf(
+            "sessionId" to sessionId, "index" to currentIndex, "url" to url,
+        ), object : io.flutter.plugin.common.MethodChannel.Result {
+            override fun success(result: Any?) {
+                val visible = loading.isShowing
+                loading.dismiss()
+                if (!visible || !uiAlive() || generation != mediaGeneration || currentUrl != url) return
+                val data = result as? Map<*, *>
+                fun strings(key: String) = (data?.get(key) as? List<*>)?.filterIsInstance<String>() ?: emptyList()
+                val tracks = subtitlesFrom(strings("subUrls"), strings("subLangs"), strings("subLabels"), strings("subFormats"), emptyList())
+                if (tracks.isEmpty()) {
+                    toast("No addon subtitles found. Try again.")
+                    return
+                }
+                android.app.AlertDialog.Builder(this@PhonePlayerActivity, R.style.PhonePlayerDialog)
+                    .setTitle(getString(R.string.phone_player_title_subtitles))
+                    .setItems(tracks.map { it.label ?: it.language ?: "Subtitle" }.toTypedArray()) { _, which ->
+                        if (!uiAlive() || generation != mediaGeneration || currentUrl != url) return@setItems
+                        val p = player ?: return@setItems
+                        val item = p.currentMediaItem ?: return@setItems
+                        val factory = currentSourceFactory ?: return@setItems
+                        val selected = tracks[which].buildUpon()
+                            .setId(tracks[which].uri.toString())
+                            .setSelectionFlags(C.SELECTION_FLAG_DEFAULT).build()
+                        val remaining = item.localConfiguration?.subtitleConfigurations.orEmpty()
+                            .filter { it.uri != selected.uri }
+                            .map { it.buildUpon().setSelectionFlags(0).build() }
+                        val position = p.currentPosition
+                        val playing = p.playWhenReady
+                        p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
+                            .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+                            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                            .setPreferredTextLanguage(selected.language)
+                            .build()
+                        subtitlePreferenceApplied = true
+                        pendingAddonSubtitleId = selected.id
+                        val updated = item.buildUpon().setSubtitleConfigurations(remaining + selected).build()
+                        p.setMediaSource(factory.createMediaSource(updated), position)
+                        p.prepare()
+                        p.playWhenReady = playing
+                    }
+                    .setOnDismissListener { bumpControls() }
+                    .showForPlayer()
+            }
+            override fun error(code: String, message: String?, details: Any?) {
+                loading.dismiss()
+                if (uiAlive() && generation == mediaGeneration) toast("Could not load addon subtitles. Try again.")
+            }
+            override fun notImplemented() { loading.dismiss() }
+        })
     }
 
     /** Switch Sub/Dub in place: Dart re-resolves the SAME episode through the

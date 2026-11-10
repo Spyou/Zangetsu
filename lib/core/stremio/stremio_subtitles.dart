@@ -1,16 +1,18 @@
 import 'package:zangetsu_source_bridge/stremio.dart';
 
+import '../models/video_source.dart';
+import '../playback/subtitle_language.dart';
 import 'stremio_manager.dart';
 import 'stremio_ref.dart';
 
 /// Collects subtitle tracks from every enabled subtitle addon that accepts the
 /// title. Bounded by [budget]; a slow or failing subtitle addon never blocks
 /// playback, it just contributes no tracks.
-Future<List<StremioSubtitle>> stremioSubtitlesFor(
+Future<List<Subtitle>> stremioSubtitlesFor(
   StremioManager manager,
   StremioRef ref,
   StremioStream stream, {
-  Duration budget = const Duration(seconds: 2),
+  Duration budget = const Duration(seconds: 12),
 }) async {
   final installations = [
     for (final installation in manager.enabled)
@@ -19,7 +21,7 @@ Future<List<StremioSubtitle>> stremioSubtitlesFor(
         installation,
   ];
   final seen = <String>{};
-  final results = <StremioSubtitle>[];
+  final results = <Subtitle>[];
   var expired = false;
 
   Future<void> collect() async {
@@ -36,7 +38,21 @@ Future<List<StremioSubtitle>> stremioSubtitlesFor(
         );
         if (expired) return;
         for (final subtitle in subtitles) {
-          if (seen.add(subtitle.url)) results.add(subtitle);
+          if (seen.add(subtitle.url)) {
+            results.add(
+              Subtitle(
+                url: subtitle.url,
+                lang: subtitle.lang,
+                label: languageOfSource(subtitle.lang)?.name ?? subtitle.lang,
+                format:
+                    subtitle.format ??
+                    (installation.manifestId == 'org.stremio.opensubtitlesv3'
+                        ? 'srt'
+                        : null),
+                providerName: installation.name,
+              ),
+            );
+          }
         }
       } catch (_) {
         // One broken subtitle addon must not cost the playable track.
@@ -55,4 +71,21 @@ Future<List<StremioSubtitle>> stremioSubtitlesFor(
     // Budget spent: keep whatever arrived before the deadline.
   }
   return List.unmodifiable(results);
+}
+
+Future<VideoSource> stremioSourceWithSubtitles(
+  StremioManager manager,
+  StremioRef ref,
+  VideoSource source,
+) async {
+  final extra = await stremioSubtitlesFor(
+    manager,
+    ref,
+    manager.subtitleStream(ref, source.url),
+  );
+  final seen = <String>{};
+  return source.withSubtitles([
+    for (final track in [...source.subtitles, ...extra])
+      if (seen.add(track.url)) track,
+  ]);
 }

@@ -68,6 +68,12 @@ class _AudioSubsSheetState extends State<_AudioSubsSheet> {
   late String _category = widget.controller.activeCategory;
 
   @override
+  void initState() {
+    super.initState();
+    unawaited(widget.controller.loadAddonSubtitles());
+  }
+
+  @override
   Widget build(BuildContext context) {
     final c = widget.controller;
     final h = MediaQuery.of(context).size.height;
@@ -227,7 +233,13 @@ class _AudioSubsSheetState extends State<_AudioSubsSheet> {
     );
   }
 
-  Widget _subColumn(PlayerCubit c, String subId) {
+  Widget _subColumn(PlayerCubit c, String subId) =>
+      BlocBuilder<PlayerCubit, PlayerState>(
+        bloc: c,
+        builder: (context, state) => _subtitleChoices(c, subId),
+      );
+
+  Widget _subtitleChoices(PlayerCubit c, String subId) {
     final embedded = c.mediaSubtitleTracks;
     final soft = c.softSubs;
     return Column(
@@ -273,6 +285,32 @@ class _AudioSubsSheetState extends State<_AudioSubsSheet> {
                   widget.onAfterChange?.call();
                 },
               ),
+              if (c.sourceId == stremioSourceId) ...[
+                if (c.state.loadingAddonSubtitles)
+                  const Padding(
+                    padding: EdgeInsets.all(12),
+                    child: Row(
+                      children: [
+                        SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                        SizedBox(width: 8),
+                        Expanded(child: Text('Loading addon subtitles…')),
+                      ],
+                    ),
+                  )
+                else
+                  _SheetRow(
+                    label: c.state.addonSubtitlesChecked && soft.isEmpty
+                        ? 'No addon subtitles found · Retry'
+                        : 'Reload addon subtitles',
+                    icon: Icons.refresh_rounded,
+                    active: false,
+                    onTap: () => unawaited(c.loadAddonSubtitles(retry: true)),
+                  ),
+              ],
               if (!widget.castMode)
                 for (final t in embedded)
                   _SheetRow(
@@ -284,6 +322,9 @@ class _AudioSubsSheetState extends State<_AudioSubsSheet> {
                         embedded.map((t) => t.title),
                       ),
                     ),
+                    subtitle: c.sourceId == stremioSourceId
+                        ? context.l10n.builtIn
+                        : null,
                     active: subId == t.id,
                     onTap: () {
                       c.setSubtitle(t);
@@ -293,6 +334,7 @@ class _AudioSubsSheetState extends State<_AudioSubsSheet> {
               for (final s in soft)
                 _SheetRow(
                   label: s.label ?? s.lang,
+                  subtitle: s.providerName,
                   // A URI soft-sub is applied via SubtitleTrack.uri(s.url), whose
                   // media_kit track id IS the url — so the active one highlights.
                   active: subId == s.url,

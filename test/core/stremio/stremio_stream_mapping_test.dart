@@ -73,16 +73,18 @@ void main() {
     );
     final source = stremioVideoSource(
       choice,
+      streamAddonName: 'Video Addon',
       extraSubtitles: const [
-        StremioSubtitle(
+        Subtitle(
           url: 'https://subs.example/en.srt',
           lang: 'English',
           format: 'srt',
         ),
-        StremioSubtitle(
+        Subtitle(
           url: 'https://subs.example/hi.vtt',
           lang: 'Hindi',
           format: 'vtt',
+          providerName: 'Subtitle Addon',
         ),
       ],
     )!;
@@ -94,6 +96,8 @@ void main() {
     ]);
     expect(source.subtitles.last.format, 'vtt');
     expect(source.subtitles.last.lang, 'Hindi');
+    expect(source.subtitles.first.providerName, 'Video Addon');
+    expect(source.subtitles.last.providerName, 'Subtitle Addon');
   });
 
   test('non-direct link kinds are never a VideoSource', () {

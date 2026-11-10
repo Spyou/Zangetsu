@@ -666,6 +666,25 @@ class StremioManager extends ChangeNotifier {
     });
   }
 
+  void rememberSubtitleStream(
+    StremioRef ref,
+    String url,
+    StremioStream stream,
+  ) {
+    final key = 'subtitle-stream|${ref.encode()}';
+    final tracks = _cacheEntry(key)?.value as Map<String, StremioStream>? ?? {};
+    tracks[url] = stream;
+    _store(key, tracks, const Duration(hours: 2));
+  }
+
+  StremioStream subtitleStream(StremioRef ref, String url) {
+    final tracks =
+        _cacheEntry('subtitle-stream|${ref.encode()}')?.value
+            as Map<String, StremioStream>?;
+    return tracks?[url] ??
+        StremioStream(kind: StremioStreamKind.direct, url: url);
+  }
+
   Future<List<StremioSubtitle>> subtitles(
     String id, {
     required String type,

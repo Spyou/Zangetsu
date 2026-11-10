@@ -652,6 +652,76 @@ void main() {
     expect(episodes[2].id, 'tt0944947:1:2');
   });
 
+  test(
+    'prefetched MPV links are consumed only for the exact episode and torrent mode',
+    () async {
+      final server = _Server();
+      final manager = StremioManager(
+        client: StremioClient(httpClient: MockClient(server.handle)),
+        secrets: secrets,
+        streamsTtl: Duration.zero,
+      );
+      final installed = await manager.install('https://addon.example/addon');
+      final provider = StremioProvider(manager);
+      final ref = StremioRef(
+        installationId: installed.id,
+        type: 'series',
+        itemId: 'tt0944947',
+        videoId: 'tt0944947:1:2',
+      );
+      await provider.prefetchVideoSources(ref.encode(), allowTorrent: true);
+      server.requests.clear();
+      final warmed = await provider.getVideoSources(
+        ref.encode(),
+        fast: true,
+        allowTorrent: true,
+      );
+      expect(warmed.any((s) => s.torrentFileIndex == 0), isTrue);
+      expect(
+        server.requests.where((u) => u.path.contains('/stream/')),
+        isEmpty,
+      );
+      await provider.prefetchVideoSources(ref.encode(), allowTorrent: true);
+      server.requests.clear();
+      await provider.getVideoSources(
+        ref.withVideo('tt0944947:1:3').encode(),
+        fast: true,
+        allowTorrent: true,
+      );
+      expect(
+        server.requests.any((u) => u.path.contains('tt0944947%3A1%3A3')),
+        isTrue,
+      );
+      server.requests.clear();
+      final direct = await provider.getVideoSources(ref.encode(), fast: true);
+      expect(direct.every((s) => s.torrentFileIndex == null), isTrue);
+      expect(
+        server.requests.where((u) => u.path.contains('/stream/')),
+        isNotEmpty,
+      );
+    },
+  );
+
+  test('changing an addon invalidates the prefetched links', () async {
+    final server = _Server();
+    final (manager, provider, installed) = await setup(server: server);
+    final ref = StremioRef(
+      installationId: installed.id,
+      type: 'movie',
+      itemId: 'tt0372784',
+    );
+    await provider.prefetchVideoSources(ref.encode(), allowTorrent: true);
+    await manager.setEnabled(installed.id, false);
+    expect(
+      await provider.getVideoSources(
+        ref.encode(),
+        fast: true,
+        allowTorrent: true,
+      ),
+      isEmpty,
+    );
+  });
+
   test('sources keep exact headers, dedupe and skip torrents', () async {
     final server = _Server();
     final manager = makeManager(server);

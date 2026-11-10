@@ -34,6 +34,9 @@ class Subtitle extends Equatable {
   final String lang;
   final String? label;
 
+  @JsonKey(includeIfNull: false)
+  final String? providerName;
+
   /// `'vtt'` or `'srt'`. Free-form so a source can pass through anything
   /// the player accepts.
   final String? format;
@@ -46,6 +49,7 @@ class Subtitle extends Equatable {
     required this.lang,
     this.label,
     this.format,
+    this.providerName,
     this.isDefault = false,
   });
 
@@ -53,8 +57,19 @@ class Subtitle extends Equatable {
       _$SubtitleFromJson(json);
   Map<String, dynamic> toJson() => _$SubtitleToJson(this);
 
+  String get displayLabel => providerName?.trim().isNotEmpty == true
+      ? '${label ?? lang} · $providerName'
+      : label ?? lang;
+
   @override
-  List<Object?> get props => [url, lang, label, format, isDefault];
+  List<Object?> get props => [
+    url,
+    lang,
+    label,
+    format,
+    isDefault,
+    providerName,
+  ];
 }
 
 /// A single playable stream for an episode. The video-native analogue of
@@ -139,6 +154,23 @@ class VideoSource extends Equatable {
     this.drmKid,
     this.drmKey,
   });
+
+  VideoSource withSubtitles(List<Subtitle> tracks) => VideoSource(
+    url: url,
+    quality: quality,
+    label: label,
+    container: container,
+    headers: headers,
+    kind: kind,
+    audioLang: audioLang,
+    subtitles: tracks,
+    subtitleSkewSeconds: subtitleSkewSeconds,
+    subtitleSkewAfterSeconds: subtitleSkewAfterSeconds,
+    proxyUrl: proxyUrl,
+    torrentFileIndex: torrentFileIndex,
+    drmKid: drmKid,
+    drmKey: drmKey,
+  );
 
   factory VideoSource.fromJson(Map<String, dynamic> json) =>
       _$VideoSourceFromJson(json);
