@@ -151,13 +151,103 @@ void main() {
   }
 
   Future<void> addUrl(WidgetTester tester, String url) async {
-    await tester.tap(find.text('Add addon'));
+    await tester.ensureVisible(find.byType(TextField));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), url);
-    await tester.tap(find.text('Install'));
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
+    await tester.ensureVisible(find.text('Install Addon'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Install Addon'));
+    tester.testTextInput.hide();
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pump();
+    await tester.pumpAndSettle();
   }
+
+  testWidgets('shows overview and disables install for an empty URL', (
+    tester,
+  ) async {
+    await pump(tester);
+    expect(find.text('Stremio Addons'), findsOneWidget);
+    expect(find.text('Overview'), findsOneWidget);
+    expect(find.text('Installed Addons'), findsOneWidget);
+    expect(
+      tester
+          .widget<FilledButton>(
+            find.widgetWithText(FilledButton, 'Install Addon'),
+          )
+          .onPressed,
+      isNull,
+    );
+    await tester.enterText(find.byType(TextField), '   ');
+    await tester.pump();
+    expect(
+      tester
+          .widget<FilledButton>(
+            find.widgetWithText(FilledButton, 'Install Addon'),
+          )
+          .onPressed,
+      isNull,
+    );
+  });
+
+  testWidgets('rounded text-only tabs preserve addon filtering', (
+    tester,
+  ) async {
+    manager._items.add(_installation(streamOnly: true));
+    await pump(tester);
+    final allTab = tester.widget<ChoiceChip>(
+      find.widgetWithText(ChoiceChip, 'All'),
+    );
+    expect(allTab.showCheckmark, isFalse);
+    expect(allTab.shape, isA<StadiumBorder>());
+    expect(allTab.selected, isTrue);
+
+    final catalogues = find.widgetWithText(ChoiceChip, 'Catalogues');
+    await tester.ensureVisible(catalogues);
+    await tester.pumpAndSettle();
+    await tester.tap(catalogues);
+    await tester.pumpAndSettle();
+    expect(find.text('Streams Only'), findsNothing);
+    expect(tester.widget<ChoiceChip>(catalogues).selected, isTrue);
+    expect(manager.installations, hasLength(1));
+
+    final streams = find.widgetWithText(ChoiceChip, 'Streams');
+    await tester.ensureVisible(streams);
+    await tester.pumpAndSettle();
+    await tester.tap(streams);
+    await tester.pumpAndSettle();
+    expect(find.text('Streams Only'), findsOneWidget);
+    expect(tester.widget<ChoiceChip>(streams).selected, isTrue);
+  });
+
+  testWidgets('cards and actions fit a narrow phone with larger text', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    manager._items.add(_installation());
+    await tester.pumpWidget(
+      MaterialApp(
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(
+            context,
+          ).copyWith(textScaler: TextScaler.linear(1.3)),
+          child: child!,
+        ),
+        home: const StremioSourcesScreen(),
+      ),
+    );
+    await tester.ensureVisible(find.byTooltip('Remove'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.text('Version 1.0.0'), findsOneWidget);
+    await tester.tap(find.byTooltip('Update URL'));
+    await tester.pumpAndSettle();
+    expect(find.text('Update Test Addon'), findsOneWidget);
+  });
 
   testWidgets('installs, enables, configures and removes an addon', (
     tester,
@@ -170,10 +260,14 @@ void main() {
     expect(find.text('1 catalogue · streams · metadata · subtitles'), findsOne);
     final installation = manager.installations.single;
 
+    await tester.ensureVisible(find.byType(Switch));
+    await tester.pumpAndSettle();
     await tester.tap(find.byType(Switch));
     await tester.pump(const Duration(milliseconds: 300));
     expect(manager.byId(installation.id)!.enabled, isFalse);
 
+    await tester.ensureVisible(find.byTooltip('Update URL'));
+    await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Update URL'));
     await tester.pump(const Duration(milliseconds: 300));
     await tester.enterText(find.byType(TextField).last, 'https://b.example');
@@ -181,6 +275,8 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
     expect(manager.byId(installation.id)!.revision, 2);
 
+    await tester.ensureVisible(find.byTooltip('Remove'));
+    await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Remove'));
     await tester.pump(const Duration(milliseconds: 300));
     await tester.tap(find.widgetWithText(FilledButton, 'Remove'));
@@ -194,10 +290,13 @@ void main() {
   ) async {
     await pump(tester);
     await addUrl(tester, 'https://addon.example');
+    await tester.ensureVisible(find.text('Home rows'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Home rows'));
     await tester.pumpAndSettle();
     final row = find.widgetWithText(SwitchListTile, 'Top · Movies');
     await tester.ensureVisible(row);
+    await tester.pumpAndSettle();
     await tester.tap(row);
     await tester.pumpAndSettle();
     expect(
