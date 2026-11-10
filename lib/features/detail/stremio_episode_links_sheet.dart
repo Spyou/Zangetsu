@@ -302,7 +302,6 @@ class _StremioLinksSheetState extends State<_StremioLinksSheet> {
                 children: [
                   _FilterChip(
                     label: 'All',
-                    count: playable.length,
                     selected: tab == 0,
                     onTap: () => setState(() => _tab = 0),
                   ),
@@ -313,9 +312,6 @@ class _StremioLinksSheetState extends State<_StremioLinksSheet> {
                         size: 16,
                       ),
                       label: _groups[i].installation.name,
-                      count: _playable(_groups[i]).length,
-                      pending:
-                          _groups[i].state == StremioLinkGroupState.pending,
                       selected: tab == i + 1,
                       onTap: () => setState(() => _tab = i + 1),
                     ),
@@ -344,7 +340,7 @@ class _StremioLinksSheetState extends State<_StremioLinksSheet> {
                       return const Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         mainAxisSize: MainAxisSize.min,
-                        children: [_PlaceholderBar(), _PlaceholderBar()],
+                        children: [_SkeletonCard(), _SkeletonCard()],
                       );
                     case _ErrorRow(:final group):
                       return Container(
@@ -514,16 +510,12 @@ class _FilterChip extends StatelessWidget {
     required this.selected,
     required this.onTap,
     this.icon,
-    this.count,
-    this.pending = false,
   });
 
   final Widget? icon;
   final String label;
   final bool selected;
   final VoidCallback onTap;
-  final int? count;
-  final bool pending;
 
   @override
   Widget build(BuildContext context) {
@@ -556,23 +548,6 @@ class _FilterChip extends StatelessWidget {
                 ),
                 softWrap: false,
               ),
-              if (pending) ...[
-                const SizedBox(width: 5),
-                const SizedBox(
-                  width: 11,
-                  height: 11,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-              ] else if (count != null) ...[
-                const SizedBox(width: 5),
-                Text(
-                  '$count',
-                  style: AppText.caption.copyWith(
-                    fontSize: 11,
-                    color: foreground.withValues(alpha: 0.75),
-                  ),
-                ),
-              ],
             ],
           ),
         ),
@@ -691,12 +666,8 @@ class _SectionHeader extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
             ),
           ),
-          if (group.state == StremioLinkGroupState.pending)
-            const SizedBox(
-              width: 14,
-              height: 14,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            )
+          if (group.state == StremioLinkGroupState.pending && count == 0)
+            const SizedBox.shrink()
           else if (group.state == StremioLinkGroupState.error ||
               group.state == StremioLinkGroupState.stale)
             // With no choices the error row below carries the message;
@@ -719,20 +690,118 @@ class _SectionHeader extends StatelessWidget {
   }
 }
 
-/// Static loading bar. Deliberately not animated: an animation ticker would
-/// keep widget tests from settling.
-class _PlaceholderBar extends StatelessWidget {
-  const _PlaceholderBar();
+/// Card-shaped loading skeleton: headline-width and meta-width bars echoing
+/// a real link card's shape, with a shine sweep while it is visible.
+class _SkeletonCard extends StatelessWidget {
+  const _SkeletonCard();
 
   @override
   Widget build(BuildContext context) {
+    final bar = AppColors.textTertiary.withValues(alpha: 0.22);
+    Widget line(double width, double height) => Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(6),
+        color: bar,
+      ),
+    );
     return Container(
-      height: 64,
       margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(14),
         color: AppColors.surface2,
       ),
+      child: _Shine(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            line(150, 14),
+            const SizedBox(height: 8),
+            line(double.infinity, 11),
+            const SizedBox(height: 6),
+            line(200, 11),
+            const SizedBox(height: 6),
+            line(110, 11),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A shine band sweeping left to right across [child]. Runs a few sweeps
+/// then parks: a looping ticker would never settle and would hang widget
+/// tests on pumpAndSettle. Disposal (rows resolving) stops it sooner.
+class _Shine extends StatefulWidget {
+  const _Shine({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_Shine> createState() => _ShineState();
+}
+
+class _ShineState extends State<_Shine>
+    with SingleTickerProviderStateMixin {
+  static const _maxSweeps = 4;
+  late final AnimationController _controller = AnimationController(
+    duration: const Duration(milliseconds: 1000),
+    vsync: this,
+  );
+  var _sweeps = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.addStatusListener(_onStatus);
+    _controller.forward();
+  }
+
+  void _onStatus(AnimationStatus status) {
+    if (status != AnimationStatus.completed || !mounted) return;
+    if (++_sweeps >= _maxSweeps) {
+      _controller.stop();
+      return;
+    }
+    _controller.forward(from: 0);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) => ShaderMask(
+        blendMode: BlendMode.srcATop,
+        shaderCallback: (rect) {
+          // A soft white band sliding across a window wider than the card
+          // so it enters and exits cleanly.
+          final slide =
+              -rect.width + _controller.value * rect.width * 3;
+          return LinearGradient(
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+            colors: [
+              Colors.white.withValues(alpha: 0),
+              Colors.white.withValues(alpha: 0.35),
+              Colors.white.withValues(alpha: 0),
+            ],
+            stops: const [0.0, 0.5, 1.0],
+          ).createShader(
+            Rect.fromLTWH(slide, 0, rect.width, rect.height),
+          );
+        },
+        child: child,
+      ),
+      child: widget.child,
     );
   }
 }
