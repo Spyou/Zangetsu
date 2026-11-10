@@ -2,7 +2,6 @@ import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 
 import '../../core/di/injector.dart';
-import '../../core/stremio/stremio_manager.dart';
 import '../../core/mode/content_mode.dart';
 import '../../core/mode/content_mode_cubit.dart';
 import '../../core/models/home_section.dart';
@@ -95,7 +94,6 @@ class SourceCatalogueHomeContentState
   bool _failed = false;
   bool _openingItem = false;
   int _generation = 0;
-  StremioManager? _stremioManager;
 
   ContentMode _modeFor(SourceCatalogueHomeContent widget) =>
       widget.mode ??
@@ -106,9 +104,6 @@ class SourceCatalogueHomeContentState
   @override
   void initState() {
     super.initState();
-    if (sl.isRegistered<StremioManager>()) {
-      _stremioManager = sl<StremioManager>()..addListener(_onStremioChanged);
-    }
     widget.controller?._attach(_controllerOwner, refresh);
     _mode = _modeFor(widget);
     _sources = _sourcesForMode();
@@ -141,12 +136,6 @@ class SourceCatalogueHomeContentState
     _loading = false;
     _failed = false;
     if (_sourceId != null) _load(reset: true);
-    _notifySections(const []);
-  }
-
-  void _onStremioChanged() {
-    if (!mounted || _sourceId != 'stremio') return;
-    _load(reset: true);
     _notifySections(const []);
   }
 
@@ -262,7 +251,6 @@ class SourceCatalogueHomeContentState
   @override
   void dispose() {
     widget.controller?._detach(_controllerOwner);
-    _stremioManager?.removeListener(_onStremioChanged);
     super.dispose();
   }
 

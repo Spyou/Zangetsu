@@ -12,9 +12,6 @@ import 'package:watch_app/features/player/watch_page_info.dart';
 
 PlayerWatchPage _page({
   bool isMovie = false,
-  bool loading = false,
-  String? loadingStatus,
-  String? serverName,
   Stream<bool>? bufferingStream,
   String? description = 'A great episode.',
   String? nextTitle = 'The Next One',
@@ -39,9 +36,6 @@ PlayerWatchPage _page({
 }) {
   return PlayerWatchPage(
     isMovie: isMovie,
-    loading: loading,
-    loadingStatus: loadingStatus,
-    serverName: serverName,
     video: const ColoredBox(color: Colors.black),
     header: WatchPageHeader(
       title: 'The Fall',
@@ -107,31 +101,6 @@ void main() {
       current: true,
     ),
   ];
-
-  testWidgets('long multiline server names stay compact and tappable', (
-    tester,
-  ) async {
-    var taps = 0;
-    await _pump(
-      tester,
-      _page(
-        serverName: 'Addon 1080p ${'release ' * 40}\nLong release description',
-        onServer: () => taps++,
-      ),
-    );
-    final label = find.textContaining('Server · Addon');
-    await tester.ensureVisible(label);
-    expect(
-      tester.getSize(label).width,
-      lessThanOrEqualTo(
-        tester.view.physicalSize.width / tester.view.devicePixelRatio * .58,
-      ),
-    );
-    await tester.tap(label);
-    expect(taps, 1);
-    expect(find.textContaining('Long release description'), findsNothing);
-    expect(tester.takeException(), isNull);
-  });
 
   testWidgets('movie keeps a playable row under a Movie heading', (
     tester,
@@ -490,21 +459,6 @@ void main() {
     await tester.tap(find.text('Auto-play'));
     await tester.pumpAndSettle();
     expect(reported, isFalse);
-  });
-
-  testWidgets('torrent loading stays in the miniplayer with its status', (
-    tester,
-  ) async {
-    await _pump(tester, _page(loading: true, loadingStatus: 'Finding peers…'));
-    await tester.pump();
-    expect(find.text('Finding peers…'), findsOneWidget);
-    expect(find.byType(CircularProgressIndicator), findsOneWidget);
-    expect(find.text('The Fall'), findsOneWidget);
-    expect(find.byKey(const ValueKey('watch-play')), findsOneWidget);
-    expect(tester.takeException(), isNull);
-    await _pump(tester, _page());
-    await tester.pump();
-    expect(find.text('Finding peers…'), findsNothing);
   });
 
   testWidgets('loading shows a spinner inside the mini player', (tester) async {

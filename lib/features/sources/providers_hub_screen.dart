@@ -12,8 +12,6 @@ import '../../core/models/provider_info.dart';
 import '../../core/provider/cloudstream_provider.dart';
 import '../../core/provider/provider_manager.dart';
 import '../../core/provider/provider_registry.dart';
-import '../../core/stremio/stremio_manager.dart';
-import '../../core/stremio/stremio_ref.dart';
 import '../../core/provider/provider_repo_registry.dart';
 import '../../core/state/active_source_cubit.dart';
 import '../../core/theme/app_colors.dart';
@@ -24,7 +22,6 @@ import '../../core/ui/source_switcher.dart';
 import 'aniyomi_sources_screen.dart';
 import 'bloc/sources_state.dart';
 import 'cloudstream_sources_screen.dart';
-import 'stremio_sources_screen.dart';
 import 'lnreader_sources_screen.dart';
 import 'mangayomi_sources_screen.dart';
 import 'mihon_sources_screen.dart';
@@ -91,7 +88,6 @@ class _HubPhoneView extends StatelessWidget {
         sl<AniyomiManager>(),
         sl<MihonManager>(),
         if (mangayomi != null) mangayomi,
-        if (sl.isRegistered<StremioManager>()) sl<StremioManager>(),
       ]),
       builder: (context, _) => _body(context, mangayomi),
     );
@@ -220,20 +216,6 @@ class _HubPhoneView extends StatelessWidget {
             updateCount: zUpdates,
             onTap: () => open(const ZangetsuSourcesScreen()),
           ),
-          if (sl.isRegistered<StremioManager>()) ...[
-            const SizedBox(height: 12),
-            _EcoRow(
-              icon: Icons.movie_filter_outlined,
-              title: 'Stremio',
-              desc: 'Addon catalogues, links and subtitles',
-              info:
-                  '${sl<StremioManager>().installations.length} addon'
-                  '${sl<StremioManager>().installations.length == 1 ? '' : 's'}',
-              active: activeId == stremioSourceId,
-              updateCount: 0,
-              onTap: () => open(const StremioSourcesScreen()),
-            ),
-          ],
           if (showCs) ...[
             const SizedBox(height: 12),
             _EcoRow(
@@ -583,7 +565,6 @@ class _HubTvViewState extends State<_HubTvView> {
         sl<AniyomiManager>(),
         sl<MihonManager>(),
         if (mangayomi != null) mangayomi,
-        if (sl.isRegistered<StremioManager>()) sl<StremioManager>(),
       ]),
       builder: (context, _) => _body(context, mangayomi),
     );
@@ -702,15 +683,6 @@ class _HubTvViewState extends State<_HubTvView> {
                       tint: AppColors.accent,
                       onTap: () => _open(const ZangetsuSourcesScreen()),
                     ),
-                    if (sl.isRegistered<StremioManager>())
-                      row(
-                        icon: Icons.movie_filter_outlined,
-                        title: 'Stremio',
-                        subtitle:
-                            '${sl<StremioManager>().installations.length} addons',
-                        tint: const Color(0xFFA78BFA),
-                        onTap: () => _open(const StremioSourcesScreen()),
-                      ),
                     if (showCs)
                       row(
                         icon: Icons.extension_outlined,

@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:watch_app/core/app_mode.dart';
-import 'package:watch_app/core/stremio/stremio_manager.dart';
 import 'package:watch_app/core/di/injector.dart' show sl;
 import 'package:watch_app/core/models/home_section.dart';
 import 'package:watch_app/core/models/media_item.dart';
@@ -32,8 +31,6 @@ class _StubSourceRepository implements SourceRepository {
   @override
   final List<({String id, String name})> loadedSources;
 
-  bool empty = false;
-
   final homeCalls = <({String? sourceId, String category})>[];
 
   @override
@@ -45,7 +42,6 @@ class _StubSourceRepository implements SourceRepository {
     String? sourceId,
   }) async {
     homeCalls.add((sourceId: sourceId, category: category));
-    if (empty) return [];
     return [
       HomeSection(
         title: '$sourceId catalogue',
@@ -77,10 +73,6 @@ class _StubSourceRepository implements SourceRepository {
   bool hasSource(String id) => loadedSources.any((s) => s.id == id);
 }
 
-class _NotifyingStremioManager extends StremioManager {
-  void changed() => notifyListeners();
-}
-
 class _TestCubit extends Cubit<int> {
   _TestCubit() : super(0);
 }
@@ -91,69 +83,6 @@ void main() {
     sl.registerSingleton<AppMode>(const AppMode(isTv: false));
   });
   tearDown(() => sl.reset());
-
-  testWidgets('same-named Stremio rows all render in catalogue order', (
-    tester,
-  ) async {
-    final gate = Completer<List<HomeSection>>();
-    final repository = _GatedSourceRepository(const [
-      (id: 'stremio', name: 'Stremio'),
-    ], gate);
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: SingleChildScrollView(
-            child: SourceCatalogueHomeContent(
-              repository: repository,
-              initialSourceId: 'stremio',
-              showSourcePicker: false,
-              sectionBuilder: (section) =>
-                  Text('${section.title}: ${section.items.single.id}'),
-            ),
-          ),
-        ),
-      ),
-    );
-    gate.complete([
-      for (final addon in ['first', 'second'])
-        HomeSection(
-          title: 'Popular',
-          more: const BrowseMore(sourceId: 'stremio', kind: 'stremio_catalog'),
-          items: [
-            MediaItem(
-              id: addon,
-              title: addon,
-              url: '/$addon',
-              type: ProviderType.movie,
-              sourceId: 'stremio',
-            ),
-          ],
-        ),
-    ]);
-    await tester.pumpAndSettle();
-
-    expect(find.text('Popular: first'), findsOneWidget);
-    expect(find.text('Popular: second'), findsOneWidget);
-    expect(
-      tester.getTopLeft(find.text('Popular: first')).dy,
-      lessThan(tester.getTopLeft(find.text('Popular: second')).dy),
-    );
-    expect(tester.takeException(), isNull);
-  });
-
-  test(
-    'Stremio catalogue retains addon ownership without metadata matching',
-    () async {
-      const item = MediaItem(
-        id: 'series:imdb:tt123',
-        title: 'Series',
-        url: 'stremio://ref?v=1&i=cinemeta&t=series&m=tt123',
-        type: ProviderType.movie,
-        sourceId: 'stremio',
-      );
-      expect(await sourceCatalogueTargetFor(item), same(item));
-    },
-  );
 
   test(
     'source catalogue opens matched metadata identity when available',
@@ -181,68 +110,6 @@ void main() {
         await sourceCatalogueTargetFor(source, lookup: (_) async => null),
         source,
       );
-    },
-  );
-
-  testWidgets('Stremio addon changes do not reload another provider', (
-    tester,
-  ) async {
-    final manager = _NotifyingStremioManager();
-    sl.registerSingleton<StremioManager>(manager);
-    addTearDown(manager.dispose);
-    final repository = _StubSourceRepository(const [
-      (id: 'source-a', name: 'Source A'),
-    ]);
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: SingleChildScrollView(
-            child: SourceCatalogueHomeContent(
-              repository: repository,
-              initialSourceId: 'source-a',
-            ),
-          ),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    manager.changed();
-    await tester.pumpAndSettle();
-    expect(repository.homeCalls, hasLength(1));
-    expect(find.text('source-a catalogue'), findsOneWidget);
-  });
-
-  testWidgets(
-    'Stremio addon changes remove old rows and update the hero immediately',
-    (tester) async {
-      final manager = _NotifyingStremioManager();
-      sl.registerSingleton<StremioManager>(manager);
-      addTearDown(manager.dispose);
-      final repository = _StubSourceRepository(const [
-        (id: 'stremio', name: 'Stremio'),
-      ]);
-      final reported = <List<HomeSection>>[];
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: SingleChildScrollView(
-              child: SourceCatalogueHomeContent(
-                repository: repository,
-                initialSourceId: 'stremio',
-                onSectionsChanged: reported.add,
-              ),
-            ),
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-      expect(find.text('stremio catalogue'), findsOneWidget);
-      repository.empty = true;
-      manager.changed();
-      await tester.pumpAndSettle();
-      expect(repository.homeCalls, hasLength(2));
-      expect(find.text('stremio catalogue'), findsNothing);
-      expect(reported.last, isEmpty);
     },
   );
 

@@ -23,10 +23,6 @@ class MediaItem extends Equatable {
   /// home hero. Null outside Z Mode — every existing source keeps rendering
   /// its hero from [cover], exactly as before this field existed.
   final String? banner;
-
-  /// Addon title artwork; kept out of saved list and cloud payloads.
-  @JsonKey(includeFromJson: false, includeToJson: false)
-  final String? titleLogo;
   final String url;
   final ProviderType type;
   final String sourceId;
@@ -123,7 +119,6 @@ class MediaItem extends Equatable {
     this.cover,
     this.coverHeaders,
     this.banner,
-    this.titleLogo,
     required this.url,
     required this.type,
     required this.sourceId,
@@ -149,7 +144,6 @@ class MediaItem extends Equatable {
   Map<String, dynamic> toJson() => _$MediaItemToJson(this);
 
   MediaItem copyWith({
-    String? titleLogo,
     String? sourceId,
     int? subCount,
     int? dubCount,
@@ -166,7 +160,6 @@ class MediaItem extends Equatable {
     cover: cover,
     coverHeaders: coverHeaders,
     banner: banner,
-    titleLogo: titleLogo ?? this.titleLogo,
     url: url,
     type: type,
     sourceId: sourceId ?? this.sourceId,
@@ -200,7 +193,6 @@ class MediaItem extends Equatable {
     cover,
     coverHeaders,
     banner,
-    titleLogo,
     url,
     type,
     sourceId,

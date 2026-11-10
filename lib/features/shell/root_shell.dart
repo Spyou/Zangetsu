@@ -81,7 +81,7 @@ List<Widget> buildShellPages(
 /// [SearchScreen] recreates its bloc on scope change, so the tab follows
 /// catalogue picks with no extra plumbing.
 String? dockSearchFixedSourceId([ContentMode? mode]) {
-  if (!HomeCataloguePrefs.catalogueShown) return null;
+  if (!HomeCataloguePrefs.sourceSelected) return null;
   final m =
       mode ??
       (sl.isRegistered<ContentModeCubit>()
@@ -431,23 +431,16 @@ class _RootShellState extends State<RootShell>
               },
             ),
           ),
-          bottomNavigationBar: ListenableBuilder(
-            listenable: Listenable.merge([
-              dockHiddenBySection,
-              HomeCataloguePrefs.revision,
-            ]),
-            builder: (context, _) {
+          bottomNavigationBar: ValueListenableBuilder<bool>(
+            valueListenable: dockHiddenBySection,
+            builder: (context, sectionOpen, _) {
               // Slide the dock away only when a Settings section is open AND the
               // Profile tab is showing — every other tab keeps its dock.
-              final hide = dockHiddenBySection.value && _tab == DockTab.profile;
-              final modesEnabled =
-                  ZModePrefs.enabled &&
-                  !(HomeCataloguePrefs.stremioSelected &&
-                      sl<ContentModeCubit>().state == ContentMode.anime);
+              final hide = sectionOpen && _tab == DockTab.profile;
               return Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  if (modesEnabled && _navPrefs.style == NavBarStyle.dock)
+                  if (ZModePrefs.enabled && _navPrefs.style == NavBarStyle.dock)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 8),
                       child: BlocBuilder<ContentModeCubit, ContentMode>(
@@ -527,7 +520,7 @@ class _RootShellState extends State<RootShell>
                                 glassQuality: _navPrefs.glassQuality,
                                 glassBlurEnabled: _navPrefs.glassBlurEnabled,
                                 onSelected: _onTabSelected,
-                                modesEnabled: modesEnabled,
+                                modesEnabled: ZModePrefs.enabled,
                                 onModeSelected: (mode, kind) async {
                                   await ZModePrefs.setStreamKind(kind);
                                   await sl<ContentModeCubit>().setMode(mode);
@@ -542,7 +535,7 @@ class _RootShellState extends State<RootShell>
                               tabs: tabs,
                               active: _tab,
                               onSelected: _onTabSelected,
-                              centre: modesEnabled
+                              centre: ZModePrefs.enabled
                                   ? BlocBuilder<ContentModeCubit, ContentMode>(
                                       bloc: sl<ContentModeCubit>(),
                                       builder: (_, mode) => ModeFab(
@@ -693,7 +686,9 @@ class _LiquidNavDock extends StatelessWidget {
                   tabs: glassTabs,
                   selectedIndex: tabs.indexOf(active).clamp(0, tabs.length - 1),
                   collapsed: collapsed,
-                  modesEnabled: modesEnabled,
+                  alignment: modesEnabled
+                      ? Alignment.centerRight
+                      : Alignment.center,
                   quality: glassQuality,
                   settings: glass,
                   onTabSelected: (index) => onSelected(tabs[index]),
@@ -773,7 +768,7 @@ class _LiquidGlassTabBar extends StatelessWidget {
     required this.tabs,
     required this.selectedIndex,
     required this.collapsed,
-    required this.modesEnabled,
+    required this.alignment,
     required this.quality,
     required this.settings,
     required this.onTabSelected,
@@ -782,7 +777,7 @@ class _LiquidGlassTabBar extends StatelessWidget {
   final List<GlassTab> tabs;
   final int selectedIndex;
   final bool collapsed;
-  final bool modesEnabled;
+  final Alignment alignment;
   final GlassQuality quality;
   final LiquidGlassSettings settings;
   final ValueChanged<int> onTabSelected;
@@ -794,19 +789,17 @@ class _LiquidGlassTabBar extends StatelessWidget {
         constraints.maxWidth,
         tabs.length * 52.0 + 8,
       );
-      // Keep the missing mode button's 56px plus 8px gap out of the open bar.
-      final expandedWidth = modesEnabled
-          ? constraints.maxWidth
-          : math.max(compactWidth, constraints.maxWidth - 64);
       return TweenAnimationBuilder<double>(
         tween: Tween(end: collapsed ? 1 : 0),
         duration: const Duration(milliseconds: 180),
         curve: Curves.easeOutCubic,
         builder: (context, progress, _) {
           return Align(
-            alignment: modesEnabled ? Alignment.centerRight : Alignment.center,
+            alignment: alignment,
             child: SizedBox(
-              width: expandedWidth + (compactWidth - expandedWidth) * progress,
+              width:
+                  constraints.maxWidth +
+                  (compactWidth - constraints.maxWidth) * progress,
               child: GlassTabBar.bottom(
                 tabs: tabs,
                 selectedIndex: selectedIndex,

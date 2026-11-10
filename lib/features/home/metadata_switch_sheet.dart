@@ -5,7 +5,6 @@ import '../../core/mode/content_mode.dart';
 import '../../core/mode/content_mode_cubit.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
-import 'home_catalogue_prefs.dart';
 import '../../core/tracker/tracker_hub.dart';
 import '../../core/zmode/metadata_provider_prefs.dart';
 import '../../core/zmode/zmode_prefs.dart';
@@ -13,7 +12,7 @@ import '../../l10n/l10n.dart';
 
 enum _MetadataSheetAction { sourceCatalogue }
 
-enum HomeCatalogueSelection { metadata, source, stremio }
+enum HomeCatalogueSelection { metadata, source }
 
 /// Which metadata setting matches where the user is standing. The sheet shows
 /// both either way; this only decides which one it puts first.
@@ -62,15 +61,9 @@ typedef _Brand = ({
 /// A no-op when the preference isn't registered, same guard Settings uses.
 Future<HomeCatalogueSelection?> showMetadataSwitchSheet(
   BuildContext context, {
-  bool? sourceCatalogueSelected,
-  bool? stremioCatalogueSelected,
+  bool sourceCatalogueSelected = false,
 }) async {
   if (!sl.isRegistered<MetadataProviderPrefs>()) return null;
-  final stremioSelected =
-      stremioCatalogueSelected ?? HomeCataloguePrefs.stremioSelected;
-  final sourceSelected =
-      sourceCatalogueSelected ?? HomeCataloguePrefs.sourceSelected;
-  final sourceCatalogueActive = sourceSelected && !stremioSelected;
   final prefs = sl<MetadataProviderPrefs>();
   final l10n = context.l10n;
   // Both sections, always. Hiding the one you are not standing in made the
@@ -85,7 +78,7 @@ Future<HomeCatalogueSelection?> showMetadataSwitchSheet(
     for (final p in AnimeProvider.values)
       _ProviderRow(
         brand: _animeBrand(p),
-        selected: !sourceSelected && !stremioSelected && prefs.anime == p,
+        selected: !sourceCatalogueSelected && prefs.anime == p,
         // Only worth saying while it is actually true.
         warning: p == AnimeProvider.mal && malListNeedsLogin()
             ? l10n.malLoginForLists
@@ -99,7 +92,7 @@ Future<HomeCatalogueSelection?> showMetadataSwitchSheet(
     for (final p in VideoProvider.values)
       _ProviderRow(
         brand: _videoBrand(p),
-        selected: !sourceSelected && !stremioSelected && prefs.video == p,
+        selected: !sourceCatalogueSelected && prefs.video == p,
         onTap: () => Navigator.of(sheet).pop(p),
       ),
   ];
@@ -155,7 +148,7 @@ Future<HomeCatalogueSelection?> showMetadataSwitchSheet(
                   title: const Text('Source Catalogue'),
                   subtitle: const Text('Show installed source lists in Home'),
                   trailing: Switch(
-                    value: sourceCatalogueActive,
+                    value: sourceCatalogueSelected,
                     activeThumbColor: AppColors.accent,
                     onChanged: (selected) => Navigator.of(sheet).pop(
                       selected
@@ -164,46 +157,9 @@ Future<HomeCatalogueSelection?> showMetadataSwitchSheet(
                     ),
                   ),
                   onTap: () => Navigator.of(sheet).pop(
-                    sourceCatalogueActive
+                    sourceCatalogueSelected
                         ? HomeCatalogueSelection.metadata
                         : _MetadataSheetAction.sourceCatalogue,
-                  ),
-                ),
-                ListTile(
-                  // Match the provider rows, with an initials fallback.
-                  leading: ClipRRect(
-                    borderRadius: BorderRadius.circular(9),
-                    child: SizedBox(
-                      width: 40,
-                      height: 40,
-                      child: Image.asset(
-                        _stremioBrand().asset,
-                        fit: BoxFit.cover,
-                        filterQuality: FilterQuality.medium,
-                        errorBuilder: (_, _, _) =>
-                            _InitialsMark(brand: _stremioBrand()),
-                      ),
-                    ),
-                  ),
-                  title: const Text('Stremio'),
-                  subtitle: Text(
-                    stremioSelected
-                        ? 'Showing installed addon catalogues'
-                        : 'Browse with your installed addons',
-                  ),
-                  trailing: Switch(
-                    value: stremioSelected,
-                    activeThumbColor: AppColors.accent,
-                    onChanged: (selected) => Navigator.of(sheet).pop(
-                      selected
-                          ? HomeCatalogueSelection.stremio
-                          : HomeCatalogueSelection.metadata,
-                    ),
-                  ),
-                  onTap: () => Navigator.of(sheet).pop(
-                    stremioSelected
-                        ? HomeCatalogueSelection.metadata
-                        : HomeCatalogueSelection.stremio,
                   ),
                 ),
                 const SizedBox(height: 10),
@@ -221,9 +177,6 @@ Future<HomeCatalogueSelection?> showMetadataSwitchSheet(
   }
   if (picked == HomeCatalogueSelection.metadata) {
     return HomeCatalogueSelection.metadata;
-  }
-  if (picked == HomeCatalogueSelection.stremio) {
-    return HomeCatalogueSelection.stremio;
   }
   if (picked is VideoProvider) {
     await prefs.setVideo(picked);
@@ -290,14 +243,6 @@ _Brand _videoBrand(VideoProvider p) => p == VideoProvider.simkl
         name: 'TMDB',
         blurb: 'Full artwork, genres and filters',
       );
-
-_Brand _stremioBrand() => (
-  asset: 'assets/icon/providers/stremio.png',
-  mark: 'ST',
-  colour: const Color(0xFF7B5BF5),
-  name: 'Stremio',
-  blurb: 'Browse with your installed addons',
-);
 
 class _ProviderRow extends StatelessWidget {
   const _ProviderRow({

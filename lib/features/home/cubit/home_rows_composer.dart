@@ -3,11 +3,8 @@
 /// here is unit-testable and shared by phone, TV and the editor.
 library;
 
-import 'dart:math';
-
 import '../../../core/models/home_row.dart';
 import '../../../core/models/home_section.dart';
-import '../../../core/models/media_item.dart';
 import '../../../core/zmode/zmode_ids.dart';
 
 /// One parsed entry of a saved layout: a row id plus whether the user hid it.
@@ -95,7 +92,6 @@ List<HomeSection> providerRowSections(
   if (isTv || sections.length <= 1) return sections;
   final firstId = sections.first.more?.sourceId ?? '';
   final firstRepeatsAsRow =
-      firstId == 'stremio' ||
       firstId.startsWith('ani:') ||
       firstId.startsWith('mihon:') ||
       firstId == ZmodeIds.sourceId;
@@ -213,15 +209,4 @@ List<HomeRow> mergeHomeRows({
     }
   }
   return out;
-}
-
-/// Keep a stable spotlight drawn from all Stremio catalogues, without repeats.
-List<MediaItem> stremioHeroItems(List<HomeSection> sections) {
-  final seen = <String>{};
-  final items = [
-    for (final section in sections)
-      for (final item in section.items)
-        if (seen.add('${item.sourceId}:${item.id}')) item,
-  ]..shuffle(Random(0));
-  return items.take(6).toList(growable: false);
 }

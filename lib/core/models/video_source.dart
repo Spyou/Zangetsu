@@ -34,9 +34,6 @@ class Subtitle extends Equatable {
   final String lang;
   final String? label;
 
-  @JsonKey(includeIfNull: false)
-  final String? providerName;
-
   /// `'vtt'` or `'srt'`. Free-form so a source can pass through anything
   /// the player accepts.
   final String? format;
@@ -49,7 +46,6 @@ class Subtitle extends Equatable {
     required this.lang,
     this.label,
     this.format,
-    this.providerName,
     this.isDefault = false,
   });
 
@@ -57,19 +53,8 @@ class Subtitle extends Equatable {
       _$SubtitleFromJson(json);
   Map<String, dynamic> toJson() => _$SubtitleToJson(this);
 
-  String get displayLabel => providerName?.trim().isNotEmpty == true
-      ? '${label ?? lang} · $providerName'
-      : label ?? lang;
-
   @override
-  List<Object?> get props => [
-    url,
-    lang,
-    label,
-    format,
-    isDefault,
-    providerName,
-  ];
+  List<Object?> get props => [url, lang, label, format, isDefault];
 }
 
 /// A single playable stream for an episode. The video-native analogue of
@@ -120,16 +105,6 @@ class VideoSource extends Equatable {
   @JsonKey(includeFromJson: false, includeToJson: false)
   final String? proxyUrl;
 
-  /// Explicit torrent file choice for a magnet built from a Stremio link.
-  /// Runtime-only: never serialized, never inferred.
-  @JsonKey(includeFromJson: false, includeToJson: false)
-  final int? torrentFileIndex;
-
-  /// Stremio `behaviorHints.bingeGroup` carried from the played link.
-  /// Runtime-only: used to match the same release family on the next episode.
-  @JsonKey(includeFromJson: false, includeToJson: false)
-  final String? bingeGroup;
-
   /// ClearKey DRM key id + key (base64url, no padding — the exact JWK form
   /// ExoPlayer wants), set only for encrypted CENC/DASH sources (e.g. CNC/PlayzTV
   /// live channels). mpv can't decrypt DRM, so a source with these is routed to
@@ -140,8 +115,7 @@ class VideoSource extends Equatable {
   final String? drmKey;
 
   /// True when this is an encrypted source only ExoPlayer (not mpv) can play.
-  bool get isDrm =>
-      (drmKid?.isNotEmpty ?? false) && (drmKey?.isNotEmpty ?? false);
+  bool get isDrm => (drmKid?.isNotEmpty ?? false) && (drmKey?.isNotEmpty ?? false);
 
   const VideoSource({
     required this.url,
@@ -155,29 +129,9 @@ class VideoSource extends Equatable {
     this.subtitleSkewSeconds,
     this.subtitleSkewAfterSeconds,
     this.proxyUrl,
-    this.torrentFileIndex,
-    this.bingeGroup,
     this.drmKid,
     this.drmKey,
   });
-
-  VideoSource withSubtitles(List<Subtitle> tracks) => VideoSource(
-    url: url,
-    quality: quality,
-    label: label,
-    container: container,
-    headers: headers,
-    kind: kind,
-    audioLang: audioLang,
-    subtitles: tracks,
-    subtitleSkewSeconds: subtitleSkewSeconds,
-    subtitleSkewAfterSeconds: subtitleSkewAfterSeconds,
-    proxyUrl: proxyUrl,
-    torrentFileIndex: torrentFileIndex,
-    bingeGroup: bingeGroup,
-    drmKid: drmKid,
-    drmKey: drmKey,
-  );
 
   factory VideoSource.fromJson(Map<String, dynamic> json) =>
       _$VideoSourceFromJson(json);
@@ -193,8 +147,6 @@ class VideoSource extends Equatable {
     kind,
     audioLang,
     subtitles,
-    torrentFileIndex,
-    bingeGroup,
     subtitleSkewSeconds,
     subtitleSkewAfterSeconds,
   ];

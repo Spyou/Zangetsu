@@ -32,55 +32,29 @@ HomeSection _cs(String t) => HomeSection(
   more: const BrowseMore(sourceId: 'cs:Example', kind: 'cs_mainpage'),
 );
 
-TrackerListItem _entry(
-  String title, {
-  WatchStatus status = WatchStatus.watching,
-}) => TrackerListItem(
-  item: MediaItem(
-    id: title,
-    title: title,
-    cover: null,
-    url: '',
-    type: ProviderType.anime,
-    sourceId: '',
-    malId: 1,
-  ),
-  status: status,
-);
+TrackerListItem _entry(String title, {WatchStatus status = WatchStatus.watching}) =>
+    TrackerListItem(
+      item: MediaItem(
+        id: title,
+        title: title,
+        cover: null,
+        url: '',
+        type: ProviderType.anime,
+        sourceId: '',
+        malId: 1,
+      ),
+      status: status,
+    );
 
 void main() {
-  test('Stremio hero mixes catalogues, deduplicates and stays stable', () {
-    final sections = [
-      for (var row = 0; row < 3; row++)
-        HomeSection(
-          title: 'Row $row',
-          items: [
-            _item('shared'),
-            for (var i = 0; i < 30; i++) _item('$row:$i'),
-          ],
-        ),
-    ];
-    final selected = stremioHeroItems(sections);
-    expect(selected, hasLength(6));
-    expect(selected.map((i) => i.id).toSet(), hasLength(6));
-    expect(
-      selected.any((i) => i.id.startsWith('1:') || i.id.startsWith('2:')),
-      isTrue,
-    );
-    expect(stremioHeroItems(sections), selected);
-    expect(stremioHeroItems([]), isEmpty);
-    expect(
-      stremioHeroItems([
-        HomeSection(title: 'Only', items: [_item('a'), _item('a')]),
-      ]),
-      hasLength(1),
-    );
-  });
-
   group('layoutKeyFor', () {
     test('Z Mode layouts key by provider + browse kind', () {
       expect(
-        layoutKeyFor(sourceId: 'zm', zModeOn: true, browseKind: ZKind.anime),
+        layoutKeyFor(
+          sourceId: 'zm',
+          zModeOn: true,
+          browseKind: ZKind.anime,
+        ),
         'anilist::anime',
       );
       expect(
@@ -102,7 +76,11 @@ void main() {
         'mal::manga',
       );
       expect(
-        layoutKeyFor(sourceId: 'zm', zModeOn: true, browseKind: ZKind.movie),
+        layoutKeyFor(
+          sourceId: 'zm',
+          zModeOn: true,
+          browseKind: ZKind.movie,
+        ),
         'tmdb::movie',
       );
       expect(
@@ -123,48 +101,26 @@ void main() {
       );
       // Z Mode off wins even if a kind was passed by mistake.
       expect(
-        layoutKeyFor(
-          sourceId: 'cs:Example',
-          zModeOn: false,
-          browseKind: ZKind.anime,
-        ),
+        layoutKeyFor(sourceId: 'cs:Example', zModeOn: false, browseKind: ZKind.anime),
         'source:cs:Example',
       );
     });
   });
 
-  test('Stremio keeps movie and series rows below the banner', () {
-    final sections = ['Movies', 'Series']
-        .map(
-          (title) => HomeSection(
-            title: title,
-            items: [],
-            more: BrowseMore(sourceId: 'stremio', kind: 'stremio_catalog'),
-          ),
-        )
-        .toList();
-    expect(providerRowSections(sections, isTv: false), sections);
-  });
-
   group('providerRowSections — today\'s hero/row split, verbatim', () {
-    test(
-      'Z Mode keeps every section as a row (Trending repeats below the banner)',
-      () {
-        final sections = [_zm('Trending'), _zm('Popular'), _zm('Top rated')];
-        expect(providerRowSections(sections, isTv: false), sections);
-      },
-    );
+    test('Z Mode keeps every section as a row (Trending repeats below the banner)', () {
+      final sections = [_zm('Trending'), _zm('Popular'), _zm('Top rated')];
+      expect(providerRowSections(sections, isTv: false), sections);
+    });
 
-    test(
-      'the phone drops a non-repeating first section (CloudStream hero dup)',
-      () {
-        final sections = [_cs('Featured'), _cs('Latest'), _cs('Popular')];
-        expect(providerRowSections(sections, isTv: false).map((s) => s.title), [
-          'Latest',
-          'Popular',
-        ]);
-      },
-    );
+    test('the phone drops a non-repeating first section (CloudStream hero dup)',
+        () {
+      final sections = [_cs('Featured'), _cs('Latest'), _cs('Popular')];
+      expect(
+        providerRowSections(sections, isTv: false).map((s) => s.title),
+        ['Latest', 'Popular'],
+      );
+    });
 
     test('a single section stays a row so there is something to browse', () {
       final sections = [_cs('Latest')];
@@ -178,20 +134,17 @@ void main() {
   });
 
   group('sanitizeLayout', () {
-    final available = availableRowIds([
-      _zm('Trending'),
-      _zm('Popular'),
-    ], withTrackerRows: true);
+    final available = availableRowIds(
+      [_zm('Trending'), _zm('Popular')],
+      withTrackerRows: true,
+    );
 
     test('an empty saved list resolves to the full default arrangement', () {
       final out = sanitizeLayout([], available);
-      expect(
-        out.map(encodeRowEntry),
-        defaultLayout([
-          'section:Trending',
-          'section:Popular',
-        ], withTrackerRows: true),
-      );
+      expect(out.map(encodeRowEntry), defaultLayout(
+        ['section:Trending', 'section:Popular'],
+        withTrackerRows: true,
+      ));
     });
 
     test('unknown ids drop; duplicates collapse; hidden marks survive', () {
@@ -230,10 +183,10 @@ void main() {
         'local:streaming-services',
         'section:Trending',
       ];
-      final out = sanitizeLayout([
-        'local:continue',
-        'section:Trending',
-      ], withRail);
+      final out = sanitizeLayout(
+        ['local:continue', 'section:Trending'],
+        withRail,
+      );
       expect(out.map(encodeRowEntry), [
         'local:continue',
         'local:streaming-services',
@@ -248,62 +201,47 @@ void main() {
     });
 
     test('tracker ids sanitize against a layout that cannot have them', () {
-      final tmdbAvailable = availableRowIds([
-        _zm('Now playing'),
-      ], withTrackerRows: false);
-      final out = sanitizeLayout([
-        'tracker:watching',
-        'local:continue',
-      ], tmdbAvailable);
+      final tmdbAvailable = availableRowIds([_zm('Now playing')],
+          withTrackerRows: false);
+      final out = sanitizeLayout(['tracker:watching', 'local:continue'],
+          tmdbAvailable);
       expect(out.map((e) => e.id), ['local:continue', 'section:Now playing']);
     });
   });
 
   group('mergeHomeRows', () {
-    final sections = [
-      _zm('Trending'),
-      _zm('Popular this season'),
-      _zm('Top rated'),
-    ];
+    final sections = [_zm('Trending'), _zm('Popular this season'), _zm('Top rated')];
 
-    test(
-      'DEFAULT = today\'s home: local row + every section, no tracker rows',
-      () {
-        final rows = mergeHomeRows(
-          layout: sanitizeLayout(
-            defaultLayout(
-              sections.map((s) => 'section:${s.title}').toList(),
-              withTrackerRows: true,
-            ),
-            availableRowIds(sections, withTrackerRows: true),
+    test('DEFAULT = today\'s home: local row + every section, no tracker rows',
+        () {
+      final rows = mergeHomeRows(
+        layout: sanitizeLayout(
+          defaultLayout(
+            sections.map((s) => 'section:${s.title}').toList(),
+            withTrackerRows: true,
           ),
-          rowSections: providerRowSections(sections, isTv: false),
-          trackerRows: [
-            // The tracker DID answer with rows — default layout still hides
-            // them all, so none may render.
-            TrackerContinueHomeRow(
-              items: [_entry('One Piece')],
-              trackerName: 'AniList',
-            ),
-            NewEpisodesHomeRow(
-              items: [_entry('Bleach')],
-              trackerName: 'AniList',
-            ),
-            TrackerListHomeRow(
-              status: WatchStatus.watching,
-              items: [_entry('Naruto')],
-              trackerName: 'AniList',
-            ),
-          ],
-        );
-        expect(rows.map((r) => r.id), [
-          'local:continue',
-          'section:Trending',
-          'section:Popular this season',
-          'section:Top rated',
-        ]);
-      },
-    );
+          availableRowIds(sections, withTrackerRows: true),
+        ),
+        rowSections: providerRowSections(sections, isTv: false),
+        trackerRows: [
+          // The tracker DID answer with rows — default layout still hides
+          // them all, so none may render.
+          TrackerContinueHomeRow(items: [_entry('One Piece')], trackerName: 'AniList'),
+          NewEpisodesHomeRow(items: [_entry('Bleach')], trackerName: 'AniList'),
+          TrackerListHomeRow(
+            status: WatchStatus.watching,
+            items: [_entry('Naruto')],
+            trackerName: 'AniList',
+          ),
+        ],
+      );
+      expect(rows.map((r) => r.id), [
+        'local:continue',
+        'section:Trending',
+        'section:Popular this season',
+        'section:Top rated',
+      ]);
+    });
 
     test('an enabled tracker row renders where the user put it', () {
       final rows = mergeHomeRows(
@@ -338,11 +276,10 @@ void main() {
 
     test('an enabled tracker row with NO data at all simply vanishes', () {
       final rows = mergeHomeRows(
-        layout: sanitizeLayout([
-          'local:continue',
-          'tracker:watching',
-          'tracker:new-episodes',
-        ], availableRowIds(sections, withTrackerRows: true)),
+        layout: sanitizeLayout(
+          ['local:continue', 'tracker:watching', 'tracker:new-episodes'],
+          availableRowIds(sections, withTrackerRows: true),
+        ),
         rowSections: providerRowSections(sections, isTv: false),
         trackerRows: const [],
       );
@@ -355,18 +292,12 @@ void main() {
     });
 
     test('parse/encode round-trip the hidden mark', () {
-      expect(
-        parseRowEntry('tracker:watching'),
-        const HomeRowEntry('tracker:watching', false),
-      );
-      expect(
-        parseRowEntry('!section:Trending'),
-        const HomeRowEntry('section:Trending', true),
-      );
-      expect(
-        encodeRowEntry(const HomeRowEntry('section:Trending', true)),
-        '!section:Trending',
-      );
+      expect(parseRowEntry('tracker:watching'),
+          const HomeRowEntry('tracker:watching', false));
+      expect(parseRowEntry('!section:Trending'),
+          const HomeRowEntry('section:Trending', true));
+      expect(encodeRowEntry(const HomeRowEntry('section:Trending', true)),
+          '!section:Trending');
     });
   });
 }

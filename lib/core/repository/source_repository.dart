@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart' show debugPrint;
@@ -32,9 +31,6 @@ import '../provider/provider_manager.dart';
 import '../provider/provider_registry.dart';
 import '../provider/reading_provider.dart';
 import '../state/active_source_cubit.dart';
-import '../stremio/stremio_manager.dart';
-import '../stremio/stremio_provider.dart';
-import '../stremio/stremio_ref.dart';
 import 'catalogue_repository.dart';
 import 'source_domain_overrides.dart';
 
@@ -171,9 +167,6 @@ class SourceRepository implements CatalogueRepository {
   /// True for installed Mangayomi bridge sources (`mg:<stable-key>`).
   static bool _isMangayomi(String id) => id.startsWith('mg:');
 
-  /// The one aggregator provider that owns every enabled Stremio addon.
-  static bool _isStremio(String id) => id == stremioSourceId;
-
   /// The currently-active source identifier.
   @override
   String get sourceId => _active.state;
@@ -227,7 +220,6 @@ class SourceRepository implements CatalogueRepository {
     Object.hashAll(_mihonManager.all.map((p) => p.sourceId)),
     Object.hashAll(_lnrManager?.installedSources.map((s) => s.id) ?? const []),
     _mangayomiManager?.revision ?? 0,
-    sl.isRegistered<StremioManager>() ? sl<StremioManager>().revision : 0,
     // Both NSFW prefs filter the list, so a toggle has to invalidate it.
     _prefs.showNsfwAniyomi,
     _prefs.nsfwSources,
@@ -354,9 +346,6 @@ class SourceRepository implements CatalogueRepository {
   List<({String id, String name, String? lang})> _rawSources({
     required bool narrowByLang,
   }) => [
-    if (sl.isRegistered<StremioManager>() &&
-        sl<StremioManager>().enabled.isNotEmpty)
-      (id: stremioSourceId, name: 'Stremio', lang: null),
     ..._manager.all.map(
       (p) => (id: p.sourceId, name: p.displayName, lang: null),
     ),
@@ -531,7 +520,6 @@ class SourceRepository implements CatalogueRepository {
     if (_isMangayomi(sourceId)) {
       return _mangayomiManager?.get(sourceId)?.displayName ?? sourceId;
     }
-    if (_isStremio(sourceId)) return 'Stremio';
     return _manager.get(sourceId)?.displayName ?? sourceId;
   }
 
@@ -562,11 +550,6 @@ class SourceRepository implements CatalogueRepository {
     if (_isMangayomi(sourceId)) {
       return _mangayomiManager?.get(sourceId) != null;
     }
-    if (_isStremio(sourceId)) {
-      return sl.isRegistered<StremioProvider>() &&
-          sl.isRegistered<StremioManager>() &&
-          sl<StremioManager>().enabled.isNotEmpty;
-    }
     // JS provider: check runtime first, then registry (TV: runtime may be
     // empty because loadAll was skipped).
     if (_manager.get(sourceId) != null) return true;
@@ -590,8 +573,7 @@ class SourceRepository implements CatalogueRepository {
         _isAniyomi(sourceId) ||
         _isMihon(sourceId) ||
         _isLnReader(sourceId) ||
-        _isMangayomi(sourceId) ||
-        _isStremio(sourceId)) {
+        _isMangayomi(sourceId)) {
       return true; // non-JS sources are always available
     }
     if (_manager.get(sourceId) != null) return true; // already loaded
@@ -627,8 +609,6 @@ class SourceRepository implements CatalogueRepository {
       p = _lnrManager?.get(resolved);
     } else if (_isMangayomi(resolved)) {
       p = _mangayomiManager?.get(resolved);
-    } else if (_isStremio(resolved)) {
-      p = sl.isRegistered<StremioProvider>() ? sl<StremioProvider>() : null;
     } else {
       p = _manager.get(resolved);
     }
@@ -716,18 +696,6 @@ class SourceRepository implements CatalogueRepository {
   /// error) degrades to an empty list so the caller just stops the scroll.
   Future<List<MediaItem>> browseMore(BrowseMore more, int page) async {
     try {
-      if (more.kind == 'stremio_catalog') {
-        if (!sl.isRegistered<StremioProvider>()) return const [];
-        final raw = more.categoryId;
-        if (raw == null) return const [];
-        final handle = jsonDecode(raw) as Map;
-        return await sl<StremioProvider>().catalogPage(
-          installationId: handle['i'] as String,
-          type: handle['t'] as String,
-          catalogId: handle['c'] as String,
-          page: page,
-        );
-      }
       final p = await _providerReady(more.sourceId);
       switch (more.kind) {
         case 'ani_popular':

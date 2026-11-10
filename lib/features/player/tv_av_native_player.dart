@@ -345,19 +345,6 @@ class TvAvNativePlayer {
           }
         }
         return null;
-      case 'rememberSubtitle':
-        final choice = (call.arguments as Map)['choice'] as String?;
-        if (choice != null &&
-            choice.isNotEmpty &&
-            _showUrl != null &&
-            _showUrl!.isNotEmpty) {
-          await sl<TitlePrefsStore>().setSubtitleChoice(
-            _sourceId,
-            _showUrl!,
-            choice,
-          );
-        }
-        return null;
       case 'setSubtitleScale':
         final s = (call.arguments as Map)['scale'] as num?;
         if (s != null) await sl<PlaybackPrefs>().setSubtitleScale(s.toDouble());
@@ -400,10 +387,7 @@ class TvAvNativePlayer {
         await SubtitleFontService.instance.ensure(font);
         return await stageSubtitleFont(font);
       case 'searchSubtitles':
-        final showSub = (_showUrl != null && _showUrl!.isNotEmpty)
-            ? sl<TitlePrefsStore>().subtitleChoice(_sourceId, _showUrl!)
-            : null;
-        final pref = showSub ?? sl<PlaybackPrefs>().subtitlePreference;
+        final pref = sl<PlaybackPrefs>().subtitlePreference;
         final lang = (pref.isEmpty || pref == 'off') ? 'en' : pref;
         try {
           _subResults = await SubtitleSearchService().search(

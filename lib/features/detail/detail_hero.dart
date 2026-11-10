@@ -15,13 +15,11 @@ class _Hero extends StatelessWidget {
     this.collapsed = false,
     this.onTapFullscreen,
     this.tint,
-    this.imageDecodeWidth = 800,
   });
 
   final String coverUrl;
   final Map<String, String>? coverHeaders;
   final bool hasCover;
-  final int imageDecodeWidth;
 
   /// The lookup is shared across rebuilds; only this hero listens to it.
   final Future<String?>? trailer;
@@ -52,7 +50,7 @@ class _Hero extends StatelessWidget {
           aniSrcId != null
               ? AniyomiImage(int.parse(aniSrcId), coverUrl)
               : MihonImage(int.parse(mihonSrcId!), coverUrl),
-          width: imageDecodeWidth,
+          width: 800,
         ),
         fit: BoxFit.cover,
         loadingBuilder: (_, child, progress) =>
@@ -65,7 +63,7 @@ class _Hero extends StatelessWidget {
       imageUrl: coverUrl,
       httpHeaders: coverHeaders,
       fit: BoxFit.cover,
-      memCacheWidth: imageDecodeWidth,
+      memCacheWidth: 800,
       placeholder: (c, u) => ColoredBox(color: AppColors.surface2),
       errorWidget: (c, u, e) => ColoredBox(color: AppColors.surface2),
     );

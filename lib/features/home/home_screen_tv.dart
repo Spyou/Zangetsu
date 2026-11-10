@@ -100,13 +100,12 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
   @override
   void initState() {
     super.initState();
-    _sourceCatalogueSelected = HomeCataloguePrefs.catalogueShown;
+    _sourceCatalogueSelected = HomeCataloguePrefs.sourceSelected;
     _sourceCatalogueSourceId = HomeCataloguePrefs.sourceIdFor(
       sl<ContentModeCubit>().state,
     );
     _sourceCatalogueSelection = HomeCataloguePrefs.sourceSelection
       ..addListener(_onSourceCatalogueSelectionChanged);
-    HomeCataloguePrefs.revision.addListener(_onCatalogueRevision);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       if (isAppleTv) setState(() => _historyLive = true);
@@ -126,39 +125,22 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
     _sourceCatalogueSelection.removeListener(
       _onSourceCatalogueSelectionChanged,
     );
-    HomeCataloguePrefs.revision.removeListener(_onCatalogueRevision);
     super.dispose();
   }
 
   void _onSourceCatalogueSelectionChanged() {
-    _refreshCatalogueSelection();
-  }
-
-  void _onCatalogueRevision() {
-    _refreshCatalogueSelection();
-  }
-
-  void _refreshCatalogueSelection() {
-    if (!mounted) return;
-    final selected = HomeCataloguePrefs.catalogueShown;
-    final sourceId = HomeCataloguePrefs.sourceIdFor(
-      sl<ContentModeCubit>().state,
-    );
-    if (selected == _sourceCatalogueSelected &&
-        sourceId == _sourceCatalogueSourceId) {
-      return;
-    }
+    final selected = _sourceCatalogueSelection.value;
+    if (!mounted || selected == _sourceCatalogueSelected) return;
     setState(() {
       _sourceCatalogueSelected = selected;
       _sourceCatalogueSections = const [];
-      _sourceCatalogueSourceId = sourceId;
-      if (selected && sourceId == null) {
+      if (selected) {
         final activeId = context.read<ActiveSourceCubit>().state;
         if (sl.isRegistered<SourceRepository>() &&
             sl<SourceRepository>().loadedSources.any(
               (source) => source.id == activeId,
             )) {
-          _sourceCatalogueSourceId = activeId;
+          _sourceCatalogueSourceId ??= activeId;
         }
       }
     });
@@ -176,7 +158,10 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
       _sourceCatalogueSections = const [];
     });
     unawaited(
-      HomeCataloguePrefs.setSourceIdFor(sl<ContentModeCubit>().state, sourceId),
+      HomeCataloguePrefs.setSourceIdFor(
+        sl<ContentModeCubit>().state,
+        sourceId,
+      ),
     );
   }
 
@@ -188,9 +173,6 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
   List<MediaItem> get _sourceCatalogueHeroItems {
     final sections = _sourceCatalogueSections;
     if (sections.isEmpty) return const [];
-    if (_sourceCatalogueSourceId == 'stremio') {
-      return stremioHeroItems(sections);
-    }
     for (final section in sections) {
       if (section.title.startsWith('Trending')) return section.items;
     }
@@ -278,9 +260,7 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
                   ),
                 ],
               ),
-              if (_sourceCatalogueSelected &&
-                  sourceIsAvailable &&
-                  !HomeCataloguePrefs.stremioSelected)
+              if (_sourceCatalogueSelected && sourceIsAvailable)
                 Align(
                   alignment: Alignment.centerRight,
                   child: Row(

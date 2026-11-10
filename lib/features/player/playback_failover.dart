@@ -3,16 +3,6 @@ import 'dart:async';
 import '../../core/models/video_source.dart';
 import '../../core/playback/source_selection.dart';
 
-/// A pause or a reached checkpoint must never erase a saved resume position.
-bool shouldResetStremioResume({
-  required bool playingThroughout,
-  required Duration position,
-  required Duration target,
-}) =>
-    playingThroughout &&
-    target > Duration.zero &&
-    position + const Duration(seconds: 8) < target;
-
 /// Whether a Z-mode episode should be resolved through its progressive sweep.
 /// A preferred local source, when available, should be opened first instead.
 bool shouldUseProgressivePlayback({
@@ -37,12 +27,14 @@ bool shouldRetryWithSoftwareDecoder({
 bool isCurrentSoftwareDecoderRetry({
   required int retryGeneration,
   required int currentGeneration,
-}) => retryGeneration == currentGeneration;
+}) =>
+    retryGeneration == currentGeneration;
 
 bool shouldInvalidateSoftwareDecoderRetry({
   required bool retryInProgress,
   required bool openingRetry,
-}) => retryInProgress && !openingRetry;
+}) =>
+    retryInProgress && !openingRetry;
 
 /// Return a one-open `hwdec` override for a local software fallback, or null
 /// when the player's normal decoder preference should remain untouched.

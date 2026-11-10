@@ -11,7 +11,6 @@ Subtitle _$SubtitleFromJson(Map<String, dynamic> json) => Subtitle(
   lang: json['lang'] as String,
   label: json['label'] as String?,
   format: json['format'] as String?,
-  providerName: json['providerName'] as String?,
   isDefault: json['default'] as bool? ?? false,
 );
 
@@ -19,7 +18,6 @@ Map<String, dynamic> _$SubtitleToJson(Subtitle instance) => <String, dynamic>{
   'url': instance.url,
   'lang': instance.lang,
   'label': instance.label,
-  'providerName': ?instance.providerName,
   'format': instance.format,
   'default': instance.isDefault,
 };
@@ -52,8 +50,8 @@ VideoSource _$VideoSourceFromJson(Map<String, dynamic> json) => VideoSource(
           .toList() ??
       [],
   subtitleSkewSeconds: (json['subtitleSkewSeconds'] as num?)?.toDouble(),
-  subtitleSkewAfterSeconds: (json['subtitleSkewAfterSeconds'] as num?)
-      ?.toDouble(),
+  subtitleSkewAfterSeconds:
+      (json['subtitleSkewAfterSeconds'] as num?)?.toDouble(),
 );
 
 Map<String, dynamic> _$VideoSourceToJson(VideoSource instance) =>

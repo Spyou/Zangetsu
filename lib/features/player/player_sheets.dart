@@ -66,52 +66,6 @@ class _AudioSubsSheet extends StatefulWidget {
 
 class _AudioSubsSheetState extends State<_AudioSubsSheet> {
   late String _category = widget.controller.activeCategory;
-  String? _pendingAudio;
-  String? _pendingSubtitle;
-
-  Future<void> _selectTrack({
-    required String id,
-    required bool audio,
-    required Future<void> Function() apply,
-  }) async {
-    if ((audio ? _pendingAudio : _pendingSubtitle) != null) return;
-    setState(() {
-      if (audio) {
-        _pendingAudio = id;
-      } else {
-        _pendingSubtitle = id;
-      }
-    });
-    try {
-      await apply();
-    } catch (_) {
-      if (mounted) {
-        showAppToast(
-          context,
-          audio
-              ? 'Could not switch audio. Try again.'
-              : 'Could not switch subtitles. Try again.',
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          if (audio) {
-            _pendingAudio = null;
-          } else {
-            _pendingSubtitle = null;
-          }
-        });
-      }
-    }
-    if (mounted) widget.onInteract();
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    unawaited(widget.controller.loadAddonSubtitles());
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -151,7 +105,8 @@ class _AudioSubsSheetState extends State<_AudioSubsSheet> {
                           margin: const EdgeInsets.symmetric(vertical: 8),
                           color: AppColors.hairline,
                         ),
-                      if (show.subtitles) Expanded(child: _subColumn(c, subId)),
+                      if (show.subtitles)
+                        Expanded(child: _subColumn(c, subId)),
                     ],
                   ),
                 ),
@@ -254,12 +209,10 @@ class _AudioSubsSheetState extends State<_AudioSubsSheet> {
                     ),
                     subtitle: c.audioDetail(t),
                     active: audioId == t.id,
-                    loading: _pendingAudio == t.id,
-                    onTap: () => _selectTrack(
-                      id: t.id,
-                      audio: true,
-                      apply: () => c.setAudioTrack(t),
-                    ),
+                    onTap: () {
+                      c.setAudioTrack(t);
+                      widget.onInteract();
+                    },
                   ),
               if (cats.length <= 1 && (widget.castMode || tracks.length <= 1))
                 _SheetRow(
@@ -274,13 +227,7 @@ class _AudioSubsSheetState extends State<_AudioSubsSheet> {
     );
   }
 
-  Widget _subColumn(PlayerCubit c, String subId) =>
-      BlocBuilder<PlayerCubit, PlayerState>(
-        bloc: c,
-        builder: (context, state) => _subtitleChoices(c, subId),
-      );
-
-  Widget _subtitleChoices(PlayerCubit c, String subId) {
+  Widget _subColumn(PlayerCubit c, String subId) {
     final embedded = c.mediaSubtitleTracks;
     final soft = c.softSubs;
     return Column(
@@ -319,43 +266,13 @@ class _AudioSubsSheetState extends State<_AudioSubsSheet> {
               _SheetRow(
                 label: context.l10n.off,
                 active: subId == 'no',
-                loading: _pendingSubtitle == 'no',
-                onTap: () => _selectTrack(
-                  id: 'no',
-                  audio: false,
-                  apply: () async {
-                    widget.onSubtitlesOff?.call();
-                    await c.subtitlesOff();
-                    widget.onAfterChange?.call();
-                  },
-                ),
+                onTap: () {
+                  widget.onSubtitlesOff?.call();
+                  c.subtitlesOff();
+                  widget.onInteract();
+                  widget.onAfterChange?.call();
+                },
               ),
-              if (c.sourceId == stremioSourceId) ...[
-                if (c.state.loadingAddonSubtitles)
-                  const Padding(
-                    padding: EdgeInsets.all(12),
-                    child: Row(
-                      children: [
-                        SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                        SizedBox(width: 8),
-                        Expanded(child: Text('Loading addon subtitles…')),
-                      ],
-                    ),
-                  )
-                else
-                  _SheetRow(
-                    label: c.state.addonSubtitlesChecked && soft.isEmpty
-                        ? 'No addon subtitles found · Retry'
-                        : 'Reload addon subtitles',
-                    icon: Icons.refresh_rounded,
-                    active: false,
-                    onTap: () => unawaited(c.loadAddonSubtitles(retry: true)),
-                  ),
-              ],
               if (!widget.castMode)
                 for (final t in embedded)
                   _SheetRow(
@@ -367,32 +284,24 @@ class _AudioSubsSheetState extends State<_AudioSubsSheet> {
                         embedded.map((t) => t.title),
                       ),
                     ),
-                    subtitle: c.sourceId == stremioSourceId
-                        ? context.l10n.builtIn
-                        : null,
                     active: subId == t.id,
-                    loading: _pendingSubtitle == t.id,
-                    onTap: () => _selectTrack(
-                      id: t.id,
-                      audio: false,
-                      apply: () => c.setSubtitle(t),
-                    ),
+                    onTap: () {
+                      c.setSubtitle(t);
+                      widget.onInteract();
+                    },
                   ),
               for (final s in soft)
                 _SheetRow(
                   label: s.label ?? s.lang,
-                  subtitle: s.providerName,
-                  active: c.isSoftSubtitleSelected(s, subId),
-                  loading: _pendingSubtitle == s.url,
-                  onTap: () => _selectTrack(
-                    id: s.url,
-                    audio: false,
-                    apply: () async {
-                      widget.onSoftSubPicked?.call(s);
-                      await c.setSoftSub(s);
-                      widget.onAfterChange?.call();
-                    },
-                  ),
+                  // A URI soft-sub is applied via SubtitleTrack.uri(s.url), whose
+                  // media_kit track id IS the url — so the active one highlights.
+                  active: subId == s.url,
+                  onTap: () async {
+                    widget.onSoftSubPicked?.call(s);
+                    await c.setSoftSub(s);
+                    widget.onInteract();
+                    widget.onAfterChange?.call();
+                  },
                 ),
               if (!widget.castMode) ...[
                 _SheetRow(
@@ -798,9 +707,9 @@ class _SubtitleStyleSheetState extends State<_SubtitleStyleSheet> {
       final family = await SubtitleFontService.instance.addCustomFont(path);
       if (!mounted) return;
       if (family == null) {
-        ScaffoldMessenger.maybeOf(
-          context,
-        )?.showSnackBar(SnackBar(content: Text(context.l10n.couldntAddFont)));
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+          SnackBar(content: Text(context.l10n.couldntAddFont)),
+        );
         return;
       }
       // Select it straight away — picking a font you just added and having
@@ -808,9 +717,9 @@ class _SubtitleStyleSheetState extends State<_SubtitleStyleSheet> {
       await _apply(() => _prefs.setSubtitleFont(family));
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.maybeOf(
-          context,
-        )?.showSnackBar(SnackBar(content: Text(context.l10n.couldntAddFont)));
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+          SnackBar(content: Text(context.l10n.couldntAddFont)),
+        );
       }
     }
   }

@@ -10,7 +10,6 @@ import 'package:watch_app/core/models/provider_info.dart';
 import 'package:watch_app/core/models/watch_status.dart';
 import 'package:watch_app/core/playback/list_status_store.dart';
 import 'package:watch_app/core/playback/my_list.dart';
-import 'package:watch_app/core/stremio/stremio_library_badge.dart';
 import 'package:watch_app/core/tracker/tracker.dart';
 import 'package:watch_app/core/tracker/tracker_hub.dart';
 import 'package:watch_app/core/tv/tv_focusable.dart';
@@ -186,30 +185,6 @@ void main() {
 
   tearDown(() async {
     await sl.reset();
-  });
-
-  testWidgets('only saved Stremio titles show the source icon', (tester) async {
-    await _registerHub([]);
-    final cubit = _makeCubit([
-      item1,
-      const MediaItem(
-        id: 'movie:tt123',
-        title: 'Stremio movie',
-        url: 'stremio://ref',
-        type: ProviderType.movie,
-        sourceId: 'stremio',
-      ),
-    ]);
-    final tracker = TrackerListCubit();
-    addTearDown(cubit.close);
-    addTearDown(tracker.close);
-
-    await tester.pumpWidget(_pumpTree(myList: cubit, trackerList: tracker));
-    await tester.pumpAndSettle();
-
-    expect(find.byType(StremioLibraryBadge), findsOneWidget);
-    expect(find.text(item1.title), findsOneWidget);
-    expect(find.text('Stremio movie'), findsOneWidget);
   });
 
   testWidgets(

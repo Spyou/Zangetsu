@@ -40,7 +40,6 @@ class PosterCard extends StatefulWidget {
     this.genres = const [],
     this.isAdult = false,
     this.progressBadge,
-    this.topRightBadge,
   });
   final String title;
   final String? imageUrl;
@@ -75,7 +74,6 @@ class PosterCard extends StatefulWidget {
   final List<String> genres;
   final bool isAdult;
   final String? progressBadge;
-  final Widget? topRightBadge;
   final double cellWidth;
 
   /// When false, omit an external title. An inside-image title still follows
@@ -372,34 +370,20 @@ class _PosterCardState extends State<PosterCard> {
                         const DecoratedBox(
                           decoration: BoxDecoration(gradient: _posterTextScrim),
                         ),
-                      if (widget.topRightBadge != null ||
-                          (widget.qualityBadge != null &&
-                              (prefs?.posterQualityBadge ?? true)) ||
-                          (widget.scoreBadge != null &&
-                              widget.qualityBadge == null &&
-                              (prefs?.posterScoreBadge ?? true)))
+                      if (widget.qualityBadge != null &&
+                          (prefs?.posterQualityBadge ?? true))
                         Positioned(
                           top: 6,
                           right: 6,
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              if (widget.qualityBadge != null &&
-                                  (prefs?.posterQualityBadge ?? true))
-                                _PosterTag(widget.qualityBadge!)
-                              else if (widget.scoreBadge != null &&
-                                  widget.qualityBadge == null &&
-                                  (prefs?.posterScoreBadge ?? true))
-                                _ScoreTag(widget.scoreBadge!),
-                              if (widget.topRightBadge != null)
-                                Padding(
-                                  padding: const EdgeInsets.only(left: 4),
-                                  child: IgnorePointer(
-                                    child: widget.topRightBadge!,
-                                  ),
-                                ),
-                            ],
-                          ),
+                          child: _PosterTag(widget.qualityBadge!),
+                        ),
+                      if (widget.scoreBadge != null &&
+                          widget.qualityBadge == null &&
+                          (prefs?.posterScoreBadge ?? true))
+                        Positioned(
+                          top: 6,
+                          right: 6,
+                          child: _ScoreTag(widget.scoreBadge!),
                         ),
                       if (widget.dubBadge != null &&
                           (prefs?.posterAudioBadge ?? true))

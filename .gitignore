@@ -84,6 +84,3 @@ supabase/.temp/
 /android/discord-sdk
 
 /ios/discord-sdk
-
-# Machine-local dependency overrides.
-/pubspec_overrides.yaml

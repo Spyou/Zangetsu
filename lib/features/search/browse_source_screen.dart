@@ -10,7 +10,6 @@ import '../../core/mihon/mihon_extension_service.dart';
 import '../../core/mangayomi/mangayomi_cloudflare.dart';
 import '../../core/models/home_section.dart';
 import '../../core/models/media_item.dart';
-import '../../core/stremio/stremio_ref.dart';
 import '../../core/repository/source_actions.dart' as source_actions;
 import '../../core/provider/cf_solve_needed.dart';
 import '../../core/repository/source_domain_overrides.dart';
@@ -57,7 +56,6 @@ const Duration kLinkingIndicatorDelay = Duration(milliseconds: 350);
 /// Shared by the source browser and Home's source catalogue so both open the
 /// same title identity. The pin, timeout, and fallback live here.
 Future<MediaItem?> canonicalTargetFor(MediaItem item) async {
-  if (item.sourceId == stremioSourceId) return item;
   if (!ZModePrefs.enabled || !sl.isRegistered<MetadataRepository>()) {
     return null;
   }
