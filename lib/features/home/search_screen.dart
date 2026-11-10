@@ -7,6 +7,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../search/meta_filter_sheet.dart';
 import 'phone_voice_search_sheet.dart';
+import 'stremio_discover_sheet.dart';
 import 'voice_search_artwork.dart';
 import '../../core/ui/app_toast.dart';
 import '../../core/zmode/zmode_module.dart';
@@ -32,6 +33,8 @@ import '../../core/playback/watch_history.dart';
 import '../../core/profiles/viewer_profile.dart';
 import '../../core/repository/catalogue_repository.dart';
 import '../../core/repository/source_repository.dart';
+import '../../core/stremio/stremio_provider.dart';
+import '../../core/stremio/stremio_ref.dart';
 import '../../core/state/active_source_cubit.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
@@ -168,7 +171,7 @@ class _SearchScreenState extends State<SearchScreen> {
         // Popular and Recently released, and repeating them here cost a
         // request per visit and showed the wrong mode's picks anyway (it
         // was fetched once and cached for the life of the bloc).
-        if (scope != SearchScope.library) {
+        if (scope != SearchScope.library && widget.fixedSourceId != 'stremio') {
           bloc.add(const SearchStarted());
         }
         final q = widget.initialQuery?.trim();
@@ -263,6 +266,11 @@ IconData _outcomeIcon(SourceOutcome outcome) => switch (outcome) {
 
 class _SearchViewState extends State<_SearchView>
     with TickerProviderStateMixin {
+  bool get _stremioSearch => widget.fixedSourceId == 'stremio';
+  StremioDiscoverSelection? _stremioDiscover;
+  bool get _metadataStyle =>
+      widget.scope == SearchScope.library || _stremioSearch;
+
   late final TextEditingController _controller;
   final _focusNode = FocusNode();
 
@@ -445,7 +453,11 @@ class _SearchViewState extends State<_SearchView>
     final t = <String>[];
     if ((m.dubCount ?? 0) > 0) t.add('DUB');
     if ((m.subCount ?? 0) > 0 && t.length < 2) t.add('SUB');
-    if (t.isEmpty && m.type == ProviderType.movie) t.add('MOVIE');
+    // Stremio rows skip the MOVIE/SERIES type pills.
+    if (_stremioSearch && m.sourceId == stremioSourceId) return t;
+    if (t.isEmpty && m.type == ProviderType.movie) {
+      t.add('MOVIE');
+    }
     return t;
   }
 
@@ -726,6 +738,31 @@ class _SearchViewState extends State<_SearchView>
   /// take effect immediately.
   Future<void> _openFilterSheet(BuildContext context) async {
     final bloc = context.read<SearchBloc>();
+    if (_stremioSearch && sl.isRegistered<StremioProvider>()) {
+      final result = await showModalBottomSheet<StremioDiscoverSheetResult>(
+        context: context,
+        backgroundColor: AppColors.surface,
+        isScrollControlled: true,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        builder: (_) => StremioDiscoverSheet(
+          manager: sl<StremioProvider>().manager,
+          initial: _stremioDiscover,
+        ),
+      );
+      if (!mounted || result == null) return;
+      if (!result.searchFilters) {
+        final selection = result.selection;
+        if (selection == null) return;
+        _controller.clear();
+        _focusNode.unfocus();
+        bloc.add(const SearchQueryChanged(''));
+        setState(() => _stremioDiscover = selection);
+        return;
+      }
+    }
+    if (!context.mounted) return;
     await showModalBottomSheet<void>(
       context: context,
       backgroundColor: AppColors.surface,
@@ -764,12 +801,13 @@ class _SearchViewState extends State<_SearchView>
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _searchBar(),
-            const SizedBox(height: 12),
+            SizedBox(height: _stremioSearch ? 6 : 12),
             // Source line — what's being searched, one line of text, tap to
             // open the source picker. Shown idle too, so scope is always known.
             // Library scope queries the metadata catalogue, not a source, so
             // this (and the picker it opens) is Sources-only.
-            if (widget.scope == SearchScope.sources) _sourceLine(),
+            if (widget.scope == SearchScope.sources && !_stremioSearch)
+              _sourceLine(),
             // Control row — ecosystem tabs (or a result count once scoped to a
             // single source) on the left, sort + filter actions on the right.
             _controlRow(modeSources),
@@ -780,7 +818,17 @@ class _SearchViewState extends State<_SearchView>
             if (widget.scope == SearchScope.library) _activeFilterChips(),
             // Per-source result pills — direct jump to one source's results.
             // Only meaningful once the scope is Sources.
-            if (widget.scope == SearchScope.sources) _sourcePillsRow(),
+            if (widget.scope == SearchScope.sources)
+              BlocBuilder<SearchBloc, SearchState>(
+                buildWhen: (previous, current) =>
+                    previous.query != current.query,
+                builder: (context, state) =>
+                    _stremioSearch &&
+                        _stremioDiscover != null &&
+                        state.query.trim().isEmpty
+                    ? const SizedBox.shrink()
+                    : _sourcePillsRow(),
+              ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Divider(
@@ -835,7 +883,7 @@ class _SearchViewState extends State<_SearchView>
     // The redesign is the METADATA search's own. Sources search keeps the bar
     // it had — it carries ecosystem tabs, source scope and per-source filters,
     // and restyling around those is a separate question.
-    final meta = widget.scope == SearchScope.library;
+    final meta = _metadataStyle;
     return Padding(
       padding: EdgeInsets.fromLTRB(
         widget.showBack ? (meta ? 8 : 4) : 16,
@@ -1220,10 +1268,15 @@ class _SearchViewState extends State<_SearchView>
   /// and filter must stay reachable in every state (idle included), exactly as
   /// they were when they lived inside the search bar.
   Widget _controlRow(List<({String id, String name})> modeSources) {
+    // Stremio sources-scope search renders nothing here (count hidden,
+    // actions hidden) — collapse the dead 30px instead of leaving a gap.
+    if (_stremioSearch && widget.scope == SearchScope.sources) {
+      return const SizedBox.shrink();
+    }
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 4, 0),
       child: SizedBox(
-        height: 40,
+        height: _stremioSearch ? 30 : 40,
         child: Row(
           children: [
             // Adult is not a filter-sheet row: it is a mode you flip while
@@ -1237,7 +1290,7 @@ class _SearchViewState extends State<_SearchView>
             Expanded(child: _controlRowLeft(modeSources)),
             // Per-source filter sheet — Library scope has no per-source
             // filters to apply, they'd be silently dropped.
-            if (widget.scope == SearchScope.sources) ...[
+            if (widget.scope == SearchScope.sources && !_stremioSearch) ...[
               _sourceFilterAction(),
               // Metadata scope moved this beside the search field; keeping it
               // here as well put the same tune icon on screen twice.
@@ -1308,6 +1361,7 @@ class _SearchViewState extends State<_SearchView>
       buildWhen: (p, c) =>
           p.status != c.status ||
           p.currentSourceOnly != c.currentSourceOnly ||
+          p.sourceFilter != c.sourceFilter ||
           p.ecosystem != c.ecosystem ||
           p.suggestions != c.suggestions ||
           p.groups != c.groups ||
@@ -1320,6 +1374,9 @@ class _SearchViewState extends State<_SearchView>
           if (state.status != SearchStatus.success) {
             return const SizedBox.shrink();
           }
+          // Stremio mode shows per-addon rows with their own counts; the
+          // total line is noise.
+          if (_stremioSearch) return const SizedBox.shrink();
           final n = state.totalCount;
           return Align(
             alignment: AlignmentDirectional.centerStart,
@@ -1381,7 +1438,8 @@ class _SearchViewState extends State<_SearchView>
           p.audioFilter != c.audioFilter ||
           p.genreFilter != c.genreFilter ||
           p.statusFilter != c.statusFilter ||
-          p.currentSourceOnly != c.currentSourceOnly,
+          p.currentSourceOnly != c.currentSourceOnly ||
+          (_stremioSearch && p.query != c.query),
       builder: (context, state) => ListenableBuilder(
         listenable: sl<SearchSourcePrefs>(),
         builder: (context, _) {
@@ -1390,7 +1448,14 @@ class _SearchViewState extends State<_SearchView>
           final sourceExcluded =
               !state.currentSourceOnly &&
               sl<SearchSourcePrefs>().excluded.isNotEmpty;
-          final count = state.activeFilterCount + (sourceExcluded ? 1 : 0);
+          final browsing =
+              _stremioSearch &&
+              _stremioDiscover != null &&
+              state.query.trim().isEmpty;
+          final count =
+              state.activeFilterCount +
+              (sourceExcluded ? 1 : 0) +
+              (browsing ? 1 : 0);
           return _iconWithBadge(
             icon: Icons.tune_rounded,
             tooltip: context.l10n.filters,
@@ -1615,6 +1680,53 @@ class _SearchViewState extends State<_SearchView>
   /// "All" the same way the bloc already resets it on a fresh search or scope
   /// change (see `SearchBloc._onEcosystemChanged`).
   Widget _sourcePillsRow() {
+    if (_stremioSearch && sl.isRegistered<StremioProvider>()) {
+      final manager = sl<StremioProvider>().manager;
+      return ListenableBuilder(
+        listenable: manager,
+        builder: (context, _) => BlocBuilder<SearchBloc, SearchState>(
+          builder: (context, state) {
+            final addons = manager.enabled
+                .where(
+                  (addon) =>
+                      addon.catalogs.any((catalog) => catalog.isSearchable),
+                )
+                .toList();
+            if (addons.isEmpty) return const SizedBox.shrink();
+            return SizedBox(
+              height: 42,
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                children: [
+                  _chip(
+                    label: 'All',
+                    selected: state.sourceFilter == kAllSources,
+                    onTap: () => context.read<SearchBloc>().add(
+                      const SearchSourceFilterChanged(kAllSources),
+                    ),
+                  ),
+                  for (final addon in addons)
+                    Padding(
+                      padding: const EdgeInsetsDirectional.only(start: 8),
+                      child: _chip(
+                        label: addon.name,
+                        selected:
+                            state.sourceFilter == 'stremio-addon:${addon.id}',
+                        onTap: () => context.read<SearchBloc>().add(
+                          SearchSourceFilterChanged(
+                            'stremio-addon:${addon.id}',
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            );
+          },
+        ),
+      );
+    }
     return BlocBuilder<SearchBloc, SearchState>(
       buildWhen: (p, c) =>
           p.groups != c.groups ||
@@ -1781,8 +1893,9 @@ class _SearchViewState extends State<_SearchView>
     // lonely section: either an explicit chip selection, or only one source
     // returned and nothing else is still streaming in.
     final singleSource =
-        state.sourceFilter != kAllSources ||
-        (groups.length == 1 && !stillLoading);
+        !_stremioSearch &&
+        (state.sourceFilter != kAllSources ||
+            (groups.length == 1 && !stillLoading));
     final layout = _searchPrefs.layout;
 
     // A single source always reads best as the full grid — a lone horizontal
@@ -1792,9 +1905,38 @@ class _SearchViewState extends State<_SearchView>
       return _resultsGrid(state.visibleResults, cellW);
     }
 
+    if (_stremioSearch) {
+      final addons = <String, List<SourceResultGroup>>{};
+      for (final group in groups) {
+        addons.putIfAbsent(group.sourceId, () => []).add(group);
+      }
+      final showAddonName = state.sourceFilter == kAllSources;
+      return ListView(
+        padding: EdgeInsets.only(bottom: MediaQuery.paddingOf(context).bottom),
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        children: [
+          for (final addon in addons.values) ...[
+            if (showAddonName)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                child: Text(
+                  addon.first.addonName ?? '',
+                  style: AppText.headline,
+                ),
+              ),
+            for (var i = 0; i < addon.length; i++) ...[
+              _sourceRow(addon[i], cellW),
+              if (i < addon.length - 1) const SizedBox(height: 12),
+            ],
+            const SizedBox(height: 20),
+          ],
+        ],
+      );
+    }
+
     final sections = <Widget>[
       for (final g in groups)
-        if (layout == SearchLayout.horizontal)
+        if (_stremioSearch || layout == SearchLayout.horizontal)
           _sourceRow(g, cellW)
         else
           _sourceGrid(g, cellW),
@@ -1839,9 +1981,10 @@ class _SearchViewState extends State<_SearchView>
     VoidCallback? onFilter,
     bool filterActive = false,
     bool pending = false,
+    bool compact = false,
   }) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+      padding: EdgeInsets.fromLTRB(16, 0, 16, compact ? 4 : 10),
       // Every header the same height whether or not it has the filter /
       // "See all" controls.
       //
@@ -1851,7 +1994,7 @@ class _SearchViewState extends State<_SearchView>
       // theirs were the bare ones; the manga sources looked fine only because
       // their filter IconButton (minHeight 36) happened to hold the row open.
       child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 36),
+        constraints: BoxConstraints(minHeight: compact ? 30 : 36),
         child: Row(
           children: [
             Expanded(
@@ -1929,12 +2072,14 @@ class _SearchViewState extends State<_SearchView>
   /// Horizontal (CloudStream-style) poster row for one source. Capped to
   /// [_kSourcePreviewCap]; the header's "See all" opens the full grid.
   Widget _sourceRow(SourceResultGroup g, double cellW) {
-    final itemW = posterLayout(context) == PosterCardLayout.wide
-        ? 184.0
-        : 124.0;
-    final itemH = posterLayout(context) == PosterCardLayout.wide
-        ? 146.0
-        : 210.0;
+    // Stremio rows follow the global poster size like every other rail;
+    // the old hardcoded cell ignored the setting and looked oversized.
+    final itemW = _stremioSearch
+        ? posterRowWidth(context)
+        : (posterLayout(context) == PosterCardLayout.wide ? 184.0 : 124.0);
+    final itemH = _stremioSearch
+        ? posterRowHeight(context)
+        : (posterLayout(context) == PosterCardLayout.wide ? 146.0 : 210.0);
     final overflows = g.items.length > _kSourcePreviewCap;
     final preview = overflows
         ? g.items.take(_kSourcePreviewCap).toList(growable: false)
@@ -1950,6 +2095,7 @@ class _SearchViewState extends State<_SearchView>
         _sectionHeader(
           g.sourceName,
           g.items.length,
+          compact: _stremioSearch,
           onSeeAll: overflows ? () => _openSourceSeeAll(g) : null,
           onFilter: filter.onFilter,
           filterActive: filter.active,
@@ -2311,6 +2457,50 @@ class _SearchViewState extends State<_SearchView>
 
   // ── Idle view: recent searches + trending ─────────────────────────────────
   Widget _idleView(SearchState state) {
+    final discover = _stremioDiscover;
+    if (_stremioSearch && discover != null && state.query.trim().isEmpty) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
+            child: Text(
+              [
+                discover.addon.name,
+                discover.catalog.name,
+                if (discover.genre != null) discover.genre!,
+              ].join(' · '),
+              style: AppText.caption,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          Expanded(
+            child: _StremioDiscoverGrid(
+              key: ValueKey(discover.key),
+              selection: discover,
+              provider: sl<StremioProvider>(),
+              itemBuilder: (item) => PosterCard(
+                title: item.title,
+                logoItem: item,
+                imageUrl: item.cover,
+                wideImageUrl: item.banner,
+                genres: item.genres,
+                isAdult: item.isAdult,
+                headers: item.coverHeaders,
+                tags: _tagsFor(item),
+                qualityBadge: item.quality,
+                scoreBadge: item.score,
+                dubBadge: item.dubBadge,
+                cellWidth: posterGridCellWidth(context),
+                onTap: () => _openDetail(item),
+                onLongPress: () => _showInfo(item),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
     // Recent searches are hidden during a filtered browse — the screen is
     // showing filter results, not a search landing page, and the chips would
     // push them below the fold.
@@ -2325,7 +2515,7 @@ class _SearchViewState extends State<_SearchView>
     // not filler. Only the unasked-for picks strip is gone.
     final trending = browsing
         ? state.filteredBrowse
-        : widget.scope == SearchScope.library
+        : _metadataStyle
         ? const <MediaItem>[]
         : state.trending;
 
@@ -2394,7 +2584,7 @@ class _SearchViewState extends State<_SearchView>
                       vertical: 4,
                     ),
                     child: Text(
-                      widget.scope == SearchScope.library
+                      _metadataStyle
                           ? context.l10n.clearAll
                           : context.l10n.clear,
                       style: AppText.caption.copyWith(color: AppColors.accent),
@@ -2411,7 +2601,7 @@ class _SearchViewState extends State<_SearchView>
             ),
             // The rule between recents and what follows is part of the
             // metadata search's own look; Sources search is left as it was.
-            if (widget.scope == SearchScope.library) ...[
+            if (_metadataStyle) ...[
               const SizedBox(height: 20),
               const Divider(height: 1, thickness: 1, color: AppColors.hairline),
               const SizedBox(height: 20),
@@ -2578,7 +2768,7 @@ class _SearchViewState extends State<_SearchView>
     return GestureDetector(
       onTap: () => _runQuery(q),
       child: Container(
-        padding: widget.scope == SearchScope.library
+        padding: _metadataStyle
             ? const EdgeInsets.fromLTRB(12, 7, 6, 7)
             : const EdgeInsets.fromLTRB(12, 7, 12, 7),
         decoration: BoxDecoration(
@@ -2608,7 +2798,7 @@ class _SearchViewState extends State<_SearchView>
             // Drop one term without clearing the lot. The store has always
             // had `remove`; nothing on screen ever called it, so a single bad
             // search stuck until you wiped the whole history.
-            if (widget.scope == SearchScope.library)
+            if (_metadataStyle)
               GestureDetector(
                 onTap: () async {
                   await _history.remove(q);
@@ -3483,6 +3673,168 @@ class _ActiveFilterChip extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _StremioDiscoverGrid extends StatefulWidget {
+  const _StremioDiscoverGrid({
+    super.key,
+    required this.selection,
+    required this.provider,
+    required this.itemBuilder,
+  });
+
+  final StremioDiscoverSelection selection;
+  final StremioProvider provider;
+  final Widget Function(MediaItem item) itemBuilder;
+
+  @override
+  State<_StremioDiscoverGrid> createState() => _StremioDiscoverGridState();
+}
+
+class _StremioDiscoverGridState extends State<_StremioDiscoverGrid> {
+  final List<MediaItem> _items = [];
+  var _page = 0;
+  var _loading = false;
+  var _hasMore = true;
+  var _failed = false;
+  var _generation = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.provider.manager.addListener(_addonChanged);
+    unawaited(_load());
+  }
+
+  @override
+  void dispose() {
+    widget.provider.manager.removeListener(_addonChanged);
+    super.dispose();
+  }
+
+  void _addonChanged() {
+    final current = widget.provider.manager.byId(widget.selection.addon.id);
+    if (current != null &&
+        current.enabled &&
+        current.revision == widget.selection.addon.revision) {
+      return;
+    }
+    _generation++;
+    setState(() {
+      _items.clear();
+      _page = 0;
+      _loading = false;
+      _hasMore = true;
+      _failed = true;
+    });
+  }
+
+  Future<void> _load() async {
+    if (_loading || !_hasMore) return;
+    setState(() {
+      _loading = true;
+      _failed = false;
+    });
+    final selection = widget.selection;
+    final generation = ++_generation;
+    try {
+      final page = await widget.provider
+          .browseCatalog(
+            installationId: selection.addon.id,
+            type: selection.catalog.type,
+            catalogId: selection.catalog.id,
+            genre: selection.genre,
+            page: _page + 1,
+          )
+          .timeout(const Duration(seconds: 15));
+      if (!mounted || generation != _generation) return;
+      final known = _items.map((item) => item.id).toSet();
+      final fresh = page.where((item) => known.add(item.id)).toList();
+      setState(() {
+        _items.addAll(fresh);
+        _page++;
+        _hasMore = selection.catalog.isPaged && fresh.isNotEmpty;
+      });
+    } catch (_) {
+      if (mounted && generation == _generation) setState(() => _failed = true);
+    } finally {
+      if (mounted && generation == _generation) {
+        setState(() => _loading = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading && _items.isEmpty) {
+      return const Padding(padding: EdgeInsets.all(20), child: SkeletonGrid());
+    }
+    if (_failed && _items.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('Could not load this catalogue', style: AppText.body),
+            TextButton(onPressed: _load, child: const Text('Retry')),
+          ],
+        ),
+      );
+    }
+    if (_items.isEmpty) {
+      return Center(child: Text('No titles found', style: AppText.body));
+    }
+    return Stack(
+      children: [
+        NotificationListener<ScrollNotification>(
+          onNotification: (event) {
+            if (!_failed &&
+                _hasMore &&
+                !_loading &&
+                event.metrics.axis == Axis.vertical &&
+                event.metrics.extentAfter < 600) {
+              unawaited(_load());
+            }
+            return false;
+          },
+          child: GridView.builder(
+            padding: EdgeInsets.fromLTRB(
+              16,
+              6,
+              16,
+              MediaQuery.paddingOf(context).bottom + 36,
+            ),
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: posterGridColumns(context),
+              childAspectRatio: posterGridAspect(context),
+              crossAxisSpacing: 12,
+              mainAxisSpacing: 16,
+            ),
+            itemCount: _items.length,
+            itemBuilder: (context, index) => widget.itemBuilder(_items[index]),
+          ),
+        ),
+        if (_loading || _failed)
+          Positioned(
+            bottom: 8,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: _failed
+                  ? TextButton(
+                      onPressed: _load,
+                      child: const Text('Retry loading more'),
+                    )
+                  : const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+            ),
+          ),
+      ],
     );
   }
 }

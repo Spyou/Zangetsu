@@ -14,6 +14,8 @@ import '../../../core/playback/source_health_store.dart';
 import '../../../core/repository/catalogue_repository.dart';
 import '../../../core/search/title_suggestion_service.dart';
 import '../../../core/state/active_source_cubit.dart';
+import '../../../core/stremio/stremio_provider.dart';
+import '../../../core/stremio/stremio_ref.dart';
 // sourceTypeOf lives with the source picker; search_screen.dart reaches for it
 // the same way for its own mode narrowing.
 import '../../../core/ui/source_switcher.dart';
@@ -218,6 +220,10 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
 
     final trimmed = q.trim();
     if (trimmed.isEmpty) {
+      if (fixedSourceId == stremioSourceId) {
+        _runGen++;
+        _suggestSeq++;
+      }
       // Clearing the field returns to the idle screen and drops suggestions.
       emit(
         state.copyWith(
@@ -372,7 +378,9 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
       state.copyWith(
         query: q,
         suggestions: const [],
-        sourceFilter: kAllSources,
+        sourceFilter: fixedSourceId == stremioSourceId
+            ? state.sourceFilter
+            : kAllSources,
         ecosystem: SearchEcosystem.all,
       ),
     );
@@ -410,6 +418,32 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
         clearError: true,
       ),
     );
+
+    if (fixedSourceId == stremioSourceId &&
+        sl.isRegistered<StremioProvider>()) {
+      final groups = <SourceResultGroup>[];
+      await for (final addon in sl<StremioProvider>().searchAddons(q)) {
+        if (isClosed || gen != _runGen) return;
+        if (addon.items.isEmpty) continue;
+        groups.add(
+          SourceResultGroup(
+            sourceId: 'stremio-addon:${addon.id}',
+            sourceName: addon.category,
+            addonName: addon.name,
+            items: addon.items,
+            arrivalIndex: groups.length,
+          ),
+        );
+        emit(
+          state.copyWith(status: SearchStatus.success, groups: List.of(groups)),
+        );
+      }
+      if (isClosed || gen != _runGen) return;
+      emit(
+        state.copyWith(status: SearchStatus.success, groups: List.of(groups)),
+      );
+      return;
+    }
 
     // Choose the sources to query. In current-source-only mode that's JUST the
     // active Home source (read live, so a later source switch is picked up). In

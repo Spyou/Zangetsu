@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -123,6 +124,29 @@ class _Server {
     requests.add(request.url);
     final path = request.url.path;
     if (path.endsWith('/manifest.json')) {
+      if (request.url.host == 'same-name.example') {
+        return _json({
+          ..._manifest,
+          'catalogs': [
+            {
+              'type': 'movie',
+              'id': 'popular',
+              'name': 'Popular',
+              'extra': [
+                {'name': 'search'},
+              ],
+            },
+            {
+              'type': 'series',
+              'id': 'popular',
+              'name': 'Popular',
+              'extra': [
+                {'name': 'search'},
+              ],
+            },
+          ],
+        });
+      }
       if (request.url.host == 'catalog.example') {
         return _json({
           ..._manifest,
@@ -431,6 +455,170 @@ void main() {
     expect(
       server.requests.where((u) => u.path.contains('/meta/')),
       hasLength(1),
+    );
+  });
+
+  test(
+    'grouped search keeps results per enabled addon and isolates failures',
+    () async {
+      final server = _Server();
+      final manager = makeManager(server);
+      final first = await manager.install('https://first.example');
+      final second = await manager.install('https://unique.example');
+      final disabled = await manager.install('https://disabled.example');
+      final broken = await manager.install('https://broken.example');
+      await manager.setEnabled(disabled.id, false);
+      server.failCatalogHosts.add('broken.example');
+      server.requests.clear();
+
+      final groups = await StremioProvider(
+        manager,
+      ).searchAddons('batman').toList();
+      final firstRows = groups.where((group) => group.id == first.id).toList();
+      final secondRows = groups
+          .where((group) => group.id == second.id)
+          .toList();
+      final brokenRows = groups
+          .where((group) => group.id == broken.id)
+          .toList();
+      expect(
+        firstRows.map((row) => row.category),
+        unorderedEquals(['Top Movies', 'Shows']),
+      );
+      expect(secondRows, hasLength(2));
+      expect(brokenRows, hasLength(2));
+      expect(brokenRows.every((row) => row.items.isEmpty), isTrue);
+      expect(firstRows.first.items, hasLength(2));
+      expect(firstRows.first.items.first.sourceId, 'stremio');
+      expect(
+        StremioRef.parse(firstRows.first.items.first.url).installationId,
+        first.id,
+      );
+      expect(
+        StremioRef.parse(secondRows.first.items.first.url).installationId,
+        second.id,
+      );
+      expect(
+        server.requests.where((uri) => uri.host == 'disabled.example'),
+        isEmpty,
+      );
+    },
+  );
+
+  test('same-named movie and series catalogues have distinct labels', () async {
+    final manager = makeManager(_Server());
+    await manager.install('https://same-name.example');
+    final rows = await StremioProvider(
+      manager,
+    ).searchAddons('example').toList();
+    expect(
+      rows.map((row) => row.category),
+      unorderedEquals(['Popular · Movies', 'Popular · Series']),
+    );
+  });
+
+  test('a slow addon does not delay another addon search result', () async {
+    final server = _Server();
+    final gate = Completer<void>();
+    final manager = StremioManager(
+      client: StremioClient(
+        httpClient: MockClient((request) async {
+          if (request.url.host == 'slow.example' &&
+              request.url.path.contains('/catalog/')) {
+            await gate.future;
+          }
+          return server.handle(request);
+        }),
+      ),
+      secrets: secrets,
+      clock: () => DateTime(2026, 1, 1),
+    );
+    await manager.install('https://slow.example');
+    final fast = await manager.install('https://unique.example');
+    try {
+      final first = await StremioProvider(
+        manager,
+      ).searchAddons('batman').first.timeout(const Duration(seconds: 2));
+      expect(first.id, fast.id);
+      expect(first.items, isNotEmpty);
+    } finally {
+      gate.complete();
+    }
+  });
+
+  test(
+    'browsing sends the advertised genre and rejects disabled addons',
+    () async {
+      final server = _Server();
+      final manager = makeManager(server);
+      final addon = await manager.install('https://catalog.example');
+      final provider = StremioProvider(manager);
+      server.requests.clear();
+      final items = await provider.browseCatalog(
+        installationId: addon.id,
+        type: 'movie',
+        catalogId: 'filtered',
+        page: 1,
+        genre: 'Action',
+      );
+      expect(items, isNotEmpty);
+      expect(server.requests.single.path, contains('genre=Action'));
+      server.requests.clear();
+      await provider.browseCatalog(
+        installationId: addon.id,
+        type: 'movie',
+        catalogId: 'top',
+        page: 2,
+      );
+      expect(server.requests.single.path, contains('skip=100'));
+      await expectLater(
+        provider.browseCatalog(
+          installationId: addon.id,
+          type: 'movie',
+          catalogId: 'filtered',
+          page: 1,
+          genre: 'Unknown',
+        ),
+        throwsA(isA<StremioInstallException>()),
+      );
+      await manager.setEnabled(addon.id, false);
+      await expectLater(
+        provider.browseCatalog(
+          installationId: addon.id,
+          type: 'movie',
+          catalogId: 'filtered',
+          page: 1,
+          genre: 'Action',
+        ),
+        throwsA(isA<StremioInstallException>()),
+      );
+    },
+  );
+
+  test('browse only offers catalogues whose required extras are supported', () {
+    expect(
+      StremioProvider.supportsBrowseCatalog(
+        const StremioCatalog(
+          type: 'movie',
+          id: 'required-search',
+          name: 'Search',
+          extras: [StremioExtra(name: 'search', isRequired: true)],
+        ),
+      ),
+      isFalse,
+    );
+    expect(
+      StremioProvider.supportsBrowseCatalog(
+        const StremioCatalog(
+          type: 'movie',
+          id: 'genre',
+          name: 'Genre',
+          extras: [
+            StremioExtra(name: 'genre', isRequired: true, options: ['Action']),
+          ],
+        ),
+      ),
+      isTrue,
     );
   });
 

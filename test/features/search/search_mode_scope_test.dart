@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
@@ -5,6 +6,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 import 'package:watch_app/core/aniyomi/aniyomi_filters.dart';
 import 'package:watch_app/core/di/injector.dart' show sl;
+import 'package:watch_app/core/stremio/stremio_provider.dart';
+import 'package:watch_app/core/stremio/stremio_manager.dart';
 import 'package:watch_app/core/mode/content_mode.dart';
 import 'package:watch_app/core/mode/content_mode_cubit.dart';
 import 'package:watch_app/core/models/episode.dart';
@@ -22,6 +25,7 @@ import 'package:watch_app/core/search/title_suggestion_service.dart';
 import 'package:watch_app/core/state/active_source_cubit.dart';
 import 'package:watch_app/features/search/bloc/search_bloc.dart';
 import 'package:watch_app/features/search/bloc/search_event.dart';
+import 'package:watch_app/features/search/bloc/search_state.dart';
 
 // ---------------------------------------------------------------------------
 // This pins the fix in SearchBloc._modeSources(): the all-sources fan-out in
@@ -257,6 +261,50 @@ MediaItem _fakeItem(String sourceId) => MediaItem(
 // Tests
 // ---------------------------------------------------------------------------
 
+class _FakeStremioProvider extends StremioProvider {
+  _FakeStremioProvider() : super(StremioManager());
+
+  @override
+  Stream<({String id, String name, String category, List<MediaItem> items})>
+  searchAddons(String query) async* {
+    yield (
+      id: 'first',
+      name: 'First addon',
+      category: 'Movies',
+      items: [_fakeItem('stremio')],
+    );
+    yield (
+      id: 'first',
+      name: 'First addon',
+      category: 'Series',
+      items: [_fakeItem('stremio')],
+    );
+    yield (
+      id: 'second',
+      name: 'Second addon',
+      category: 'Movies',
+      items: [_fakeItem('stremio')],
+    );
+  }
+}
+
+class _DelayedStremioProvider extends StremioProvider {
+  _DelayedStremioProvider(this.gate) : super(StremioManager());
+  final Completer<void> gate;
+
+  @override
+  Stream<({String id, String name, String category, List<MediaItem> items})>
+  searchAddons(String query) async* {
+    await gate.future;
+    yield (
+      id: 'late',
+      name: 'Late addon',
+      category: 'Movies',
+      items: [_fakeItem('stremio')],
+    );
+  }
+}
+
 void main() {
   late Directory tempDir;
   late ActiveSourceCubit activeSource;
@@ -305,6 +353,57 @@ void main() {
   });
 
   group('SearchBloc mode-scoped all-sources search', () {
+    test('Stremio searches and displays separate addon groups', () async {
+      sl.registerSingleton<StremioProvider>(_FakeStremioProvider());
+      final fixed = SearchBloc(
+        repo: repo,
+        history: _FakeSearchHistory(),
+        prefs: _FakeSearchPrefs(),
+        suggestions: _FakeSuggestions(),
+        fixedSourceId: 'stremio',
+      );
+      addTearDown(fixed.close);
+      fixed.add(const SearchRunRequested('naruto'));
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+      expect(fixed.state.groups.map((group) => group.sourceName), [
+        'Movies',
+        'Series',
+        'Movies',
+      ]);
+      expect(fixed.state.sortedVisibleGroups, hasLength(3));
+      expect(
+        fixed.state.groups
+            .expand((group) => group.items)
+            .every((item) => item.sourceId == 'stremio'),
+        isTrue,
+      );
+      expect(repo.searchedSourceIds, isEmpty);
+    });
+
+    test(
+      'clearing Stremio search prevents late results replacing browse',
+      () async {
+        final gate = Completer<void>();
+        sl.registerSingleton<StremioProvider>(_DelayedStremioProvider(gate));
+        final fixed = SearchBloc(
+          repo: repo,
+          history: _FakeSearchHistory(),
+          prefs: _FakeSearchPrefs(),
+          suggestions: _FakeSuggestions(),
+          fixedSourceId: 'stremio',
+        );
+        addTearDown(fixed.close);
+        fixed.add(const SearchRunRequested('naruto'));
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+        fixed.add(const SearchQueryChanged(''));
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+        gate.complete();
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+        expect(fixed.state.status, SearchStatus.idle);
+        expect(fixed.state.groups, isEmpty);
+      },
+    );
+
     test('a Home-fixed source searches only that source', () async {
       await modeCubit.setMode(ContentMode.anime);
       repo.loadedSourcesSeed = const [

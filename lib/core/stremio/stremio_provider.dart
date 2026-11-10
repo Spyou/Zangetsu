@@ -186,6 +186,117 @@ class StremioProvider implements BaseProvider {
     return _distinct(items);
   }
 
+  static bool supportsSearchCatalog(StremioCatalog catalog) =>
+      catalog.isSearchable &&
+      !catalog.extras.any(
+        (extra) =>
+            extra.isRequired &&
+            extra.name != 'search' &&
+            (extra.name != 'genre' || extra.options.isEmpty),
+      );
+
+  static bool supportsBrowseCatalog(StremioCatalog catalog) =>
+      !catalog.extras.any(
+        (extra) =>
+            extra.isRequired &&
+            (extra.name != 'genre' ||
+                extra.options.every((option) => option.isEmpty)),
+      );
+
+  Future<List<MediaItem>> browseCatalog({
+    required String installationId,
+    required String type,
+    required String catalogId,
+    required int page,
+    String? genre,
+  }) async {
+    final addon = manager.byId(installationId);
+    if (addon == null || !addon.enabled) {
+      throw const StremioInstallException('Addon is no longer available');
+    }
+    final catalog = addon.catalogs
+        .where((c) => c.type == type && c.id == catalogId)
+        .firstOrNull;
+    if (catalog == null || !supportsBrowseCatalog(catalog)) {
+      throw const StremioInstallException('Catalogue is no longer available');
+    }
+    if (page > 1 && !catalog.isPaged) return const [];
+    final extra = catalog.extras.where((e) => e.name == 'genre').firstOrNull;
+    if (genre != null && !(extra?.options.contains(genre) ?? false)) {
+      throw const StremioInstallException('Genre is no longer available');
+    }
+    final selectedGenre =
+        genre ??
+        (extra?.isRequired == true
+            ? extra!.options.firstWhere((option) => option.isNotEmpty)
+            : null);
+    final result = await manager.catalog(
+      addon.id,
+      type: catalog.type,
+      catalogId: catalog.id,
+      genre: selectedGenre,
+      skip: page > 1 ? (page - 1) * 100 : null,
+    );
+    final current = manager.byId(addon.id);
+    if (current == null ||
+        !current.enabled ||
+        current.revision != addon.revision) {
+      throw const StremioInstallException('Addon changed while loading');
+    }
+    return _distinct(
+      result.metas.map((meta) => _item(addon, catalog, meta)).toList(),
+    );
+  }
+
+  /// Searches catalogue rows in bounded batches, preserving their addon.
+  Stream<({String id, String name, String category, List<MediaItem> items})>
+  searchAddons(String query) async* {
+    final jobs = <(StremioInstallation, StremioCatalog)>[];
+    for (final addon in _enabled) {
+      for (final catalog in addon.catalogs) {
+        if (!supportsSearchCatalog(catalog)) continue;
+        jobs.add((addon, catalog));
+      }
+    }
+    for (var start = 0; start < jobs.length; start += 4) {
+      final results = Stream.fromFutures(
+        jobs.skip(start).take(4).map((job) async {
+          final (addon, catalog) = job;
+          final duplicateName = addon.catalogs.any(
+            (other) =>
+                supportsSearchCatalog(other) &&
+                other.type != catalog.type &&
+                other.name.trim().toLowerCase() ==
+                    catalog.name.trim().toLowerCase(),
+          );
+          final typeName = switch (catalog.type) {
+            'movie' => 'Movies',
+            'series' => 'Series',
+            _ => catalog.type,
+          };
+          final category = duplicateName && typeName.isNotEmpty
+              ? '${catalog.name} · $typeName'
+              : catalog.name;
+          final items = await _loadCatalog(
+            addon,
+            catalog,
+            search: query,
+            skip: 0,
+          ).timeout(const Duration(seconds: 8), onTimeout: () => <MediaItem>[]);
+          return (
+            id: addon.id,
+            name: addon.name,
+            category: category,
+            items: _distinct(items),
+          );
+        }),
+      );
+      await for (final result in results) {
+        if (manager.byId(result.id)?.enabled == true) yield result;
+      }
+    }
+  }
+
   /// One page of a catalogue for the Home "See all" grid. The handle stored
   /// on [HomeSection.more] carries installation + type + catalogue id.
   Future<List<MediaItem>> catalogPage({

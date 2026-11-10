@@ -140,8 +140,10 @@ class SourceResultGroup extends Equatable {
     required this.sourceName,
     required this.items,
     this.arrivalIndex = 0,
+    this.addonName,
   });
 
+  final String? addonName;
   final String sourceId;
   final String sourceName;
   final List<MediaItem> items;
@@ -156,10 +158,17 @@ class SourceResultGroup extends Equatable {
     sourceName: sourceName,
     items: items,
     arrivalIndex: arrivalIndex,
+    addonName: addonName,
   );
 
   @override
-  List<Object?> get props => [sourceId, sourceName, items, arrivalIndex];
+  List<Object?> get props => [
+    sourceId,
+    sourceName,
+    items,
+    arrivalIndex,
+    addonName,
+  ];
 }
 
 /// Sentinel source-filter value meaning "all sources".
