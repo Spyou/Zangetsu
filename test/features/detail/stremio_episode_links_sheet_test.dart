@@ -166,12 +166,12 @@ void main() {
     VideoSource? picked;
     await openSheet(tester, () => picked, (value) => picked = value);
 
-    expect(find.widgetWithText(Tab, 'Test Addon'), findsOneWidget);
-    await tester.tap(find.widgetWithText(Tab, 'Test Addon'));
+    expect(find.text('Test Addon'), findsWidgets);
+    await tester.tap(find.byKey(const ValueKey('filter-chip:Test Addon')));
     await tester.pumpAndSettle();
-    expect(find.text('4K · WEB-DL'), findsOne);
+    expect(find.text('🎞️ 4K · WEB-DL'), findsOne);
 
-    await tester.tap(find.text('4K · WEB-DL'));
+    await tester.tap(find.text('🎞️ 4K · WEB-DL'));
     await tester.pump();
     await tester.runAsync(
       () => Future<void>.delayed(const Duration(milliseconds: 100)),
@@ -198,7 +198,7 @@ void main() {
     server.subtitleGate = Completer<void>();
     VideoSource? picked;
     await openSheet(tester, () => picked, (value) => picked = value);
-    await tester.tap(find.text('4K · WEB-DL').first);
+    await tester.tap(find.text('🎞️ 4K · WEB-DL').first);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
     expect(find.text('Checking subtitles…'), findsNothing);
@@ -213,12 +213,12 @@ void main() {
     server.extraLinks = 300;
     VideoSource? picked;
     await openSheet(tester, () => picked, (value) => picked = value);
-    expect(find.text('Link 0'), findsOneWidget);
-    expect(find.text('Link 299'), findsNothing);
-    await tester.tap(find.widgetWithText(Tab, 'Test Addon'));
+    expect(find.text('🎞️ Link 0'), findsOneWidget);
+    expect(find.text('🎞️ Link 299'), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('filter-chip:Test Addon')));
     await tester.pumpAndSettle();
-    expect(find.text('Link 0'), findsOneWidget);
-    expect(find.text('Link 299'), findsNothing);
+    expect(find.text('🎞️ Link 0'), findsOneWidget);
+    expect(find.text('🎞️ Link 299'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -247,8 +247,8 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
 
-    expect(find.text('4K · WEB-DL'), findsOne);
-    await tester.tap(find.text('4K · WEB-DL'));
+    expect(find.text('🎞️ 4K · WEB-DL'), findsOne);
+    await tester.tap(find.text('🎞️ 4K · WEB-DL'));
     await tester.pump();
     await tester.runAsync(
       () => Future<void>.delayed(const Duration(milliseconds: 100)),
@@ -262,7 +262,7 @@ void main() {
     VideoSource? picked;
     await openSheet(tester, () => picked, (value) => picked = value);
 
-    final link = find.text('4K · WEB-DL');
+    final link = find.text('🎞️ 4K · WEB-DL');
     await tester.tap(link);
     await tester.tap(link, warnIfMissed: false);
     await tester.pump();
@@ -273,7 +273,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
 
     expect(picked!.url, 'https://cdn.example/video.m3u8');
-    expect(find.text('4K · WEB-DL'), findsNothing);
+    expect(find.text('🎞️ 4K · WEB-DL'), findsNothing);
   });
 
   test('Stremio titles use the sheet for Play and Resume only', () {
