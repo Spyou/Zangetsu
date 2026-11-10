@@ -1192,13 +1192,13 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
       TvMenuOption(
         label: context.l10n.off,
         selected: text.every((t) => !t.selected),
-        onSelect: () => c.selectTextTrack(null),
+        onSelect: () => _selectSub(c, null, null),
       ),
       for (final t in text)
         TvMenuOption(
           label: t.label ?? (t.language.isEmpty ? 'Subtitle' : t.language),
           selected: t.selected,
-          onSelect: () => c.selectTextTrack(t.id),
+          onSelect: () => _selectSub(c, t.id, t.language),
         ),
       TvMenuOption(
         label: context.l10n.preferredLanguage,
@@ -1412,9 +1412,38 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
     );
     if (picked == null) return;
     await sl<PlaybackPrefs>().setSubtitlePreference(picked);
+    _rememberSubChoice(picked);
     _subApplied = false;
     await _maybeApplySubPref();
     if (mounted) setState(() {});
+  }
+
+  /// Manual track pick that also remembers the choice for this show.
+  void _selectSub(TvExoController c, String? id, String? language) {
+    c.selectTextTrack(id);
+    if (id == null) {
+      _rememberSubChoice('off');
+      return;
+    }
+    final lang = languageOfSource(language ?? '');
+    if (lang != null) _rememberSubChoice(lang.iso1);
+  }
+
+  /// This show's remembered subtitle, or null. No memory here for
+  /// peek/incognito; those sessions must not persist anything.
+  String? get _showSubChoice {
+    final show = widget.showUrl;
+    if (show == null || show.isEmpty) return null;
+    return sl<TitlePrefsStore>().subtitleChoice(widget.sourceId, show);
+  }
+
+  void _rememberSubChoice(String choice) {
+    final show = widget.showUrl;
+    if (show == null || show.isEmpty) return;
+    if (!sl.isRegistered<TitlePrefsStore>()) return;
+    unawaited(
+      sl<TitlePrefsStore>().setSubtitleChoice(widget.sourceId, show, choice),
+    );
   }
 
   Future<void> _openSubtitleSearch() async {
@@ -1573,7 +1602,8 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
     final tracks = c.textTracks.value;
     if (tracks.isEmpty && c.duration.value <= 0) return; // not ready yet
     _subApplied = true;
-    final pref = sl<PlaybackPrefs>().subtitlePreference;
+    // This show's pick beats the global preference; no memory → global.
+    final pref = _showSubChoice ?? sl<PlaybackPrefs>().subtitlePreference;
     final d = decideSubtitle(textTracks: tracks, pref: pref);
     switch (d.action) {
       case TvSubAction.off:
