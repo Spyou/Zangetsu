@@ -254,6 +254,8 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
         manager: manager,
         ref: ref,
         title: title,
+        bannerUrl: detail.banner ?? detail.cover,
+        bannerHeaders: detail.coverHeaders,
       );
       if (!mounted || picked == null) return null;
       if (!manager.canOpen(ref, revision: revision)) {

@@ -92,6 +92,42 @@ void main() {
   });
   tearDown(() => sl.reset());
 
+  for (final hasSource in [true, false]) {
+    testWidgets(
+      'source catalogue excludes Stremio fallback (source: $hasSource)',
+      (tester) async {
+        final repository = _StubSourceRepository([
+          (id: 'stremio', name: 'Stremio'),
+          if (hasSource) (id: 'source-a', name: 'Source A'),
+        ]);
+        final active = ActiveSourceCubit()..setSource('stremio');
+        sl.registerSingleton<ActiveSourceCubit>(active);
+        addTearDown(active.close);
+        final selected = <String>[];
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: SingleChildScrollView(
+                child: SourceCatalogueHomeContent(
+                  repository: repository,
+                  onSourceSelected: selected.add,
+                  showSourcePicker: false,
+                  sectionBuilder: (section) => Text(section.title),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(selected, hasSource ? ['source-a'] : isEmpty);
+        expect(
+          repository.homeCalls.any((call) => call.sourceId == 'stremio'),
+          isFalse,
+        );
+      },
+    );
+  }
+
   testWidgets('same-named Stremio rows all render in catalogue order', (
     tester,
   ) async {

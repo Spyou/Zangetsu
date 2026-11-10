@@ -2605,8 +2605,8 @@ packages:
     dependency: "direct main"
     description:
       path: "."
-      ref: 2550ab5d13370246d2aa1b8b90fe54be3362f5d0
-      resolved-ref: 2550ab5d13370246d2aa1b8b90fe54be3362f5d0
+      ref: "2550ab5d13370246d2aa1b8b90fe54be3362f5d0"
+      resolved-ref: "2550ab5d13370246d2aa1b8b90fe54be3362f5d0"
       url: "https://github.com/Spyou/Zangetsu-Source-Bridge.git"
     source: git
     version: "0.1.0"

@@ -193,6 +193,10 @@ class SourceCatalogueHomeContentState
       .loadedSources
       .where((source) {
         final id = source.id;
+        // Stremio has its own catalogue toggle; never select it as a fallback.
+        if (id == 'stremio' && widget.initialSourceId != 'stremio') {
+          return false;
+        }
         return sourceIdMatchesContentMode(id, _mode);
       })
       .toList(growable: false);
