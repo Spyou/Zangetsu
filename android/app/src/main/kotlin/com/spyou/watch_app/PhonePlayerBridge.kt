@@ -108,6 +108,7 @@ object PhonePlayerBridge {
                 PhonePlayerIntent.EXTRA_START_INDEX,
                 (call.argument<Number>("startIndex") ?: 0).toInt(),
             )
+            i.putExtra(PhonePlayerIntent.EXTRA_STREMIO_SUBTITLES, call.argument<Boolean>("stremioSubtitles") ?: false)
             call.argument<List<String>>("subUrls")
                 ?.let { i.putExtra(PhonePlayerIntent.EXTRA_SUB_URLS, it.toTypedArray()) }
             call.argument<List<String>>("subLangs")

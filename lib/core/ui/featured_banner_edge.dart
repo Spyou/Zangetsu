@@ -384,7 +384,10 @@ class _FeaturedBannerEdgeState extends State<FeaturedBannerEdge>
         ),
         if (provider != null)
           Image(
-            image: ResizeImage(provider, width: width),
+            image: ResizeImage(
+              provider,
+              width: mobileHeroDecodeWidth(item.sourceId, width),
+            ),
             fit: BoxFit.cover,
             alignment: Alignment.topCenter,
             frameBuilder: imageFadeIn,

@@ -11,3 +11,7 @@ String? adaptiveArtUrl(String? poster, String? backdrop) {
   if (poster != null && poster.trim().isNotEmpty) return poster;
   return backdrop != null && backdrop.trim().isNotEmpty ? backdrop : null;
 }
+
+/// Wide Stremio backdrops need their detail preserved before a tall hero crops them.
+int mobileHeroDecodeWidth(String sourceId, int screenWidth) =>
+    sourceId == 'stremio' && screenWidth < 1920 ? 1920 : screenWidth;

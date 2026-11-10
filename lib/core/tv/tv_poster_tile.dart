@@ -22,6 +22,7 @@ class TvPosterTile extends StatelessWidget {
     this.genres = const [],
     this.isAdult = false,
     this.progressBadge,
+    this.topRightBadge,
     this.logoItem,
     required this.onTap,
     this.onLongPress,
@@ -41,6 +42,7 @@ class TvPosterTile extends StatelessWidget {
   final List<String> genres;
   final bool isAdult;
   final String? progressBadge;
+  final Widget? topRightBadge;
   final MediaItem? logoItem;
 
   final VoidCallback onTap;
@@ -80,6 +82,7 @@ class TvPosterTile extends StatelessWidget {
                   genres: genres,
                   isAdult: isAdult,
                   progressBadge: progressBadge,
+                  topRightBadge: topRightBadge,
                   cellWidth: constraints.maxWidth,
                   showTitle: false,
                   // Touch gestures are disabled on TV; TvFocusable handles OK-key

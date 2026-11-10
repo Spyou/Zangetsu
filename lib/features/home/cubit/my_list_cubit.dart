@@ -67,7 +67,9 @@ class MyListCubit extends Cubit<List<MyListEntry>> {
   static bool _unchanged(List<MyListEntry> a, List<MyListEntry> b) {
     if (a.length != b.length) return false;
     for (var i = 0; i < a.length; i++) {
-      if (a[i].item.url != b[i].item.url || a[i].status != b[i].status) {
+      if (a[i].item.url != b[i].item.url ||
+          a[i].item.savedAtMs != b[i].item.savedAtMs ||
+          a[i].status != b[i].status) {
         return false;
       }
     }

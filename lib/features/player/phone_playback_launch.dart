@@ -4,6 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/di/injector.dart';
+import '../../core/stremio/stremio_manager.dart';
+import '../../core/stremio/stremio_ref.dart';
+import '../../core/stremio/stremio_subtitles.dart';
+import '../../core/privacy/incognito_mode.dart';
 import '../../core/download/download_manager.dart';
 import '../../core/download/download_record.dart';
 import '../downloads/episode_download_source_sheet.dart'
@@ -155,7 +159,7 @@ Map<String, dynamic> _phoneSubtitlePayload(VideoSource source) {
   return <String, dynamic>{
     'subUrls': [for (final s in source.subtitles) s.url],
     'subLangs': [for (final s in source.subtitles) s.lang],
-    'subLabels': [for (final s in source.subtitles) s.label ?? s.lang],
+    'subLabels': [for (final s in source.subtitles) s.displayLabel],
     'subFormats': [for (final s in source.subtitles) s.format ?? ''],
     'subDefaults': [for (final s in source.subtitles) s.isDefault],
   };
@@ -201,6 +205,7 @@ Map<String, dynamic> phonePlayerArgs({
   required bool autoplayNext,
   required int seekSeconds,
   bool isMovie = false,
+  bool stremioSubtitles = false,
   bool megaSkip = true,
   int megaSkipSeconds = 85,
   String? subtitleFontPath,
@@ -216,6 +221,7 @@ Map<String, dynamic> phonePlayerArgs({
 }) {
   final mime = source == null ? null : phoneMimeFor(source);
   return <String, dynamic>{
+    if (stremioSubtitles) 'stremioSubtitles': true,
     // No url: the Activity opens on its loading screen and asks Dart for the
     // episode over the channel, so the user never waits on a blank route.
     if (source != null) ...{
@@ -496,6 +502,7 @@ class PhoneNativePlayer {
     final prefs = sl<PlaybackPrefs>();
     _autoResume = prefs.autoResume;
     _seedSource = initialSource;
+    _stremioSources.clear();
     _startIndex = startIndex;
     _resumeOverride = resumePosition;
     _seedUsed = false;
@@ -509,6 +516,7 @@ class PhoneNativePlayer {
       episodeLabel: _episodeLabel(ep),
       episodeLabels: [for (final e in _episodes) _episodeLabel(e)],
       isMovie: _isMovie,
+      stremioSubtitles: _sourceId == stremioSourceId,
       startIndex: startIndex,
       accentColor: AppColors.accent.toARGB32(),
       softwareDecoding: prefs.videoDecoder == 'sw',
@@ -527,7 +535,7 @@ class PhoneNativePlayer {
       subtitleEdgeColor: parseSubtitleHex(
         prefs.subtitleOutlineColorHex,
       ).toARGB32(),
-      subtitlePreference: prefs.subtitlePreference,
+      subtitlePreference: _resolvedSubtitlePreference(),
       autoResume: prefs.autoResume,
       keepScreenOn: prefs.keepScreenOn,
       autoplayNext: prefs.autoplayNext,
@@ -610,11 +618,77 @@ class PhoneNativePlayer {
     }
   }
 
+  static final _stremioSources = <int, List<VideoSource>>{};
+
   static Future<dynamic> _onNativeCall(MethodCall call) async {
     switch (call.method) {
-      case 'resolveEpisode':
+      case 'rememberStremioLink':
+      case 'addonSubtitles':
         final args = _callArgs(call);
         final index = (args?['index'] as num?)?.toInt() ?? -1;
+        if (_sourceId != stremioSourceId ||
+            _closed?.isCompleted != false ||
+            args?['sessionId'] != _sessionId ||
+            index < 0 ||
+            index >= _episodes.length) {
+          return null;
+        }
+        final url = args?['url'] as String?;
+        VideoSource? selected;
+        for (final source in _stremioSources[index] ?? const <VideoSource>[]) {
+          if (source.url == url) {
+            selected = source;
+            break;
+          }
+        }
+        if (selected == null) return null;
+        if (call.method == 'rememberStremioLink') {
+          if (!_peek &&
+              !IncognitoMode.on &&
+              sl.isRegistered<TitlePrefsStore>()) {
+            final store = sl<TitlePrefsStore>();
+            await store.rememberStremioLink(_episodes[index].url, selected);
+            final show = _showUrl;
+            if (show != null && show.isNotEmpty) {
+              await store.rememberStremioBingeGroup(show, selected.bingeGroup);
+            }
+          }
+          return null;
+        }
+        if (!sl.isRegistered<StremioManager>() ||
+            !StremioRef.isRef(_episodes[index].url)) {
+          return null;
+        }
+        final session = _sessionId;
+        final enriched = await stremioSourceWithSubtitles(
+          sl<StremioManager>(),
+          StremioRef.parse(_episodes[index].url),
+          selected,
+        );
+        if (session != _sessionId || _closed?.isCompleted != false) return null;
+        return _phoneSubtitlePayload(enriched);
+      case 'rememberSubtitle':
+        final args = _callArgs(call);
+        if (_closed?.isCompleted != false ||
+            args?['sessionId'] != _sessionId ||
+            _peek ||
+            IncognitoMode.on) {
+          return null;
+        }
+        final choice = args?['choice'] as String?;
+        final show = _showUrl;
+        if (choice == null ||
+            choice.isEmpty ||
+            show == null ||
+            show.isEmpty ||
+            !sl.isRegistered<TitlePrefsStore>()) {
+          return null;
+        }
+        await sl<TitlePrefsStore>().setSubtitleChoice(_sourceId, show, choice);
+        return null;
+      case 'resolveEpisode':
+        final rArgs = _callArgs(call);
+        final index = (rArgs?['index'] as num?)?.toInt() ?? -1;
         if (index < 0 || index >= _episodes.length) return null;
         return _resolveEpisode(index);
       case 'playbackStarted':
@@ -859,6 +933,7 @@ class PhoneNativePlayer {
             : await _resolveSources(ep);
         final prepared = await _prepareSources(sources);
         if (session != _sessionId || _closed?.isCompleted != false) return null;
+        if (_sourceId == stremioSourceId) _stremioSources[index] = prepared;
         return [
           for (var i = 0; i < prepared.length; i++)
             {
@@ -871,11 +946,16 @@ class PhoneNativePlayer {
         final args = _callArgs(call);
         final index = (args?['index'] as num?)?.toInt() ?? -1;
         if (index < 0 || index >= _episodes.length) return const <Map>[];
+        final session = _sessionId;
         final sources = await _resolveSources(
           _episodes[index],
           preferPolled: true,
         );
         final prepared = await _prepareSources(sources);
+        if (session != _sessionId || _closed?.isCompleted != false) {
+          return const <Map>[];
+        }
+        if (_sourceId == stremioSourceId) _stremioSources[index] = prepared;
         return [
           for (var i = 0; i < prepared.length; i++)
             phoneSourceMap(prepared[i], i),
@@ -1065,7 +1145,8 @@ class PhoneNativePlayer {
     if (session != _sessionId || category != _category || prepared.isEmpty) {
       return null;
     }
-    final src = seed == null ? _pickSource(prepared) : prepared.first;
+    if (_sourceId == stremioSourceId) _stremioSources[index] = prepared;
+    final src = seed == null ? _pickSource(prepared, ep) : prepared.first;
     if (src == null) return null;
     final position = index == _startIndex
         ? (_autoResume
@@ -1079,11 +1160,21 @@ class PhoneNativePlayer {
     };
   }
 
-  static VideoSource? _pickSource(List<VideoSource> sources) => pickDefault(
-    sources,
-    prefer: _category == 'dub' ? AudioKind.dub : AudioKind.sub,
-    preferQuality: _preferredQuality(),
-  );
+  static VideoSource? _pickSource(List<VideoSource> sources, Episode episode) {
+    if (_sourceId == stremioSourceId && sl.isRegistered<TitlePrefsStore>()) {
+      final saved = sl<TitlePrefsStore>().preferredStremioLink(
+        episode.url,
+        sources,
+        showUrl: _showUrl,
+      );
+      if (saved != null) return saved;
+    }
+    return pickDefault(
+      sources,
+      prefer: _category == 'dub' ? AudioKind.dub : AudioKind.sub,
+      preferQuality: _preferredQuality(),
+    );
+  }
 
   static String _preferredQuality() {
     final url = _showUrl;
@@ -1091,6 +1182,15 @@ class PhoneNativePlayer {
             ? sl<TitlePrefsStore>().quality(_sourceId, url)
             : null) ??
         sl<PlaybackPrefs>().defaultQuality;
+  }
+
+  static String _resolvedSubtitlePreference() {
+    final show = _showUrl;
+    if (show != null && show.isNotEmpty && sl.isRegistered<TitlePrefsStore>()) {
+      final remembered = sl<TitlePrefsStore>().subtitleChoice(_sourceId, show);
+      if (remembered != null) return remembered;
+    }
+    return sl<PlaybackPrefs>().subtitlePreference;
   }
 
   static final _prefetchedEpisodes = <(int, String)>{};

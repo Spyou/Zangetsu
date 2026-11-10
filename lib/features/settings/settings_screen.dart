@@ -59,6 +59,7 @@ import '../../core/state/active_source_cubit.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/locale/app_language_picker.dart';
 import '../../l10n/l10n.dart';
+import '../../core/mode/content_mode_cubit.dart';
 import '../home/metadata_switch_sheet.dart';
 import '../home/cubit/home_cubit.dart';
 import '../../l10n/ui_strings.dart';
@@ -1236,7 +1237,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
           'anime manga novel metadata provider anilist mal myanimelist '
           'movie tv series tmdb simkl fallback catalogue',
       trailing: _value(
-        HomeCataloguePrefs.sourceSelected
+        HomeCataloguePrefs.stremioSelected
+            ? 'Stremio'
+            : HomeCataloguePrefs.sourceSelected
             ? 'Source Catalogue'
             : '${_animeProviderLabel()} · ${_videoProviderLabel()}',
       ),
@@ -1244,10 +1247,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
         final selection = await showMetadataSwitchSheet(
           context,
           sourceCatalogueSelected: HomeCataloguePrefs.sourceSelected,
+          stremioCatalogueSelected: HomeCataloguePrefs.stremioSelected,
         );
         if (!mounted || selection == null) return;
-        await HomeCataloguePrefs.setSourceSelected(
-          selection == HomeCatalogueSelection.source,
+        final kind = switch (selection) {
+          HomeCatalogueSelection.metadata => HomeCatalogueKind.metadata,
+          HomeCatalogueSelection.source => HomeCatalogueKind.source,
+          HomeCatalogueSelection.stremio => HomeCatalogueKind.stremio,
+        };
+        await HomeCataloguePrefs.setCatalogue(
+          sl<ContentModeCubit>().state,
+          kind,
         );
         if (mounted) setState(() {});
       },

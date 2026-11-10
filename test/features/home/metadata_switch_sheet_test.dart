@@ -168,7 +168,16 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byIcon(Icons.check_rounded), findsNothing);
-      expect(tester.widget<Switch>(find.byType(Switch)).value, isTrue);
+      final sourceRow = find.ancestor(
+        matching: find.byType(ListTile),
+        of: find.text('Source Catalogue'),
+      );
+      expect(
+        tester.widget<Switch>(
+          find.descendant(of: sourceRow, matching: find.byType(Switch)),
+        ).value,
+        isTrue,
+      );
     });
 
     testWidgets('source switch can return Home to metadata mode', (
@@ -195,10 +204,48 @@ void main() {
 
       await tester.tap(find.text('Choose catalogue'));
       await tester.pumpAndSettle();
-      await tester.tap(find.byType(Switch));
+      await tester.ensureVisible(find.text('Source Catalogue'));
+      await tester.tap(
+        find.descendant(
+          of: find.ancestor(
+            matching: find.byType(ListTile),
+            of: find.text('Source Catalogue'),
+          ),
+          matching: find.byType(Switch),
+        ),
+      );
       await tester.pumpAndSettle();
 
       expect(selection, HomeCatalogueSelection.metadata);
+    });
+
+    testWidgets('Stremio row shows the Stremio brand logo', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: FilledButton(
+                onPressed: () => showMetadataSwitchSheet(context),
+                child: const Text('Choose catalogue'),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('Choose catalogue'));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('Stremio'));
+      await tester.pumpAndSettle();
+
+      final logo = find.byWidgetPredicate(
+        (w) =>
+            w is Image &&
+            w.image is AssetImage &&
+            (w.image as AssetImage).assetName ==
+                'assets/icon/providers/stremio.png',
+      );
+      expect(logo, findsOneWidget);
     });
   });
 }
