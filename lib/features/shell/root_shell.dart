@@ -431,16 +431,23 @@ class _RootShellState extends State<RootShell>
               },
             ),
           ),
-          bottomNavigationBar: ValueListenableBuilder<bool>(
-            valueListenable: dockHiddenBySection,
-            builder: (context, sectionOpen, _) {
+          bottomNavigationBar: ListenableBuilder(
+            listenable: Listenable.merge([
+              dockHiddenBySection,
+              HomeCataloguePrefs.revision,
+            ]),
+            builder: (context, _) {
               // Slide the dock away only when a Settings section is open AND the
               // Profile tab is showing — every other tab keeps its dock.
-              final hide = sectionOpen && _tab == DockTab.profile;
+              final hide = dockHiddenBySection.value && _tab == DockTab.profile;
+              final modesEnabled =
+                  ZModePrefs.enabled &&
+                  !(HomeCataloguePrefs.stremioSelected &&
+                      sl<ContentModeCubit>().state == ContentMode.anime);
               return Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  if (ZModePrefs.enabled && _navPrefs.style == NavBarStyle.dock)
+                  if (modesEnabled && _navPrefs.style == NavBarStyle.dock)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 8),
                       child: BlocBuilder<ContentModeCubit, ContentMode>(
@@ -520,7 +527,7 @@ class _RootShellState extends State<RootShell>
                                 glassQuality: _navPrefs.glassQuality,
                                 glassBlurEnabled: _navPrefs.glassBlurEnabled,
                                 onSelected: _onTabSelected,
-                                modesEnabled: ZModePrefs.enabled,
+                                modesEnabled: modesEnabled,
                                 onModeSelected: (mode, kind) async {
                                   await ZModePrefs.setStreamKind(kind);
                                   await sl<ContentModeCubit>().setMode(mode);
@@ -535,7 +542,7 @@ class _RootShellState extends State<RootShell>
                               tabs: tabs,
                               active: _tab,
                               onSelected: _onTabSelected,
-                              centre: ZModePrefs.enabled
+                              centre: modesEnabled
                                   ? BlocBuilder<ContentModeCubit, ContentMode>(
                                       bloc: sl<ContentModeCubit>(),
                                       builder: (_, mode) => ModeFab(
@@ -686,9 +693,7 @@ class _LiquidNavDock extends StatelessWidget {
                   tabs: glassTabs,
                   selectedIndex: tabs.indexOf(active).clamp(0, tabs.length - 1),
                   collapsed: collapsed,
-                  alignment: modesEnabled
-                      ? Alignment.centerRight
-                      : Alignment.center,
+                  modesEnabled: modesEnabled,
                   quality: glassQuality,
                   settings: glass,
                   onTabSelected: (index) => onSelected(tabs[index]),
@@ -768,7 +773,7 @@ class _LiquidGlassTabBar extends StatelessWidget {
     required this.tabs,
     required this.selectedIndex,
     required this.collapsed,
-    required this.alignment,
+    required this.modesEnabled,
     required this.quality,
     required this.settings,
     required this.onTabSelected,
@@ -777,7 +782,7 @@ class _LiquidGlassTabBar extends StatelessWidget {
   final List<GlassTab> tabs;
   final int selectedIndex;
   final bool collapsed;
-  final Alignment alignment;
+  final bool modesEnabled;
   final GlassQuality quality;
   final LiquidGlassSettings settings;
   final ValueChanged<int> onTabSelected;
@@ -789,17 +794,19 @@ class _LiquidGlassTabBar extends StatelessWidget {
         constraints.maxWidth,
         tabs.length * 52.0 + 8,
       );
+      // Keep the missing mode button's 56px plus 8px gap out of the open bar.
+      final expandedWidth = modesEnabled
+          ? constraints.maxWidth
+          : math.max(compactWidth, constraints.maxWidth - 64);
       return TweenAnimationBuilder<double>(
         tween: Tween(end: collapsed ? 1 : 0),
         duration: const Duration(milliseconds: 180),
         curve: Curves.easeOutCubic,
         builder: (context, progress, _) {
           return Align(
-            alignment: alignment,
+            alignment: modesEnabled ? Alignment.centerRight : Alignment.center,
             child: SizedBox(
-              width:
-                  constraints.maxWidth +
-                  (compactWidth - constraints.maxWidth) * progress,
+              width: expandedWidth + (compactWidth - expandedWidth) * progress,
               child: GlassTabBar.bottom(
                 tabs: tabs,
                 selectedIndex: selectedIndex,
