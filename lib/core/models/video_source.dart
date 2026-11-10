@@ -125,6 +125,11 @@ class VideoSource extends Equatable {
   @JsonKey(includeFromJson: false, includeToJson: false)
   final int? torrentFileIndex;
 
+  /// Stremio `behaviorHints.bingeGroup` carried from the played link.
+  /// Runtime-only: used to match the same release family on the next episode.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  final String? bingeGroup;
+
   /// ClearKey DRM key id + key (base64url, no padding — the exact JWK form
   /// ExoPlayer wants), set only for encrypted CENC/DASH sources (e.g. CNC/PlayzTV
   /// live channels). mpv can't decrypt DRM, so a source with these is routed to
@@ -151,6 +156,7 @@ class VideoSource extends Equatable {
     this.subtitleSkewAfterSeconds,
     this.proxyUrl,
     this.torrentFileIndex,
+    this.bingeGroup,
     this.drmKid,
     this.drmKey,
   });
@@ -168,6 +174,7 @@ class VideoSource extends Equatable {
     subtitleSkewAfterSeconds: subtitleSkewAfterSeconds,
     proxyUrl: proxyUrl,
     torrentFileIndex: torrentFileIndex,
+    bingeGroup: bingeGroup,
     drmKid: drmKid,
     drmKey: drmKey,
   );
@@ -187,6 +194,7 @@ class VideoSource extends Equatable {
     audioLang,
     subtitles,
     torrentFileIndex,
+    bingeGroup,
     subtitleSkewSeconds,
     subtitleSkewAfterSeconds,
   ];

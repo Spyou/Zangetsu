@@ -646,10 +646,12 @@ class PhoneNativePlayer {
           if (!_peek &&
               !IncognitoMode.on &&
               sl.isRegistered<TitlePrefsStore>()) {
-            await sl<TitlePrefsStore>().rememberStremioLink(
-              _episodes[index].url,
-              selected,
-            );
+            final store = sl<TitlePrefsStore>();
+            await store.rememberStremioLink(_episodes[index].url, selected);
+            final show = _showUrl;
+            if (show != null && show.isNotEmpty) {
+              await store.rememberStremioBingeGroup(show, selected.bingeGroup);
+            }
           }
           return null;
         }
@@ -1141,6 +1143,15 @@ class PhoneNativePlayer {
 
   static VideoSource? _pickSource(List<VideoSource> sources, Episode episode) {
     if (_sourceId == stremioSourceId && sl.isRegistered<TitlePrefsStore>()) {
+      final show = _showUrl;
+      if (show != null && show.isNotEmpty) {
+        final group = sl<TitlePrefsStore>().stremioBingeGroup(show);
+        if (group != null) {
+          for (final s in sources) {
+            if (s.bingeGroup == group) return s;
+          }
+        }
+      }
       final saved = sl<TitlePrefsStore>().preferredStremioLink(
         episode.url,
         sources,

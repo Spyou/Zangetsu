@@ -43,6 +43,7 @@ VideoSource? stremioVideoSource(
       label: choice.label,
       container: stremioStreamContainer(url),
       headers: stream.headers.isEmpty ? null : stream.headers,
+      bingeGroup: stream.bingeGroup,
       subtitles: subtitles,
     );
   }
@@ -62,6 +63,7 @@ VideoSource? stremioVideoSource(
       label: choice.label,
       container: SourceContainer.torrent,
       torrentFileIndex: stream.fileIndex,
+      bingeGroup: stream.bingeGroup,
       subtitles: subtitles,
     );
   }

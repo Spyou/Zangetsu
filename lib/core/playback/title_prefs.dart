@@ -92,6 +92,27 @@ class TitlePrefsStore {
       'linkLabel': source.label,
     });
   }
+  /// The Stremio `behaviorHints.bingeGroup` of the link last played for this
+  /// title. Same group = same release family, used to pick the matching
+  /// stream on the next episode (Nuvio's approach). Null when the played
+  /// link carried no group or nothing was remembered yet.
+  String? stremioBingeGroup(String showUrl) {
+    final m = _box.get(_key('stremio', showUrl));
+    final v = m == null ? null : Map<String, dynamic>.from(m)['bingeGroup'];
+    return (v is String && v.isNotEmpty) ? v : null;
+  }
+
+  Future<void> rememberStremioBingeGroup(
+    String showUrl,
+    String? bingeGroup,
+  ) async {
+    if (bingeGroup == null || bingeGroup.isEmpty) return;
+    final key = _key('stremio', showUrl);
+    await _box.put(key, {
+      ...?_box.get(key),
+      'bingeGroup': bingeGroup,
+    });
+  }
 
   /// Remembered embedded audio-track choice for this title (language/label),
   /// e.g. 'hin'. Re-applied on reopen for multi-audio files (e.g. 4khdhub).

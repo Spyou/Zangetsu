@@ -2554,6 +2554,14 @@ class PlayerCubit extends Cubit<PlayerState> {
     final url = showUrl;
     if (url == null) return null;
     if (sourceId == stremioSourceId) {
+      // Nuvio behaviour: the played link's bingeGroup identifies the release
+      // family, so the next episode reuses the same family when present.
+      final group = sl<TitlePrefsStore>().stremioBingeGroup(url);
+      if (group != null) {
+        for (final s in sources) {
+          if (s.bingeGroup == group) return s;
+        }
+      }
       return sl<TitlePrefsStore>().preferredStremioLink(
         currentEpisode.url,
         sources,
@@ -2792,11 +2800,19 @@ class PlayerCubit extends Cubit<PlayerState> {
     if (sourceId == stremioSourceId) {
       _stremioSubtitleSource = s;
       if (!peek && !IncognitoMode.on && sl.isRegistered<TitlePrefsStore>()) {
+        final store = sl<TitlePrefsStore>();
+        final episodeUrl = currentEpisode.url;
+        final show = showUrl;
         unawaited(
-          sl<TitlePrefsStore>()
-              .rememberStremioLink(currentEpisode.url, s)
-              .catchError((_) {}),
+          store.rememberStremioLink(episodeUrl, s).catchError((_) {}),
         );
+        if (show != null && show.isNotEmpty) {
+          unawaited(
+            store
+                .rememberStremioBingeGroup(show, s.bingeGroup)
+                .catchError((_) {}),
+          );
+        }
       }
     }
     _simklPlayback?.update(

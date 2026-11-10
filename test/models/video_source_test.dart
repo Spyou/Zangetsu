@@ -30,6 +30,17 @@ void main() {
     expect(result.proxyUrl, source.proxyUrl);
   });
 
+  test('bingeGroup survives copy without leaking into JSON', () {
+    const source = VideoSource(
+      url: 'https://cdn.test/ep1.m3u8',
+      label: 'BluRay 1080p',
+      bingeGroup: 'bluray-1080p',
+    );
+    expect(source.toJson(), isNot(contains('bingeGroup')));
+    final copied = source.withSubtitles(const []);
+    expect(copied.bingeGroup, 'bluray-1080p');
+  });
+
   test(
     'subtitle provider names survive saving without changing legacy JSON',
     () {
