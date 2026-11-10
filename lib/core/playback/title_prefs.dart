@@ -1,6 +1,10 @@
 import 'dart:convert';
+
 import 'package:crypto/crypto.dart';
+
 import '../models/video_source.dart';
+import '../privacy/incognito_mode.dart';
+import 'subtitle_language.dart';
 import 'package:hive/hive.dart';
 import 'package:watch_app/core/hive/safe_box.dart';
 import 'package:watch_app/core/hive/hive_key.dart';
@@ -62,20 +66,28 @@ class TitlePrefsStore {
 
   VideoSource? preferredStremioLink(
     String episodeUrl,
-    List<VideoSource> sources,
-  ) {
+    List<VideoSource> sources, {
+    String? showUrl,
+  }) {
     final saved = _box.get(_key('stremio', episodeUrl));
-    if (saved == null) return null;
-    for (final source in sources) {
-      if (sha256.convert(utf8.encode(source.url)).toString() ==
-          saved['linkHash']) {
-        return source;
+    if (saved != null) {
+      for (final source in sources) {
+        if (sha256.convert(utf8.encode(source.url)).toString() ==
+            saved['linkHash']) {
+          return source;
+        }
+      }
+      final label = saved['linkLabel'];
+      if (label is String && label.isNotEmpty) {
+        for (final source in sources) {
+          if (source.label == label) return source;
+        }
       }
     }
-    final label = saved['linkLabel'];
-    if (label is String && label.isNotEmpty) {
+    final group = showUrl == null ? null : stremioBingeGroup(showUrl);
+    if (group != null) {
       for (final source in sources) {
-        if (source.label == label) return source;
+        if (source.bingeGroup == group) return source;
       }
     }
     return null;
@@ -92,9 +104,10 @@ class TitlePrefsStore {
       'linkLabel': source.label,
     });
   }
+
   /// The Stremio `behaviorHints.bingeGroup` of the link last played for this
   /// title. Same group = same release family, used to pick the matching
-  /// stream on the next episode (Nuvio's approach). Null when the played
+  /// stream on the next episode. Null when the played
   /// link carried no group or nothing was remembered yet.
   String? stremioBingeGroup(String showUrl) {
     final m = _box.get(_key('stremio', showUrl));
@@ -108,10 +121,35 @@ class TitlePrefsStore {
   ) async {
     if (bingeGroup == null || bingeGroup.isEmpty) return;
     final key = _key('stremio', showUrl);
-    await _box.put(key, {
-      ...?_box.get(key),
-      'bingeGroup': bingeGroup,
-    });
+    await _box.put(key, {...?_box.get(key), 'bingeGroup': bingeGroup});
+  }
+
+  /// The subtitle pick remembered for this title: a language code or 'off'.
+  /// Beats the global preference when set — the show's own choice wins.
+  /// Both Stremio and non-Stremio remember here, keyed by source+show.
+  String? subtitleChoice(String sourceId, String showUrl) {
+    final m = _box.get(_key(sourceId, showUrl));
+    final v = m == null ? null : Map<String, dynamic>.from(m)['subtitleChoice'];
+    if (v is! String || v.isEmpty) return null;
+    return v == 'off' ? v : languageOfSource(v)?.iso1;
+  }
+
+  Future<void> setSubtitleChoice(
+    String sourceId,
+    String showUrl,
+    String choice,
+  ) async {
+    if (IncognitoMode.on) return;
+    final normalized = choice == 'off' || choice.isEmpty
+        ? choice
+        : languageOfSource(choice)?.iso1;
+    if (normalized == null) return;
+    final k = _key(sourceId, showUrl);
+    final m = _box.get(k) == null
+        ? <String, dynamic>{}
+        : Map<String, dynamic>.from(_box.get(k)!);
+    m['subtitleChoice'] = normalized;
+    await _box.put(k, m);
   }
 
   /// Remembered embedded audio-track choice for this title (language/label),

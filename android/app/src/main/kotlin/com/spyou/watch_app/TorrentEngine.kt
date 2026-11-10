@@ -65,8 +65,7 @@ class TorrentEngine(
                     }
                 }
                 "stopStream" -> {
-                    stopStream(call.argument<String>("id"))
-                    result.success(null)
+                    stopStream(call.argument<String>("id"), result)
                 }
                 else -> result.notImplemented()
             }
@@ -244,8 +243,11 @@ class TorrentEngine(
         }.also { it.isDaemon = true }.start()
     }
 
-    private fun stopStream(id: String?) {
-        Thread { stopInternal() }.also { it.isDaemon = true }.start()
+    private fun stopStream(id: String?, result: MethodChannel.Result) {
+        Thread {
+            stopInternal()
+            main.post { result.success(null) }
+        }.also { it.isDaemon = true }.start()
     }
 
     private fun stopInternal() {

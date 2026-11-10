@@ -26,8 +26,9 @@ import org.robolectric.shadows.ShadowAlertDialog
 class PhoneStremioSubtitlesTest {
     private class Messenger : BinaryMessenger {
         var reply: BinaryMessenger.BinaryReply? = null
+        var calls = 0
         override fun send(channel: String, message: ByteBuffer?) {}
-        override fun send(channel: String, message: ByteBuffer?, callback: BinaryMessenger.BinaryReply?) { reply = callback }
+        override fun send(channel: String, message: ByteBuffer?, callback: BinaryMessenger.BinaryReply?) { calls++; reply = callback }
         override fun setMessageHandler(channel: String, handler: BinaryMessenger.BinaryMessageHandler?) {}
         fun respond() {
             reply!!.reply(StandardMethodCodec.INSTANCE.encodeSuccessEnvelope(mapOf(
@@ -36,6 +37,28 @@ class PhoneStremioSubtitlesTest {
                 "subLabels" to listOf("English · OpenSubtitles"),
                 "subFormats" to listOf("srt"),
             )).apply { flip() })
+        }
+    }
+
+    @Test fun `an unclassified track must not be remembered as subtitles off`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val controller = Robolectric.buildActivity(PhonePlayerActivity::class.java,
+            Intent(context, PhonePlayerActivity::class.java).putExtra(PhonePlayerIntent.EXTRA_URL, "file:///dev/null"))
+            .create().start().resume()
+        val channelField = PhonePlayerBridge::class.java.getDeclaredField("channel").apply { isAccessible = true }
+        val previous = channelField.get(null)
+        val messenger = Messenger()
+        try {
+            channelField.set(null, MethodChannel(messenger, "test/phone_player"))
+            val method = PhonePlayerActivity::class.java.getDeclaredMethod("reportSubtitleChoice", androidx.media3.common.TrackSelectionOverride::class.java).apply { isAccessible = true }
+            val group = androidx.media3.common.TrackGroup(androidx.media3.common.Format.Builder().setSampleMimeType(MimeTypes.APPLICATION_SUBRIP).build())
+            method.invoke(controller.get(), androidx.media3.common.TrackSelectionOverride(group, 0))
+            assertEquals(0, messenger.calls)
+            method.invoke(controller.get(), null)
+            assertEquals(1, messenger.calls)
+        } finally {
+            channelField.set(null, previous)
+            controller.pause().stop().destroy()
         }
     }
 

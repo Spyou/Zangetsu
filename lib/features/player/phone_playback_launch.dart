@@ -535,7 +535,7 @@ class PhoneNativePlayer {
       subtitleEdgeColor: parseSubtitleHex(
         prefs.subtitleOutlineColorHex,
       ).toARGB32(),
-      subtitlePreference: prefs.subtitlePreference,
+      subtitlePreference: _resolvedSubtitlePreference(),
       autoResume: prefs.autoResume,
       keepScreenOn: prefs.keepScreenOn,
       autoplayNext: prefs.autoplayNext,
@@ -667,9 +667,28 @@ class PhoneNativePlayer {
         );
         if (session != _sessionId || _closed?.isCompleted != false) return null;
         return _phoneSubtitlePayload(enriched);
-      case 'resolveEpisode':
+      case 'rememberSubtitle':
         final args = _callArgs(call);
-        final index = (args?['index'] as num?)?.toInt() ?? -1;
+        if (_closed?.isCompleted != false ||
+            args?['sessionId'] != _sessionId ||
+            _peek ||
+            IncognitoMode.on) {
+          return null;
+        }
+        final choice = args?['choice'] as String?;
+        final show = _showUrl;
+        if (choice == null ||
+            choice.isEmpty ||
+            show == null ||
+            show.isEmpty ||
+            !sl.isRegistered<TitlePrefsStore>()) {
+          return null;
+        }
+        await sl<TitlePrefsStore>().setSubtitleChoice(_sourceId, show, choice);
+        return null;
+      case 'resolveEpisode':
+        final rArgs = _callArgs(call);
+        final index = (rArgs?['index'] as num?)?.toInt() ?? -1;
         if (index < 0 || index >= _episodes.length) return null;
         return _resolveEpisode(index);
       case 'playbackStarted':
@@ -1143,18 +1162,10 @@ class PhoneNativePlayer {
 
   static VideoSource? _pickSource(List<VideoSource> sources, Episode episode) {
     if (_sourceId == stremioSourceId && sl.isRegistered<TitlePrefsStore>()) {
-      final show = _showUrl;
-      if (show != null && show.isNotEmpty) {
-        final group = sl<TitlePrefsStore>().stremioBingeGroup(show);
-        if (group != null) {
-          for (final s in sources) {
-            if (s.bingeGroup == group) return s;
-          }
-        }
-      }
       final saved = sl<TitlePrefsStore>().preferredStremioLink(
         episode.url,
         sources,
+        showUrl: _showUrl,
       );
       if (saved != null) return saved;
     }
@@ -1171,6 +1182,15 @@ class PhoneNativePlayer {
             ? sl<TitlePrefsStore>().quality(_sourceId, url)
             : null) ??
         sl<PlaybackPrefs>().defaultQuality;
+  }
+
+  static String _resolvedSubtitlePreference() {
+    final show = _showUrl;
+    if (show != null && show.isNotEmpty && sl.isRegistered<TitlePrefsStore>()) {
+      final remembered = sl<TitlePrefsStore>().subtitleChoice(_sourceId, show);
+      if (remembered != null) return remembered;
+    }
+    return sl<PlaybackPrefs>().subtitlePreference;
   }
 
   static final _prefetchedEpisodes = <(int, String)>{};

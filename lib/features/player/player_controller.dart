@@ -1108,7 +1108,8 @@ class PlayerCubit extends Cubit<PlayerState> {
         // no longer the one we chose, re-arm so _tryApplySubPref re-applies it.
         // Guarded on drift (not on every track change) so re-applying a URI sub
         // — which media_kit does via a fresh `sub-add` — can't loop.
-        if (_wantedSubId != null &&
+        if (!_manualSubtitleSelection &&
+            _wantedSubId != null &&
             player.state.track.subtitle.id != _wantedSubId) {
           _subApplied = false;
         }
@@ -1658,13 +1659,20 @@ class PlayerCubit extends Cubit<PlayerState> {
     );
   }
 
-  void setAudioTrack(AudioTrack t) {
-    player.setAudioTrack(t);
+  Future<void> setAudioTrack(AudioTrack t) async {
+    final generation = _gen;
+    _audioApplied = true;
     final url = showUrl;
     final pref = audioPrefKey(t.language, t.title, t.id);
     if (url != null && url.isNotEmpty && pref.isNotEmpty) {
-      sl<TitlePrefsStore>().setAudioTrack(sourceId, url, pref);
+      try {
+        await sl<TitlePrefsStore>().setAudioTrack(sourceId, url, pref);
+      } catch (_) {
+        debugPrint('[player] Could not save audio preference');
+      }
     }
+    if (isClosed || generation != _gen) return;
+    await player.setAudioTrack(t);
   }
 
   bool _audioApplied = false; // remembered audio track restored this episode
@@ -1700,19 +1708,59 @@ class PlayerCubit extends Cubit<PlayerState> {
     // Not loaded yet — retry on the next tracks update.
   }
 
-  void setSubtitle(SubtitleTrack t) {
-    player.setSubtitleTrack(t);
-    _wantedSubId = t.id;
-    // Remember globally by language when we can resolve one; a track we can't
-    // classify is a one-off pick that must not set a bad global default.
-    final lang = languageOfSource(t.language ?? t.title ?? '');
-    if (lang != null) sl<PlaybackPrefs>().setSubtitlePreference(lang.iso1);
+  bool _manualSubtitleSelection = false;
+  int _subtitleChoiceRevision = 0;
+
+  Future<void> _applyManualSubtitle(
+    Future<void> Function() apply, {
+    String? preference,
+    String? trackId,
+  }) async {
+    final generation = _gen;
+    final revision = ++_subtitleChoiceRevision;
+    bool current() =>
+        !isClosed && generation == _gen && revision == _subtitleChoiceRevision;
+    _manualSubtitleSelection = true;
+    _subApplied = true;
+    try {
+      if (preference != null) {
+        try {
+          await sl<PlaybackPrefs>().setSubtitlePreference(preference);
+          await _rememberSubtitleChoice(preference);
+        } catch (_) {
+          debugPrint('[player] Could not save subtitle preference');
+        }
+      }
+      if (!current()) return;
+      if (trackId != null) _wantedSubId = trackId;
+      await apply();
+      if (current()) _subApplied = true;
+    } finally {
+      if (current()) _manualSubtitleSelection = false;
+    }
   }
 
-  void subtitlesOff() {
-    player.setSubtitleTrack(SubtitleTrack.no());
-    _wantedSubId = 'no';
-    sl<PlaybackPrefs>().setSubtitlePreference('off');
+  Future<void> setSubtitle(SubtitleTrack t) => _applyManualSubtitle(
+    () => player.setSubtitleTrack(t),
+    preference:
+        (languageOfSource(t.language ?? '') ?? languageOfSource(t.title ?? ''))
+            ?.iso1,
+    trackId: t.id,
+  );
+
+  Future<void> subtitlesOff() => _applyManualSubtitle(
+    () => player.setSubtitleTrack(SubtitleTrack.no()),
+    preference: 'off',
+    trackId: 'no',
+  );
+
+  /// Per-title subtitle memory. Peek/incognito never persist.
+  Future<void> _rememberSubtitleChoice(String choice) async {
+    final url = showUrl;
+    if (peek || IncognitoMode.on) return;
+    if (url == null || url.isEmpty) return;
+    if (!sl.isRegistered<TitlePrefsStore>()) return;
+    await sl<TitlePrefsStore>().setSubtitleChoice(sourceId, url, choice);
   }
 
   /// Whether styled (libass) subtitle rendering is on — read fresh from prefs
@@ -1780,19 +1828,20 @@ class PlayerCubit extends Cubit<PlayerState> {
   List<Subtitle> get softSubs => state.active?.subtitles ?? const [];
 
   /// Load one of the source's soft-subs by URL.
-  Future<void> setSoftSub(Subtitle s) async {
-    final gen = _gen;
-    await _setRemoteSub(s.url, title: s.label ?? s.lang, language: s.lang);
-    if (isClosed || gen != _gen) return;
-    final lang = languageOfSource(s.lang) ?? languageOfSource(s.label ?? '');
-    if (lang != null) sl<PlaybackPrefs>().setSubtitlePreference(lang.iso1);
-  }
+  bool isSoftSubtitleSelected(Subtitle subtitle, String selectedId) =>
+      selectedId == subtitle.url || selectedId == _localSubCache[subtitle.url];
+
+  Future<void> setSoftSub(Subtitle s) => _applyManualSubtitle(
+    () => _setRemoteSub(s.url, title: s.label ?? s.lang, language: s.lang),
+    preference:
+        (languageOfSource(s.lang) ?? languageOfSource(s.label ?? ''))?.iso1,
+  );
 
   /// Load an external subtitle file from disk (picked via file_picker).
-  Future<void> setSubtitleFromFile(String path) async {
-    await player.setSubtitleTrack(SubtitleTrack.uri(path));
-    _wantedSubId = path;
-  }
+  Future<void> setSubtitleFromFile(String path) => _applyManualSubtitle(
+    () => player.setSubtitleTrack(SubtitleTrack.uri(path)),
+    trackId: path,
+  );
 
   /// url → local temp path for a downloaded soft-sub, so re-applying the same
   /// sub (the tracks-stream re-arm) doesn't re-download it. Cleared per episode.
@@ -1825,7 +1874,9 @@ class PlayerCubit extends Cubit<PlayerState> {
     String? language,
   }) async {
     final gen = _gen;
-    bool isCurrent() => !isClosed && gen == _gen;
+    final revision = _subtitleChoiceRevision;
+    bool isCurrent() =>
+        !isClosed && gen == _gen && revision == _subtitleChoiceRevision;
 
     Future<void> loadRemote() async {
       if (!isCurrent()) return;
@@ -2008,8 +2059,14 @@ class PlayerCubit extends Cubit<PlayerState> {
   /// Embedded tracks load after open, so this is retried from the tracks stream
   /// until a match is found (or there's nothing to restore).
   void _tryApplySubPref() {
-    if (_subApplied) return;
-    final prefRaw = sl<PlaybackPrefs>().subtitlePreference;
+    if (_manualSubtitleSelection || _subApplied) return;
+    // The show's own pick beats the global preference. Falls back to global
+    // when this show has no memory — global behaviour is unchanged there.
+    final show = showUrl;
+    final remembered = (show != null && show.isNotEmpty)
+        ? sl<TitlePrefsStore>().subtitleChoice(sourceId, show)
+        : null;
+    final prefRaw = remembered ?? sl<PlaybackPrefs>().subtitlePreference;
 
     // 'off' → subtitles off on every video.
     if (prefRaw == 'off') {
@@ -2181,6 +2238,7 @@ class PlayerCubit extends Cubit<PlayerState> {
     _autoSkipped.clear(); // new episode → its OP/ED may auto-skip again
     _prefetchedNextForIndex = -1; // re-arm next-episode prefetch for the new ep
     _subApplied = false; // restore the remembered subtitle for the new episode
+    _manualSubtitleSelection = false;
     _autoSubDlTried = false; // re-arm keyless auto-download for the new episode
     _wantedSubId = null; // clear the intended-sub tracking for the new episode
     _localSubCache.clear(); // drop the previous episode's downloaded soft-subs
@@ -2554,17 +2612,10 @@ class PlayerCubit extends Cubit<PlayerState> {
     final url = showUrl;
     if (url == null) return null;
     if (sourceId == stremioSourceId) {
-      // Nuvio behaviour: the played link's bingeGroup identifies the release
-      // family, so the next episode reuses the same family when present.
-      final group = sl<TitlePrefsStore>().stremioBingeGroup(url);
-      if (group != null) {
-        for (final s in sources) {
-          if (s.bingeGroup == group) return s;
-        }
-      }
       return sl<TitlePrefsStore>().preferredStremioLink(
         currentEpisode.url,
         sources,
+        showUrl: url,
       );
     }
     final saved = sl<TitlePrefsStore>().sourceLabel(sourceId, url);
@@ -2713,10 +2764,11 @@ class PlayerCubit extends Cubit<PlayerState> {
   /// couldn't (a clean error is emitted, no throw). Stops any previous torrent.
   Future<VideoSource?> _resolveTorrent(VideoSource s, int g) async {
     await _stopTorrent();
+    if (g != _gen || isClosed) return null;
     emit(
       state.copyWith(torrentPhase: () => 'Finding peers…', error: () => null),
     );
-    _torrentSub = sl<TorrentService>().events().listen((p) {
+    final subscription = sl<TorrentService>().events().listen((p) {
       if (g != _gen) return;
       final txt = switch (p.state) {
         TorrentState.finding => 'Finding peers…',
@@ -2728,18 +2780,16 @@ class PlayerCubit extends Cubit<PlayerState> {
       };
       emit(state.copyWith(torrentPhase: () => txt));
     });
+    _torrentSub = subscription;
     try {
       final t = await sl<TorrentService>().startStream(
         s.url,
         allowMobileData: sl<TorrentPrefs>().allowMobileData,
         fileIndex: s.torrentFileIndex,
       );
-      await _torrentSub?.cancel();
-      _torrentSub = null;
-      if (g != _gen) {
-        await _stopTorrent();
-        return null;
-      }
+      await subscription.cancel();
+      if (identical(_torrentSub, subscription)) _torrentSub = null;
+      if (g != _gen || isClosed) return null;
       _activeTorrentId = t.id;
       emit(state.copyWith(torrentPhase: () => null));
       // A local progressive stream — treat as a plain file (mp4 tuning, no
@@ -2754,9 +2804,9 @@ class PlayerCubit extends Cubit<PlayerState> {
         subtitles: s.subtitles,
       );
     } catch (e) {
-      await _torrentSub?.cancel();
-      _torrentSub = null;
-      if (g != _gen) return null;
+      await subscription.cancel();
+      if (identical(_torrentSub, subscription)) _torrentSub = null;
+      if (g != _gen || isClosed) return null;
       final msg = (e is PlatformException && e.code == 'wifi_only')
           ? 'Torrents are set to Wi-Fi only. Turn on mobile data for torrents '
                 'in Settings › Torrents.'
@@ -2776,14 +2826,18 @@ class PlayerCubit extends Cubit<PlayerState> {
   /// Stops the active torrent (if any) and cleans up its listener.
   Future<void> _stopTorrent() async {
     final id = _activeTorrentId;
+    final subscription = _torrentSub;
     _activeTorrentId = null;
-    await _torrentSub?.cancel();
     _torrentSub = null;
-    if (id != null) {
-      try {
-        await sl<TorrentService>().stop(id);
-      } catch (_) {}
-    }
+    final stopping = id != null || subscription != null
+        ? sl<TorrentService>().stop(id ?? '')
+        : Future<void>.value();
+    try {
+      await Future.wait<void>([
+        stopping,
+        if (subscription != null) subscription.cancel(),
+      ]);
+    } catch (_) {}
   }
 
   Future<void> _open(
@@ -2797,15 +2851,20 @@ class PlayerCubit extends Cubit<PlayerState> {
     bool softwareDecodeRetry = false,
   }) async {
     final g = gen ?? ++_gen;
+    if (!isTorrentUrl(s.url) &&
+        (_activeTorrentId != null ||
+            _torrentSub != null ||
+            state.torrentPhase != null)) {
+      emit(state.copyWith(torrentPhase: () => null));
+      unawaited(_stopTorrent().catchError((_) {}));
+    }
     if (sourceId == stremioSourceId) {
       _stremioSubtitleSource = s;
       if (!peek && !IncognitoMode.on && sl.isRegistered<TitlePrefsStore>()) {
         final store = sl<TitlePrefsStore>();
         final episodeUrl = currentEpisode.url;
         final show = showUrl;
-        unawaited(
-          store.rememberStremioLink(episodeUrl, s).catchError((_) {}),
-        );
+        unawaited(store.rememberStremioLink(episodeUrl, s).catchError((_) {}));
         if (show != null && show.isNotEmpty) {
           unawaited(
             store

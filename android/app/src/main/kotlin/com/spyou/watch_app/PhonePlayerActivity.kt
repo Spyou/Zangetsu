@@ -1721,7 +1721,26 @@ class PhonePlayerActivity : Activity() {
             .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, pick == null)
             .apply { if (pick != null) addOverride(pick) }
             .build()
+        reportSubtitleChoice(pick)
         bumpControls()
+    }
+
+    /** Tell Dart the user's subtitle pick so the show remembers it. 'off'
+     * when track selection is disabled, else the track's BCP-47 language. */
+    private fun reportSubtitleChoice(pick: TrackSelectionOverride?) {
+        val ch = PhonePlayerBridge.channel ?: return
+        var choice = "off"
+        val tracks = player?.currentTracks
+        val group = tracks?.groups?.find { it.mediaTrackGroup == pick?.mediaTrackGroup }
+        val lang = pick?.trackIndices?.firstOrNull()?.let {
+            group?.getTrackFormat(it)?.language
+        }
+        if (pick != null && lang.isNullOrBlank()) return
+        if (!lang.isNullOrEmpty()) choice = lang
+        ch.invokeMethod(
+            "rememberSubtitle",
+            mapOf("sessionId" to sessionId, "choice" to choice),
+        )
     }
 
     private fun showTracksMenu() {
@@ -1845,6 +1864,13 @@ class PhonePlayerActivity : Activity() {
                             .build()
                         subtitlePreferenceApplied = true
                         pendingAddonSubtitleId = selected.id
+                        val addonChoice = selected.language
+                        if (!addonChoice.isNullOrEmpty()) {
+                            PhonePlayerBridge.channel?.invokeMethod(
+                                "rememberSubtitle",
+                                mapOf("sessionId" to sessionId, "choice" to addonChoice),
+                            )
+                        }
                         val updated = item.buildUpon().setSubtitleConfigurations(remaining + selected).build()
                         p.setMediaSource(factory.createMediaSource(updated), position)
                         p.prepare()

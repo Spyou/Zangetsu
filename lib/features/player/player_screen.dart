@@ -2850,7 +2850,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
       coverUrl: (_c.currentEpisode.thumbnail?.trim().isNotEmpty ?? false)
           ? _c.currentEpisode.thumbnail!.trim()
           : widget.cover,
-      loading: state.loadingSources,
+      loading: state.loadingSources || state.torrentPhase != null,
+      loadingStatus: state.torrentPhase,
       bufferingStream: _c.player.stream.buffering,
       initialBuffering: _c.player.state.buffering,
       firstFrameStream: _c.player.stream.width,
@@ -3546,10 +3547,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
             // episode info below. It stays up through source resolves — the
             // loading spinner sits on the mini player instead of a black
             // loader screen, and the header is already the new episode
-            // (the cubit emits the index before resolving). Errors and
-            // torrent phases keep their dedicated screens below.
+            // (the cubit emits the index before resolving). Torrent progress
+            // stays in the miniplayer; errors keep their screen below.
             if (_presentation == PlayerPresentation.watchPage &&
-                state.torrentPhase == null &&
                 state.error == null) {
               return _buildWatchPage(state);
             }

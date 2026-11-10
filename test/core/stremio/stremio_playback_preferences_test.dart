@@ -19,6 +19,38 @@ void main() {
     await dir.delete(recursive: true);
   });
 
+  test(
+    'the saved episode link wins over a series-wide torrent group',
+    () async {
+      const direct = VideoSource(
+        url: 'https://pengu.test/episode',
+        label: 'Pengu',
+        bingeGroup: 'direct-group',
+      );
+      const torrent = VideoSource(
+        url: 'magnet:?xt=urn:btih:hash',
+        label: 'Torrent',
+        bingeGroup: 'torrent-group',
+      );
+      await prefs.rememberStremioLink('episode-one', direct);
+      await prefs.rememberStremioBingeGroup('show', 'torrent-group');
+      expect(
+        prefs.preferredStremioLink('episode-one', [
+          torrent,
+          direct,
+        ], showUrl: 'show'),
+        same(direct),
+      );
+      expect(
+        prefs.preferredStremioLink('episode-two', [
+          torrent,
+          direct,
+        ], showUrl: 'show'),
+        same(torrent),
+      );
+    },
+  );
+
   test('resume remembers the exact link without storing its URL', () async {
     const first = VideoSource(
       url: 'https://cdn.test/one?token=secret',

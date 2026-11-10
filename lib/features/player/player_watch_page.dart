@@ -25,6 +25,7 @@ class PlayerWatchPage extends StatefulWidget {
     required this.header,
     this.coverHeaders,
     this.loading = false,
+    this.loadingStatus,
     this.bufferingStream,
     this.initialBuffering = false,
     this.firstFrameStream,
@@ -78,6 +79,7 @@ class PlayerWatchPage extends StatefulWidget {
   /// A resolve is in flight (episode switch or first load). The page stays —
   /// the spinner sits on the mini player instead of a black loader screen.
   final bool loading;
+  final String? loadingStatus;
   final Stream<bool>? bufferingStream;
   final bool initialBuffering;
 
@@ -630,6 +632,26 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
                   },
                 ),
               ),
+              if (widget.loadingStatus != null)
+                Positioned(
+                  top: 12,
+                  left: 50,
+                  right: 50,
+                  child: IgnorePointer(
+                    child: Text(
+                      widget.loadingStatus!,
+                      textAlign: TextAlign.center,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppText.caption.copyWith(
+                        color: Colors.white,
+                        shadows: const [
+                          Shadow(blurRadius: 6, color: Colors.black),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
               Positioned(left: 0, right: 0, bottom: 0, child: _seekRow()),
             ],
           ),

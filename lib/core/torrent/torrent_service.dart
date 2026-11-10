@@ -44,6 +44,14 @@ class TorrentService {
     'com.spyou.watch_app/torrent/events',
   );
 
+  int _generation = 0;
+  String? _activeId;
+  Future<Map<String, dynamic>?>? _opening;
+  Future<void>? _stopping;
+  late final Stream<TorrentProgress> _progress = _events
+      .receiveBroadcastStream()
+      .map((event) => TorrentProgress.fromMap(event as Map));
+
   /// Starts streaming a magnet/.torrent; returns the torrent id + a local URL
   /// the player can open. Throws on Wi-Fi block (a `wifi_only` PlatformException
   /// when metered + [allowMobileData] is false), no-metadata, or engine error.
@@ -52,6 +60,11 @@ class TorrentService {
     bool allowMobileData = false,
     int? fileIndex,
   }) async {
+    final generation = ++_generation;
+    await _stopCurrent();
+    if (generation != _generation) {
+      throw StateError('torrent request cancelled');
+    }
     final args = <String, dynamic>{
       'uri': uri,
       'allowMobileData': allowMobileData,
@@ -59,20 +72,63 @@ class TorrentService {
     // Omitted when not requested, so every existing caller keeps the
     // engine's largest-video default.
     if (fileIndex != null) args['fileIndex'] = fileIndex;
-    final res = await _method.invokeMapMethod<String, dynamic>(
+    final opening = _method.invokeMapMethod<String, dynamic>(
       'startStream',
       args,
     );
-    return (
-      id: (res?['id'] ?? '') as String,
-      localUrl: (res?['localUrl'] ?? '') as String,
-    );
+    _opening = opening;
+    Map<String, dynamic>? res;
+    try {
+      res = await opening;
+    } finally {
+      if (identical(_opening, opening)) _opening = null;
+    }
+    if (generation != _generation) {
+      throw StateError('torrent request cancelled');
+    }
+    final id = (res?['id'] ?? '') as String;
+    _activeId = id;
+    return (id: id, localUrl: (res?['localUrl'] ?? '') as String);
   }
 
-  Stream<TorrentProgress> events() => _events.receiveBroadcastStream().map(
-    (e) => TorrentProgress.fromMap(e as Map),
-  );
+  Stream<TorrentProgress> events() => _progress;
 
-  Future<void> stop(String id) =>
-      _method.invokeMethod('stopStream', {'id': id});
+  Future<void> stop(String id) {
+    ++_generation;
+    return _stopCurrent(id: id);
+  }
+
+  Future<void> _stopCurrent({String? id}) {
+    final previous = _stopping;
+    final opening = _opening;
+    final active = _activeId;
+    if (previous != null && opening == null && active == null) return previous;
+    if (opening == null && active == null && id == null) {
+      return Future<void>.value();
+    }
+    _opening = null;
+    _activeId = null;
+    final operation = () async {
+      if (previous != null) await previous;
+      try {
+        await _method.invokeMethod<void>('stopStream', {
+          'id': id ?? active ?? '',
+        });
+      } finally {
+        // An old native worker must finish cleanup before a new torrent starts.
+        if (opening != null) {
+          await opening.then<void>(
+            (_) {},
+            onError: (Object error, StackTrace stack) {},
+          );
+        }
+      }
+    }();
+    late final Future<void> stopping;
+    stopping = operation.whenComplete(() {
+      if (identical(_stopping, stopping)) _stopping = null;
+    });
+    _stopping = stopping;
+    return stopping;
+  }
 }
