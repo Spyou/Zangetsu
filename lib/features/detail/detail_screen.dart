@@ -1468,6 +1468,41 @@ class _DetailViewState extends State<_DetailView>
       );
       return;
     }
+    // External player and no mirror picked yet: open the mirror sheet first
+    // (Stremio mode already does this via its links sheet), so the viewer
+    // chooses which link the external player gets instead of auto-playing
+    // the resolver's pick. Built-in keeps the fast auto-resolve.
+    if (initialSource == null &&
+        index >= 0 &&
+        index < episodes.length &&
+        (playerOverride?.package ??
+                sl<PlaybackPrefs>().externalPlayerPackage)
+            .isNotEmpty) {
+      final ep = episodes[index];
+      final sources = await _resolveWithProgress(ep);
+      if (!mounted) return;
+      if (sources.isEmpty) {
+        showAppToast(context, context.l10n.noSourcesFoundForThisEpisode);
+        return;
+      }
+      final picked = await showMirrorSheet(
+        context,
+        episodeLabel: ep.title.isEmpty
+            ? detail.title
+            : '${detail.title} · ${ep.title}',
+        sources: sources,
+      );
+      if (picked == null || !mounted) return;
+      await _openPlayer(
+        episodes,
+        index,
+        detail,
+        category,
+        playerOverride: playerOverride,
+        initialSource: picked,
+      );
+      return;
+    }
     // The catalogue lists this episode but the one source we checked stops
     // short of it (see [Episode.unavailable]). Say which source, and let the
     // viewer decide whether to spend the sweep — asking every installed
