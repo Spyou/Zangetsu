@@ -507,7 +507,6 @@ class PlayerCubit extends Cubit<PlayerState> {
   int _sourceHops = 0;
   static const int _maxSourceHops = 3;
   bool _recovering = false;
-  bool _stallWatchdogArmed = false; // debounce: one error-recovery at a time
   // True once the current source has actually produced playback (position
   // advanced). libmpv emits transient "connection"/"failed to open" warnings
   // mid-stream (HLS segment blips, a failed subtitle track) even while video +
@@ -535,10 +534,9 @@ class PlayerCubit extends Cubit<PlayerState> {
   bool _everStarted = false;
   bool get everStarted => _everStarted;
 
-  // Stall watchdog: a STARTED source that dies/stalls mid-playback (dead host,
-  // pulled segment) buffers forever — _onPlaybackError won't cycle it (it bails
-  // once started). When buffering persists with no position progress we fail
-  // over to the next untried mirror at the same position.
+  // Mid-playback stalls never switch sources (CloudStream-like: buffering just
+  // buffers, the user picks). Only the never-started backstop below fails over,
+  // so one dead link on open doesn't strand playback.
   /// Alternate audio tracks parsed out of the master we trimmed, so the player
   /// can attach one on demand instead of mpv probing every one up front.
   List<HlsAudioRendition> _audioRenditions = const [];
@@ -608,12 +606,9 @@ class PlayerCubit extends Cubit<PlayerState> {
     }
   }
 
-  Timer? _stallTimer;
-  Duration _stallAnchorPos = Duration.zero;
   // Streams served by a local proxy (127.0.0.1 — Aniyomi's Cloudflare video
-  // proxy) buffer on seek while the proxy re-fetches segments through the source
-  // client; that's expected, not a dead source, so the stall watchdog is skipped
-  // for them (mirrors the torrent exemption handled via _activeTorrentId).
+  // proxy) buffer on seek while the proxy re-fetches segments; that's expected,
+  // not a dead source.
   bool _isProxiedStream = false;
   // Start watchdog for a DIRECT Aniyomi source: a Cloudflare-walled stream fails
   // to start without emitting a clean mpv error (it just hangs), so the normal
@@ -622,11 +617,9 @@ class PlayerCubit extends Cubit<PlayerState> {
   // "· proxy" version of the same quality. Aniyomi-only + direct-only, so
   // CloudStream / JS / torrent sources are completely unaffected.
   Timer? _startTimer;
-  // Never-started watchdog (all sources): same hole as the Aniyomi one above,
-  // but general — a dead playlist mpv retries without erroring and the stall
-  // watchdog needs a started source, so without this nothing ever fires and
-  // the spinner sits forever. 30s (generous: normal starts take seconds),
-  // cancelled by the first frame like every other watchdog here.
+  // Never-started watchdog (all sources): a dead playlist mpv retries without
+  // erroring, so without this nothing ever fires and the spinner sits forever.
+  // 30s (generous: normal starts take seconds), cancelled by the first frame.
   Timer? _neverStartedTimer;
   // Fired once per session: mark the anime CURRENT on AniList as soon as
   // playback starts (so "started watching" shows immediately, not only after
@@ -1173,9 +1166,6 @@ class PlayerCubit extends Cubit<PlayerState> {
 
         if (p > Duration.zero) {
           _startedThisSource = true; // source is playing
-          // Playing: the open-time watchdog has done its job. A later genuine stall
-          // re-arms it through the buffering event.
-          _disarmStallWatchdog();
           _everStarted = true; // ...and something has played at least once
           _startTimer?.cancel();
           _startTimer = null;
@@ -1292,33 +1282,15 @@ class PlayerCubit extends Cubit<PlayerState> {
     _subs.add(
       player.stream.buffering.listen((buffering) {
         _syncSimkl(buffering: buffering);
-        // A torrent local stream buffers while pieces download — that's normal,
-        // not a dead source. Arming the stall watchdog would restart the torrent
-        // from scratch and churn native memory (force close). Skip it for torrents.
-        if (buffering && !_stallWatchdogArmed) {
-          if (_startedThisSource &&
-              !_recovering &&
-              _activeTorrentId == null &&
-              !_isProxiedStream) {
-            // Started source stalled — arm a watchdog. If we're still stuck and
-            // the position hasn't advanced ~18s later, the stream is likely dead
-            // → fail over.
-            _armStallWatchdog();
-          } else {
-            _disarmStallWatchdog();
-          }
-        }
       }),
     );
-    // A stream that never starts never buffers, so the watchdog above — which
-    // only listens for `buffering` — is never armed for it. 1.9.8 had no such
-    // gap because links failed differently then: they hung mid-playback, so the
-    // stall detector caught them. Now the CDN answers 403 the instant the link
-    // is opened, no video ever starts, nothing ever buffers, and the screen sits
-    // there indefinitely. A source that has neither started nor buffered by the
-    // time this fires is as dead as one that started and froze — same 18s, same
-    // failover, so a blocked link cycles to the next source like 1.9.8 did.
-    _armStallWatchdog();
+    // A stream that never starts never buffers and may never emit an error
+    // (a 403 HLS playlist mpv retries forever), so without a backstop the
+    // screen would sit there indefinitely. A source that has produced no frame
+    // within the window below is treated as dead and cycles to the next source.
+    // (CloudStream has no auto-switch at all — error or stall, the user picks.
+    // We keep only this open-time backstop so one dead link doesn't strand
+    // playback; mid-playback stalls never switch sources anymore.)
     openEpisode(index);
   }
 
@@ -1338,9 +1310,6 @@ class PlayerCubit extends Cubit<PlayerState> {
     _lastPos = position;
     if (position > Duration.zero) {
       _startedThisSource = true;
-      // Playing: the open-time watchdog has done its job. A later genuine stall
-      // re-arms it through the buffering event.
-      _disarmStallWatchdog();
       _everStarted = true;
       if (!_markedWatching) {
         _markedWatching = true;
@@ -2913,10 +2882,9 @@ class PlayerCubit extends Cubit<PlayerState> {
         scheme.isEmpty || scheme == 'file' || scheme == 'content';
     // A source that never produces a frame and emits no error (a 403 HLS
     // playlist mpv retries forever) used to spin forever: the error listener
-    // needs an error event and the stall watchdog needs a started source, so
-    // neither fired. Arm the same failover for the never-started case — a
-    // first frame within the window cancels it, exactly like the stall path.
-    // Torrents excluded (pieces take a while — same rule as the stall path).
+    // needs an error event, so it never fires. Arm the failover for the
+    // never-started case — a first frame within the window cancels it.
+    // Torrents excluded (pieces take a while).
     _neverStartedTimer?.cancel();
     final openGen = g;
     _neverStartedTimer = Timer(const Duration(seconds: 30), () {
@@ -2926,7 +2894,7 @@ class PlayerCubit extends Cubit<PlayerState> {
           _activeTorrentId != null) {
         return;
       }
-      _failoverFromStall();
+      _failoverToNext();
     });
     emit(
       state.copyWith(
@@ -3517,31 +3485,11 @@ class PlayerCubit extends Cubit<PlayerState> {
         'Tap Try again, or pick a different source.';
   }
 
-  /// A started source stalled for too long (dead host / pulled segment).
-  /// Switch to the next untried mirror at the same position, transparently.
-  /// Arm the stall detector. Shared by the two ways a stream turns out to be
-  /// dead: it started and then froze (the `buffering` event), or it never started
-  /// at all because the host refused the link on open. Reused rather than
-  /// duplicated so the 18s and the failover stay in one place.
-  void _armStallWatchdog() {
-    _stallAnchorPos = _lastPos;
-    _stallWatchdogArmed = true;
-    _stallTimer?.cancel();
-    _stallTimer = Timer(const Duration(seconds: 18), _failoverFromStall);
-  }
-
-  void _disarmStallWatchdog() {
-    _stallWatchdogArmed = false;
-    _stallTimer?.cancel();
-    _stallTimer = null;
-  }
-
-  Future<void> _failoverFromStall() async {
-    _stallWatchdogArmed = false;
-    // Bail if playback recovered (position moved past the stall anchor) or
-    // we're no longer buffering — it was just a slow network dip, not a death.
-    if (!player.state.buffering) return;
-    if (_lastPos > _stallAnchorPos + const Duration(seconds: 1)) return;
+  /// A source that never produced a frame is dead (host refused the link on
+  /// open). Switch to the next untried mirror at the same position. Only used
+  /// by the never-started backstop — mid-playback stalls never switch sources
+  /// (CloudStream-like: buffering just buffers, the user picks).
+  Future<void> _failoverToNext() async {
     if (_recovering) return;
     _recovering = true;
     final dead = state.active;
@@ -3559,9 +3507,9 @@ class PlayerCubit extends Cubit<PlayerState> {
       await _open(next, seekTo: _lastPos);
       _applyDefaultQuality();
     } else {
-      // Every mirror stalled — the cached resolution is likely dead/expired, so
-      // drop it so the user's "retry" re-scrapes fresh links instead of replaying
-      // the same stalled cache.
+      // Every mirror failed to start — the cached resolution is likely
+      // dead/expired, so drop it so the user's "retry" re-scrapes fresh links
+      // instead of replaying the same dead cache.
       sl<SourceRepository>().invalidateSources(
         _episodeUrl(currentEpisode),
         sourceId: sourceId,
@@ -4260,7 +4208,6 @@ class PlayerCubit extends Cubit<PlayerState> {
     // have no listener, so nothing merges into a closed player. (The sweep
     // itself still ends via abortSweeps from the player screen's dispose.)
     unawaited(_cancelProgressive().catchError((_) {}));
-    _stallTimer?.cancel();
     _startTimer?.cancel();
     _neverStartedTimer?.cancel();
     _toastTimer?.cancel();
