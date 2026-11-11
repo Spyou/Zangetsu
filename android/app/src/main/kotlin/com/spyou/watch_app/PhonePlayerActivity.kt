@@ -2907,6 +2907,12 @@ class PhonePlayerActivity : Activity() {
 
     private fun goImmersive() {
         val portraitPage = isPortraitCard()
+        // The activity theme also hides the status bar through a window flag.
+        if (portraitPage) {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
+        } else {
+            window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
+        }
         @Suppress("DEPRECATION")
         window.statusBarColor = android.graphics.Color.TRANSPARENT
         val root = findViewById<View>(R.id.watch_root)
