@@ -38,8 +38,11 @@ jobs:
 
       - name: Build debug APK
         # The proprietary Discord SDK is gitignored, so CI builds without it.
+        # ZANGETSU_NIGHTLY gives it its own package (.nightly) + launcher name
+        # so it installs alongside release instead of "updating" it.
         env:
           ZANGETSU_NO_DISCORD: "1"
+          ZANGETSU_NIGHTLY: "1"
         run: flutter build apk --debug
 
       - name: Upload APK

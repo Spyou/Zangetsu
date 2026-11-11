@@ -33,6 +33,12 @@ if (hasReleaseKeystore) {
 val noDiscord =
     System.getenv("ZANGETSU_NO_DISCORD") == "1" || project.hasProperty("noDiscord")
 
+// CI nightly identity: separate package + launcher name so the nightly
+// installs ALONGSIDE the release build instead of showing up as an "update"
+// that overwrites it for release users.
+val isNightly =
+    System.getenv("ZANGETSU_NIGHTLY") == "1" || project.hasProperty("nightly")
+
 android {
     namespace = "com.spyou.watch_app"
     compileSdk = flutter.compileSdkVersion
@@ -59,6 +65,7 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        resValue("string", "app_name", if (isNightly) "Zangetsu Nightly" else "Zangetsu")
         if (noDiscord) {
             externalNativeBuild {
                 cmake {
@@ -142,6 +149,8 @@ android {
                 signingConfigs.getByName("debugWithReleaseKey")
             else
                 signingConfigs.getByName("debug")
+            // Nightly ((isNightly)): own package so it never overwrites release.
+            if (isNightly) applicationIdSuffix = ".nightly"
             if (providers.gradleProperty("vpsSyncTestBuild").orNull == "true") {
                 applicationIdSuffix = ".vpstest"
             }
