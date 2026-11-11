@@ -3,7 +3,6 @@ package com.spyou.watch_app
 import android.app.Activity
 import android.os.Handler
 import android.os.Looper
-import com.discord.socialsdk.DiscordSocialSdkInit
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodChannel
 
@@ -34,7 +33,15 @@ class DiscordPresenceBridge(private val activity: Activity, messenger: BinaryMes
                         require(token.isNotBlank() && appId > 0)
                         System.loadLibrary("discord_partner_sdk")
                         System.loadLibrary("zangetsu_discord")
-                        DiscordSocialSdkInit.setEngineActivity(activity)
+                        // Reflective (not a direct import) so this file still
+                        // compiles when the proprietary SDK is absent
+                        // (ZANGETSU_NO_DISCORD=1 CI builds). Without the SDK the
+                        // loadLibrary above throws UnsatisfiedLinkError, caught
+                        // below as "unavailable" — this line only runs when the
+                        // SDK is actually present, so behaviour is unchanged.
+                        Class.forName("com.discord.socialsdk.DiscordSocialSdkInit")
+                            .getMethod("setEngineActivity", Activity::class.java)
+                            .invoke(null, activity)
                         nativeStart(appId, token)
                         if (!running) {
                             running = true

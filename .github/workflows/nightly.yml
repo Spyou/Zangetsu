@@ -37,6 +37,9 @@ jobs:
         run: flutter pub get
 
       - name: Build debug APK
+        # The proprietary Discord SDK is gitignored, so CI builds without it.
+        env:
+          ZANGETSU_NO_DISCORD: "1"
         run: flutter build apk --debug
 
       - name: Upload APK

@@ -25,6 +25,14 @@ if (hasReleaseKeystore) {
     keystoreProperties.load(FileInputStream(keystorePropertiesFile))
 }
 
+// Set ZANGETSU_NO_DISCORD=1 (CI nightly) when the proprietary Discord SDK is
+// absent: the AAR require becomes a warning, the JNI lib is skipped, and a
+// no-op DiscordPresenceBridge (src/noDiscord) keeps MainActivity compiling.
+// Dart already treats the missing channel as "presence unavailable", so the
+// nightly behaves like a build with Discord disabled.
+val noDiscord =
+    System.getenv("ZANGETSU_NO_DISCORD") == "1" || project.hasProperty("noDiscord")
+
 android {
     namespace = "com.spyou.watch_app"
     compileSdk = flutter.compileSdkVersion
@@ -51,6 +59,15 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        if (noDiscord) {
+            externalNativeBuild {
+                cmake {
+                    // Tells our CMakeLists to skip the SDK's find_package +
+                    // JNI lib (the bridge below degrades via reflection).
+                    arguments += "-DNO_DISCORD=ON"
+                }
+            }
+        }
     }
 
     buildFeatures { prefab = true }
@@ -193,10 +210,14 @@ configurations.configureEach {
 // it. GPL-3.0 — see docs/cloudstream-integration-spec.md §7.
 dependencies {
     val discordSdk = rootProject.file("discord-sdk/discord_partner_sdk.aar")
-    require(discordSdk.exists()) {
-        "Discord SDK missing: run python3 tool/setup_discord_sdk.py /path/to/DiscordSocialSdk-1.10.19337.zip"
+    if (noDiscord) {
+        logger.warn("ZANGETSU_NO_DISCORD: skipping proprietary Discord SDK.")
+    } else {
+        require(discordSdk.exists()) {
+            "Discord SDK missing: run python3 tool/setup_discord_sdk.py /path/to/DiscordSocialSdk-1.10.19337.zip"
+        }
+        implementation(files(discordSdk))
     }
-    implementation(files(discordSdk))
     implementation("com.github.recloudstream.cloudstream:library:v4.8.0")
     // Jackson is already on the RUNTIME classpath (CloudStream library transitive
     // dep). compileOnly lets our clean-room DataStore reference JsonMapper for the
