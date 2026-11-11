@@ -31,6 +31,8 @@ Future<void> _pumpControls(
   // already `false`). Pass explicitly to prove the TalkBack gate's two
   // paths, mirroring how the other Layer-2 gate tests wrap their subject.
   bool? accessibleNavigation,
+  VoidCallback? onInfo,
+  bool showInfo = false,
 }) async {
   // Player controls always render on a wide TV screen — size the test surface
   // accordingly so the bottom control row isn't cramped into an overflow.
@@ -49,6 +51,8 @@ Future<void> _pumpControls(
       onFit: () {},
       onBack: () => backNotifier.value = true,
       onNext: null,
+      onInfo: onInfo,
+      showInfo: showInfo,
       playingStream: const Stream<bool>.empty(),
       initialPlaying: false,
       barVisible: visible,
@@ -461,5 +465,36 @@ void main() {
         expect(barNotifier.value, isTrue);
       },
     );
+    testWidgets('Info button hidden when no fields picked', (tester) async {
+      await _pumpControls(
+        tester,
+        controller: controller,
+        barNotifier: barNotifier,
+        backNotifier: backNotifier,
+        barVisible: true,
+      );
+      barNotifier.value = true;
+      await tester.pumpAndSettle();
+      expect(find.text('Info'), findsNothing);
+    });
+
+    testWidgets('Info button toggles via onInfo when fields picked', (
+      tester,
+    ) async {
+      var infoTaps = 0;
+      await _pumpControls(
+        tester,
+        controller: controller,
+        barNotifier: barNotifier,
+        backNotifier: backNotifier,
+        barVisible: true,
+        onInfo: () => infoTaps++,
+        showInfo: true,
+      );
+      barNotifier.value = true;
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Info'));
+      expect(infoTaps, 1);
+    });
   });
 }

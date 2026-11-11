@@ -35,7 +35,9 @@ class PlayerTvControls extends StatefulWidget {
     required this.onFit,
     required this.onBack,
     this.onNext,
-    required this.playingStream,
+    this.onInfo,
+    this.showInfo = false,
+    this.infoOpen = false,    required this.playingStream,
     required this.initialPlaying,
     required this.barVisible,
     required this.onBarChange,
@@ -70,6 +72,16 @@ class PlayerTvControls extends StatefulWidget {
 
   /// Advances to the next episode. Null when there is none.
   final VoidCallback? onNext;
+
+  /// Toggles the info overlay. Null = hidden (no fields picked in Settings).
+  final VoidCallback? onInfo;
+
+  /// False when the user picked no info fields, so the button is left out
+  /// instead of opening an empty card.
+  final bool showInfo;
+
+  /// Whether the info card is currently shown — tints its icon.
+  final bool infoOpen;
 
   /// Live play/pause state stream — drives the play/pause button's icon so it
   /// always reflects the actual player state.
@@ -216,9 +228,11 @@ class _PlayerTvControlsState extends State<PlayerTvControls> {
     }
 
     // ── Back / Escape ──
-    // First press hides the bar; second press exits the player.
+    // First press closes the info card; second hides the bar; third exits.
     if (k == LogicalKeyboardKey.goBack || k == LogicalKeyboardKey.escape) {
-      if (widget.barVisible) {
+      if (widget.infoOpen) {
+        widget.onInfo?.call();
+      } else if (widget.barVisible) {
         _hideBar();
       } else {
         widget.onBack();
@@ -231,7 +245,12 @@ class _PlayerTvControlsState extends State<PlayerTvControls> {
 
   /// One bottom-bar control: a focusable icon + label column. Shared by the
   /// play/pause button and the sheet-opener buttons.
-  Widget _barButton(IconData icon, String label, VoidCallback onTap) {
+  Widget _barButton(
+    IconData icon,
+    String label,
+    VoidCallback onTap, {
+    bool selected = false,
+  }) {
     return TvFocusable(
       onTap: onTap,
       semanticLabel: label,
@@ -240,7 +259,11 @@ class _PlayerTvControlsState extends State<PlayerTvControls> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, color: Colors.white, size: 26),
+            Icon(
+              icon,
+              color: selected ? AppColors.accent : Colors.white,
+              size: 26,
+            ),
             const SizedBox(height: 4),
             // The focusable above already announces the label — exclude
             // this sibling so TalkBack doesn't say it twice.
@@ -270,6 +293,10 @@ class _PlayerTvControlsState extends State<PlayerTvControls> {
       (Icons.aspect_ratio_rounded, 'Fit', widget.onFit),
       if (widget.onNext != null) (Icons.skip_next, 'Next', widget.onNext!),
     ];
+    // Info card toggle — only when the user picked fields in Settings.
+    // Kept out of [buttons] because it needs the selected tint + its own
+    // timer reset (the shared loop can't do either).
+    final showInfoButton = widget.showInfo && widget.onInfo != null;
 
     return Focus(
       focusNode: _rootFocus,
@@ -400,6 +427,16 @@ class _PlayerTvControlsState extends State<PlayerTvControls> {
                                       cb();
                                       _scheduleHide(); // reset idle timer on action
                                     }),
+                                  if (showInfoButton)
+                                    _barButton(
+                                      Icons.info_outline_rounded,
+                                      'Info',
+                                      () {
+                                        widget.onInfo!();
+                                        _scheduleHide(); // reset idle timer
+                                      },
+                                      selected: widget.infoOpen,
+                                    ),
                                 ],
                               ),
                             ],

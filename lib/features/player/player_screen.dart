@@ -3647,6 +3647,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
                         onFit: _cycleFit,
                         onNext: _c.hasPlayableNext ? () => _c.playNext() : null,
                         onBack: () => Navigator.of(context).maybePop(),
+                        onInfo: _infoFields.isEmpty
+                            ? null
+                            : () => setState(
+                                () => _infoPanelOpen = !_infoPanelOpen,
+                              ),
+                        showInfo: _infoFields.isNotEmpty,
+                        infoOpen: _infoPanelOpen,
                         playingStream: _c.player.stream.playing,
                         initialPlaying: _c.player.state.playing,
                         barVisible: _tvBarVisible,
@@ -4070,11 +4077,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
                   // 6b. Player info overlay ("stats for nerds") — the fields the
                   // user ticked in Settings, toggled by the ⓘ button (top-left,
-                  // below the top bar). Persists until toggled off.
-                  if (!sl<AppMode>().isTv &&
-                      !_locked &&
-                      _infoPanelOpen &&
-                      _infoFields.isNotEmpty)
+                  // below the top bar on phone; Info button in the bar on TV).
+                  // Persists until toggled off.
+                  if (!_locked && _infoPanelOpen && _infoFields.isNotEmpty)
                     Positioned(
                       left: 16,
                       top: MediaQuery.of(context).padding.top + 58,
