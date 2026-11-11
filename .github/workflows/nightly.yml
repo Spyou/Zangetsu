@@ -2,7 +2,8 @@ name: Nightly debug build
 
 on:
   schedule:
-    - cron: "30 2 * * *"
+    # 08:30 UTC = 2:00pm IST (GitHub cron is always UTC).
+    - cron: "30 8 * * *"
   workflow_dispatch:
 
 concurrency:
