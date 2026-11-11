@@ -1060,19 +1060,17 @@ class _SubtitleStyleSheetState extends State<_SubtitleStyleSheet> {
                   value: _prefs.subtitlePosition.toDouble(),
                   min: 0,
                   max: 100,
-                  divisions: 20,
-                  label: _prefs.subtitlePosition >= 50
-                      ? context.l10n.positionBottom
-                      : context.l10n.positionTop,
+                  divisions: 100,
+                  label: '${_prefs.subtitlePosition}% · ${_prefs.subtitlePosition >= 50 ? context.l10n.positionBottom : context.l10n.positionTop}',
                   onChanged: (v) =>
                       _apply(() => _prefs.setSubtitlePosition(v.round())),
                 ),
                 _SheetSectionHeader(context.l10n.subtitleSize),
                 _SliderRow(
-                  value: size.clamp(0.6, 2.0),
-                  min: 0.6,
-                  max: 2.0,
-                  divisions: 14,
+                  value: size.clamp(0.25, 5.0),
+                  min: 0.25,
+                  max: 5.0,
+                  divisions: 95,
                   label: '${(size * 100).round()}%',
                   onChanged: (v) => _apply(() => _prefs.setSubtitleScale(v)),
                 ),

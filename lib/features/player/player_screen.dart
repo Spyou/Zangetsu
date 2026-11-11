@@ -2301,11 +2301,36 @@ class _PlayerScreenState extends State<PlayerScreen> {
               offset: _zoomPan,
               child: Transform.scale(
                 scale: _zoom,
-                child: Video(
-                  controller: _c.videoController,
-                  controls: NoVideoControls,
-                  fit: _fits[_fitIndex].$1,
-                  subtitleViewConfiguration: _subtitleConfig(),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Video(
+                      controller: _c.videoController,
+                      controls: NoVideoControls,
+                      fit: _fits[_fitIndex].$1,
+                      subtitleViewConfiguration: const SubtitleViewConfiguration(
+                        visible: false,
+                      ),
+                    ),
+                    if (!_c.styledSubtitlesOn)
+                      StreamBuilder<List<String>>(
+                        stream: _c.player.stream.subtitle,
+                        initialData: _c.player.state.subtitle,
+                        builder: (context, snapshot) {
+                          final prefs = sl<PlaybackPrefs>();
+                          return PositionedSubtitle(
+                            text: (snapshot.data ?? const <String>[])
+                                .where((line) => line.trim().isNotEmpty)
+                                .join('\n'),
+                            position: prefs.subtitlePosition,
+                            style: buildSubtitleTextStyle(
+                              prefs,
+                              fontSize: 32 * prefs.subtitleScale,
+                            ),
+                          );
+                        },
+                      ),
+                  ],
                 ),
               ),
             ),
@@ -3031,24 +3056,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
             ),
         ],
       ),
-    );
-  }
-
-  /// Build the Flutter subtitle overlay style from the user's prefs. media_kit
-  /// renders text subtitles via this [SubtitleViewConfiguration] (a Flutter
-  /// overlay), NOT libass — so font/colour/size/outline/position all live here.
-  /// The [TextStyle] comes from the shared [buildSubtitleTextStyle] so the live
-  /// preview in the style sheet matches exactly what renders on the video.
-  SubtitleViewConfiguration _subtitleConfig() {
-    final p = sl<PlaybackPrefs>();
-    // position 0 (top) … 100 (bottom). Higher value → nearer the bottom (less
-    // bottom padding); lower value lifts the text up the frame.
-    final pos = p.subtitlePosition.clamp(0, 100);
-    final bottom = 16.0 + (100 - pos) * 3.0;
-    return SubtitleViewConfiguration(
-      textAlign: TextAlign.center,
-      padding: EdgeInsets.fromLTRB(16, 0, 16, bottom),
-      style: buildSubtitleTextStyle(p, fontSize: 32.0 * p.subtitleScale),
     );
   }
 

@@ -61,7 +61,9 @@ List<Shadow> buildSubtitleShadows(String type, double width, Color outline) {
     default:
       // Reproduces the legacy soft-shadow look (a soft dark halo) so the
       // default appearance is unchanged for existing users.
-      return [Shadow(color: outline.withValues(alpha: 0.8), blurRadius: 4 + width)];
+      return [
+        Shadow(color: outline.withValues(alpha: 0.8), blurRadius: 4 + width),
+      ];
   }
 }
 
@@ -110,12 +112,57 @@ TextStyle buildSubtitleTextStyle(PlaybackPrefs p, {required double fontSize}) {
     fontFamily: p.subtitleFont.isEmpty ? null : p.subtitleFont,
     fontWeight: FontWeight.w600,
     color: parseSubtitleHex(p.subtitleColorHex, opacity: p.subtitleTextOpacity),
-    backgroundColor:
-        Color.fromRGBO(0, 0, 0, p.subtitleBgOpacity.clamp(0.0, 1.0)),
+    backgroundColor: Color.fromRGBO(
+      0,
+      0,
+      0,
+      p.subtitleBgOpacity.clamp(0.0, 1.0),
+    ),
     shadows: buildSubtitleShadows(
       p.subtitleOutlineType,
       p.subtitleOutlineWidth,
       parseSubtitleHex(p.subtitleOutlineColorHex),
+    ),
+  );
+}
+
+/// Positions the complete subtitle block within the available video surface.
+class PositionedSubtitle extends StatelessWidget {
+  const PositionedSubtitle({
+    super.key,
+    required this.text,
+    required this.position,
+    required this.style,
+  });
+
+  final String text;
+  final int position;
+  final TextStyle style;
+
+  @override
+  Widget build(BuildContext context) => IgnorePointer(
+    child: LayoutBuilder(
+      builder: (context, constraints) {
+        // Keep the existing subtitle size relative to the video surface.
+        final scale = math.sqrt(
+          (constraints.maxWidth * constraints.maxHeight / (1920 * 1080)).clamp(
+            0.0,
+            1.0,
+          ),
+        );
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Align(
+            alignment: Alignment(0, position.clamp(0, 100) / 50 - 1),
+            child: Text(
+              text,
+              textAlign: TextAlign.center,
+              style: style,
+              textScaler: TextScaler.linear(scale),
+            ),
+          ),
+        );
+      },
     ),
   );
 }
