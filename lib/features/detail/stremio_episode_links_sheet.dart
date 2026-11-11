@@ -383,7 +383,6 @@ class _StremioLinksSheetState extends State<_StremioLinksSheet> {
                         child: _LinkCard(
                           choice: choice,
                           installationName: group.installation.name,
-                          title: widget.title,
                           onTap: () => _choose(choice),
                         ),
                       );
@@ -579,9 +578,7 @@ class _BestCard extends StatelessWidget {
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: AppColors.accent.withValues(alpha: 0.4),
-            ),
+            border: Border.all(color: AppColors.accent.withValues(alpha: 0.4)),
             color: AppColors.surface2,
           ),
           child: Row(
@@ -601,11 +598,7 @@ class _BestCard extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       choice.label,
-                      style: AppText.body.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                      style: AppText.body.copyWith(fontWeight: FontWeight.w700),
                     ),
                     const SizedBox(height: 2),
                     Text(
@@ -806,39 +799,25 @@ class _ShineState extends State<_Shine>
   }
 }
 
-/// One stream as a card: addon headline, title, spec and size lines, plus
-/// a SIZE pill when the addon sends a size. The whole card taps to play.
+/// A selectable stream with addon formatting and an optional size badge.
 class _LinkCard extends StatelessWidget {
   const _LinkCard({
     required this.choice,
     required this.installationName,
-    required this.title,
     required this.onTap,
   });
 
   final StremioLinkChoice choice;
   final String installationName;
-  final String title;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final stream = choice.stream;
-    final size = stream.videoSize;
-    final subCount = stream.subtitles.length;
-    final isTorrent = stream.kind == StremioStreamKind.torrent;
-    // The addon's own headline; addon name as fallback.
-    final headline = stream.name != null && stream.name!.isNotEmpty
+    final headline = stream.name?.trim().isNotEmpty == true
         ? stream.name!
         : installationName;
-    final metaBits = [
-      if (size != null) _formatStreamSize(size),
-      if (subCount > 0)
-        '$subCount subtitle${subCount == 1 ? '' : 's'}'
-      else if (size == null)
-        'no size info',
-      isTorrent ? 'torrent' : 'direct',
-    ];
+    final description = stream.description;
     return Padding(
       padding: const EdgeInsets.only(top: 8),
       child: InkWell(
@@ -857,61 +836,27 @@ class _LinkCard extends StatelessWidget {
               Text(
                 headline,
                 style: AppText.body.copyWith(fontWeight: FontWeight.w700),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                softWrap: false,
               ),
-              const SizedBox(height: 2),
-              Text(
-                '🍿 $title',
-                style: AppText.body.copyWith(color: AppColors.textSecondary),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: 2),
-              Text(
-                '🎞️ ${choice.label}',
-                style: AppText.body.copyWith(color: AppColors.textSecondary),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-              if (stream.fileName != null &&
-                  stream.fileName!.isNotEmpty) ...[
+              if (description != null && description.trim().isNotEmpty) ...[
                 const SizedBox(height: 2),
                 Text(
-                  '📄 ${stream.fileName}',
-                  style: AppText.caption.copyWith(
-                    color: AppColors.textTertiary,
-                  ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
+                  description,
+                  style: AppText.body.copyWith(color: AppColors.textSecondary),
                 ),
               ],
-              const SizedBox(height: 2),
-              Text(
-                '💾 ${metaBits.join(' · ')}',
-                style: AppText.body.copyWith(color: AppColors.textSecondary),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              if (size != null) ...[
+              if (stream.videoSize != null && stream.videoSize! > 0) ...[
                 const SizedBox(height: 6),
                 Align(
                   alignment: Alignment.centerLeft,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 9,
-                      vertical: 3,
-                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(7),
                       color: AppColors.surface,
                     ),
                     child: Text(
-                      'SIZE ${_formatStreamSize(size)}',
-                      style: AppText.caption.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
+                      'SIZE ${_formatStreamSize(stream.videoSize!)}',
+                      style: AppText.caption.copyWith(fontWeight: FontWeight.w800),
                     ),
                   ),
                 ),
