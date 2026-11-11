@@ -657,6 +657,21 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
   }
 
+  void _applyPlayerSystemUi() {
+    final watchPage = _watchPageEnabled &&
+        _presentation == PlayerPresentation.watchPage;
+    SystemChrome.setEnabledSystemUIMode(
+      watchPage ? SystemUiMode.edgeToEdge : SystemUiMode.immersiveSticky,
+    );
+    if (watchPage) {
+      SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.light,
+        statusBarBrightness: Brightness.dark,
+      ));
+    }
+  }
+
   void _enterFullscreen({bool fromRotation = false}) {
     _stopAmbientSampler();
     if (!fromRotation) _followSensor = false;
@@ -666,6 +681,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       _portraitMode = false;
       _presentation = PlayerPresentation.fullscreen;
     });
+    _applyPlayerSystemUi();
     // Fullscreen holds the saved orientation, or follows the sensor.
     SystemChrome.setPreferredOrientations(_orientationLock);
   }
@@ -676,6 +692,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _lastOrientation = MediaQuery.orientationOf(context);
     setState(() => _presentation = PlayerPresentation.watchPage);
     _portraitMode = true;
+    _applyPlayerSystemUi();
     SystemChrome.setPreferredOrientations(_orientationLock);
   }
 
@@ -696,6 +713,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
         isLandscape: current == Orientation.landscape,
       );
       _presentation = initial;
+      _applyPlayerSystemUi();
       if (initial == PlayerPresentation.watchPage) {
         _startAmbientSampler();
         _portraitMode = true;
@@ -821,7 +839,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   void _initInApp() {
     _routeTeardownLease ??= playerRouteTeardownBarrier.acquire();
     if (!_watchPageEnabled) _applyOrientationWhenCovered();
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    _applyPlayerSystemUi();
     // Wake-lock is bound to playback in _startSession, once the player exists.
     // The volume swipe sets the real system volume; hide the OS volume bar so
     // only our own HUD shows (CloudStream draws its own too). Restored on exit.
@@ -1971,7 +1989,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     // Back to whichever orientation you were watching in — not landscape by
     // default, or a portrait session would end up sideways after a settings trip.
     await SystemChrome.setPreferredOrientations(_orientationLock);
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    _applyPlayerSystemUi();
     if (!mounted) return;
     if (wasPlaying && !_c.player.state.playing) _c.togglePlay();
     _bumpControls();
