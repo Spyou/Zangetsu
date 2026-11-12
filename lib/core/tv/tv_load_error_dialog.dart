@@ -50,7 +50,12 @@ VoidCallback showTvPlaybackLoadingOverlay(
     ),
   );
   overlay.insert(entry);
+  // Callers dismiss both mid-flow (before an error dialog) and again in
+  // `finally`. Removing twice asserts in Flutter — gate on a local flag.
+  var removed = false;
   return () {
+    if (removed) return;
+    removed = true;
     if (entry.mounted) entry.remove();
   };
 }

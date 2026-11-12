@@ -29,10 +29,32 @@ class DetailScreenTv extends StatefulWidget {
 }
 
 class _DetailScreenTvState extends State<DetailScreenTv> {
-  int _tab = 0;
-  List<String> _tabLabels(BuildContext context) {
+  /// Series: Episodes first. Films: Details (no Episodes tab).
+  late int _tab = _initialTabFor(widget.item);
+
+  static int _initialTabFor(MediaItem item) {
+    final kind = ZmodeIds.parseShow(item.url)?.kind;
+    // Cast=0, Relations=1, Details=2 when Episodes is omitted.
+    if (kind == ZKind.movie) return 2;
+    return 0;
+  }
+
+  /// Films: Cast / Relations / Details. Series: Episodes + those three.
+  List<String> _tabLabels(BuildContext context, {required bool isFilm}) {
     final l = context.l10n;
+    if (isFilm) return [l.cast, l.relations, l.details];
     return [l.episodes, l.cast, l.relations, l.details];
+  }
+
+  /// Once detail confirms a film (including non-zm heuristics), land on Details.
+  bool _didApplyFilmDefaultTab = false;
+  void _ensureFilmDefaultTab(bool isFilm, int detailsIndex) {
+    if (!isFilm || _didApplyFilmDefaultTab) return;
+    _didApplyFilmDefaultTab = true;
+    if (_tab == detailsIndex) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) setState(() => _tab = detailsIndex);
+    });
   }
 
   // Episode search. The query is typed in a DIALOG (opened from the left-pane
@@ -89,7 +111,7 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
     if (result == null || !mounted) return; // dismissed — keep current query
     setState(() {
       _epQuery = result.trim();
-      _tab = 0; // searching implies the Episodes tab
+      _tab = 0; // searching implies the Episodes tab (series only)
     });
   }
 
@@ -623,6 +645,7 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
     _maybeFetchTrackerProgress(detail);
 
     // Resume / play label (mirrors _DetailViewState._buildBody).
+    final isFilm = detail.isFilm;
     final resume = _resumeTarget(eps);
     final resumeIdx = resume.index;
     final hasAnyMark = eps.any(
@@ -632,8 +655,13 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
         ? (eps[resumeIdx].number?.toInt() ?? resumeIdx + 1)
         : 1;
     final buttonLabel = resume.hasResume
-        ? context.l10n.continueEpisode(episodeNum)
+        ? (isFilm
+              ? context.l10n.continueLabel
+              : context.l10n.continueEpisode(episodeNum))
         : context.l10n.play;
+    final tabLabels = _tabLabels(context, isFilm: isFilm);
+    _ensureFilmDefaultTab(isFilm, tabLabels.length - 1);
+    final tabIndex = _tab.clamp(0, tabLabels.length - 1);
 
     // Cover.
     final coverUrl = detail.cover ?? item.cover ?? '';
@@ -663,10 +691,15 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
     final sourceName = _sourceLabel(item.sourceId);
     final statusStr = statusLabel(detail.status);
 
-    // Meta line (mirrors _DetailViewState._buildBody).
+    // Meta line (mirrors _DetailViewState._buildBody). Films show run time
+    // instead of a misleading "1 episode".
     final metaParts = <String>[];
     if ((detail.year ?? '').isNotEmpty) metaParts.add(detail.year!);
-    if (hasMultipleSeasons) {
+    if (isFilm && (detail.durationMins ?? 0) > 0) {
+      metaParts.add('${detail.durationMins}m');
+    } else if (isFilm) {
+      metaParts.add(context.l10n.movie);
+    } else if (hasMultipleSeasons) {
       metaParts.add(context.l10n.seasonCount(seasonSet.length));
     } else if (eps.isNotEmpty) {
       metaParts.add(context.l10n.episodeCount(eps.length));
@@ -849,34 +882,34 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
                                 ),
                                 const SizedBox(height: 10),
                               ],
-                              const SizedBox(height: 10),
-                              // Episode search — under Play/Download (tester
-                              // request). Opens the type-dialog; the active
-                              // query shows on the label so it's obvious a
-                              // filter is applied.
-                              TvFocusable(
-                                key: const ValueKey('tv-detail-ep-search'),
-                                variant: TvFocusVariant.pill,
-                                onTap: _openEpisodeSearch,
-                                semanticLabel: _epQuery.isEmpty
-                                    ? context.l10n.searchEpisodes
-                                    : context.l10n.searchColon(_epQuery),
-                                // _IconAction is shared with the phone view —
-                                // exclude its own label, same as Play above.
-                                child: ExcludeSemantics(
-                                  child: _IconAction(
-                                    icon: _epQuery.isEmpty
-                                        ? Icons.search_rounded
-                                        : Icons.filter_alt_rounded,
-                                    active: _epQuery.isNotEmpty,
-                                    label: _epQuery.isEmpty
-                                        ? context.l10n.searchEpisodes
-                                        : context.l10n.searchColon(_epQuery),
-                                    tooltip: context.l10n.searchEpisodes,
-                                    onTap: _openEpisodeSearch,
+                              // Episode search — series only. Films have no
+                              // Episodes tab to filter.
+                              if (!isFilm) ...[
+                                const SizedBox(height: 10),
+                                TvFocusable(
+                                  key: const ValueKey('tv-detail-ep-search'),
+                                  variant: TvFocusVariant.pill,
+                                  onTap: _openEpisodeSearch,
+                                  semanticLabel: _epQuery.isEmpty
+                                      ? context.l10n.searchEpisodes
+                                      : context.l10n.searchColon(_epQuery),
+                                  // _IconAction is shared with the phone view —
+                                  // exclude its own label, same as Play above.
+                                  child: ExcludeSemantics(
+                                    child: _IconAction(
+                                      icon: _epQuery.isEmpty
+                                          ? Icons.search_rounded
+                                          : Icons.filter_alt_rounded,
+                                      active: _epQuery.isNotEmpty,
+                                      label: _epQuery.isEmpty
+                                          ? context.l10n.searchEpisodes
+                                          : context.l10n.searchColon(_epQuery),
+                                      tooltip: context.l10n.searchEpisodes,
+                                      onTap: _openEpisodeSearch,
+                                    ),
                                   ),
                                 ),
-                              ),
+                              ],
                               const SizedBox(height: 10),
                               // My List button (same icon-over-label as phone)
                               TvFocusable(
@@ -957,11 +990,7 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
                           padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
                           child: Row(
                             children: [
-                              for (
-                                int i = 0;
-                                i < _tabLabels(context).length;
-                                i++
-                              )
+                              for (int i = 0; i < tabLabels.length; i++)
                                 Padding(
                                   padding: const EdgeInsetsDirectional.only(
                                     end: 4,
@@ -970,7 +999,7 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
                                     key: ValueKey('tv-detail-tab-$i'),
                                     variant: TvFocusVariant.pill,
                                     onTap: () => setState(() => _tab = i),
-                                    semanticLabel: _tabLabels(context)[i],
+                                    semanticLabel: tabLabels[i],
                                     builder: (focused) => Padding(
                                       padding: const EdgeInsets.symmetric(
                                         horizontal: 14,
@@ -980,18 +1009,18 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
                                       // already announces the tab name.
                                       child: ExcludeSemantics(
                                         child: Text(
-                                          _tabLabels(context)[i],
+                                          tabLabels[i],
                                           style: AppText.headline.copyWith(
                                             fontSize: 15,
                                             // Active tab reads from bright
                                             // white + bold, not a red tint.
                                             color: focused
                                                 ? Colors.black
-                                                : (_tab == i
+                                                : (tabIndex == i
                                                       ? AppColors.textPrimary
                                                       : AppColors
                                                             .textSecondary),
-                                            fontWeight: _tab == i
+                                            fontWeight: tabIndex == i
                                                 ? FontWeight.w700
                                                 : FontWeight.w500,
                                           ),
@@ -1008,34 +1037,38 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
                       // Tab content
                       Expanded(
                         child: IndexedStack(
-                          index: _tab,
+                          index: tabIndex,
                           children: [
-                            // ── Episodes ──────────────────────────────────────
-                            _TvEpisodeList(
-                              key: const ValueKey('tv-detail-episodes'),
-                              eps: eps,
-                              seasonEps: seasonEps,
-                              fillerEps: _fillerEps,
-                              query: _epQuery,
-                              hasMultipleSeasons: hasMultipleSeasons,
-                              seasonSet: seasonSet,
-                              currentSeason: currentSeason,
-                              onSelectSeason: context
-                                  .read<DetailCubit>()
-                                  .selectSeason,
-                              sourceId: item.sourceId,
-                              showId: item.id,
-                              showUrl: item.url,
-                              coverUrl: coverUrl,
-                              coverHeaders: coverHeaders,
-                              hasAnyMark: hasAnyMark,
-                              resumeIndex: _resumeIndex,
-                              trackerProgress: _trackerProgress,
-                              onOpen: (i) =>
-                                  _openPlayer(eps, i, detail, category),
-                              onDownload: (ep) =>
-                                  _pickSourceAndDownload(ep, detail, category),
-                            ),
+                            // ── Episodes (series only) ───────────────────────
+                            if (!isFilm)
+                              _TvEpisodeList(
+                                key: const ValueKey('tv-detail-episodes'),
+                                eps: eps,
+                                seasonEps: seasonEps,
+                                fillerEps: _fillerEps,
+                                query: _epQuery,
+                                hasMultipleSeasons: hasMultipleSeasons,
+                                seasonSet: seasonSet,
+                                currentSeason: currentSeason,
+                                onSelectSeason: context
+                                    .read<DetailCubit>()
+                                    .selectSeason,
+                                sourceId: item.sourceId,
+                                showId: item.id,
+                                showUrl: item.url,
+                                coverUrl: coverUrl,
+                                coverHeaders: coverHeaders,
+                                hasAnyMark: hasAnyMark,
+                                resumeIndex: _resumeIndex,
+                                trackerProgress: _trackerProgress,
+                                onOpen: (i) =>
+                                    _openPlayer(eps, i, detail, category),
+                                onDownload: (ep) => _pickSourceAndDownload(
+                                  ep,
+                                  detail,
+                                  category,
+                                ),
+                              ),
                             // ── Cast ─────────────────────────────────────────
                             _CastTab(
                               cast: state.cast.isNotEmpty
@@ -1059,6 +1092,7 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
                               genres: detail.genres,
                               studios: detail.studios,
                               episodeCount: eps.length,
+                              isMovie: isFilm,
                               year: detail.year,
                               description: detail.description,
                             ),

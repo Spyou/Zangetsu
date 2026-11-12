@@ -371,6 +371,10 @@ Future<void> launchTvPlayback({
   } on NoSourceMatch catch (e) {
     debugPrint('[tv-playback] launchTvPlayback · NoSourceMatch caught · $e');
     if (context.mounted) {
+      // Same as the AV/native failure paths: drop "Finding…" before the
+      // dialog so the overlay doesn't sit on top of the error for the
+      // whole time the dialog is open (external rethrows land here).
+      dismissLoading?.call();
       await showTvPlaybackLoadError(
         context,
         failure: classifyPlaybackError(e, mode: mode),
@@ -381,6 +385,7 @@ Future<void> launchTvPlayback({
       '[tv-playback] launchTvPlayback · EpisodeNotAvailable caught · $e',
     );
     if (context.mounted) {
+      dismissLoading?.call();
       await showTvPlaybackLoadError(
         context,
         failure: classifyPlaybackError(e, mode: mode),

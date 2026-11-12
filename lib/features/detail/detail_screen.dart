@@ -504,10 +504,27 @@ class _DetailViewState extends State<_DetailView>
   late final ScrollController _scrollController = ScrollController()
     ..addListener(_onScroll);
 
-  late final TabController _tabController = TabController(
-    length: 4,
-    vsync: this,
-  );
+  /// Series / reading: 4 tabs. Films: Cast / Relations / Details (no Episodes).
+  late TabController _tabController = TabController(length: 4, vsync: this);
+  int _tabLength = 4;
+
+  /// Recreate the tab controller when film vs series is known. Films drop the
+  /// Episodes tab and open on Details.
+  void _syncTabController({required bool isFilm, required bool isReading}) {
+    final length = (!isReading && isFilm) ? 3 : 4;
+    if (_tabLength == length) return;
+    final initial = (!isReading && isFilm) ? length - 1 : 0;
+    final old = _tabController;
+    _tabController = TabController(
+      length: length,
+      vsync: this,
+      initialIndex: initial,
+    );
+    _tabLength = length;
+    // Dispose the previous controller after this frame — disposing mid-build
+    // (or while a listener still holds it) asserts.
+    WidgetsBinding.instance.addPostFrameCallback((_) => old.dispose());
+  }
 
   // ── My List (status-organised library) ────────────────────────────────────
   final MyListStore _myList = sl<MyListStore>();
@@ -2226,6 +2243,8 @@ class _DetailViewState extends State<_DetailView>
     // Play→Read relabel and hides the download affordances below.
     final isReading =
         detail.type == ProviderType.novel || detail.type == ProviderType.manga;
+    // Films drop the Episodes tab and open on Details.
+    _syncTabController(isFilm: detail.isFilm, isReading: isReading);
     // Kick the (cached, once-per-malId) filler lookup for the "Filler" badge.
     _ensureFiller(detail.malId ?? item.malId);
     // Kick the (once-per-detail) tracker-progress lookup for grey-out.
@@ -2642,7 +2661,10 @@ class _DetailViewState extends State<_DetailView>
                       text: cleanSynopsis(detail.description) ?? '',
                       // "Read more" reveals the Details tab (full synopsis) rather
                       // than expanding inline; the header stays clamped to 3 lines.
-                      onReadMore: () => _revealTab(3),
+                      onReadMore: () => _revealTab(
+                        // Films drop Episodes → Details is last of 3.
+                        detail.isFilm ? 2 : 3,
+                      ),
                     ),
                   )
                 : const SizedBox.shrink(),
@@ -2667,7 +2689,9 @@ class _DetailViewState extends State<_DetailView>
                             value: starring,
                             more: starringMore,
                             // Tapping the line (or its "… more") reveals the Cast tab.
-                            onMore: starringMore ? () => _revealTab(1) : null,
+                            onMore: starringMore
+                                ? () => _revealTab(detail.isFilm ? 0 : 1)
+                                : null,
                           ),
                         if (genresLine != null)
                           _CreditLine(
@@ -2809,13 +2833,12 @@ class _DetailViewState extends State<_DetailView>
                 fontWeight: FontWeight.w500,
               ),
               tabs: [
-                Tab(
-                  text: isReading
-                      ? context.l10n.chapters
-                      : (detail.isFilm
-                            ? context.l10n.movie
-                            : context.l10n.episodes),
-                ),
+                if (isReading || !detail.isFilm)
+                  Tab(
+                    text: isReading
+                        ? context.l10n.chapters
+                        : context.l10n.episodes,
+                  ),
                 Tab(
                   text: isReading ? context.l10n.characters : context.l10n.cast,
                 ),
@@ -2830,53 +2853,54 @@ class _DetailViewState extends State<_DetailView>
       body: TabBarView(
         controller: _tabController,
         children: [
-          // ── Episodes ──────────────────────────────────────────────────────
-          _EpisodesTab(
-            loading: state.episodesLoading,
-            eps: eps,
-            seasonEps: seasonEps,
-            fillerEps: _fillerEps,
-            hasMultipleSeasons: hasMultipleSeasons,
-            seasonSet: seasonSet,
-            currentSeason: currentSeason,
-            onSelectSeason: cubit.selectSeason,
-            coverUrl: coverUrl,
-            coverHeaders: coverHeaders,
-            sourceId: item.sourceId,
-            // Downloads name the source that has the files; progress above
-            // stays on the canonical id.
-            downloadSourceId: detail.sourceId.isNotEmpty
-                ? detail.sourceId
-                : item.sourceId,
-            showId: item.id,
-            showUrl: item.url,
-            resumeIndex: _resumeIndex,
-            hasAnyMark: hasAnyMark,
-            trackerProgress: _trackerProgress,
-            nextAiringEpisode: _nextAiringEpisode,
-            nextAiringAt: _nextAiringAt,
-            onOpen: (fullIndex) =>
-                _openPlayer(eps, fullIndex, detail, category),
-            // Reading has no player to pick, but it does have the marking
-            // rows — gating the whole menu on the player is what hid them.
-            onEpisodeMenu: (fullIndex) =>
-                _pickPlayerFor(eps, fullIndex, detail, category),
-            onRefresh: cubit.refresh,
-            onDownload: (ep) => isReading
-                ? _downloadChapter(ep, detail)
-                : _downloadSingle(ep, detail, category),
-            onDownloadMany: isReading
-                ? (eps) => _downloadChapters(eps, detail)
-                : null,
-            resumeChapter: readResume == null || eps.isEmpty
-                ? null
-                : eps[readResume.index],
-            // Only a catalogue title has another source to fall back on.
-            onSwitchSource: ZmodeIds.isZ(item.url) ? _switchSource : null,
-            isReading: isReading,
-            filmMeta: _filmMeta(detail),
-            filmTitle: detail.title,
-          ),
+          // ── Episodes / Chapters (hidden for films — Play is on the hero) ──
+          if (isReading || !detail.isFilm)
+            _EpisodesTab(
+              loading: state.episodesLoading,
+              eps: eps,
+              seasonEps: seasonEps,
+              fillerEps: _fillerEps,
+              hasMultipleSeasons: hasMultipleSeasons,
+              seasonSet: seasonSet,
+              currentSeason: currentSeason,
+              onSelectSeason: cubit.selectSeason,
+              coverUrl: coverUrl,
+              coverHeaders: coverHeaders,
+              sourceId: item.sourceId,
+              // Downloads name the source that has the files; progress above
+              // stays on the canonical id.
+              downloadSourceId: detail.sourceId.isNotEmpty
+                  ? detail.sourceId
+                  : item.sourceId,
+              showId: item.id,
+              showUrl: item.url,
+              resumeIndex: _resumeIndex,
+              hasAnyMark: hasAnyMark,
+              trackerProgress: _trackerProgress,
+              nextAiringEpisode: _nextAiringEpisode,
+              nextAiringAt: _nextAiringAt,
+              onOpen: (fullIndex) =>
+                  _openPlayer(eps, fullIndex, detail, category),
+              // Reading has no player to pick, but it does have the marking
+              // rows — gating the whole menu on the player is what hid them.
+              onEpisodeMenu: (fullIndex) =>
+                  _pickPlayerFor(eps, fullIndex, detail, category),
+              onRefresh: cubit.refresh,
+              onDownload: (ep) => isReading
+                  ? _downloadChapter(ep, detail)
+                  : _downloadSingle(ep, detail, category),
+              onDownloadMany: isReading
+                  ? (eps) => _downloadChapters(eps, detail)
+                  : null,
+              resumeChapter: readResume == null || eps.isEmpty
+                  ? null
+                  : eps[readResume.index],
+              // Only a catalogue title has another source to fall back on.
+              onSwitchSource: ZmodeIds.isZ(item.url) ? _switchSource : null,
+              isReading: isReading,
+              filmMeta: _filmMeta(detail),
+              filmTitle: detail.title,
+            ),
           // ── Cast ────────────────────────────────────────────────────────────
           _CastTab(
             loading: state.extrasLoading,

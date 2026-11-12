@@ -988,4 +988,65 @@ void main() {
       expect(find.byKey(const ValueKey('tv-ep-0')), findsNothing);
     },
   );
+
+  testWidgets(
+    'DetailScreenTv for movies hides Episodes and opens on Details',
+    (tester) async {
+      // Non-zm url keeps _sourceLabel off MetadataRepository; format:movie
+      // is enough for [MediaDetail.isFilm].
+      const movieDetail = MediaDetail(
+        id: 'movie-1',
+        title: 'Heart of the Beast',
+        url: 'http://test/movie',
+        type: ProviderType.anime,
+        sourceId: 'test',
+        format: 'movie',
+        durationMins: 105,
+        episodes: [
+          Episode(id: 'e1', title: 'Heart of the Beast', url: '/e1', number: 1),
+        ],
+      );
+      const movieItem = MediaItem(
+        id: 'movie-1',
+        title: 'Heart of the Beast',
+        url: 'http://test/movie',
+        type: ProviderType.anime,
+        sourceId: 'test',
+      );
+
+      final movieCubit = DetailCubit(
+        repo: _StubSourceRepository(movieDetail),
+        url: movieDetail.url,
+        sourceId: movieDetail.sourceId,
+        prefs: _FakeTitlePrefs(),
+      );
+      await movieCubit.load();
+      addTearDown(movieCubit.close);
+
+      final handle = tester.ensureSemantics();
+      await tester.pumpWidget(
+        BlocProvider<DetailCubit>.value(
+          value: movieCubit,
+          child: const MaterialApp(
+            home: DetailScreenTv(item: movieItem),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(); // film default-tab post-frame
+
+      expect(find.bySemanticsLabel('Episodes'), findsNothing);
+      expect(find.byKey(const ValueKey('tv-detail-ep-search')), findsNothing);
+      expect(find.byKey(const ValueKey('tv-detail-episodes')), findsNothing);
+      expect(find.bySemanticsLabel('Cast'), findsOneWidget);
+      expect(find.bySemanticsLabel('Relations'), findsOneWidget);
+      expect(find.bySemanticsLabel('Details'), findsOneWidget);
+
+      // Default tab is Details — movie meta (run time) is on the left pane,
+      // and the episode list is gone.
+      expect(find.textContaining('105m'), findsOneWidget);
+      expect(find.textContaining('1 episode'), findsNothing);
+      handle.dispose();
+    },
+  );
 }
