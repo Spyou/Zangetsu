@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:http/http.dart' as http;
@@ -163,6 +164,60 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
   }
+
+  testWidgets('long press copies a stream without selecting or closing it', (
+    tester,
+  ) async {
+    String? copied;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, (call) async {
+          if (call.method == 'Clipboard.setData') {
+            copied = (call.arguments as Map)['text'] as String;
+          }
+          return null;
+        });
+    addTearDown(
+      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, null),
+    );
+    VideoSource? picked;
+    await openSheet(tester, () => picked, (value) => picked = value);
+    await tester.tap(find.byKey(const ValueKey('filter-chip:Test Addon')));
+    await tester.pumpAndSettle();
+    await tester.longPress(find.text('WEB-DL'));
+    await tester.pumpAndSettle();
+    expect(copied, 'https://cdn.example/video.m3u8');
+    expect(picked, isNull);
+    expect(find.text('WEB-DL'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 4));
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('best match long press copies the link without playing', (
+    tester,
+  ) async {
+    String? copied;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, (call) async {
+          if (call.method == 'Clipboard.setData') {
+            copied = (call.arguments as Map)['text'] as String;
+          }
+          return null;
+        });
+    addTearDown(
+      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, null),
+    );
+    VideoSource? picked;
+    await openSheet(tester, () => picked, (value) => picked = value);
+    await tester.longPress(find.text('BEST MATCH'));
+    await tester.pumpAndSettle();
+    expect(copied, 'https://cdn.example/video.m3u8');
+    expect(picked, isNull);
+    expect(find.text('BEST MATCH'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 4));
+    await tester.pumpAndSettle();
+  });
 
   testWidgets('groups links by addon and returns the exact source', (
     tester,

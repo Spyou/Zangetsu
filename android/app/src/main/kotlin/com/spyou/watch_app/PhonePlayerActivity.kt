@@ -1507,7 +1507,15 @@ class PhonePlayerActivity : Activity() {
                             if (which != selected) playMirror(mirrors[which])
                         }
                         .setOnDismissListener { bumpControls() }
-                        .showForPlayer()
+                        .showForPlayer().listView.setOnItemLongClickListener { _, _, which, _ ->
+                            val url = mirrors.getOrNull(which)?.get("url") as? String
+                            if (!url.isNullOrEmpty()) {
+                                val clipboard = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Video link", url))
+                                toast("Link copied")
+                            }
+                            true
+                        }
                 }
 
                 override fun error(code: String, msg: String?, details: Any?) {

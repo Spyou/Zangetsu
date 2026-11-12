@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/video_source.dart';
+import 'copy_playback_link.dart';
 import '../playback/external_player.dart';
 import '../playback/source_selection.dart';
 import '../theme/app_colors.dart';
@@ -402,6 +403,7 @@ Future<VideoSource?> showMirrorSheet(
                         ? s.quality
                         : null,
                     onTap: () => Navigator.pop(sheetContext, s),
+                    onLongPress: () => copyPlaybackLink(sheetContext, s.url),
                   ),
               const SizedBox(height: 8),
             ],
@@ -417,6 +419,7 @@ class _PlayerRow extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.onTap,
+    this.onLongPress,
     this.isDefault = false,
     this.subtitle,
     this.trailingText,
@@ -425,6 +428,7 @@ class _PlayerRow extends StatelessWidget {
   final IconData icon;
   final String label;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
 
   /// Marks the row a plain tap would have used. Marked rather than sorted to
   /// the top, so the list doesn't reshuffle when the Settings default changes.
@@ -451,6 +455,7 @@ class _PlayerRow extends StatelessWidget {
               style: AppText.caption.copyWith(color: AppColors.textSecondary),
             ),
       onTap: onTap,
+      onLongPress: onLongPress,
     );
   }
 }

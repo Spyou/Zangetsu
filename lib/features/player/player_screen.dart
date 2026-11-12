@@ -15,6 +15,7 @@ import 'package:screen_brightness/screen_brightness.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../core/cache/app_image_cache.dart';
+import '../../core/ui/copy_playback_link.dart';
 import '../../core/di/injector.dart';
 import '../../core/playback/filler_service.dart';
 import '../../core/repository/catalogue_repository.dart';
@@ -3291,6 +3292,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     : '${k != AudioKind.unknown ? '${k.name.toUpperCase()} • ' : ''}'
                           '${s.quality?.isNotEmpty == true ? s.quality : s.container.name}',
                 active: s == _c.state.active,
+                onLongPress: () => copyPlaybackLink(context, s.url),
                 onTap: () async {
                   Navigator.pop(context);
                   await _c.selectSource(

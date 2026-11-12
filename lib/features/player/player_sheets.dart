@@ -1716,11 +1716,13 @@ class _SheetRow extends StatelessWidget {
     this.toggleValue,
     this.loading = false,
     this.onRemove,
+    this.onLongPress,
   });
 
   final String label;
   final bool active;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
 
   /// Optional trailing icon (e.g. upload for "Load from file…").
   final IconData? icon;
@@ -1755,6 +1757,7 @@ class _SheetRow extends StatelessWidget {
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: onTap,
+          onLongPress: onLongPress,
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 13),
             child: Row(

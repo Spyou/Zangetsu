@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:zangetsu_source_bridge/stremio.dart';
 
 import '../../core/app_mode.dart';
+import '../../core/ui/copy_playback_link.dart';
 import '../../core/di/injector.dart';
 import '../../core/models/video_source.dart';
 import '../../core/stremio/stremio_link_session.dart';
@@ -574,6 +575,10 @@ class _BestCard extends StatelessWidget {
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
         onTap: onTap,
+        onLongPress: () {
+          final source = stremioVideoSource(choice);
+          if (source != null) copyPlaybackLink(context, source.url);
+        },
         child: Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
@@ -823,6 +828,10 @@ class _LinkCard extends StatelessWidget {
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
         onTap: onTap,
+        onLongPress: () {
+          final source = stremioVideoSource(choice);
+          if (source != null) copyPlaybackLink(context, source.url);
+        },
         child: Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
