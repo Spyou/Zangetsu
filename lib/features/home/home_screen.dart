@@ -88,7 +88,6 @@ import '../auth/reconnect.dart';
 import '../detail/detail_screen.dart';
 import '../history/history_screen.dart';
 import '../player/player_screen.dart';
-import '../schedule/schedule_screen.dart';
 import '../shell/dock_icons.dart';
 import '../../core/zmode/source_matcher.dart';
 import '../../core/zmode/metadata_repository.dart';
@@ -98,7 +97,6 @@ import 'streaming_services_row.dart';
 import 'cubit/home_cubit.dart';
 import 'cubit/home_rows_composer.dart';
 import 'home_screen_tv.dart';
-import 'lists_hub_screen.dart';
 import 'genres_screen.dart';
 import 'search_screen.dart';
 import 'cubit/tracker_home_rows.dart' show releasedCount;
@@ -1404,27 +1402,15 @@ class _HomeViewState extends State<_HomeView>
     );
   }
 
-  /// A row of cards under the banner, showing the modes you're NOT in plus —
-  /// in Anime mode only — a Schedule card (Schedule has nothing to show in a
-  /// reading mode; see [DockTab.isAnimeOnly]). Reactive to [ContentModeCubit]
-  /// so they re-label the instant a switch lands. Tapping a mode card runs
-  /// the sword-slash into that mode; Schedule opens the same [ScheduleScreen]
-  /// its dock tab does.
+  /// Mode shortcuts and Genres for the active catalogue.
   Widget _modeCards() {
     return BlocBuilder<ContentModeCubit, ContentMode>(
       bloc: sl<ContentModeCubit>(),
       builder: (context, current) {
-        // Z Mode drives the mode from its own controls, so the switcher cards
-        // would duplicate them. The hub card stays in BOTH modes: with no
-        // Schedule dock tab and no tracker cards, it is the only way in.
+        // Z Mode owns mode switching.
         final others = ZModePrefs.enabled
             ? const <ContentMode>[]
             : ContentMode.values.where((m) => m != current).toList();
-        // One row now. Schedule and the tracker libraries used to be a card
-        // each below this one, which meant a second row of near-identical
-        // slabs that grew with every tracker and had to be filtered per mode
-        // to stay a readable width. They live behind [ListsHubScreen] instead,
-        // so this row no longer changes shape with what you have connected.
         // A brand new install has watched nothing and read nothing, so every
         // card below falls through to its flat fill and the row opens dead.
         // The catalogue is already loaded underneath it, so borrow from that
@@ -1440,31 +1426,21 @@ class _HomeViewState extends State<_HomeView>
           return next < spare.length ? spare[next++] : own;
         }
 
+        final cards = <Widget>[
+          for (final m in others) _modeCard(m, orBorrow(_modeArt(m))),
+          // Genres shortcut is temporarily disabled.
+          // if (sl.isRegistered<MetadataRepository>() &&
+          //     sl<MetadataRepository>().supportsFilters)
+          //   _genresCard(orBorrow(_genresArt())),
+        ];
+        if (cards.isEmpty) return const SizedBox.shrink();
         return Padding(
           padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
           child: Row(
             children: [
-              for (final m in others) ...[
-                Expanded(child: _modeCard(m, orBorrow(_modeArt(m)))),
-                const SizedBox(width: 12),
-              ],
-              // Even halves with Genres beside it. Alone it still fills the
-              // row, so the old flex:2 (which existed to beat the switcher
-              // cards to a readable width) no longer buys anything.
-              Expanded(child: _hubCard(orBorrow(_modeArt(ContentMode.anime)))),
-              // Genres only means something on a catalogue that can actually
-              // narrow itself. MAL and Simkl take the parameter and answer
-              // with the same unfiltered list, so the card is not offered
-              // there rather than opening onto a screen that lies.
-              //
-              // isRegistered, not a bare sl<>: this row builds before the
-              // repository exists in some shells (and in every test that only
-              // cares about the dock), and a missing card is a better answer
-              // there than throwing the whole Home tree away.
-              if (sl.isRegistered<MetadataRepository>() &&
-                  sl<MetadataRepository>().supportsFilters) ...[
-                const SizedBox(width: 12),
-                Expanded(child: _genresCard(orBorrow(_genresArt()))),
+              for (var i = 0; i < cards.length; i++) ...[
+                if (i > 0) const SizedBox(width: 12),
+                Expanded(child: cards[i]),
               ],
             ],
           ),
@@ -1501,65 +1477,6 @@ class _HomeViewState extends State<_HomeView>
                     Flexible(
                       child: Text(
                         m.label,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: AppText.body.copyWith(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 14,
-                          shadows: const [
-                            Shadow(color: Colors.black, blurRadius: 6),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// Same card shell as [_modeCard], but for [ListsHubScreen] — Schedule plus
-  /// every connected tracker library. One door rather than a card each, so the
-  /// row keeps its shape whether you have no trackers or four.
-  Widget _hubCard(({String? cover, Map<String, String>? headers}) art) {
-    return GestureDetector(
-      key: const ValueKey('home_lists_hub_card'),
-      onTap: _slashing
-          ? null
-          : () => Navigator.of(context).push(
-              MaterialPageRoute<void>(builder: (_) => const ListsHubScreen()),
-            ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
-        child: SizedBox(
-          height: 52,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              // Always the last thing you WATCHED, in every mode. Anime and
-              // movies share [WatchHistory], so this is a show cover whether
-              // you are browsing manga or not — and on the flat fallback
-              // gradient this card looked dead next to the switchers.
-              _cardBg(art, scrim: _neutralScrim, empty: _emptyTint(0.22, 0.11)),
-              Center(
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const DockIcon(
-                      DockGlyph.calendar,
-                      color: Colors.white,
-                      filled: true,
-                      size: 18,
-                    ),
-                    const SizedBox(width: 8),
-                    Flexible(
-                      child: Text(
-                        context.l10n.scheduleAndLists,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: AppText.body.copyWith(
@@ -1632,6 +1549,7 @@ class _HomeViewState extends State<_HomeView>
   /// same [_modeArt] put one image twice in a two-card row. Prefer something
   /// read rather than watched, else the second distinct thing watched, else
   /// nothing — at which point the tint below carries the difference.
+  // ignore: unused_element
   ({String? cover, Map<String, String>? headers}) _genresArt() {
     for (final m in const [ContentMode.manga, ContentMode.novel]) {
       final a = _modeArt(m);
@@ -1653,6 +1571,7 @@ class _HomeViewState extends State<_HomeView>
 
   /// Same card shell again, for [GenresScreen] — the genre list for whatever
   /// mode you are in, each one a way straight into a filtered Search.
+  // ignore: unused_element
   Widget _genresCard(({String? cover, Map<String, String>? headers}) art) {
     return GestureDetector(
       key: const ValueKey('home_genres_card'),
@@ -2079,10 +1998,7 @@ class _HomeViewState extends State<_HomeView>
                         ),
                       ),
 
-                      // ── Mode cards, and Schedule ──────────────────────────────
-                      // Unconditional: _modeCards drops the mode switchers
-                      // itself under Z Mode and keeps Schedule, which has no
-                      // other entry point since it left the dock.
+                      // Mode shortcuts and Genres.
                       SliverToBoxAdapter(child: _modeCards()),
 
                       // ── Reconnect banner (session lapsed → sync is off) ───────

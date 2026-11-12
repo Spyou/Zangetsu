@@ -102,7 +102,8 @@ class TrackerListCubit extends Cubit<TrackerListState> {
 
   /// Switch to [tracker]'s library. Uses the session cache when present;
   /// otherwise kicks off a fetch.
-  void selectTracker(Tracker tracker) {
+  void selectTracker(Tracker tracker, {ContentMode? kind}) {
+    if (kind != null) _viewKind = kind;
     final cached = _cache[tracker];
     if (cached != null) {
       emit(
@@ -132,6 +133,20 @@ class TrackerListCubit extends Cubit<TrackerListState> {
     unawaited(_fetch(tracker));
   }
 
+  ContentMode? _viewKind;
+
+  /// Change the library's category without changing the app's catalogue mode.
+  void selectKind(ContentMode kind) {
+    if (isClosed || _viewKind == kind) return;
+    _viewKind = kind;
+    final tracker = state.tracker;
+    if (tracker is! AniListService) return;
+    emit(
+      state.copyWith(customListNames: _nameCache[(tracker, _kind)] ?? const []),
+    );
+    unawaited(_loadCustomListNames(tracker));
+  }
+
   /// Re-fetch the active tracker's list (pull-to-refresh). No-op for My List.
   Future<void> refresh() async {
     final tracker = state.tracker;
@@ -151,6 +166,7 @@ class TrackerListCubit extends Cubit<TrackerListState> {
   /// mode cannot change without the screen rebuilding anyway.
   MediaKind get _kind {
     final mode =
+        _viewKind ??
         pinnedKind ??
         (sl.isRegistered<ContentModeCubit>()
             ? sl<ContentModeCubit>().state
@@ -182,7 +198,7 @@ class TrackerListCubit extends Cubit<TrackerListState> {
     try {
       final names = await tracker.customListNames(kind: kind);
       _nameCache[(tracker, kind)] = names;
-      if (isClosed || state.tracker != tracker) return;
+      if (isClosed || state.tracker != tracker || kind != _kind) return;
       emit(state.copyWith(customListNames: names));
     } catch (_) {
       // Leave the tabs off rather than disturbing a library that loaded fine.

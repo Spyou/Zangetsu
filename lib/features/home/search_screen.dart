@@ -1,3 +1,4 @@
+import '../schedule/schedule_screen.dart';
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
@@ -878,7 +879,75 @@ class _SearchViewState extends State<_SearchView>
     );
   }
 
-  // ── Search bar ────────────────────────────────────────────────────────────
+  // ── Schedule shortcut ───────────────────────────────────────────────────────
+  // Full-width hub-style card (same furniture as the Lists hub row), not the
+  // old centered pill — it reads as a destination in the idle list.
+  Widget _scheduleShortcut() => Padding(
+    padding: const EdgeInsets.only(top: 8),
+    child: Tooltip(
+      message: context.l10n.schedule,
+      child: Material(
+        key: const ValueKey('search_schedule_action'),
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(14),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: () {
+            _focusNode.unfocus();
+            Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => const ScheduleScreen()),
+            );
+          },
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            child: Row(
+              children: [
+                Container(
+                  width: 48,
+                  height: 48,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: AppColors.surface2,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(
+                    Icons.calendar_month_rounded,
+                    color: AppColors.accent,
+                    size: 24,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        context.l10n.schedule,
+                        style: AppText.headline,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        context.l10n.scheduleHubDesc,
+                        style: AppText.caption,
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(
+                  Icons.chevron_right_rounded,
+                  color: AppColors.textSecondary,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+
   Widget _searchBar() {
     // The redesign is the METADATA search's own. Sources search keeps the bar
     // it had — it carries ecosystem tabs, source scope and per-source filters,
@@ -2520,23 +2589,31 @@ class _SearchViewState extends State<_SearchView>
         : state.trending;
 
     if (recent.isEmpty && trending.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(
-              Icons.search_rounded,
-              size: 48,
-              color: AppColors.textTertiary,
+      return ListView(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        children: [
+          if (!browsing) _scheduleShortcut(),
+          const SizedBox(height: 32),
+          Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.search_rounded,
+                  size: 48,
+                  color: AppColors.textTertiary,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  context.l10n.searchForSomethingToWatch,
+                  textAlign: TextAlign.center,
+                  style: AppText.body,
+                ),
+              ],
             ),
-            SizedBox(height: 12),
-            Text(
-              context.l10n.searchForSomethingToWatch,
-              textAlign: TextAlign.center,
-              style: AppText.body,
-            ),
-          ],
-        ),
+          ),
+        ],
       );
     }
 
@@ -2599,15 +2676,16 @@ class _SearchViewState extends State<_SearchView>
               runSpacing: 8,
               children: [for (final q in recent) _recentChip(q)],
             ),
-            // The rule between recents and what follows is part of the
-            // metadata search's own look; Sources search is left as it was.
-            if (_metadataStyle) ...[
-              const SizedBox(height: 20),
-              const Divider(height: 1, thickness: 1, color: AppColors.hairline),
-              const SizedBox(height: 20),
-            ] else
-              const SizedBox(height: 24),
+            const SizedBox(height: 20),
+            const Divider(
+              key: ValueKey('recent_search_divider'),
+              height: 1,
+              thickness: 1,
+              color: AppColors.hairline,
+            ),
+            const SizedBox(height: 12),
           ],
+          if (!browsing) _scheduleShortcut(),
           if (trending.isNotEmpty) ...[
             if (browsing)
               Row(

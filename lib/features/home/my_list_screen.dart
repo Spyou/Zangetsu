@@ -28,6 +28,8 @@ import '../../core/theme/app_text.dart';
 import '../../l10n/l10n.dart';
 import '../../core/tracker/tracker.dart';
 import '../../core/tracker/tracker_hub.dart';
+import '../../core/tracker/tracker_switch_prefs.dart';
+import 'tracker_switch_popup.dart';
 import '../../core/ui/buttons.dart';
 import '../../core/ui/list_status_sheet.dart';
 import '../../core/ui/poster_card.dart';
@@ -228,6 +230,32 @@ class _MyListViewState extends State<_MyListView> with WidgetsBindingObserver {
     if (sl<AppMode>().isTv) {
       return MyListScreenTv(initialStatus: widget.initialStatus);
     }
+    // Re-open on the last-picked tracker (preference, unless the viewer
+    // picks explicitly this session or the screen was opened for one
+    // tracker already). Post-frame: selecting emits, which is not allowed
+    // mid-build.
+    if (widget.pinnedTracker == null &&
+        !_userPickedTracker &&
+        !_restoreScheduled) {
+      _restoreScheduled = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        final saved = TrackerSwitchPrefs.lastTracker();
+        if (saved == null) return;
+        final cubit = context.read<TrackerListCubit>();
+        if (!cubit.state.isMyList) return;
+        Tracker? match;
+        for (final t in sl<TrackerHub>().connected) {
+          if (t.displayName == saved) {
+            match = t;
+            break;
+          }
+        }
+        if (match != null) {
+          cubit.selectTracker(match, kind: libraryKindForTracker(match, _kind));
+        }
+      });
+    }
     return Scaffold(
       backgroundColor: AppColors.bg,
       // bottom: false — the shell's floating dock overlays the content
@@ -262,6 +290,10 @@ class _MyListViewState extends State<_MyListView> with WidgetsBindingObserver {
   /// list, in every kind. View state: it belongs to the screen, and a query
   /// should not survive leaving it.
   bool _searching = false;
+  // Restore-once guards for the saved tracker switch: the preference wins
+  // until the viewer picks explicitly this session.
+  bool _restoreScheduled = false;
+  bool _userPickedTracker = false;
   String _query = '';
   final _searchController = TextEditingController();
 
@@ -330,22 +362,26 @@ class _MyListViewState extends State<_MyListView> with WidgetsBindingObserver {
       animation: Listenable.merge(hub.trackers),
       builder: (context, _) {
         final l10n = context.l10n;
+        // Pinned screens name their tracker; the open screen follows the
+        // switcher instead (cubit tracker or the own list).
         final pinned = widget.pinnedTracker;
+        final active =
+            pinned ?? context.read<TrackerListCubit>().state.tracker;
         // Opened for one tracker: name it. Saying "Library / My List + 3
         // trackers" on a screen showing only AniList was just wrong.
         // Whose list this is: the account name earns its place here, where the
         // avatar did not — it says the same thing in less space and reads.
-        final who = pinned?.viewerName;
-        final title = pinned == null
-            ? l10n.libraryLabel
+        final who = active?.viewerName;
+        final title = active == null
+            ? 'Zangetsu List'
             : (who == null || who.isEmpty
-                  ? pinned.displayName
-                  : '${pinned.displayName} · $who');
+                  ? active.displayName
+                  : '${active.displayName} · $who');
         // Names the kind on screen rather than "titles": a tracker screen is
         // opened FOR one, so being vague about it helps nobody.
-        final subtitle = pinned == null
+        final subtitle = active == null
             ? l10n.yourSavedTitles
-            : switch (widget.pinnedKind ?? sl<ContentModeCubit>().state) {
+            : switch (_selectedKind(context)) {
                 ContentMode.manga => l10n.yourSavedMangaList,
                 ContentMode.novel => l10n.yourSavedNovelList,
                 ContentMode.anime => l10n.yourSavedAnimeList,
@@ -386,7 +422,7 @@ class _MyListViewState extends State<_MyListView> with WidgetsBindingObserver {
                 children: [
                   // The account this list belongs to, round and leading —
                   // a tracker's own avatar, or yours on My List.
-                  _headerAvatar(context, pinned),
+                  _headerAvatar(context, active),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Column(
@@ -421,9 +457,18 @@ class _MyListViewState extends State<_MyListView> with WidgetsBindingObserver {
                     _toggleSearch,
                     active: _query.isNotEmpty,
                   ),
-
                   const SizedBox(width: 8),
                   _libraryOptionsButton(context),
+                  if (widget.pinnedTracker == null &&
+                      hub.connected.isNotEmpty) ...[
+                    const SizedBox(width: 8),
+                    _pillIcon(
+                      Icons.swap_horiz_rounded,
+                      'Switch tracker',
+                      () => _openTrackerSwitch(context),
+                      active: active != null,
+                    ),
+                  ],
                   const SizedBox(width: 8),
                 ],
               ),
@@ -434,8 +479,38 @@ class _MyListViewState extends State<_MyListView> with WidgetsBindingObserver {
     );
   }
 
-  /// Search stays separate; this menu gathers random selection and sorting in
-  /// one compact control at the end of the header.
+  /// Switch lists without changing their contents.
+  /// The pick applies immediately and is remembered for the next visit.
+  Future<void> _openTrackerSwitch(BuildContext context) async {
+    final connected = sl<TrackerHub>().connected.toList();
+    if (connected.isEmpty || !context.mounted) return;
+    final cubit = context.read<TrackerListCubit>();
+    await showTrackerSwitchPopup(
+      context,
+      current: cubit.state.tracker,
+      ownAvatarUrl: sl.isRegistered<AuthCubit>()
+          ? sl<AuthCubit>().state.avatarUrl
+          : null,
+      ownName: sl.isRegistered<AuthCubit>()
+          ? sl<AuthCubit>().state.displayName
+          : null,
+      trackers: connected,
+      onPick: (tracker) {
+        if (!context.mounted) return;
+        _userPickedTracker = true;
+        if (tracker == null) {
+          cubit.selectMyList();
+        } else {
+          cubit.selectTracker(
+            tracker,
+            kind: libraryKindForTracker(tracker, _kind),
+          );
+        }
+        unawaited(TrackerSwitchPrefs.saveLastTracker(tracker?.displayName));
+      },
+    );
+  }
+
   Widget _libraryOptionsButton(BuildContext context) {
     final isMyList = context.read<TrackerListCubit>().state.isMyList;
     final active = _sortFor(isMyList: isMyList);
@@ -569,7 +644,7 @@ class _MyListViewState extends State<_MyListView> with WidgetsBindingObserver {
     BuildContext context,
     AniListService service,
   ) async {
-    final mode = sl<ContentModeCubit>().state;
+    final mode = _selectedKind(context);
     final made = await promptCreateAniListList(
       context,
       service,
@@ -800,8 +875,18 @@ class _MyListViewState extends State<_MyListView> with WidgetsBindingObserver {
     ),
   );
 
+  ContentMode _selectedKind(BuildContext context) => libraryKindForTracker(
+    context.read<TrackerListCubit>().state.tracker,
+    widget.pinnedTracker == null
+        ? _kind
+        : (widget.pinnedKind ?? sl<ContentModeCubit>().state),
+  );
+
   Widget _kindTabs(BuildContext context) {
-    const kinds = ContentMode.values;
+    final kinds = libraryKindsForTracker(
+      context.read<TrackerListCubit>().state.tracker,
+    );
+    final selected = _selectedKind(context);
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 2, 16, 10),
       child: LayoutBuilder(
@@ -823,7 +908,7 @@ class _MyListViewState extends State<_MyListView> with WidgetsBindingObserver {
                   alignment: Alignment(
                     kinds.length == 1
                         ? 0
-                        : -1 + 2 * (kinds.indexOf(_kind) / (kinds.length - 1)),
+                        : -1 + 2 * (kinds.indexOf(selected) / (kinds.length - 1)),
                     0,
                   ),
                   child: Container(
@@ -841,8 +926,12 @@ class _MyListViewState extends State<_MyListView> with WidgetsBindingObserver {
                         child: GestureDetector(
                           behavior: HitTestBehavior.opaque,
                           onTap: () => setState(() {
+                            if (selected.isReading != k.isReading) {
+                              _customListFilter = null;
+                            }
                             _kind = k;
                             _dropCategoryForeignTo(k);
+                            context.read<TrackerListCubit>().selectKind(k);
                           }),
                           child: Center(
                             child: Text(
@@ -850,7 +939,7 @@ class _MyListViewState extends State<_MyListView> with WidgetsBindingObserver {
                               style: AppText.body.copyWith(
                                 fontSize: 13.5,
                                 fontWeight: FontWeight.w700,
-                                color: _kind == k
+                                color: selected == k
                                     ? Colors.white
                                     : AppColors.textSecondary,
                               ),
@@ -997,9 +1086,7 @@ class _MyListViewState extends State<_MyListView> with WidgetsBindingObserver {
     // The kind tab decides, not the app's current mode — the point of the
     // tabs is seeing all three without leaving the mode you're browsing in.
     // A tracker screen has no tabs and keeps following the app mode.
-    final mode = widget.pinnedTracker == null
-        ? _kind
-        : (widget.pinnedKind ?? sl<ContentModeCubit>().state);
+    final mode = _selectedKind(context);
     final modeEntries = entries
         .where((e) => mode.matchesProvider(e.item.type))
         .toList();
@@ -1042,7 +1129,7 @@ class _MyListViewState extends State<_MyListView> with WidgetsBindingObserver {
           id: 'status:${st.name}',
           label: shortLabelFor(
             st,
-            reading: sl<ContentModeCubit>().state.isReading,
+            reading: mode.isReading,
           ),
           count: modeEntries.where((e) => e.status == st).length,
           test: (e) => e.status == st,

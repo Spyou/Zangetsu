@@ -248,17 +248,26 @@ class _ScheduleBodyState extends State<ScheduleBody>
     );
   }
 
-  // ── header: title + My List toggle ──
-  // Refresh lives in the pull-to-refresh gesture; no header button needed.
+  // Pushed from the lists hub and from Search on phone (no back affordance
+  // before — the header was title-only); a no-op arrow on the TV rail tab
+  // would be dead, so it only shows when there is something to pop.
   Widget _header(
     BuildContext context,
     ScheduleState state,
     ScheduleCubit cubit,
   ) {
+    final canPop = Navigator.of(context).canPop();
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 10, 12, 6),
+      padding: EdgeInsets.fromLTRB(canPop ? 4 : 16, 10, 12, 6),
       child: Row(
         children: [
+          if (canPop)
+            IconButton(
+              tooltip: MaterialLocalizations.of(context).backButtonTooltip,
+              onPressed: () => Navigator.of(context).maybePop(),
+              icon: const Icon(Icons.arrow_back_rounded),
+              color: AppColors.textPrimary,
+            ),
           Expanded(
             child: Text(context.l10n.schedule, style: AppText.largeTitle),
           ),

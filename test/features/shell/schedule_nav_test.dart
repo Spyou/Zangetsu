@@ -11,6 +11,8 @@ import 'package:hive/hive.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:watch_app/core/ui/nav_prefs.dart';
 import 'package:watch_app/features/home/home_catalogue_prefs.dart';
+import 'package:watch_app/features/schedule/schedule_screen.dart';
+import 'package:watch_app/features/home/search_screen.dart';
 import 'package:watch_app/features/shell/mode_bar.dart';
 import 'package:watch_app/core/ui/dock_visibility.dart';
 import 'package:watch_app/core/ui/frosted_surface.dart';
@@ -62,17 +64,6 @@ import 'package:watch_app/features/home/home_screen.dart';
 import 'package:watch_app/features/shell/root_shell.dart';
 import 'package:watch_app/features/shell/root_shell_tv.dart';
 import 'package:watch_app/features/settings/settings_screen.dart';
-
-/// The gradient one of Home's cards is painting behind its label.
-List<Color> _cardFill(WidgetTester tester, String key) {
-  final box = tester.widget<DecoratedBox>(
-    find.descendant(
-      of: find.byKey(ValueKey(key)),
-      matching: find.byType(DecoratedBox),
-    ),
-  );
-  return ((box.decoration as BoxDecoration).gradient! as LinearGradient).colors;
-}
 
 MigrationBridge _fakeBridge() => MigrationBridge(
   invoke: (_, __) async => const {'ok': false},
@@ -132,6 +123,8 @@ class _FakeMyListStore implements MyListStore {
 }
 
 class _FakeSearchHistory implements SearchHistory {
+  _FakeSearchHistory([this.queries = const []]);
+  List<String> queries;
   @override
   noSuchMethod(Invocation i) => super.noSuchMethod(i);
   // Added with the on-demand resolver: SourceMatcher now asks whether a JS
@@ -140,7 +133,10 @@ class _FakeSearchHistory implements SearchHistory {
   Future<bool> ensureSourceLoaded(String sourceId) async => true;
 
   @override
-  List<String> recent() => const [];
+  List<String> recent() => queries;
+
+  @override
+  Future<void> clear() async => queries = [];
 }
 
 class _FakeSearchPrefs extends ChangeNotifier implements SearchPrefs {
@@ -797,37 +793,71 @@ void main() {
     expect(find.text('Schedule'), findsOneWidget);
   });
 
-  // Home's mode-cards row carries the Schedule card alongside the Manga/Novel
-  // switcher cards. Since Schedule left the dock this is the ONLY way in, so
-  // this test is now load-bearing rather than a second opinion. Anime mode
-  // only — Schedule has nothing to say in a reading mode.
-  // Schedule now lives behind the hub card rather than a card of its own, so
-  // the guarantee got stronger: it is reachable from every mode instead of
-  // vanishing in Manga and Novel the way the old Schedule card did.
-  testWidgets("Home's hub card shows in every mode", (tester) async {
+  // Liquid navigation keeps animating, so advance transitions without waiting for idle.
+  Future<void> pumpHomeAnimations(WidgetTester tester) async {
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 2));
+  }
+
+  testWidgets('Search fits a short screen with the keyboard open', (tester) async {
+    tester.view.physicalSize = const Size(320, 600);
+    tester.view.devicePixelRatio = 1;
+    tester.view.viewInsets = const FakeViewPadding(bottom: 280);
+    addTearDown(tester.view.reset);
     sl.registerSingleton<AppMode>(const AppMode(isTv: false));
-    await tester.pumpWidget(wrap(const RootShell()));
-    await tester.pumpAndSettle();
-
-    expect(find.byKey(const ValueKey('home_lists_hub_card')), findsOneWidget);
-
-    for (final m in ContentMode.values) {
-      await tester.runAsync(() => contentMode.setMode(m));
-      await tester.pumpAndSettle();
-      expect(
-        find.byKey(const ValueKey('home_lists_hub_card')),
-        findsOneWidget,
-        reason: 'Schedule has no other entry point in $m',
-      );
-    }
+    await tester.pumpWidget(wrap(const SearchScreen(showBack: false)));
+    await pumpHomeAnimations(tester);
+    expect(tester.takeException(), isNull);
   });
 
-  // The row used to be hidden entirely under Z Mode (`if (!ZModePrefs.enabled)`),
-  // which was survivable while Schedule also had a dock tab. It doesn't, so the
-  // card has to be there in BOTH modes or Schedule has no entry point at all.
-  // The hub label is a phrase, not a word, which is why it gets twice the width
-  // of a switcher. On the narrowest phone we support that is still three cards
-  // sharing one row, so pin the case that would ellipsise or overflow it.
+  testWidgets('Schedule sits below recents and keeps search history', (tester) async {
+    sl.registerSingleton<AppMode>(const AppMode(isTv: false));
+    await sl.unregister<SearchHistory>();
+    final history = _FakeSearchHistory(['Naruto', 'Bleach']);
+    sl.registerSingleton<SearchHistory>(history);
+    await tester.pumpWidget(wrap(const SearchScreen(showBack: false)));
+    await pumpHomeAnimations(tester);
+    final schedule = find.byKey(const ValueKey('search_schedule_action'));
+    final scaffoldWidth = tester.getSize(find.byType(Scaffold).first).width;
+    expect(tester.getRect(schedule).width, closeTo(scaffoldWidth - 32, 1));
+    expect(tester.getTopLeft(schedule).dy,
+        greaterThan(tester.getBottomLeft(find.text('Naruto')).dy));
+    final divider = find.byKey(const ValueKey('recent_search_divider'));
+    expect(divider, findsOneWidget);
+    expect(tester.getTopLeft(schedule).dy,
+        greaterThan(tester.getBottomLeft(divider).dy));
+    await tester.tap(schedule);
+    await pumpHomeAnimations(tester);
+    expect(find.byType(ScheduleScreen), findsOneWidget);
+    Navigator.of(tester.element(find.byType(ScheduleScreen))).pop();
+    await pumpHomeAnimations(tester);
+    expect(history.recent(), ['Naruto', 'Bleach']);
+    await tester.tap(find.text('Clear'));
+    await pumpHomeAnimations(tester);
+    expect(find.byKey(const ValueKey('search_schedule_action')), findsOneWidget);
+    expect(history.recent(), isEmpty);
+  });
+
+  testWidgets('Schedule stays below the search field without recents', (tester) async {
+    sl.registerSingleton<AppMode>(const AppMode(isTv: false));
+    await tester.pumpWidget(wrap(const SearchScreen(showBack: false)));
+    await pumpHomeAnimations(tester);
+    final schedule = find.byKey(const ValueKey('search_schedule_action'));
+    expect(schedule, findsOneWidget);
+    expect(tester.getTopLeft(schedule).dy,
+        greaterThan(tester.getBottomLeft(find.byType(TextField).first).dy));
+  });
+
+  testWidgets('Home has no Schedule card or header button', (tester) async {
+    sl.registerSingleton<AppMode>(const AppMode(isTv: false));
+    await tester.pumpWidget(wrap(const RootShell()));
+    await pumpHomeAnimations(tester);
+    expect(find.byKey(const ValueKey('home_schedule_card')), findsNothing);
+    expect(find.byKey(const ValueKey('home_lists_hub_card')), findsNothing);
+    expect(find.byTooltip('Schedule'), findsNothing);
+  });
+
+  // The remaining mode/genre cards still fit narrow screens.
   testWidgets('the card row survives a narrow phone', (tester) async {
     tester.view.physicalSize = const Size(320 * 3, 640 * 3);
     tester.view.devicePixelRatio = 3;
@@ -835,16 +865,15 @@ void main() {
 
     sl.registerSingleton<AppMode>(const AppMode(isTv: false));
     await tester.pumpWidget(wrap(const RootShell()));
-    await tester.pumpAndSettle();
+    await pumpHomeAnimations(tester);
 
-    expect(find.byKey(const ValueKey('home_lists_hub_card')), findsOneWidget);
+    expect(find.byKey(const ValueKey('home_schedule_card')), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
   // The row above only ever holds one card, because no MetadataRepository is
   // registered so Genres is hidden. Two cards splitting 320dp is the case
-  // that actually squeezes: "Schedule & lists" has to survive half a narrow
-  // phone next to Genres.
+  // that squeezes Schedule beside Genres.
   testWidgets('both cards fit side by side on a narrow phone', (tester) async {
     tester.view.physicalSize = const Size(320 * 3, 640 * 3);
     tester.view.devicePixelRatio = 3;
@@ -853,10 +882,10 @@ void main() {
     sl.registerSingleton<AppMode>(const AppMode(isTv: false));
     sl.registerSingleton<MetadataRepository>(_FiltersRepo());
     await tester.pumpWidget(wrap(const RootShell()));
-    await tester.pumpAndSettle();
+    await pumpHomeAnimations(tester);
 
-    expect(find.byKey(const ValueKey('home_lists_hub_card')), findsOneWidget);
-    expect(find.byKey(const ValueKey('home_genres_card')), findsOneWidget);
+    expect(find.byKey(const ValueKey('home_schedule_card')), findsNothing);
+    expect(find.byKey(const ValueKey('home_genres_card')), findsNothing);
     // An overflow paints an exception rather than throwing, so this is what
     // catches the row getting too tight.
     expect(tester.takeException(), isNull);
@@ -866,19 +895,15 @@ void main() {
   // tinted rather than the old surface2 -> surface grey, and that the two
   // cards do not land on the same tint (the "one wide slab" the accent was
   // added to avoid in the first place).
-  testWidgets('with no art at all the cards are tinted, and differ', (
+  testWidgets('Genres shortcut is disabled even when filtering is supported', (
     tester,
   ) async {
     sl.registerSingleton<AppMode>(const AppMode(isTv: false));
     sl.registerSingleton<MetadataRepository>(_FiltersRepo());
     await tester.pumpWidget(wrap(const RootShell()));
-    await tester.pumpAndSettle();
+    await pumpHomeAnimations(tester);
 
-    final hub = _cardFill(tester, 'home_lists_hub_card');
-    final genres = _cardFill(tester, 'home_genres_card');
-
-    expect(hub, isNot([AppColors.surface2, AppColors.surface]));
-    expect(hub, isNot(genres));
+    expect(find.byKey(const ValueKey('home_genres_card')), findsNothing);
   });
 
   testWidgets('no Genres card when the catalogue cannot filter', (
@@ -887,24 +912,24 @@ void main() {
     sl.registerSingleton<AppMode>(const AppMode(isTv: false));
     sl.registerSingleton<MetadataRepository>(_FiltersRepo(supports: false));
     await tester.pumpWidget(wrap(const RootShell()));
-    await tester.pumpAndSettle();
+    await pumpHomeAnimations(tester);
 
-    expect(find.byKey(const ValueKey('home_lists_hub_card')), findsOneWidget);
+    expect(find.byKey(const ValueKey('home_schedule_card')), findsNothing);
     expect(find.byKey(const ValueKey('home_genres_card')), findsNothing);
   });
 
-  testWidgets('Home keeps the hub card with Z Mode on', (tester) async {
+  testWidgets('Home keeps Schedule out of the card row in Z Mode', (tester) async {
     sl.registerSingleton<AppMode>(const AppMode(isTv: false));
     await tester.pumpWidget(wrap(const RootShell()));
-    await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('home_lists_hub_card')), findsOneWidget);
+    await pumpHomeAnimations(tester);
+    expect(find.byKey(const ValueKey('home_schedule_card')), findsNothing);
 
     await tester.runAsync(() => ZModePrefs.setEnabled(true));
-    await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('home_lists_hub_card')), findsOneWidget);
+    await pumpHomeAnimations(tester);
+    expect(find.byKey(const ValueKey('home_schedule_card')), findsNothing);
 
     await tester.runAsync(() => ZModePrefs.setEnabled(false));
-    await tester.pumpAndSettle();
+    await pumpHomeAnimations(tester);
   });
 
   // Task 11 added a full-width "Search" bar to Home while Z Mode was on

@@ -2,6 +2,8 @@
 // always fetched with the default kind (anime), so a list made on the anime
 // side showed up under Manga and Novel, and a manga list never showed at all.
 
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:watch_app/core/anilist/anilist_service.dart';
 import 'package:watch_app/core/mode/content_mode.dart';
@@ -10,9 +12,18 @@ import 'package:watch_app/features/home/cubit/tracker_list_cubit.dart';
 
 class _FakeAniList implements AniListService {
   final asked = <MediaKind>[];
+  int fetches = 0;
 
   @override
-  Future<List<String>> customListNames({MediaKind kind = MediaKind.anime}) async {
+  Future<List<TrackerListItem>> fetchList() async {
+    fetches++;
+    return const [];
+  }
+
+  @override
+  Future<List<String>> customListNames({
+    MediaKind kind = MediaKind.anime,
+  }) async {
     asked.add(kind);
     return kind == MediaKind.manga ? ['Manga Shelf'] : ['Anime Shelf'];
   }
@@ -27,7 +38,56 @@ class _FakeAniList implements AniListService {
   noSuchMethod(Invocation i) => super.noSuchMethod(i);
 }
 
+class _DelayedAniList extends _FakeAniList {
+  final anime = Completer<List<String>>();
+  final manga = Completer<List<String>>();
+  @override
+  Future<List<String>> customListNames({MediaKind kind = MediaKind.anime}) =>
+      kind == MediaKind.manga ? manga.future : anime.future;
+}
+
 void main() {
+  test(
+    'local category changes read the matching lists without refetching entries',
+    () async {
+      final tracker = _FakeAniList();
+      final cubit = TrackerListCubit();
+      addTearDown(cubit.close);
+      cubit.selectTracker(tracker, kind: ContentMode.anime);
+      await Future<void>.delayed(Duration.zero);
+      expect(cubit.state.customListNames, ['Anime Shelf']);
+      cubit.selectKind(ContentMode.manga);
+      await Future<void>.delayed(Duration.zero);
+      expect(cubit.state.customListNames, ['Manga Shelf']);
+      cubit.selectKind(ContentMode.novel);
+      await Future<void>.delayed(Duration.zero);
+      expect(cubit.state.customListNames, ['Manga Shelf']);
+      cubit.selectKind(ContentMode.anime);
+      await Future<void>.delayed(Duration.zero);
+      expect(cubit.state.customListNames, ['Anime Shelf']);
+      expect(tracker.asked, [MediaKind.anime, MediaKind.manga]);
+      expect(tracker.fetches, 1);
+    },
+  );
+
+  test(
+    'a late anime response cannot replace the selected manga lists',
+    () async {
+      final tracker = _DelayedAniList();
+      final cubit = TrackerListCubit();
+      addTearDown(cubit.close);
+      cubit.selectTracker(tracker, kind: ContentMode.anime);
+      await Future<void>.delayed(Duration.zero);
+      cubit.selectKind(ContentMode.manga);
+      tracker.manga.complete(['Manga Shelf']);
+      await Future<void>.delayed(Duration.zero);
+      expect(cubit.state.customListNames, ['Manga Shelf']);
+      tracker.anime.complete(['Anime Shelf']);
+      await Future<void>.delayed(Duration.zero);
+      expect(cubit.state.customListNames, ['Manga Shelf']);
+    },
+  );
+
   test('a manga screen asks AniList for its manga lists', () async {
     final tracker = _FakeAniList();
     final cubit = TrackerListCubit(pinnedKind: ContentMode.manga);

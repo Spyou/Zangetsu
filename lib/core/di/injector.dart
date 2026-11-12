@@ -29,6 +29,7 @@ import '../playback/pinned_sources.dart';
 import '../playback/search_history.dart';
 import '../playback/search_prefs.dart';
 import '../ui/home_rows_prefs.dart';
+import '../tracker/tracker_switch_prefs.dart';
 import '../ui/streaming_prefs.dart';
 import '../ui/nav_prefs.dart';
 import '../playback/search_source_prefs.dart';
@@ -477,6 +478,7 @@ Future<void> initDependencies({bool Function()? isOffline}) async {
   await ZModePrefs.init();
   await GenreCatalog.init();
   await HomeRowsPrefs.init();
+  await TrackerSwitchPrefs.init();
   await StreamingPrefs.init();
   await DownloadPrefs.init();
   sl.registerSingleton<DownloadPrefs>(DownloadPrefs());
