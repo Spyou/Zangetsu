@@ -259,6 +259,7 @@ class StremioManager extends ChangeNotifier {
 
   static const String boxName = 'stremio_installations';
   static const String _secretPrefix = 'stremio:base:';
+  static const _defaultMetadataRemovedKey = '_default_metadata_removed';
 
   final StremioClient _client;
   final StremioSecretStore _secrets;
@@ -314,7 +315,7 @@ class StremioManager extends ChangeNotifier {
     _installations
       ..clear()
       ..addEntries(
-        box.keys.map((key) {
+        box.keys.where((key) => key != _defaultMetadataRemovedKey).map((key) {
           final raw = box.get(key);
           final installation = StremioInstallation.fromJson(
             Map<String, dynamic>.from(raw!),
@@ -331,6 +332,9 @@ class StremioManager extends ChangeNotifier {
   /// Seed public metadata without holding startup on a network request.
   Future<void> ensureDefaultMetadata() async {
     await init();
+    if ((await _box).get(_defaultMetadataRemovedKey)?['removed'] == true) {
+      return;
+    }
     final current = _installations[defaultMetadataId];
     if (_installations.values.any(
           (i) =>
@@ -574,8 +578,12 @@ class StremioManager extends ChangeNotifier {
 
   Future<void> remove(String id) async {
     await init();
-    _require(id);
+    final installation = _require(id);
     final box = await _box;
+    if (id == defaultMetadataId ||
+        installation.manifestId == 'com.linvo.cinemeta') {
+      await box.put(_defaultMetadataRemovedKey, {'removed': true});
+    }
     await box.delete(id);
     await _deleteSecret(id);
     _installations.remove(id);

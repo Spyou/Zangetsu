@@ -56,6 +56,7 @@ class _FakeSecrets implements StremioSecretStore {
 
 class _Server {
   int manifests = 0;
+  String manifestId = 'org.test.addon';
   int streams = 0;
   int metas = 0;
   final requests = <Uri>[];
@@ -67,7 +68,7 @@ class _Server {
     final path = request.url.path;
     if (path.endsWith('/manifest.json')) {
       manifests++;
-      return _json(_manifest);
+      return _json({..._manifest, 'id': manifestId});
     }
     if (path.contains('/streams/') || path.contains('/stream/')) {
       streams++;
@@ -224,6 +225,71 @@ void main() {
     ]);
     expect(server.manifests, 0);
   });
+
+  test(
+    'deleted default metadata stays removed after a storage restart',
+    () async {
+      final manager = makeManager(_Server());
+      await manager.ensureDefaultMetadata();
+      await manager.remove(StremioManager.defaultMetadataId);
+      expect(manager.installations, isEmpty);
+      await Hive.box<Map>(StremioManager.boxName).close();
+      final restored = makeManager(_Server());
+      await restored.ensureDefaultMetadata();
+      await restored.ensureDefaultMetadata();
+      expect(restored.installations, isEmpty);
+    },
+  );
+
+  test(
+    'deleting default metadata keeps other addons and allows manual reinstall',
+    () async {
+      final server = _Server();
+      final manager = makeManager(server);
+      await manager.ensureDefaultMetadata();
+      final other = await manager.install('https://other.example');
+      await manager.remove(StremioManager.defaultMetadataId);
+      final restored = makeManager(server);
+      await restored.ensureDefaultMetadata();
+      expect(restored.installations.single.id, other.id);
+      server.manifestId = 'com.linvo.cinemeta';
+      now = now.add(const Duration(seconds: 1));
+      final reinstalled = await restored.install(
+        StremioManager.defaultMetadataUrl,
+      );
+      await restored.ensureDefaultMetadata();
+      expect(restored.byId(reinstalled.id)?.enabled, isTrue);
+      expect(restored.installations, hasLength(2));
+    },
+  );
+
+  test(
+    'removing a manually installed Cinemeta does not trigger default seeding',
+    () async {
+      final server = _Server()..manifestId = 'com.linvo.cinemeta';
+      final manager = makeManager(server);
+      final installed = await manager.install(
+        StremioManager.defaultMetadataUrl,
+      );
+      await manager.ensureDefaultMetadata();
+      expect(manager.installations.single.id, installed.id);
+      await manager.remove(installed.id);
+      final restored = makeManager(server);
+      await restored.ensureDefaultMetadata();
+      expect(restored.installations, isEmpty);
+    },
+  );
+
+  test(
+    'removing another addon still allows first-time default metadata',
+    () async {
+      final manager = makeManager(_Server());
+      final installed = await manager.install('https://other.example');
+      await manager.remove(installed.id);
+      await manager.ensureDefaultMetadata();
+      expect(manager.installations.single.id, StremioManager.defaultMetadataId);
+    },
+  );
 
   test(
     'upgrades the two-row default without enabling it or changing order',
