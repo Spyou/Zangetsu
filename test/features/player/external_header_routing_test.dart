@@ -1,14 +1,15 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:watch_app/features/player/player_screen.dart';
+import 'package:watch_app/core/playback/external_player.dart';
+import 'package:watch_app/core/playback/playback_prefs.dart';
+
+const vlc = 'org.videolan.vlc';
+const mx = 'com.mxtech.videoplayer.ad';
+const mxPro = 'com.mxtech.videoplayer.pro';
+const just = 'com.brouken.player';
+const splayer = 'com.young.simple.player'; // an SPlayer-style package
 
 void main() {
   group('headerGatedButPlayerCant (route header-gated sources to built-in)', () {
-    const vlc = 'org.videolan.vlc';
-    const mx = 'com.mxtech.videoplayer.ad';
-    const mxPro = 'com.mxtech.videoplayer.pro';
-    const just = 'com.brouken.player';
-    const splayer = 'com.young.simple.player'; // an SPlayer-style package
-
     test('header-gated source + VLC/SPlayer/other → true (route to built-in)', () {
       const gated = {'Referer': 'https://x/', 'User-Agent': 'UA'};
       expect(headerGatedButPlayerCant(gated, vlc), isTrue);
@@ -62,6 +63,74 @@ void main() {
     test('HLS / other → false', () {
       expect(isDashUrl('https://cdn.mewstream.buzz/x/index.m3u8'), isFalse);
       expect(isDashUrl('https://x/movie.mp4'), isFalse);
+    });
+  });
+
+  group('externalHandoffFor', () {
+    test('torrent → builtIn', () {
+      expect(
+        externalHandoffFor(
+          url: 'magnet:?xt=urn:btih:abc',
+          headers: null,
+          package: vlc,
+        ),
+        ExternalHandoff.builtIn,
+      );
+    });
+
+    test('header-gated DASH → builtIn', () {
+      expect(
+        externalHandoffFor(
+          url: 'https://x/index.mpd',
+          headers: const {'Referer': 'https://x/'},
+          package: vlc,
+        ),
+        ExternalHandoff.builtIn,
+      );
+    });
+
+    test('header-gated HLS + VLC → proxy', () {
+      expect(
+        externalHandoffFor(
+          url: 'https://x/index.m3u8',
+          headers: const {'Referer': 'https://x/'},
+          package: vlc,
+        ),
+        ExternalHandoff.proxy,
+      );
+    });
+
+    test('header-gated + MX → direct', () {
+      expect(
+        externalHandoffFor(
+          url: 'https://x/index.m3u8',
+          headers: const {'Referer': 'https://x/'},
+          package: mx,
+        ),
+        ExternalHandoff.direct,
+      );
+    });
+
+    test('plain URL → direct for any player', () {
+      expect(
+        externalHandoffFor(
+          url: 'https://cdn.example/video.mkv',
+          headers: null,
+          package: vlc,
+        ),
+        ExternalHandoff.direct,
+      );
+    });
+  });
+
+  group('isExternalPlayerPackage', () {
+    test('empty / android player id → false', () {
+      expect(isExternalPlayerPackage(''), isFalse);
+      expect(isExternalPlayerPackage(PlaybackPrefs.androidPlayerId), isFalse);
+    });
+    test('third-party package → true', () {
+      expect(isExternalPlayerPackage(vlc), isTrue);
+      expect(isExternalPlayerPackage(mx), isTrue);
     });
   });
 }

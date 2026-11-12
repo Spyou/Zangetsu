@@ -7,6 +7,7 @@ import '../../core/models/episode.dart';
 import '../../core/models/media_item.dart';
 import '../../core/models/video_source.dart';
 import '../../core/platform/apple_tv.dart';
+import '../../core/playback/external_player.dart';
 import '../../core/playback/source_health_store.dart';
 import '../../core/playback/tv_playback_helpers.dart';
 import '../../core/playback/playback_prefs.dart';
@@ -20,12 +21,16 @@ import '../../core/zmode/zmode_ids.dart';
 import '../shell/tv_source_picker.dart';
 import 'tv_av_native_player.dart';
 import 'tv_exo_player_screen.dart';
+import 'tv_external_player.dart';
 import 'tv_native_player.dart';
 
 /// Which TV player backend to use.
 enum TvPlayerKind {
   /// Stock AVPlayerViewController (Apple TV).
   avPlayerSystem,
+
+  /// Hand off to an installed Android video app (VLC, MX, …).
+  external,
 
   nativeExo,
   exoView,
@@ -35,13 +40,17 @@ enum TvPlayerKind {
 /// phone player uses the same ceiling (`_maxSourceHops`, player_controller).
 const int kMaxTvSourceHops = 3;
 
-/// Pure routing: Apple TV always uses system AVKit; Android TV keeps native
-/// Exo vs platform-view.
+/// Pure routing: Apple TV always uses system AVKit; Android TV prefers a
+/// configured external app, else native Exo vs platform-view.
 TvPlayerKind tvPlayerKind({
   required bool appleTv,
   required bool nativeTvPlayer,
+  String externalPlayerPackage = '',
 }) {
   if (appleTv) return TvPlayerKind.avPlayerSystem;
+  if (isExternalPlayerPackage(externalPlayerPackage)) {
+    return TvPlayerKind.external;
+  }
   if (nativeTvPlayer) return TvPlayerKind.nativeExo;
   return TvPlayerKind.exoView;
 }
@@ -147,13 +156,15 @@ Future<void> launchTvPlayback({
   }
 
   final prefs = sl<PlaybackPrefs>();
-  final kind = tvPlayerKind(
+  var kind = tvPlayerKind(
     appleTv: isAppleTv,
     nativeTvPlayer: prefs.nativeTvPlayer,
+    externalPlayerPackage: prefs.externalPlayerPackage,
   );
   debugPrint(
     '[tv-playback] launchTvPlayback · playerKind=$kind '
-    'appleTv=$isAppleTv nativeTvPlayer=${prefs.nativeTvPlayer}',
+    'appleTv=$isAppleTv nativeTvPlayer=${prefs.nativeTvPlayer} '
+    'extPkg=${prefs.externalPlayerPackage.isEmpty ? "(built-in)" : prefs.externalPlayerPackage}',
   );
 
   TvPlaybackLoadFailure? resolveFailure;
@@ -194,6 +205,55 @@ Future<void> launchTvPlayback({
   }
 
   try {
+    if (kind == TvPlayerKind.external) {
+      TvExternalPlayer.lastFailure = null;
+      final outcome = await TvExternalPlayer.play(
+        sourceId: sourceId,
+        episodes: episodes,
+        startIndex: startIndex,
+        resume: resume,
+        resolveSources: trackedResolve,
+        package: prefs.externalPlayerPackage,
+        showUrl: showUrl,
+        showTitle: showTitle,
+        cover: cover,
+        coverHeaders: coverHeaders,
+        category: category,
+        malId: malId,
+        scrobbleTitle: scrobbleTitle,
+        tmdbId: tmdbId,
+        tmdbIsTv: tmdbIsTv,
+        imdbId: imdbId,
+      );
+      switch (outcome) {
+        case TvExternalPlayOutcome.launched:
+          return;
+        case TvExternalPlayOutcome.failed:
+          if (context.mounted) {
+            dismissLoading?.call();
+            await showTvPlaybackLoadError(
+              context,
+              failure:
+                  TvExternalPlayer.lastFailure ??
+                  resolveFailure ??
+                  TvPlaybackLoadFailure(
+                    TvPlaybackLoadFailureKind.generic,
+                    mode: mode,
+                  ),
+            );
+          }
+          return;
+        case TvExternalPlayOutcome.useBuiltIn:
+          // Fall through to the built-in TV Exo path for this attempt only.
+          kind = prefs.nativeTvPlayer
+              ? TvPlayerKind.nativeExo
+              : TvPlayerKind.exoView;
+          debugPrint(
+            '[tv-playback] external → useBuiltIn · continuing as $kind',
+          );
+      }
+    }
+
     if (kind == TvPlayerKind.avPlayerSystem) {
       TvAvNativePlayer.lastFailure = null;
       final started = await TvAvNativePlayer.play(

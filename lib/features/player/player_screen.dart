@@ -87,31 +87,6 @@ part 'player_sheets.dart';
 /// stream-bound seek slider, and Speed / Audio / Quality / Source / Next
 /// controls. Forces landscape + immersive UI while open and restores portrait
 /// on dispose.
-/// External players that forward HTTP request headers (Referer/Origin/Cookie)
-/// to the stream. Players NOT on this list (VLC, SPlayer, LeePlayer, …) ignore
-/// them, so a header-gated source 403s — for those, `_launchExternalThenPop`
-/// hands the player the local header-injecting proxy URL instead (which adds
-/// the headers upstream). Prefix-matched to cover package variants (e.g. MX
-/// Player free `.ad` + `.pro`).
-const List<String> kHeaderForwardingPlayers = [
-  'com.mxtech.videoplayer', // MX Player (free .ad + pro)
-  'com.brouken.player', // Just Player
-];
-
-/// True when [headers] carry a gating header (Referer/Origin/Cookie) that the
-/// chosen external player [pkg] cannot forward — so the stream would 403 and we
-/// should use the built-in player instead. Pure so it is unit-testable.
-@visibleForTesting
-bool headerGatedButPlayerCant(Map<String, String>? headers, String pkg) {
-  if (headers == null || headers.isEmpty || pkg.isEmpty) return false;
-  final gated = headers.keys.any((k) {
-    final lk = k.toLowerCase();
-    return lk == 'referer' || lk == 'origin' || lk == 'cookie';
-  });
-  if (!gated) return false;
-  return !kHeaderForwardingPlayers.any(pkg.startsWith);
-}
-
 /// Physical turns switch between the portrait page and landscape fullscreen.
 /// Returns null when nothing should change.
 @visibleForTesting
@@ -146,30 +121,6 @@ PlayerPresentation initialPresentation({
   }
   return PlayerPresentation.watchPage;
 }
-
-/// True when [url] is already served by a local proxy (localhost / 127.0.0.1) —
-/// e.g. a CloudStream extractor's own proxy.
-///
-/// No longer gates the external-player hand-off. It used to: such URLs were
-/// passed through untouched because they were assumed to be header-injected
-/// already. They aren't — an extractor's proxy forwards whatever UA called it,
-/// so VLC's UA reached Cloudflare and drew a 403. They now go through our proxy
-/// like any other header-gated source.
-@visibleForTesting
-bool isLocalStreamUrl(String url) {
-  final u = url.toLowerCase();
-  return u.startsWith('http://localhost') ||
-      u.startsWith('http://127.0.0.1') ||
-      u.startsWith('https://localhost') ||
-      u.startsWith('https://127.0.0.1');
-}
-
-/// True when [url] is an MPEG-DASH manifest (`.mpd`, ignoring any query string).
-/// External players can't reliably play header-gated DASH and our proxy only
-/// rewrites HLS, so these route to the built-in player.
-@visibleForTesting
-bool isDashUrl(String url) =>
-    url.toLowerCase().split('?').first.endsWith('.mpd');
 
 /// The speed a hold-to-speed gesture goes back to when the finger lifts:
 /// whatever was playing when the hold began.
@@ -1165,31 +1116,24 @@ class _PlayerScreenState extends State<PlayerScreen> {
       final src = pickDefault(sources, prefer: prefer);
       if (src == null) throw StateError('no source');
       // A torrent can't be handed to an external player as a magnet — stream it
-      // through our engine via the in-app player instead.
+      // through our engine via the in-app player instead (no toast; expected).
       if (isTorrentUrl(src.url)) {
         _initInApp();
         if (mounted) setState(() {});
         return;
       }
-      // Header-gated source + a player that can't forward headers. Two cases:
-      //  • DASH (.mpd): our proxy only rewrites HLS and external players can't do
-      //    header-gated DASH → play in the built-in player (mpv handles it).
-      //  • otherwise (remote HLS, or an extractor's own localhost proxy): hand
-      //    the player our localhost proxy URL (no headers — the proxy injects
-      //    them upstream).
-      // Extractor-local URLs used to be passed through untouched, on the
-      // assumption they were already header-injected. They aren't: those proxies
-      // forward whatever UA called them, so mpv (source UA) played fine while VLC
-      // (VLC/3.0.23) drew a 403 off Cloudflare and the extractor answered 500.
-      // Fetching through our proxy puts the source UA back on the wire.
-      // MX/Just Player (header-forwarding) and non-header-gated sources never
-      // reach this branch — the unchanged direct hand-off below covers them.
+      // Shared routing with TV: header-gated DASH → built-in; header-gated HLS
+      // → localhost proxy; otherwise direct hand-off.
       final extPkg = _chosenPlayer;
       var playUrl = src.url;
       var launchHeaders = src.headers ?? const <String, String>{};
-      if (headerGatedButPlayerCant(src.headers, extPkg)) {
-        if (isDashUrl(src.url)) {
-          _initInApp(); // DASH → built-in (external can't do header-gated DASH)
+      switch (externalHandoffFor(
+        url: src.url,
+        headers: src.headers,
+        package: extPkg,
+      )) {
+        case ExternalHandoff.builtIn:
+          _initInApp();
           if (mounted) {
             setState(() {});
             ScaffoldMessenger.of(context).showSnackBar(
@@ -1199,28 +1143,30 @@ class _PlayerScreenState extends State<PlayerScreen> {
             );
           }
           return;
-        }
-        final local = await ExternalPlayer().proxyStreamUrl(
-          src.url,
-          src.headers!,
-        );
-        if (!mounted) return;
-        if (local == null) {
-          _initInApp(); // proxy unavailable → built-in (never a black screen)
-          setState(() {});
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                context.l10n.thisSourceNeedsSpecialHeadersUsingBuiltIn,
-              ),
-            ),
+        case ExternalHandoff.direct:
+          break;
+        case ExternalHandoff.proxy:
+          final local = await ExternalPlayer().proxyStreamUrl(
+            src.url,
+            src.headers!,
           );
-          return;
-        }
-        // Play the proxied URL; headers are injected upstream, so none are
-        // needed on the intent (VLC/SPlayer ignore them anyway).
-        playUrl = local;
-        launchHeaders = const <String, String>{};
+          if (!mounted) return;
+          if (local == null) {
+            _initInApp(); // proxy unavailable → built-in (never a black screen)
+            setState(() {});
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  context.l10n.thisSourceNeedsSpecialHeadersUsingBuiltIn,
+                ),
+              ),
+            );
+            return;
+          }
+          // Play the proxied URL; headers are injected upstream, so none are
+          // needed on the intent (VLC/SPlayer ignore them anyway).
+          playUrl = local;
+          launchHeaders = const <String, String>{};
       }
       // External players give no progress callback and the in-app scrobbler
       // never runs for them — so scrobble the episode at hand-off (the only

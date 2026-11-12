@@ -339,9 +339,9 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
         }
     }
 
-    // The in-flight external-player launch, completed in onActivityResult so the
-    // Dart side learns whether the player actually played anything (for the
-    // auto-fallback to the built-in player).
+    // Phone-only: in-flight external-player launch completed in
+    // onActivityResult (position / playback-error). TV hand-offs complete the
+    // MethodChannel immediately — see [startExternalPlayer].
     private var pendingPlayerResult: MethodChannel.Result? = null
     // In-flight native TV-player launch, completed in onActivityResult with the
     // final position so Dart saves resume + Continue Watching.
@@ -1499,16 +1499,10 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
         "com.ttee.leeplayer" to "SPlayer",
     )
 
-    // The known players first, in the curated order above, then anything else on
-    // the device that can open a video.
-    //
-    // The hardcoded list used to be the whole answer, which meant a player we'd
-    // never heard of was invisible even when installed — the picker claimed the
-    // user had nothing when they had Kodi or their OEM's player sitting right
-    // there. Known players stay on top because their intent extras are known, so
-    // subtitles and the resume position actually reach them; the rest play fine
-    // but may ignore those extras, which is why they're flagged for the UI to
-    // show under their own heading.
+    // Known players first (curated labels + intent extras we know), then every
+    // other installed app that can open a remote video — not a closed list of
+    // VLC-only packages. Unknown apps are flagged so the UI can warn that
+    // subtitles / resume extras may be ignored.
     private fun installedPlayers(): List<Map<String, String>> {
         val out = mutableListOf<Map<String, String>>()
         val seen = mutableSetOf<String>()
@@ -1523,18 +1517,17 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
         // Probed with an https URL because that's what we actually hand over —
         // an app that only claims content:// or file:// can't play our streams,
         // so leaving it out of the list is the correct answer, not a gap.
-        for (mime in arrayOf("video/*", "application/x-mpegURL")) {
+        // MATCH_ALL surfaces TV / leanback activities that omit CATEGORY_DEFAULT.
+        @Suppress("DEPRECATION")
+        val queryFlags = PackageManager.MATCH_DEFAULT_ONLY or
+            if (android.os.Build.VERSION.SDK_INT >= 23) PackageManager.MATCH_ALL else 0
+        for (mime in arrayOf("video/*", "application/x-mpegURL", "application/x-matroska")) {
             try {
                 val probe = Intent(Intent.ACTION_VIEW).setDataAndType(
                     Uri.parse("https://example.com/video.mp4"),
                     mime,
                 )
-                // MATCH_DEFAULT_ONLY: startActivity needs CATEGORY_DEFAULT on the
-                // target filter, so anything without it would fail to launch.
-                val hits = packageManager.queryIntentActivities(
-                    probe,
-                    PackageManager.MATCH_DEFAULT_ONLY,
-                )
+                val hits = packageManager.queryIntentActivities(probe, queryFlags)
                 for (ri in hits) {
                     val info = ri.activityInfo ?: continue
                     val pkg = info.packageName ?: continue
@@ -1545,6 +1538,9 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
                         ?.let { packageManager.getApplicationLabel(it).toString() }
                         ?.takeIf { it.isNotBlank() }
                         ?: pkg
+                    // Emulator / CTS placeholders claim video/* but are not
+                    // real players (the picker used to surface "Activity Stub").
+                    if (isFakeExternalPlayer(pkg, label)) continue
                     out.add(mapOf("package" to pkg, "label" to label, "known" to "0"))
                 }
             } catch (e: Exception) {
@@ -1552,6 +1548,21 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
             }
         }
         return out
+    }
+
+    /// True for emulator/CTS "players" that answer ACTION_VIEW for video but
+    /// are not apps a viewer would pick (e.g. "Activity Stub" on Android TV
+    /// emulator images).
+    private fun isFakeExternalPlayer(pkg: String, label: String): Boolean {
+        val l = label.trim().lowercase()
+        if (l == "activity stub" || l.startsWith("activity stub")) return true
+        val p = pkg.lowercase()
+        // CTS / instrumentation packages only — avoid matching real names like
+        // com.stubborn.* via a bare ".stub" substring.
+        return p.startsWith("com.android.cts") ||
+            p.contains(".cts.") ||
+            p.endsWith(".stub") ||
+            p.contains(".stub.")
     }
 
     /// A content:// URI another app may read for [path], or null when the
@@ -1584,6 +1595,39 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
         return shared
     }
 
+    /// Best activity inside [pkg] for an ACTION_VIEW hand-off.
+    ///
+    /// VLC's launcher [StartActivity] gates http(s) streams behind storage
+    /// permission and calls finish() when that is denied — which is why TV
+    /// hand-off looked like "launched ok" while nothing stayed on screen.
+    /// Targeting VideoPlayerActivity directly skips that gate for remote URLs
+    /// (VideoLAN's own recommended path).
+    private fun resolvePlayerComponent(pkg: String, base: Intent): android.content.ComponentName? {
+        if (pkg == "org.videolan.vlc") {
+            val vlcPlayer = android.content.ComponentName(
+                pkg,
+                "org.videolan.vlc.gui.video.VideoPlayerActivity",
+            )
+            try {
+                packageManager.getActivityInfo(vlcPlayer, 0)
+                return vlcPlayer
+            } catch (_: Exception) { /* fall through to resolve */ }
+        }
+        val probe = Intent(base).setPackage(pkg)
+        @Suppress("DEPRECATION")
+        val flags = PackageManager.MATCH_DEFAULT_ONLY or
+            if (android.os.Build.VERSION.SDK_INT >= 23) PackageManager.MATCH_ALL else 0
+        val hits = packageManager.queryIntentActivities(probe, flags)
+            .mapNotNull { it.activityInfo }
+            .filter { it.packageName == pkg && it.exported }
+        if (hits.isEmpty()) return null
+        val preferred = hits.firstOrNull { info ->
+            val n = info.name.lowercase()
+            n.contains("video") || n.contains("player") || n.contains("playback")
+        } ?: hits.first()
+        return android.content.ComponentName(pkg, preferred.name)
+    }
+
     @Suppress("UNCHECKED_CAST")
     private fun launchExternal(call: MethodCall, result: MethodChannel.Result) {
         try {
@@ -1595,21 +1639,29 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
             val positionMs = (call.argument<Number>("positionMs") ?: 0).toLong()
             val subs = call.argument<List<Map<String, String>>>("subtitles")
             val lower = url.lowercase()
+            val pathOnly = lower.substringBefore('?')
             val mime = when {
-                lower.contains("m3u8") -> "application/x-mpegURL" // HLS (incl. ?token= URLs)
-                lower.contains(".mpd") -> "application/dash+xml"  // MPEG-DASH
+                pathOnly.contains("m3u8") || lower.contains("m3u8") ->
+                    "application/x-mpegURL"
+                pathOnly.endsWith(".mpd") || lower.contains(".mpd") ->
+                    "application/dash+xml"
+                pathOnly.endsWith(".mkv") || lower.contains(".mkv") ->
+                    "application/x-matroska"
                 else -> "video/*"
             }
 
+            val uri = Uri.parse(url)
             val intent = Intent(Intent.ACTION_VIEW)
-            intent.setDataAndType(Uri.parse(url), mime)
-            if (!pkg.isNullOrEmpty()) intent.setPackage(pkg)
-            // No FLAG_ACTIVITY_NEW_TASK: it would break startActivityForResult,
-            // and we need the result back to know if the player actually played.
+            // AndNormalize matches VideoLAN's sample; some players reject a
+            // non-normalized type/uri pair.
+            intent.setDataAndTypeAndNormalize(uri, mime)
             intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
 
             title?.let { intent.putExtra("title", it); intent.putExtra("name", it) }
             if (positionMs > 0) intent.putExtra("position", positionMs.toInt())
+            // VLC: mark as an external hand-off so its player UI treats us as
+            // the caller (see VideoPlayerActivity.FROM_EXTERNAL).
+            intent.putExtra("from_external", true)
 
             // Headers: MX Player / Just Player read a flat String[] of k,v,k,v.
             if (!headers.isNullOrEmpty()) {
@@ -1624,14 +1676,22 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
             val externalSubs = resolveExternalSubtitleTracks(subs, ::shareSubtitleFile)
             attachExternalSubtitles(intent, externalSubs)
 
-            // Complete any stale pending launch defensively, then wait for this
-            // one's result in onActivityResult.
-            pendingPlayerResult?.let {
-                try { it.success(mapOf("launched" to true, "played" to true)) } catch (_: Exception) {}
+            if (!pkg.isNullOrEmpty()) {
+                val component = resolvePlayerComponent(pkg, intent)
+                if (component != null) {
+                    intent.component = component
+                } else {
+                    intent.setPackage(pkg)
+                }
             }
-            pendingPlayerResult = result
+            Log.i(
+                TAG,
+                "launchExternal → target=${intent.component ?: pkg ?: "(chooser)"} "
+                    + "mime=$mime tv=${isTelevisionDevice()}",
+            )
+
             try {
-                startActivityForResult(intent, EXT_PLAYER_REQUEST)
+                startExternalPlayer(intent, result)
             } catch (e: android.content.ActivityNotFoundException) {
                 // A DOWNLOADED episode arrives as a bare filesystem path, which
                 // is a URI with no scheme at all. Most players guess it is a
@@ -1641,13 +1701,15 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
                 // content://, the only form Android has let us hand another app
                 // since API 24. Streams are untouched: they already have a
                 // scheme, so this branch skips them.
-                val shared = if (Uri.parse(url).scheme == null) sharableUri(url) else null
+                val shared = if (uri.scheme == null) sharableUri(url) else null
                 if (shared != null) {
                     Log.w(TAG, "no activity for a bare path in $pkg — retrying as content://")
-                    intent.setDataAndType(shared, mime)
+                    intent.component = null
+                    if (!pkg.isNullOrEmpty()) intent.setPackage(pkg)
+                    intent.setDataAndTypeAndNormalize(shared, mime)
                     intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                     try {
-                        startActivityForResult(intent, EXT_PLAYER_REQUEST)
+                        startExternalPlayer(intent, result)
                         return
                     } catch (_: android.content.ActivityNotFoundException) {
                         // Still nothing — fall through to the mime retry.
@@ -1661,14 +1723,72 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
                 // once as video/*, which is what every video app claims.
                 if (mime == "video/*") throw e
                 Log.w(TAG, "no activity for $mime in $pkg — retrying as video/*")
-                intent.setDataAndType(Uri.parse(url), "video/*")
-                startActivityForResult(intent, EXT_PLAYER_REQUEST)
+                intent.component = null
+                if (!pkg.isNullOrEmpty()) {
+                    val component = resolvePlayerComponent(
+                        pkg,
+                        Intent(Intent.ACTION_VIEW).setDataAndTypeAndNormalize(uri, "video/*"),
+                    )
+                    if (component != null) intent.component = component
+                    else intent.setPackage(pkg)
+                }
+                intent.setDataAndTypeAndNormalize(uri, "video/*")
+                startExternalPlayer(intent, result)
             }
         } catch (e: Exception) {
             Log.w(TAG, "launchExternal failed: ${e.message}")
             pendingPlayerResult = null
             result.success(mapOf("launched" to false))
         }
+    }
+
+    private fun isTelevisionDevice(): Boolean {
+        val uiModeManager =
+            getSystemService(android.content.Context.UI_MODE_SERVICE) as android.app.UiModeManager
+        return uiModeManager.currentModeType ==
+            android.content.res.Configuration.UI_MODE_TYPE_TELEVISION ||
+            packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK) ||
+            packageManager.hasSystemFeature("android.software.leanback_only")
+    }
+
+    /// Starts [intent] for an external player and completes [result].
+    ///
+    /// On TV we use [Intent.FLAG_ACTIVITY_NEW_TASK] + [startActivity] and reply
+    /// to Dart immediately. VLC's [VideoPlayerActivity] declares
+    /// `taskAffinity="vlc.player"` (and `finishOnTaskLaunch`); stacking it on
+    /// our task with [startActivityForResult] lets Google TV's LMK destroy our
+    /// process under the player — exiting VLC then lands on Leanback Home
+    /// because nothing is left to resume. A separate task keeps Zangetsu's
+    /// task intact so Back from VLC restores it (recreating the process if
+    /// needed). Activity results can't cross NEW_TASK boundaries; Dart already
+    /// keys off `launched`, and VLC rarely reports a useful position anyway.
+    ///
+    /// Phone keeps [startActivityForResult] so MX / friends can still report
+    /// position when they finish.
+    private fun startExternalPlayer(intent: Intent, result: MethodChannel.Result) {
+        if (isTelevisionDevice()) {
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            startActivity(intent)
+            Log.i(TAG, "launchExternal → TV hand-off (NEW_TASK, no result wait)")
+            try {
+                result.success(
+                    mapOf(
+                        "launched" to true,
+                        "played" to true,
+                        "positionMs" to 0L,
+                    ),
+                )
+            } catch (_: Exception) {}
+            return
+        }
+        // Complete any stale pending launch defensively, then wait for this
+        // one's result in onActivityResult.
+        pendingPlayerResult?.let {
+            try { it.success(mapOf("launched" to true, "played" to true)) } catch (_: Exception) {}
+        }
+        pendingPlayerResult = result
+        @Suppress("DEPRECATION")
+        startActivityForResult(intent, EXT_PLAYER_REQUEST)
     }
 
     // Load CloudStream plugins that cast the load context to an AppCompatActivity
@@ -1917,13 +2037,25 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
         // "Played" = the player reported real progress or that it loaded the
         // media. Nothing reported → it failed / was dismissed → Dart falls back.
         val played = pos > 0 || dur > 0
+        // VLC documents RESULT_CANCELED (0) as "no compatible CPU / wrong ABI"
+        // and RESULT_PLAYBACK_ERROR (3) as "cannot play this URI". Other
+        // players use CANCELED for a normal back-out, so we only treat the
+        // explicit playback-error code as a failed launch; CANCELED with no
+        // progress still counts as launched (VLC often returns that on Back).
+        val playbackError = resultCode == 3
+        Log.i(
+            TAG,
+            "launchExternal result code=$resultCode played=$played "
+                + "pos=$pos dur=$dur playbackError=$playbackError",
+        )
         pendingPlayerResult?.let {
             try {
                 it.success(
                     mapOf(
-                        "launched" to true,
+                        "launched" to !playbackError,
                         "played" to played,
                         "positionMs" to (if (pos > 0) pos else 0L),
+                        "resultCode" to resultCode,
                     ),
                 )
             } catch (_: Exception) {}

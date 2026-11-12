@@ -1,8 +1,11 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import '../logging/app_logger.dart';
+import '../torrent/torrent_util.dart';
+import 'playback_prefs.dart';
 
 /// Redacts query strings + long tokens so a logged stream URL stays readable
 /// and doesn't leak signed credentials. Keeps host + path for diagnosis.
@@ -10,6 +13,81 @@ String _safeUrl(String url) {
   final q = url.indexOf('?');
   return q >= 0 ? '${url.substring(0, q)}?…' : url;
 }
+
+/// External players that forward HTTP request headers (Referer/Origin/Cookie)
+/// to the stream. Players NOT on this list (VLC, SPlayer, LeePlayer, …) ignore
+/// them, so a header-gated source 403s — callers hand those the local
+/// header-injecting proxy URL instead. Prefix-matched to cover package
+/// variants (e.g. MX Player free `.ad` + `.pro`).
+const List<String> kHeaderForwardingPlayers = [
+  'com.mxtech.videoplayer', // MX Player (free .ad + pro)
+  'com.brouken.player', // Just Player
+];
+
+/// True when [headers] carry a gating header (Referer/Origin/Cookie) that the
+/// chosen external player [pkg] cannot forward — so the stream would 403
+/// without a proxy. Pure so it is unit-testable.
+@visibleForTesting
+bool headerGatedButPlayerCant(Map<String, String>? headers, String pkg) {
+  if (headers == null || headers.isEmpty || pkg.isEmpty) return false;
+  final gated = headers.keys.any((k) {
+    final lk = k.toLowerCase();
+    return lk == 'referer' || lk == 'origin' || lk == 'cookie';
+  });
+  if (!gated) return false;
+  return !kHeaderForwardingPlayers.any(pkg.startsWith);
+}
+
+/// True when [url] is already served by a local proxy (localhost / 127.0.0.1) —
+/// e.g. a CloudStream extractor's own proxy. Kept for tests / diagnostics;
+/// hand-off still routes these through our proxy when headers are gated.
+@visibleForTesting
+bool isLocalStreamUrl(String url) {
+  final u = url.toLowerCase();
+  return u.startsWith('http://localhost') ||
+      u.startsWith('http://127.0.0.1') ||
+      u.startsWith('https://localhost') ||
+      u.startsWith('https://127.0.0.1');
+}
+
+/// True when [url] is an MPEG-DASH manifest (`.mpd`, ignoring any query string).
+/// External players can't reliably play header-gated DASH and our proxy only
+/// rewrites HLS, so these route to the built-in player.
+@visibleForTesting
+bool isDashUrl(String url) =>
+    url.toLowerCase().split('?').first.endsWith('.mpd');
+
+/// How a resolved stream should be handed to [package].
+enum ExternalHandoff {
+  /// Play in the built-in player (torrent, header-gated DASH, …).
+  builtIn,
+
+  /// Pass [url] + headers straight to the external player.
+  direct,
+
+  /// Register with the localhost proxy and pass that URL (no intent headers).
+  proxy,
+}
+
+/// Decides whether [url]/[headers] can go to [package], and whether the
+/// local header-injecting proxy is required. Shared by phone + TV hand-off.
+ExternalHandoff externalHandoffFor({
+  required String url,
+  required Map<String, String>? headers,
+  required String package,
+}) {
+  if (isTorrentUrl(url)) return ExternalHandoff.builtIn;
+  if (!headerGatedButPlayerCant(headers, package)) {
+    return ExternalHandoff.direct;
+  }
+  if (isDashUrl(url)) return ExternalHandoff.builtIn;
+  return ExternalHandoff.proxy;
+}
+
+/// True when [package] is a real third-party player package (not empty built-in
+/// and not the in-app Android Exo id).
+bool isExternalPlayerPackage(String package) =>
+    package.isNotEmpty && package != PlaybackPrefs.androidPlayerId;
 
 /// Bridge to the native `zangetsu/external_player` channel: lists installed
 /// external video players and hands a resolved stream off to one via an
@@ -126,6 +204,7 @@ class ExternalPlayer {
       final m = res is Map ? Map<String, dynamic>.from(res) : const {};
       final launched = m['launched'] == true;
       final played = m['played'] == true;
+      final resultCode = (m['resultCode'] as num?)?.toInt();
       // `played` is not a failure signal and never has been: VLC and friends
       // hand playback to their own task and return immediately, so a perfectly
       // healthy launch reports played=false. The caller keys off `launched`
@@ -138,6 +217,7 @@ class ExternalPlayer {
       AppLogger.instance.log(
         '[ext-player] result launched=$launched played=$played '
         'pos=${(m['positionMs'] as num?)?.toInt() ?? 0}'
+        '${resultCode != null ? " resultCode=$resultCode" : ""}'
         '${launched && !played ? " — handed off; the player reports no "
                   "progress of its own, which is normal" : ""}',
         level: launched ? 'I' : 'E',

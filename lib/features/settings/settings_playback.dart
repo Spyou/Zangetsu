@@ -499,31 +499,46 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
     if (mounted) setState(() {});
   }
 
-  /// Default player picker: Built-in + any installed external players. Streams
-  /// then open in the chosen app instead of the in-app player.
+  /// Default player picker: Built-in + every installed app that can open a
+  /// remote video (not a hard-coded VLC-only list). Streams then open in the
+  /// chosen app instead of the in-app player.
+  ///
+  /// Phone also offers the in-app Android Exo option. TV only offers Built-in
+  /// (native TV player) + installed external apps — the phone Exo id is not a
+  /// TV surface.
   Future<void> _pickPlayer() async {
     final players = await ExternalPlayer().installed();
     if (!mounted) return;
-    // Already known-first from the native side. The ones past the known block
-    // still play — header-gated streams included, since those route through the
-    // local proxy for any player that isn't MX/Just — but we don't know which
-    // extras they read, so external subtitles and the resume position may be
-    // dropped. Flagged rather than hidden: it's a real caveat, not a blocker.
+    // Native returns known players first (MX/VLC/… — extras we understand),
+    // then every other package that answers ACTION_VIEW for video. Unknown
+    // apps still play (via the header proxy when needed) but may ignore
+    // subtitle / resume extras, so they're flagged in the label.
+    final isTv = sl<AppMode>().isTv;
     final androidPlayerLabel = context.l10n.androidPlayer;
     final options = <(String, String)>[
       ('', context.l10n.builtInPlayer),
-      (PlaybackPrefs.androidPlayerId, androidPlayerLabel),
-      for (final p in players) (p.package, p.known ? p.label : '${p.label}${context.l10n.noSubsResumeSuffix}'),
+      if (!isTv) (PlaybackPrefs.androidPlayerId, androidPlayerLabel),
+      for (final p in players)
+        (
+          p.package,
+          p.known ? p.label : '${p.label}${context.l10n.noSubsResumeSuffix}',
+        ),
     ];
     if (players.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(context.l10n.noOtherVideoAppsFound)),
       );
     }
+    // If a phone-only Android Player id is somehow still saved on TV, treat
+    // Built-in as current so the picker doesn't highlight a missing row.
+    final current = isTv &&
+            _prefs.externalPlayerPackage == PlaybackPrefs.androidPlayerId
+        ? ''
+        : _prefs.externalPlayerPackage;
     final picked = await _pick<String>(
       title: context.l10n.defaultPlayer,
       options: options,
-      current: _prefs.externalPlayerPackage,
+      current: current,
     );
     if (picked == null) return;
     // From `players`, not `options` — the option label carries the "no headers"
@@ -711,10 +726,10 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
             ],
           ),
 
-          // ── Player (external app handoff — Android) ─────────────────────
-          // External-player handoff is phone-only; the TV plays in its own
-          // native player, so hide this whole section on TV.
-          if (Platform.isAndroid && !sl<AppMode>().isTv) ...[
+          // ── Player (external app handoff — Android phone + TV) ───────────
+          // TV can hand streams to VLC / MX / etc. the same way the phone does;
+          // player-bar control reordering stays phone-only (TV has its own UI).
+          if (Platform.isAndroid) ...[
             SettingsSectionLabel(context.l10n.sectionPlayer),
             SettingsCard(
               children: [
@@ -722,23 +737,30 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                   icon: Icons.smart_display_outlined,
                   title: context.l10n.defaultPlayer,
                   subtitle: _prefs.externalPlayerPackage == PlaybackPrefs.androidPlayerId
-                      ? context.l10n.androidPlayer
+                      ? (sl<AppMode>().isTv
+                          ? context.l10n.builtIn
+                          : context.l10n.androidPlayer)
                       : _prefs.externalPlayerPackage.isEmpty
                           ? context.l10n.builtIn
-                          : (_prefs.externalPlayerLabel.isNotEmpty ? _prefs.externalPlayerLabel : context.l10n.externalApp),
+                          : (_prefs.externalPlayerLabel.isNotEmpty
+                              ? _prefs.externalPlayerLabel
+                              : context.l10n.externalApp),
                   onTap: _pickPlayer,
                 ),
-                SettingsTile(
-                  icon: Icons.tune_rounded,
-                  title: context.l10n.playerControls,
-                  subtitle: context.l10n.reorderOrHideTheButtonsOnThePlayerBar,
-                  onTap: () async {
-                    await Navigator.of(
-                      context,
-                    ).push(MaterialPageRoute<void>(builder: (_) => const PlayerControlsScreen()));
-                    if (mounted) setState(() {});
-                  },
-                ),
+                if (!sl<AppMode>().isTv)
+                  SettingsTile(
+                    icon: Icons.tune_rounded,
+                    title: context.l10n.playerControls,
+                    subtitle: context.l10n.reorderOrHideTheButtonsOnThePlayerBar,
+                    onTap: () async {
+                      await Navigator.of(
+                        context,
+                      ).push(MaterialPageRoute<void>(
+                        builder: (_) => const PlayerControlsScreen(),
+                      ));
+                      if (mounted) setState(() {});
+                    },
+                  ),
               ],
             ),
           ],
