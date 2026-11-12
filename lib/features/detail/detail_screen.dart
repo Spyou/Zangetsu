@@ -76,6 +76,7 @@ import '../../core/models/media_item.dart';
 import '../../core/models/media_extras.dart';
 import '../../core/models/person.dart';
 import '../home/search_screen.dart';
+import 'title_search_popup.dart';
 import '../people/person_page.dart';
 import '../../core/models/video_source.dart';
 import '../../core/models/provider_info.dart';
@@ -606,6 +607,27 @@ class _DetailViewState extends State<_DetailView>
       _loadLogo();
     } else {
       setState(() {});
+    }
+  }
+
+  /// Title tap → search popup: prefilled query, "Search" opens the normal
+  /// search, "Search all sources" opens the sources search. Same title text.
+  Future<void> _onTitleTap(String title) async {
+    final req = await showTitleSearchPopup(context, title);
+    if (!mounted || req == null) return;
+    if (req == TitleSearchChoice.searchAll) {
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) =>
+              SearchScreen(initialQuery: title, forceSources: true),
+        ),
+      );
+    } else {
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => SearchScreen(initialQuery: title),
+        ),
+      );
     }
   }
 
@@ -2590,15 +2612,10 @@ class _DetailViewState extends State<_DetailView>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Tapping the title opens the full search pre-filled with it
-                  // (current source + all sources, per Search's own scope toggle).
+                  // Tapping the title opens the search popup (Cue pop-in):
+                  // pre-filled query, "Search" or "Search all sources".
                   GestureDetector(
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) =>
-                            SearchScreen(initialQuery: detail.title),
-                      ),
-                    ),
+                    onTap: () => _onTitleTap(detail.title),
                     // Official title logo when the toggle resolved one —
                     // grows in smoothly instead of shoving Play down.
                     child: AnimatedSize(
