@@ -125,7 +125,18 @@
     "mangaTranslationPreview",
     "mangaTranslationAppearanceFitNote",
     "mangaTranslationShowOriginal",
-    "mangaTranslationShowTranslations"
+    "mangaTranslationShowTranslations",
+    "androidPlayerCache",
+    "androidPlayerCacheSummary",
+    "androidPlayerCacheNote",
+    "androidNativeCache",
+    "androidNativeCacheDescription",
+    "androidNativeCacheUnavailable",
+    "androidDiskCache",
+    "androidDiskCacheDescription",
+    "androidCacheClear",
+    "androidCacheClearBusy",
+    "androidCacheUnavailable"
   ],
 
   "de": [
@@ -368,7 +379,18 @@
     "mangaTranslationPreview",
     "mangaTranslationAppearanceFitNote",
     "mangaTranslationShowOriginal",
-    "mangaTranslationShowTranslations"
+    "mangaTranslationShowTranslations",
+    "androidPlayerCache",
+    "androidPlayerCacheSummary",
+    "androidPlayerCacheNote",
+    "androidNativeCache",
+    "androidNativeCacheDescription",
+    "androidNativeCacheUnavailable",
+    "androidDiskCache",
+    "androidDiskCacheDescription",
+    "androidCacheClear",
+    "androidCacheClearBusy",
+    "androidCacheUnavailable"
   ],
 
   "es": [
@@ -611,7 +633,18 @@
     "mangaTranslationPreview",
     "mangaTranslationAppearanceFitNote",
     "mangaTranslationShowOriginal",
-    "mangaTranslationShowTranslations"
+    "mangaTranslationShowTranslations",
+    "androidPlayerCache",
+    "androidPlayerCacheSummary",
+    "androidPlayerCacheNote",
+    "androidNativeCache",
+    "androidNativeCacheDescription",
+    "androidNativeCacheUnavailable",
+    "androidDiskCache",
+    "androidDiskCacheDescription",
+    "androidCacheClear",
+    "androidCacheClearBusy",
+    "androidCacheUnavailable"
   ],
 
   "fr": [
@@ -854,7 +887,18 @@
     "mangaTranslationPreview",
     "mangaTranslationAppearanceFitNote",
     "mangaTranslationShowOriginal",
-    "mangaTranslationShowTranslations"
+    "mangaTranslationShowTranslations",
+    "androidPlayerCache",
+    "androidPlayerCacheSummary",
+    "androidPlayerCacheNote",
+    "androidNativeCache",
+    "androidNativeCacheDescription",
+    "androidNativeCacheUnavailable",
+    "androidDiskCache",
+    "androidDiskCacheDescription",
+    "androidCacheClear",
+    "androidCacheClearBusy",
+    "androidCacheUnavailable"
   ],
 
   "id": [
@@ -983,7 +1027,18 @@
     "mangaTranslationPreview",
     "mangaTranslationAppearanceFitNote",
     "mangaTranslationShowOriginal",
-    "mangaTranslationShowTranslations"
+    "mangaTranslationShowTranslations",
+    "androidPlayerCache",
+    "androidPlayerCacheSummary",
+    "androidPlayerCacheNote",
+    "androidNativeCache",
+    "androidNativeCacheDescription",
+    "androidNativeCacheUnavailable",
+    "androidDiskCache",
+    "androidDiskCacheDescription",
+    "androidCacheClear",
+    "androidCacheClearBusy",
+    "androidCacheUnavailable"
   ],
 
   "it": [
@@ -1226,7 +1281,18 @@
     "mangaTranslationPreview",
     "mangaTranslationAppearanceFitNote",
     "mangaTranslationShowOriginal",
-    "mangaTranslationShowTranslations"
+    "mangaTranslationShowTranslations",
+    "androidPlayerCache",
+    "androidPlayerCacheSummary",
+    "androidPlayerCacheNote",
+    "androidNativeCache",
+    "androidNativeCacheDescription",
+    "androidNativeCacheUnavailable",
+    "androidDiskCache",
+    "androidDiskCacheDescription",
+    "androidCacheClear",
+    "androidCacheClearBusy",
+    "androidCacheUnavailable"
   ],
 
   "ja": [
@@ -1469,7 +1535,18 @@
     "mangaTranslationPreview",
     "mangaTranslationAppearanceFitNote",
     "mangaTranslationShowOriginal",
-    "mangaTranslationShowTranslations"
+    "mangaTranslationShowTranslations",
+    "androidPlayerCache",
+    "androidPlayerCacheSummary",
+    "androidPlayerCacheNote",
+    "androidNativeCache",
+    "androidNativeCacheDescription",
+    "androidNativeCacheUnavailable",
+    "androidDiskCache",
+    "androidDiskCacheDescription",
+    "androidCacheClear",
+    "androidCacheClearBusy",
+    "androidCacheUnavailable"
   ],
 
   "pt": [
@@ -1598,7 +1675,18 @@
     "mangaTranslationPreview",
     "mangaTranslationAppearanceFitNote",
     "mangaTranslationShowOriginal",
-    "mangaTranslationShowTranslations"
+    "mangaTranslationShowTranslations",
+    "androidPlayerCache",
+    "androidPlayerCacheSummary",
+    "androidPlayerCacheNote",
+    "androidNativeCache",
+    "androidNativeCacheDescription",
+    "androidNativeCacheUnavailable",
+    "androidDiskCache",
+    "androidDiskCacheDescription",
+    "androidCacheClear",
+    "androidCacheClearBusy",
+    "androidCacheUnavailable"
   ],
 
   "tr": [
@@ -1727,7 +1815,18 @@
     "mangaTranslationPreview",
     "mangaTranslationAppearanceFitNote",
     "mangaTranslationShowOriginal",
-    "mangaTranslationShowTranslations"
+    "mangaTranslationShowTranslations",
+    "androidPlayerCache",
+    "androidPlayerCacheSummary",
+    "androidPlayerCacheNote",
+    "androidNativeCache",
+    "androidNativeCacheDescription",
+    "androidNativeCacheUnavailable",
+    "androidDiskCache",
+    "androidDiskCacheDescription",
+    "androidCacheClear",
+    "androidCacheClearBusy",
+    "androidCacheUnavailable"
   ],
 
   "zh": [
@@ -1970,7 +2069,18 @@
     "mangaTranslationPreview",
     "mangaTranslationAppearanceFitNote",
     "mangaTranslationShowOriginal",
-    "mangaTranslationShowTranslations"
+    "mangaTranslationShowTranslations",
+    "androidPlayerCache",
+    "androidPlayerCacheSummary",
+    "androidPlayerCacheNote",
+    "androidNativeCache",
+    "androidNativeCacheDescription",
+    "androidNativeCacheUnavailable",
+    "androidDiskCache",
+    "androidDiskCacheDescription",
+    "androidCacheClear",
+    "androidCacheClearBusy",
+    "androidCacheUnavailable"
   ],
 
   "zh_TW": [
@@ -2213,6 +2323,17 @@
     "mangaTranslationPreview",
     "mangaTranslationAppearanceFitNote",
     "mangaTranslationShowOriginal",
-    "mangaTranslationShowTranslations"
+    "mangaTranslationShowTranslations",
+    "androidPlayerCache",
+    "androidPlayerCacheSummary",
+    "androidPlayerCacheNote",
+    "androidNativeCache",
+    "androidNativeCacheDescription",
+    "androidNativeCacheUnavailable",
+    "androidDiskCache",
+    "androidDiskCacheDescription",
+    "androidCacheClear",
+    "androidCacheClearBusy",
+    "androidCacheUnavailable"
   ]
 }

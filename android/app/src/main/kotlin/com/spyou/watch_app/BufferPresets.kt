@@ -25,6 +25,7 @@ object BufferPresets {
         maxBufferMs: Int,
         targetBufferBytes: Int,
         backBufferMs: Int,
+        maxHeapBytes: Long? = null,
     ): LoadControl {
         val b = DefaultLoadControl.Builder()
         if (maxBufferMs > 0) {
@@ -39,10 +40,20 @@ object BufferPresets {
                     .coerceAtMost(min)
             b.setBufferDurationsMs(min, max, forPlayback, afterRebuffer)
         }
-        if (targetBufferBytes > 0) b.setTargetBufferBytes(targetBufferBytes)
-        // retainFromKeyframe=true so a short seek back resumes from the buffer
-        // instead of re-downloading. Zero disables it (the 'low' preset).
-        if (backBufferMs > 0) b.setBackBuffer(backBufferMs, true)
+        // Native phone buffers share the Java heap with the rest of the app.
+        val byteLimit = maxHeapBytes?.let {
+            (it / 4).coerceIn(64 * 1024L, Int.MAX_VALUE.toLong()).toInt()
+        }
+        val target = when {
+            byteLimit == null -> targetBufferBytes
+            targetBufferBytes > 0 -> minOf(targetBufferBytes, byteLimit)
+            else -> byteLimit
+        }
+        if (target > 0) b.setTargetBufferBytes(target)
+        if (byteLimit != null) b.setPrioritizeTimeOverSizeThresholds(false)
+        val back = if (byteLimit == null) backBufferMs else minOf(backBufferMs, 10_000)
+        // Keep a short buffered rewind without retaining a large 4K history.
+        if (back > 0) b.setBackBuffer(back, true)
         return b.build()
     }
 

@@ -3167,5 +3167,16 @@
 	"mangaTranslationPreview": "Translation preview",
 	"mangaTranslationAppearanceFitNote": "Long text may scale down to stay inside its detected area and avoid overlap.",
 	"mangaTranslationShowOriginal": "Show original page",
-	"mangaTranslationShowTranslations": "Show translations"
+	"mangaTranslationShowTranslations": "Show translations",
+	"androidPlayerCache": "Android player cache",
+	"androidPlayerCacheSummary": "Optional memory and storage caching",
+	"androidPlayerCacheNote": "Normal buffering is automatic; extra cache is separate. Applies to direct video streams in the experimental Android player. HLS/DASH keep their current buffering. Changes apply when you open the player again.",
+	"androidNativeCache": "Extra memory cache",
+	"androidNativeCacheDescription": "Extra read-ahead memory outside the Java heap. Limited by available device memory.",
+	"androidNativeCacheUnavailable": "Native memory caching is unavailable on this device.",
+	"androidDiskCache": "Storage cache",
+	"androidDiskCacheDescription": "Reuse video data on phone storage. Old cached data is removed when the limit is reached. At least 512 MB of free storage is kept.",
+	"androidCacheClear": "Clear playback cache",
+	"androidCacheClearBusy": "Close the Android player before clearing its playback cache.",
+	"androidCacheUnavailable": "Could not read the playback cache. Try opening this page again."
 }

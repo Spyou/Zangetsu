@@ -1070,6 +1070,23 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
             ],
           ),
 
+          if (Platform.isAndroid && !sl<AppMode>().isTv)
+            SettingsCard(
+              margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              children: [
+                SettingsTile(
+                  icon: Icons.storage_rounded,
+                  title: context.l10n.androidPlayerCache,
+                  subtitle: context.l10n.androidPlayerCacheSummary,
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const NativePlayerCacheScreen(),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+
           // ── Subtitles ───────────────────────────────────────────────────
           SettingsSectionLabel(context.l10n.subtitles),
           SettingsCard(

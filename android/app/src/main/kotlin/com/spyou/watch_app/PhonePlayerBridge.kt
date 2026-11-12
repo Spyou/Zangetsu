@@ -40,6 +40,23 @@ object PhonePlayerBridge {
         ch.setMethodCallHandler { call, result ->
             when (call.method) {
                 "launch" -> launch(activity, call, result)
+                "cacheInfo", "clearPlaybackCache" -> Thread({
+                    try {
+                        val prepared = runCatching {
+                            PhonePlaybackCache.prepare(activity,
+                                (call.argument<Number>("diskCacheGb")?.toLong() ?: 2L).coerceIn(1L, 20L) * 1024 * 1024 * 1024)
+                        }
+                        val response: Any = if (call.method == "clearPlaybackCache") {
+                            prepared.getOrThrow()
+                            PhonePlaybackCache.clear()
+                        } else mapOf("nativeLimitMb" to PhonePlaybackCache.nativeLimitMb(activity),
+                            "javaLimitMb" to Runtime.getRuntime().maxMemory() / (4L * 1024 * 1024),
+                            "diskBytes" to PhonePlaybackCache.sizeBytes(), "cacheError" to prepared.isFailure)
+                        activity.runOnUiThread { result.success(response) }
+                    } catch (_: Exception) {
+                        activity.runOnUiThread { result.error("cache_unavailable", "Playback cache is unavailable", null) }
+                    }
+                }, "ZangetsuCacheInfo").start()
                 // Dart-side enrichment (e.g. the show synopsis) arriving after
                 // launch. Session-checked: a stale Dart session's late result
                 // must not paint over the live player's screen.
@@ -128,6 +145,12 @@ object PhonePlayerBridge {
                 call.argument<Boolean>("softwareDecoding") ?: false,
             )
             i.putExtra(PhonePlayerIntent.EXTRA_DECODER_MODE, call.argument<String>("decoderMode"))
+            i.putExtra(PhonePlayerIntent.EXTRA_NATIVE_CACHE, call.argument<Boolean>("nativeCacheEnabled") ?: false)
+            i.putExtra(PhonePlayerIntent.EXTRA_NATIVE_CACHE_MB,
+                (call.argument<Number>("nativeCacheMb")?.toInt() ?: 128).coerceIn(32, 512))
+            i.putExtra(PhonePlayerIntent.EXTRA_DISK_CACHE, call.argument<Boolean>("diskCacheEnabled") ?: false)
+            i.putExtra(PhonePlayerIntent.EXTRA_DISK_CACHE_GB,
+                (call.argument<Number>("diskCacheGb")?.toInt() ?: 2).coerceIn(1, 20))
             i.putExtra(
                 PhonePlayerIntent.EXTRA_SPEED,
                 (call.argument<Number>("defaultSpeed") ?: 1.0).toFloat(),

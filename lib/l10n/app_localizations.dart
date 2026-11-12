@@ -9885,6 +9885,72 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Show translations'**
   String get mangaTranslationShowTranslations;
+
+  /// No description provided for @androidPlayerCache.
+  ///
+  /// In en, this message translates to:
+  /// **'Android player cache'**
+  String get androidPlayerCache;
+
+  /// No description provided for @androidPlayerCacheSummary.
+  ///
+  /// In en, this message translates to:
+  /// **'Optional memory and storage caching'**
+  String get androidPlayerCacheSummary;
+
+  /// No description provided for @androidPlayerCacheNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Normal buffering is automatic; extra cache is separate. Applies to direct video streams in the experimental Android player. HLS/DASH keep their current buffering. Changes apply when you open the player again.'**
+  String get androidPlayerCacheNote;
+
+  /// No description provided for @androidNativeCache.
+  ///
+  /// In en, this message translates to:
+  /// **'Extra memory cache'**
+  String get androidNativeCache;
+
+  /// No description provided for @androidNativeCacheDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Extra read-ahead memory outside the Java heap. Limited by available device memory.'**
+  String get androidNativeCacheDescription;
+
+  /// No description provided for @androidNativeCacheUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Native memory caching is unavailable on this device.'**
+  String get androidNativeCacheUnavailable;
+
+  /// No description provided for @androidDiskCache.
+  ///
+  /// In en, this message translates to:
+  /// **'Storage cache'**
+  String get androidDiskCache;
+
+  /// No description provided for @androidDiskCacheDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Reuse video data on phone storage. Old cached data is removed when the limit is reached. At least 512 MB of free storage is kept.'**
+  String get androidDiskCacheDescription;
+
+  /// No description provided for @androidCacheClear.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear playback cache'**
+  String get androidCacheClear;
+
+  /// No description provided for @androidCacheClearBusy.
+  ///
+  /// In en, this message translates to:
+  /// **'Close the Android player before clearing its playback cache.'**
+  String get androidCacheClearBusy;
+
+  /// No description provided for @androidCacheUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not read the playback cache. Try opening this page again.'**
+  String get androidCacheUnavailable;
 }
 
 class _AppLocalizationsDelegate

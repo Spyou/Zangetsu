@@ -368,6 +368,7 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer-dash:1.7.1")
     implementation("androidx.media3:media3-exoplayer-smoothstreaming:1.7.1")
     implementation("androidx.media3:media3-ui:1.7.1")
+    implementation("androidx.media3:media3-database:1.7.1")
     // Prebuilt FFmpeg software AUDIO decoders (Dolby AC3/E-AC3, DTS) — the exact
     // artifact CloudStream uses, straight off Maven Central (native .so bundled,
     // no source build). Version pairs with media3 1.7.1; nextlib 0.9.0 predates

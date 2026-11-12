@@ -600,6 +600,32 @@ class PlaybackPrefs {
   Future<void> setVideoBufferLength(String value) =>
       _box.put('videoBufferLength', value);
 
+  bool get phoneNativeCacheEnabled =>
+      _box.get('phoneNativeCacheEnabled', defaultValue: false) == true;
+  Future<void> setPhoneNativeCacheEnabled(bool value) =>
+      _box.put('phoneNativeCacheEnabled', value);
+
+  bool get phoneDiskCacheEnabled =>
+      _box.get('phoneDiskCacheEnabled', defaultValue: false) == true;
+  Future<void> setPhoneDiskCacheEnabled(bool value) =>
+      _box.put('phoneDiskCacheEnabled', value);
+
+  int get phoneNativeCacheMb {
+    final value = _box.get('phoneNativeCacheMb');
+    return value is num && value.isFinite ? value.toInt().clamp(32, 512) : 128;
+  }
+
+  Future<void> setPhoneNativeCacheMb(int value) =>
+      _box.put('phoneNativeCacheMb', value.clamp(32, 512));
+
+  int get phoneDiskCacheGb {
+    final value = _box.get('phoneDiskCacheGb');
+    return value is num && value.isFinite ? value.toInt().clamp(1, 20) : 2;
+  }
+
+  Future<void> setPhoneDiskCacheGb(int value) =>
+      _box.put('phoneDiskCacheGb', value.clamp(1, 20));
+
   /// mpv `demuxer-max-bytes` for the current size preset (default = 128MiB).
   String get bufferMaxBytes => bufferMaxBytesFor(videoBufferSize);
 

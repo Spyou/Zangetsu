@@ -5705,4 +5705,43 @@ class AppLocalizationsTr extends AppLocalizations {
 
   @override
   String get mangaTranslationShowTranslations => 'Show translations';
+
+  @override
+  String get androidPlayerCache => 'Android player cache';
+
+  @override
+  String get androidPlayerCacheSummary => 'Optional memory and storage caching';
+
+  @override
+  String get androidPlayerCacheNote =>
+      'Normal buffering is automatic; extra cache is separate. Applies to direct video streams in the experimental Android player. HLS/DASH keep their current buffering. Changes apply when you open the player again.';
+
+  @override
+  String get androidNativeCache => 'Extra memory cache';
+
+  @override
+  String get androidNativeCacheDescription =>
+      'Extra read-ahead memory outside the Java heap. Limited by available device memory.';
+
+  @override
+  String get androidNativeCacheUnavailable =>
+      'Native memory caching is unavailable on this device.';
+
+  @override
+  String get androidDiskCache => 'Storage cache';
+
+  @override
+  String get androidDiskCacheDescription =>
+      'Reuse video data on phone storage. Old cached data is removed when the limit is reached. At least 512 MB of free storage is kept.';
+
+  @override
+  String get androidCacheClear => 'Clear playback cache';
+
+  @override
+  String get androidCacheClearBusy =>
+      'Close the Android player before clearing its playback cache.';
+
+  @override
+  String get androidCacheUnavailable =>
+      'Could not read the playback cache. Try opening this page again.';
 }
