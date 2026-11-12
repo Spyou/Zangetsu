@@ -30,6 +30,7 @@ object PhonePlayerIntent {
     const val EXTRA_SUB_DEFAULTS = "subDefaults"
     const val EXTRA_ACCENT = "accentColor"
     const val EXTRA_SW_DECODE = "softwareDecoding"
+    const val EXTRA_DECODER_MODE = "decoderMode"
     const val EXTRA_SPEED = "defaultSpeed"
     const val EXTRA_SUB_SCALE = "subtitleScale"
     const val EXTRA_SUB_FG = "subtitleFgColor"

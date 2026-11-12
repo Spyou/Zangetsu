@@ -127,6 +127,7 @@ object PhonePlayerBridge {
                 PhonePlayerIntent.EXTRA_SW_DECODE,
                 call.argument<Boolean>("softwareDecoding") ?: false,
             )
+            i.putExtra(PhonePlayerIntent.EXTRA_DECODER_MODE, call.argument<String>("decoderMode"))
             i.putExtra(
                 PhonePlayerIntent.EXTRA_SPEED,
                 (call.argument<Number>("defaultSpeed") ?: 1.0).toFloat(),

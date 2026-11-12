@@ -1468,16 +1468,15 @@ class _DetailViewState extends State<_DetailView>
       );
       return;
     }
-    // External player and no mirror picked yet: open the mirror sheet first
-    // (Stremio mode already does this via its links sheet), so the viewer
-    // chooses which link the external player gets instead of auto-playing
-    // the resolver's pick. Built-in keeps the fast auto-resolve.
+    // Only another app needs a link choice before launch; both in-app players
+    // keep their automatic launch.
+    final playerPackage =
+        playerOverride?.package ?? sl<PlaybackPrefs>().externalPlayerPackage;
     if (initialSource == null &&
         index >= 0 &&
         index < episodes.length &&
-        (playerOverride?.package ??
-                sl<PlaybackPrefs>().externalPlayerPackage)
-            .isNotEmpty) {
+        playerPackage.isNotEmpty &&
+        playerPackage != PlaybackPrefs.androidPlayerId) {
       final ep = episodes[index];
       final sources = await _resolveWithProgress(ep);
       if (!mounted) return;

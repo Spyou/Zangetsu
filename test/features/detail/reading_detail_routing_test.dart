@@ -1212,13 +1212,18 @@ void main() {
     },
   );
 
-  testWidgets(
-    'anime detail keeps Play (not Read) and still pushes the player — the '
-    'hard constraint: anime/movie behaviour is unchanged',
-    (tester) async {
+  for (final playerPackage in ['', PlaybackPrefs.androidPlayerId]) {
+    testWidgets('built-in player $playerPackage opens without a mirror sheet', (
+      tester,
+    ) async {
       tester.view.physicalSize = const Size(800, 2400);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.reset);
+
+      sl.unregister<PlaybackPrefs>();
+      sl.registerSingleton<PlaybackPrefs>(
+        _FakePlaybackPrefs(playerPackage: playerPackage),
+      );
 
       final sourceRepository = _StubSourceRepository(_animeDetail);
       sl.registerSingleton<SourceRepository>(sourceRepository);
@@ -1258,8 +1263,39 @@ void main() {
         tester.element(find.byType(DetailScreen)),
       );
       expect(pushedWidget, isA<PlayerScreen>());
-    },
-  );
+      expect(sourceRepository.sourceCalls, isEmpty);
+    });
+  }
+
+  testWidgets('external app still asks for a mirror before launch', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(800, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    sl.unregister<PlaybackPrefs>();
+    sl.registerSingleton<PlaybackPrefs>(
+      _FakePlaybackPrefs(playerPackage: 'external.player'),
+    );
+    final repository = _StubSourceRepository(_animeDetail);
+    sl.registerSingleton<SourceRepository>(repository);
+    sl.registerSingleton<CatalogueRepository>(repository);
+    await tester.pumpWidget(
+      const MaterialApp(home: DetailScreen(item: _animeItem)),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 699));
+    await tester.tap(find.text('Play').first);
+    await tester.pumpAndSettle();
+    expect(find.text('Play mirror'), findsOneWidget);
+    expect(find.byType(PlayerScreen), findsNothing);
+    expect(repository.sourceCalls, hasLength(1));
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.text('Play mirror'), findsNothing);
+    expect(find.byType(DetailScreen), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 
   // ── Chapter row (reading-only minimal design) ──────────────────────────────
   //

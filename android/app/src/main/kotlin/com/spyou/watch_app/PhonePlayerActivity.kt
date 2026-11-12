@@ -2820,14 +2820,19 @@ class PhonePlayerActivity : Activity() {
         }
     }
 
-    private fun renderersFactory(): RenderersFactory =
-        if (intent.getBooleanExtra(PhonePlayerIntent.EXTRA_SW_DECODE, false)) {
-            NextRenderersFactory(this)
-                .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
-                .setEnableDecoderFallback(true)
-        } else {
+    private fun renderersFactory(): RenderersFactory {
+        val mode = intent.getStringExtra(PhonePlayerIntent.EXTRA_DECODER_MODE)
+            ?: if (intent.getBooleanExtra(PhonePlayerIntent.EXTRA_SW_DECODE, false)) "sw" else "auto"
+        val factory = if (mode == "direct") {
             DefaultRenderersFactory(this)
+        } else {
+            NextRenderersFactory(this).setExtensionRendererMode(
+                if (mode == "sw") DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER
+                else DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON,
+            )
         }
+        return factory.setEnableDecoderFallback(true)
+    }
 
     /** Tell Dart the session ended, with where it ended. Runs exactly once. */
     private fun reportClosed() {
