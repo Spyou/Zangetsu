@@ -755,7 +755,7 @@ class _ControlsOverlay extends StatelessWidget {
                         WidgetsBinding.instance.addPostFrameCallback((_) {
                           if (d > Duration.zero) onDurationChanged(d);
                         });
-                        return _SeekRow(
+                        return PlayerSeekBar(
                           controller: c,
                           duration: d > Duration.zero ? d : duration,
                           onInteract: onInteract,

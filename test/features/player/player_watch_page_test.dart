@@ -1009,4 +1009,34 @@ void main() {
     expect(theme.activeTrackColor, AppColors.accent);
     expect(theme.thumbColor, AppColors.accent);
   });
+  for (final direction in TextDirection.values) {
+    testWidgets('portrait timeline stays left to right in $direction', (
+      tester,
+    ) async {
+      Duration? sought;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Directionality(
+            textDirection: direction,
+            child: _page(onSeek: (value) => sought = value),
+          ),
+        ),
+      );
+      await tester.pump();
+      final slider = find.byType(Slider);
+      expect(Directionality.of(tester.element(slider)), TextDirection.ltr);
+      expect(
+        Directionality.of(tester.element(find.text('The Fall').first)),
+        direction,
+      );
+      final time = tester.getRect(find.text('00:00 / 24:00'));
+      final fullscreen = tester.getRect(find.byIcon(Icons.fullscreen_rounded));
+      expect(time.center.dx, lessThan(fullscreen.center.dx));
+      final rect = tester.getRect(slider);
+      await tester.tapAt(Offset(rect.left + rect.width * .75, rect.center.dy));
+      await tester.pump();
+      expect(sought!.inMinutes, greaterThan(12));
+      expect(tester.takeException(), isNull);
+    });
+  }
 }

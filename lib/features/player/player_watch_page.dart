@@ -662,92 +662,95 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
 
   /// The only subtree that rebuilds every second.
   Widget _seekRow() {
-    return AnimatedOpacity(
-      opacity: _controlsVisible ? 1 : 0,
-      duration: const Duration(milliseconds: 200),
-      child: IgnorePointer(
-        ignoring: !_controlsVisible,
-        child: StreamBuilder<Duration?>(
-          stream: widget.durationStream,
-          initialData: widget.initialDuration,
-          builder: (context, durSnap) {
-            final total = durSnap.data ?? Duration.zero;
-            return StreamBuilder<Duration>(
-              stream: widget.positionStream,
-              initialData: widget.initialPosition,
-              builder: (context, posSnap) {
-                final pos = posSnap.data ?? Duration.zero;
-                final maxMs = total.inMilliseconds > 0
-                    ? total.inMilliseconds.toDouble()
-                    : 1.0;
-                final value = pos.inMilliseconds.toDouble().clamp(0.0, maxMs);
-                return Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      SizedBox(
-                        height: 24,
-                        child: SliderTheme(
-                          data: SliderTheme.of(context).copyWith(
-                            activeTrackColor: AppColors.accent,
-                            inactiveTrackColor: Colors.white.withValues(
-                              alpha: 0.35,
-                            ),
-                            thumbColor: AppColors.accent,
-                            thumbShape: const RoundSliderThumbShape(
-                              enabledThumbRadius: 5,
-                            ),
-                            overlayShape: const RoundSliderOverlayShape(
-                              overlayRadius: 10,
-                            ),
-                            trackHeight: 3,
-                            trackShape: const RectangularSliderTrackShape(),
-                          ),
-                          child: Slider(
-                            padding: EdgeInsets.zero,
-                            value: value,
-                            max: maxMs,
-                            onChanged: (v) => widget.onSeek(
-                              Duration(milliseconds: v.round()),
-                            ),
-                          ),
-                        ),
-                      ),
-                      SizedBox(
-                        height: 32,
-                        child: Row(
-                          children: [
-                            Text(
-                              '${formatWatchTime(pos)} / ${formatWatchTime(total)}',
-                              style: AppText.caption.copyWith(
-                                color: Colors.white,
-                                fontSize: 13,
+    return Directionality(
+      textDirection: TextDirection.ltr,
+      child: AnimatedOpacity(
+        opacity: _controlsVisible ? 1 : 0,
+        duration: const Duration(milliseconds: 200),
+        child: IgnorePointer(
+          ignoring: !_controlsVisible,
+          child: StreamBuilder<Duration?>(
+            stream: widget.durationStream,
+            initialData: widget.initialDuration,
+            builder: (context, durSnap) {
+              final total = durSnap.data ?? Duration.zero;
+              return StreamBuilder<Duration>(
+                stream: widget.positionStream,
+                initialData: widget.initialPosition,
+                builder: (context, posSnap) {
+                  final pos = posSnap.data ?? Duration.zero;
+                  final maxMs = total.inMilliseconds > 0
+                      ? total.inMilliseconds.toDouble()
+                      : 1.0;
+                  final value = pos.inMilliseconds.toDouble().clamp(0.0, maxMs);
+                  return Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SizedBox(
+                          height: 24,
+                          child: SliderTheme(
+                            data: SliderTheme.of(context).copyWith(
+                              activeTrackColor: AppColors.accent,
+                              inactiveTrackColor: Colors.white.withValues(
+                                alpha: 0.35,
                               ),
+                              thumbColor: AppColors.accent,
+                              thumbShape: const RoundSliderThumbShape(
+                                enabledThumbRadius: 5,
+                              ),
+                              overlayShape: const RoundSliderOverlayShape(
+                                overlayRadius: 10,
+                              ),
+                              trackHeight: 3,
+                              trackShape: const RectangularSliderTrackShape(),
                             ),
-                            const Spacer(),
-                            IconButton(
+                            child: Slider(
                               padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints.tightFor(
-                                width: 32,
-                                height: 32,
+                              value: value,
+                              max: maxMs,
+                              onChanged: (v) => widget.onSeek(
+                                Duration(milliseconds: v.round()),
                               ),
-                              icon: const Icon(
-                                Icons.fullscreen_rounded,
-                                color: Colors.white,
-                                size: 24,
-                              ),
-                              onPressed: widget.onFullscreen,
                             ),
-                          ],
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                );
-              },
-            );
-          },
+                        SizedBox(
+                          height: 32,
+                          child: Row(
+                            children: [
+                              Text(
+                                '${formatWatchTime(pos)} / ${formatWatchTime(total)}',
+                                style: AppText.caption.copyWith(
+                                  color: Colors.white,
+                                  fontSize: 13,
+                                ),
+                              ),
+                              const Spacer(),
+                              IconButton(
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints.tightFor(
+                                  width: 32,
+                                  height: 32,
+                                ),
+                                icon: const Icon(
+                                  Icons.fullscreen_rounded,
+                                  color: Colors.white,
+                                  size: 24,
+                                ),
+                                onPressed: widget.onFullscreen,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              );
+            },
+          ),
         ),
       ),
     );

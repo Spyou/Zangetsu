@@ -183,10 +183,12 @@
                 android:layout_height="wrap_content"
                 android:gravity="center"
                 android:orientation="horizontal"
+                android:layoutDirection="ltr"
                 android:paddingHorizontal="4dp">
 
                 <TextView
                     android:id="@+id/time_chip"
+                    android:textDirection="ltr"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:background="@drawable/phone_player_time_chip"
@@ -203,6 +205,7 @@
 
             <SeekBar
                 android:id="@+id/seek"
+                android:layoutDirection="ltr"
                 android:layout_width="match_parent"
                 android:layout_height="48dp"
                 android:max="1000"
