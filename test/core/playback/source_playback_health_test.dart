@@ -143,6 +143,18 @@ void main() {
       expect(store.playbackLooksDead('ani:1'), isTrue);
       expect(store.playbackLooksDead('mihon:2'), isFalse);
     });
+
+    test('clearSkippable revives dead search marks only', () async {
+      await store.record('fourkhdhub', SourceOutcome.error);
+      await store.record('torbox', SourceOutcome.error);
+      await store.recordPlayback('fourkhdhub', 'show-a', ok: false);
+      expect(store.isSkippable('fourkhdhub'), isTrue);
+      expect(store.isSkippable('torbox'), isTrue);
+      await store.clearSkippable();
+      expect(store.isSkippable('fourkhdhub'), isFalse);
+      expect(store.isSkippable('torbox'), isFalse);
+      expect(store.playbackFailures('fourkhdhub'), 1);
+    });
   });
 
   test('an unknown source reads clean, never throws', () {

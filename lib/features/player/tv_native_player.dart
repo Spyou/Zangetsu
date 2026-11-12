@@ -16,7 +16,6 @@ import '../../core/playback/playback_prefs.dart';
 import '../../core/playback/title_prefs.dart';
 import '../../core/playback/resume_store.dart';
 import '../../core/playback/skip_service.dart';
-import '../../core/playback/source_health_store.dart';
 import '../../core/playback/source_selection.dart';
 import '../../core/playback/subtitle_font_stage.dart';
 import '../../core/playback/subtitle_search_service.dart';
@@ -541,21 +540,17 @@ class TvNativePlayer {
           failedSourceId,
           category: _category,
         );
+        debugPrint(
+          '[TvNativePlayer] playbackError · excluded $failedSourceId '
+          'for this episode (code=$code)',
+        );
       }
     }
-    // Mark the source as unhealthy — it will be skipped (skippable) for the
-    // next 30 min, after which it auto-recovers (never permanent).
-    try {
-      if (sl.isRegistered<SourceHealthStore>()) {
-        await sl<SourceHealthStore>().record(
-          failedSourceId,
-          SourceOutcome.error,
-        );
-        debugPrint(
-          '[TvNativePlayer] playbackError · marked $failedSourceId unhealthy',
-        );
-      }
-    } catch (_) {}
+    // Deliberately NOT SourceHealthStore: a decoder/capability failure
+    // (Dolby Vision on the emulator, unsupported profile, …) means THIS
+    // player couldn't play a good link — not that the source is down. Writing
+    // SourceOutcome.error here made fourkhdhub/torbox skippable for 30 min,
+    // so switching to VLC still couldn't resolve a URL.
   }
 
   /// Human label for a mirror in the Server picker: the provider's own name,

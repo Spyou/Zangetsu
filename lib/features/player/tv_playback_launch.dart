@@ -7,6 +7,7 @@ import '../../core/models/episode.dart';
 import '../../core/models/media_item.dart';
 import '../../core/models/video_source.dart';
 import '../../core/platform/apple_tv.dart';
+import '../../core/playback/source_health_store.dart';
 import '../../core/playback/tv_playback_helpers.dart';
 import '../../core/playback/playback_prefs.dart';
 import '../../core/playback/resume_store.dart';
@@ -103,9 +104,10 @@ Future<void> launchTvPlayback({
     'episodes=${episodes.length} startIdx=$startIndex '
     'showUrl=$showUrl showTitle=$showTitle category=$category',
   );
-  // Episode tap / Retry — drop any remembered miss and over-budget cooldowns
-  // so sources that timed out on the last attempt get another chance. Auto
-  // next-episode and probes keep those cooldowns; this path is intentional.
+  // Episode tap / Retry — drop any remembered miss, over-budget cooldowns,
+  // and skippable health so sources that timed out / were wrongly marked
+  // dead on the last attempt get another chance. Auto next-episode and
+  // hops keep those marks; this path is intentional.
   //
   // NOT on a source hop: invalidateWinner clears the unplayable set too, so
   // hopping through here would forget the dead source we just excluded and
@@ -117,6 +119,9 @@ Future<void> launchTvPlayback({
       startIndex < episodes.length &&
       sl.isRegistered<PlaybackResolver>()) {
     sl<PlaybackResolver>().invalidateWinner(episodes[startIndex].url);
+    if (sl.isRegistered<SourceHealthStore>()) {
+      await sl<SourceHealthStore>().clearSkippable();
+    }
   }
   final mode = playbackContentMode(showUrl: showUrl);
   if (!await ensureTvPlaybackSourcesOrPrompt(context, showUrl: showUrl)) {

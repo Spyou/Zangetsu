@@ -250,4 +250,26 @@ class SourceHealthStore extends ChangeNotifier {
     await _box?.delete(id);
     notifyListeners();
   }
+
+  /// Forgets every currently-skippable (fresh dead) search record.
+  ///
+  /// Used on an intentional play/Retry so a prior decoder failure that wrongly
+  /// wrote [SourceOutcome.error] cannot lock those sources out for
+  /// [recheckWindow]. Playback evidence ([clearPlayback]) is untouched.
+  Future<void> clearSkippable() async {
+    final box = _box;
+    if (box == null) return;
+    final ids = box.keys
+        .whereType<String>()
+        .where((k) => !k.startsWith('play::') && isSkippable(k))
+        .toList();
+    if (ids.isEmpty) return;
+    for (final id in ids) {
+      await box.delete(id);
+    }
+    debugPrint(
+      '[source-health] clearSkippable · revived ${ids.join(", ")}',
+    );
+    notifyListeners();
+  }
 }
