@@ -26,6 +26,7 @@ import '../../core/ui/poster_card.dart';
 import '../../core/ui/list_status_sheet.dart';
 import '../../core/ui/states.dart';
 import '../../core/ui/tracker_entry_sheet.dart';
+import '../../core/ui/tracker_badge.dart';
 import '../detail/detail_screen.dart';
 import 'cubit/my_list_cubit.dart';
 import 'cubit/tracker_list_cubit.dart';
@@ -236,6 +237,7 @@ class _MyListScreenTvState extends State<MyListScreenTv> {
               score: entry.score,
               tmdbIsTv: entry.tmdbIsTv,
               customLists: entry.customLists,
+              isPrivate: entry.isPrivate,
               onFind: () => _openTrackerItem(context, entry.item),
               onChanged: () => context.read<TrackerListCubit>().refresh(),
             );
@@ -355,6 +357,8 @@ class _MyListScreenTvState extends State<MyListScreenTv> {
           logoItem: entry.item,
           topRightBadge: entry.item.sourceId == stremioSourceId
               ? const StremioLibraryBadge()
+              : entry.isPrivate
+              ? const PrivateTrackerBadge()
               : null,
           imageUrl: entry.item.cover,
           wideImageUrl: entry.item.banner,

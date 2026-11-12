@@ -115,6 +115,7 @@ class _FakeTracker extends ChangeNotifier implements Tracker {
     WatchStatus? status,
     double? score,
     int? progress,
+    bool? isPrivate,
     MediaKind kind = MediaKind.anime,
   }) async {}
 

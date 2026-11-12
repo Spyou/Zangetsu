@@ -14,6 +14,7 @@ import 'package:watch_app/core/stremio/stremio_library_badge.dart';
 import 'package:watch_app/core/tracker/tracker.dart';
 import 'package:watch_app/core/tracker/tracker_hub.dart';
 import 'package:watch_app/core/tv/tv_focusable.dart';
+import 'package:watch_app/core/ui/tracker_badge.dart';
 import 'package:watch_app/features/home/cubit/my_list_cubit.dart';
 import 'package:watch_app/features/home/cubit/tracker_list_cubit.dart';
 import 'package:watch_app/features/home/my_list_screen_tv.dart';
@@ -300,6 +301,23 @@ void main() {
       expect(find.text('Attack on Titan'), findsNothing);
     },
   );
+
+  testWidgets('private tracker entries show a lock badge', (tester) async {
+    final anilist = _FakeTracker(name: 'AniList', connected: true);
+    await _registerHub([anilist]);
+    final cubit = _makeCubit([]);
+    final tlCubit = _SeededTrackerListCubit()
+      ..seed(TrackerListState(
+        source: TrackerSource(anilist),
+        status: TrackerListStatus.ready,
+        entries: [const MyListEntry(trackerItem, WatchStatus.planning, isPrivate: true)],
+      ));
+    addTearDown(cubit.close);
+    addTearDown(tlCubit.close);
+    await tester.pumpWidget(_pumpTree(myList: cubit, trackerList: tlCubit));
+    await tester.pumpAndSettle();
+    expect(find.byType(PrivateTrackerBadge), findsOneWidget);
+  });
 
   testWidgets('Shuffle on a tracker list opens its title details', (
     tester,

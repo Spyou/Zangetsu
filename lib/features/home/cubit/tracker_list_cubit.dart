@@ -207,6 +207,7 @@ class TrackerListCubit extends Cubit<TrackerListState> {
             tmdbIsTv: t.tmdbIsTv,
             updatedAt: t.updatedAt,
             customLists: t.customLists,
+            isPrivate: t.isPrivate,
           ),
       ];
       _cache[tracker] = entries;

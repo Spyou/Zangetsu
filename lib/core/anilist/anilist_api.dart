@@ -36,7 +36,7 @@ String mediaEntryQuery(MediaKind kind) {
   return 'query(\$id:Int){ Media(id:\$id){ ${_totalCountFields(kind)} '
       'title{ romaji english native } '
       'nextAiringEpisode{ episode airingAt } '
-      'mediaListEntry{ status score(format:POINT_10) progress } } }';
+      'mediaListEntry{ status score(format:POINT_10) progress private } } }';
 }
 
 /// Query text for [AniListApi.searchMedia]. [novelFormat] narrows a manga
@@ -61,7 +61,7 @@ String mediaListCollectionQuery(MediaKind kind) {
   final airingField = kind == MediaKind.manga ? '' : ' nextAiringEpisode{episode}';
   return 'query(\$u:String){ MediaListCollection(userName:\$u, type:${_anilistType(kind)}){ '
       'lists { status entries { status progress score(format:POINT_10) '
-      'updatedAt customLists(asArray:true) '
+      'updatedAt private customLists(asArray:true) '
       'media { id idMal title { romaji english native }$formatField '
       '${_totalCountFields(kind)}$airingField coverImage { large } } } } } }';
 }
@@ -714,7 +714,7 @@ class AniListApi {
     return Map<String, dynamic>.from(m);
   }
 
-  /// Write any subset of status/progress/score for [mediaId] in one mutation.
+  /// Write any subset of status/progress/score/privacy in one mutation.
   /// [scoreRaw] is 0–100 (AniList's internal scale, independent of the user's
   /// display format). Returns true on success.
   Future<bool> saveEntry({
@@ -722,6 +722,7 @@ class AniListApi {
     String? status,
     int? progress,
     int? scoreRaw,
+    bool? isPrivate,
   }) async {
     final varDefs = <String>['\$mediaId:Int'];
     final args = <String>['mediaId:\$mediaId'];
@@ -740,6 +741,11 @@ class AniListApi {
       varDefs.add('\$scoreRaw:Int');
       args.add('scoreRaw:\$scoreRaw');
       vars['scoreRaw'] = scoreRaw;
+    }
+    if (isPrivate != null) {
+      varDefs.add(r'$private:Boolean');
+      args.add(r'private:$private');
+      vars['private'] = isPrivate;
     }
     final d = await _gql(
       'mutation(${varDefs.join(',')}){'

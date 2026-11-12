@@ -747,6 +747,7 @@ class SimklService extends ChangeNotifier implements Tracker {
     WatchStatus? status,
     double? score,
     int? progress,
+    bool? isPrivate,
     MediaKind kind = MediaKind.anime,
   }) async {
     // The library just changed, so the cached copy is a lie. Dropped

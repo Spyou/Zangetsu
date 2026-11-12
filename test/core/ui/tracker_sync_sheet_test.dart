@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:watch_app/core/app_mode.dart';
+import 'package:watch_app/core/anilist/anilist_service.dart';
+import 'package:watch_app/core/models/media_item.dart';
+import 'package:watch_app/core/models/provider_info.dart';
+import 'package:watch_app/core/ui/tracker_entry_sheet.dart';
 import 'package:watch_app/core/di/injector.dart';
 import 'package:watch_app/core/models/watch_status.dart';
 import 'package:watch_app/core/tracker/tracker.dart';
@@ -19,6 +23,9 @@ class _FakeTracker extends ChangeNotifier implements Tracker {
   TrackerEntry? entry;
   MediaKind? lastFetchKind;
   MediaKind? lastUpdateKind;
+  bool? lastPrivacy;
+  int writes = 0;
+  bool failSave = false;
 
   @override
   String get displayName => name;
@@ -113,8 +120,12 @@ class _FakeTracker extends ChangeNotifier implements Tracker {
     WatchStatus? status,
     double? score,
     int? progress,
+    bool? isPrivate,
     MediaKind kind = MediaKind.anime,
   }) async {
+    if (failSave) throw StateError('offline');
+    writes++;
+    lastPrivacy = isPrivate;
     lastUpdateKind = kind;
   }
 
@@ -122,12 +133,19 @@ class _FakeTracker extends ChangeNotifier implements Tracker {
   Future<List<TrackerSearchResult>> searchEntries(
     String query, {
     MediaKind kind = MediaKind.anime,
+    bool novelFormat = false,
   }) async => const [];
 
   @override
   Map<String, dynamic>? exportSession() => null;
   @override
   Future<void> importSession(Map<String, dynamic> session) async {}
+}
+
+class _FakeAniList extends _FakeTracker implements AniListService {
+  _FakeAniList({TrackerEntry? entry}) : super('AniList', entry: entry);
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 void main() {
@@ -142,6 +160,132 @@ void main() {
   });
 
   Widget harness(Widget child) => MaterialApp(home: Scaffold(body: child));
+
+  testWidgets('combined editor reads AniList privacy, saves only to AniList', (
+    tester,
+  ) async {
+    final al = _FakeAniList(
+      entry: const TrackerEntry(
+        trackerName: 'AniList',
+        onList: true,
+        isPrivate: true,
+      ),
+    );
+    final mal = _FakeTracker(
+      'MyAnimeList',
+      entry: const TrackerEntry(trackerName: 'MyAnimeList', onList: true),
+    );
+    sl.registerSingleton<TrackerHub>(TrackerHub([mal, al]));
+    await tester.pumpWidget(
+      harness(const TrackerSyncSheet(title: 'Anime', isAnime: true)),
+    );
+    await tester.pumpAndSettle();
+    final toggle = find.byType(SwitchListTile);
+    expect(tester.widget<SwitchListTile>(toggle).value, isTrue);
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
+    final apply = find.text('Apply');
+    await tester.ensureVisible(apply);
+    await tester.tap(apply);
+    await tester.pumpAndSettle();
+    expect(al.lastPrivacy, isFalse);
+    expect(al.writes, 1);
+    expect(mal.writes, 0);
+  });
+
+  for (final editScore in [false, true]) {
+    testWidgets('private entry stays private when score edit is $editScore', (
+      tester,
+    ) async {
+      final al = _FakeAniList(
+        entry: const TrackerEntry(
+          trackerName: 'AniList',
+          onList: true,
+          isPrivate: true,
+        ),
+      );
+      sl.registerSingleton<TrackerHub>(TrackerHub([al]));
+      await tester.pumpWidget(
+        harness(TrackerSyncSheet(title: 'Anime', isAnime: true, tracker: al)),
+      );
+      await tester.pumpAndSettle();
+      if (editScore) {
+        final increase = find.byIcon(Icons.add_rounded).first;
+        await tester.ensureVisible(increase);
+        await tester.tap(increase);
+        await tester.pumpAndSettle();
+      }
+      final apply = find.text('Apply');
+      await tester.ensureVisible(apply);
+      await tester.tap(apply);
+      await tester.pumpAndSettle();
+      expect(al.writes, editScore ? 1 : 0);
+      expect(al.lastPrivacy, isNull);
+    });
+  }
+
+  testWidgets('failed privacy save stays open and shows a retry message', (
+    tester,
+  ) async {
+    final al = _FakeAniList()..failSave = true;
+    sl.registerSingleton<TrackerHub>(TrackerHub([al]));
+    await tester.pumpWidget(
+      harness(TrackerSyncSheet(title: 'Anime', isAnime: true, tracker: al)),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(SwitchListTile));
+    await tester.pumpAndSettle();
+    final apply = find.text('Apply');
+    await tester.ensureVisible(apply);
+    await tester.tap(apply);
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Could not save changes. Please try again.'),
+      findsOneWidget,
+    );
+    expect(find.byType(SwitchListTile), findsOneWidget);
+  });
+
+  testWidgets('library editor loads privacy and can make entry public', (
+    tester,
+  ) async {
+    final al = _FakeAniList();
+    await tester.pumpWidget(
+      harness(
+        Builder(
+          builder: (context) => TextButton(
+            onPressed: () => showTrackerEntrySheet(
+              context,
+              tracker: al,
+              item: const MediaItem(
+                id: '7',
+                title: 'Anime',
+                url: '',
+                sourceId: '',
+                type: ProviderType.anime,
+                anilistId: 7,
+              ),
+              isPrivate: true,
+            ),
+            child: const Text('Edit'),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('Edit'));
+    await tester.pumpAndSettle();
+    final toggle = find.byType(SwitchListTile);
+    expect(tester.widget<SwitchListTile>(toggle).value, isTrue);
+    await tester.ensureVisible(toggle);
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
+    final apply = find.text('Apply changes');
+    await tester.ensureVisible(apply);
+    await tester.tap(apply);
+    await tester.pumpAndSettle();
+    expect(al.lastPrivacy, isFalse);
+    expect(al.writes, 1);
+  });
 
   testWidgets('anime item (reading: false, the default) shows EPISODES '
       'WATCHED, not CHAPTERS READ', (tester) async {

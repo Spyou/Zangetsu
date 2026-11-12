@@ -103,6 +103,7 @@ List<TrackerListItem> parseAniListCollection(Object? data, MediaKind kind) {
       final updatedSec = (e['updatedAt'] as num?)?.toInt();
       out.add(TrackerListItem(
         customLists: lists,
+        isPrivate: e['private'] == true,
         updatedAt: (updatedSec == null || updatedSec <= 0)
             ? null
             : DateTime.fromMillisecondsSinceEpoch(updatedSec * 1000),
@@ -701,6 +702,7 @@ class AniListService extends ChangeNotifier implements Tracker {
     return TrackerEntry(
       trackerName: displayName,
       onList: entry is Map,
+      isPrivate: entry is Map && entry['private'] == true,
       url: 'https://anilist.co/'
           '${kind == MediaKind.manga ? 'manga' : 'anime'}/$mediaId',
       title: aniListTitle(t, titleLanguagePref),
@@ -731,19 +733,30 @@ class AniListService extends ChangeNotifier implements Tracker {
     WatchStatus? status,
     double? score,
     int? progress,
+    bool? isPrivate,
     MediaKind kind = MediaKind.anime,
   }) async {
-    if (!isConnected) return;
+    if (!isConnected) {
+      if (isPrivate != null) throw StateError('AniList is disconnected');
+      return;
+    }
     final mediaId =
         int.tryParse(pinnedId ?? '') ??
         (await _resolveMedia(malId, title, kind))?.id;
-    if (mediaId == null) return;
+    if (mediaId == null) {
+      if (isPrivate != null) throw StateError('AniList entry not found');
+      return;
+    }
     final ok = await _api.saveEntry(
       mediaId: mediaId,
       status: status?.anilist,
+      isPrivate: isPrivate,
       progress: progress,
       scoreRaw: score == null ? null : (score * 10).round().clamp(0, 100),
     );
+    if (!ok && isPrivate != null) {
+      throw StateError('Could not update AniList privacy');
+    }
     // Keep the scrobbler's high-water mark in step with a manual progress edit,
     // so auto-scrobble won't later "undo" it or re-push an older episode.
     if (ok && progress != null) {

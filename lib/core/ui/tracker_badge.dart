@@ -57,3 +57,22 @@ class TrackerBadge extends StatelessWidget {
     );
   }
 }
+
+class PrivateTrackerBadge extends StatelessWidget {
+  const PrivateTrackerBadge({super.key});
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    label: 'Private AniList entry',
+    child: DecoratedBox(
+      decoration: BoxDecoration(
+        color: const Color(0xB3000000),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: const Padding(
+        padding: EdgeInsets.all(3),
+        child: Icon(Icons.lock_rounded, size: 16, color: Colors.white),
+      ),
+    ),
+  );
+}

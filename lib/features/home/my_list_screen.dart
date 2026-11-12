@@ -34,6 +34,7 @@ import '../../core/ui/poster_card.dart';
 import '../../core/models/provider_info.dart';
 import '../../core/ui/states.dart';
 import '../../core/ui/tracker_entry_sheet.dart';
+import '../../core/ui/tracker_badge.dart';
 import '../auth/auth_cubit.dart';
 import '../auth/auth_screens.dart';
 import '../detail/detail_screen.dart';
@@ -941,6 +942,7 @@ class _MyListViewState extends State<_MyListView> with WidgetsBindingObserver {
                   score: entry.score,
                   tmdbIsTv: entry.tmdbIsTv,
                   customLists: entry.customLists,
+                  isPrivate: entry.isPrivate,
                   onFind: () => _openTrackerItem(context, entry.item),
                   onChanged: () => context.read<TrackerListCubit>().refresh(),
                 ),
@@ -1150,6 +1152,8 @@ class _MyListViewState extends State<_MyListView> with WidgetsBindingObserver {
                 topRightBadge:
                     isMyList && entry.item.sourceId == stremioSourceId
                     ? const StremioLibraryBadge()
+                    : entry.isPrivate
+                    ? const PrivateTrackerBadge()
                     : null,
                 imageUrl: entry.item.cover,
                 wideImageUrl: entry.item.banner,
