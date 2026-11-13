@@ -1710,7 +1710,7 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
             intent.putExtra(TvPlayerActivity.EXTRA_POSITION, (call.argument<Number>("positionMs") ?: 0).toLong())
             intent.putExtra(
                 TvPlayerActivity.EXTRA_DECODER_MODE,
-                (call.argument<Number>("decoderMode") ?: 0).toInt(),
+                (call.argument<Number>("decoderMode") ?: TvPlayerActivity.DECODER_MODE_HARDWARE_FIRST).toInt(),
             )
             intent.putExtra(TvPlayerActivity.EXTRA_EP_COUNT, (call.argument<Number>("episodeCount") ?: 1).toInt())
             intent.putExtra(TvPlayerActivity.EXTRA_START_INDEX, (call.argument<Number>("startIndex") ?: 0).toInt())

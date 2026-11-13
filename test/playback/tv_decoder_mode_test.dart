@@ -21,6 +21,23 @@ void main() {
   });
 
   group('TV decoder mode persistence', () {
+    test('explicit legacy hardware-only selection is preserved', () async {
+      await Hive.box(PlaybackPrefs.boxName).put('tvSoftwareDecoding', false);
+      expect(prefs.tvDecoderMode, TvDecoderMode.hardwareOnly);
+    });
+
+    test(
+      'all saved TV choices survive without changing mobile decoder',
+      () async {
+        final mobileDecoder = prefs.videoDecoder;
+        for (final mode in TvDecoderMode.values) {
+          await prefs.setTvDecoderMode(mode);
+          expect(PlaybackPrefs().tvDecoderMode, mode);
+          expect(prefs.videoDecoder, mobileDecoder);
+        }
+      },
+    );
+
     test('uses stable native-player values for the three choices', () {
       expect(TvDecoderMode.hardwareOnly.wireValue, 0);
       expect(TvDecoderMode.hardwareFirst.wireValue, 1);
@@ -58,7 +75,7 @@ void main() {
     test(
       'PlaybackPrefs reads legacy choice and persists the new mode',
       () async {
-        expect(prefs.tvDecoderMode, TvDecoderMode.hardwareOnly);
+        expect(prefs.tvDecoderMode, TvDecoderMode.hardwareFirst);
 
         await Hive.box(PlaybackPrefs.boxName).put('tvSoftwareDecoding', true);
         expect(prefs.tvDecoderMode, TvDecoderMode.hardwareFirst);

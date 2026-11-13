@@ -2582,15 +2582,9 @@ class TvPlayerActivity : Activity() {
         }
     }
 
-    /**
-     * The TV-only preference selects renderer priority. Hardware-only remains
-     * the default; extension decoders are available only when explicitly
-     * selected, with either hardware-first (ON) or software-first (PREFER)
-     * ordering. Decoder fallback allows ExoPlayer to try the other renderer if
-     * the preferred decoder cannot initialize.
-     */
+    /** Hardware-first by default; explicit TV decoder choices keep their priority. */
     private fun renderersFactory(): RenderersFactory =
-        when (intent.getIntExtra(EXTRA_DECODER_MODE, DECODER_MODE_HARDWARE_ONLY)) {
+        when (intent.getIntExtra(EXTRA_DECODER_MODE, DECODER_MODE_HARDWARE_FIRST)) {
             DECODER_MODE_HARDWARE_FIRST -> NextRenderersFactory(this)
                 .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
                 .setEnableDecoderFallback(true)
