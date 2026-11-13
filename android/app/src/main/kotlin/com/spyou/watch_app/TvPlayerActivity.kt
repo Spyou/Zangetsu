@@ -223,6 +223,7 @@ class TvPlayerActivity : Activity() {
     private var subBgColor = android.graphics.Color.TRANSPARENT
     private var subEdgeType = CaptionStyleCompat.EDGE_TYPE_OUTLINE
     private var subFontPath: String? = null
+    private var subTypeface = android.graphics.Typeface.DEFAULT
     private var subFontFamily = ""
     private var subBgOpacity = 0f
     private var subOutlineId = "outline"
@@ -463,6 +464,7 @@ class TvPlayerActivity : Activity() {
         playerView.addOnLayoutChangeListener { _, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom ->
             if (right - left != oldRight - oldLeft || bottom - top != oldBottom - oldTop) {
                 updateAspectRatioButtonVisibility()
+                player?.currentCues?.let { playerView.subtitleView?.setCues(repositionCues(it.cues)) }
             }
         }
 
@@ -1739,6 +1741,7 @@ class TvPlayerActivity : Activity() {
         // Custom font first, system behind it — otherwise a font without
         // Arabic glyphs renders boxes (see subtitleTypeface).
         val tf = subtitleTypeface(subFontPath.takeUnless { it.isNullOrBlank() })
+        subTypeface = tf
         playerView.subtitleView?.apply {
             setApplyEmbeddedStyles(false)
             setApplyEmbeddedFontSizes(false)
@@ -1767,14 +1770,19 @@ class TvPlayerActivity : Activity() {
      * keeping simultaneous cues on separate rows. Media3's
      * [SubtitleView.setBottomPaddingFraction] only shifts cues that leave line
      * unset — most VTT/SRT/ASS cues set their own line, so without this remapping
-     * Low/Middle/High look identical. See [SubtitleCuePositioning].
+     * Low/Middle/High look identical. See [TvSubtitleCuePositioning].
      */
-    private fun repositionCues(cues: List<Cue>): List<Cue> =
-        SubtitleCuePositioning.position(
+    private fun repositionCues(cues: List<Cue>): List<Cue> {
+        val view = playerView.subtitleView ?: return cues
+        return TvSubtitleCuePositioning.position(
             cues,
             positionPercent = subPositionPref,
             textSizeFraction = SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * subScale,
+            width = view.width - view.paddingLeft - view.paddingRight,
+            height = view.height - view.paddingTop - view.paddingBottom,
+            typeface = subTypeface,
         )
+    }
 
     private fun buildCaptionPos() {
         menuTitle("Position")
