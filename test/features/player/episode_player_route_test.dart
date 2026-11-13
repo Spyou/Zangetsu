@@ -4,6 +4,32 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:watch_app/features/player/episode_player_route.dart';
 
 void main() {
+  testWidgets('native handoff keeps Detail visible on entry and return', (
+    tester,
+  ) async {
+    final nav = GlobalKey<NavigatorState>();
+    await tester.pumpWidget(
+      MaterialApp(
+        navigatorKey: nav,
+        home: const Scaffold(body: Text('Detail')),
+      ),
+    );
+    final route = episodePlayerRoute(
+      nativeHandoff: true,
+      builder: (_) => const SizedBox.shrink(),
+    );
+    nav.currentState!.push(route);
+    await tester.pumpAndSettle();
+    expect(route.opaque, isFalse);
+    expect(route.transitionDuration, Duration.zero);
+    expect(route.reverseTransitionDuration, Duration.zero);
+    expect(find.text('Detail'), findsOneWidget);
+    nav.currentState!.pop();
+    await tester.pump();
+    expect(find.text('Detail'), findsOneWidget);
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('episode starts building during the slide and slides back down', (
     tester,
   ) async {

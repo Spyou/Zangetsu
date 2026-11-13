@@ -59,6 +59,18 @@
         <item name="android:textColorPrimary">@color/settings_text</item>
     </style>
 
+    <style name="Theme.PhonePlayer" parent="android:style/Theme.Black.NoTitleBar.Fullscreen">
+        <item name="android:windowDisablePreview">true</item>
+        <item name="android:windowAnimationStyle">@style/PhonePlayerWindowAnimation</item>
+    </style>
+
+    <style name="PhonePlayerWindowAnimation">
+        <item name="android:activityOpenEnterAnimation">@anim/phone_player_enter</item>
+        <item name="android:activityOpenExitAnimation">@anim/phone_player_hold</item>
+        <item name="android:activityCloseEnterAnimation">@anim/phone_player_hold</item>
+        <item name="android:activityCloseExitAnimation">@anim/phone_player_exit</item>
+    </style>
+
     <!-- Native TV player control-row button (Episodes / Audio & Subs / Next).
          The Activity handles focus highlight (accent tint + scale) in code so it
          can use the caller's theme accent. -->

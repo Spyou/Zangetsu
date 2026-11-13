@@ -44,3 +44,21 @@ class EpisodePlayerRoute extends MaterialPageRoute<void> {
     );
   }
 }
+
+/// The activity handles entry and exit; the Flutter handoff paints nothing.
+class NativePlayerHandoffRoute extends PageRouteBuilder<void> {
+  NativePlayerHandoffRoute({required WidgetBuilder builder})
+    : super(
+        opaque: false,
+        transitionDuration: Duration.zero,
+        reverseTransitionDuration: Duration.zero,
+        pageBuilder: (context, _, _) => builder(context),
+      );
+}
+
+PageRoute<void> episodePlayerRoute({
+  required WidgetBuilder builder,
+  bool nativeHandoff = false,
+}) => nativeHandoff
+    ? NativePlayerHandoffRoute(builder: builder)
+    : EpisodePlayerRoute(builder: builder);

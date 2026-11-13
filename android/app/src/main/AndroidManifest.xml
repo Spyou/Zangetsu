@@ -252,7 +252,7 @@
             android:name=".PhonePlayerActivity"
             android:exported="false"
             android:screenOrientation="unspecified"
-            android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen"
+            android:theme="@style/Theme.PhonePlayer"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode" />
         <!-- Google Cast Framework configuration. -->
         <meta-data

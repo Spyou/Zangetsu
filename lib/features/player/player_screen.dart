@@ -25,6 +25,7 @@ import '../../core/tracker/tracker_hub.dart';
 import '../../core/playback/external_player.dart';
 import '../../core/logging/app_logger.dart';
 import 'phone_playback_launch.dart';
+import 'episode_player_route.dart';
 import '../../core/download/download_manager.dart';
 import '../../core/download/download_record.dart';
 import '../downloads/episode_download_icon.dart';
@@ -1160,6 +1161,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(context.l10n.androidPlayerUnavailable)),
         );
+        _leavePlayer();
         return;
       }
       _leavePlayer();
@@ -3494,6 +3496,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final route = ModalRoute.of(context);
+    if (route is NativePlayerHandoffRoute) {
+      return const SizedBox.shrink();
+    }
     // A Watch Together join that couldn't resolve the room's source — explain
     // it clearly instead of a blank/bouncing screen.
     if (_loadError != null) {
