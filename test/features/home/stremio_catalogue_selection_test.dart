@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 import 'package:http/http.dart' as http;
@@ -40,6 +41,17 @@ class _FakeSecrets implements StremioSecretStore {
 
   @override
   Future<void> write(String key, String value) async => values[key] = value;
+}
+
+class _TestContentModeCubit extends Cubit<ContentMode>
+    implements ContentModeCubit {
+  _TestContentModeCubit() : super(ContentMode.manga);
+
+  @override
+  Future<void> setMode(ContentMode mode) async => emit(mode);
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 void main() {
@@ -97,16 +109,24 @@ void main() {
       expect(HomeCataloguePrefs.sourceIdFor(ContentMode.anime), 'stremio');
     });
 
-    test('reading modes keep their own source choice', () async {
-      await HomeCataloguePrefs.setSourceIdFor(ContentMode.manga, 'mihan-a');
-      await HomeCataloguePrefs.setCatalogue(
-        ContentMode.anime,
-        HomeCatalogueKind.stremio,
-      );
+    test(
+      'Stremio overrides reading mode without erasing its source choice',
+      () async {
+        await HomeCataloguePrefs.setSourceIdFor(ContentMode.manga, 'mihan-a');
+        await HomeCataloguePrefs.setCatalogue(
+          ContentMode.anime,
+          HomeCatalogueKind.stremio,
+        );
 
-      expect(HomeCataloguePrefs.sourceIdFor(ContentMode.manga), 'mihan-a');
-      expect(HomeCataloguePrefs.sourceIdFor(ContentMode.anime), 'stremio');
-    });
+        expect(HomeCataloguePrefs.sourceIdFor(ContentMode.manga), 'stremio');
+        expect(HomeCataloguePrefs.sourceIdFor(ContentMode.anime), 'stremio');
+        await HomeCataloguePrefs.setCatalogue(
+          ContentMode.manga,
+          HomeCatalogueKind.source,
+        );
+        expect(HomeCataloguePrefs.sourceIdFor(ContentMode.manga), 'mihan-a');
+      },
+    );
 
     test('switching back does not erase saved source ids', () async {
       await HomeCataloguePrefs.setSourceIdFor(ContentMode.anime, 'source-a');
@@ -180,6 +200,10 @@ void main() {
       tester,
     ) async {
       final manager = sl<StremioManager>();
+      await sl.unregister<ContentModeCubit>();
+      final mode = _TestContentModeCubit();
+      sl.registerSingleton<ContentModeCubit>(mode);
+      addTearDown(mode.close);
       await tester.runAsync(() async {
         for (final item in manager.installations) {
           await manager.remove(item.id);
@@ -208,6 +232,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(selection, HomeCatalogueSelection.stremio);
+      expect(sl<ContentModeCubit>().state, ContentMode.anime);
     });
   });
 }

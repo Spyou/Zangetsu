@@ -67,12 +67,12 @@ class HomeCataloguePrefs {
   /// The saved source for [mode], falling back to the pre-split single slot
   /// once (then the next write for [mode] takes over permanently).
   ///
-  /// While Stremio is the Home catalogue, video modes show Stremio. Reading
-  /// modes keep their own source choice — Stremio is a watching catalogue.
+  /// Stremio stays selected even if the previous content mode was reading.
+  /// Per-mode source choices remain saved for when source catalogue is selected.
   static String? sourceIdFor(ContentMode mode) {
     if (!Hive.isBoxOpen(boxName)) return null;
     final box = Hive.box(boxName);
-    if (stremioSelected && mode == ContentMode.anime) return 'stremio';
+    if (stremioSelected) return 'stremio';
     final id = box.get(_keyFor(mode));
     if (id is String && id.isNotEmpty) return id;
     return sourceId;

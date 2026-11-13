@@ -223,6 +223,7 @@ Future<HomeCatalogueSelection?> showMetadataSwitchSheet(
     return HomeCatalogueSelection.metadata;
   }
   if (picked == HomeCatalogueSelection.stremio) {
+    await sl<ContentModeCubit>().setMode(ContentMode.anime);
     return HomeCatalogueSelection.stremio;
   }
   if (picked is VideoProvider) {

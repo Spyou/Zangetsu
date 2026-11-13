@@ -128,6 +128,101 @@ void main() {
     );
   }
 
+  testWidgets('missing Stremio addons never select another installed source', (
+    tester,
+  ) async {
+    final repository = _StubSourceRepository(const [
+      (id: 'source-a', name: 'Source A'),
+    ]);
+    final selected = <String>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SourceCatalogueHomeContent(
+            repository: repository,
+            initialSourceId: 'stremio',
+            showSourcePicker: false,
+            onSourceSelected: selected.add,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(repository.homeCalls, isEmpty);
+    expect(selected, everyElement('stremio'));
+    expect(find.text('No addons added'), findsOneWidget);
+    expect(find.text('Add addons'), findsOneWidget);
+  });
+
+  testWidgets('explicit Stremio catalogue cannot fall back to a manga source', (
+    tester,
+  ) async {
+    final repository = _StubSourceRepository(const [
+      (id: 'mihon:one', name: 'Manga Source'),
+      (id: 'stremio', name: 'Stremio'),
+    ]);
+    final selected = <String>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: SourceCatalogueHomeContent(
+              repository: repository,
+              initialSourceId: 'stremio',
+              mode: ContentMode.manga,
+              showSourcePicker: false,
+              onSourceSelected: selected.add,
+              sectionBuilder: (section) => Text(section.title),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(selected, ['stremio']);
+    expect(repository.homeCalls.single.sourceId, 'stremio');
+  });
+
+  testWidgets('adding and removing addons keeps Stremio selected', (
+    tester,
+  ) async {
+    final manager = _NotifyingStremioManager();
+    sl.registerSingleton<StremioManager>(manager);
+    final sources = <({String id, String name})>[
+      (id: 'source-a', name: 'Source A'),
+    ];
+    final repository = _StubSourceRepository(sources);
+    final selected = <String>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: SourceCatalogueHomeContent(
+              repository: repository,
+              initialSourceId: 'stremio',
+              showSourcePicker: false,
+              onSourceSelected: selected.add,
+              sectionBuilder: (section) => Text(section.title),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('No addons added'), findsOneWidget);
+    sources.add((id: 'stremio', name: 'Stremio'));
+    manager.changed();
+    await tester.pumpAndSettle();
+    expect(find.text('stremio catalogue'), findsOneWidget);
+    sources.removeWhere((s) => s.id == 'stremio');
+    manager.changed();
+    await tester.pumpAndSettle();
+    expect(find.text('No addons added'), findsOneWidget);
+    expect(find.text('stremio catalogue'), findsNothing);
+    expect(selected, everyElement('stremio'));
+    expect(repository.homeCalls.map((call) => call.sourceId), ['stremio']);
+  });
+
   testWidgets('same-named Stremio rows all render in catalogue order', (
     tester,
   ) async {
