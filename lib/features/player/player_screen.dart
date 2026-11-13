@@ -2939,6 +2939,19 @@ class _PlayerScreenState extends State<PlayerScreen> {
       serverName: _c.state.active?.label,
       onTogglePlay: _c.togglePlay,
       onSeek: (d) => _c.player.seek(d),
+      onSeekBy: _locked ? null : _c.seekBy,
+      doubleTapSeconds: _seekSeconds,
+      onHoldSpeedChanged: !_holdSpeedEnabled || _locked
+          ? null
+          : (holding) {
+              if (_c.isClosed) return;
+              if (holding) {
+                _rateBeforeHold = rateToRestoreAfterHold(_c.player.state.rate);
+                _c.setRate(2.0);
+              } else {
+                _c.setRate(_rateBeforeHold);
+              }
+            },
       onPrevious: () => _c.playPrevious(),
       onNext: () => _c.playNext(),
       onFullscreen: _enterFullscreen,

@@ -50,6 +50,9 @@ class PlayerWatchPage extends StatefulWidget {
     this.coverUrl,
     required this.onTogglePlay,
     required this.onSeek,
+    this.onSeekBy,
+    this.doubleTapSeconds = 10,
+    this.onHoldSpeedChanged,
     required this.onPrevious,
     required this.onNext,
     required this.onFullscreen,
@@ -121,6 +124,9 @@ class PlayerWatchPage extends StatefulWidget {
 
   final VoidCallback onTogglePlay;
   final ValueChanged<Duration> onSeek;
+  final ValueChanged<Duration>? onSeekBy;
+  final int doubleTapSeconds;
+  final ValueChanged<bool>? onHoldSpeedChanged;
   final VoidCallback onPrevious;
   final VoidCallback onNext;
   final VoidCallback onFullscreen;
@@ -148,6 +154,16 @@ enum _WatchRowAction { watched, mirror }
 class _PlayerWatchPageState extends State<PlayerWatchPage> {
   bool _controlsVisible = true;
   bool _expanded = false;
+  Timer? _videoTapTimer;
+  Timer? _videoSeekTimer;
+  Timer? _videoFeedbackTimer;
+  int _lastVideoTapSide = 0;
+  int _pendingVideoSeek = 0;
+  int _videoSeekSide = 0;
+  int _videoSeekSeconds = 0;
+  bool _showAfterVideoTap = false;
+  bool _holdingSpeed = false;
+  ValueChanged<bool>? _heldSpeedCallback;
   late bool _playing = widget.initialPlaying;
   StreamSubscription<bool>? _playingSub;
   Timer? _hideTimer;
@@ -213,6 +229,7 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
 
   @override
   void dispose() {
+    _cancelVideoGestures();
     _hideTimer?.cancel();
     _playingSub?.cancel();
     _frameSub?.cancel();
@@ -366,6 +383,13 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
   @override
   void didUpdateWidget(PlayerWatchPage oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if ((!oldWidget.loading && widget.loading) ||
+        oldWidget.header.title != widget.header.title ||
+        oldWidget.header.subtitle != widget.header.subtitle ||
+        (oldWidget.onHoldSpeedChanged != null &&
+            widget.onHoldSpeedChanged == null)) {
+      _cancelVideoGestures();
+    }
     if (_fingerprint(widget.episodes) != _lastFingerprint) {
       _lastFingerprint = _fingerprint(widget.episodes);
       _revealedIndex = null;
@@ -394,6 +418,138 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
       if (_playing) _armHide();
     }
   }
+
+  void _flushVideoSeek() {
+    _videoSeekTimer?.cancel();
+    final seconds = _pendingVideoSeek;
+    _pendingVideoSeek = 0;
+    if (mounted && !widget.loading && seconds != 0) {
+      widget.onSeekBy?.call(Duration(seconds: seconds));
+    }
+  }
+
+  void _tapVideo(TapUpDetails details, double width) {
+    if (widget.onSeekBy == null || widget.loading || !_frameUp) {
+      _poke();
+      return;
+    }
+    final side = details.localPosition.dx < width / 3
+        ? -1
+        : details.localPosition.dx > width * 2 / 3
+        ? 1
+        : 0;
+    final repeated =
+        side != 0 &&
+        _lastVideoTapSide == side &&
+        (_videoTapTimer?.isActive ?? false);
+    _videoTapTimer?.cancel();
+    _lastVideoTapSide = side;
+    if (side == 0) {
+      _showAfterVideoTap = false;
+      _poke();
+      return;
+    }
+    if (repeated) {
+      _showAfterVideoTap = false;
+      if (_videoSeekSide != side) {
+        _flushVideoSeek();
+        _videoSeekSeconds = 0;
+      }
+      _videoSeekSide = side;
+      _videoSeekSeconds += widget.doubleTapSeconds;
+      _pendingVideoSeek += side * widget.doubleTapSeconds;
+      _videoSeekTimer?.cancel();
+      _videoSeekTimer = Timer(
+        const Duration(milliseconds: 350),
+        _flushVideoSeek,
+      );
+      _videoFeedbackTimer?.cancel();
+      _videoFeedbackTimer = Timer(const Duration(milliseconds: 800), () {
+        if (mounted) {
+          setState(() {
+            _videoSeekSide = 0;
+            _videoSeekSeconds = 0;
+          });
+        }
+      });
+      setState(() {});
+    } else {
+      _showAfterVideoTap = !_controlsVisible;
+      if (_controlsVisible) _poke();
+    }
+    _videoTapTimer = Timer(const Duration(milliseconds: 280), () {
+      _lastVideoTapSide = 0;
+      if (mounted && _showAfterVideoTap && !_controlsVisible) _poke();
+      _showAfterVideoTap = false;
+    });
+  }
+
+  void _startSpeedHold() {
+    if (widget.loading || !_frameUp || widget.onHoldSpeedChanged == null) {
+      return;
+    }
+    _videoTapTimer?.cancel();
+    _lastVideoTapSide = 0;
+    _showAfterVideoTap = false;
+    _heldSpeedCallback = widget.onHoldSpeedChanged;
+    _heldSpeedCallback!(true);
+    setState(() => _holdingSpeed = true);
+  }
+
+  void _endSpeedHold({bool rebuild = true}) {
+    if (!_holdingSpeed) return;
+    _holdingSpeed = false;
+    _heldSpeedCallback?.call(false);
+    _heldSpeedCallback = null;
+    if (rebuild && mounted) setState(() {});
+  }
+
+  void _cancelVideoGestures() {
+    _videoTapTimer?.cancel();
+    _videoSeekTimer?.cancel();
+    _videoFeedbackTimer?.cancel();
+    _lastVideoTapSide = 0;
+    _pendingVideoSeek = 0;
+    _videoSeekSide = 0;
+    _videoSeekSeconds = 0;
+    _showAfterVideoTap = false;
+    _endSpeedHold(rebuild: false);
+  }
+
+  Widget _videoGestureLabel(String text, {bool speed = false}) => DecoratedBox(
+    decoration: BoxDecoration(
+      color: speed ? Colors.black.withValues(alpha: 0.5) : Colors.black54,
+      borderRadius: BorderRadius.circular(speed ? 13 : 14),
+    ),
+    child: Padding(
+      padding: speed
+          ? const EdgeInsets.fromLTRB(10, 6, 12, 6)
+          : const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (speed) ...[
+            const Icon(
+              Icons.fast_forward_rounded,
+              color: Colors.white,
+              size: 18,
+            ),
+            const SizedBox(width: 5),
+          ],
+          Text(
+            text,
+            style: AppText.caption.copyWith(
+              color: Colors.white,
+              fontWeight: FontWeight.w600,
+              fontSize: speed ? 13.5 : null,
+              height: speed ? 1.1 : null,
+              letterSpacing: speed ? 0.3 : null,
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -530,9 +686,48 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
                 ),
               ),
               Positioned.fill(
-                child: GestureDetector(
-                  behavior: HitTestBehavior.translucent,
-                  onTap: _poke,
+                child: LayoutBuilder(
+                  builder: (context, constraints) => GestureDetector(
+                    behavior: HitTestBehavior.translucent,
+                    onTapUp: (details) =>
+                        _tapVideo(details, constraints.maxWidth),
+                    onLongPressStart: widget.onHoldSpeedChanged == null
+                        ? null
+                        : (_) => _startSpeedHold(),
+                    onLongPressEnd: widget.onHoldSpeedChanged == null
+                        ? null
+                        : (_) => _endSpeedHold(),
+                    onLongPressCancel: widget.onHoldSpeedChanged == null
+                        ? null
+                        : () => _endSpeedHold(),
+                  ),
+                ),
+              ),
+              Positioned.fill(
+                key: const ValueKey('watch-seek-feedback'),
+                child: IgnorePointer(
+                  child: _videoSeekSide == 0
+                      ? const SizedBox.shrink()
+                      : Align(
+                          alignment: Alignment(
+                            _videoSeekSide < 0 ? -.65 : .65,
+                            0,
+                          ),
+                          child: _videoGestureLabel(
+                            '${_videoSeekSide < 0 ? '−' : '+'}${_videoSeekSeconds}s',
+                          ),
+                        ),
+                ),
+              ),
+              Positioned(
+                key: const ValueKey('watch-speed-feedback'),
+                top: 12,
+                left: 0,
+                right: 0,
+                child: IgnorePointer(
+                  child: _holdingSpeed
+                      ? Center(child: _videoGestureLabel('2×', speed: true))
+                      : const SizedBox.shrink(),
                 ),
               ),
               Positioned(
@@ -739,7 +934,10 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
                                   color: Colors.white,
                                   size: 24,
                                 ),
-                                onPressed: widget.onFullscreen,
+                                onPressed: () {
+                                  _flushVideoSeek();
+                                  widget.onFullscreen();
+                                },
                               ),
                             ],
                           ),

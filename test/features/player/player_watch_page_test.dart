@@ -26,6 +26,9 @@ PlayerWatchPage _page({
   VoidCallback? onNext,
   VoidCallback? onFullscreen,
   ValueChanged<Duration>? onSeek,
+  ValueChanged<Duration>? onSeekBy,
+  ValueChanged<bool>? onHoldSpeedChanged,
+  int doubleTapSeconds = 10,
   void Function()? onComments,
   void Function(bool)? onAutoplayChanged,
   void Function(int)? onOpenEpisode,
@@ -64,6 +67,9 @@ PlayerWatchPage _page({
     episodes: episodes,
     onTogglePlay: onTogglePlay ?? () {},
     onSeek: onSeek ?? (_) {},
+    onSeekBy: onSeekBy,
+    onHoldSpeedChanged: onHoldSpeedChanged,
+    doubleTapSeconds: doubleTapSeconds,
     onPrevious: onPrevious ?? () {},
     onNext: onNext ?? () {},
     onFullscreen: onFullscreen ?? () {},
@@ -89,6 +95,161 @@ Future<void> _pump(WidgetTester tester, PlayerWatchPage page) {
 }
 
 void main() {
+  Offset videoSide(WidgetTester tester, double side) {
+    final rect = tester.getRect(find.byKey(const ValueKey('watch-video')));
+    return Offset(rect.left + rect.width * side, rect.top + rect.height * .24);
+  }
+
+  testWidgets('video double taps seek left and right by the saved step', (
+    tester,
+  ) async {
+    final seeks = <Duration>[];
+    await _pump(tester, _page(onSeekBy: seeks.add, doubleTapSeconds: 15));
+    for (final side in [.15, .85]) {
+      await tester.tapAt(videoSide(tester, side));
+      await tester.pump(const Duration(milliseconds: 60));
+      await tester.tapAt(videoSide(tester, side));
+      await tester.pump(const Duration(milliseconds: 360));
+    }
+    expect(seeks, [const Duration(seconds: -15), const Duration(seconds: 15)]);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('rapid video seek taps combine into one jump', (tester) async {
+    final seeks = <Duration>[];
+    await _pump(tester, _page(onSeekBy: seeks.add));
+    for (var i = 0; i < 3; i++) {
+      await tester.tapAt(videoSide(tester, .85));
+      await tester.pump(const Duration(milliseconds: 60));
+    }
+    expect(seeks, isEmpty);
+    await tester.pump(const Duration(milliseconds: 360));
+    expect(seeks, [const Duration(seconds: 20)]);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('video hold starts temporary speed and releases on finger up', (
+    tester,
+  ) async {
+    final holds = <bool>[];
+    await _pump(tester, _page(onHoldSpeedChanged: holds.add));
+    final gesture = await tester.startGesture(videoSide(tester, .85));
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(holds, [true]);
+    expect(find.text('2×'), findsOneWidget);
+    await gesture.up();
+    await tester.pump();
+    expect(holds, [true, false]);
+    expect(find.text('2×'), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('cancelled holds and leaving the page restore temporary speed', (
+    tester,
+  ) async {
+    for (final cancel in [true, false]) {
+      final holds = <bool>[];
+      await _pump(tester, _page(onHoldSpeedChanged: holds.add));
+      final gesture = await tester.startGesture(videoSide(tester, .85));
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(holds, [true]);
+      if (cancel) {
+        await gesture.cancel();
+        await tester.pump();
+      } else {
+        await tester.pumpWidget(const SizedBox());
+        await gesture.up();
+      }
+      expect(holds, [true, false]);
+      await tester.pumpWidget(const SizedBox());
+    }
+  });
+
+  testWidgets(
+    'disabled hold and control buttons do not trigger video gestures',
+    (tester) async {
+      final seeks = <Duration>[];
+      var plays = 0;
+      await _pump(
+        tester,
+        _page(onSeekBy: seeks.add, onTogglePlay: () => plays++),
+      );
+      final play = find.byKey(const ValueKey('watch-play'));
+      await tester.tap(play);
+      await tester.pump(const Duration(milliseconds: 60));
+      await tester.tap(play);
+      await tester.pump(const Duration(milliseconds: 360));
+      expect(plays, 2);
+      expect(seeks, isEmpty);
+      final gesture = await tester.startGesture(videoSide(tester, .85));
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(find.text('2×'), findsNothing);
+      await gesture.up();
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets('episode loading cancels a pending seek and active hold', (
+    tester,
+  ) async {
+    final seeks = <Duration>[];
+    final holds = <bool>[];
+    await _pump(
+      tester,
+      _page(onSeekBy: seeks.add, onHoldSpeedChanged: holds.add),
+    );
+    await tester.tapAt(videoSide(tester, .15));
+    await tester.pump(const Duration(milliseconds: 60));
+    await tester.tapAt(videoSide(tester, .15));
+    await _pump(
+      tester,
+      _page(loading: true, onSeekBy: seeks.add, onHoldSpeedChanged: holds.add),
+    );
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(seeks, isEmpty);
+    await _pump(
+      tester,
+      _page(onSeekBy: seeks.add, onHoldSpeedChanged: holds.add),
+    );
+    final gesture = await tester.startGesture(videoSide(tester, .85));
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(holds, [true]);
+    await _pump(tester, _page(loading: true, onHoldSpeedChanged: holds.add));
+    expect(holds, [true, false]);
+    await gesture.up();
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('loading video ignores seek and speed gestures', (tester) async {
+    final seeks = <Duration>[];
+    final holds = <bool>[];
+    await _pump(
+      tester,
+      _page(loading: true, onSeekBy: seeks.add, onHoldSpeedChanged: holds.add),
+    );
+    await tester.tapAt(videoSide(tester, .85));
+    await tester.pump(const Duration(milliseconds: 60));
+    await tester.tapAt(videoSide(tester, .85));
+    await tester.pump(const Duration(milliseconds: 360));
+    final gesture = await tester.startGesture(videoSide(tester, .85));
+    await tester.pump(const Duration(milliseconds: 600));
+    await gesture.up();
+    expect(seeks, isEmpty);
+    expect(holds, isEmpty);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('center taps only toggle video controls', (tester) async {
+    final seeks = <Duration>[];
+    await _pump(tester, _page(onSeekBy: seeks.add));
+    await tester.tapAt(videoSide(tester, .5));
+    await tester.pump(const Duration(milliseconds: 60));
+    await tester.tapAt(videoSide(tester, .5));
+    await tester.pump(const Duration(milliseconds: 360));
+    expect(seeks, isEmpty);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   const demoEpisodes = [
     WatchPageEpisode(
       index: 0,
