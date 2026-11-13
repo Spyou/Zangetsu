@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
 import '../../core/models/media_item.dart';
+import '../../core/playback/playback_prefs.dart';
+import '../../core/stremio/stremio_poster_shape.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/ui/poster_card.dart';
@@ -230,6 +232,30 @@ class _SeeAllScreenState extends State<SeeAllScreen> {
       );
     }
     final cellW = posterGridCellWidth(context);
+    final aspects = [
+      for (final item in _items)
+        stremioPosterAspect(
+          item,
+          landscape: posterLayout(context) == PosterCardLayout.wide,
+        ),
+    ];
+    final heights = [
+      for (var i = 0; i < aspects.length; i++)
+        aspects[i] == null
+            ? cellW / posterGridAspect(context)
+            : posterCellHeight(
+                cellW,
+                artAspectRatio: aspects[i],
+                textScaler: MediaQuery.textScalerOf(context),
+                titleInside: posterTitleInside(
+                  context,
+                  wide: aspects[i]! > 1,
+                  item: _items[i],
+                ),
+              ),
+    ];
+    final gridHeight = heights.fold<double>(0, (a, b) => a > b ? a : b);
+
     final paginating = widget.onLoadMore != null || widget.onSearch != null;
     // A trailing spinner cell spanning the full row while a page is loading.
     final showSpinner = paginating && _loading;
@@ -301,7 +327,9 @@ class _SeeAllScreenState extends State<SeeAllScreen> {
               cacheExtent: 800,
               gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: posterGridColumns(context),
-                childAspectRatio: posterGridAspect(context),
+                childAspectRatio: gridHeight > 0
+                    ? cellW / gridHeight
+                    : posterGridAspect(context),
                 crossAxisSpacing: 12,
                 mainAxisSpacing: 16,
               ),
@@ -310,23 +338,32 @@ class _SeeAllScreenState extends State<SeeAllScreen> {
                 final item = _items[i];
                 return RevealItem(
                   index: i,
-                  child: PosterCard(
-                    title: item.title,
-                    logoItem: item,
-                    imageUrl: item.cover,
-                    wideImageUrl: item.banner,
-                    genres: item.genres,
-                    isAdult: item.isAdult,
-                    headers: item.coverHeaders,
-                    tags: widget.tagsFor?.call(item) ?? const [],
-                    qualityBadge: item.quality,
-                    scoreBadge: item.score,
-                    dubBadge: item.dubBadge,
-                    cellWidth: cellW,
-                    onTap: () => widget.onTap(item),
-                    onLongPress: widget.onLongPress == null
-                        ? null
-                        : () => widget.onLongPress!(item),
+                  child: Align(
+                    alignment: Alignment.topLeft,
+                    child: SizedBox(
+                      height: heights[i],
+                      child: PosterCard(
+                        title: item.title,
+                        logoItem: item,
+                        imageUrl: item.cover,
+                        wideImageUrl: item.banner,
+                        genres: item.genres,
+                        isAdult: item.isAdult,
+                        headers: item.coverHeaders,
+                        tags: widget.tagsFor?.call(item) ?? const [],
+                        qualityBadge: item.quality,
+                        scoreBadge: item.score,
+                        dubBadge: item.dubBadge,
+                        cellWidth: cellW,
+                        wideOverride: aspects[i] == null
+                            ? null
+                            : aspects[i]! > 1,
+                        onTap: () => widget.onTap(item),
+                        onLongPress: widget.onLongPress == null
+                            ? null
+                            : () => widget.onLongPress!(item),
+                      ),
+                    ),
                   ),
                 );
               },

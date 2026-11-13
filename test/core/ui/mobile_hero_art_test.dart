@@ -3,6 +3,22 @@ import 'package:watch_app/core/ui/mobile_hero_art.dart';
 
 void main() {
   test(
+    'Stremio uses addon background even when its poster is hosted on TMDB',
+    () {
+      const poster = 'https://image.tmdb.org/t/p/w500/poster.jpg';
+      const backdrop = 'https://addon.example/background.jpg';
+      expect(mobileHeroArt(poster, backdrop, sourceId: 'stremio'), backdrop);
+      expect(mobileHeroArt(poster, null, sourceId: 'stremio'), poster);
+      expect(mobileHeroArt(poster, '  ', sourceId: 'stremio'), poster);
+      expect(mobileHeroArt(null, null, sourceId: 'stremio'), isNull);
+      expect(
+        mobileHeroArt(poster, backdrop, sourceId: 'tmdb'),
+        contains('/original/poster.jpg'),
+      );
+    },
+  );
+
+  test(
     'wide Stremio heroes keep full-HD decode while other providers stay unchanged',
     () {
       expect(mobileHeroDecodeWidth('stremio', 1080), 1920);

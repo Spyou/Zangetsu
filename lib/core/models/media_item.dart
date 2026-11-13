@@ -27,6 +27,13 @@ class MediaItem extends Equatable {
   /// Addon title artwork; kept out of saved list and cloud payloads.
   @JsonKey(includeFromJson: false, includeToJson: false)
   final String? titleLogo;
+
+  /// Catalogue artwork shape; a browse hint, not saved library data.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  final String? posterShape;
+
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  final String? landscapePoster;
   final String url;
   final ProviderType type;
   final String sourceId;
@@ -124,6 +131,8 @@ class MediaItem extends Equatable {
     this.coverHeaders,
     this.banner,
     this.titleLogo,
+    this.posterShape,
+    this.landscapePoster,
     required this.url,
     required this.type,
     required this.sourceId,
@@ -167,6 +176,8 @@ class MediaItem extends Equatable {
     coverHeaders: coverHeaders,
     banner: banner,
     titleLogo: titleLogo ?? this.titleLogo,
+    posterShape: posterShape,
+    landscapePoster: landscapePoster,
     url: url,
     type: type,
     sourceId: sourceId ?? this.sourceId,
@@ -201,6 +212,8 @@ class MediaItem extends Equatable {
     coverHeaders,
     banner,
     titleLogo,
+    posterShape,
+    landscapePoster,
     url,
     type,
     sourceId,

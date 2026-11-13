@@ -499,6 +499,8 @@ class StremioProvider implements BaseProvider {
       cover: meta.poster,
       banner: meta.background,
       titleLogo: meta.logo,
+      posterShape: meta.posterShape,
+      landscapePoster: meta.landscapePoster,
       url: StremioRef(
         installationId: installation.id,
         type: type,

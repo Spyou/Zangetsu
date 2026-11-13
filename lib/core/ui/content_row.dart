@@ -16,6 +16,7 @@ class ContentRow extends StatelessWidget {
     required this.itemCount,
     required this.itemBuilder,
     this.itemWidth = 124,
+    this.itemWidthForIndex,
     this.itemHeight = 210,
     this.onSeeAll,
   });
@@ -25,6 +26,7 @@ class ContentRow extends StatelessWidget {
   final int itemCount;
   final Widget Function(BuildContext context, int index) itemBuilder;
   final double itemWidth;
+  final double Function(int index)? itemWidthForIndex;
   final double itemHeight;
   final VoidCallback? onSeeAll;
 
@@ -51,7 +53,7 @@ class ContentRow extends StatelessWidget {
             itemBuilder: (context, index) => Padding(
               padding: const EdgeInsetsDirectional.only(end: 12),
               child: SizedBox(
-                width: itemWidth,
+                width: itemWidthForIndex?.call(index) ?? itemWidth,
                 child: RepaintBoundary(
                   child: RevealItem(
                     index: index,

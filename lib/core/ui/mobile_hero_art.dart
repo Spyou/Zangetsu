@@ -1,5 +1,9 @@
 /// Portrait TMDB artwork suits a tall phone hero; keep other catalogues' art.
-String? mobileHeroArt(String? cover, String? banner) {
+String? mobileHeroArt(String? cover, String? banner, {String? sourceId}) {
+  if (sourceId == 'stremio') {
+    if (banner?.trim().isNotEmpty == true) return banner;
+    return cover?.trim().isNotEmpty == true ? cover : null;
+  }
   if (cover != null && cover.startsWith('https://image.tmdb.org/t/p/')) {
     return cover.replaceFirst(RegExp(r'/t/p/[^/]+/'), '/t/p/original/');
   }

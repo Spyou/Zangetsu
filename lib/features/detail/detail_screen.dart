@@ -2409,7 +2409,8 @@ class _DetailViewState extends State<_DetailView>
     final coverUrl =
         mobileHeroArt(
           detail.cover ?? item.cover,
-          detail.banner ?? item.banner,
+          detail.banner ?? item.banner ?? item.landscapePoster,
+          sourceId: detail.sourceId,
         ) ??
         '';
     final coverHeaders = detail.coverHeaders ?? item.coverHeaders;

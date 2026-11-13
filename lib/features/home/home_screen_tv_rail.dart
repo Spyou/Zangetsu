@@ -28,11 +28,52 @@ class TvRail extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final items = section.items;
-    final wide = posterLayout(context) == PosterCardLayout.wide;
-    final titleInside = posterTitleInside(context, wide: wide);
+    final defaultWide = posterLayout(context) == PosterCardLayout.wide;
+    final firstAspect = items.isEmpty
+        ? null
+        : stremioPosterAspect(items.first, landscape: defaultWide);
+    final wide = firstAspect == null ? defaultWide : firstAspect > 1;
+    final titleInside = posterTitleInside(
+      context,
+      wide: wide,
+      item: items.isEmpty ? null : items.first,
+    );
     final cardScale = posterCardScale(context);
-    final cardWidth = (wide ? 240.0 : 150.0) * cardScale;
-    final cardHeight = (wide ? 135.0 : 225.0) * cardScale;
+    final cardWidth =
+        (firstAspect == 1
+            ? 180.0
+            : wide
+            ? 240.0
+            : 150.0) *
+        cardScale;
+    final cardHeight = firstAspect == null
+        ? (wide ? 135.0 : 225.0) * cardScale
+        : cardWidth / firstAspect;
+    final rowHeight = items.fold<double>(cardHeight + (titleInside ? 20 : 44), (
+      height,
+      item,
+    ) {
+      final aspect = stremioPosterAspect(item, landscape: defaultWide);
+      if (aspect == null) {
+        final next =
+            (defaultWide ? 135.0 : 225.0) * cardScale +
+            (posterTitleInside(context, wide: defaultWide, item: item)
+                ? 20
+                : 44);
+        return next > height ? next : height;
+      }
+      final width =
+          (aspect > 1
+              ? 240.0
+              : aspect == 1
+              ? 180.0
+              : 150.0) *
+          cardScale;
+      final next =
+          width / aspect +
+          (posterTitleInside(context, wide: aspect > 1, item: item) ? 20 : 44);
+      return next > height ? next : height;
+    });
     return Padding(
       padding: const EdgeInsets.only(top: 26, bottom: 0),
       child: Column(
@@ -58,7 +99,7 @@ class TvRail extends StatelessWidget {
           // so rows don't float apart — the old +80 left a big dead band under
           // each title.
           SizedBox(
-            height: cardHeight + (titleInside ? 20 : 44),
+            height: rowHeight,
             child: ListView.builder(
               scrollDirection: Axis.horizontal,
               // Don't clip the focused card's scale-up + accent glow. Combined
@@ -120,12 +161,32 @@ class TvRail extends StatelessWidget {
                   );
                 }
                 final item = items[index];
+                final aspect = stremioPosterAspect(
+                  item,
+                  landscape: defaultWide,
+                );
+                final itemWidth = aspect == null
+                    ? (defaultWide ? 240.0 : 150.0) * cardScale
+                    : (aspect > 1
+                              ? 240.0
+                              : aspect == 1
+                              ? 180.0
+                              : 150.0) *
+                          cardScale;
+                final itemHeight = aspect == null
+                    ? (defaultWide ? 135.0 : 225.0) * cardScale
+                    : itemWidth / aspect;
+                final itemTitleInside = posterTitleInside(
+                  context,
+                  wide: aspect == null ? defaultWide : aspect > 1,
+                  item: item,
+                );
                 // Only the poster ART gets the float focus (white outline hugs
                 // the artwork); title placement follows the user's setting.
                 return Padding(
                   padding: const EdgeInsetsDirectional.only(end: 16),
                   child: SizedBox(
-                    width: cardWidth,
+                    width: itemWidth,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
@@ -142,15 +203,16 @@ class TvRail extends StatelessWidget {
                               : () => onLongPress!(item),
                           semanticLabel: item.title,
                           child: SizedBox(
-                            width: cardWidth,
-                            height: cardHeight,
+                            width: itemWidth,
+                            height: itemHeight,
                             child: PosterCard(
                               title: item.title,
                               logoItem: item,
                               imageUrl: item.cover,
                               wideImageUrl: item.banner,
                               headers: item.coverHeaders,
-                              cellWidth: cardWidth,
+                              cellWidth: itemWidth,
+                              wideOverride: aspect == null ? null : aspect > 1,
                               genres: item.genres,
                               isAdult: item.isAdult,
                               qualityBadge: item.quality,
@@ -162,14 +224,14 @@ class TvRail extends StatelessWidget {
                             ),
                           ),
                         ),
-                        if (!titleInside) ...[
+                        if (!itemTitleInside) ...[
                           const SizedBox(height: 10),
                           // The focusable already announces the title.
                           ExcludeSemantics(
                             child: PosterCardTitle(
                               title: item.title,
                               logoItem: item,
-                              width: cardWidth,
+                              width: itemWidth,
                               maxHeight: 20,
                               maxLines: 1,
                               inside: false,

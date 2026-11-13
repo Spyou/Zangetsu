@@ -4,6 +4,7 @@ import '../../core/zmode/tmdb_catalogue.dart';
 import '../settings/streaming_services_screen_tv.dart';
 import 'cubit/home_rows_composer.dart';
 import 'dart:async';
+import '../../core/stremio/stremio_poster_shape.dart';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';

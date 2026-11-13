@@ -35,6 +35,7 @@ import '../../core/profiles/viewer_profile.dart';
 import '../../core/repository/catalogue_repository.dart';
 import '../../core/repository/source_repository.dart';
 import '../../core/stremio/stremio_provider.dart';
+import '../../core/stremio/stremio_poster_shape.dart';
 import '../../core/stremio/stremio_ref.dart';
 import '../../core/state/active_source_cubit.dart';
 import '../../core/theme/app_colors.dart';
@@ -2141,8 +2142,6 @@ class _SearchViewState extends State<_SearchView>
   /// Horizontal (CloudStream-style) poster row for one source. Capped to
   /// [_kSourcePreviewCap]; the header's "See all" opens the full grid.
   Widget _sourceRow(SourceResultGroup g, double cellW) {
-    // Stremio rows follow the global poster size like every other rail;
-    // the old hardcoded cell ignored the setting and looked oversized.
     final itemW = _stremioSearch
         ? posterRowWidth(context)
         : (posterLayout(context) == PosterCardLayout.wide ? 184.0 : 124.0);
@@ -2153,6 +2152,39 @@ class _SearchViewState extends State<_SearchView>
     final preview = overflows
         ? g.items.take(_kSourcePreviewCap).toList(growable: false)
         : g.items;
+    final aspects = [
+      for (final item in preview)
+        stremioPosterAspect(
+          item,
+          landscape: posterLayout(context) == PosterCardLayout.wide,
+        ),
+    ];
+    final widths = [
+      for (final aspect in aspects)
+        aspect == null
+            ? itemW
+            : (aspect > 1
+                      ? 184.0
+                      : aspect == 1
+                      ? 144.0
+                      : 116.0) *
+                  posterCardScale(context),
+    ];
+    final heights = [
+      for (var i = 0; i < preview.length; i++)
+        aspects[i] == null
+            ? itemH
+            : posterCellHeight(
+                widths[i],
+                artAspectRatio: aspects[i],
+                textScaler: MediaQuery.textScalerOf(context),
+                titleInside: posterTitleInside(
+                  context,
+                  wide: aspects[i]! > 1,
+                  item: preview[i],
+                ),
+              ),
+    ];
     final filter = _sourceFilterFor(
       g.sourceId,
       context.read<SearchBloc>().state,
@@ -2170,7 +2202,9 @@ class _SearchViewState extends State<_SearchView>
           filterActive: filter.active,
         ),
         SizedBox(
-          height: itemH,
+          height: heights.isEmpty
+              ? itemH
+              : heights.fold<double>(0, (a, b) => a > b ? a : b),
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -2189,26 +2223,33 @@ class _SearchViewState extends State<_SearchView>
               final item = preview[i];
               return Padding(
                 padding: const EdgeInsetsDirectional.only(end: 12),
-                child: SizedBox(
-                  width: itemW,
-                  child: RepaintBoundary(
-                    child: RevealItem(
-                      index: i,
-                      child: PosterCard(
-                        title: item.title,
-                        logoItem: item,
-                        imageUrl: item.cover,
-                        wideImageUrl: item.banner,
-                        genres: item.genres,
-                        isAdult: item.isAdult,
-                        headers: item.coverHeaders,
-                        tags: _tagsFor(item),
-                        qualityBadge: item.quality,
-                        scoreBadge: item.score,
-                        dubBadge: item.dubBadge,
-                        cellWidth: itemW,
-                        onTap: () => _openDetail(item),
-                        onLongPress: () => _showInfo(item),
+                child: Container(
+                  width: widths[i],
+                  alignment: Alignment.topLeft,
+                  child: SizedBox(
+                    height: heights[i],
+                    child: RepaintBoundary(
+                      child: RevealItem(
+                        index: i,
+                        child: PosterCard(
+                          title: item.title,
+                          logoItem: item,
+                          imageUrl: item.cover,
+                          wideImageUrl: item.banner,
+                          genres: item.genres,
+                          isAdult: item.isAdult,
+                          headers: item.coverHeaders,
+                          tags: _tagsFor(item),
+                          qualityBadge: item.quality,
+                          scoreBadge: item.score,
+                          dubBadge: item.dubBadge,
+                          cellWidth: widths[i],
+                          wideOverride: aspects[i] == null
+                              ? null
+                              : aspects[i]! > 1,
+                          onTap: () => _openDetail(item),
+                          onLongPress: () => _showInfo(item),
+                        ),
                       ),
                     ),
                   ),

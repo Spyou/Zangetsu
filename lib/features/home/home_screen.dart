@@ -9,6 +9,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import '../../core/app_mode.dart';
 import '../../core/aniyomi/aniyomi_image_provider.dart';
 import '../../core/di/injector.dart';
+import '../../core/stremio/stremio_poster_shape.dart';
 import '../../core/metadata/streaming_service.dart';
 import '../../core/zmode/tmdb_catalogue.dart';
 import '../../core/platform/apple_tv.dart';
@@ -1063,31 +1064,73 @@ class _HomeViewState extends State<_HomeView>
   /// already guaranteed non-empty by [SourceRepository.home].
   Widget _sectionRow(HomeSection section, {bool sourceCatalogue = false}) {
     final items = section.items;
+    final aspects = items
+        .map(
+          (item) => stremioPosterAspect(
+            item,
+            landscape: posterLayout(context) == PosterCardLayout.wide,
+          ),
+        )
+        .toList();
+    final widths = [
+      for (final aspect in aspects)
+        aspect == null
+            ? posterRowWidth(context)
+            : (aspect > 1
+                      ? 184
+                      : aspect == 1
+                      ? 144
+                      : 116) *
+                  posterCardScale(context),
+    ];
+    final heights = [
+      for (var i = 0; i < items.length; i++)
+        aspects[i] == null
+            ? posterRowHeight(context)
+            : posterCellHeight(
+                widths[i],
+                artAspectRatio: aspects[i],
+                textScaler: MediaQuery.textScalerOf(context),
+                titleInside: posterTitleInside(
+                  context,
+                  wide: aspects[i]! > 1,
+                  item: items[i],
+                ),
+              ),
+    ];
     return _animated(
       ContentRow(
         title: section.title,
         itemWidth: posterRowWidth(context),
-        itemHeight: posterRowHeight(context),
+        itemWidthForIndex: (i) => widths[i],
+        itemHeight: heights.fold<double>(0, (a, b) => a > b ? a : b),
         itemCount: items.length,
         onSeeAll: () => _openSeeAll(section, sourceCatalogue: sourceCatalogue),
-        itemBuilder: (c, i) => PosterCard(
-          title: items[i].title,
-          logoItem: items[i],
-          imageUrl: items[i].cover,
-          headers: items[i].coverHeaders,
-          cellWidth: posterRowWidth(c),
-          wideImageUrl: items[i].banner,
-          genres: items[i].genres,
-          isAdult: items[i].isAdult,
-          qualityBadge: items[i].quality,
-          scoreBadge: items[i].score,
-          dubBadge: items[i].dubBadge,
-          onTap: () => sourceCatalogue
-              ? _openSourceCatalogueDetail(items[i])
-              : _openDetail(items[i]),
-          onLongPress: () => sourceCatalogue
-              ? _showSourceCatalogueInfo(items[i])
-              : _showInfo(items[i]),
+        itemBuilder: (c, i) => Align(
+          alignment: Alignment.topLeft,
+          child: SizedBox(
+            height: heights[i],
+            child: PosterCard(
+              title: items[i].title,
+              logoItem: items[i],
+              imageUrl: items[i].cover,
+              headers: items[i].coverHeaders,
+              cellWidth: widths[i],
+              wideOverride: aspects[i] == null ? null : aspects[i]! > 1,
+              wideImageUrl: items[i].banner,
+              genres: items[i].genres,
+              isAdult: items[i].isAdult,
+              qualityBadge: items[i].quality,
+              scoreBadge: items[i].score,
+              dubBadge: items[i].dubBadge,
+              onTap: () => sourceCatalogue
+                  ? _openSourceCatalogueDetail(items[i])
+                  : _openDetail(items[i]),
+              onLongPress: () => sourceCatalogue
+                  ? _showSourceCatalogueInfo(items[i])
+                  : _showInfo(items[i]),
+            ),
+          ),
         ),
       ),
     );

@@ -31,6 +31,248 @@ void main() {
     await temp.delete(recursive: true);
   });
 
+  testWidgets('Stremio landscape posters keep the default title below', (
+    tester,
+  ) async {
+    const item = MediaItem(
+      id: 's',
+      title: 'Addon title',
+      url: '',
+      sourceId: 'stremio',
+      type: ProviderType.movie,
+      landscapePoster: 'https://img.example/landscape',
+    );
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Center(
+          child: SizedBox(
+            width: 184,
+            height: 160,
+            child: PosterCard(
+              title: 'Addon title',
+              logoItem: item,
+              wideOverride: true,
+            ),
+          ),
+        ),
+      ),
+    );
+    final title = find.text('Addon title');
+    expect(title, findsOneWidget);
+    expect(
+      tester.getTopLeft(title).dy,
+      greaterThanOrEqualTo(
+        tester.getBottomLeft(find.byType(ClipRSuperellipse)).dy,
+      ),
+    );
+  });
+
+  testWidgets(
+    'Stremio backdrop adds addon logo while keeping the title below',
+    (tester) async {
+      await tester.runAsync(
+        () => PlaybackPrefs().setPosterCardLayout(PosterCardLayout.wide),
+      );
+      const item = MediaItem(
+        id: 's',
+        title: 'Addon title',
+        url: '',
+        sourceId: 'stremio',
+        type: ProviderType.movie,
+        banner: 'https://img.example/backdrop',
+        titleLogo: 'https://img.example/logo',
+      );
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Center(
+            child: SizedBox(
+              width: 184,
+              height: 160,
+              child: PosterCard(
+                title: 'Addon title',
+                logoItem: item,
+                wideOverride: true,
+              ),
+            ),
+          ),
+        ),
+      );
+      expect(
+        find.byWidgetPredicate((w) => w is PosterCardTitle && !w.inside),
+        findsOneWidget,
+      );
+      expect(
+        tester
+            .widgetList<CachedNetworkImage>(find.byType(CachedNetworkImage))
+            .map((image) => image.imageUrl),
+        contains('https://img.example/logo'),
+      );
+    },
+  );
+
+  testWidgets('Stremio keeps explicit inside and below title choices', (
+    tester,
+  ) async {
+    const item = MediaItem(
+      id: 's',
+      title: 'Addon title',
+      url: '',
+      sourceId: 'stremio',
+      type: ProviderType.movie,
+      banner: 'https://img.example/backdrop',
+    );
+    for (final placement in [
+      PosterTitlePlacement.inside,
+      PosterTitlePlacement.below,
+    ]) {
+      await tester.runAsync(
+        () => PlaybackPrefs().setPosterTitlePlacement(placement),
+      );
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Center(
+            child: SizedBox(
+              width: 184,
+              height: 160,
+              child: PosterCard(
+                title: 'Addon title',
+                logoItem: item,
+                wideOverride: true,
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(find.text('Addon title'), findsOneWidget);
+      final inside =
+          tester.getTopLeft(find.text('Addon title')).dy <
+          tester.getBottomLeft(find.byType(ClipRSuperellipse)).dy;
+      expect(inside, placement == PosterTitlePlacement.inside);
+    }
+  });
+
+  testWidgets('Stremio TV landscape cards fit the title below', (tester) async {
+    await tester.runAsync(
+      () => PlaybackPrefs().setPosterCardLayout(PosterCardLayout.wide),
+    );
+    const item = MediaItem(
+      id: 's',
+      title: 'Addon title',
+      url: '',
+      sourceId: 'stremio',
+      type: ProviderType.movie,
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Center(
+          child: SizedBox(
+            width: 240,
+            height: 135,
+            child: TvPosterTile(
+              title: 'Addon title',
+              logoItem: item,
+              onTap: () {},
+            ),
+          ),
+        ),
+      ),
+    );
+    expect(find.text('Addon title'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('saved Stremio cards keep the existing grid geometry', (
+    tester,
+  ) async {
+    await tester.runAsync(
+      () => PlaybackPrefs().setPosterCardLayout(PosterCardLayout.wide),
+    );
+    const item = MediaItem(
+      id: 's',
+      title: 'Saved title',
+      url: '',
+      sourceId: 'stremio',
+      type: ProviderType.movie,
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) {
+            final width = posterGridCellWidth(context);
+            return Center(
+              child: SizedBox(
+                width: width,
+                height: width / posterGridAspect(context),
+                child: PosterCard(
+                  title: item.title,
+                  logoItem: item,
+                  cellWidth: width,
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+    final art = tester.getSize(find.byType(ClipRSuperellipse));
+    expect(art.width / art.height, closeTo(16 / 9, 0.01));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('failed Stremio landscape image tries backdrop then poster', (
+    tester,
+  ) async {
+    await tester.runAsync(
+      () => PlaybackPrefs().setPosterCardLayout(PosterCardLayout.wide),
+    );
+    const item = MediaItem(
+      id: 's',
+      title: 'Title',
+      url: '',
+      sourceId: 'stremio',
+      type: ProviderType.movie,
+      cover: 'https://img.example/poster',
+      banner: 'https://img.example/backdrop',
+      landscapePoster: 'https://img.example/wide',
+    );
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: SizedBox(
+          width: 184,
+          height: 160,
+          child: PosterCard(title: 'Title', logoItem: item, wideOverride: true),
+        ),
+      ),
+    );
+    var image = tester.widget<CachedNetworkImage>(
+      find.byType(CachedNetworkImage),
+    );
+    expect(image.imageUrl, item.landscapePoster);
+    var fallback = image.errorWidget!(
+      tester.element(find.byType(CachedNetworkImage)),
+      image.imageUrl,
+      Exception('404'),
+    );
+    await tester.pumpWidget(MaterialApp(home: fallback));
+    image = tester.widget<CachedNetworkImage>(find.byType(CachedNetworkImage));
+    expect(image.imageUrl, item.banner);
+    fallback = image.errorWidget!(
+      tester.element(find.byType(CachedNetworkImage)),
+      image.imageUrl,
+      Exception('404'),
+    );
+    await tester.pumpWidget(MaterialApp(home: fallback));
+    image = tester.widget<CachedNetworkImage>(find.byType(CachedNetworkImage));
+    expect(image.imageUrl, item.cover);
+    fallback = image.errorWidget!(
+      tester.element(find.byType(CachedNetworkImage)),
+      image.imageUrl,
+      Exception('404'),
+    );
+    expect(fallback, isA<ColoredBox>());
+  });
+
   testWidgets('poster titles fit two scaled lines without shrinking artwork', (
     tester,
   ) async {

@@ -191,6 +191,8 @@ class _Server {
             'name': 'Batman Begins',
             'poster': 'https://img.example/bb.jpg',
             'logo': 'https://img.example/catalogue-title.png',
+            'posterShape': 'landscape',
+            'landscapePoster': 'https://img.example/landscape.jpg',
           },
           {
             'id': 'tt0944947',
@@ -426,6 +428,10 @@ void main() {
     expect(first.sourceId, 'stremio');
     expect(first.id, 'movie:tt0372784');
     expect(first.titleLogo, 'https://img.example/catalogue-title.png');
+    expect(first.posterShape, 'landscape');
+    expect(first.landscapePoster, 'https://img.example/landscape.jpg');
+    expect(first.copyWith(savedFrom: 'stremio').posterShape, 'landscape');
+    expect(first.toJson(), isNot(contains('posterShape')));
     expect(first.url, startsWith('stremio://ref?'));
     expect(StremioRef.parse(first.url).installationId, installation.id);
     expect(sections.first.more?.kind, 'stremio_catalog');
