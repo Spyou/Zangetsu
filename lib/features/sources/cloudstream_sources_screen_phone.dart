@@ -226,8 +226,7 @@ Future<void> _showAddCsRepoDialog(BuildContext context) async {
 
 /// Installed-tab CloudStream group — a chevron header with the UPPERCASE repo
 /// [CsRepoGroup.name] and source count, over a surface card of shared
-/// [_CsScreenSourceRow]s with 0.5 dividers. No delete here (matches the JS
-/// Installed groups, which also have none).
+/// [_CsScreenSourceRow]s with 0.5 dividers.
 class _CsScreenInstalledGroup extends StatefulWidget {
   const _CsScreenInstalledGroup({required this.group, required this.activeId});
 
@@ -312,6 +311,7 @@ class _CsScreenInstalledGroupState extends State<_CsScreenInstalledGroup> {
                         _CsScreenSourceRow(
                           source: sources[i],
                           activeId: widget.activeId,
+                          group: widget.group,
                         ),
                       ],
                     ],
@@ -330,17 +330,51 @@ class _CsScreenInstalledGroupState extends State<_CsScreenInstalledGroup> {
 /// enable/disable. The row body (not the switch) is tappable to make this the
 /// active source. CloudStream has no per-source settings screen state beyond
 /// the shared [SourceSettingsScreen], reached via the tune icon.
-class _CsScreenSourceRow extends StatelessWidget {
-  const _CsScreenSourceRow({required this.source, required this.activeId});
+class _CsScreenSourceRow extends StatefulWidget {
+  const _CsScreenSourceRow({
+    required this.source,
+    required this.activeId,
+    required this.group,
+  });
 
   final CloudStreamProvider source;
   final String activeId;
+  final CsRepoGroup group;
+
+  @override
+  State<_CsScreenSourceRow> createState() => _CsScreenSourceRowState();
+}
+
+class _CsScreenSourceRowState extends State<_CsScreenSourceRow> {
+  bool _removing = false;
+
+  Future<void> _uninstall() async {
+    final source = widget.source;
+    final internalName = (source.sourcePlugin ?? source.name).split('@').first;
+    final plugin =
+        widget.group.catalog
+            .where((p) => p.internalName == internalName)
+            .firstOrNull ??
+        CsPluginMeta(
+          internalName: internalName,
+          name: source.displayName,
+          url: '',
+          version: 0,
+        );
+    setState(() => _removing = true);
+    try {
+      await _uninstallCsPlugin(context, plugin, widget.group.url);
+    } finally {
+      if (mounted) setState(() => _removing = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final source = widget.source;
     final manager = sl<CloudStreamManager>();
     final enabled = manager.isEnabled(source.sourceId);
-    final active = source.sourceId == activeId;
+    final active = source.sourceId == widget.activeId;
     final nameColor = !enabled
         ? AppColors.textSecondary
         : active
@@ -352,7 +386,9 @@ class _CsScreenSourceRow extends StatelessWidget {
         ScaffoldMessenger.of(context)
           ..clearSnackBars()
           ..showSnackBar(
-            SnackBar(content: Text(context.l10n.activeSourceColon(source.displayName))),
+            SnackBar(
+              content: Text(context.l10n.activeSourceColon(source.displayName)),
+            ),
           );
       },
       child: Padding(
@@ -406,10 +442,49 @@ class _CsScreenSourceRow extends StatelessWidget {
                 ),
               ),
             ),
+            IconButton(
+              tooltip: context.l10n.uninstall,
+              icon: const Icon(Icons.delete_outline_rounded, size: 20),
+              color: AppColors.textSecondary,
+              visualDensity: VisualDensity.compact,
+              onPressed: _removing ? null : _uninstall,
+            ),
           ],
         ),
       ),
     );
+  }
+}
+
+Future<void> _uninstallCsPlugin(
+  BuildContext context,
+  CsPluginMeta plugin,
+  String repoUrl,
+) async {
+  final messenger = ScaffoldMessenger.of(context);
+  final l10n = context.l10n;
+  final ok = await AppDialog.confirm(
+    context,
+    title: l10n.uninstallNameQuestion(plugin.name),
+    message: l10n.thisRemovesTheSourceFromYourInstalledList,
+    confirmLabel: l10n.uninstall,
+    destructive: true,
+  );
+  if (ok != true || !context.mounted) return;
+  final successMessage = l10n.uninstalledName(plugin.name);
+  try {
+    await sl<CloudStreamManager>().uninstallPlugin(plugin, repoUrl: repoUrl);
+    if (!messenger.mounted) return;
+    messenger
+      ..clearSnackBars()
+      ..showSnackBar(SnackBar(content: Text(successMessage)));
+  } catch (e) {
+    if (!context.mounted || !messenger.mounted) return;
+    messenger
+      ..clearSnackBars()
+      ..showSnackBar(
+        SnackBar(content: Text(l10n.uninstallFailed('$e'))),
+      );
   }
 }
 
@@ -864,28 +939,9 @@ class _CsScreenPluginRowState extends State<_CsScreenPluginRow> {
   }
 
   Future<void> _uninstall() async {
-    final messenger = ScaffoldMessenger.of(context);
-    final ok = await AppDialog.confirm(
-      context,
-      title: context.l10n.uninstallNameQuestion(widget.plugin.name),
-      message: context.l10n.thisRemovesTheSourceFromYourInstalledList,
-      confirmLabel: context.l10n.uninstall,
-      destructive: true,
-    );
-    if (ok != true) return;
     setState(() => _busy = true);
     try {
-      await sl<CloudStreamManager>()
-          .uninstallPlugin(widget.plugin, repoUrl: widget.repoUrl);
-      messenger
-        ..clearSnackBars()
-        ..showSnackBar(
-          SnackBar(content: Text(context.l10n.uninstalledName(widget.plugin.name))),
-        );
-    } catch (e) {
-      messenger
-        ..clearSnackBars()
-        ..showSnackBar(SnackBar(content: Text(context.l10n.uninstallFailed('$e'))));
+      await _uninstallCsPlugin(context, widget.plugin, widget.repoUrl);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
