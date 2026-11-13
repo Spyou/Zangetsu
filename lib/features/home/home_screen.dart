@@ -73,7 +73,6 @@ import '../../core/ui/featured_carousel.dart';
 import '../../core/ui/featured_hero.dart';
 import '../../core/theme/theme_controller.dart';
 import '../../core/ui/poster_palette.dart';
-import '../../core/metadata/title_logo_service.dart';
 import 'metadata_switch_sheet.dart';
 import 'home_banner_header.dart';
 import 'home_catalogue_prefs.dart';
@@ -481,11 +480,6 @@ class _HomeViewState extends State<_HomeView>
     _heroPrewarmed = true;
     _prewarmResume();
     _heroMeta(items.first);
-    // Warm the TMDB title logos for the whole carousel up front. The service
-    // resolves them SEQUENTIALLY (so no request burst at TMDB) and caches both
-    // in memory and on disk — so each logo is ready before its banner rotates
-    // in (no pop-in), and it barely touches TMDB on later launches.
-    sl<TitleLogoService>().prefetch(items);
   }
 
   void _openDetail(MediaItem item) {

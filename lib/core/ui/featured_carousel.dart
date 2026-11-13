@@ -5,10 +5,12 @@ import 'package:flutter/foundation.dart'
 import 'package:flutter/material.dart';
 
 import '../models/media_item.dart';
+import 'banner_image_preloader.dart';
 import '../theme/app_colors.dart';
 import 'route_observer.dart';
 import 'featured_hero.dart';
 import 'mobile_hero_art.dart';
+import 'native_cover_provider.dart';
 import 'poster_palette.dart';
 
 /// Hero height as a share of the screen, so the banner keeps the same
@@ -115,6 +117,7 @@ class _FeaturedCarouselState extends State<FeaturedCarousel> with RouteAware {
   late List<MediaItem> _pages;
   int _index = 0; // virtual page index
   Timer? _timer;
+  final _imagePreloader = BannerImagePreloader();
   PageRoute<dynamic>? _route;
   bool _routeIsCurrent = true;
 
@@ -247,6 +250,7 @@ class _FeaturedCarouselState extends State<FeaturedCarousel> with RouteAware {
 
   @override
   void dispose() {
+    _imagePreloader.dispose();
     appRouteObserver.unsubscribe(this);
     _timer?.cancel();
     _pc.dispose();
@@ -359,6 +363,27 @@ class _FeaturedCarouselState extends State<FeaturedCarousel> with RouteAware {
 
     // Empty state — reserve the height so layout doesn't jump.
     if (_count == 0) return SizedBox(height: heroHeight);
+
+    if (_shouldAutoAdvance) {
+      final mq = MediaQuery.of(context);
+      _imagePreloader.warm(
+        context,
+        _pages,
+        _realIndex,
+        artwork: (item) {
+          final url = mobileHeroArt(item.cover, item.banner);
+          return url == null || url.isEmpty
+              ? null
+              : ResizeImage(
+                  nativeCoverProvider(url, item.coverHeaders),
+                  width: mobileHeroDecodeWidth(
+                    item.sourceId,
+                    (mq.size.width * mq.devicePixelRatio).round(),
+                  ),
+                );
+        },
+      );
+    }
 
     // Single item — no dots, no timer. Still pinned to the hero height.
     if (_count == 1) {

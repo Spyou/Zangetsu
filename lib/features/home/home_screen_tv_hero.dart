@@ -48,6 +48,7 @@ class _TvHeroState extends State<_TvHero> {
   int _i = 0;
   String? _logoUrl; // TMDB title logo (null → show the text title)
   Timer? _timer;
+  final _imagePreloader = BannerImagePreloader();
 
   MediaItem get _item => widget.items[_i % widget.items.length];
 
@@ -110,6 +111,7 @@ class _TvHeroState extends State<_TvHero> {
 
   @override
   void dispose() {
+    _imagePreloader.dispose();
     _timer?.cancel();
     super.dispose();
   }
@@ -140,6 +142,22 @@ class _TvHeroState extends State<_TvHero> {
     final hasCover = cover != null && cover.isNotEmpty;
     final mq = MediaQuery.of(context);
     final memW = (mq.size.width * mq.devicePixelRatio).round();
+    if (widget.active) {
+      _imagePreloader.warm(
+        context,
+        widget.items,
+        _i,
+        artwork: (item) {
+          final url = item.banner ?? item.cover;
+          return url == null || url.isEmpty
+              ? null
+              : ResizeImage(
+                  nativeCoverProvider(url, item.coverHeaders),
+                  width: memW,
+                );
+        },
+      );
+    }
     final provider = hasCover
         ? nativeCoverProvider(cover, item.coverHeaders)
         : null;

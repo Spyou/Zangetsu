@@ -29,6 +29,7 @@ class TitleLogoService {
   final Map<String, String> _mem = {}; // '' = known "no logo"
   final Set<String> _failedAddonLogos = {};
   final Map<String, Future<String?>> _stremioLookups = {};
+  final Map<String, Future<String?>> _tmdbLookups = {};
   Future<void> _posterLogoQueue = Future<void>.value();
   Box<String>? _boxRef;
   Box<String> get _box => _boxRef ??= Hive.box<String>(_boxName);
@@ -137,9 +138,17 @@ class TitleLogoService {
       ? 'id:${item.tmdbId}:${item.tmdbIsTv}'
       : 'q:${(item.englishTitle ?? item.title).toLowerCase()}';
 
-  Future<String?> _tmdbLogoFor(MediaItem item) async {
+  Future<String?> _tmdbLogoFor(MediaItem item) {
     final key = _key(item);
+    return _tmdbLookups.putIfAbsent(
+      key,
+      () => _resolveTmdbLogo(item, key).whenComplete(() {
+        _tmdbLookups.remove(key);
+      }),
+    );
+  }
 
+  Future<String?> _resolveTmdbLogo(MediaItem item, String key) async {
     final cached = _mem[key] ?? _box.get(key);
     if (cached != null) {
       _mem[key] = cached;

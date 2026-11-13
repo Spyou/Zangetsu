@@ -64,6 +64,15 @@ void main() {
     await temp.delete(recursive: true);
   });
 
+  test('concurrent banner logo lookups share one TMDB request', () async {
+    final item = _item(sourceId: 'tmdb');
+    final urls = await Future.wait(
+      List.generate(3, (_) => service.logoFor(item)),
+    );
+    expect(urls, everyElement(_tmdbLogo));
+    expect(adapter.requests, hasLength(1));
+  });
+
   test('addon logo avoids TMDB and survives a new service instance', () async {
     expect(await service.logoFor(_item(logo: _addonLogo)), _addonLogo);
     final restarted = TitleLogoService(Dio()..httpClientAdapter = adapter);

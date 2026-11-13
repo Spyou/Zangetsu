@@ -33,6 +33,7 @@ class _StubSourceRepository implements SourceRepository {
   final List<({String id, String name})> loadedSources;
 
   bool empty = false;
+  Completer<List<HomeSection>>? nextHome;
 
   final homeCalls = <({String? sourceId, String category})>[];
 
@@ -45,6 +46,7 @@ class _StubSourceRepository implements SourceRepository {
     String? sourceId,
   }) async {
     homeCalls.add((sourceId: sourceId, category: category));
+    if (nextHome != null) return nextHome!.future;
     if (empty) return [];
     return [
       HomeSection(
@@ -221,6 +223,44 @@ void main() {
     expect(find.text('stremio catalogue'), findsNothing);
     expect(selected, everyElement('stremio'));
     expect(repository.homeCalls.map((call) => call.sourceId), ['stremio']);
+  });
+
+  testWidgets('Stremio refresh keeps the current hero until results arrive', (
+    tester,
+  ) async {
+    final repository = _StubSourceRepository(const [
+      (id: 'stremio', name: 'Stremio'),
+    ]);
+    final controller = SourceCatalogueHomeController();
+    final reported = <List<HomeSection>>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: SourceCatalogueHomeContent(
+              repository: repository,
+              controller: controller,
+              initialSourceId: 'stremio',
+              showSourcePicker: false,
+              onSectionsChanged: reported.add,
+              sectionBuilder: (section) => Text(section.title),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(reported.last.single.title, 'stremio catalogue');
+    repository.nextHome = Completer<List<HomeSection>>();
+    final refresh = controller.refresh();
+    await tester.pump();
+    expect(reported.last.single.title, 'stremio catalogue');
+    expect(find.text('stremio catalogue'), findsOneWidget);
+    repository.nextHome!.complete(const []);
+    await refresh;
+    await tester.pumpAndSettle();
+    expect(reported.last, isEmpty);
+    expect(find.text('stremio catalogue'), findsNothing);
   });
 
   testWidgets('same-named Stremio rows all render in catalogue order', (

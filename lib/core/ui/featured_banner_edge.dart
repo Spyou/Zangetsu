@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart'
 import 'package:flutter/material.dart';
 
 import '../models/media_item.dart';
+import 'banner_image_preloader.dart';
 import '../theme/app_colors.dart';
 import 'banner_actions.dart';
 import 'featured_carousel.dart' show heroHeightFor;
@@ -55,6 +56,7 @@ class _FeaturedBannerEdgeState extends State<FeaturedBannerEdge>
   late List<MediaItem> _pages;
   int _index = 0;
   Timer? _timer;
+  final _imagePreloader = BannerImagePreloader();
   PageRoute<dynamic>? _route;
   bool _routeIsCurrent = true;
 
@@ -147,6 +149,7 @@ class _FeaturedBannerEdgeState extends State<FeaturedBannerEdge>
 
   @override
   void dispose() {
+    _imagePreloader.dispose();
     appRouteObserver.unsubscribe(this);
     widget.backgroundTint?.removeListener(_onBackgroundTint);
     _timer?.cancel();
@@ -204,6 +207,27 @@ class _FeaturedBannerEdgeState extends State<FeaturedBannerEdge>
   Widget build(BuildContext context) {
     final height = heroHeightFor(context);
     if (_pages.isEmpty) return SizedBox(height: height);
+
+    if (_isVisible) {
+      final mq = MediaQuery.of(context);
+      _imagePreloader.warm(
+        context,
+        _pages,
+        _index,
+        artwork: (item) {
+          final url = mobileHeroArt(item.cover, item.banner);
+          return url == null || url.isEmpty
+              ? null
+              : ResizeImage(
+                  nativeCoverProvider(url, item.coverHeaders),
+                  width: mobileHeroDecodeWidth(
+                    item.sourceId,
+                    (mq.size.width * mq.devicePixelRatio).round(),
+                  ),
+                );
+        },
+      );
+    }
 
     final item = _pages[_index];
     final pageColor = _bgTint ?? AppColors.bg;
