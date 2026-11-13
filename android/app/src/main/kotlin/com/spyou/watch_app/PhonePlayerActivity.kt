@@ -269,6 +269,7 @@ class PhonePlayerActivity : Activity() {
 
         setContentView(R.layout.phone_player)
         playerView = findViewById(R.id.player_view)
+        playerView.keepSubtitlesInViewport()
         loading = findViewById(R.id.loading)
         loadingOverlay = findViewById(R.id.loading_overlay)
         loadingBackdrop = findViewById(R.id.loading_backdrop)

@@ -72,6 +72,7 @@ class ExoPlayerView(
         .apply { setAudioSessionId(audioSessionId) }
     private var loudness: LoudnessEnhancer? = null
     private val playerView = PlayerView(context).apply {
+        keepSubtitlesInViewport()
         player = this@ExoPlayerView.player
         useController = false // Flutter draws the controls on top
         // keepScreenOn is managed by syncKeepScreenOn() below — on while

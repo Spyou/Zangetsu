@@ -2089,6 +2089,7 @@ class TvPlayerActivity : Activity() {
     private fun bindViews() {
         root = findViewById(R.id.player_root)
         playerView = findViewById(R.id.player_view)
+        playerView.keepSubtitlesInViewport()
         loading = findViewById(R.id.loading)
         skipButton = findViewById(R.id.skip_button)
         menuPanel = findViewById(R.id.menu_panel)
