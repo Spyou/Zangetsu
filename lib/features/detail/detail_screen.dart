@@ -366,6 +366,19 @@ class _DetailCloudflareBlockedState extends State<_DetailCloudflareBlocked> {
   }
 }
 
+SearchScreen detailTitleSearchScreen({
+  required String title,
+  required String sourceId,
+  required TitleSearchChoice choice,
+}) => SearchScreen(
+  initialQuery: title,
+  forceSources: choice == TitleSearchChoice.searchAll,
+  fixedSourceId:
+      choice == TitleSearchChoice.search && sourceId == stremioSourceId
+      ? stremioSourceId
+      : null,
+);
+
 class DetailScreen extends StatelessWidget {
   const DetailScreen({super.key, required this.item, this.prefer});
   final MediaItem item;
@@ -610,25 +623,19 @@ class _DetailViewState extends State<_DetailView>
     }
   }
 
-  /// Title tap → search popup: prefilled query, "Search" opens the normal
-  /// search, "Search all sources" opens the sources search. Same title text.
+  /// Stremio title search stays in its addon catalogue.
   Future<void> _onTitleTap(String title) async {
     final req = await showTitleSearchPopup(context, title);
     if (!mounted || req == null) return;
-    if (req == TitleSearchChoice.searchAll) {
-      await Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (_) =>
-              SearchScreen(initialQuery: title, forceSources: true),
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => detailTitleSearchScreen(
+          title: title,
+          sourceId: widget.item.sourceId,
+          choice: req,
         ),
-      );
-    } else {
-      await Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (_) => SearchScreen(initialQuery: title),
-        ),
-      );
-    }
+      ),
+    );
   }
 
   /// Plain-text titles (the Title artwork toggle only swaps in a logo once
