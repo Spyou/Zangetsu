@@ -12,7 +12,7 @@
     <color name="settings_surface">#FF16161C</color>
     <color name="settings_accent">#FFFF4D57</color>
     <color name="settings_text">#FFFFFFFF</color>
-    <color name="phone_player_background">#FF0B0B0F</color>
+    <color name="phone_player_background">#FF000000</color>
     <color name="phone_player_surface">#FF211E26</color>
     <color name="phone_player_surface_container">#E6302A33</color>
     <!-- MPV default accent (Coral) + matching ripple. -->
