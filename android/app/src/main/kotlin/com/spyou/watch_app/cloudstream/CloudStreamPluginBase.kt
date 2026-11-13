@@ -15,6 +15,11 @@ import android.content.res.Resources
  * Extend as on-device testing reveals plugins referencing more members.
  */
 abstract class Plugin : BasePlugin() {
+    companion object {
+        // Compose-compiled plugins read this field when initializing subclasses.
+        const val `$stable`: Int = 8
+    }
+
     /**
      * Called once after the plugin is instantiated. Plugins override EITHER this
      * (Context) overload OR the no-arg [BasePlugin.load]. CloudStream's real

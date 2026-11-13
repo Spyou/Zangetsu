@@ -12,6 +12,12 @@ third-party code it incorporates, and the licenses that apply to those parts.
 Third-party components
 ────────────────────────────────────────────────────────────────────────────
 
+AndroidX Jetpack Compose
+  https://developer.android.com/jetpack/compose
+  License: Apache-2.0
+  Compose UI, Material 3, and Activity integration provide runtime support for
+  Android extension settings screens.
+
 CloudStream (recloudstream)
   https://github.com/recloudstream/cloudstream
   License: GPL-3.0

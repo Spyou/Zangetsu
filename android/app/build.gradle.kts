@@ -262,6 +262,11 @@ dependencies {
     // Only the dedicated CloudStreamSettingsActivity uses these themes; the
     // Flutter UI keeps its own theme, so this doesn't affect the main app.
     implementation("androidx.appcompat:appcompat:1.7.0")
+    // Precompiled extension settings can host Compose without changing our UI.
+    runtimeOnly(platform("androidx.compose:compose-bom:2026.03.00"))
+    runtimeOnly("androidx.compose.material3:material3")
+    runtimeOnly("androidx.compose.ui:ui")
+    runtimeOnly("androidx.activity:activity-compose:1.10.1")
     // Cloudflare Turnstile parity with Mihon: setUserAgent() uses WebSettingsCompat
     // to set Sec-CH-UA client-hint metadata matching the spoofed UA, so the hints
     // don't contradict it and flag the WebView as a bot.
