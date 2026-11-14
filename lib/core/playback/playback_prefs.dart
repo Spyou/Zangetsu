@@ -899,6 +899,11 @@ class PlaybackPrefs {
   Future<void> setMegaSkipSeconds(int value) =>
       _box.put('megaSkipSeconds', value.clamp(megaSkipMin, megaSkipMax));
 
+  bool get autoPlayerFallback =>
+      _box.get('autoPlayerFallback', defaultValue: false) as bool;
+  Future<void> setAutoPlayerFallback(bool value) =>
+      _box.put('autoPlayerFallback', value);
+
   /// Default player. Empty string = the built-in player; otherwise the package
   /// id of an external player (e.g. 'org.videolan.vlc') to hand streams to.
   /// [externalPlayerLabel] is the human name shown in settings.

@@ -9951,6 +9951,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Could not read the playback cache. Try opening this page again.'**
   String get androidCacheUnavailable;
+
+  /// No description provided for @autoPlayerFallback.
+  ///
+  /// In en, this message translates to:
+  /// **'Auto-switch player'**
+  String get autoPlayerFallback;
+
+  /// No description provided for @autoPlayerFallbackDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Experimental · Retry failed playback'**
+  String get autoPlayerFallbackDescription;
 }
 
 class _AppLocalizationsDelegate

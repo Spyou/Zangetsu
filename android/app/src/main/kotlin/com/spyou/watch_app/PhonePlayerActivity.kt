@@ -201,6 +201,7 @@ class PhonePlayerActivity : Activity() {
     private var switching = false
     private var mediaGeneration = 0
     private var failoverInFlight = false
+    private var engineFallbackRequested = false
     private var currentUrl = ""
     private val attemptedUrls = mutableSetOf<String>()
     private var autoplayNext = true
@@ -1537,6 +1538,38 @@ class PhonePlayerActivity : Activity() {
     }
 
     private fun failover() {
+        if (failoverInFlight || engineFallbackRequested) return
+        val channel = PhonePlayerBridge.channel
+        if (!intent.getBooleanExtra(PhonePlayerIntent.EXTRA_AUTO_ENGINE_FALLBACK, false) || channel == null) {
+            failoverMirrors()
+            return
+        }
+        failoverInFlight = true
+        val generation = mediaGeneration
+        val index = currentIndex
+        val url = currentUrl
+        fun complete(switchEngine: Boolean) {
+            if (!uiAlive()) return
+            failoverInFlight = false
+            if (generation != mediaGeneration || index != currentIndex || url != currentUrl) return
+            if (switchEngine) {
+                engineFallbackRequested = true
+                finish()
+            } else {
+                failoverMirrors()
+            }
+        }
+        channel.invokeMethod("tryOtherPlayer", mapOf(
+            "sessionId" to sessionId, "index" to index, "url" to url,
+            "positionMs" to (player?.currentPosition ?: 0L),
+        ), object : io.flutter.plugin.common.MethodChannel.Result {
+            override fun success(result: Any?) = complete(result == true)
+            override fun error(code: String, message: String?, details: Any?) = complete(false)
+            override fun notImplemented() = complete(false)
+        })
+    }
+
+    private fun failoverMirrors() {
         if (failoverInFlight) return
         val ch = PhonePlayerBridge.channel ?: run { finish(); return }
         failoverInFlight = true
@@ -2861,16 +2894,20 @@ class PhonePlayerActivity : Activity() {
     }
 
     /** Tell Dart the session ended, with where it ended. Runs exactly once. */
-    private fun reportClosed() {
+    private fun reportClosed(
+        positionMs: Long = player?.currentPosition ?: 0L,
+        durationMs: Long = (player?.duration ?: 0L).coerceAtLeast(0L),
+    ) {
         if (reported) return
         reported = true
-        val p = player
         PhonePlayerBridge.channel?.invokeMethod(
             "playerClosed",
             mapOf(
                 "sessionId" to sessionId,
-                PhonePlayerIntent.RESULT_POSITION to (p?.currentPosition ?: 0L),
-                PhonePlayerIntent.RESULT_DURATION to (p?.duration ?: 0L).coerceAtLeast(0L),
+                PhonePlayerIntent.RESULT_POSITION to positionMs,
+                PhonePlayerIntent.RESULT_DURATION to durationMs,
+                "engineFallback" to engineFallbackRequested,
+                "url" to currentUrl,
                 PhonePlayerIntent.RESULT_EP_INDEX to loadedEpisodeIndex,
                 PhonePlayerIntent.RESULT_PLAYBACK_ERROR to playbackError,
             ),
@@ -2905,7 +2942,9 @@ class PhonePlayerActivity : Activity() {
         orientationObserver = null
         watchPanel?.close()
         PhonePlayerBridge.clearWatchData(sessionId)
-        reportClosed()
+        val finalPosition = player?.currentPosition ?: 0L
+        val finalDuration = (player?.duration ?: 0L).coerceAtLeast(0L)
+        if (!engineFallbackRequested) reportClosed()
         handler.removeCallbacksAndMessages(null)
         moreDialog?.setOnDismissListener(null)
         moreDialog?.dismiss()
@@ -2915,6 +2954,7 @@ class PhonePlayerActivity : Activity() {
         castManager = null
         player?.release()
         player = null
+        if (engineFallbackRequested) reportClosed(finalPosition, finalDuration)
         if (playbackDiskCache != null) {
             PhonePlaybackCache.release()
             playbackDiskCache = null

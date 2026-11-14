@@ -93,6 +93,8 @@ object PhonePlayerBridge {
             watchData = ((call.argument<Number>("sessionId") ?: 0).toLong() to
                 call.argument<Map<String, Any?>>("watchData").orEmpty())
             val i = Intent(activity, PhonePlayerActivity::class.java)
+            i.putExtra(PhonePlayerIntent.EXTRA_AUTO_ENGINE_FALLBACK,
+                call.argument<Boolean>("autoPlayerFallback") ?: false)
             call.argument<Map<String, Any?>>("controlLayout")?.let {
                 i.putExtra(PhonePlayerIntent.EXTRA_CONTROLS, org.json.JSONObject(it).toString())
             }

@@ -3178,5 +3178,7 @@
 	"androidDiskCacheDescription": "Reuse video data on phone storage. Old cached data is removed when the limit is reached. At least 512 MB of free storage is kept.",
 	"androidCacheClear": "Clear playback cache",
 	"androidCacheClearBusy": "Close the Android player before clearing its playback cache.",
-	"androidCacheUnavailable": "Could not read the playback cache. Try opening this page again."
+	"androidCacheUnavailable": "Could not read the playback cache. Try opening this page again.",
+	"autoPlayerFallback": "Auto-switch player",
+	"autoPlayerFallbackDescription": "Experimental · Retry failed playback"
 }

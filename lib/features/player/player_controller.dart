@@ -57,6 +57,7 @@ import 'subtitle_font_service.dart';
 import 'subtitle_style.dart' show libassOutline;
 import 'player_lifecycle.dart';
 import 'playback_failover.dart';
+import 'player_engine_fallback.dart';
 
 /// The mpv video output (renderer) to create the player with, from the user's
 /// Video renderer setting.
@@ -285,6 +286,9 @@ class PlayerCubit extends Cubit<PlayerState> {
     this.initialResume = Duration.zero,
     this.initialSource,
     this.onDrmSource,
+    this.onSourceFailure,
+    this.engineFallback,
+    this.forceInitialResume = false,
   }) : _resolveSources = resolveSources,
        _resolveDownloadedSources = resolveDownloadedSources,
        _pollSources = pollSources,
@@ -358,6 +362,10 @@ class PlayerCubit extends Cubit<PlayerState> {
   /// the ExoPlayer-backed [DrmPlayerScreen]. Null on screens with no handoff
   /// (e.g. watch-together), where a DRM source just fails as before.
   final void Function(VideoSource drm)? onDrmSource;
+  final Future<bool> Function(VideoSource source, Duration position)?
+  onSourceFailure;
+  final PlayerEngineFallback? engineFallback;
+  bool forceInitialResume;
 
   /// The category (sub/dub) the session launched in. The LIVE category (which
   /// the user can flip mid-session) is [_activeCategory] — `category` is just
@@ -2408,6 +2416,15 @@ class PlayerCubit extends Cubit<PlayerState> {
       );
       if (gen != _gen || isClosed) return false;
     }
+    final blocked = engineFallback?.blockedUrls(
+      currentEpisode.url,
+      _activeCategory,
+    );
+    if (blocked != null && blocked.isNotEmpty) {
+      resolved = resolved
+          .where((source) => !blocked.contains(source.url))
+          .toList();
+    }
     emit(state.copyWith(sources: resolved, loadingSources: false));
     _buildQualityMenu(
       gen,
@@ -2925,6 +2942,10 @@ class PlayerCubit extends Cubit<PlayerState> {
         initialResume > Duration.zero) {
       resumeAt = initialResume;
     }
+    if (forceInitialResume && initialResume > Duration.zero) {
+      resumeAt = initialResume;
+    }
+    forceInitialResume = false;
     initialResume = Duration.zero;
     // A fresh resume-open (no explicit seekTo) arms the pending-resume target so
     // a re-open that fires before we've reached it can't pull us back.
@@ -3244,6 +3265,17 @@ class PlayerCubit extends Cubit<PlayerState> {
       return;
     }
     _recovering = true;
+    final engineGen = _gen;
+    if (onSourceFailure != null && await _tryOtherEngine()) {
+      return;
+    }
+    if (isClosed || engineGen != _gen) {
+      _recovering = false;
+      return;
+    }
+    _tried.addAll(
+      engineFallback?.blockedUrls(currentEpisode.url, _activeCategory) ?? {},
+    );
     // close() bumps _gen precisely so continuations like this one bail instead
     // of firing into a disposed player. This was the one that never checked:
     // _tryNextSource awaits a whole re-resolve (seconds, in the logs), which is
@@ -3485,13 +3517,50 @@ class PlayerCubit extends Cubit<PlayerState> {
         'Tap Try again, or pick a different source.';
   }
 
-  /// A source that never produced a frame is dead (host refused the link on
-  /// open). Switch to the next untried mirror at the same position. Only used
-  /// by the never-started backstop — mid-playback stalls never switch sources
-  /// (CloudStream-like: buffering just buffers, the user picks).
+  Future<bool> _tryOtherEngine() async {
+    final callback = onSourceFailure;
+    final active = state.active;
+    if (callback == null ||
+        active == null ||
+        active.isDrm ||
+        _activeTorrentId != null) {
+      return false;
+    }
+    try {
+      final generation = _gen;
+      final handled = await callback(
+        active,
+        _pendingResume > _lastPos ? _pendingResume : _lastPos,
+      );
+      if (handled && !isClosed && generation == _gen) {
+        // Stop retries while the host unmounts this session.
+        _gen++;
+        _startTimer?.cancel();
+        _neverStartedTimer?.cancel();
+        await _stopQuietly();
+      }
+      return handled;
+    } catch (error) {
+      debugPrint('[player] alternate player unavailable: $error');
+      return false;
+    }
+  }
+
+  /// Recover a source that never started; ordinary buffering stays put.
   Future<void> _failoverToNext() async {
     if (_recovering) return;
     _recovering = true;
+    final engineGen = _gen;
+    if (onSourceFailure != null && await _tryOtherEngine()) {
+      return;
+    }
+    if (isClosed || engineGen != _gen) {
+      _recovering = false;
+      return;
+    }
+    _tried.addAll(
+      engineFallback?.blockedUrls(currentEpisode.url, _activeCategory) ?? {},
+    );
     final dead = state.active;
     if (dead != null) _tried.add(dead.url);
     final remaining = state.sources

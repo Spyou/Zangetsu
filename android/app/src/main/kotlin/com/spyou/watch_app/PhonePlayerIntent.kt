@@ -62,6 +62,7 @@ object PhonePlayerIntent {
     const val EXTRA_CATEGORIES = "availableCategories" // e.g. ["sub","dub"]
     const val EXTRA_CATEGORY = "category" // launch version (sub/dub)
     const val EXTRA_SESSION = "sessionId" // Dart session; guards late updates
+    const val EXTRA_AUTO_ENGINE_FALLBACK = "autoPlayerFallback"
 
     // Reported over the channel on close, not via setResult — the phone player
     // is started with startActivity, so there is no onActivityResult to hook.

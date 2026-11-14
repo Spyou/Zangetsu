@@ -32,6 +32,7 @@ import '../../core/tracker/tracker_hub.dart';
 import '../../core/tracker/simkl_playback_session.dart';
 import 'subtitle_font_service.dart';
 import 'player_controls_config.dart';
+import 'player_engine_fallback.dart';
 import 'subtitle_style.dart';
 import 'watch_page_info.dart';
 import '../detail/cubit/detail_cubit.dart' show seasonOf;
@@ -211,6 +212,7 @@ Map<String, dynamic> phonePlayerArgs({
   required int seekSeconds,
   bool isMovie = false,
   bool stremioSubtitles = false,
+  bool autoPlayerFallback = false,
   bool megaSkip = true,
   int megaSkipSeconds = 85,
   String? subtitleFontPath,
@@ -227,6 +229,7 @@ Map<String, dynamic> phonePlayerArgs({
   final mime = source == null ? null : phoneMimeFor(source);
   return <String, dynamic>{
     if (stremioSubtitles) 'stremioSubtitles': true,
+    if (autoPlayerFallback) 'autoPlayerFallback': true,
     // No url: the Activity opens on its loading screen and asks Dart for the
     // episode over the channel, so the user never waits on a blank route.
     if (source != null) ...{
@@ -329,6 +332,14 @@ typedef PhoneSourcesPoll =
       String episodeUrl,
     );
 
+typedef PhonePlaybackFailure = ({
+  List<Episode> episodes,
+  int index,
+  VideoSource source,
+  Duration position,
+  String category,
+});
+
 /// Opens the native phone player for [episodes] starting at [startIndex].
 ///
 /// Same argument list as the TV launcher so the call site barely changes, but
@@ -361,6 +372,9 @@ Future<bool> launchPhonePlayback({
   bool tmdbIsTv = false,
   String? imdbId,
   bool isMovie = false,
+  PlayerEngineFallback? engineFallback,
+  void Function(PhonePlaybackFailure)? onEngineFallback,
+  bool forceInitialResume = false,
 }) async {
   return PhoneNativePlayer.play(
     sourceId: sourceId,
@@ -388,6 +402,9 @@ Future<bool> launchPhonePlayback({
     tmdbIsTv: tmdbIsTv,
     imdbId: imdbId,
     isMovie: isMovie,
+    engineFallback: engineFallback,
+    onEngineFallback: onEngineFallback,
+    forceInitialResume: forceInitialResume,
   );
 }
 
@@ -444,6 +461,32 @@ class PhoneNativePlayer {
   static SimklPlaybackSession? _simklPlayback;
   static int _simklIndex = -1;
   static bool _isMovie = false;
+  static PlayerEngineFallback? _engineFallback;
+  static void Function(PhonePlaybackFailure)? _onEngineFallback;
+  static PhonePlaybackFailure? _pendingEngineFailure;
+  static bool _forceInitialResume = false;
+  static final _engineSources = <int, List<VideoSource>>{};
+
+  static List<VideoSource> _rememberEngineSources(
+    int index,
+    List<VideoSource> sources, {
+    required int session,
+    required String category,
+  }) {
+    if (_engineFallback == null ||
+        session != _sessionId ||
+        category != _category ||
+        _closed?.isCompleted != false) {
+      return sources;
+    }
+    _engineSources[index] = sources;
+    final blocked = sl<PlaybackPrefs>().autoPlayerFallback
+        ? _engineFallback!.blockedUrls(_episodes[index].url, _category)
+        : <String>{};
+    return blocked.isEmpty
+        ? sources
+        : sources.where((source) => !blocked.contains(source.url)).toList();
+  }
 
   /// Returns false when the Activity cannot be started; stream errors are
   /// shown inside the native player so the user can retry or leave.
@@ -474,8 +517,16 @@ class PhoneNativePlayer {
     bool tmdbIsTv = false,
     String? imdbId,
     bool isMovie = false,
+    PlayerEngineFallback? engineFallback,
+    void Function(PhonePlaybackFailure)? onEngineFallback,
+    bool forceInitialResume = false,
   }) async {
     if (startIndex < 0 || startIndex >= episodes.length) return false;
+    _engineFallback = engineFallback;
+    _onEngineFallback = onEngineFallback;
+    _forceInitialResume = forceInitialResume;
+    _pendingEngineFailure = null;
+    _engineSources.clear();
     _resolve = resolveSources;
     _pollSources = pollSources;
     _peek = peek;
@@ -527,6 +578,10 @@ class PhoneNativePlayer {
       episodeLabels: [for (final e in _episodes) _episodeLabel(e)],
       isMovie: _isMovie,
       stremioSubtitles: _sourceId == stremioSourceId,
+      autoPlayerFallback:
+          engineFallback != null &&
+          onEngineFallback != null &&
+          prefs.autoPlayerFallback,
       startIndex: startIndex,
       accentColor: AppColors.accent.toARGB32(),
       softwareDecoding: prefs.videoDecoder == 'sw',
@@ -904,6 +959,7 @@ class PhoneNativePlayer {
         );
         if (index == null) return null;
         final session = _sessionId;
+        final requestCategory = _category;
         final ep = _episodes[index];
         if (call.method == 'watchEpisodeState') {
           return {
@@ -946,7 +1002,12 @@ class PhoneNativePlayer {
                 fast: false,
               )
             : await _resolveSources(ep);
-        final prepared = await _prepareSources(sources);
+        final prepared = _rememberEngineSources(
+          index,
+          await _prepareSources(sources),
+          session: session,
+          category: requestCategory,
+        );
         if (session != _sessionId || _closed?.isCompleted != false) return null;
         if (_sourceId == stremioSourceId) _stremioSources[index] = prepared;
         return [
@@ -957,16 +1018,65 @@ class PhoneNativePlayer {
               'episodeLabel': _episodeLabel(ep),
             },
         ];
+      case 'tryOtherPlayer':
+        final args = _callArgs(call);
+        final index = phoneWatchActionIndex(
+          args,
+          sessionId: _sessionId,
+          episodeCount: _episodes.length,
+          playerOpen: _closed?.isCompleted == false,
+        );
+        if (index == null ||
+            _onEngineFallback == null ||
+            _engineFallback == null ||
+            !sl<PlaybackPrefs>().autoPlayerFallback) {
+          return false;
+        }
+        final url = args?['url'];
+        VideoSource? source;
+        for (final candidate
+            in _engineSources[index] ?? const <VideoSource>[]) {
+          if (candidate.url == url) {
+            source = candidate;
+            break;
+          }
+        }
+        if (source == null ||
+            _engineFallback!.next(
+                  enabled: true,
+                  failedEngine: PlaybackEngine.nativePlayer,
+                  episodeUrl: _episodes[index].url,
+                  category: _category,
+                  source: source,
+                ) !=
+                PlaybackEngine.mpv) {
+          return false;
+        }
+        final position = (args?['positionMs'] as num?)?.toInt() ?? 0;
+        _pendingEngineFailure = (
+          episodes: List.of(_episodes),
+          index: index,
+          source: source,
+          position: Duration(milliseconds: position < 0 ? 0 : position),
+          category: _category,
+        );
+        return true;
       case 'sourcesFor':
         final args = _callArgs(call);
         final index = (args?['index'] as num?)?.toInt() ?? -1;
         if (index < 0 || index >= _episodes.length) return const <Map>[];
         final session = _sessionId;
+        final requestCategory = _category;
         final sources = await _resolveSources(
           _episodes[index],
           preferPolled: true,
         );
-        final prepared = await _prepareSources(sources);
+        final prepared = _rememberEngineSources(
+          index,
+          await _prepareSources(sources),
+          session: session,
+          category: requestCategory,
+        );
         if (session != _sessionId || _closed?.isCompleted != false) {
           return const <Map>[];
         }
@@ -1050,6 +1160,18 @@ class PhoneNativePlayer {
         }
         final args = _callArgs(call);
         await _saveProgress(args, flush: true);
+        final failure = _pendingEngineFailure;
+        if (args?['sessionId'] == _sessionId &&
+            args?['engineFallback'] == true &&
+            failure != null &&
+            args?['episodeIndex'] == failure.index &&
+            args?['url'] == failure.source.url) {
+          _onEngineFallback?.call(failure);
+        }
+        _pendingEngineFailure = null;
+        _engineSources.clear();
+        _onEngineFallback = null;
+        _engineFallback = null;
         if (_closed?.isCompleted == false) _closed!.complete(args);
         _closed = null;
         _prefetchedEpisodes.clear();
@@ -1156,18 +1278,26 @@ class PhoneNativePlayer {
     final sources = seed == null
         ? await _resolveSources(ep)
         : <VideoSource>[seed];
-    final prepared = await _prepareSources(sources);
+    final prepared = _rememberEngineSources(
+      index,
+      await _prepareSources(sources),
+      session: session,
+      category: category,
+    );
     if (session != _sessionId || category != _category || prepared.isEmpty) {
       return null;
     }
     if (_sourceId == stremioSourceId) _stremioSources[index] = prepared;
     final src = seed == null ? _pickSource(prepared, ep) : prepared.first;
     if (src == null) return null;
-    final position = index == _startIndex
+    final position = index == _startIndex && _forceInitialResume
+        ? _resumeOverride
+        : index == _startIndex
         ? (_autoResume
               ? (_resumeOverride > 0 ? _resumeOverride : _resumePosition(ep))
               : 0)
         : _resumePosition(ep);
+    if (index == _startIndex) _forceInitialResume = false;
     return {
       ...phoneSourceMap(src, seed == null ? _indexOfSource(prepared, src) : 0),
       'positionMs': position,

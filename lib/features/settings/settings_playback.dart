@@ -728,6 +728,16 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                           : (_prefs.externalPlayerLabel.isNotEmpty ? _prefs.externalPlayerLabel : context.l10n.externalApp),
                   onTap: _pickPlayer,
                 ),
+                _toggleRow(
+                  icon: Icons.swap_horiz_rounded,
+                  title: context.l10n.autoPlayerFallback,
+                  subtitle: context.l10n.autoPlayerFallbackDescription,
+                  value: _prefs.autoPlayerFallback,
+                  onChanged: (value) async {
+                    await _prefs.setAutoPlayerFallback(value);
+                    if (mounted) setState(() {});
+                  },
+                ),
                 SettingsTile(
                   icon: Icons.tune_rounded,
                   title: context.l10n.playerControls,

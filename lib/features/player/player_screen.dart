@@ -26,6 +26,7 @@ import '../../core/playback/external_player.dart';
 import '../../core/logging/app_logger.dart';
 import 'phone_playback_launch.dart';
 import 'episode_player_route.dart';
+import 'player_engine_fallback.dart';
 import '../../core/download/download_manager.dart';
 import '../../core/download/download_record.dart';
 import '../downloads/episode_download_icon.dart';
@@ -222,6 +223,9 @@ class PlayerScreen extends StatefulWidget {
     this.joinRoomCode,
     this.playerOverride,
     this.initialSource,
+    this.engineFallback,
+    this.onEngineChange,
+    this.engineRecovery = false,
     bool? isMovie,
   }) : _isMovie = isMovie;
 
@@ -229,6 +233,10 @@ class PlayerScreen extends StatefulWidget {
   /// of the adaptive default. One-shot: the cubit clears it after the first
   /// episode so nothing later is affected.
   final VideoSource? initialSource;
+  final PlayerEngineFallback? engineFallback;
+  final void Function(PlaybackEngine, PhonePlaybackFailure, Future<void>)?
+      onEngineChange;
+  final bool engineRecovery;
 
   /// Uses movie wording without changing the playable entries.
   final bool? _isMovie;
@@ -328,7 +336,100 @@ class PlayerScreen extends StatefulWidget {
   final String? joinRoomCode;
 
   @override
-  State<PlayerScreen> createState() => _PlayerScreenState();
+  // Recovery keeps a stable host while replacing only the player session.
+  // ignore: no_logic_in_create_state
+  State<PlayerScreen> createState() {
+    final preferred = stremioPlayerPackage(
+      sourceId,
+      initialSource,
+      playerOverride ?? sl<PlaybackPrefs>().externalPlayerPackage,
+    );
+    if (engineFallback == null &&
+        Platform.isAndroid &&
+        !sl<AppMode>().isTv &&
+        sl<PlaybackPrefs>().autoPlayerFallback &&
+        (preferred.isEmpty || preferred == PlaybackPrefs.androidPlayerId)) {
+      return _PlayerEngineHostState();
+    }
+    return _PlayerScreenState();
+  }
+}
+
+// Keep the route alive so returning to Detail still refreshes watched progress.
+class _PlayerEngineHostState extends State<PlayerScreen> {
+  final _fallback = PlayerEngineFallback();
+  PhonePlaybackFailure? _failure;
+  PlaybackEngine? _engine;
+  int _generation = 0;
+  bool _changing = false;
+
+  @override
+  Widget build(BuildContext context) {
+    if (_changing) return const SizedBox.shrink();
+    final failure = _failure;
+    return PlayerScreen(
+      key: ValueKey(_generation),
+      sourceId: widget.sourceId,
+      resume: widget.resume,
+      resolveSources: widget.resolveSources,
+      resolveDownloadedSources: widget.resolveDownloadedSources,
+      localOnly: widget.localOnly,
+      pollSources: widget.pollSources,
+      episodes: failure?.episodes ?? widget.episodes,
+      startIndex: failure?.index ?? widget.startIndex,
+      episodesResolver: failure == null ? widget.episodesResolver : null,
+      resumeEpisodeId: failure == null ? widget.resumeEpisodeId : null,
+      resumeEpisodeNumber: failure == null ? widget.resumeEpisodeNumber : null,
+      resumePosition: failure?.position ?? widget.resumePosition,
+      history: widget.history,
+      showTitle: widget.showTitle,
+      showDescription: widget.showDescription,
+      cover: widget.cover,
+      coverHeaders: widget.coverHeaders,
+      showUrl: widget.showUrl,
+      downloadShowId: widget.downloadShowId,
+      category: failure?.category ?? widget.category,
+      malId: widget.malId,
+      scrobbleTitle: widget.scrobbleTitle,
+      tmdbId: widget.tmdbId,
+      tmdbIsTv: widget.tmdbIsTv,
+      imdbId: widget.imdbId,
+      peek: widget.peek,
+      availableCategories: widget.availableCategories,
+      joinRoomCode: widget.joinRoomCode,
+      playerOverride: _engine == null
+          ? widget.playerOverride
+          : _engine == PlaybackEngine.mpv
+          ? ''
+          : PlaybackPrefs.androidPlayerId,
+      initialSource: failure == null
+          ? widget.initialSource
+          : _fallback
+                .blockedUrls(
+                  failure.episodes[failure.index].url,
+                  failure.category,
+                )
+                .contains(failure.source.url)
+          ? null
+          : failure.source,
+      engineFallback: _fallback,
+      engineRecovery: failure != null,
+      onEngineChange: (engine, request, teardown) async {
+        if (!mounted || _changing) return;
+        setState(() => _changing = true);
+        // Wait only for this session, not another paused player underneath it.
+        await teardown;
+        if (!mounted) return;
+        setState(() {
+          _engine = engine;
+          _failure = request;
+          _generation++;
+          _changing = false;
+        });
+      },
+      isMovie: widget.isMovie,
+    );
+  }
 }
 
 class _PlayerScreenState extends State<PlayerScreen> {
@@ -344,6 +445,19 @@ class _PlayerScreenState extends State<PlayerScreen> {
     widget.initialSource,
     widget.playerOverride ?? sl<PlaybackPrefs>().externalPlayerPackage,
   );
+
+  late final PlayerEngineFallback _engineFallback =
+      widget.engineFallback ?? PlayerEngineFallback();
+  bool _switchingEngine = false;
+  Completer<void>? _engineTeardown;
+  PhonePlaybackFailure? _nativeEngineFailure;
+
+  bool get _canTryOtherPlayer =>
+      widget.onEngineChange != null &&
+      Platform.isAndroid &&
+      !sl<AppMode>().isTv &&
+      sl<PlaybackPrefs>().autoPlayerFallback &&
+      (_chosenPlayer.isEmpty || _chosenPlayer == PlaybackPrefs.androidPlayerId);
 
   late final PlayerCubit _c;
   final WatchTogetherController _room = sl<WatchTogetherController>();
@@ -1155,8 +1269,24 @@ class _PlayerScreenState extends State<PlayerScreen> {
         tmdbIsTv: widget.tmdbIsTv,
         imdbId: widget.imdbId,
         isMovie: widget.isMovie,
+        engineFallback: _canTryOtherPlayer ? _engineFallback : null,
+        forceInitialResume: widget.engineRecovery,
+        onEngineFallback: (failure) => _nativeEngineFailure = failure,
       );
+      final failure = _nativeEngineFailure;
+      if (mounted && failure != null) {
+        await _replacePlayerEngine(
+          engine: PlaybackEngine.mpv,
+          episodes: failure.episodes,
+          index: failure.index,
+          source: failure.source,
+          position: failure.position,
+          category: failure.category,
+        );
+        return;
+      }
       if (!opened) {
+        if (await _recoverUnavailableNative()) return;
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(context.l10n.androidPlayerUnavailable)),
@@ -1167,9 +1297,85 @@ class _PlayerScreenState extends State<PlayerScreen> {
       _leavePlayer();
     } catch (e, st) {
       AppLogger.instance.logError(e, st);
+      if (await _recoverUnavailableNative()) return;
       if (!mounted) return;
       Navigator.of(context).maybePop();
     }
+  }
+
+  Future<bool> _recoverUnavailableNative() async {
+    final source = widget.initialSource;
+    final index = widget.startIndex;
+    if (!mounted ||
+        !widget.engineRecovery ||
+        !_canTryOtherPlayer ||
+        source == null ||
+        source.isDrm ||
+        isTorrentUrl(source.url) ||
+        index < 0 ||
+        index >= widget.episodes.length) {
+      return false;
+    }
+    _engineFallback.next(
+      enabled: true,
+      failedEngine: PlaybackEngine.nativePlayer,
+      episodeUrl: widget.episodes[index].url,
+      category: widget.category ?? 'sub',
+      source: source,
+    );
+    await _replacePlayerEngine(
+      engine: PlaybackEngine.mpv,
+      episodes: widget.episodes,
+      index: index,
+      source: source,
+      position: widget.resumePosition,
+      category: widget.category ?? 'sub',
+    );
+    return true;
+  }
+
+  Future<bool> _onMpvSourceFailure(
+    VideoSource source,
+    Duration position,
+  ) async {
+    if (!mounted || _switchingEngine || !_canTryOtherPlayer) return false;
+    final target = _engineFallback.next(
+      enabled: true,
+      failedEngine: PlaybackEngine.mpv,
+      episodeUrl: _c.currentEpisode.url,
+      category: _c.activeCategory,
+      source: source,
+    );
+    if (target == null) return false;
+    await _replacePlayerEngine(
+      engine: target,
+      episodes: _c.episodes,
+      index: _c.state.currentIndex,
+      source: source,
+      position: position,
+      category: _c.activeCategory,
+    );
+    return true;
+  }
+
+  Future<void> _replacePlayerEngine({
+    required PlaybackEngine engine,
+    required List<Episode> episodes,
+    required int index,
+    required VideoSource source,
+    required Duration position,
+    required String category,
+  }) async {
+    if (!mounted || _switchingEngine) return;
+    _switchingEngine = true;
+    _engineTeardown = Completer<void>();
+    widget.onEngineChange?.call(engine, (
+      episodes: episodes,
+      index: index,
+      source: source,
+      position: position,
+      category: category,
+    ), _engineTeardown!.future);
   }
 
   Future<void> _launchExternalThenPop() async {
@@ -1382,6 +1588,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
       initialResume: widget.resumePosition,
       initialSource: widget.initialSource,
       onDrmSource: _handoffToNativeDrm,
+      onSourceFailure: _canTryOtherPlayer ? _onMpvSourceFailure : null,
+      engineFallback: _canTryOtherPlayer ? _engineFallback : null,
+      forceInitialResume: widget.engineRecovery,
     )..init(startIndex);
 
     // Bind the wake-lock to playback now that the player exists: on while
@@ -1625,9 +1834,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final routeLease = _routeTeardownLease;
     if (_ready) {
       _c.close();
-      unawaited(_c.nativeTeardown.whenComplete(() => routeLease?.release()));
+      unawaited(_c.nativeTeardown.whenComplete(() {
+        routeLease?.release();
+        _engineTeardown?.complete();
+      }));
     } else {
       routeLease?.release();
+      _engineTeardown?.complete();
     }
     // Detach from the app-level party controller (nulls out player hooks and,
     // if this client is host, marks the room lobby). Does NOT leave the party —
@@ -3497,7 +3710,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
   @override
   Widget build(BuildContext context) {
     final route = ModalRoute.of(context);
-    if (route is NativePlayerHandoffRoute) {
+    if (_chosenPlayer == PlaybackPrefs.androidPlayerId &&
+        (route is NativePlayerHandoffRoute || widget.onEngineChange != null)) {
       return const SizedBox.shrink();
     }
     // A Watch Together join that couldn't resolve the room's source — explain
