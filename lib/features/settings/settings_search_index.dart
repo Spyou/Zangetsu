@@ -295,6 +295,10 @@ final settingsLeaves = <SettingsLeaf>[
     keywords: 'subs language translate',
   ),
 
+  SettingsLeaf(LeafParent.playback, (l) => l.tvDecoderMode),
+  SettingsLeaf(LeafParent.playback, (l) => l.autoPlayerFallback),
+  SettingsLeaf(LeafParent.playback, (l) => l.androidPlayerCache),
+
   // Reading → ReaderSettingsScreen
   SettingsLeaf(
     LeafParent.reader,
@@ -397,7 +401,12 @@ final settingsLeaves = <SettingsLeaf>[
     keywords: 'novel pages scroll book',
   ),
 
+  SettingsLeaf(LeafParent.reader, (l) => l.showPageNumber),
+  SettingsLeaf(LeafParent.reader, (l) => l.mangaTranslationSettings),
+  SettingsLeaf(LeafParent.reader, (l) => l.mangaTranslationAppearance),
+
   // Interface → AppearanceScreen
+  SettingsLeaf(LeafParent.appearance, (l) => l.customColour),
   SettingsLeaf(
     LeafParent.appearance,
     (l) => l.materialYou,

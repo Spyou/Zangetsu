@@ -34,6 +34,7 @@ class SettingsBackup {
     'nav_prefs', // which tabs the bottom bar shows, and their order
     'search_view_prefs', // search layout (grid vs rows)
     'ui_prefs', // list sort / reveal animation
+    'tracker_switch_prefs', // last-selected list view
     'privacy_prefs', // incognito
     'novel_lang_prefs', // novel language filter
     'torrent_prefs', // torrent settings
