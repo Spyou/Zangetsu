@@ -416,16 +416,19 @@ class DiscordRpc {
   }
 
   // ── Presence ──────────────────────────────────────────────────────────────
-  // Text sources ('app' | 'title' | 'episode') and image choices mirror
-  // ArchiveTune's Discord screen, adapted to shows: Name/Details/State each
-  // pick what they render. Defaults reproduce the historical lines exactly.
+  // Defaults keep the existing watching and browsing text.
 
   String get nameSrc => _box.get('nameSrc', defaultValue: 'title') as String;
   String get detailsSrc =>
       _box.get('detailsSrc', defaultValue: 'episode') as String;
   String get stateSrc => _box.get('stateSrc', defaultValue: 'app') as String;
-  String get presenceStatus =>
-      _box.get('presenceStatus', defaultValue: 'online') as String;
+  static const presenceStatuses = {'online', 'idle', 'dnd', 'invisible'};
+
+  String get presenceStatus {
+    final value = _box.get('presenceStatus', defaultValue: 'online');
+    return presenceStatuses.contains(value) ? value as String : 'online';
+  }
+
   String get largeImageSrc =>
       _box.get('largeImage', defaultValue: 'poster') as String;
   String get smallImageSrc =>
@@ -439,7 +442,11 @@ class DiscordRpc {
       _box.get('browsingTitle', defaultValue: true) as bool;
 
   Future<void> setPresencePref(String key, Object value) async {
+    if (key == 'presenceStatus' && !presenceStatuses.contains(value)) {
+      throw ArgumentError.value(value, key, 'Unknown Discord status');
+    }
     await _box.put(key, value);
+    if (key == 'presenceStatus' && _canRun) _queuePresenceSend();
   }
 
   Future<void> setWatching({
@@ -598,10 +605,8 @@ class DiscordRpc {
       debugPrint(
         '[discord] already connected — re-push current=${_current?.name}',
       );
-      if (_current != null) {
-        _presenceSendTimer?.cancel();
-        _gateway!.setPresence(_current, status: presenceStatus);
-      }
+      _presenceSendTimer?.cancel();
+      _gateway!.setPresence(_current, status: presenceStatus);
       return;
     }
     final token = await getValidAccessToken();
@@ -615,9 +620,7 @@ class DiscordRpc {
               ? DiscordSdkGateway(token, onAuthFailure: _onAuthFailure)
               : DiscordGateway('Bearer $token', onAuthFailure: _onAuthFailure))
           ..connect();
-    if (_current != null) {
-      _gateway!.setPresence(_current, status: presenceStatus);
-    }
+    _gateway!.setPresence(_current, status: presenceStatus);
   }
 
   /// Gateway rejected the session (op 9): refresh once and resume on the same

@@ -358,6 +358,12 @@ class AppLocalizationsPt extends AppLocalizations {
   String get discordActivityStatus => 'Activity status';
 
   @override
+  String get discordOnlineStatus => 'Discord status';
+
+  @override
+  String get presenceInvisible => 'Invisible';
+
+  @override
   String get presenceOnline => 'Online';
 
   @override

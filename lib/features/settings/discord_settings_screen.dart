@@ -161,6 +161,7 @@ class _DiscordSettingsScreenState extends State<DiscordSettingsScreen> {
                 const SizedBox(height: 12),
                 SettingsCard(
                   children: [
+                    _statusRow(),
                     _switchRow(
                       icon: Icons.pause_circle_outline_rounded,
                       title: context.l10n.presenceShowWhenPaused,
@@ -201,6 +202,122 @@ class _DiscordSettingsScreenState extends State<DiscordSettingsScreen> {
         ),
       ),
     );
+  }
+
+  List<(String, String, IconData, Color)> get _statusOptions => [
+    (
+      'online',
+      context.l10n.presenceOnline,
+      Icons.circle,
+      const Color(0xFF23A55A),
+    ),
+    (
+      'idle',
+      context.l10n.presenceIdle,
+      Icons.dark_mode_rounded,
+      const Color(0xFFF0B232),
+    ),
+    (
+      'dnd',
+      context.l10n.presenceDnd,
+      Icons.do_not_disturb_on_rounded,
+      const Color(0xFFF23F43),
+    ),
+    (
+      'invisible',
+      context.l10n.presenceInvisible,
+      Icons.radio_button_unchecked_rounded,
+      AppColors.textSecondary,
+    ),
+  ];
+
+  SettingsTile _statusRow() {
+    final option = _statusOptions.firstWhere(
+      (item) => item.$1 == _rpc.presenceStatus,
+    );
+    return SettingsTile(
+      icon: option.$3,
+      title: context.l10n.discordOnlineStatus,
+      subtitle: option.$2,
+      onTap: _pickStatus,
+    );
+  }
+
+  Future<void> _pickStatus() async {
+    final selected = await AppDialog.show<String>(
+      context,
+      title: context.l10n.discordOnlineStatus,
+      body: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final option in _statusOptions)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Material(
+                color: option.$1 == _rpc.presenceStatus
+                    ? AppColors.accent.withValues(alpha: 0.10)
+                    : AppColors.surface2,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  side: BorderSide(
+                    color: option.$1 == _rpc.presenceStatus
+                        ? AppColors.accent.withValues(alpha: 0.35)
+                        : Colors.transparent,
+                  ),
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: ListTile(
+                  selected: option.$1 == _rpc.presenceStatus,
+                  dense: true,
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 4,
+                  ),
+                  minLeadingWidth: 28,
+                  horizontalTitleGap: 12,
+                  leading: Container(
+                    width: 30,
+                    height: 30,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: option.$4.withValues(alpha: 0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(option.$3, color: option.$4, size: 17),
+                  ),
+                  title: Text(
+                    option.$2,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppText.body.copyWith(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  trailing: option.$1 == _rpc.presenceStatus
+                      ? Icon(
+                          Icons.check_rounded,
+                          color: AppColors.accent,
+                          size: 20,
+                        )
+                      : const SizedBox(width: 20),
+                  onTap: () =>
+                      Navigator.of(context, rootNavigator: true).pop(option.$1),
+                ),
+              ),
+            ),
+        ],
+      ),
+      actions: [
+        TvAlertAction(
+          label: context.l10n.cancel,
+          onTap: () => Navigator.of(context, rootNavigator: true).pop(),
+        ),
+      ],
+    );
+    if (selected == null || selected == _rpc.presenceStatus) return;
+    await _rpc.setPresencePref('presenceStatus', selected);
+    if (mounted) setState(() {});
   }
 
   Future<void> _setEnabled(bool value) async {

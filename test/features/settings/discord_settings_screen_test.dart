@@ -28,7 +28,8 @@ class _Discord extends DiscordRpc {
   @override
   String get stateSrc => 'app';
   @override
-  String get presenceStatus => 'online';
+  String get presenceStatus =>
+      preferences['presenceStatus'] as String? ?? 'online';
   @override
   String get largeImageSrc => 'poster';
   @override
@@ -87,6 +88,64 @@ void main() {
     },
   );
 
+  testWidgets('Discord status offers four choices and saves the selection', (
+    tester,
+  ) async {
+    await tester.pumpWidget(screen());
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Discord status'));
+    await tester.pumpAndSettle();
+    for (final label in ['Online', 'Idle', 'Do not disturb', 'Invisible']) {
+      expect(find.text(label), findsWidgets);
+    }
+    await tester.tap(find.text('Idle').last);
+    await tester.pumpAndSettle();
+    expect(rpc.presenceStatus, 'idle');
+    expect(find.text('Idle'), findsOneWidget);
+    await tester.tap(find.text('Discord status'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Invisible').last);
+    await tester.pumpAndSettle();
+    expect(rpc.presenceStatus, 'invisible');
+    expect(find.text('Invisible'), findsOneWidget);
+  });
+
+  for (final width in [320.0, 800.0]) {
+    testWidgets(
+      'status dialog fits width $width with large text and can cancel',
+      (tester) async {
+        tester.view.physicalSize = Size(width, 700);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        await tester.pumpWidget(
+          MaterialApp(
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(
+                context,
+              ).copyWith(textScaler: const TextScaler.linear(1.5)),
+              child: child!,
+            ),
+            home: const DiscordSettingsScreen(),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Discord status'));
+        await tester.pumpAndSettle();
+        expect(find.byType(Dialog), findsOneWidget);
+        expect(
+          tester.getSize(find.byType(Dialog)).width,
+          lessThanOrEqualTo(width),
+        );
+        expect(tester.takeException(), isNull);
+        await tester.tap(find.text('Cancel'));
+        await tester.pumpAndSettle();
+        expect(rpc.presenceStatus, 'online');
+        expect(rpc.preferences, isEmpty);
+      },
+    );
+  }
+
   for (final width in [320.0, 800.0]) {
     testWidgets('Bleach preview fits width $width with large text', (
       tester,
@@ -139,5 +198,6 @@ void main() {
     expect(find.text('Connect Discord'), findsOneWidget);
     expect(find.byType(Switch), findsNothing);
     expect(find.text('Krishna'), findsNothing);
+    expect(find.text('Discord status'), findsNothing);
   });
 }

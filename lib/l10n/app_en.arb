@@ -126,6 +126,8 @@
 	"discord": "Discord",
 	"discordSubtitle": "Rich Presence — show your status",
 	"discordActivityStatus": "Activity status",
+	"discordOnlineStatus": "Discord status",
+	"presenceInvisible": "Invisible",
 	"presenceOnline": "Online",
 	"presenceIdle": "Idle",
 	"presenceDnd": "Do not disturb",

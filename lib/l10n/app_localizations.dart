@@ -789,6 +789,18 @@ abstract class AppLocalizations {
   /// **'Activity status'**
   String get discordActivityStatus;
 
+  /// No description provided for @discordOnlineStatus.
+  ///
+  /// In en, this message translates to:
+  /// **'Discord status'**
+  String get discordOnlineStatus;
+
+  /// No description provided for @presenceInvisible.
+  ///
+  /// In en, this message translates to:
+  /// **'Invisible'**
+  String get presenceInvisible;
+
   /// No description provided for @presenceOnline.
   ///
   /// In en, this message translates to:

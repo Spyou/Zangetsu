@@ -69,7 +69,10 @@ class DiscordPresenceBridge(private val activity: Activity, messenger: BinaryMes
                         )
                         result.success(null)
                     }
-                    "clear" -> { if (running) nativeClear(); result.success(null) }
+                    "clear" -> {
+                        if (running) nativeClear(call.argument<String>("status") ?: "online")
+                        result.success(null)
+                    }
                     "close" -> { stop(); result.success(null) }
                     else -> result.notImplemented()
                 }
@@ -96,7 +99,7 @@ class DiscordPresenceBridge(private val activity: Activity, messenger: BinaryMes
 
     private external fun nativeStart(appId: Long, token: String)
     private external fun nativeUpdate(name: String, type: Int, details: String?, state: String?, large: String?, largeText: String?, small: String?, smallText: String?, start: Long, end: Long, labels: Array<String>, urls: Array<String>, status: String)
-    private external fun nativeClear()
+    private external fun nativeClear(status: String)
     private external fun nativeClose()
     private external fun nativePoll(): String?
     private external fun nativePollEvent(): String?

@@ -138,7 +138,7 @@ class DiscordGateway {
   /// socket. Closing without this leaves the last Rich Presence on the profile.
   Future<void> clearThenClose() async {
     if (_closed) return;
-    setPresence(null);
+    setPresence(null, status: _pendingStatus);
     await Future<void>.delayed(const Duration(milliseconds: 400));
     await close();
   }

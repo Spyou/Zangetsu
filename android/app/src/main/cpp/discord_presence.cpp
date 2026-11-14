@@ -29,6 +29,11 @@ std::string text(JNIEnv* env, jstring value) {
 std::optional<std::string> optionalText(JNIEnv* env, jstring value) {
     return value ? std::optional<std::string>(text(env, value)) : std::nullopt;
 }
+discordpp::StatusType onlineStatusFor(const std::string& status) {
+    return status == "idle" ? discordpp::StatusType::Idle :
+        status == "dnd" ? discordpp::StatusType::Dnd :
+        status == "invisible" ? discordpp::StatusType::Invisible : discordpp::StatusType::Online;
+}
 void event(std::string value) {
     __android_log_print(ANDROID_LOG_INFO, "ZangetsuDiscord", "%s", value.c_str());
     if (events.size() == 32) events.pop_front();
@@ -107,16 +112,14 @@ Java_com_spyou_watch_1app_DiscordPresenceBridge_nativeUpdate(JNIEnv* env, jobjec
         activity.AddButton(button);
         env->DeleteLocalRef(label); env->DeleteLocalRef(url);
     }
-    const auto requested = text(env, status);
-    onlineStatus = requested == "idle" ? discordpp::StatusType::Idle :
-        requested == "dnd" ? discordpp::StatusType::Dnd :
-        requested == "invisible" ? discordpp::StatusType::Invisible : discordpp::StatusType::Online;
+    onlineStatus = onlineStatusFor(text(env, status));
     pending = std::move(activity); hasPending = true;
     publish();
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_spyou_watch_1app_DiscordPresenceBridge_nativeClear(JNIEnv*, jobject) {
+Java_com_spyou_watch_1app_DiscordPresenceBridge_nativeClear(JNIEnv* env, jobject, jstring status) {
+    onlineStatus = onlineStatusFor(text(env, status));
     pending.reset(); hasPending = true; publish();
 }
 extern "C" JNIEXPORT void JNICALL

@@ -6,6 +6,11 @@
 static NSString *stringValue(id value) {
   return [value isKindOfClass:NSString.class] ? value : nil;
 }
+static discordpp::StatusType onlineStatusFor(NSString *status) {
+  return [status isEqualToString:@"idle"] ? discordpp::StatusType::Idle :
+      [status isEqualToString:@"dnd"] ? discordpp::StatusType::Dnd :
+      [status isEqualToString:@"invisible"] ? discordpp::StatusType::Invisible : discordpp::StatusType::Online;
+}
 static std::optional<std::string> sdkText(id value) {
   NSString *text = stringValue(value);
   return text ? std::optional<std::string>(text.UTF8String) : std::nullopt;
@@ -139,13 +144,11 @@ static std::optional<std::string> sdkText(id value) {
         button.SetLabel(label.UTF8String); button.SetUrl(url.UTF8String); activity.AddButton(button);
       }
     }
-    NSString *status = stringValue(args[@"status"]);
-    _onlineStatus = [status isEqualToString:@"idle"] ? discordpp::StatusType::Idle :
-       [status isEqualToString:@"dnd"] ? discordpp::StatusType::Dnd :
-       [status isEqualToString:@"invisible"] ? discordpp::StatusType::Invisible : discordpp::StatusType::Online;
+    _onlineStatus = onlineStatusFor(stringValue(args[@"status"]));
     _pending = std::move(activity); _hasPending = YES;
     [self publish];
   } else if ([call.method isEqualToString:@"clear"]) {
+    _onlineStatus = onlineStatusFor(stringValue(args[@"status"]));
     _pending.reset(); _hasPending = YES; [self publish];
   } else if ([call.method isEqualToString:@"close"]) {
     [self stop];

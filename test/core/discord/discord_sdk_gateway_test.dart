@@ -55,6 +55,7 @@ void main() {
         expect(activity['buttons'], ['Open']);
         await gateway.clearThenClose();
         expect(calls[calls.length - 2].method, 'clear');
+        expect((calls[calls.length - 2].arguments as Map)['status'], 'dnd');
         expect(calls.last.method, 'close');
         gateway.setPresence(const DiscordActivity(name: 'Too late'));
         await Future<void>.delayed(Duration.zero);

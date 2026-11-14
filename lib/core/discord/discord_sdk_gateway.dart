@@ -96,7 +96,7 @@ class DiscordSdkGateway extends DiscordGateway {
   @override
   Future<void> clearThenClose() async {
     if (_closed) return;
-    setPresence(null);
+    setPresence(null, status: _status);
     await Future<void>.delayed(const Duration(milliseconds: 400));
     await close();
   }

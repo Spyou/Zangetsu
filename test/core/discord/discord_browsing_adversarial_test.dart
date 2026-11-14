@@ -42,6 +42,7 @@ void main() {
     debugDefaultTargetPlatformOverride = TargetPlatform.android;
     IncognitoMode.notifier.value = false;
     await Hive.box(DiscordRpc.boxName).putAll({
+      'presenceStatus': 'online',
       'accessToken': 'fake-test-token',
       'expiresAt': DateTime.now()
           .add(const Duration(hours: 1))
@@ -88,6 +89,58 @@ void main() {
       );
     });
   }
+
+  test('status changes persist and resend the current activity', () async {
+    await rpc.setBrowsing(title: 'Title A');
+    await settle();
+    for (final status in ['idle', 'dnd', 'invisible', 'online']) {
+      calls.clear();
+      await rpc.setPresencePref('presenceStatus', status);
+      await settle();
+      expect(rpc.presenceStatus, status);
+      final update =
+          calls.singleWhere((c) => c.method == 'update').arguments as Map;
+      expect(update['status'], status);
+      expect((update['activity'] as Map)['details'], 'Looking at Title A');
+    }
+  });
+
+  test('status can change without inventing a watching activity', () async {
+    rpc.clear();
+    await settle();
+    calls.clear();
+    await rpc.setPresencePref('presenceStatus', 'dnd');
+    await settle();
+    final clear =
+        calls.singleWhere((c) => c.method == 'clear').arguments as Map;
+    expect(clear['status'], 'dnd');
+    expect(clear['activity'], isNull);
+  });
+
+  test(
+    'invalid statuses are rejected and legacy invalid values use Online',
+    () async {
+      await Hive.box(DiscordRpc.boxName).put('presenceStatus', 'invalid');
+      expect(rpc.presenceStatus, 'online');
+      await expectLater(
+        rpc.setPresencePref('presenceStatus', 'invalid'),
+        throwsArgumentError,
+      );
+    },
+  );
+
+  test(
+    'disabled Rich Presence saves status without sending or reconnecting',
+    () async {
+      await rpc.setEnabled(false);
+      await settle();
+      calls.clear();
+      await rpc.setPresencePref('presenceStatus', 'invisible');
+      await settle();
+      expect(rpc.presenceStatus, 'invisible');
+      expect(calls, isEmpty);
+    },
+  );
 
   test(
     'hidden browsing title and missing poster use generic activity',
