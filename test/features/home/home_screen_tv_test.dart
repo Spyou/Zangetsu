@@ -11,6 +11,8 @@ import 'package:watch_app/core/models/episode.dart';
 import 'package:watch_app/core/models/home_section.dart';
 import 'package:watch_app/core/models/media_item.dart';
 import 'package:watch_app/core/models/provider_info.dart';
+import 'package:watch_app/core/mode/content_mode.dart';
+import 'package:watch_app/core/mode/content_mode_cubit.dart';
 import 'package:watch_app/core/playback/watch_history.dart';
 import 'package:watch_app/core/provider/cloudstream_provider.dart';
 import 'package:watch_app/core/provider/provider_manager.dart';
@@ -143,6 +145,14 @@ class _FakeAuthCubit extends Cubit<AuthState> implements AuthCubit {
   Future<bool> ensureSourceLoaded(String sourceId) async => true;
 }
 
+class _FakeContentModeCubit extends Cubit<ContentMode>
+    implements ContentModeCubit {
+  _FakeContentModeCubit() : super(ContentMode.anime);
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
 Widget _homeApp(HomeCubit cubit, {ActiveSourceCubit? activeSource}) =>
     MultiBlocProvider(
       providers: [
@@ -154,6 +164,20 @@ Widget _homeApp(HomeCubit cubit, {ActiveSourceCubit? activeSource}) =>
       ],
       child: const MaterialApp(home: HomeScreenTv()),
     );
+
+Future<void> _changeCatalogue(WidgetTester tester, VoidCallback action) async {
+  final revision = HomeCataloguePrefs.revision.value;
+  await tester.runAsync(() async => action());
+  final timeout = Stopwatch()..start();
+  while (HomeCataloguePrefs.revision.value == revision &&
+      timeout.elapsed < const Duration(seconds: 5)) {
+    await tester.pump();
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 10)),
+    );
+  }
+  expect(HomeCataloguePrefs.revision.value, greaterThan(revision));
+}
 
 // ── Test ──────────────────────────────────────────────────────────────────────
 
@@ -177,8 +201,11 @@ void main() {
   ];
 
   late HomeCubit cubit;
+  late _FakeContentModeCubit contentMode;
 
   setUp(() async {
+    contentMode = _FakeContentModeCubit();
+    sl.registerSingleton<ContentModeCubit>(contentMode);
     final sections = [
       const HomeSection(title: 'Trending Now', items: testItems),
     ];
@@ -192,7 +219,11 @@ void main() {
     await cubit.load();
   });
 
-  tearDown(() => cubit.close());
+  tearDown(() async {
+    sl.unregister<ContentModeCubit>();
+    await contentMode.close();
+    await cubit.close();
+  });
 
   testWidgets(
     'HomeScreenTv renders rail items and the first focusable has autofocus',
@@ -295,7 +326,16 @@ void main() {
   testWidgets(
     'TV Home shows centered catalogue tabs and conditional source chip',
     (tester) async {
-      HomeCataloguePrefs.sourceSelection.value = false;
+      late Directory prefsDir;
+      await tester.runAsync(() async {
+        prefsDir = await Directory.systemTemp.createTemp('tv_header_catalogue');
+        Hive.init(prefsDir.path);
+        await Hive.openBox(HomeCataloguePrefs.boxName);
+      });
+      addTearDown(() async {
+        await Hive.close();
+        await prefsDir.delete(recursive: true);
+      });
       final previousSourceRepository = sl.isRegistered<SourceRepository>()
           ? sl<SourceRepository>()
           : null;
@@ -375,6 +415,7 @@ void main() {
       expect(find.byKey(const ValueKey('tv-home-tab-anime')), findsOneWidget);
       expect(find.byKey(const ValueKey('tv-home-tab-movie')), findsOneWidget);
       expect(find.byKey(const ValueKey('tv-home-tab-source')), findsOneWidget);
+      expect(find.byKey(const ValueKey('tv-home-tab-stremio')), findsOneWidget);
       expect(find.byType(SourceSwitcher), findsNothing);
       expect(
         find.descendant(
@@ -392,7 +433,18 @@ void main() {
         BorderRadius.circular(24),
       );
 
-      HomeCataloguePrefs.sourceSelection.value = true;
+      await tester.runAsync(
+        () => HomeCataloguePrefs.setSourceIdFor(
+          ContentMode.anime,
+          'cs:source_one',
+        ),
+      );
+      await tester.runAsync(
+        () => HomeCataloguePrefs.setCatalogue(
+          ContentMode.anime,
+          HomeCatalogueKind.source,
+        ),
+      );
       await tester.pumpAndSettle();
 
       expect(find.byType(SourceCatalogueHomeContent), findsOneWidget);
@@ -423,7 +475,10 @@ void main() {
 
       // The source chip changes this Home-only preference, never the active
       // source used for playback.
-      sourceChip.onChanged('cs:source_two');
+      await _changeCatalogue(
+        tester,
+        () => sourceChip.onChanged('cs:source_two'),
+      );
       await tester.pumpAndSettle();
       expect(
         tester.widget<SourceSwitcher>(find.byType(SourceSwitcher)).currentId,
@@ -434,6 +489,73 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
       HomeCataloguePrefs.sourceSelection.value = false;
       await activeSource.close();
+    },
+  );
+
+  testWidgets(
+    'TV Stremio tab switches catalogues without changing playback source',
+    (tester) async {
+      late Directory dir;
+      await tester.runAsync(() async {
+        dir = await Directory.systemTemp.createTemp('tv_stremio_header');
+        Hive.init(dir.path);
+        await Hive.openBox(HomeCataloguePrefs.boxName);
+        await Hive.openBox(ZModePrefs.boxName);
+      });
+      final previousRepo = sl.isRegistered<SourceRepository>()
+          ? sl<SourceRepository>()
+          : null;
+      if (previousRepo != null) sl.unregister<SourceRepository>();
+      sl.registerSingleton<SourceRepository>(const _StubSourceRepository([]));
+      final active = ActiveSourceCubit(fallback: 'cs:unchanged');
+      addTearDown(() async {
+        sl.unregister<SourceRepository>();
+        if (previousRepo != null) {
+          sl.registerSingleton<SourceRepository>(previousRepo);
+        }
+        await active.close();
+        await Hive.close();
+        await dir.delete(recursive: true);
+      });
+      await tester.pumpWidget(_homeApp(cubit, activeSource: active));
+      await tester.pumpAndSettle();
+
+      Future<void> choose(String key) async {
+        await tester.ensureVisible(find.byKey(ValueKey(key)));
+        await _changeCatalogue(tester, () {
+          tester.widget<TvFocusable>(find.byKey(ValueKey(key))).onTap();
+        });
+        await tester.pumpAndSettle();
+        expect(
+          find.descendant(
+            of: find.byKey(ValueKey(key)),
+            matching: find.byKey(const ValueKey('tv-home-selected-chip')),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const ValueKey('tv-home-selected-chip')),
+          findsOneWidget,
+        );
+        expect(active.state, 'cs:unchanged');
+        expect(tester.takeException(), isNull);
+      }
+
+      await choose('tv-home-tab-stremio');
+      expect(HomeCataloguePrefs.stremioSelected, isTrue);
+      expect(find.text('No addons added'), findsOneWidget);
+      expect(find.byType(SourceSwitcher), findsNothing);
+      await choose('tv-home-tab-source');
+      expect(HomeCataloguePrefs.sourceSelected, isTrue);
+      await choose('tv-home-tab-stremio');
+      await choose('tv-home-tab-anime');
+      expect(HomeCataloguePrefs.catalogueKind, HomeCatalogueKind.metadata);
+      expect(ZModePrefs.streamKind, StreamKind.anime);
+      await choose('tv-home-tab-stremio');
+      await choose('tv-home-tab-movie');
+      expect(HomeCataloguePrefs.catalogueKind, HomeCatalogueKind.metadata);
+      expect(ZModePrefs.streamKind, StreamKind.movie);
+      await tester.pumpWidget(const SizedBox.shrink());
     },
   );
 

@@ -166,9 +166,15 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
     });
   }
 
-  Future<void> _selectCatalogueTab({StreamKind? kind}) async {
+  Future<void> _selectCatalogueTab({
+    StreamKind? kind,
+    HomeCatalogueKind catalogue = HomeCatalogueKind.metadata,
+  }) async {
     if (kind != null) await ZModePrefs.setStreamKind(kind);
-    await HomeCataloguePrefs.setSourceSelected(kind == null);
+    await HomeCataloguePrefs.setCatalogue(
+      sl<ContentModeCubit>().state,
+      catalogue,
+    );
   }
 
   void _selectHomeCatalogueSource(String sourceId) {
@@ -207,6 +213,10 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
         sl<SourceRepository>().loadedSources.any(
           (source) => source.id == sourceId,
         );
+    final showSource =
+        _sourceCatalogueSelected &&
+        sourceIsAvailable &&
+        !HomeCataloguePrefs.stremioSelected;
     Widget tab(String label, String key, bool selected, VoidCallback onTap) =>
         TvFocusable(
           key: ValueKey(key),
@@ -242,73 +252,89 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
         child: SizedBox(
           key: const ValueKey('tv-home-header'),
           height: 56,
-          child: Stack(
-            alignment: Alignment.center,
+          child: Row(
             children: [
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Image.asset(
-                  'assets/icon/logo_mark.png',
-                  width: 42,
-                  height: 42,
-                ),
-              ),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  tab(
-                    'Anime',
-                    'tv-home-tab-anime',
-                    !_sourceCatalogueSelected &&
-                        ZModePrefs.streamKind == StreamKind.anime,
-                    () =>
-                        unawaited(_selectCatalogueTab(kind: StreamKind.anime)),
-                  ),
-                  tab(
-                    'Movies & TV',
-                    'tv-home-tab-movie',
-                    !_sourceCatalogueSelected &&
-                        ZModePrefs.streamKind == StreamKind.movie,
-                    () =>
-                        unawaited(_selectCatalogueTab(kind: StreamKind.movie)),
-                  ),
-                  tab(
-                    'Source Catalogue',
-                    'tv-home-tab-source',
-                    _sourceCatalogueSelected,
-                    () => unawaited(_selectCatalogueTab()),
-                  ),
-                ],
-              ),
-              if (_sourceCatalogueSelected &&
-                  sourceIsAvailable &&
-                  !HomeCataloguePrefs.stremioSelected)
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Text(
-                        'Source · ',
-                        style: TextStyle(color: AppColors.textSecondary),
-                      ),
-                      SourceSwitcher(
-                        currentId: sourceId,
-                        onChanged: _selectHomeCatalogueSource,
-                        trailingBuilder: (id) => SourcePickerRowActions(
-                          sourceId: id,
-                          onCloudflareSolved: (solvedId) async {
-                            if (!mounted ||
-                                solvedId != _sourceCatalogueSourceId) {
-                              return;
-                            }
-                            await _sourceCatalogueController.refresh();
-                          },
+              Image.asset('assets/icon/logo_mark.png', width: 42, height: 42),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Center(
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.all(4),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        tab(
+                          'Anime',
+                          'tv-home-tab-anime',
+                          !_sourceCatalogueSelected &&
+                              ZModePrefs.streamKind == StreamKind.anime,
+                          () => unawaited(
+                            _selectCatalogueTab(kind: StreamKind.anime),
+                          ),
                         ),
-                      ),
-                    ],
+                        tab(
+                          'Movies & TV',
+                          'tv-home-tab-movie',
+                          !_sourceCatalogueSelected &&
+                              ZModePrefs.streamKind == StreamKind.movie,
+                          () => unawaited(
+                            _selectCatalogueTab(kind: StreamKind.movie),
+                          ),
+                        ),
+                        tab(
+                          'Source Catalogue',
+                          'tv-home-tab-source',
+                          _sourceCatalogueSelected &&
+                              !HomeCataloguePrefs.stremioSelected,
+                          () => unawaited(
+                            _selectCatalogueTab(
+                              catalogue: HomeCatalogueKind.source,
+                            ),
+                          ),
+                        ),
+                        tab(
+                          'Stremio',
+                          'tv-home-tab-stremio',
+                          HomeCataloguePrefs.stremioSelected,
+                          () => unawaited(
+                            _selectCatalogueTab(
+                              catalogue: HomeCatalogueKind.stremio,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
+              ),
+              const SizedBox(width: 12),
+              if (showSource)
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text(
+                      'Source · ',
+                      style: TextStyle(color: AppColors.textSecondary),
+                    ),
+                    SourceSwitcher(
+                      currentId: sourceId,
+                      onChanged: _selectHomeCatalogueSource,
+                      trailingBuilder: (id) => SourcePickerRowActions(
+                        sourceId: id,
+                        onCloudflareSolved: (solvedId) async {
+                          if (!mounted ||
+                              solvedId != _sourceCatalogueSourceId) {
+                            return;
+                          }
+                          await _sourceCatalogueController.refresh();
+                        },
+                      ),
+                    ),
+                  ],
+                )
+              else
+                const SizedBox(width: 42),
             ],
           ),
         ),
@@ -980,7 +1006,11 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
           mode: contentMode,
           onSourceSelected: (sourceId) {
             _sourceCatalogueSourceId = sourceId;
-            unawaited(HomeCataloguePrefs.setSourceIdFor(contentMode, sourceId));
+            if (HomeCataloguePrefs.sourceIdFor(contentMode) != sourceId) {
+              unawaited(
+                HomeCataloguePrefs.setSourceIdFor(contentMode, sourceId),
+              );
+            }
           },
           onSectionsChanged: _setSourceCatalogueSections,
           showSourcePicker: false,

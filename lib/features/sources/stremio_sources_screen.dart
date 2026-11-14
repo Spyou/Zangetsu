@@ -2,10 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/di/injector.dart';
+import '../../core/app_mode.dart';
 import '../../core/stremio/stremio_manager.dart';
 import '../../core/stremio/stremio_addon_icon.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
+import '../../core/tv/tv_alert_dialog.dart';
+import '../../core/tv/tv_text_field.dart';
+
+part 'stremio_sources_screen_tv.dart';
 
 /// Addon manager: install by URL, enable/disable, configure and remove.
 class StremioSourcesScreen extends StatefulWidget {
@@ -19,17 +24,22 @@ class _StremioSourcesScreenState extends State<StremioSourcesScreen> {
   final _url = TextEditingController();
   var _busy = false;
   String _filter = 'All';
+  FocusNode? _tvUrlFocus;
+
+  bool get _isTv => sl.isRegistered<AppMode>() && sl<AppMode>().isTv;
 
   StremioManager get _manager => sl<StremioManager>();
 
   @override
   void dispose() {
+    _tvUrlFocus?.dispose();
     _url.dispose();
     super.dispose();
   }
 
   Future<void> _run(Future<void> Function() action, String success) async {
     if (_busy) return;
+    final focus = _isTv ? FocusManager.instance.primaryFocus : null;
     setState(() => _busy = true);
     try {
       await action();
@@ -43,7 +53,18 @@ class _StremioSourcesScreenState extends State<StremioSourcesScreen> {
         context,
       ).showSnackBar(SnackBar(content: Text(_message(error))));
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) {
+        setState(() => _busy = false);
+        if (focus != null) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted || focus.context == null) return;
+            if (focus.canRequestFocus) {
+              focus.requestFocus();
+              Scrollable.ensureVisible(focus.context!, alignment: .5);
+            }
+          });
+        }
+      }
     }
   }
 
@@ -58,33 +79,40 @@ class _StremioSourcesScreenState extends State<StremioSourcesScreen> {
       await _manager.install(_url.text);
       if (mounted) _url.clear();
     }, 'Addon installed');
+    if (_isTv && mounted) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _tvUrlFocus?.requestFocus();
+      });
+    }
   }
 
   Future<void> _configure(StremioInstallation installation) async {
     final controller = TextEditingController();
     final url = await showDialog<String>(
       context: context,
-      builder: (dialog) => AlertDialog(
-        title: Text('Update ${installation.name}'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: const InputDecoration(
-            labelText: 'Configured addon URL',
-            hintText: 'Paste the URL from the addon settings page',
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialog).pop(),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialog).pop(controller.text),
-            child: const Text('Save'),
-          ),
-        ],
-      ),
+      builder: (dialog) => _isTv
+          ? _stremioTvConfigureDialog(dialog, controller, installation.name)
+          : AlertDialog(
+              title: Text('Update ${installation.name}'),
+              content: TextField(
+                controller: controller,
+                autofocus: true,
+                decoration: const InputDecoration(
+                  labelText: 'Configured addon URL',
+                  hintText: 'Paste the URL from the addon settings page',
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialog).pop(),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.of(dialog).pop(controller.text),
+                  child: const Text('Save'),
+                ),
+              ],
+            ),
     );
     controller.dispose();
     if (!mounted || url == null || url.trim().isEmpty) return;
@@ -94,20 +122,22 @@ class _StremioSourcesScreenState extends State<StremioSourcesScreen> {
   Future<void> _remove(StremioInstallation installation) async {
     final ok = await showDialog<bool>(
       context: context,
-      builder: (dialog) => AlertDialog(
-        title: const Text('Remove addon?'),
-        content: Text(installation.name),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialog).pop(false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialog).pop(true),
-            child: const Text('Remove'),
-          ),
-        ],
-      ),
+      builder: (dialog) => _isTv
+          ? _stremioTvRemoveDialog(dialog, installation.name)
+          : AlertDialog(
+              title: const Text('Remove addon?'),
+              content: Text(installation.name),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialog).pop(false),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.of(dialog).pop(true),
+                  child: const Text('Remove'),
+                ),
+              ],
+            ),
     );
     if (ok != true) return;
     await _run(() => _manager.remove(installation.id), 'Addon removed');
@@ -136,7 +166,7 @@ class _StremioSourcesScreenState extends State<StremioSourcesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    final screen = Scaffold(
       backgroundColor: AppColors.bg,
       appBar: AppBar(
         backgroundColor: AppColors.bg,
@@ -183,24 +213,41 @@ class _StremioSourcesScreenState extends State<StremioSourcesScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    TextField(
-                      controller: _url,
-                      enabled: !_busy,
-                      keyboardType: TextInputType.url,
-                      autocorrect: false,
-                      enableSuggestions: false,
-                      onSubmitted: (_) => _busy ? null : _add(),
-                      decoration: InputDecoration(
-                        hintText: 'Addon URL',
-                        filled: true,
-                        fillColor: AppColors.bg.withValues(alpha: .3),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(18),
-                          borderSide: BorderSide.none,
+                    if (_isTv)
+                      TvTextField(
+                        controller: _url,
+                        focusNode: _tvUrlFocus ??= FocusNode(
+                          debugLabel: 'stremio-addon-url',
                         ),
-                        contentPadding: const EdgeInsets.all(18),
+                        autofocus: true,
+                        enabled: !_busy,
+                        keyboardType: TextInputType.url,
+                        autocorrect: false,
+                        enableSuggestions: false,
+                        onSubmitted: (_) => _busy ? null : _add(),
+                        decoration: const InputDecoration(
+                          hintText: 'Addon URL',
+                        ),
+                      )
+                    else
+                      TextField(
+                        controller: _url,
+                        enabled: !_busy,
+                        keyboardType: TextInputType.url,
+                        autocorrect: false,
+                        enableSuggestions: false,
+                        onSubmitted: (_) => _busy ? null : _add(),
+                        decoration: InputDecoration(
+                          hintText: 'Addon URL',
+                          filled: true,
+                          fillColor: AppColors.bg.withValues(alpha: .3),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(18),
+                            borderSide: BorderSide.none,
+                          ),
+                          contentPadding: const EdgeInsets.all(18),
+                        ),
                       ),
-                    ),
                     const SizedBox(height: 16),
                     ValueListenableBuilder<TextEditingValue>(
                       valueListenable: _url,
@@ -240,7 +287,17 @@ class _StremioSourcesScreenState extends State<StremioSourcesScreen> {
                           selected: _filter == filter,
                           showCheckmark: false,
                           shape: const StadiumBorder(),
-                          side: BorderSide.none,
+                          side: _isTv
+                              ? WidgetStateBorderSide.resolveWith(
+                                  (states) =>
+                                      states.contains(WidgetState.focused)
+                                      ? const BorderSide(
+                                          color: Colors.white,
+                                          width: 2,
+                                        )
+                                      : BorderSide.none,
+                                )
+                              : BorderSide.none,
                           backgroundColor: AppColors.surface,
                           selectedColor: AppColors.accentSoft,
                           labelStyle: AppText.caption.copyWith(
@@ -269,6 +326,9 @@ class _StremioSourcesScreenState extends State<StremioSourcesScreen> {
                 ),
               for (final installation in installations)
                 Card(
+                  key: _isTv
+                      ? ValueKey('tv-stremio-addon:${installation.id}')
+                      : null,
                   margin: const EdgeInsets.only(bottom: 12),
                   color: AppColors.surface,
                   elevation: 0,
@@ -455,6 +515,9 @@ class _StremioSourcesScreenState extends State<StremioSourcesScreen> {
         },
       ),
     );
+    return _isTv
+        ? Theme(data: _stremioTvTheme(Theme.of(context)), child: screen)
+        : screen;
   }
 
   Widget _sectionLabel(String text) => Padding(
