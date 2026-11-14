@@ -386,7 +386,8 @@ void main() {
 
       final pages = await repo.pages('/c1', sourceId: 'mihon:7');
 
-      expect(log.single.method, 'getPages');
+      final request = log.where((call) => call.method == 'getPages').single;
+      expect(request.arguments, {'sourceId': 7, 'url': '/c1'});
       expect(pages.map((p) => p.url), [
         'https://cdn/p1.jpg',
         'https://cdn/p2.jpg',

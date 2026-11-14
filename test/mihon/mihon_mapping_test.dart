@@ -33,7 +33,7 @@ void main() {
       expect(item.cover, isNull);
     });
 
-    test('non-empty headers are forwarded as coverHeaders, unmodified', () {
+    test('cover headers preserve Referer and include the source marker', () {
       final item = mediaItemFromSManga(
         {
           'url': 'https://source.test/manga/3',
@@ -43,7 +43,10 @@ void main() {
         sourceId: 'mihon:111',
         headers: {'Referer': 'https://source.test/'},
       );
-      expect(item.coverHeaders, {'Referer': 'https://source.test/'});
+      expect(item.coverHeaders, {
+        'Referer': 'https://source.test/',
+        'x-mihon-src': '111',
+      });
     });
 
     test('empty headers produce null coverHeaders', () {
@@ -128,7 +131,10 @@ void main() {
         sourceId: 'mihon:10',
         headers: {'Referer': 'https://source.test/'},
       );
-      expect(detail.coverHeaders, {'Referer': 'https://source.test/'});
+      expect(detail.coverHeaders, {
+        'Referer': 'https://source.test/',
+        'x-mihon-src': '10',
+      });
     });
 
     test('status 2 -> completed, 5 -> cancelled, 6 -> hiatus, unknown -> unknown', () {

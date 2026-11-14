@@ -35,6 +35,13 @@ MigrationBridge _fakeBridge() => MigrationBridge(
   verifyOtp: (_, __) async => false,
 );
 
+class _SignedOutAuthCubit extends AuthCubit {
+  _SignedOutAuthCubit()
+    : super(SupabaseService(), AppwriteService(), _fakeBridge()) {
+    emit(const AuthState(status: AuthStatus.unauthenticated));
+  }
+}
+
 // ── Minimal stubs (mirrors settings_screen_tv_test.dart / AppMode wiring) ────
 
 class _StubSearchPrefs extends SearchPrefs {
@@ -174,11 +181,7 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(1000, 2200));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
-    final authCubit = AuthCubit(
-      SupabaseService(),
-      AppwriteService(),
-      _fakeBridge(),
-    );
+    final authCubit = _SignedOutAuthCubit();
     addTearDown(authCubit.close);
     GetIt.instance.registerSingleton<AuthCubit>(authCubit);
 

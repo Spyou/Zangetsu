@@ -95,6 +95,7 @@ class _StubSimkl implements SimklService {
 /// Registers the GetIt singletons needed for [SettingsScreen] with [AppMode.isTv].
 Future<void> _registerStubs() async {
   await Hive.openBox(PlaybackPrefs.boxName);
+  await Hive.openBox(SearchPrefs.boxName);
   await Hive.openBox(DownloadPrefs.boxName);
   await Hive.openBox(TorrentPrefs.boxName);
   await Hive.openBox(ThemeController.boxName);
