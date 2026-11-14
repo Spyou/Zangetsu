@@ -29,6 +29,14 @@ void main() {
       expect(p.colorFilter, 'none');
     });
 
+    test('custom color filter defaults (off, warm tint, multiply)', () async {
+      await ReaderPrefs.init();
+      final p = ReaderPrefs();
+      expect(p.customColorFilter, isFalse);
+      expect(p.customFilterColor, 0xFFFFBA55);
+      expect(p.customFilterBlend, 'multiply');
+    });
+
     test('shared comfort defaults', () async {
       await ReaderPrefs.init();
       final p = ReaderPrefs();

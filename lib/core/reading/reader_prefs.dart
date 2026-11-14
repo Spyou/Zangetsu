@@ -261,6 +261,28 @@ class ReaderPrefs {
       _box.get('colorFilter', defaultValue: 'none') as String;
   Future<void> setColorFilter(String value) => _box.put('colorFilter', value);
 
+  /// Mihon-style custom tint: when on, the page is wrapped in
+  /// `ColorFilter.mode` with [customFilterColor] and [customFilterBlend]
+  /// instead of the preset above.
+  bool get customColorFilter =>
+      _box.get('customColorFilter', defaultValue: false) as bool;
+  Future<void> setCustomColorFilter(bool value) =>
+      _box.put('customColorFilter', value);
+
+  /// ARGB tint color for the custom filter. Defaults to a warm sepia-ish
+  /// tint (R255 G186 B85, opaque) like the reference UI.
+  int get customFilterColor =>
+      _box.get('customFilterColor', defaultValue: 0xFFFFBA55) as int;
+  Future<void> setCustomFilterColor(int value) =>
+      _box.put('customFilterColor', value);
+
+  /// Blend mode key for the custom filter: 'default' | 'multiply' |
+  /// 'screen' | 'overlay' | 'dodge' | 'lighten'.
+  String get customFilterBlend =>
+      _box.get('customFilterBlend', defaultValue: 'multiply') as String;
+  Future<void> setCustomFilterBlend(String value) =>
+      _box.put('customFilterBlend', value);
+
   /// Source language used by manga page translation.
   String get mangaTranslationSourceLanguage =>
       _box.get('mangaTranslationSourceLanguage', defaultValue: 'ja') as String;

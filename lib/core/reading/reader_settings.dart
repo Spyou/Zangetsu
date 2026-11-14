@@ -97,6 +97,17 @@ ColorFilter? readerColorFilter(String key) => switch (key) {
   _ => null,
 };
 
+/// Blend mode for the custom color filter. 'default' is a plain overlay
+/// ([BlendMode.srcOver); the rest are the Mihon set.
+BlendMode readerCustomBlendMode(String key) => switch (key) {
+  'multiply' => BlendMode.multiply,
+  'screen' => BlendMode.screen,
+  'overlay' => BlendMode.overlay,
+  'dodge' => BlendMode.colorDodge,
+  'lighten' => BlendMode.lighten,
+  _ => BlendMode.srcOver,
+};
+
 /// Groups page indices into the spreads shown by the landscape double-page
 /// reader. Walks left-to-right, pairing each page with the next one; a page
 /// listed in [wide] (a full-spread scan that already spans two pages) stands

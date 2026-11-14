@@ -2272,7 +2272,13 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
     // Only wrap in ColorFiltered when a filter is actually chosen — 'none'
     // (the default) must leave this widget out of the tree entirely so the
     // default reading path is byte-for-byte what it was before this feature.
-    final colorFilter = readerColorFilter(prefs.colorFilter);
+    // A custom tint wins over the preset when both are set.
+    final colorFilter = prefs.customColorFilter
+        ? ColorFilter.mode(
+            Color(prefs.customFilterColor),
+            readerCustomBlendMode(prefs.customFilterBlend),
+          )
+        : readerColorFilter(prefs.colorFilter);
     if (colorFilter != null) {
       content = ColorFiltered(colorFilter: colorFilter, child: content);
     }
@@ -4242,6 +4248,67 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                             ),
                           ),
                           readerSheetRow(
+                            icon: Icons.palette_outlined,
+                            label: 'Custom color filter',
+                            trailing: Switch(
+                              value: prefs.customColorFilter,
+                              activeThumbColor: AppColors.accent,
+                              onChanged: (v) => apply(
+                                () => prefs.setCustomColorFilter(v),
+                              ),
+                            ),
+                          ),
+                          if (prefs.customColorFilter) ...[
+                            for (final ch in const ['r', 'g', 'b', 'a'])
+                              readerSheetRow(
+                                icon: Icons.circle,
+                                label: _channelLabel(ch),
+                                trailing: _channelPill(
+                                  _channelValue(
+                                    prefs.customFilterColor,
+                                    ch,
+                                  ),
+                                ),
+                                child: Slider(
+                                  value: _channelValue(
+                                    prefs.customFilterColor,
+                                    ch,
+                                  ).toDouble(),
+                                  min: 0,
+                                  max: 255,
+                                  divisions: 255,
+                                  activeColor: AppColors.accent,
+                                  onChanged: (v) => apply(
+                                    () => prefs.setCustomFilterColor(
+                                      _channelSet(
+                                        prefs.customFilterColor,
+                                        ch,
+                                        v.round().clamp(0, 255),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            readerSheetRow(
+                              icon: Icons.layers_outlined,
+                              label: 'Color filter blend mode',
+                              child: ReaderSegmentedControl(
+                                options: const [
+                                  (value: 'default', label: 'Default'),
+                                  (value: 'multiply', label: 'Multiply'),
+                                  (value: 'screen', label: 'Screen'),
+                                  (value: 'overlay', label: 'Overlay'),
+                                  (value: 'dodge', label: 'Dodge'),
+                                  (value: 'lighten', label: 'Lighten'),
+                                ],
+                                selected: prefs.customFilterBlend,
+                                onSelect: (v) => apply(
+                                  () => prefs.setCustomFilterBlend(v),
+                                ),
+                              ),
+                            ),
+                          ],
+                          readerSheetRow(
                             icon: Icons.auto_stories_outlined,
                             label: context.l10n.doublePageLandscape,
                             trailing: Switch(
@@ -4409,6 +4476,40 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
     'sepia' => 'Sepia',
     _ => context.l10n.subtitleOutlineNone,
   };
+
+  /// Custom tint channel helpers (ARGB int like 0xFFFFBA55).
+  static String _channelLabel(String ch) => switch (ch) {
+    'r' => 'Red',
+    'g' => 'Green',
+    'b' => 'Blue',
+    _ => 'Alpha',
+  };
+
+  static int _channelValue(int color, String ch) => switch (ch) {
+    'r' => (color >> 16) & 0xFF,
+    'g' => (color >> 8) & 0xFF,
+    'b' => color & 0xFF,
+    _ => (color >> 24) & 0xFF,
+  };
+
+  static int _channelSet(int color, String ch, int v) => switch (ch) {
+    'r' => (color & 0xFF00FFFF) | ((v & 0xFF) << 16),
+    'g' => (color & 0xFFFF00FF) | ((v & 0xFF) << 8),
+    'b' => (color & 0xFFFFFF00) | (v & 0xFF),
+    _ => (color & 0x00FFFFFF) | ((v & 0xFF) << 24),
+  };
+
+  static Widget _channelPill(int value) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+    decoration: BoxDecoration(
+      color: AppColors.surface2,
+      borderRadius: BorderRadius.circular(12),
+    ),
+    child: Text(
+      '$value',
+      style: AppText.body.copyWith(fontWeight: FontWeight.w600),
+    ),
+  );
 
   /// Small tappable pill next to the Brightness row — jumps straight to the
   /// OS-managed brightness. Calls the exact same `setBrightness(-1.0)` +
