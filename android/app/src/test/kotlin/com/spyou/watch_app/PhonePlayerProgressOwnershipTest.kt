@@ -83,7 +83,7 @@ class PhonePlayerProgressOwnershipTest {
                 call("sendProgress")
                 assertEquals(3, messenger.calls.last { it.method == "saveProgress" }.argument<Int>("index"))
             }
-            call("reportClosed")
+            call("reportClosed", 42_000L, 100_000L)
             val closed = messenger.calls.last { it.method == "playerClosed" }
             assertEquals(if (resolve) 3 else 2, closed.argument<Int>("episodeIndex"))
             assertEquals(42_000L, closed.argument<Long>("positionMs"))

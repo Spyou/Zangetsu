@@ -740,13 +740,13 @@ class PhonePlayerActivity : Activity() {
             val slot = controlLayout.asMap().entries.firstOrNull { key in it.value }?.key ?: "hidden"
             "$label · ${controlSlotLabel(slot)}"
         }.toTypedArray()
-        android.app.AlertDialog.Builder(this, R.style.PhonePlayerDialog)
+        PhonePlayerSheet(this)
             .setTitle(R.string.phone_player_arrange_controls)
             .setItems(labels) { _, index ->
                 val key = keys[index]
                 val slots = listOf("top", "left", "right", "hidden")
                 val current = controlLayout.asMap().entries.firstOrNull { key in it.value }?.key ?: "hidden"
-                android.app.AlertDialog.Builder(this, R.style.PhonePlayerDialog)
+                PhonePlayerSheet(this)
                     .setTitle(labels[index].substringBefore(" · "))
                     .setSingleChoiceItems(slots.map { controlSlotLabel(it) }.toTypedArray(), slots.indexOf(current)) { dialog, choice ->
                         dialog.dismiss()
@@ -1237,7 +1237,7 @@ class PhonePlayerActivity : Activity() {
                 val canPlay = watchPanel?.row(index)?.unavailable.isNullOrEmpty()
                 val labels = mutableListOf(getString(if (watched) R.string.phone_player_watch_mark_unwatched else R.string.phone_player_watch_mark_watched))
                 if (canPlay) labels.add(getString(R.string.phone_player_watch_play_mirror))
-                android.app.AlertDialog.Builder(this@PhonePlayerActivity, R.style.PhonePlayerDialog)
+                PhonePlayerSheet(this@PhonePlayerActivity)
                     .setTitle(watchPanel?.row(index)?.heading ?: episodeLabels[index])
                     .setItems(labels.toTypedArray()) { _, action ->
                         if (action == 0) setWatchEpisodeWatched(index, !watched) else chooseWatchEpisodeMirror(index)
@@ -1276,7 +1276,7 @@ class PhonePlayerActivity : Activity() {
                 val choices = mapList(result)
                 if (choices.isEmpty()) { toast(getString(R.string.phone_player_error_load)); return }
                 val labels = choices.mapIndexed { i, source -> (source["label"] as? String).orEmpty().ifBlank { "Server ${i + 1}" } }
-                android.app.AlertDialog.Builder(this@PhonePlayerActivity, R.style.PhonePlayerDialog)
+                PhonePlayerSheet(this@PhonePlayerActivity)
                     .setTitle(R.string.phone_player_watch_play_mirror)
                     .setItems(labels.toTypedArray()) { _, which ->
                         if (!uiAlive() || generation != mediaGeneration) return@setItems
@@ -1304,7 +1304,7 @@ class PhonePlayerActivity : Activity() {
 
     private fun showComingSoon() {
         handler.removeCallbacks(hideRunnable)
-        android.app.AlertDialog.Builder(this, R.style.PhonePlayerDialog)
+        PhonePlayerSheet(this)
             .setTitle(getString(R.string.phone_player_watch_comments))
             .setMessage(getString(R.string.phone_player_watch_coming_soon))
             .setPositiveButton(android.R.string.ok, null)
@@ -1371,7 +1371,7 @@ class PhonePlayerActivity : Activity() {
         if (isMovie) return
         if (episodeLabels.isEmpty()) return
         handler.removeCallbacks(hideRunnable) // a dialog must not race the auto-hide
-        android.app.AlertDialog.Builder(this, R.style.PhonePlayerDialog)
+        PhonePlayerSheet(this)
             .setTitle(getString(R.string.phone_player_title_episodes))
             .setSingleChoiceItems(episodeLabels, currentIndex) { dialog, which ->
                 dialog.dismiss()
@@ -1499,10 +1499,7 @@ class PhonePlayerActivity : Activity() {
                         else "$label · $quality"
                     }.toTypedArray()
                     val selected = mirrors.indexOfFirst { it["url"] == currentUrl }
-                    android.app.AlertDialog.Builder(
-                        this@PhonePlayerActivity,
-                        R.style.PhonePlayerDialog,
-                    )
+                    PhonePlayerSheet(this@PhonePlayerActivity)
                         .setTitle(getString(R.string.phone_player_title_sources))
                         .setSingleChoiceItems(labels, selected) { dialog, which ->
                             dialog.dismiss()
@@ -1738,7 +1735,7 @@ class PhonePlayerActivity : Activity() {
             bumpControls()
             return
         }
-        android.app.AlertDialog.Builder(this, R.style.PhonePlayerDialog)
+        PhonePlayerSheet(this)
             .setTitle(getString(R.string.phone_player_title_subtitles))
             .setItems(labels.toTypedArray()) { _, which ->
                 selectTextTrack(picks[which])
@@ -1753,9 +1750,9 @@ class PhonePlayerActivity : Activity() {
         val rates = floatArrayOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f, 2.5f, 3f, 4f, 5f)
         val checked = rates.indexOfFirst { kotlin.math.abs(it - p.playbackParameters.speed) < 0.001f }
         val labels = rates.map { "${it}x" }.toTypedArray()
-        android.app.AlertDialog.Builder(this, R.style.PhonePlayerDialog)
+        PhonePlayerSheet(this)
             .setTitle(getString(R.string.phone_player_title_speed))
-            .setSingleChoiceItems(labels, checked) { dialog, which ->
+            .setChips(labels, checked) { dialog, which ->
                 dialog.dismiss()
                 p.playbackParameters = PlaybackParameters(rates[which])
                 bumpControls()
@@ -1859,12 +1856,21 @@ class PhonePlayerActivity : Activity() {
             labels += "Addon subtitles…"
             versionFor += null
         }
-        android.app.AlertDialog.Builder(this, R.style.PhonePlayerDialog)
+        val selectedRows = mutableSetOf<Int>()
+        if (categories.size > 1) categories.indexOf(currentCategory).takeIf { it >= 0 }?.let { selectedRows += it }
+        val audioIndex = audioTracks.indexOfFirst { (group, index) ->
+            group.isTrackSelected(index) && p.trackSelectionParameters.overrides.containsKey(group.mediaTrackGroup)
+        }
+        selectedRows += audioBase + audioIndex + 1
+        val textIndex = if (p.trackSelectionParameters.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT)) -1
+            else textTracks.indexOfFirst { (group, index) -> group.isTrackSelected(index) }
+        selectedRows += textBase + textIndex + 1
+        PhonePlayerSheet(this)
             .setTitle(getString(R.string.phone_player_title_tracks))
-            .setItems(labels.toTypedArray()) { _, which ->
+            .setTrackItems(labels.toTypedArray(), audioBase, textBase, selectedRows) { _, which ->
                 if (which == addonRow) {
                     showAddonSubtitles()
-                    return@setItems
+                    return@setTrackItems
                 }
                 val version = versionFor[which]
                 if (version != null) {
@@ -1884,7 +1890,7 @@ class PhonePlayerActivity : Activity() {
         val ch = PhonePlayerBridge.channel ?: return
         val generation = mediaGeneration
         val url = currentUrl
-        val loading = android.app.AlertDialog.Builder(this, R.style.PhonePlayerDialog)
+        val loading = PhonePlayerSheet(this)
             .setMessage("Loading addon subtitles…")
             .setNegativeButton(android.R.string.cancel, null)
             .showForPlayer()
@@ -1902,7 +1908,7 @@ class PhonePlayerActivity : Activity() {
                     toast("No addon subtitles found. Try again.")
                     return
                 }
-                android.app.AlertDialog.Builder(this@PhonePlayerActivity, R.style.PhonePlayerDialog)
+                PhonePlayerSheet(this@PhonePlayerActivity)
                     .setTitle(getString(R.string.phone_player_title_subtitles))
                     .setItems(tracks.map { it.label ?: it.language ?: "Subtitle" }.toTypedArray()) { _, which ->
                         if (!uiAlive() || generation != mediaGeneration || currentUrl != url) return@setItems
@@ -2011,7 +2017,7 @@ class PhonePlayerActivity : Activity() {
             labels += if (h > 0) "${h}p" else "Track ${labels.size}"
             picks += TrackSelectionOverride(g.mediaTrackGroup, i)
         }
-        android.app.AlertDialog.Builder(this, R.style.PhonePlayerDialog)
+        PhonePlayerSheet(this)
             .setTitle(getString(R.string.phone_player_title_quality))
             .setItems(labels.toTypedArray()) { _, which ->
                 val pick = picks[which]
@@ -2053,7 +2059,7 @@ class PhonePlayerActivity : Activity() {
             getString(R.string.phone_player_mode_fill),
             getString(R.string.phone_player_mode_zoom)
         )
-        android.app.AlertDialog.Builder(this, R.style.PhonePlayerDialog)
+        PhonePlayerSheet(this)
             .setTitle(getString(R.string.phone_player_menu_display))
             .setSingleChoiceItems(labels, resizeIndex) { dialog, which ->
                 dialog.dismiss()
@@ -2114,127 +2120,19 @@ class PhonePlayerActivity : Activity() {
         labels += getString(R.string.phone_player_menu_info)
         icons += R.drawable.phone_player_info
         actions += { showInfo() }
-        val density = resources.displayMetrics.density
-        fun dp(value: Int) = (value * density + 0.5f).toInt()
-        val landscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
-        val surfaceColor = getColor(R.color.phone_player_surface)
-        val textColor = getColor(R.color.phone_player_on_surface)
-        val mutedColor = getColor(R.color.phone_player_on_surface_variant)
-        val dialog = android.app.Dialog(this, R.style.PhonePlayerDialog)
-        dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
-        val sheet = android.widget.LinearLayout(this).apply {
-            orientation = android.widget.LinearLayout.VERTICAL
-            setPadding(dp(18), dp(14), dp(18), dp(18))
-            background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(surfaceColor)
-                val radius = dp(28).toFloat()
-                cornerRadii = if (landscape) {
-                    FloatArray(8) { radius }
-                } else {
-                    floatArrayOf(radius, radius, radius, radius, 0f, 0f, 0f, 0f)
-                }
+        val dialog = PhonePlayerSheet(this)
+            .setItemIcons(icons)
+            .setTitle(getString(R.string.phone_player_title_more))
+            .setItems(labels.toTypedArray()) { dialog, index ->
+                dialog.dismiss()
+                actions[index]()
             }
-        }
-        val header = android.widget.LinearLayout(this).apply {
-            gravity = android.view.Gravity.CENTER_VERTICAL
-            orientation = android.widget.LinearLayout.HORIZONTAL
-        }
-        header.addView(android.widget.TextView(this).apply {
-            text = getString(R.string.phone_player_title_more)
-            textSize = 22f
-            gravity = android.view.Gravity.CENTER_VERTICAL
-            setTextColor(textColor)
-            setTypeface(typeface, android.graphics.Typeface.BOLD)
-        }, android.widget.LinearLayout.LayoutParams(0, dp(52), 1f))
-        header.addView(android.widget.ImageView(this).apply {
-            setImageResource(R.drawable.phone_player_close)
-            foreground = getDrawable(R.drawable.phone_player_icon_ripple)
-            contentDescription = getString(android.R.string.cancel)
-            isClickable = true
-            isFocusable = true
-            setPadding(dp(11), dp(11), dp(11), dp(11))
-            setOnClickListener { dialog.dismiss() }
-        }, android.widget.LinearLayout.LayoutParams(dp(42), dp(42)))
-        sheet.addView(header)
-
-        val list = android.widget.LinearLayout(this).apply {
-            orientation = android.widget.LinearLayout.VERTICAL
-        }
-        for (index in labels.indices) {
-            val group = when (index) {
-                0 -> "PLAYBACK"
-                3 -> "WATCH NEXT"
-                5 -> "SCREEN & DEVICE"
-                else -> null
+            .setOnDismissListener {
+                moreDialog = null
+                bumpControls()
             }
-            if (group != null) {
-                list.addView(android.widget.TextView(this).apply {
-                    text = group
-                    textSize = 11f
-                    letterSpacing = 0.12f
-                    setTextColor(getColor(R.color.phone_player_accent))
-                    setTypeface(typeface, android.graphics.Typeface.BOLD)
-                    setPadding(dp(12), dp(14), 0, dp(5))
-                })
-            }
-            val row = android.widget.LinearLayout(this).apply {
-                gravity = android.view.Gravity.CENTER_VERTICAL
-                minimumHeight = dp(54)
-                orientation = android.widget.LinearLayout.HORIZONTAL
-                setPadding(dp(13), dp(11), dp(13), dp(11))
-                foreground = getDrawable(R.drawable.phone_player_icon_ripple)
-                isClickable = true
-                isFocusable = true
-                contentDescription = labels[index]
-                setOnClickListener {
-                    dialog.dismiss()
-                    actions[index]()
-                }
-            }
-            row.addView(android.widget.ImageView(this).apply {
-                setImageResource(icons[index])
-                imageTintList = android.content.res.ColorStateList.valueOf(mutedColor)
-            }, android.widget.LinearLayout.LayoutParams(dp(20), dp(20)))
-            row.addView(android.widget.TextView(this).apply {
-                text = labels[index]
-                textSize = 14f
-                setTextColor(textColor)
-                setTypeface(typeface, android.graphics.Typeface.NORMAL)
-            }, android.widget.LinearLayout.LayoutParams(0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                marginStart = dp(12)
-            })
-            list.addView(row, android.widget.LinearLayout.LayoutParams(
-                android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
-                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
-            ).apply { topMargin = dp(6) })
-        }
-        sheet.addView(android.widget.ScrollView(this).apply {
-            isFillViewport = false
-            addView(list)
-        }, android.widget.LinearLayout.LayoutParams(
-            android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
-            0,
-            1f,
-        ))
-        dialog.setContentView(sheet)
-        dialog.setOnDismissListener {
-            moreDialog = null
-            bumpControls()
-        }
+            .showForPlayer()
         moreDialog = dialog
-        dialog.show()
-        if (isPortraitCard()) PhoneWatchMotion.enter(dialog)
-        dialog.window?.apply {
-            setBackgroundDrawableResource(android.R.color.transparent)
-            addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
-            setDimAmount(0.56f)
-            setGravity(if (landscape) android.view.Gravity.CENTER else android.view.Gravity.BOTTOM)
-            setLayout(
-                if (landscape) dp(480).coerceAtMost(resources.displayMetrics.widthPixels - dp(48)) else WindowManager.LayoutParams.MATCH_PARENT,
-                if (landscape) (resources.displayMetrics.heightPixels * 0.85f).toInt()
-                else (resources.displayMetrics.heightPixels * 0.78f).toInt(),
-            )
-        }
     }
 
     private fun showInfo() {
@@ -2259,7 +2157,7 @@ class PhonePlayerActivity : Activity() {
             source,
             "${speed}x",
         ).filter { it.isNotEmpty() }.joinToString("\n")
-        android.app.AlertDialog.Builder(this, R.style.PhonePlayerDialog)
+        PhonePlayerSheet(this)
             .setTitle(getString(R.string.phone_player_title_playback_info))
             .setMessage(message)
             .setPositiveButton(android.R.string.ok, null)

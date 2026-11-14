@@ -155,12 +155,8 @@ class PhonePlayerLayoutTest {
 
         val dialog = ShadowDialog.getLatestDialog()
         assertTrue(dialog.isShowing)
-        val labels = mutableListOf<String>()
-        fun collect(view: View) {
-            if (view is TextView) labels += view.text.toString()
-            if (view is ViewGroup) for (i in 0 until view.childCount) collect(view.getChildAt(i))
-        }
-        collect(dialog.window!!.decorView)
+        val list = (dialog as android.app.AlertDialog).listView
+        val labels = (0 until list.count).map { list.adapter.getItem(it).toString() }
         for (label in listOf("Playback speed", "Audio & subtitles", "Video quality", "Sources", "Episodes", "Display", "Rotate", "Info")) {
             assertTrue("Missing player action: $label", label in labels)
         }
