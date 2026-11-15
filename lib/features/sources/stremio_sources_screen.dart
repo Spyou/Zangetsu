@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/di/injector.dart';
 import '../../core/app_mode.dart';
 import '../../core/stremio/stremio_manager.dart';
+import '../../core/stremio/stremio_sync.dart';
 import '../../core/stremio/stremio_addon_icon.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
@@ -190,6 +191,35 @@ class _StremioSourcesScreenState extends State<StremioSourcesScreen> {
           return ListView(
             padding: const EdgeInsets.fromLTRB(20, 12, 20, 40),
             children: [
+              if (sl.isRegistered<StremioSync>())
+                ListenableBuilder(
+                  listenable: sl<StremioSync>(),
+                  builder: (context, _) => sl<StremioSync>().lastError == null
+                      ? const SizedBox.shrink()
+                      : _panel(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Addon sync pending',
+                                style: AppText.headline,
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                sl<StremioSync>().lastError!,
+                                style: AppText.body,
+                              ),
+                              TextButton.icon(
+                                onPressed: () {
+                                  sl<StremioSync>().refresh();
+                                },
+                                icon: const Icon(Icons.sync),
+                                label: const Text('Retry sync'),
+                              ),
+                            ],
+                          ),
+                        ),
+                ),
               _sectionLabel('Overview'),
               _panel(
                 child: IntrinsicHeight(

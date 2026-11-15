@@ -11,8 +11,22 @@ import 'package:watch_app/core/app_mode.dart';
 import 'package:watch_app/core/tv/tv_text_field.dart';
 import 'package:watch_app/core/tv/tv_alert_dialog.dart';
 import 'package:watch_app/core/stremio/stremio_manager.dart';
+import 'package:watch_app/core/stremio/stremio_sync.dart';
 import 'package:watch_app/features/sources/stremio_sources_screen.dart';
 import 'package:zangetsu_source_bridge/stremio.dart';
+
+class _FakeSync extends ChangeNotifier implements StremioSync {
+  @override
+  String? lastError = 'Sync needs a retry';
+  @override
+  Future<void> refresh({Duration maxAge = Duration.zero}) async {
+    lastError = null;
+    notifyListeners();
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
 
 class _FakeSecrets implements StremioSecretStore {
   @override
@@ -190,6 +204,20 @@ void main() {
     expect(node.hasFocus, isTrue);
     return node;
   }
+
+  testWidgets('a pending addon sync is visible and can be retried', (
+    tester,
+  ) async {
+    final sync = _FakeSync();
+    sl.registerSingleton<StremioSync>(sync);
+    addTearDown(sync.dispose);
+    await tester.pumpWidget(const MaterialApp(home: StremioSourcesScreen()));
+    await tester.pump();
+    expect(find.text('Addon sync pending'), findsOneWidget);
+    await tester.tap(find.text('Retry sync'));
+    await tester.pump();
+    expect(find.text('Addon sync pending'), findsNothing);
+  });
 
   testWidgets('TV URL entry does not trap remote navigation in the keyboard', (
     tester,

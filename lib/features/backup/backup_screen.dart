@@ -1,5 +1,8 @@
 import 'dart:io';
 
+import '../../core/stremio/stremio_backup_cipher.dart';
+import 'stremio_backup_password_dialog.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -79,7 +82,7 @@ class _BackupScreenState extends State<BackupScreen> {
     setState(() => _busy = true);
     try {
       if (!await _authorizeBackup()) return;
-      await _cloud.upload(uid, _service.build(_selected));
+      await _cloud.upload(uid, await _service.buildProtected(_selected));
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
@@ -94,14 +97,28 @@ class _BackupScreenState extends State<BackupScreen> {
     }
   }
 
+  Future<String?> _addonPassword({required bool confirm}) => showDialog<String>(
+    context: context,
+    builder: (_) => StremioBackupPasswordDialog(confirm: confirm),
+  );
+
   Future<void> _saveToFile() async {
+    String? password;
+    if (_selected.contains(BackupBundle.sources)) {
+      password = await _addonPassword(confirm: true);
+      if (!mounted || password == null) return;
+    }
     setState(() => _busy = true);
     try {
       if (!await _authorizeBackup()) return;
       // On TV also keep an app-private copy so restore-from-file can list it
       // without a document picker (see [_restoreFromFile]).
       final path = await BackupFile().export(
-        _service.build(_selected),
+        await _service.buildProtected(
+          _selected,
+          forFile: true,
+          password: password,
+        ),
         keepLocalCopy: _isTv,
       );
       if (!mounted) return;
@@ -116,6 +133,16 @@ class _BackupScreenState extends State<BackupScreen> {
           ),
         ),
       );
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Could not save the backup. Your current data is unchanged.',
+            ),
+          ),
+        );
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -140,6 +167,17 @@ class _BackupScreenState extends State<BackupScreen> {
         return;
       }
       report = await _service.restore(p, _selected);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              context.l10n.restoreFailed(context.l10n.somethingWentWrong),
+            ),
+          ),
+        );
+      }
+      return;
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -165,12 +203,21 @@ class _BackupScreenState extends State<BackupScreen> {
       p = null;
     }
     if (_isTv) p ??= await _pickLocalBackupTv();
-    if (p == null) return;
+    if (p == null || !mounted) return;
+    String? password;
+    final sources = (p['bundles'] as Map?)?['sources'];
+    final envelope = sources is Map ? sources['stremio'] : null;
+    if (_selected.contains(BackupBundle.sources) &&
+        envelope is Map &&
+        envelope['format'] == StremioBackupCipher.format) {
+      password = await _addonPassword(confirm: false);
+      if (!mounted || password == null) return;
+    }
     setState(() => _busy = true);
     RestoreReport? report;
     try {
       if (!await _authorizeBackup()) return;
-      report = await _service.restore(p, _selected);
+      report = await _service.restore(p, _selected, password: password);
     } on BackupFormatException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(

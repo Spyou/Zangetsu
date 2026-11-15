@@ -1,0 +1,28 @@
+[Unit]
+Description=Zangetsu protected addon sync
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=zangetsu-stremio
+Group=zangetsu-stremio
+SupplementaryGroups=sync_authenticator
+WorkingDirectory=/opt/zangetsu-klipy
+Environment=SUPABASE_ISSUER=https://eogwzrlfoercfwcfwlmv.supabase.co/auth/v1
+Environment=SUPABASE_JWKS_PATH=/etc/zangetsu-sync/jwks.json
+# Keep this key across deployments; encrypted backups depend on it.
+LoadCredential=stremio_key:/etc/zangetsu-sync/stremio_key
+ExecStart=/opt/zangetsu-klipy/venv/bin/python /opt/zangetsu-klipy/stremio_proxy.py
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+UMask=0077
+TasksMax=64
+MemoryMax=256M
+
+[Install]
+WantedBy=multi-user.target

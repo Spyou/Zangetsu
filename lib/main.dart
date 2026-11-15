@@ -21,6 +21,7 @@ import 'core/ui/splash_style.dart';
 import 'core/hive/safe_box.dart';
 import 'core/discord/discord_rpc.dart';
 import 'core/environment.dart';
+import 'core/stremio/stremio_sync.dart';
 import 'core/logging/app_logger.dart';
 import 'core/logging/crash_reports.dart';
 import 'core/platform/apple_tv.dart';
@@ -516,6 +517,9 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
   void _syncOnResume() => _syncLibrary(maxAge: _syncFreshness);
 
   void _syncLibrary({required Duration maxAge}) {
+    if (sl.isRegistered<StremioSync>()) {
+      unawaited(sl<StremioSync>().refresh(maxAge: maxAge));
+    }
     if (!sl.isRegistered<AuthCubit>() || !sl<AuthCubit>().state.isLoggedIn) {
       return;
     }

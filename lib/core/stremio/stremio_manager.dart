@@ -1,5 +1,6 @@
+import 'dart:async';
 import 'dart:collection';
-import 'dart:convert' show jsonEncode;
+import 'dart:convert' show jsonEncode, utf8;
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
@@ -11,10 +12,12 @@ import '../hive/safe_box.dart';
 import 'stremio_link_session.dart';
 import 'stremio_ref.dart';
 
+part 'stremio_configuration.dart';
+
 /// Secret storage for configured addon base URLs.
 ///
 /// URLs can carry debrid keys or account tokens, so they never go into Hive,
-/// logs or exports.
+/// logs or unencrypted exports.
 abstract class StremioSecretStore {
   Future<String?> read(String key);
   Future<void> write(String key, String value);
@@ -259,6 +262,7 @@ class StremioManager extends ChangeNotifier {
 
   static const String boxName = 'stremio_installations';
   static const String _secretPrefix = 'stremio:base:';
+  static const _aliasesKey = '_configuration_aliases';
   static const _defaultMetadataRemovedKey = '_default_metadata_removed';
 
   final StremioClient _client;
@@ -273,6 +277,24 @@ class StremioManager extends ChangeNotifier {
   final Map<String, StremioInstallation> _installations = {};
   final LinkedHashMap<String, _Cached> _cache = LinkedHashMap();
   final Map<String, Future<Object?>> _inflight = {};
+  final Map<String, String> _aliases = {};
+  Future<void> _writes = Future.value();
+
+  Future<T> _write<T>(Future<T> Function() operation) {
+    final next = _writes.then((_) => operation());
+    _writes = next.then<void>(
+      (_) {},
+      onError: (Object error, StackTrace stack) {},
+    );
+    return next;
+  }
+
+  void _configurationChanged() {
+    _cache.clear();
+    _revision++;
+    notifyListeners();
+  }
+
   var _initialized = false;
   var _sequence = 0;
   var _revision = 0;
@@ -297,7 +319,7 @@ class StremioManager extends ChangeNotifier {
   List<StremioInstallation> get enabled =>
       installations.where((i) => i.enabled).toList(growable: false);
 
-  StremioInstallation? byId(String id) => _installations[id];
+  StremioInstallation? byId(String id) => _installations[_aliases[id] ?? id];
 
   bool canOpen(StremioRef ref, {int? revision}) {
     if (isVerifiedStremioId(ref.itemId)) return true;
@@ -315,14 +337,19 @@ class StremioManager extends ChangeNotifier {
     _installations
       ..clear()
       ..addEntries(
-        box.keys.where((key) => key != _defaultMetadataRemovedKey).map((key) {
-          final raw = box.get(key);
-          final installation = StremioInstallation.fromJson(
-            Map<String, dynamic>.from(raw!),
-          );
-          return MapEntry(installation.id, installation);
-        }),
+        box.keys
+            .where(
+              (key) => key != _defaultMetadataRemovedKey && key != _aliasesKey,
+            )
+            .map((key) {
+              final raw = box.get(key);
+              final installation = StremioInstallation.fromJson(
+                Map<String, dynamic>.from(raw!),
+              );
+              return MapEntry(installation.id, installation);
+            }),
       );
+    _aliases.addAll(Map<String, String>.from(box.get(_aliasesKey) ?? const {}));
     _initialized = true;
   }
 
@@ -330,7 +357,9 @@ class StremioManager extends ChangeNotifier {
   static const defaultMetadataUrl = 'https://v3-cinemeta.strem.io';
 
   /// Seed public metadata without holding startup on a network request.
-  Future<void> ensureDefaultMetadata() async {
+  Future<void> ensureDefaultMetadata() => _write(_ensureDefaultMetadata);
+
+  Future<void> _ensureDefaultMetadata() async {
     await init();
     if ((await _box).get(_defaultMetadataRemovedKey)?['removed'] == true) {
       return;
@@ -404,7 +433,10 @@ class StremioManager extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<StremioInstallation> install(String rawUrl) async {
+  Future<StremioInstallation> install(String rawUrl) =>
+      _write(() => _install(rawUrl));
+
+  Future<StremioInstallation> _install(String rawUrl) async {
     await init();
     final base = _normalize(rawUrl);
     final digest = _digest(base);
@@ -440,9 +472,13 @@ class StremioManager extends ChangeNotifier {
 
   /// Replaces the configured URL of an existing installation while keeping its
   /// stable local id.
-  Future<StremioInstallation> configure(String id, String rawUrl) async {
+  Future<StremioInstallation> configure(String id, String rawUrl) =>
+      _write(() => _configure(id, rawUrl));
+
+  Future<StremioInstallation> _configure(String id, String rawUrl) async {
     await init();
     final current = _require(id);
+    id = current.id;
     final base = _normalize(rawUrl);
     final digest = _digest(base);
     if (_installations.values.any((i) => i.id != id && i.urlDigest == digest)) {
@@ -490,8 +526,12 @@ class StremioManager extends ChangeNotifier {
     return orderedUpdate;
   }
 
-  Future<void> move(String id, int direction) async {
+  Future<void> move(String id, int direction) =>
+      _write(() => _move(id, direction));
+
+  Future<void> _move(String id, int direction) async {
     await init();
+    id = _aliases[id] ?? id;
     final ordered = installations.toList();
     final index = ordered.indexWhere((item) => item.id == id);
     final target = index + direction;
@@ -518,9 +558,17 @@ class StremioManager extends ChangeNotifier {
     String type,
     String catalogId,
     bool visible,
+  ) => _write(() => _setCatalogVisible(id, type, catalogId, visible));
+
+  Future<void> _setCatalogVisible(
+    String id,
+    String type,
+    String catalogId,
+    bool visible,
   ) async {
     await init();
     final current = _require(id);
+    id = current.id;
     if (!current.catalogs.any((c) => c.type == type && c.id == catalogId)) {
       throw const StremioInstallException('catalogue is unavailable');
     }
@@ -539,9 +587,13 @@ class StremioManager extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> setEnabled(String id, bool enabled) async {
+  Future<void> setEnabled(String id, bool enabled) =>
+      _write(() => _setEnabled(id, enabled));
+
+  Future<void> _setEnabled(String id, bool enabled) async {
     await init();
     final current = _require(id);
+    id = current.id;
     if (current.enabled == enabled) return;
     final updated = current.copyWith(
       enabled: enabled,
@@ -576,9 +628,12 @@ class StremioManager extends ChangeNotifier {
     activeLimit: activeLimit,
   );
 
-  Future<void> remove(String id) async {
+  Future<void> remove(String id) => _write(() => _remove(id));
+
+  Future<void> _remove(String id) async {
     await init();
     final installation = _require(id);
+    id = installation.id;
     final box = await _box;
     if (id == defaultMetadataId ||
         installation.manifestId == 'com.linvo.cinemeta') {
@@ -587,12 +642,15 @@ class StremioManager extends ChangeNotifier {
     await box.delete(id);
     await _deleteSecret(id);
     _installations.remove(id);
+    _aliases.removeWhere((alias, target) => alias == id || target == id);
+    await box.put(_aliasesKey, Map<String, String>.from(_aliases));
     _invalidate(id);
     _revision++;
     notifyListeners();
   }
 
   Future<Uri?> baseUri(String id) async {
+    id = _aliases[id] ?? id;
     final secret = await _readSecret(id);
     if (secret == null && id == defaultMetadataId) {
       return Uri.parse(defaultMetadataUrl);
@@ -731,7 +789,7 @@ class StremioManager extends ChangeNotifier {
   }
 
   StremioInstallation _require(String id) {
-    final installation = _installations[id];
+    final installation = byId(id);
     if (installation == null) {
       throw const StremioInstallException('addon is not installed');
     }

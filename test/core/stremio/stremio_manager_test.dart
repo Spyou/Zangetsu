@@ -125,6 +125,91 @@ void main() {
   );
 
   test(
+    'configuration round-trip preserves private URLs and addon choices',
+    () async {
+      final manager = makeManager(_Server());
+      await manager.ensureDefaultMetadata();
+      await manager.remove(StremioManager.defaultMetadataId);
+      final addon = await manager.install(
+        'https://addon.example/private-token/manifest.json',
+      );
+      await manager.setEnabled(addon.id, false);
+      final saved = await manager.exportConfiguration();
+      expect(
+        jsonEncode(Hive.box<Map>(StremioManager.boxName).toMap()),
+        isNot(contains('private-token')),
+      );
+      await manager.restoreConfiguration({
+        'version': 1,
+        'installations': [],
+      }, merge: false);
+      await manager.restoreConfiguration(saved);
+      expect(manager.installations.single.id, addon.id);
+      expect(manager.installations.single.enabled, isFalse);
+      expect(
+        (await manager.baseUri(addon.id)).toString(),
+        'https://addon.example/private-token',
+      );
+      await manager.ensureDefaultMetadata();
+      expect(manager.installations, hasLength(1));
+    },
+  );
+
+  test(
+    'restore deduplicates URLs and keeps saved origin IDs openable',
+    () async {
+      final manager = makeManager(_Server());
+      final addon = await manager.install('https://addon.example');
+      final saved = await manager.exportConfiguration();
+      final entry = (saved['installations'] as List).single as Map;
+      (entry['metadata'] as Map)['id'] = 'stremio_other_device';
+      await manager.restoreConfiguration(saved);
+      expect(manager.installations, hasLength(1));
+      expect(manager.byId('stremio_other_device')?.id, addon.id);
+      expect(
+        (await manager.baseUri('stremio_other_device')).toString(),
+        'https://addon.example',
+      );
+      await manager.setEnabled('stremio_other_device', false);
+      expect(manager.installations, hasLength(1));
+      expect(manager.installations.single.enabled, isFalse);
+    },
+  );
+
+  test(
+    'failed secure restore leaves the installed configuration intact',
+    () async {
+      final manager = makeManager(_Server());
+      final addon = await manager.install('https://addon.example');
+      final saved = await manager.exportConfiguration();
+      secrets.unavailable = true;
+      await expectLater(
+        manager.restoreConfiguration(saved, merge: false),
+        throwsA(isA<StremioInstallException>()),
+      );
+      expect(manager.installations.single.id, addon.id);
+      secrets.unavailable = false;
+      expect(
+        (await manager.baseUri(addon.id)).toString(),
+        'https://addon.example',
+      );
+    },
+  );
+
+  test(
+    'explicit restore reapplies choices to an already installed addon',
+    () async {
+      final manager = makeManager(_Server());
+      await manager.ensureDefaultMetadata();
+      await manager.setEnabled(StremioManager.defaultMetadataId, false);
+      final saved = await manager.exportConfiguration();
+      await manager.setEnabled(StremioManager.defaultMetadataId, true);
+      await manager.restoreConfiguration(saved);
+      expect(manager.byId(StremioManager.defaultMetadataId)!.enabled, isFalse);
+    },
+  );
+
+  test(
     'saved shared titles remain openable without their original installation',
     () async {
       final manager = makeManager(_Server());

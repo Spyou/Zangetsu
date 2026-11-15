@@ -1,4 +1,11 @@
 sync.zangetsu.online {
+	@stremioRoutes path /stremio/v1/configuration /stremio/v1/seal /stremio/v1/open
+	handle @stremioRoutes {
+		request_body {
+			max_size 2MB
+		}
+		reverse_proxy 127.0.0.1:3111
+	}
 	@klipyRoutes path /klipy/v1/gifs/search /klipy/v1/gifs/items /klipy/v1/gifs/share/*
 	handle @klipyRoutes {
 		reverse_proxy 127.0.0.1:3110
