@@ -1,15 +1,6 @@
-/// Public Appwrite configuration. These are NOT secrets — the project id and
-/// endpoint ship in every Appwrite client app. Auth uses email/password
-/// sessions; the server API key is never embedded here.
+/// Public compile-time application settings.
 class Environment {
-  static const String appwriteProjectId = '6a1ed44f0029b50bccde';
-  static const String appwriteProjectName = 'Zangetsu';
-  static const String appwritePublicEndpoint =
-      'https://sgp.cloud.appwrite.io/v1';
-
-  // Supabase project URL + anon (public) key — safe to embed, same as the
-  // Appwrite project id/endpoint above. Override with --dart-define if a
-  // build needs a different project (e.g. staging).
+  // Public Supabase configuration. Override for staging builds with --dart-define.
   static const String supabaseUrl = String.fromEnvironment(
     'SUPABASE_URL',
     defaultValue: 'https://eogwzrlfoercfwcfwlmv.supabase.co',
@@ -26,7 +17,7 @@ class Environment {
     defaultValue: 'https://sync.zangetsu.online',
   );
 
-  /// Where Appwrite sends the password-recovery link. Appwrite appends
+  /// Password-reset landing page.
   /// Password-reset landing. Supabase now drives reset (via the auth `site_url`,
   /// which points at this same page); kept for reference. Not used by the
   /// Supabase AuthCubit, which calls `resetPasswordForEmail`.
@@ -37,7 +28,7 @@ class Environment {
 
   /// Share links point here. The page opens the app if installed (via the
   /// [openLinkScheme] scheme below), otherwise offers the download. Its domain
-  /// must be an Appwrite Web platform (already added for the reset page).
+  /// uses the same domain as the password-reset page.
   static const String siteOpenUrl = '$siteBaseUrl/open/';
 
   /// TV pairing page on the website. Used when someone opens a shared/https

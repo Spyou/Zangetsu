@@ -22,7 +22,6 @@ import 'package:get_it/get_it.dart';
 import 'package:hive/hive.dart';
 import 'package:watch_app/core/anilist/anilist_service.dart';
 import 'package:watch_app/core/app_mode.dart';
-import 'package:watch_app/core/appwrite/appwrite_service.dart';
 import 'package:watch_app/core/download/download_prefs.dart';
 import 'package:watch_app/core/mihon/mihon_manager.dart';
 import 'package:watch_app/core/playback/playback_prefs.dart';
@@ -39,7 +38,6 @@ import 'package:watch_app/core/torrent/torrent_prefs.dart';
 import 'package:watch_app/core/tracker/mal_service.dart';
 import 'package:watch_app/core/tracker/simkl_service.dart';
 import 'package:watch_app/features/auth/auth_cubit.dart';
-import 'package:watch_app/features/auth/migration_bridge.dart';
 import 'package:watch_app/features/settings/settings_screen.dart';
 import 'package:watch_app/features/sources/providers_hub_screen.dart';
 import 'package:watch_app/features/sources/zangetsu_sources_screen.dart';
@@ -312,11 +310,7 @@ void main() {
       await tester.binding.setSurfaceSize(const Size(1000, 2200));
       addTearDown(() => tester.binding.setSurfaceSize(null));
 
-      final authCubit = AuthCubit(
-        SupabaseService(),
-        AppwriteService(),
-        _fakeBridge(),
-      );
+      final authCubit = AuthCubit(SupabaseService());
       addTearDown(authCubit.close);
       GetIt.instance.registerSingleton<AuthCubit>(authCubit);
 
@@ -372,12 +366,6 @@ void main() {
     });
   });
 }
-
-MigrationBridge _fakeBridge() => MigrationBridge(
-  invoke: (_, __) async => const {'ok': false},
-  signInPassword: (_, __) async => false,
-  verifyOtp: (_, __) async => false,
-);
 
 class _StubSearchPrefs extends SearchPrefs {
   @override

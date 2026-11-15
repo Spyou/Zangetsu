@@ -16,7 +16,6 @@ import 'package:watch_app/features/home/search_screen.dart';
 import 'package:watch_app/features/shell/mode_bar.dart';
 import 'package:watch_app/core/ui/dock_visibility.dart';
 import 'package:watch_app/core/ui/frosted_surface.dart';
-import 'package:watch_app/core/appwrite/appwrite_service.dart';
 import 'package:watch_app/core/anilist/anilist_service.dart';
 import 'package:watch_app/core/announce/announcement.dart';
 import 'package:watch_app/core/announce/announcement_service.dart';
@@ -58,18 +57,11 @@ import 'package:watch_app/core/download/chapter_download_store.dart';
 import 'package:watch_app/core/zmode/metadata_repository.dart';
 import 'package:watch_app/core/zmode/zmode_prefs.dart';
 import 'package:watch_app/features/auth/auth_cubit.dart';
-import 'package:watch_app/features/auth/migration_bridge.dart';
 import 'package:watch_app/features/home/cubit/home_cubit.dart';
 import 'package:watch_app/features/home/home_screen.dart';
 import 'package:watch_app/features/shell/root_shell.dart';
 import 'package:watch_app/features/shell/root_shell_tv.dart';
 import 'package:watch_app/features/settings/settings_screen.dart';
-
-MigrationBridge _fakeBridge() => MigrationBridge(
-  invoke: (_, __) async => const {'ok': false},
-  signInPassword: (_, __) async => false,
-  verifyOtp: (_, __) async => false,
-);
 
 // ── Minimal fakes (same shape as root_shell_tv_test.dart's harness) ────────
 
@@ -370,7 +362,7 @@ void main() {
     final dio = Dio();
     final fakeRepo = _FakeSourceRepository();
     activeSource = ActiveSourceCubit();
-    authCubit = AuthCubit(SupabaseService(), AppwriteService(), _fakeBridge());
+    authCubit = AuthCubit(SupabaseService());
     // This suite reuses a fixed on-disk Hive dir (not a fresh temp dir) across
     // runs, so a mode persisted by an earlier run would otherwise leak in here
     // and start tests in the wrong mode.
@@ -799,7 +791,9 @@ void main() {
     await tester.pump(const Duration(seconds: 2));
   }
 
-  testWidgets('Search fits a short screen with the keyboard open', (tester) async {
+  testWidgets('Search fits a short screen with the keyboard open', (
+    tester,
+  ) async {
     tester.view.physicalSize = const Size(320, 600);
     tester.view.devicePixelRatio = 1;
     tester.view.viewInsets = const FakeViewPadding(bottom: 280);
@@ -810,7 +804,9 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('Schedule sits below recents and keeps search history', (tester) async {
+  testWidgets('Schedule sits below recents and keeps search history', (
+    tester,
+  ) async {
     sl.registerSingleton<AppMode>(const AppMode(isTv: false));
     await sl.unregister<SearchHistory>();
     final history = _FakeSearchHistory(['Naruto', 'Bleach']);
@@ -820,12 +816,16 @@ void main() {
     final schedule = find.byKey(const ValueKey('search_schedule_action'));
     final scaffoldWidth = tester.getSize(find.byType(Scaffold).first).width;
     expect(tester.getRect(schedule).width, closeTo(scaffoldWidth - 32, 1));
-    expect(tester.getTopLeft(schedule).dy,
-        greaterThan(tester.getBottomLeft(find.text('Naruto')).dy));
+    expect(
+      tester.getTopLeft(schedule).dy,
+      greaterThan(tester.getBottomLeft(find.text('Naruto')).dy),
+    );
     final divider = find.byKey(const ValueKey('recent_search_divider'));
     expect(divider, findsOneWidget);
-    expect(tester.getTopLeft(schedule).dy,
-        greaterThan(tester.getBottomLeft(divider).dy));
+    expect(
+      tester.getTopLeft(schedule).dy,
+      greaterThan(tester.getBottomLeft(divider).dy),
+    );
     await tester.tap(schedule);
     await pumpHomeAnimations(tester);
     expect(find.byType(ScheduleScreen), findsOneWidget);
@@ -834,18 +834,25 @@ void main() {
     expect(history.recent(), ['Naruto', 'Bleach']);
     await tester.tap(find.text('Clear'));
     await pumpHomeAnimations(tester);
-    expect(find.byKey(const ValueKey('search_schedule_action')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('search_schedule_action')),
+      findsOneWidget,
+    );
     expect(history.recent(), isEmpty);
   });
 
-  testWidgets('Schedule stays below the search field without recents', (tester) async {
+  testWidgets('Schedule stays below the search field without recents', (
+    tester,
+  ) async {
     sl.registerSingleton<AppMode>(const AppMode(isTv: false));
     await tester.pumpWidget(wrap(const SearchScreen(showBack: false)));
     await pumpHomeAnimations(tester);
     final schedule = find.byKey(const ValueKey('search_schedule_action'));
     expect(schedule, findsOneWidget);
-    expect(tester.getTopLeft(schedule).dy,
-        greaterThan(tester.getBottomLeft(find.byType(TextField).first).dy));
+    expect(
+      tester.getTopLeft(schedule).dy,
+      greaterThan(tester.getBottomLeft(find.byType(TextField).first).dy),
+    );
   });
 
   testWidgets('Home has no Schedule card or header button', (tester) async {
@@ -918,7 +925,9 @@ void main() {
     expect(find.byKey(const ValueKey('home_genres_card')), findsNothing);
   });
 
-  testWidgets('Home keeps Schedule out of the card row in Z Mode', (tester) async {
+  testWidgets('Home keeps Schedule out of the card row in Z Mode', (
+    tester,
+  ) async {
     sl.registerSingleton<AppMode>(const AppMode(isTv: false));
     await tester.pumpWidget(wrap(const RootShell()));
     await pumpHomeAnimations(tester);

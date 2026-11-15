@@ -6,7 +6,6 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 import 'package:watch_app/core/app_mode.dart';
-import 'package:watch_app/core/appwrite/appwrite_service.dart';
 import 'package:watch_app/core/backup/backup_service.dart';
 import 'package:watch_app/core/backup/library_backup.dart';
 import 'package:watch_app/core/backup/settings_backup.dart';
@@ -17,14 +16,7 @@ import 'package:watch_app/core/provider/provider_repo_registry.dart';
 import 'package:watch_app/core/supabase/supabase_service.dart';
 import 'package:watch_app/core/tv/tv_focusable.dart';
 import 'package:watch_app/features/auth/auth_cubit.dart';
-import 'package:watch_app/features/auth/migration_bridge.dart';
 import 'package:watch_app/features/backup/backup_screen.dart';
-
-MigrationBridge _fakeBridge() => MigrationBridge(
-      invoke: (_, __) async => const {'ok': false},
-      signInPassword: (_, __) async => false,
-      verifyOtp: (_, __) async => false,
-    );
 
 // ── Stubs ─────────────────────────────────────────────────────────────────────
 
@@ -70,22 +62,18 @@ void _mockPathProvider(WidgetTester tester) {
 void main() {
   setUp(() {
     _appDir = Directory.systemTemp.createTempSync('backup_test');
-    // Mock path_provider before AppwriteService is constructed: its Appwrite
-    // Client asynchronously requests the app documents directory, and doing
-    // this here (rather than only in the test body) avoids a cross-test race
-    // once more than one test in this file constructs an AppwriteService.
     const channel = MethodChannel('plugins.flutter.io/path_provider');
-    TestWidgetsFlutterBinding.ensureInitialized()
-        .defaultBinaryMessenger
+    TestWidgetsFlutterBinding.ensureInitialized().defaultBinaryMessenger
         .setMockMethodCallHandler(channel, (call) async => _appDir.path);
     sl
-      ..registerSingleton<AppwriteService>(AppwriteService())
       ..registerSingleton<AppMode>(const AppMode(isTv: false))
-      ..registerSingleton<BackupService>(BackupService(
-        SourcesBackup(_StubReposRegistry(), _StubRegistry(), null),
-        LibraryBackup(),
-        SettingsBackup(),
-      ));
+      ..registerSingleton<BackupService>(
+        BackupService(
+          SourcesBackup(_StubReposRegistry(), _StubRegistry(), null),
+          LibraryBackup(),
+          SettingsBackup(),
+        ),
+      );
   });
 
   tearDown(() {
@@ -102,7 +90,7 @@ void main() {
       await tester.binding.setSurfaceSize(const Size(1000, 2200));
       addTearDown(() => tester.binding.setSurfaceSize(null));
 
-      final auth = AuthCubit(SupabaseService(), sl<AppwriteService>(), _fakeBridge());
+      final auth = AuthCubit(SupabaseService());
       addTearDown(auth.close);
 
       await tester.pumpWidget(
@@ -132,11 +120,14 @@ void main() {
     _mockPathProvider(tester);
     await tester.binding.setSurfaceSize(const Size(1000, 2200));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    final auth = AuthCubit(SupabaseService(), sl<AppwriteService>(), _fakeBridge());
+    final auth = AuthCubit(SupabaseService());
     addTearDown(auth.close);
     await tester.pumpWidget(
       MaterialApp(
-        home: BlocProvider<AuthCubit>.value(value: auth, child: const BackupScreen()),
+        home: BlocProvider<AuthCubit>.value(
+          value: auth,
+          child: const BackupScreen(),
+        ),
       ),
     );
     await tester.pump();
@@ -153,7 +144,9 @@ void main() {
     );
   });
 
-  testWidgets('phone: BackupScreen adds no TvFocusable (unchanged)', (tester) async {
+  testWidgets('phone: BackupScreen adds no TvFocusable (unchanged)', (
+    tester,
+  ) async {
     // setUp registered AppMode(isTv: false) — phone path.
     await pumpBackup(tester);
     expect(find.byType(TvFocusable), findsNothing);

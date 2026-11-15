@@ -1,7 +1,7 @@
 // Tests for the edge-gated D-pad focus bridge used in RootShellTv.
 //
 // These tests mirror the fixed handler logic exactly so they can run without
-// any GetIt / AppwriteService / HomeCubit scaffolding.  They verify the
+// any GetIt / HomeCubit scaffolding.  They verify the
 // behavioural contract of the two bug fixes:
 //
 //   BUG-1: arrowLeft on a non-edge content node must move left within the

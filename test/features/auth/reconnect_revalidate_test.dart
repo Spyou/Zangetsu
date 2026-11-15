@@ -1,10 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:watch_app/core/appwrite/appwrite_service.dart';
 import 'package:watch_app/core/supabase/supabase_service.dart';
 import 'package:watch_app/features/auth/auth_cubit.dart';
-import 'package:watch_app/features/auth/migration_bridge.dart';
 
 /// The startup session check cannot tell "your session expired" from "there was
 /// no network for a second", so a blink offline raises the Reconnect banner —
@@ -17,20 +15,10 @@ class _Sb implements SupabaseService {
   noSuchMethod(Invocation i) => super.noSuchMethod(i);
 }
 
-class _Aw implements AppwriteService {
-  @override
-  noSuchMethod(Invocation i) => super.noSuchMethod(i);
-}
-
-class _Bridge implements MigrationBridge {
-  @override
-  noSuchMethod(Invocation i) => super.noSuchMethod(i);
-}
-
 /// AuthCubit with the one network call stubbed — everything under test here is
 /// the guarding around it, not Supabase.
 class _Cubit extends AuthCubit {
-  _Cubit() : super(_Sb(), _Aw(), _Bridge());
+  _Cubit() : super(_Sb());
 
   int calls = 0;
   bool succeed = true;

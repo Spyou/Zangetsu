@@ -9,7 +9,6 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 import 'package:watch_app/core/zmode/zmode_prefs.dart';
-import 'package:watch_app/core/appwrite/appwrite_service.dart';
 import 'package:watch_app/core/anilist/anilist_service.dart';
 import 'package:watch_app/core/announce/announcement.dart';
 import 'package:watch_app/core/announce/announcement_service.dart';
@@ -47,15 +46,8 @@ import 'package:watch_app/core/tracker/tracker_hub.dart';
 import 'package:watch_app/core/tv/tv_focusable.dart';
 import 'package:watch_app/core/tv/tv_viewport.dart';
 import 'package:watch_app/features/auth/auth_cubit.dart';
-import 'package:watch_app/features/auth/migration_bridge.dart';
 import 'package:watch_app/features/home/cubit/home_cubit.dart';
 import 'package:watch_app/features/shell/root_shell_tv.dart';
-
-MigrationBridge _fakeBridge() => MigrationBridge(
-  invoke: (_, __) async => const {'ok': false},
-  signInPassword: (_, __) async => false,
-  verifyOtp: (_, __) async => false,
-);
 
 // ── Minimal fakes (no platform channels, no Hive) ──────────────────────────
 
@@ -329,14 +321,10 @@ void main() {
 
   setUpAll(() {
     // Ensure the test binding is initialised so we can mock platform channels
-    // before AppwriteService starts its async Appwrite Client init (which
-    // calls getApplicationDocumentsDirectory via path_provider).
     TestWidgetsFlutterBinding.ensureInitialized();
   });
 
   setUp(() async {
-    // Mock path_provider so AppwriteService's async ClientIO init does not
-    // throw MissingPluginException across test boundaries.
     TestWidgetsFlutterBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
           const MethodChannel('plugins.flutter.io/path_provider'),
@@ -366,11 +354,7 @@ void main() {
     final dio = Dio();
     final fakeRepo = _FakeSourceRepository();
     activeSource = ActiveSourceCubit(); // nullable box → no Hive
-    authCubit = AuthCubit(
-      SupabaseService(),
-      AppwriteService(),
-      _fakeBridge(),
-    ); // cache box is nullable → no Hive
+    authCubit = AuthCubit(SupabaseService()); // cache box is nullable → no Hive
 
     sl.registerSingleton<AppMode>(const AppMode(isTv: false));
     sl.registerSingleton<ViewerProfileStore>(ViewerProfileStore());

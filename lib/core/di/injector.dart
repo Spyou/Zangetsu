@@ -101,7 +101,6 @@ import '../tracker/tracker_binding_store.dart';
 import '../tracker/tracker_hub.dart';
 import '../tracker/relay/tracker_relay.dart';
 import '../app_mode.dart';
-import '../appwrite/appwrite_service.dart';
 import '../backup/backup_service.dart';
 import '../backup/sources_backup.dart';
 import '../backup/library_backup.dart';
@@ -129,7 +128,6 @@ import '../mihon/mihon_manager.dart';
 import '../mihon/mihon_provider.dart';
 import '../mihon/mihon_repo.dart';
 import '../../features/auth/auth_cubit.dart';
-import '../../features/auth/migration_bridge.dart';
 import '../../features/auth/tv_pairing_service.dart';
 import '../../features/home/cubit/home_cache.dart';
 import '../../features/home/cubit/home_cubit.dart';
@@ -260,9 +258,6 @@ Future<void> initDependencies({bool Function()? isOffline}) async {
   await openBoxSafely(AuthCubit.cacheBoxName);
   await ProviderDownloader.init();
 
-  // Appwrite first (no network on construct) — kept for mintJwt (the
-  // legacy-session-migration path in MigrationBridge/AuthCubit).
-  sl.registerSingleton<AppwriteService>(AppwriteService());
   // Supabase is already Supabase.initialize()d in main.dart; this is just the
   // thin client wrapper the stores/services depend on.
   sl.registerSingleton<SupabaseService>(SupabaseService());
@@ -329,44 +324,6 @@ Future<void> initDependencies({bool Function()? isOffline}) async {
     ),
   );
   String currentProfileId() => sl<ViewerProfileStore>().dataProfileId;
-
-  // Client half of the invisible Appwrite→Supabase account migration. Wired
-  // with real closures here (not in migration_bridge.dart) so the bridge
-  // itself stays Supabase-type-free and unit-testable.
-  sl.registerSingleton<MigrationBridge>(
-    MigrationBridge(
-      invoke: (name, body) async {
-        final r = await sl<SupabaseService>().client.functions.invoke(
-          name,
-          body: body,
-        );
-        return (r.data as Map).cast<String, dynamic>();
-      },
-      signInPassword: (email, pw) async {
-        try {
-          await sl<SupabaseService>().client.auth.signInWithPassword(
-            email: email,
-            password: pw,
-          );
-          return sl<SupabaseService>().client.auth.currentUser != null;
-        } catch (_) {
-          return false;
-        }
-      },
-      verifyOtp: (email, token) async {
-        try {
-          await sl<SupabaseService>().client.auth.verifyOTP(
-            email: email,
-            token: token,
-            type: OtpType.email,
-          );
-          return sl<SupabaseService>().client.auth.currentUser != null;
-        } catch (_) {
-          return false;
-        }
-      },
-    ),
-  );
 
   await ResumeStore.init();
   sl.registerSingleton<ResumeStore>(
@@ -664,16 +621,8 @@ Future<void> initDependencies({bool Function()? isOffline}) async {
   // boot; navigation is deferred until the root Navigator exists.
   sl.registerSingleton<OpenLinkService>(OpenLinkService());
 
-  // AuthCubit is global so any widget can gate on login. SupabaseService,
-  // AppwriteService (mintJwt for migration) and MigrationBridge are already
-  // registered above.
-  sl.registerSingleton<AuthCubit>(
-    AuthCubit(
-      sl<SupabaseService>(),
-      sl<AppwriteService>(),
-      sl<MigrationBridge>(),
-    ),
-  );
+  // AuthCubit is global so widgets can gate on login.
+  sl.registerSingleton<AuthCubit>(AuthCubit(sl<SupabaseService>()));
 
   final manager = ProviderManager(dio: dio);
   sl.registerSingleton<ProviderManager>(manager);

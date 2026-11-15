@@ -307,7 +307,6 @@ void main() {
   });
 
   setUp(() async {
-    // Mock path_provider so any indirect AppwriteService init doesn't throw.
     TestWidgetsFlutterBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
       const MethodChannel('plugins.flutter.io/path_provider'),
