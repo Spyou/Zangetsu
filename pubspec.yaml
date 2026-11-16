@@ -174,8 +174,9 @@ dependencies:
   fluttertoast: ^10.0.0
   dynamic_color: ^2.1.0
   local_auth: ^3.0.2
-dev_dependencies:
   http: ^1.6.0
+  shared_preferences: ^2.5.5
+dev_dependencies:
   video_player_platform_interface: ^6.9.0
   # Test-only: gives the EPUB tests a REAL XML parse, which catches what a
   # hand-rolled tag-balance check cannot (an unescaped '&', a bad attribute)

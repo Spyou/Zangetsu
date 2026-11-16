@@ -1,4 +1,10 @@
 sync.zangetsu.online {
+	@authRouting path /auth-routing/v1.json
+	handle @authRouting {
+		root * /opt/zangetsu-sync/public
+		header Cache-Control "no-store"
+		file_server
+	}
 	@stremioRoutes path /stremio/v1/configuration /stremio/v1/seal /stremio/v1/open
 	handle @stremioRoutes {
 		request_body {
