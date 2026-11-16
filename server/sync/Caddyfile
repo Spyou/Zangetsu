@@ -24,3 +24,20 @@ sync.zangetsu.online {
 		respond "Not found" 404
 	}
 }
+
+sb.zangetsu.online {
+	@admin path /auth/v1/admin /auth/v1/admin/*
+	handle @admin {
+		respond "Not found" 404
+	}
+	@api path /auth/v1/* /rest/v1/* /storage/v1/* /functions/v1/pair-tv
+	handle @api {
+		@privateResponses path /auth/v1/* /rest/v1/* /functions/v1/pair-tv
+		header @privateResponses Cache-Control no-store
+		header X-Content-Type-Options nosniff
+		reverse_proxy 127.0.0.1:18080
+	}
+	handle {
+		respond "Not found" 404
+	}
+}

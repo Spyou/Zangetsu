@@ -1,9 +1,17 @@
 import '../environment.dart';
+import '../supabase/auth_route.dart';
 
 /// Encodes TV pairing links and parses incoming pair URLs from either the
 /// website (`https://zangetsu.online/pair/…`) or the `zangetsu://pair` deeplink.
 class PairLink {
-  const PairLink({this.code, this.nonce, this.trackers = false});
+  const PairLink({
+    this.code,
+    this.nonce,
+    this.trackers = false,
+    this.authority = 'cloud',
+  });
+
+  final String authority;
 
   final String? code;
   final String? nonce;
@@ -16,10 +24,18 @@ class PairLink {
     required String code,
     String? nonce,
     bool trackers = false,
+    String? authority,
   }) {
-    return Uri.parse(Environment.sitePairUrl).replace(
-      queryParameters: _query(code: code, nonce: nonce, trackers: trackers),
-    ).toString();
+    return Uri.parse(Environment.sitePairUrl)
+        .replace(
+          queryParameters: _query(
+            code: code,
+            nonce: nonce,
+            trackers: trackers,
+            authority: authority,
+          ),
+        )
+        .toString();
   }
 
   /// Custom-scheme deeplink for TV "have the app" QRs and Android intent-filters.
@@ -28,11 +44,17 @@ class PairLink {
     required String code,
     String? nonce,
     bool trackers = false,
+    String? authority,
   }) {
     return Uri(
       scheme: Environment.trackerRedirectScheme,
       host: Environment.pairLinkHost,
-      queryParameters: _query(code: code, nonce: nonce, trackers: trackers),
+      queryParameters: _query(
+        code: code,
+        nonce: nonce,
+        trackers: trackers,
+        authority: authority,
+      ),
     ).toString();
   }
 
@@ -40,21 +62,40 @@ class PairLink {
     required String code,
     String? nonce,
     bool trackers = false,
-  }) =>
-      {
-        'code': code,
-        if (nonce != null && nonce.isNotEmpty) 'nonce': nonce,
-        if (trackers) 'trackers': '1',
-      };
+    String? authority,
+  }) => {
+    'code': code,
+    if ((authority ?? AuthRoute.active.authority) == 'vps') 'auth': 'vps',
+    if (nonce != null && nonce.isNotEmpty) 'nonce': nonce,
+    if (trackers) 'trackers': '1',
+  };
+
+  static String trackerWebLink({
+    required String code,
+    required String nonce,
+    required String tracker,
+    String? authority,
+  }) => Uri.parse('${Environment.siteBaseUrl}/tv-connect/')
+      .replace(
+        queryParameters: {
+          ..._query(code: code, nonce: nonce, authority: authority),
+          'tracker': tracker,
+        },
+      )
+      .toString();
 
   /// Accepts `zangetsu://pair?…` and the configured [Environment.sitePairUrl].
   static PairLink? parse(Uri uri) {
     if (!_isPairUri(uri)) return null;
+    if ((uri.queryParametersAll['auth']?.length ?? 0) > 1) return null;
     final q = uri.queryParameters;
+    final authority = q['auth'] ?? 'cloud';
+    if (authority != 'cloud' && authority != 'vps') return null;
     return PairLink(
       code: q['code'],
       nonce: q['nonce'],
       trackers: q['trackers'] == '1',
+      authority: authority,
     );
   }
 
@@ -64,7 +105,8 @@ class PairLink {
       return true;
     }
     final site = Uri.parse(Environment.sitePairUrl);
-    if ((uri.scheme == 'http' || uri.scheme == 'https') && uri.host == site.host) {
+    if ((uri.scheme == 'http' || uri.scheme == 'https') &&
+        uri.host == site.host) {
       final path = uri.path.replaceAll(RegExp(r'/+$'), '');
       final sitePath = site.path.replaceAll(RegExp(r'/+$'), '');
       return path == sitePath;

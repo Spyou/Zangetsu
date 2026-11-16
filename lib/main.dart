@@ -69,7 +69,6 @@ import 'features/shell/root_shell.dart';
 import 'features/watch_together/ui/party_bar.dart';
 import 'features/watch_together/watch_together_controller.dart';
 
-AuthRoute _launchAuthRoute = AuthRoute.cloud;
 final _authConnectionPhase = ValueNotifier(AuthConnectionPhase.idle);
 bool _authConnectionVerified = false;
 bool _hadStoredAuthSession = false;
@@ -142,10 +141,10 @@ Future<bool> _verifyLaunchAuthConnection() async {
           .send(
             http.Request(
                 'GET',
-                Uri.parse('${_launchAuthRoute.url}/auth/v1/health'),
+                Uri.parse('${AuthRoute.active.url}/auth/v1/health'),
               )
               ..followRedirects = false
-              ..headers['apikey'] = _launchAuthRoute.anonKey,
+              ..headers['apikey'] = AuthRoute.active.anonKey,
           )
           .timeout(const Duration(seconds: 5));
       return response.statusCode == 200;
@@ -242,7 +241,7 @@ Future<void> main() async {
         host: Uri.tryParse(Environment.vpsSyncUrl)?.host ?? '',
       );
       final authDecision = await authRouteFuture;
-      _launchAuthRoute = authDecision.route;
+      AuthRoute.active = authDecision.route;
       if (authDecision.changed) {
         final storedSession = (await SharedPreferences.getInstance()).getString(
           Environment.supabaseSessionStorageKey,
@@ -273,8 +272,8 @@ Future<void> main() async {
         // client behind (registrations below dereference it), so even a
         // probed-offline boot runs it with a short fuse instead of skipping.
         await Supabase.initialize(
-          url: _launchAuthRoute.url,
-          anonKey: _launchAuthRoute.anonKey,
+          url: AuthRoute.active.url,
+          anonKey: AuthRoute.active.anonKey,
           // TV auth uses QR pairing, not OAuth redirect deep links.
           // Keep the same saved session across auth hosts and startup retries.
           authOptions: FlutterAuthClientOptions(
@@ -358,8 +357,8 @@ Future<void> _retrySupabaseInit() async {
     if (_supabaseReady()) break; // a prior attempt already set the client
     try {
       await Supabase.initialize(
-        url: _launchAuthRoute.url,
-        anonKey: _launchAuthRoute.anonKey,
+        url: AuthRoute.active.url,
+        anonKey: AuthRoute.active.anonKey,
         // Same pinned persisted-session key as the boot init above.
         authOptions: FlutterAuthClientOptions(
           detectSessionInUri: !isAppleTv,

@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:watch_app/core/environment.dart';
 import 'package:watch_app/core/share/pair_link.dart';
+import 'package:watch_app/core/supabase/auth_route.dart';
 
 void main() {
   const code = 'ABCD2345';
@@ -37,7 +38,9 @@ void main() {
     expect(fromWeb.nonce, nonce);
     expect(fromWeb.trackers, isFalse);
 
-    final deep = Uri.parse(PairLink.deepLink(code: code, nonce: nonce, trackers: true));
+    final deep = Uri.parse(
+      PairLink.deepLink(code: code, nonce: nonce, trackers: true),
+    );
     expect(deep.scheme, 'zangetsu');
     expect(deep.host, 'pair');
     final fromDeep = PairLink.parse(deep);
@@ -49,7 +52,78 @@ void main() {
 
   test('parse ignores unrelated links', () {
     expect(PairLink.parse(Uri.parse('zangetsu://open?s=x&u=y')), isNull);
-    expect(PairLink.parse(Uri.parse('https://zangetsu.online/open/?s=x&u=y')), isNull);
-    expect(PairLink.parse(Uri.parse('https://example.com/pair/?code=$code')), isNull);
+    expect(
+      PairLink.parse(Uri.parse('https://zangetsu.online/open/?s=x&u=y')),
+      isNull,
+    );
+    expect(
+      PairLink.parse(Uri.parse('https://example.com/pair/?code=$code')),
+      isNull,
+    );
+  });
+  test('VPS account and tracker links carry the selected authority', () {
+    for (final value in [
+      PairLink.qrData(code: code, authority: 'vps'),
+      PairLink.deepLink(code: code, authority: 'vps'),
+      PairLink.trackerWebLink(
+        code: code,
+        nonce: nonce,
+        tracker: 'anilist',
+        authority: 'vps',
+      ),
+    ]) {
+      expect(Uri.parse(value).queryParameters['auth'], 'vps');
+    }
+    expect(
+      Uri.parse(
+        PairLink.qrData(code: code),
+      ).queryParameters.containsKey('auth'),
+      isFalse,
+    );
+  });
+
+  test('pair links retain authority and reject an unknown selector', () {
+    expect(
+      PairLink.parse(
+        Uri.parse('zangetsu://pair?code=$code&auth=vps'),
+      )!.authority,
+      'vps',
+    );
+    expect(
+      PairLink.parse(Uri.parse('zangetsu://pair?code=$code'))!.authority,
+      'cloud',
+    );
+    expect(
+      PairLink.parse(
+        Uri.parse('zangetsu://pair?code=$code&auth=vps&auth=cloud'),
+      ),
+      isNull,
+    );
+    expect(
+      PairLink.parse(Uri.parse('zangetsu://pair?code=$code&auth=unknown')),
+      isNull,
+    );
+  });
+
+  test('links use the launch authority without another settings request', () {
+    AuthRoute.active = const AuthRoute(
+      authority: 'vps',
+      generation: 2,
+      anonKey: 'public',
+    );
+    try {
+      expect(
+        Uri.parse(PairLink.deepLink(code: code)).queryParameters['auth'],
+        'vps',
+      );
+      expect(
+        Uri.parse(
+          PairLink.trackerWebLink(code: code, nonce: nonce, tracker: 'mal'),
+        ).queryParameters['auth'],
+        'vps',
+      );
+    } finally {
+      AuthRoute.active = AuthRoute.cloud;
+    }
   });
 }

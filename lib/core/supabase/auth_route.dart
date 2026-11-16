@@ -6,6 +6,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../environment.dart';
 
 class AuthRoute {
+  // Selected once during startup and shared by pairing links.
+  static AuthRoute active = cloud;
+
   const AuthRoute({
     required this.authority,
     required this.generation,

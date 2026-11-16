@@ -41,9 +41,12 @@ class _NoRedirect(HTTPRedirectHandler):
 
 
 class KlipyProxy:
-    def __init__(self, api_key, issuer, jwks_path, upstream=None):
+    def __init__(self, api_key, issuer, jwks_path, upstream=None, additional_issuer=None):
         self._api_key = api_key.strip()
         self._issuer = issuer.rstrip("/")
+        self._issuers = {self._issuer}
+        if additional_issuer:
+            self._issuers.add(additional_issuer.rstrip("/"))
         self._jwks_path = Path(jwks_path)
         self.upstream = upstream or self._fetch_upstream
         # shortcut: rate windows reset on restart; use shared storage before adding workers.
@@ -61,6 +64,7 @@ class KlipyProxy:
         return cls(
             api_key=api_key,
             issuer=os.environ["SUPABASE_ISSUER"],
+            additional_issuer=os.environ.get("VPS_AUTH_ISSUER"),
             jwks_path=os.environ.get(
                 "SUPABASE_JWKS_PATH", "/etc/zangetsu-sync/jwks.json"
             ),
@@ -204,6 +208,9 @@ class KlipyProxy:
             if len(matches) != 1:
                 raise _Problem(401, "Invalid sign-in token")
             jwk_data = matches[0]
+            key_issuer = jwk_data.get("issuer", self._issuer)
+            if not isinstance(key_issuer, str) or key_issuer not in self._issuers:
+                raise _Problem(401, "Invalid sign-in token")
             if (
                 jwk_data.get("kty") != expected_kty
                 or jwk_data.get("use", "sig") != "sig"
@@ -224,7 +231,7 @@ class KlipyProxy:
                 token,
                 key=key,
                 algorithms=[algorithm],
-                issuer=self._issuer,
+                issuer=key_issuer,
                 audience="authenticated",
                 options={"require": ["exp", "iat", "sub", "iss", "aud", "role"]},
             )

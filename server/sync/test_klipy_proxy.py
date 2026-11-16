@@ -215,6 +215,34 @@ class KlipyProxyTest(unittest.TestCase):
             server.server_close()
             thread.join(timeout=2)
 
+    def test_additional_authority_requires_its_own_bound_public_key(self):
+        vps = "https://sb.zangetsu.online/auth/v1"
+        other = ec.generate_private_key(ec.SECP256R1())
+        vps_jwk = json.loads(jwt.algorithms.ECAlgorithm.to_jwk(other.public_key()))
+        vps_jwk.update(kid="vps-key", alg="ES256", issuer=vps)
+        cloud_jwk = json.loads(self.jwks_path.read_text())["keys"][0]
+        cloud_jwk["issuer"] = ISSUER
+        self.jwks_path.write_text(json.dumps({"keys": [cloud_jwk, vps_jwk]}))
+        self.proxy = KlipyProxy("test", ISSUER, self.jwks_path,
+                                upstream=self._upstream, additional_issuer=vps)
+        claims = jwt.decode(self._token(), options={"verify_signature": False})
+        good = jwt.encode({**claims, "iss": vps}, other, algorithm="ES256", headers={"kid": "vps-key"})
+        bad = [self._token(iss=vps), jwt.encode(claims, other, algorithm="ES256", headers={"kid": "vps-key"}),
+               jwt.encode({**claims, "iss": "https://unknown.invalid/auth/v1"}, other, algorithm="ES256", headers={"kid": "vps-key"})]
+        for token, expected in [(self._token(), 200), (good, 200), *[(x, 401) for x in bad]]:
+            with self.subTest(expected=expected):
+                status, _, _ = self.proxy.handle("GET", "/klipy/v1/gifs/search?q=cat", "Bearer " + token, b"")
+                self.assertEqual(status, expected)
+        self.assertEqual(len(self.upstream_calls), 2)
+
+    def test_additional_authority_is_not_implicitly_trusted(self):
+        vps = "https://sb.zangetsu.online/auth/v1"
+        jwk = json.loads(self.jwks_path.read_text())["keys"][0]
+        jwk["issuer"] = vps
+        self.jwks_path.write_text(json.dumps({"keys": [jwk]}))
+        status, _, _ = self.proxy.handle("GET", "/klipy/v1/gifs/search?q=cat", "Bearer " + self._token(iss=vps), b"")
+        self.assertEqual(status, 401)
+
 
 if __name__ == "__main__":
     unittest.main()

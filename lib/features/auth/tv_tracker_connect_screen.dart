@@ -166,9 +166,11 @@ class _TvTrackerConnectScreenState extends State<TvTrackerConnectScreen> {
                       // $_label login in the phone's browser and relays the token
                       // to this TV (same encrypted-blob path the poll consumes).
                       _qrOption(
-                        data:
-                            'https://zangetsu.online/tv-connect/'
-                            '?code=$_code&nonce=$_nonce&tracker=${widget.trackerId}',
+                        data: PairLink.trackerWebLink(
+                          code: _code!,
+                          nonce: _nonce!,
+                          tracker: widget.trackerId,
+                        ),
                         title: context.l10n.noApp,
                         subtitle:
                             'Scan to log in with\n$_label in your browser',

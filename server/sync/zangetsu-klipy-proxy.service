@@ -10,6 +10,7 @@ Group=zangetsu-klipy
 SupplementaryGroups=sync_authenticator
 WorkingDirectory=/opt/zangetsu-klipy
 Environment=SUPABASE_ISSUER=https://eogwzrlfoercfwcfwlmv.supabase.co/auth/v1
+Environment=VPS_AUTH_ISSUER=https://sb.zangetsu.online/auth/v1
 Environment=SUPABASE_JWKS_PATH=/etc/zangetsu-sync/jwks.json
 LoadCredential=klipy_api_key:/etc/zangetsu-klipy/api_key
 ExecStart=/opt/zangetsu-klipy/venv/bin/python /opt/zangetsu-klipy/klipy_proxy.py

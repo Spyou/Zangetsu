@@ -10,6 +10,7 @@ Group=zangetsu-stremio
 SupplementaryGroups=sync_authenticator
 WorkingDirectory=/opt/zangetsu-klipy
 Environment=SUPABASE_ISSUER=https://eogwzrlfoercfwcfwlmv.supabase.co/auth/v1
+Environment=VPS_AUTH_ISSUER=https://sb.zangetsu.online/auth/v1
 Environment=SUPABASE_JWKS_PATH=/etc/zangetsu-sync/jwks.json
 # Keep this key across deployments; encrypted backups depend on it.
 LoadCredential=stremio_key:/etc/zangetsu-sync/stremio_key

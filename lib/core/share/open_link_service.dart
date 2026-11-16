@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:app_links/app_links.dart';
 
 import '../zmode/zmode_ids.dart';
+import '../supabase/auth_route.dart';
 import '../../features/auth/pair_tv_screen.dart';
 import '../../features/auth/send_trackers_to_tv_screen.dart';
 import '../../features/detail/detail_screen.dart';
@@ -58,6 +59,10 @@ class OpenLinkService {
     // landing page). Same payload either way.
     final pair = PairLink.parse(uri);
     if (pair != null) {
+      if (pair.authority != AuthRoute.active.authority) {
+        showGlobalSnack('Update both devices and try pairing again.');
+        return;
+      }
       if (pair.trackers) {
         _openSendTrackers(pair.code, pair.nonce);
       } else {

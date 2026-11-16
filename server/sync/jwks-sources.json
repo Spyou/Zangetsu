@@ -1,0 +1,10 @@
+[
+  {
+    "issuer": "https://eogwzrlfoercfwcfwlmv.supabase.co/auth/v1",
+    "url": "https://eogwzrlfoercfwcfwlmv.supabase.co/auth/v1/.well-known/jwks.json"
+  },
+  {
+    "issuer": "https://sb.zangetsu.online/auth/v1",
+    "url": "https://sb.zangetsu.online/auth/v1/.well-known/jwks.json"
+  }
+]
