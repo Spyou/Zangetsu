@@ -12,6 +12,29 @@ import 'stremio_ref.dart';
 import 'stremio_stream_mapping.dart';
 import 'package:zangetsu_source_bridge/stremio.dart';
 
+/// Retains only catalogues that failed, while accepting genuinely empty results.
+List<HomeSection> retainFailedStremioRows(
+  List<HomeSection> fresh,
+  List<HomeSection> previous,
+  Set<String> failed,
+) {
+  if (failed.isEmpty || previous.isEmpty) return fresh;
+  final pending = {
+    for (final row in fresh) row.more?.categoryId ?? row.title: row,
+  };
+  final rows = <HomeSection>[];
+  for (final row in previous) {
+    final key = row.more?.categoryId ?? row.title;
+    final updated = pending.remove(key);
+    if (updated != null) {
+      rows.add(updated);
+    } else if (failed.contains(key)) {
+      rows.add(row);
+    }
+  }
+  return [...rows, ...pending.values];
+}
+
 /// The one provider the app registers for Stremio. It owns every enabled addon
 /// internally so saved titles use one source id and one external id.
 class StremioProvider implements BaseProvider {
@@ -76,8 +99,12 @@ class StremioProvider implements BaseProvider {
   );
 
   @override
-  Future<List<HomeSection>?> getHome({String category = 'sub'}) async {
-    final sections = <HomeSection>[];
+  Future<List<HomeSection>?> getHome({
+    String category = 'sub',
+    void Function(List<HomeSection>)? onSections,
+    bool forceRefresh = false,
+    void Function(String categoryId)? onFailure,
+  }) async {
     final jobs = <(StremioInstallation, StremioCatalog)>[];
     for (final installation in _enabled) {
       if (!installation.supports('catalog')) continue;
@@ -98,46 +125,52 @@ class StremioProvider implements BaseProvider {
         }
       }
     }
-    for (var offset = 0; offset < jobs.length; offset += 4) {
-      final batch = jobs.skip(offset).take(4);
-      final rows = await Future.wait(
-        batch.map((job) async {
-          final (installation, catalog) = job;
-          final items = await _loadCatalog(
-            installation,
-            catalog,
-            search: null,
-            skip: 0,
-          );
-          if (items.isEmpty) return null;
-          final duplicateName =
-              jobs
-                  .where(
-                    (j) =>
-                        j.$1.id == installation.id && j.$2.name == catalog.name,
-                  )
-                  .length >
-              1;
-          return HomeSection(
-            title: duplicateName
-                ? '${catalog.name} · ${catalog.type == 'series' ? 'Series' : 'Movies'}'
-                : catalog.name,
-            items: items,
-            more: BrowseMore(
-              sourceId: stremioSourceId,
-              kind: 'stremio_catalog',
-              categoryId: jsonEncode({
-                'i': installation.id,
-                't': catalog.type,
-                'c': catalog.id,
-              }),
-            ),
-          );
-        }),
-      );
-      sections.addAll(rows.whereType<HomeSection>());
+    final rows = List<HomeSection?>.filled(jobs.length, null);
+    var next = 0;
+    Future<void> worker() async {
+      while (next < jobs.length) {
+        final index = next++;
+        final (installation, catalog) = jobs[index];
+        final categoryId = jsonEncode({
+          'i': installation.id,
+          't': catalog.type,
+          'c': catalog.id,
+        });
+        final items = await _loadCatalog(
+          installation,
+          catalog,
+          search: null,
+          skip: 0,
+          forceRefresh: forceRefresh,
+          onFailure: () => onFailure?.call(categoryId),
+        );
+        if (items.isEmpty) continue;
+        final duplicateName =
+            jobs
+                .where(
+                  (job) =>
+                      job.$1.id == installation.id &&
+                      job.$2.name == catalog.name,
+                )
+                .length >
+            1;
+        rows[index] = HomeSection(
+          title: duplicateName
+              ? '${catalog.name} · ${catalog.type == 'series' ? 'Series' : 'Movies'}'
+              : catalog.name,
+          items: items,
+          more: BrowseMore(
+            sourceId: stremioSourceId,
+            kind: 'stremio_catalog',
+            categoryId: categoryId,
+          ),
+        );
+        onSections?.call(List.unmodifiable(rows.whereType<HomeSection>()));
+      }
     }
-    return sections;
+
+    await Future.wait(List.generate(jobs.length.clamp(0, 4), (_) => worker()));
+    return rows.whereType<HomeSection>().toList(growable: false);
   }
 
   @override
@@ -435,19 +468,37 @@ class StremioProvider implements BaseProvider {
           if (installation.id != origin?.id && compatible(installation))
             installation,
     ];
-    Exception? failure;
-    for (final installation in candidates) {
+    Future<({StremioMeta? meta, Object? error, StackTrace? stack})> fetch(
+      StremioInstallation installation,
+    ) async {
       try {
-        final meta = await manager.meta(
-          installation.id,
-          type: ref.type,
-          itemId: ref.itemId,
+        return (
+          meta: await manager.meta(
+            installation.id,
+            type: ref.type,
+            itemId: ref.itemId,
+          ),
+          error: null,
+          stack: null,
         );
-        if (meta != null) return meta;
-      } on StremioFailure catch (error) {
-        failure = error;
-      } on StremioInstallException catch (error) {
-        failure = error;
+      } catch (error, stack) {
+        return (meta: null, error: error, stack: stack);
+      }
+    }
+
+    Exception? failure;
+    for (var offset = 0; offset < candidates.length; offset += 4) {
+      // Start fallbacks early, but keep the selected addon's metadata first.
+      final attempts = candidates.skip(offset).take(4).map(fetch).toList();
+      for (final attempt in attempts) {
+        final result = await attempt;
+        if (result.meta != null) return result.meta;
+        final error = result.error;
+        if (error is StremioFailure || error is StremioInstallException) {
+          failure = error as Exception;
+        } else if (error != null) {
+          Error.throwWithStackTrace(error, result.stack!);
+        }
       }
     }
     if (failure != null) throw failure;
@@ -459,6 +510,8 @@ class StremioProvider implements BaseProvider {
     StremioCatalog catalog, {
     required String? search,
     required int skip,
+    bool forceRefresh = false,
+    void Function()? onFailure,
   }) async {
     try {
       final page = await manager.catalog(
@@ -474,11 +527,13 @@ class StremioProvider implements BaseProvider {
             ?.options
             .first,
         skip: skip > 0 ? skip : null,
+        forceRefresh: forceRefresh,
       );
       return page.metas
           .map((meta) => _item(installation, catalog, meta))
           .toList(growable: false);
     } catch (_) {
+      onFailure?.call();
       return const [];
     }
   }

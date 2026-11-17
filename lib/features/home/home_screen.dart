@@ -76,6 +76,7 @@ import '../../core/ui/poster_palette.dart';
 import 'metadata_switch_sheet.dart';
 import 'home_banner_header.dart';
 import 'home_catalogue_prefs.dart';
+import 'home_rows_slivers.dart';
 import 'source_catalogue_home_content.dart';
 import '../../core/ui/list_status_sheet.dart';
 import '../../core/ui/media_info_sheet.dart';
@@ -1173,56 +1174,52 @@ class _HomeViewState extends State<_HomeView>
   /// switch makes a future row type a compile error here instead of a silent
   /// gap, and the local row reuses [ContinueSection] itself so its reactive
   /// Hive/mode behaviour is identical wherever the user drags it.
-  Widget _homeRowSliver(HomeRow row) => switch (row) {
-    LocalContinueHomeRow() => ContinueSection(
-      onResume: _resume,
-      onLongPress: _showContinueInfo,
-      onSeeAll: _openHistory,
-      onResumeReading: _resumeReading,
-      onLongPressReading: _showContinueReadingInfo,
+  Widget _homeRowSliver(HomeRow row) => row is LocalContinueHomeRow
+      ? ContinueSection(
+          onResume: _resume,
+          onLongPress: _showContinueInfo,
+          onSeeAll: _openHistory,
+          onResumeReading: _resumeReading,
+          onLongPressReading: _showContinueReadingInfo,
+        )
+      : SliverToBoxAdapter(child: _homeRowContent(row));
+
+  Widget _homeRowContent(HomeRow row) => switch (row) {
+    LocalContinueHomeRow() => throw StateError(
+      'Continue is rendered as a sliver',
     ),
-    StreamingServicesHomeRow() => SliverToBoxAdapter(
-      child: StreamingServicesRow(
-        onOpen: _openStreamingService,
-        onSeeAll: () => Navigator.of(context).push(
-          MaterialPageRoute<void>(
-            builder: (_) => const StreamingServicesScreen(),
-          ),
+    StreamingServicesHomeRow() => StreamingServicesRow(
+      onOpen: _openStreamingService,
+      onSeeAll: () => Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => const StreamingServicesScreen(),
         ),
       ),
     ),
-    ProviderHomeRow(:final section) => SliverToBoxAdapter(
-      child: _sectionRow(section),
-    ),
+    ProviderHomeRow(:final section) => _sectionRow(section),
     TrackerContinueHomeRow(:final items, :final trackerName) =>
-      SliverToBoxAdapter(
-        child: TrackerContinueSection(
-          items: items,
-          trackerName: trackerName,
-          onOpen: _openTrackerEntry,
-          onSeeAll: () => _openTrackerList(trackerName, WatchStatus.watching),
-          onLongPress: _showTrackerInfo,
-        ),
-      ),
-    NewEpisodesHomeRow(:final items, :final trackerName) => SliverToBoxAdapter(
-      child: NewEpisodesSection(
+      TrackerContinueSection(
         items: items,
         trackerName: trackerName,
         onOpen: _openTrackerEntry,
-        onSeeAll: () => _openNewEpisodes(items),
+        onSeeAll: () => _openTrackerList(trackerName, WatchStatus.watching),
         onLongPress: _showTrackerInfo,
       ),
+    NewEpisodesHomeRow(:final items, :final trackerName) => NewEpisodesSection(
+      items: items,
+      trackerName: trackerName,
+      onOpen: _openTrackerEntry,
+      onSeeAll: () => _openNewEpisodes(items),
+      onLongPress: _showTrackerInfo,
     ),
     TrackerListHomeRow(:final status, :final items, :final trackerName) =>
-      SliverToBoxAdapter(
-        child: TrackerListSection(
-          status: status,
-          items: items,
-          trackerName: trackerName,
-          onOpen: _openTrackerEntry,
-          onSeeAll: () => _openTrackerList(trackerName, status),
-          onLongPress: _showTrackerInfo,
-        ),
+      TrackerListSection(
+        status: status,
+        items: items,
+        trackerName: trackerName,
+        onOpen: _openTrackerEntry,
+        onSeeAll: () => _openTrackerList(trackerName, status),
+        onLongPress: _showTrackerInfo,
       ),
   };
 
@@ -1248,10 +1245,11 @@ class _HomeViewState extends State<_HomeView>
     return slivers;
   }
 
-  Widget _sourceCatalogueHomeSliver() => SliverToBoxAdapter(
-    child: BlocBuilder<ContentModeCubit, ContentMode>(
+  Widget _sourceCatalogueHomeSliver() {
+    return BlocBuilder<ContentModeCubit, ContentMode>(
       bloc: sl<ContentModeCubit>(),
       builder: (context, mode) => SourceCatalogueHomeContent(
+        sliver: true,
         controller: _sourceCatalogueController,
         // Fresh prefs read, not the field: the cubit emits before our stream
         // listener refreshes the field, and handing the content a stale
@@ -1267,8 +1265,8 @@ class _HomeViewState extends State<_HomeView>
         showSourcePicker: false,
         mode: mode,
       ),
-    ),
-  );
+    );
+  }
 
   /// "See all" on New Episodes: the same entries as a grid, keeping the count
   /// badge so the reason each one is here survives the jump.
@@ -2055,7 +2053,12 @@ class _HomeViewState extends State<_HomeView>
                         if (_sourceCatalogueSelected)
                           ..._sourceCatalogueHomeSlivers(rows)
                         else
-                          ...rows.map(_homeRowSliver)
+                          ...homeRowsSlivers(
+                            rows,
+                            rowBuilder: _homeRowContent,
+                            continueBuilder: () =>
+                                _homeRowSliver(const LocalContinueHomeRow()),
+                          )
                       else ...[
                         ContinueSection(
                           onResume: _resume,

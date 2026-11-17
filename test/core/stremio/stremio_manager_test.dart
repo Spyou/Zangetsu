@@ -124,6 +124,57 @@ void main() {
     clock: () => now,
   );
 
+  test('catalogue results are reused until their short TTL expires', () async {
+    final server = _Server();
+    final manager = makeManager(server);
+    final addon = await manager.install('https://addon.example');
+    Future<StremioCatalogPage> load() =>
+        manager.catalog(addon.id, type: 'movie', catalogId: 'top');
+    await load();
+    await load();
+    expect(
+      server.requests.where((u) => u.path.contains('/catalog/')),
+      hasLength(1),
+    );
+    now = now.add(const Duration(minutes: 6));
+    await load();
+    expect(
+      server.requests.where((u) => u.path.contains('/catalog/')),
+      hasLength(2),
+    );
+  });
+
+  test('explicit catalogue refresh bypasses cached results', () async {
+    final server = _Server();
+    final manager = makeManager(server);
+    final addon = await manager.install('https://addon.example');
+    await manager.catalog(addon.id, type: 'movie', catalogId: 'top');
+    await manager.catalog(
+      addon.id,
+      type: 'movie',
+      catalogId: 'top',
+      forceRefresh: true,
+    );
+    expect(
+      server.requests.where((u) => u.path.contains('/catalog/')),
+      hasLength(2),
+    );
+  });
+
+  test('changing an addon invalidates its catalogue cache', () async {
+    final server = _Server();
+    final manager = makeManager(server);
+    final addon = await manager.install('https://addon.example');
+    await manager.catalog(addon.id, type: 'movie', catalogId: 'top');
+    await manager.setEnabled(addon.id, false);
+    await manager.setEnabled(addon.id, true);
+    await manager.catalog(addon.id, type: 'movie', catalogId: 'top');
+    expect(
+      server.requests.where((u) => u.path.contains('/catalog/')),
+      hasLength(2),
+    );
+  });
+
   test(
     'configuration round-trip preserves private URLs and addon choices',
     () async {

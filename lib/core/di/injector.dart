@@ -65,6 +65,7 @@ import '../repository/catalogue_repository.dart';
 import '../repository/provider_settings_repository.dart';
 import '../repository/source_domain_overrides.dart';
 import '../stremio/stremio_manager.dart';
+import '../stremio/stremio_home_cache.dart';
 import '../stremio/stremio_backup.dart';
 import '../stremio/stremio_remote.dart';
 import '../stremio/stremio_sync.dart';
@@ -136,7 +137,6 @@ import '../../features/watch_together/watch_together_controller.dart';
 import '../cast/cast_controller.dart';
 import '../cast/cast_proxy.dart';
 import '../supabase/supabase_service.dart';
-import 'package:supabase_flutter/supabase_flutter.dart' show OtpType;
 
 final GetIt sl = GetIt.instance;
 
@@ -1107,6 +1107,7 @@ Future<void> initDependencies({bool Function()? isOffline}) async {
         .where((state) => state.status != AuthStatus.unknown)
         .map((state) => state.isLoggedIn ? state.user?.id : null),
   );
+  sl.registerSingleton<StremioHomeCache>(StremioHomeCache());
   sl.registerSingleton<StremioProvider>(StremioProvider(stremioManager));
 
   sl.registerSingleton<SourceRepository>(

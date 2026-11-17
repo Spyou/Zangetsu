@@ -1,8 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 
 import '../../core/di/injector.dart';
 import '../../core/stremio/stremio_manager.dart';
+import '../../core/stremio/stremio_provider.dart';
+import '../../core/stremio/stremio_home_cache.dart';
+import '../../core/profiles/viewer_profile.dart';
 import '../../core/mode/content_mode.dart';
 import '../../core/mode/content_mode_cubit.dart';
 import '../../core/models/home_section.dart';
@@ -64,6 +69,7 @@ class SourceCatalogueHomeContent extends StatefulWidget {
     this.sectionBuilder,
     this.showSourcePicker = true,
     this.repository,
+    this.sliver = false,
   });
 
   final String? initialSourceId;
@@ -73,6 +79,7 @@ class SourceCatalogueHomeContent extends StatefulWidget {
   final ValueChanged<List<HomeSection>>? onSectionsChanged;
   final Widget Function(HomeSection)? sectionBuilder;
   final bool showSourcePicker;
+  final bool sliver;
 
   @visibleForTesting
   final SourceRepository? repository;
@@ -97,6 +104,9 @@ class SourceCatalogueHomeContentState
   bool _openingItem = false;
   int _generation = 0;
   StremioManager? _stremioManager;
+  ViewerProfileStore? _profiles;
+  Timer? _sectionUpdateTimer;
+  List<HomeSection>? _pendingSections;
 
   ContentMode _modeFor(SourceCatalogueHomeContent widget) =>
       widget.mode ??
@@ -109,6 +119,10 @@ class SourceCatalogueHomeContentState
     super.initState();
     if (sl.isRegistered<StremioManager>()) {
       _stremioManager = sl<StremioManager>()..addListener(_onStremioChanged);
+    }
+    if (sl.isRegistered<ViewerProfileStore>()) {
+      _profiles = sl<ViewerProfileStore>();
+      _profiles!.contextRevision.addListener(_onProfileChanged);
     }
     widget.controller?._attach(_controllerOwner, refresh);
     _mode = _modeFor(widget);
@@ -145,6 +159,12 @@ class SourceCatalogueHomeContentState
     _notifySections(const []);
   }
 
+  void _onProfileChanged() {
+    if (!mounted || _sourceId != 'stremio') return;
+    _load(reset: true);
+    _notifySections(const []);
+  }
+
   void _onStremioChanged() {
     if (!mounted || _sourceId != 'stremio') return;
     _sources = _sourcesForMode();
@@ -174,7 +194,7 @@ class SourceCatalogueHomeContentState
       if (changed) setState(() {});
       return;
     }
-    await _load(reset: changed);
+    await _load(reset: changed, forceRefresh: true);
   }
 
   String? _chooseSourceId([String? preferred]) {
@@ -203,7 +223,13 @@ class SourceCatalogueHomeContentState
       })
       .toList(growable: false);
 
-  Future<void> _load({bool reset = false}) async {
+  Future<void> _load({bool reset = false, bool forceRefresh = false}) async {
+    _sectionUpdateTimer?.cancel();
+    _sectionUpdateTimer = null;
+    _pendingSections = null;
+    var previousSections = reset
+        ? const <HomeSection>[]
+        : _sections ?? const <HomeSection>[];
     final sourceId = _sourceId;
     if (sourceId == null) return;
     if (sourceId == 'stremio' && !_sources.any((s) => s.id == sourceId)) {
@@ -221,22 +247,130 @@ class SourceCatalogueHomeContentState
       _failed = false;
       if (reset) _sections = null;
     });
+    final cache = sourceId == 'stremio' && sl.isRegistered<StremioHomeCache>()
+        ? sl<StremioHomeCache>()
+        : null;
+    final snapshotScope = cache == null || _stremioManager == null
+        ? null
+        : StremioHomeCache.scope(
+            owner: _profiles?.ownerKey ?? 'local',
+            profile:
+                '${_profiles?.activeId ?? kDefaultProfileId}:${_profiles?.activeProfile.isKids ?? false}',
+            addons: _stremioManager!.enabled,
+          );
+    final failedCatalogs = <String>{};
+    List<HomeSection>? completedSections;
+    var loadFailed = false;
+    List<HomeSection> recoveredRows(List<HomeSection> fresh) =>
+        retainFailedStremioRows(
+          fresh,
+          previousSections,
+          loadFailed
+              ? {
+                  for (final row in previousSections)
+                    row.more?.categoryId ?? row.title,
+                }
+              : failedCatalogs,
+        );
+    if (cache != null && snapshotScope != null && _sections == null) {
+      unawaited(
+        cache.read(snapshotScope).then((remembered) {
+          if (!mounted ||
+              generation != _generation ||
+              remembered == null ||
+              remembered.isEmpty) {
+            return;
+          }
+          previousSections = remembered;
+          final finished = completedSections;
+          if (finished != null) {
+            if (!loadFailed && failedCatalogs.isEmpty) return;
+            final restored = recoveredRows(finished);
+            setState(() {
+              _sections = restored;
+              _failed = restored.isEmpty;
+            });
+            _notifySections(restored);
+          } else if (_sections == null && _loading) {
+            setState(() => _sections = remembered);
+            _notifySections(remembered);
+          }
+        }),
+      );
+    }
     try {
-      final sections = await _repository.home(sourceId: sourceId);
+      void publish(List<HomeSection> updates) {
+        if (!mounted || generation != _generation) return;
+        _pendingSections = updates;
+        void apply() {
+          _sectionUpdateTimer = null;
+          if (!mounted || generation != _generation) return;
+          final next = _pendingSections;
+          _pendingSections = null;
+          if (next == null) return;
+          final firstResult = _sections == null || _sections!.isEmpty;
+          // Keep existing rows while slower catalogues refresh.
+          final merged = {
+            for (final section in previousSections)
+              section.more?.categoryId ?? section.title: section,
+          };
+          for (final section in next) {
+            merged[section.more?.categoryId ?? section.title] = section;
+          }
+          setState(() => _sections = merged.values.toList(growable: false));
+          if (firstResult) _notifySections(_sections!);
+        }
+
+        if (_sections == null) {
+          apply();
+        } else {
+          _sectionUpdateTimer ??= Timer(
+            const Duration(milliseconds: 100),
+            apply,
+          );
+        }
+      }
+
+      final sections =
+          sourceId == 'stremio' && sl.isRegistered<StremioProvider>()
+          ? await sl<StremioProvider>().getHome(
+                  onSections: publish,
+                  forceRefresh: forceRefresh,
+                  onFailure: failedCatalogs.add,
+                ) ??
+                const <HomeSection>[]
+          : await _repository.home(sourceId: sourceId);
       if (!mounted || generation != _generation) return;
+      _sectionUpdateTimer?.cancel();
+      _sectionUpdateTimer = null;
+      _pendingSections = null;
+      completedSections = sections;
+      final displayed = recoveredRows(sections);
       setState(() {
-        _sections = sections;
+        _sections = displayed;
         _loading = false;
+        _failed = displayed.isEmpty && failedCatalogs.isNotEmpty;
       });
-      _notifySections(sections);
+      _notifySections(displayed);
+      if (cache != null && snapshotScope != null && failedCatalogs.isEmpty) {
+        unawaited(cache.write(snapshotScope, sections));
+      }
     } catch (_) {
       if (!mounted || generation != _generation) return;
+      _sectionUpdateTimer?.cancel();
+      _sectionUpdateTimer = null;
+      _pendingSections = null;
+      loadFailed = true;
+      completedSections = _sections ?? const [];
+      final displayed = sourceId == 'stremio'
+          ? recoveredRows(completedSections)
+          : const <HomeSection>[];
       setState(() {
-        _failed = true;
+        _failed = displayed.isEmpty;
         _loading = false;
-        _sections = const [];
+        _sections = displayed;
       });
-      _notifySections(const []);
+      _notifySections(displayed);
     }
   }
 
@@ -276,39 +410,70 @@ class SourceCatalogueHomeContentState
 
   @override
   void dispose() {
+    _sectionUpdateTimer?.cancel();
     widget.controller?._detach(_controllerOwner);
     _stremioManager?.removeListener(_onStremioChanged);
+    _profiles?.contextRevision.removeListener(_onProfileChanged);
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final sections = _sections ?? const <HomeSection>[];
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (_sources.isEmpty && _sourceId == 'stremio')
-          _stremioEmptyState()
-        else if (_sources.isEmpty)
-          _emptyState(
-            icon: Icons.extension_off_rounded,
-            title: 'No sources available',
-            message: 'Install a source to browse its catalogue here.',
-            action: _openSources,
-            actionLabel: 'Browse sources',
-          )
-        else ...[
-          if (widget.showSourcePicker) _sourcePicker(),
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 150),
-            switchInCurve: Curves.easeOut,
-            switchOutCurve: Curves.easeIn,
-            child: _catalogueContent(sections),
+    if (!widget.sliver) return _content(sections);
+    if (sections.isEmpty || _failed || _sources.isEmpty) {
+      return SliverToBoxAdapter(child: _content(sections));
+    }
+    final rows = widget.sectionBuilder == null
+        ? sections
+        : providerRowSections(sections, isTv: false);
+    final keys = [
+      for (var i = 0; i < rows.length; i++)
+        ValueKey(rows[i].more?.categoryId ?? '${rows[i].title}:$i'),
+    ];
+    final indices = {for (var i = 0; i < keys.length; i++) keys[i]: i};
+    return SliverMainAxisGroup(
+      slivers: [
+        if (widget.showSourcePicker) SliverToBoxAdapter(child: _sourcePicker()),
+        SliverList.builder(
+          itemCount: rows.length,
+          findChildIndexCallback: (key) => indices[key],
+          itemBuilder: (context, index) => KeyedSubtree(
+            key: keys[index],
+            child:
+                widget.sectionBuilder?.call(rows[index]) ??
+                _sectionRow(rows[index]),
           ),
-        ],
+        ),
+        if (_loading) SliverToBoxAdapter(child: _shimmerRow()),
       ],
     );
   }
+
+  Widget _content(List<HomeSection> sections) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      if (_sources.isEmpty && _sourceId == 'stremio')
+        _stremioEmptyState()
+      else if (_sources.isEmpty)
+        _emptyState(
+          icon: Icons.extension_off_rounded,
+          title: 'No sources available',
+          message: 'Install a source to browse its catalogue here.',
+          action: _openSources,
+          actionLabel: 'Browse sources',
+        )
+      else ...[
+        if (widget.showSourcePicker) _sourcePicker(),
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 150),
+          switchInCurve: Curves.easeOut,
+          switchOutCurve: Curves.easeIn,
+          child: _catalogueContent(sections),
+        ),
+      ],
+    ],
+  );
 
   Widget _catalogueContent(List<HomeSection> sections) {
     if (_loading && _sections == null) {

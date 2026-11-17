@@ -159,6 +159,8 @@ class MediaItem extends Equatable {
 
   MediaItem copyWith({
     String? titleLogo,
+    String? posterShape,
+    String? landscapePoster,
     String? sourceId,
     int? subCount,
     int? dubCount,
@@ -176,8 +178,8 @@ class MediaItem extends Equatable {
     coverHeaders: coverHeaders,
     banner: banner,
     titleLogo: titleLogo ?? this.titleLogo,
-    posterShape: posterShape,
-    landscapePoster: landscapePoster,
+    posterShape: posterShape ?? this.posterShape,
+    landscapePoster: landscapePoster ?? this.landscapePoster,
     url: url,
     type: type,
     sourceId: sourceId ?? this.sourceId,

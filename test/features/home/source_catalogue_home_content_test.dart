@@ -5,6 +5,9 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:watch_app/core/app_mode.dart';
 import 'package:watch_app/core/stremio/stremio_manager.dart';
+import 'package:watch_app/core/stremio/stremio_provider.dart';
+import 'package:watch_app/core/stremio/stremio_home_cache.dart';
+import 'package:watch_app/core/profiles/viewer_profile.dart';
 import 'package:watch_app/core/di/injector.dart' show sl;
 import 'package:watch_app/core/models/home_section.dart';
 import 'package:watch_app/core/models/media_item.dart';
@@ -87,12 +90,487 @@ class _TestCubit extends Cubit<int> {
   _TestCubit() : super(0);
 }
 
+class _ProgressiveProvider extends StremioProvider {
+  _ProgressiveProvider() : super(StremioManager());
+
+  final requests =
+      <
+        ({
+          Completer<List<HomeSection>> result,
+          void Function(List<HomeSection>)? report,
+          bool forceRefresh,
+          void Function(String)? failure,
+        })
+      >[];
+
+  @override
+  Future<List<HomeSection>> getHome({
+    String category = 'sub',
+    void Function(List<HomeSection>)? onSections,
+    bool forceRefresh = false,
+    void Function(String)? onFailure,
+  }) {
+    final result = Completer<List<HomeSection>>();
+    requests.add((
+      result: result,
+      report: onSections,
+      forceRefresh: forceRefresh,
+      failure: onFailure,
+    ));
+    return result.future;
+  }
+}
+
+class _DelayedHomeCache extends StremioHomeCache {
+  final result = Completer<List<HomeSection>?>();
+  final written = <List<HomeSection>>[];
+  @override
+  Future<List<HomeSection>?> read(String scope) => result.future;
+  @override
+  Future<void> write(String scope, List<HomeSection> sections) async {
+    written.add(sections);
+  }
+}
+
+class _ScopedHomeCache extends StremioHomeCache {
+  final reads = <String, Completer<List<HomeSection>?>>{};
+  @override
+  Future<List<HomeSection>?> read(String scope) =>
+      (reads[scope] ??= Completer<List<HomeSection>?>()).future;
+  @override
+  Future<void> write(String scope, List<HomeSection> sections) async {}
+}
+
+class _ProfileContext implements ViewerProfileStore {
+  @override
+  String ownerKey = 'owner';
+  @override
+  String activeId = 'first';
+  @override
+  final contextRevision = ValueNotifier<int>(0);
+  @override
+  ViewerProfile get activeProfile =>
+      ViewerProfile(id: activeId, name: activeId);
+  @override
+  noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+HomeSection _catalogueRow(String id, {String? title}) => HomeSection(
+  title: title ?? id,
+  more: BrowseMore(
+    sourceId: 'stremio',
+    kind: 'stremio_catalog',
+    categoryId: id,
+  ),
+  items: [
+    MediaItem(
+      id: id,
+      title: id,
+      url: '/$id',
+      type: ProviderType.movie,
+      sourceId: 'stremio',
+    ),
+  ],
+);
+
 void main() {
   setUp(() async {
     await sl.reset();
     sl.registerSingleton<AppMode>(const AppMode(isTv: false));
   });
   tearDown(() => sl.reset());
+
+  testWidgets(
+    'switching profiles rejects a late cached preview and network result',
+    (tester) async {
+      final cache = _ScopedHomeCache();
+      final provider = _ProgressiveProvider();
+      final profiles = _ProfileContext();
+      sl.registerSingleton<StremioHomeCache>(cache);
+      sl.registerSingleton<StremioProvider>(provider);
+      sl.registerSingleton<StremioManager>(_NotifyingStremioManager());
+      sl.registerSingleton<ViewerProfileStore>(profiles);
+      final repository = _StubSourceRepository(const [
+        (id: 'stremio', name: 'Stremio'),
+      ]);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: SourceCatalogueHomeContent(
+                repository: repository,
+                initialSourceId: 'stremio',
+                showSourcePicker: false,
+                sectionBuilder: (row) => Text(row.title),
+              ),
+            ),
+          ),
+        ),
+      );
+      final firstRead = cache.reads.values.single;
+      final firstRequest = provider.requests.single;
+      profiles.activeId = 'second';
+      profiles.contextRevision.value++;
+      await tester.pump();
+      expect(cache.reads, hasLength(2));
+      firstRead.complete([_catalogueRow('old profile')]);
+      firstRequest.result.complete([_catalogueRow('old network')]);
+      cache.reads.values.last.complete([_catalogueRow('second profile')]);
+      await tester.pump();
+      expect(find.text('old profile'), findsNothing);
+      expect(find.text('old network'), findsNothing);
+      expect(find.text('second profile'), findsOneWidget);
+      provider.requests.last.result.complete([
+        _catalogueRow('fresh second profile'),
+      ]);
+      await tester.pumpAndSettle();
+      expect(find.text('fresh second profile'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  for (final outcome in ['partial', 'offline', 'abort']) {
+    for (final cacheFirst in [true, false]) {
+      testWidgets(
+        'failed catalogue rows survive $outcome refresh without replacing the snapshot (cache first: $cacheFirst)',
+        (tester) async {
+          final cache = _DelayedHomeCache();
+          final provider = _ProgressiveProvider();
+          sl.registerSingleton<StremioHomeCache>(cache);
+          sl.registerSingleton<StremioProvider>(provider);
+          sl.registerSingleton<StremioManager>(_NotifyingStremioManager());
+          final repository = _StubSourceRepository(const [
+            (id: 'stremio', name: 'Stremio'),
+          ]);
+          await tester.pumpWidget(
+            MaterialApp(
+              home: Scaffold(
+                body: SingleChildScrollView(
+                  child: SourceCatalogueHomeContent(
+                    repository: repository,
+                    initialSourceId: 'stremio',
+                    showSourcePicker: false,
+                    sectionBuilder: (row) => Text(row.title),
+                  ),
+                ),
+              ),
+            ),
+          );
+          final cached = [
+            _catalogueRow('failed'),
+            _catalogueRow('good', title: 'old good'),
+            _catalogueRow('now empty'),
+          ];
+          if (cacheFirst) {
+            cache.result.complete(cached);
+            await tester.pump();
+          }
+          final request = provider.requests.single;
+          if (outcome == 'abort') {
+            request.result.completeError(StateError('addon unavailable'));
+          } else {
+            for (final row in outcome == 'offline' ? cached : [cached.first]) {
+              request.failure?.call(row.more!.categoryId!);
+            }
+            request.result.complete(
+              outcome == 'offline'
+                  ? []
+                  : [_catalogueRow('good', title: 'fresh good')],
+            );
+          }
+          await tester.pumpAndSettle();
+          if (!cacheFirst) {
+            cache.result.complete(cached);
+            await tester.pumpAndSettle();
+          }
+          expect(find.text('failed'), findsOneWidget);
+          expect(
+            find.text('fresh good'),
+            outcome == 'partial' ? findsOneWidget : findsNothing,
+          );
+          expect(
+            find.text('old good'),
+            outcome == 'partial' ? findsNothing : findsOneWidget,
+          );
+          expect(
+            find.text('now empty'),
+            outcome == 'partial' ? findsNothing : findsOneWidget,
+          );
+          expect(cache.written, isEmpty);
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
+  }
+
+  for (final cacheFirst in [true, false]) {
+    testWidgets(
+      'saved Stremio rows warm Home and fresh results win (cache first: $cacheFirst)',
+      (tester) async {
+        final cache = _DelayedHomeCache();
+        final provider = _ProgressiveProvider();
+        sl.registerSingleton<StremioHomeCache>(cache);
+        sl.registerSingleton<StremioProvider>(provider);
+        sl.registerSingleton<StremioManager>(_NotifyingStremioManager());
+        final repository = _StubSourceRepository(const [
+          (id: 'stremio', name: 'Stremio'),
+        ]);
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: SingleChildScrollView(
+                child: SourceCatalogueHomeContent(
+                  repository: repository,
+                  initialSourceId: 'stremio',
+                  showSourcePicker: false,
+                  sectionBuilder: (row) => Text(row.title),
+                ),
+              ),
+            ),
+          ),
+        );
+        final cached = _catalogueRow('cached');
+        final fresh = _catalogueRow('fresh');
+        if (cacheFirst) {
+          cache.result.complete([cached]);
+          await tester.pump();
+          expect(find.text('cached'), findsOneWidget);
+        }
+        provider.requests.single.result.complete([fresh]);
+        await tester.pumpAndSettle();
+        if (!cacheFirst) {
+          cache.result.complete([cached]);
+          await tester.pumpAndSettle();
+        }
+        expect(find.text('fresh'), findsOneWidget);
+        expect(find.text('cached'), findsNothing);
+        expect(cache.written.single.single.title, 'fresh');
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  testWidgets(
+    'progressive rows stay ordered and refresh preserves unfinished rows',
+    (tester) async {
+      final provider = _ProgressiveProvider();
+      sl.registerSingleton<StremioProvider>(provider);
+      final repository = _StubSourceRepository(const [
+        (id: 'stremio', name: 'Stremio'),
+      ]);
+      final controller = SourceCatalogueHomeController();
+      final reported = <List<HomeSection>>[];
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: CustomScrollView(
+              slivers: [
+                SourceCatalogueHomeContent(
+                  sliver: true,
+                  repository: repository,
+                  initialSourceId: 'stremio',
+                  showSourcePicker: false,
+                  controller: controller,
+                  onSectionsChanged: reported.add,
+                  sectionBuilder: (row) =>
+                      SizedBox(height: 100, child: Text(row.title)),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      final first = _catalogueRow('first');
+      final second = _catalogueRow('second');
+      final request = provider.requests.single;
+      request.report!([second]);
+      await tester.pump();
+      expect(find.text('second'), findsOneWidget);
+      request.report!([first, second]);
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(
+        tester.getTopLeft(find.text('first')).dy,
+        lessThan(tester.getTopLeft(find.text('second')).dy),
+      );
+      request.result.complete([first, second]);
+      await tester.pumpAndSettle();
+      final refresh = controller.refresh();
+      await tester.pump();
+      final updated = _catalogueRow('first', title: 'updated first');
+      final refreshing = provider.requests.last;
+      expect(refreshing.forceRefresh, isTrue);
+      refreshing.report!([updated]);
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.text('updated first'), findsOneWidget);
+      expect(find.text('second'), findsOneWidget);
+      expect(reported.last.first.title, 'first');
+      refreshing.result.complete([updated, second]);
+      await refresh;
+      await tester.pumpAndSettle();
+      expect(reported.last.first.title, 'updated first');
+      expect(repository.homeCalls, isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('stale progressive callbacks cannot replace another source', (
+    tester,
+  ) async {
+    final provider = _ProgressiveProvider();
+    sl.registerSingleton<StremioProvider>(provider);
+    final repository = _StubSourceRepository(const [
+      (id: 'stremio', name: 'Stremio'),
+      (id: 'source-a', name: 'Source A'),
+    ]);
+    Widget page(String source) => MaterialApp(
+      home: Scaffold(
+        body: SingleChildScrollView(
+          child: SourceCatalogueHomeContent(
+            repository: repository,
+            initialSourceId: source,
+            showSourcePicker: false,
+            sectionBuilder: (row) => Text(row.title),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpWidget(page('stremio'));
+    final request = provider.requests.single;
+    request.report!([_catalogueRow('first')]);
+    await tester.pump();
+    request.report!([_catalogueRow('stale')]);
+    await tester.pumpWidget(page('source-a'));
+    request.result.complete([_catalogueRow('stale')]);
+    await tester.pumpAndSettle();
+    expect(find.text('source-a catalogue'), findsOneWidget);
+    expect(find.text('stale'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'Stremio slivers build only nearby rows and preserve them on Back',
+    (tester) async {
+      final gate = Completer<List<HomeSection>>();
+      final repository = _GatedSourceRepository(const [
+        (id: 'stremio', name: 'Stremio'),
+      ], gate);
+      final built = <String>{};
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: CustomScrollView(
+              slivers: [
+                SourceCatalogueHomeContent(
+                  sliver: true,
+                  repository: repository,
+                  initialSourceId: 'stremio',
+                  showSourcePicker: false,
+                  sectionBuilder: (section) {
+                    built.add(section.title);
+                    return SizedBox(height: 240, child: Text(section.title));
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      gate.complete([
+        for (var i = 0; i < 100; i++)
+          HomeSection(
+            title: 'Catalogue $i',
+            more: BrowseMore(
+              sourceId: 'stremio',
+              kind: 'stremio_catalog',
+              categoryId: '$i',
+            ),
+            items: [
+              MediaItem(
+                id: '$i',
+                title: 'Title $i',
+                url: '/$i',
+                type: ProviderType.movie,
+                sourceId: 'stremio',
+              ),
+            ],
+          ),
+      ]);
+      await tester.pumpAndSettle();
+      expect(built.length, lessThan(10));
+      expect(find.text('Catalogue 99'), findsNothing);
+      final navigator = tester.state<NavigatorState>(find.byType(Navigator));
+      final oldCalls = Set<String>.from(built);
+      navigator.push(
+        MaterialPageRoute<void>(
+          builder: (_) => const Scaffold(body: Text('Detail')),
+        ),
+      );
+      await tester.pumpAndSettle();
+      navigator.pop();
+      await tester.pumpAndSettle();
+      expect(built, oldCalls);
+      expect(find.text('Catalogue 0'), findsOneWidget);
+      await tester.drag(find.byType(CustomScrollView), const Offset(0, -1200));
+      await tester.pumpAndSettle();
+      expect(built.length, greaterThan(oldCalls.length));
+      expect(built.length, lessThan(20));
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('other source catalogues also build only nearby rows', (
+    tester,
+  ) async {
+    final gate = Completer<List<HomeSection>>();
+    final repository = _GatedSourceRepository(const [
+      (id: 'ani:source-a', name: 'Source A'),
+    ], gate);
+    final built = <String>{};
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: CustomScrollView(
+            slivers: [
+              SourceCatalogueHomeContent(
+                sliver: true,
+                repository: repository,
+                initialSourceId: 'ani:source-a',
+                showSourcePicker: false,
+                sectionBuilder: (section) {
+                  built.add(section.title);
+                  return SizedBox(height: 240, child: Text(section.title));
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    gate.complete([
+      for (var i = 0; i < 100; i++)
+        HomeSection(
+          title: 'Row $i',
+          more: BrowseMore(
+            sourceId: 'ani:source-a',
+            kind: 'ani_popular',
+            categoryId: '$i',
+          ),
+          items: [
+            MediaItem(
+              id: '$i',
+              title: '$i',
+              url: '/$i',
+              type: ProviderType.anime,
+              sourceId: 'ani:source-a',
+            ),
+          ],
+        ),
+    ]);
+    await tester.pumpAndSettle();
+    expect(built.length, lessThan(10));
+    expect(find.text('Row 0'), findsOneWidget);
+    expect(find.text('Row 99'), findsNothing);
+  });
 
   for (final hasSource in [true, false]) {
     testWidgets(

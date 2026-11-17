@@ -678,11 +678,16 @@ class StremioManager extends ChangeNotifier {
     String? search,
     int? skip,
     String? genre,
+    bool forceRefresh = false,
   }) async {
     final installation = await _installed(id);
     final key =
         'c|$id|${installation.revision}|$type|$catalogId|'
         '${search ?? ''}|${skip ?? ''}|${genre ?? ''}';
+    final cached = _cacheEntry(key);
+    if (!forceRefresh && cached != null) {
+      return cached.value as StremioCatalogPage;
+    }
     return _coalesce(key, () async {
       final page = await _client.catalog(
         await _base(id),
@@ -692,6 +697,7 @@ class StremioManager extends ChangeNotifier {
         skip: skip,
         genre: genre,
       );
+      _store(key, page, const Duration(minutes: 5));
       return page;
     });
   }

@@ -7,6 +7,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:watch_app/core/models/provider_info.dart';
+import 'package:watch_app/core/models/home_section.dart';
 import 'package:watch_app/core/models/media_item.dart';
 import 'package:watch_app/core/stremio/stremio_manager.dart';
 import 'package:watch_app/core/stremio/stremio_provider.dart';
@@ -119,6 +120,8 @@ class _Server {
   final requests = <Uri>[];
   final failMetadataHosts = <String>{};
   final failCatalogHosts = <String>{};
+  final holdCatalogHosts = <String, Completer<void>>{};
+  final holdMetadataHosts = <String, Completer<void>>{};
 
   Future<http.Response> handle(http.Request request) async {
     requests.add(request.url);
@@ -174,12 +177,16 @@ class _Server {
             : _manifest,
       );
     }
+    if (path.contains('/meta/')) {
+      await holdMetadataHosts[request.url.host]?.future;
+    }
     if (path.contains('/meta/') &&
         (request.url.host == 'catalog.example' ||
             failMetadataHosts.contains(request.url.host))) {
       return http.Response('', 404);
     }
     if (path.contains('/catalog/')) {
+      await holdCatalogHosts[request.url.host]?.future;
       if (failCatalogHosts.contains(request.url.host)) {
         return http.Response('', 503);
       }
@@ -212,6 +219,21 @@ class _Server {
 
   http.Response _json(Object body) =>
       http.Response.bytes(utf8.encode(jsonEncode(body)), 200);
+}
+
+class _BrokenMetadataManager extends StremioManager {
+  _BrokenMetadataManager({required super.client, required super.secrets});
+  String? brokenId;
+
+  @override
+  Future<StremioMeta?> meta(
+    String id, {
+    required String type,
+    required String itemId,
+  }) async {
+    if (id == brokenId) throw StateError('invalid metadata');
+    return super.meta(id, type: type, itemId: itemId);
+  }
 }
 
 void main() {
@@ -250,6 +272,177 @@ void main() {
     final installation = await manager.install('https://addon.example/addon');
     return (manager, StremioProvider(manager), installation);
   }
+
+  test(
+    'ready rows are published before a slow catalogue in stable order',
+    () async {
+      final gate = Completer<void>();
+      final server = _Server()..holdCatalogHosts['slow.example'] = gate;
+      final manager = makeManager(server);
+      await manager.install('https://slow.example');
+      final ready = await manager.install('https://ready.example');
+      final snapshots = <List<HomeSection>>[];
+      var completed = false;
+      final loading = StremioProvider(manager)
+          .getHome(onSections: snapshots.add)
+          .then((rows) {
+            completed = true;
+            return rows;
+          });
+      try {
+        for (var i = 0; i < 20; i++) {
+          await Future<void>.delayed(Duration.zero);
+        }
+        expect(completed, isFalse);
+        expect(snapshots, isNotEmpty);
+        expect(
+          jsonDecode(snapshots.first.single.more!.categoryId!)['i'],
+          ready.id,
+        );
+        expect(() => snapshots.first.clear(), throwsUnsupportedError);
+      } finally {
+        gate.complete();
+      }
+      final rows = (await loading)!;
+      expect(rows.map((row) => row.title), [
+        'Top Movies',
+        'Shows',
+        'Top Movies',
+        'Shows',
+      ]);
+      expect(snapshots.first, hasLength(1));
+      expect(
+        snapshots.last.map((row) => row.more!.categoryId),
+        rows.map((row) => row.more!.categoryId),
+      );
+    },
+  );
+
+  test('one slow catalogue does not hold back later ready jobs', () async {
+    final gate = Completer<void>();
+    final server = _Server()..holdCatalogHosts['slow.example'] = gate;
+    final manager = makeManager(server);
+    for (final host in ['slow', 'second', 'third']) {
+      await manager.install('https://$host.example');
+    }
+    final loading = StremioProvider(manager).getHome();
+    try {
+      for (var i = 0; i < 20; i++) {
+        await Future<void>.delayed(Duration.zero);
+      }
+      expect(
+        server.requests.any(
+          (u) => u.host == 'third.example' && u.path.contains('/catalog/'),
+        ),
+        isTrue,
+      );
+    } finally {
+      gate.complete();
+      await loading;
+    }
+  });
+
+  test(
+    'an unused metadata fallback failure cannot escape the request',
+    () async {
+      final server = _Server();
+      final manager = _BrokenMetadataManager(
+        client: StremioClient(httpClient: MockClient(server.handle)),
+        secrets: secrets,
+      );
+      final origin = await manager.install('https://origin.example');
+      manager.brokenId = (await manager.install('https://broken.example')).id;
+      final detail = await StremioProvider(manager).getDetail(
+        StremioRef(
+          installationId: origin.id,
+          type: 'series',
+          itemId: 'tt0944947',
+        ).encode(),
+      );
+      await Future<void>.delayed(Duration.zero);
+      expect(detail.title, 'Game of Thrones');
+    },
+  );
+
+  test('an unexpected preferred metadata error still propagates', () async {
+    final server = _Server();
+    final manager = _BrokenMetadataManager(
+      client: StremioClient(httpClient: MockClient(server.handle)),
+      secrets: secrets,
+    );
+    final origin = await manager.install('https://origin.example');
+    await manager.install('https://fallback.example');
+    manager.brokenId = origin.id;
+    await expectLater(
+      StremioProvider(manager).getDetail(
+        StremioRef(
+          installationId: origin.id,
+          type: 'series',
+          itemId: 'tt0944947',
+        ).encode(),
+      ),
+      throwsStateError,
+    );
+  });
+
+  test(
+    'Home reports failed catalogue handles separately from ready rows',
+    () async {
+      final server = _Server()..failCatalogHosts.add('broken.example');
+      final manager = makeManager(server);
+      final broken = await manager.install('https://broken.example');
+      final good = await manager.install('https://good.example');
+      final failed = <String>[];
+      final rows = (await StremioProvider(
+        manager,
+      ).getHome(onFailure: failed.add))!;
+      expect(failed, hasLength(2));
+      expect(failed.map((id) => jsonDecode(id)['i']), everyElement(broken.id));
+      expect(
+        rows.map((row) => jsonDecode(row.more!.categoryId!)['i']),
+        everyElement(good.id),
+      );
+    },
+  );
+
+  test(
+    'metadata fallbacks start early but origin priority still wins',
+    () async {
+      final gate = Completer<void>();
+      final server = _Server()..holdMetadataHosts['origin.example'] = gate;
+      final manager = makeManager(server);
+      final origin = await manager.install('https://origin.example');
+      await manager.install('https://fallback.example');
+      var completed = false;
+      final loading = StremioProvider(manager)
+          .getDetail(
+            StremioRef(
+              installationId: origin.id,
+              type: 'series',
+              itemId: 'tt0944947',
+            ).encode(),
+          )
+          .then((detail) {
+            completed = true;
+            return detail;
+          });
+      try {
+        for (var i = 0; i < 20; i++) {
+          await Future<void>.delayed(Duration.zero);
+        }
+        expect(
+          server.requests.any(
+            (u) => u.host == 'fallback.example' && u.path.contains('/meta/'),
+          ),
+          isTrue,
+        );
+        expect(completed, isFalse);
+      } finally {
+        gate.complete();
+        expect((await loading).title, 'Game of Thrones');
+      }
+    },
+  );
 
   test(
     'MPV episode resolution keeps torrent file selection for the correct episode',
