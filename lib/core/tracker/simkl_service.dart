@@ -636,6 +636,7 @@ class SimklService extends ChangeNotifier implements Tracker {
               sourceId: '',
               malId: malId,
               tmdbId: tmdbId,
+              tmdbIsTv: isTv,
             ),
             status: status,
             progress: _asInt(e['watched_episodes_count']),

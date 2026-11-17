@@ -1311,13 +1311,14 @@ class _MyListViewState extends State<_MyListView> with WidgetsBindingObserver {
   /// a lot of them — took the search fallback despite having an `al:` id the
   /// catalogue resolves perfectly well.
   void _openTrackerItem(BuildContext context, MediaItem stub) {
+    final tracker = context.read<TrackerListCubit>().state.tracker;
     final item = playableTrackerItem(
       stub,
       // Saved from here, it stays this tracker's title.
-      savedFrom: widget.pinnedTracker?.displayName,
+      savedFrom: tracker?.displayName,
     );
     if (item != null) {
-      _openItem(context, prefer: _providerOf(widget.pinnedTracker), item);
+      _openItem(context, prefer: _providerOf(tracker), item);
       return;
     }
     Navigator.of(context).push(
