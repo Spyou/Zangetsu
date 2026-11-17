@@ -83,8 +83,7 @@ class TvPlayerActivity : Activity() {
         const val DECODER_MODE_HARDWARE_FIRST = 1
         const val DECODER_MODE_SOFTWARE_FIRST = 2
         const val EXTRA_ACCENT = "accentColor"
-        // Buffer preset (Settings → Playback), resolved Dart-side. Absent/0 =
-        // ExoPlayer defaults, which is what this activity used before.
+        // Buffer presets from Settings, bounded to the device heap in loadControl().
         const val EXTRA_BUF_MIN_MS = "minBufferMs"
         const val EXTRA_BUF_MAX_MS = "maxBufferMs"
         const val EXTRA_BUF_BYTES = "targetBufferBytes"
@@ -381,14 +380,7 @@ class TvPlayerActivity : Activity() {
         // buffering, released on pause — not pinned on for the whole session.
 
         val exo = ExoPlayer.Builder(this, renderersFactory())
-            .setLoadControl(
-                BufferPresets.loadControl(
-                    intent.getIntExtra(EXTRA_BUF_MIN_MS, 0),
-                    intent.getIntExtra(EXTRA_BUF_MAX_MS, 0),
-                    intent.getIntExtra(EXTRA_BUF_BYTES, 0),
-                    intent.getIntExtra(EXTRA_BUF_BACK_MS, 0),
-                ),
-            )
+            .setLoadControl(loadControl())
             .build()
         player = exo
         playerView.player = exo
@@ -2581,6 +2573,14 @@ class TvPlayerActivity : Activity() {
                 .build()
         }
     }
+
+    private fun loadControl() = BufferPresets.loadControl(
+        intent.getIntExtra(EXTRA_BUF_MIN_MS, 0),
+        intent.getIntExtra(EXTRA_BUF_MAX_MS, 0),
+        intent.getIntExtra(EXTRA_BUF_BYTES, 0),
+        intent.getIntExtra(EXTRA_BUF_BACK_MS, 0),
+        maxHeapBytes = Runtime.getRuntime().maxMemory(),
+    )
 
     /** Hardware-first by default; explicit TV decoder choices keep their priority. */
     private fun renderersFactory(): RenderersFactory =
