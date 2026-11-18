@@ -969,7 +969,12 @@ class SourceRepository implements CatalogueRepository {
         '[detail] source fetch done title="${d.title}" eps=${d.episodes.length} '
         '${sw.elapsedMilliseconds}ms',
       );
-      return d;
+      // Providers disagree on order (Aniyomi/Tachiyomi extensions are
+      // newest-first); the toggle only flips, so normalize here, once.
+      final ordered = normalizeEpisodeOrder(d.episodes);
+      return identical(ordered, d.episodes)
+          ? d
+          : d.copyWith(episodes: ordered);
     } catch (e, st) {
       AppLogger.instance.log(
         '[detail] source fetch failed ${sw.elapsedMilliseconds}ms: $e',
@@ -990,8 +995,9 @@ class SourceRepository implements CatalogueRepository {
     String url, {
     String category = 'sub',
     String? sourceId,
-  }) async =>
-      (await _providerReady(sourceId)).getEpisodes(url, category: category);
+  }) async => normalizeEpisodeOrder(
+    await (await _providerReady(sourceId)).getEpisodes(url, category: category),
+  );
 
   /// The links resolved SO FAR for [episodeUrl], plus whether more may arrive.
   ///
@@ -1291,6 +1297,37 @@ extension SourceNameTag on SourceRepository {
     final tag = SourceRepository.ecosystemTag(sourceId);
     return tag == null ? name : '$tag · $name';
   }
+}
+
+/// Chronological episode order (1→N) regardless of which provider served the
+/// list. Aniyomi/Tachiyomi extensions — and several other ecosystems — return
+/// episodes newest-first (N→1); without this, a title opens "reversed" with
+/// the reverse toggle off, identically on TV and phone (both share this
+/// funnel — the toggle only flips, it never sorts).
+///
+/// Sorts by (season, number) when every episode is numbered (keeps
+/// 12 → 12.5 → 13 and multi-season lists correct) and returns the list
+/// untouched when already ordered. Unnumbered lists keep arrival order:
+/// direction is unprovable there, and flipping blindly would break
+/// oldest-first sources. ponytail: one funnel, not one fix per provider.
+List<Episode> normalizeEpisodeOrder(List<Episode> eps) {
+  if (eps.length < 2 || eps.any((e) => e.number == null)) return eps;
+  var ordered = true;
+  for (var i = 1; i < eps.length; i++) {
+    final p = eps[i - 1];
+    final c = eps[i];
+    final ps = p.season ?? 0;
+    final cs = c.season ?? 0;
+    if (cs < ps || (cs == ps && c.number! < p.number!)) {
+      ordered = false;
+      break;
+    }
+  }
+  if (ordered) return eps;
+  return [...eps]..sort((a, b) {
+    final s = (a.season ?? 0).compareTo(b.season ?? 0);
+    return s != 0 ? s : a.number!.compareTo(b.number!);
+  });
 }
 
 /// One chapter's page list plus when it was fetched — see
