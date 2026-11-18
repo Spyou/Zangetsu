@@ -73,7 +73,12 @@ class _DownloadsScreenState extends State<DownloadsScreen>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     // Coming back from a file manager (where a file may have been deleted) →
     // reconcile the list with disk. This is the case initState alone missed.
-    if (state == AppLifecycleState.resumed) _prune();
+    // Also pick up HLS jobs the background service finished while away, so a
+    // download that hit 100% off-screen finalizes now instead of stalling.
+    if (state == AppLifecycleState.resumed) {
+      _prune();
+      unawaited(sl<DownloadManager>().reconcileBackgroundResults());
+    }
   }
 
   /// Drop downloads whose file was deleted outside the app. Non-blocking.
@@ -1252,10 +1257,6 @@ class _TileThumb extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final done = record.status == DownloadStatus.done;
-    final active =
-        record.status == DownloadStatus.downloading ||
-        record.status == DownloadStatus.paused;
-    final pct = (record.progress * 100).round();
     return SizedBox(
       width: width,
       height: width,
@@ -1281,38 +1282,13 @@ class _TileThumb extends StatelessWidget {
                 const DecoratedBox(
                   decoration: BoxDecoration(color: Color(0x8C000000)),
                 ),
-              if (!done && !selecting) Center(child: _veil(active, pct)),
+              // ponytail: thumbnail owns the status glyph only — the row
+              // owns "% + bar". Showing "%" in both doubled every progress.
+              if (!done && !selecting) Center(child: _veil()),
               if (done && !selecting)
                 _ThumbWatchBadge(record: record, resume: resume),
               if (done && !selecting)
                 _ThumbDuration(record: record, resume: resume),
-              if (active && pct > 0 && !selecting)
-                Align(
-                  alignment: Alignment.bottomRight,
-                  child: Padding(
-                    padding: const EdgeInsets.all(5),
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: const Color(0xD2000000),
-                        borderRadius: BorderRadius.circular(5),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 5,
-                          vertical: 2,
-                        ),
-                        child: Text(
-                          '$pct%',
-                          style: const TextStyle(
-                            fontSize: 9.5,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
               if (selecting)
                 Center(
                   child: Checkbox(
@@ -1331,29 +1307,11 @@ class _TileThumb extends StatelessWidget {
     );
   }
 
-  /// Center badge while the row still carries state: % ring for active
-  /// downloads, the status glyph for everything else. Finished episodes show
-  /// nothing here — the watch badge owns that corner.
-  Widget _veil(bool active, int pct) {
-    if (active && pct > 0) {
-      return DecoratedBox(
-        decoration: const BoxDecoration(
-          color: Color(0x99000000),
-          shape: BoxShape.circle,
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(7),
-          child: Text(
-            '$pct%',
-            style: const TextStyle(
-              fontSize: 10.5,
-              fontWeight: FontWeight.w800,
-              color: Colors.white,
-            ),
-          ),
-        ),
-      );
-    }
+  /// Center badge while the row still carries state: the status glyph.
+  /// The row owns "% + bar" — this veil never shows "%" so progress
+  /// appears exactly once. Finished episodes show nothing here — the
+  /// watch badge owns that corner.
+  Widget _veil() {
     return DecoratedBox(
       decoration: const BoxDecoration(
         color: Color(0x99000000),

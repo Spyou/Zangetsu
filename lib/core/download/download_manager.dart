@@ -292,6 +292,12 @@ class DownloadManager extends ChangeNotifier {
     });
   }
 
+  /// Apply completion markers the background service wrote while the UI was
+  /// away (app backgrounded or killed), finalizing + marking done. Safe to
+  /// call on every resume: handled markers are deleted, and records already
+  /// done/canceled are skipped. Non-blocking; call with unawaited.
+  Future<void> reconcileBackgroundResults() => _reconcileServiceResults();
+
   /// Read completion markers written by the service while the app was killed,
   /// apply them to records, then delete them.
   Future<void> _reconcileServiceResults() async {
@@ -481,8 +487,17 @@ class DownloadManager extends ChangeNotifier {
       await Permission.notification.request();
     } catch (_) {}
 
+    // First-episode-first: dispatch in (season, number) order so E1 resolves +
+    // starts before later episodes, regardless of selection order upstream.
+    // The HLS queue and MP4 queue are both FIFO, so dispatch order is start
+    // order. ponytail: sort here, not in every caller.
+    final ordered = [...episodes]
+      ..sort((a, b) {
+        final s = (a.season ?? 0).compareTo(b.season ?? 0);
+        return s != 0 ? s : (a.number ?? 0).compareTo(b.number ?? 0);
+      });
     final pending = <DownloadRecord>[];
-    for (final ep in episodes) {
+    for (final ep in ordered) {
       final id = _idFor(sourceId, showId, ep.id);
       final existing = _records[id];
       // Skip ones already done or in flight.
