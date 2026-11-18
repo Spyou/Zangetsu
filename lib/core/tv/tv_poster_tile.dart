@@ -19,6 +19,7 @@ class TvPosterTile extends StatelessWidget {
     this.tags = const [],
     this.qualityBadge,
     this.dubBadge,
+    this.topLeftBadge,
     this.scoreBadge,
     this.genres = const [],
     this.isAdult = false,
@@ -39,6 +40,7 @@ class TvPosterTile extends StatelessWidget {
   /// Release quality drawn in the poster's top-right corner. See [PosterCard].
   final String? qualityBadge;
   final String? dubBadge;
+  final String? topLeftBadge;
   final int? scoreBadge;
   final List<String> genres;
   final bool isAdult;
@@ -94,6 +96,7 @@ class TvPosterTile extends StatelessWidget {
                     tags: tags,
                     qualityBadge: qualityBadge,
                     dubBadge: dubBadge,
+                    topLeftBadge: topLeftBadge,
                     scoreBadge: scoreBadge,
                     genres: genres,
                     isAdult: isAdult,

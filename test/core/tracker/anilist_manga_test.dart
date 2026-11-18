@@ -50,7 +50,7 @@ const _listCollectionAnimeGolden =
     r'lists { status entries { status progress score(format:POINT_10) '
     r'updatedAt private customLists(asArray:true) '
     r'media { id idMal title { romaji english native } episodes '
-    r'nextAiringEpisode{episode} coverImage { large } } } } } }';
+    r'nextAiringEpisode{episode} status coverImage { large } } } } } }';
 
 /// A `MediaListCollection` response shaped exactly like AniList's — two lists
 /// (Watching / Planning), the `media` sub-object carrying idMal + titles +
@@ -71,6 +71,7 @@ Map<String, dynamic> _entry({
   num? score,
   int? total,
   int? nextEpisode,
+  String? mediaStatus,
 }) => {
   'status': status,
   'progress': progress,
@@ -81,6 +82,7 @@ Map<String, dynamic> _entry({
     'format': ?format,
     'episodes': ?total,
     'chapters': ?total,
+    'status': ?mediaStatus,
     if (nextEpisode != null) 'nextAiringEpisode': {'episode': nextEpisode},
     'coverImage': {'large': 'https://img.anili.st/$idMal.jpg'},
   },
@@ -148,7 +150,9 @@ void main() {
       expect(q, contains('nextAiringEpisode{ episode airingAt }'));
       expect(
         q,
-        contains('mediaListEntry{ status score(format:POINT_10) progress private }'),
+        contains(
+          'mediaListEntry{ status score(format:POINT_10) progress private }',
+        ),
       );
     });
 
@@ -194,10 +198,7 @@ void main() {
     });
 
     test('format NOVEL on the manga list is a novel', () {
-      expect(
-        aniListProviderType(MediaKind.manga, 'NOVEL'),
-        ProviderType.novel,
-      );
+      expect(aniListProviderType(MediaKind.manga, 'NOVEL'), ProviderType.novel);
     });
 
     test('every other manga format (incl. unknown/null) is manga', () {
@@ -329,13 +330,32 @@ void main() {
       expect(out.single.status, WatchStatus.watching); // REPEATING → watching
     });
 
+    test('NOT_YET_RELEASED media marks the entry unreleased', () {
+      final out = parseAniListCollection(
+        _collection([
+          {
+            'status': 'PLANNING',
+            'entries': [
+              _entry(
+                status: 'PLANNING',
+                idMal: 184072,
+                romaji: 'Yuru Camp Season 4',
+                mediaStatus: 'NOT_YET_RELEASED',
+              ),
+              _entry(status: 'CURRENT', idMal: 21, romaji: 'One Piece'),
+            ],
+          },
+        ]),
+        MediaKind.anime,
+      );
+      expect(out.first.isUnreleased, isTrue);
+      expect(out.last.isUnreleased, isFalse);
+    });
+
     test('a malformed body yields an empty list rather than throwing', () {
       expect(parseAniListCollection(null, MediaKind.anime), isEmpty);
       expect(parseAniListCollection('nope', MediaKind.anime), isEmpty);
-      expect(
-        parseAniListCollection({'data': null}, MediaKind.anime),
-        isEmpty,
-      );
+      expect(parseAniListCollection({'data': null}, MediaKind.anime), isEmpty);
     });
   });
 

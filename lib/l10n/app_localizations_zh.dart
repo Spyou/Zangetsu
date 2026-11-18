@@ -1628,6 +1628,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get sortBy => '排序';
 
   @override
+  String get newEpisodeBadges => 'New episode badges';
+
+  @override
+  String get comingSoonShort => 'Soon';
+
+  @override
   String get newCategory => '新分类';
 
   @override

@@ -1686,6 +1686,12 @@ class AppLocalizationsFr extends AppLocalizations {
   String get sortBy => 'Trier par';
 
   @override
+  String get newEpisodeBadges => 'New episode badges';
+
+  @override
+  String get comingSoonShort => 'Soon';
+
+  @override
   String get newCategory => 'Nouvelle catégorie';
 
   @override

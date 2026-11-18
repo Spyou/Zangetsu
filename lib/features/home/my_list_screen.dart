@@ -13,6 +13,7 @@ import '../../core/mode/content_mode_cubit.dart';
 import '../../core/models/media_item.dart';
 import '../../core/anilist/anilist_service.dart';
 import '../../core/playback/category_store.dart';
+import '../../core/playback/playback_prefs.dart';
 import '../../l10n/ui_strings.dart';
 import '../../core/ui/reveal_item.dart';
 import '../../core/ui/global_messenger.dart';
@@ -631,6 +632,27 @@ class _MyListViewState extends State<_MyListView> with WidgetsBindingObserver {
             );
           },
         ),
+        // Tracker lists only: the own list carries no watched counts,
+        // so there is nothing to count down and the toggle hides itself.
+        if (!isMyList)
+          Builder(
+            builder: (menuContext) {
+              final showBehind = sl<PlaybackPrefs>().posterBehindBadge;
+              return MenuItemButton(
+                onPressed: () => unawaited(
+                  sl<PlaybackPrefs>().setPosterBehindBadge(!showBehind),
+                ),
+                leadingIcon: showBehind
+                    ? Icon(
+                        Icons.check_rounded,
+                        color: AppColors.accent,
+                        size: 18,
+                      )
+                    : const SizedBox(width: 18),
+                child: Text(menuContext.l10n.newEpisodeBadges),
+              );
+            },
+          ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12),
           child: Divider(color: AppColors.hairline, height: 1),
@@ -1383,6 +1405,7 @@ class _MyListViewState extends State<_MyListView> with WidgetsBindingObserver {
         child: PosterCard(
           title: entry.item.title,
           logoItem: entry.item,
+          topLeftBadge: behindLabel(entry, context.l10n.comingSoonShort),
           topRightBadge: isMyList && entry.item.sourceId == stremioSourceId
               ? const StremioLibraryBadge()
               : entry.isPrivate

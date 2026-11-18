@@ -37,6 +37,7 @@ class PosterCard extends StatefulWidget {
     this.logoItem,
     this.qualityBadge,
     this.dubBadge,
+    this.topLeftBadge,
     this.scoreBadge,
     this.genres = const [],
     this.isAdult = false,
@@ -65,6 +66,11 @@ class PosterCard extends StatefulWidget {
   /// "SUB" / "DUB" / "SUB DUB" for anime listings that report it. Sits opposite
   /// the quality badge and follows the audio-label setting.
   final String? dubBadge;
+
+  /// Behind-count ("3/12") for library cards: unwatched over released.
+  /// Top-left, sharing the corner with the dub badge; hidden when the
+  /// behind-badge setting is off.
+  final String? topLeftBadge;
 
   /// Community score, 0-100, from the metadata catalogue — see
   /// [MediaItem.score]. Follows the score-label setting.
@@ -442,12 +448,33 @@ class _PosterCardState extends State<PosterCard> {
                             ],
                           ),
                         ),
-                      if (widget.dubBadge != null &&
-                          (prefs?.posterAudioBadge ?? true))
+                      if ((widget.topLeftBadge != null &&
+                              (prefs?.posterBehindBadge ?? true)) ||
+                          (widget.dubBadge != null &&
+                              (prefs?.posterAudioBadge ?? true)))
                         Positioned(
                           top: 6,
                           left: 6,
-                          child: _PosterTag(widget.dubBadge!),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (widget.topLeftBadge != null &&
+                                  (prefs?.posterBehindBadge ?? true))
+                                _CountChip(widget.topLeftBadge!),
+                              if (widget.dubBadge != null &&
+                                  (prefs?.posterAudioBadge ?? true))
+                                Padding(
+                                  padding: EdgeInsets.only(
+                                    left:
+                                        widget.topLeftBadge != null &&
+                                            (prefs?.posterBehindBadge ?? true)
+                                        ? 4
+                                        : 0,
+                                  ),
+                                  child: _PosterTag(widget.dubBadge!),
+                                ),
+                            ],
+                          ),
                         ),
                       if (overlayTitle || hasBottomBadges || hasRightBadges)
                         Positioned(
@@ -765,6 +792,51 @@ class _ScoreTag extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Proper rounded count chip (the behind badge, e.g. "3/12"): an accent pill
+/// that hugs its text — width follows the label, height stays compact.
+class _CountChip extends StatelessWidget {
+  const _CountChip(this.text);
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: AppColors.accent,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.35),
+          width: 0.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.4),
+            blurRadius: 4,
+            offset: const Offset(0, 1),
+          ),
+        ],
+      ),
+      child: Text(
+        text,
+        maxLines: 1,
+        softWrap: false,
+        overflow: TextOverflow.visible,
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          fontFamily: AppText.fontFamily,
+          fontFamilyFallback: AppText.fontFamilyFallback,
+          fontSize: 11,
+          height: 1,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0.2,
+          color: Colors.white,
+        ),
       ),
     );
   }

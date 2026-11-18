@@ -1687,6 +1687,12 @@ class AppLocalizationsTr extends AppLocalizations {
   String get sortBy => 'Sıralama ölçütü';
 
   @override
+  String get newEpisodeBadges => 'New episode badges';
+
+  @override
+  String get comingSoonShort => 'Soon';
+
+  @override
   String get newCategory => 'Yeni kategori';
 
   @override

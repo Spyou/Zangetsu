@@ -1683,6 +1683,12 @@ class AppLocalizationsId extends AppLocalizations {
   String get sortBy => 'Urutkan berdasarkan';
 
   @override
+  String get newEpisodeBadges => 'New episode badges';
+
+  @override
+  String get comingSoonShort => 'Soon';
+
+  @override
   String get newCategory => 'Kategori baru';
 
   @override

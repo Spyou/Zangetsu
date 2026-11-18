@@ -3214,6 +3214,18 @@ abstract class AppLocalizations {
   /// **'Sort by'**
   String get sortBy;
 
+  /// No description provided for @newEpisodeBadges.
+  ///
+  /// In en, this message translates to:
+  /// **'New episode badges'**
+  String get newEpisodeBadges;
+
+  /// No description provided for @comingSoonShort.
+  ///
+  /// In en, this message translates to:
+  /// **'Soon'**
+  String get comingSoonShort;
+
   /// No description provided for @newCategory.
   ///
   /// In en, this message translates to:

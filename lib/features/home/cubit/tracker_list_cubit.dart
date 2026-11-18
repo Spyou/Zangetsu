@@ -224,6 +224,9 @@ class TrackerListCubit extends Cubit<TrackerListState> {
             updatedAt: t.updatedAt,
             customLists: t.customLists,
             isPrivate: t.isPrivate,
+            totalEpisodes: t.totalEpisodes,
+            nextAiringEpisode: t.nextAiringEpisode,
+            isUnreleased: t.isUnreleased,
           ),
       ];
       _cache[tracker] = entries;

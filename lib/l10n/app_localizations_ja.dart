@@ -1638,6 +1638,12 @@ class AppLocalizationsJa extends AppLocalizations {
   String get sortBy => '並び替え';
 
   @override
+  String get newEpisodeBadges => 'New episode badges';
+
+  @override
+  String get comingSoonShort => 'Soon';
+
+  @override
   String get newCategory => '新しいカテゴリ';
 
   @override

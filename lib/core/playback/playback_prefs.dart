@@ -836,6 +836,8 @@ class PlaybackPrefs {
       _box.get('posterAdultBadge', defaultValue: false) as bool;
   bool get posterProgressBadge =>
       _box.get('posterProgressBadge', defaultValue: false) as bool;
+  bool get posterBehindBadge =>
+      _box.get('posterBehindBadge', defaultValue: true) as bool;
 
   Future<void> _setPosterBadge(String key, bool value) async {
     await _box.put(key, value);
@@ -854,6 +856,8 @@ class PlaybackPrefs {
       _setPosterBadge('posterAdultBadge', value);
   Future<void> setPosterProgressBadge(bool value) =>
       _setPosterBadge('posterProgressBadge', value);
+  Future<void> setPosterBehindBadge(bool value) =>
+      _setPosterBadge('posterBehindBadge', value);
 
   Future<void> setQualityBadges(bool value) async {
     await _box.put('qualityBadges', value);

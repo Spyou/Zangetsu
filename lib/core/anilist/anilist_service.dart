@@ -134,6 +134,7 @@ List<TrackerListItem> parseAniListCollection(Object? data, MediaKind kind) {
         nextAiringEpisode: ((media['nextAiringEpisode'] as Map?)?['episode']
                 as num?)
             ?.toInt(),
+        isUnreleased: media['status'] == 'NOT_YET_RELEASED',
       ));
       idx++;
     }

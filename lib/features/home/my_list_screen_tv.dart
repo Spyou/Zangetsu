@@ -355,6 +355,7 @@ class _MyListScreenTvState extends State<MyListScreenTv> {
           autofocus: autofocusFirst && i == 0,
           title: entry.item.title,
           logoItem: entry.item,
+          topLeftBadge: behindLabel(entry, context.l10n.comingSoonShort),
           topRightBadge: entry.item.sourceId == stremioSourceId
               ? const StremioLibraryBadge()
               : entry.isPrivate

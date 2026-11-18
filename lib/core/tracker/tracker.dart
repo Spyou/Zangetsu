@@ -37,6 +37,7 @@ class TrackerListItem {
     this.customLists = const [],
     this.totalEpisodes,
     this.nextAiringEpisode,
+    this.isUnreleased = false,
   });
 
   final MediaItem item;
@@ -76,6 +77,11 @@ class TrackerListItem {
   /// `released = nextAiringEpisode - 1` tells the home rows whether unwatched
   /// episodes exist (released > progress). Null when the tracker didn't say.
   final int? nextAiringEpisode;
+
+  /// The catalogue hasn't released this title yet (AniList NOT_YET_RELEASED).
+  /// Lets the library card say "Soon" instead of nothing — no episode count
+  /// exists to do arithmetic with. False everywhere the tracker didn't say.
+  final bool isUnreleased;
 }
 
 /// The user's current entry for ONE title, read back from a tracker to fill the

@@ -63,7 +63,7 @@ String mediaListCollectionQuery(MediaKind kind) {
       'lists { status entries { status progress score(format:POINT_10) '
       'updatedAt private customLists(asArray:true) '
       'media { id idMal title { romaji english native }$formatField '
-      '${_totalCountFields(kind)}$airingField coverImage { large } } } } } }';
+      '${_totalCountFields(kind)}$airingField status coverImage { large } } } } } }';
 }
 
 /// The signed-in AniList user.

@@ -35,7 +35,7 @@ dependencies:
   zangetsu_source_bridge:
     git:
       url: https://github.com/Spyou/Zangetsu-Source-Bridge.git
-      ref: 8c780e1df2ee1df7efcc9ad39d066fd81d3b8340
+      ref: 9e72a71c68f0d0bfb806477d0dd764519f4cae68
   flutter_localizations:
     sdk: flutter
   intl: any

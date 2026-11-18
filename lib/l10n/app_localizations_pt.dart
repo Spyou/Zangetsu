@@ -1696,6 +1696,12 @@ class AppLocalizationsPt extends AppLocalizations {
   String get sortBy => 'Ordenar por';
 
   @override
+  String get newEpisodeBadges => 'New episode badges';
+
+  @override
+  String get comingSoonShort => 'Soon';
+
+  @override
   String get newCategory => 'Nova categoria';
 
   @override

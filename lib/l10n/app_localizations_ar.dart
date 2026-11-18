@@ -1687,6 +1687,12 @@ class AppLocalizationsAr extends AppLocalizations {
   String get sortBy => 'ترتيب حسب';
 
   @override
+  String get newEpisodeBadges => 'New episode badges';
+
+  @override
+  String get comingSoonShort => 'Soon';
+
+  @override
   String get newCategory => 'فئة جديدة';
 
   @override
