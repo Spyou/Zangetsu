@@ -3038,6 +3038,7 @@ class _DetailViewState extends State<_DetailView>
             isReading: isReading,
             filmMeta: _filmMeta(detail),
             filmTitle: detail.title,
+            hasScheduledVideos: detail.hasScheduledVideos,
           ),
           // ── Cast ────────────────────────────────────────────────────────────
           _CastTab(

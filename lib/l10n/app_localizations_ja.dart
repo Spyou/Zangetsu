@@ -2073,6 +2073,9 @@ class AppLocalizationsJa extends AppLocalizations {
   String get noEpisodesAvailableFromThisSource => 'このソースにエピソードがありません';
 
   @override
+  String get episodesNotYetAired => 'Episodes not yet aired — check back later';
+
+  @override
   String get noEpisodesMatchYourSearch => '検索に一致するエピソードがありません';
 
   @override

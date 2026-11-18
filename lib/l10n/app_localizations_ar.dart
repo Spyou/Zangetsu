@@ -2129,6 +2129,9 @@ class AppLocalizationsAr extends AppLocalizations {
       'لا توجد حلقات متاحة من هذا المصدر';
 
   @override
+  String get episodesNotYetAired => 'Episodes not yet aired — check back later';
+
+  @override
   String get noEpisodesMatchYourSearch => 'لا توجد حلقات تطابق بحثك';
 
   @override

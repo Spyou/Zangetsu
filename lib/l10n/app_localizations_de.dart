@@ -2127,6 +2127,9 @@ class AppLocalizationsDe extends AppLocalizations {
       'Keine Folgen von dieser Quelle';
 
   @override
+  String get episodesNotYetAired => 'Episodes not yet aired — check back later';
+
+  @override
   String get noEpisodesMatchYourSearch => 'Keine Folge passt zu deiner Suche';
 
   @override

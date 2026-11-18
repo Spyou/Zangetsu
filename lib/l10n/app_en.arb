@@ -762,6 +762,7 @@
 	"changeStatus": "Change status",
 	"tracking": "Tracking",
 	"noEpisodesAvailableFromThisSource": "No episodes available from this source",
+	"episodesNotYetAired": "Episodes not yet aired — check back later",
 	"noEpisodesMatchYourSearch": "No episodes match your search",
 	"everyChapterIsAlreadyDownloaded": "Every chapter is already downloaded",
 	"downloadChapters": "Download chapters",

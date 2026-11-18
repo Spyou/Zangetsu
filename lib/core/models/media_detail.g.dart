@@ -73,6 +73,7 @@ MediaDetail _$MediaDetailFromJson(Map<String, dynamic> json) => MediaDetail(
       (json['synonyms'] as List<dynamic>?)?.map((e) => e as String).toList() ??
       const [],
   isAdult: json['isAdult'] as bool? ?? false,
+  hasScheduledVideos: json['hasScheduledVideos'] as bool? ?? false,
 );
 
 Map<String, dynamic> _$MediaDetailToJson(MediaDetail instance) =>
@@ -114,6 +115,7 @@ Map<String, dynamic> _$MediaDetailToJson(MediaDetail instance) =>
       'nativeTitle': instance.nativeTitle,
       'synonyms': instance.synonyms,
       'isAdult': instance.isAdult,
+      'hasScheduledVideos': instance.hasScheduledVideos,
     };
 
 const _$MediaStatusEnumMap = {

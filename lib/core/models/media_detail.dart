@@ -143,6 +143,12 @@ class MediaDetail extends Equatable {
 
   final bool isAdult;
 
+  /// The catalogue knows episodes exist but none are released yet (Stremio
+  /// `behaviorHints.hasScheduledVideos`). The detail screen says "not yet
+  /// aired" instead of "no episodes" — same empty list, honest reason.
+  /// Defaults off; only set by sources that actually report it.
+  final bool hasScheduledVideos;
+
   const MediaDetail({
     required this.id,
     required this.title,
@@ -183,6 +189,7 @@ class MediaDetail extends Equatable {
     this.nativeTitle,
     this.synonyms = const [],
     this.isAdult = false,
+    this.hasScheduledVideos = false,
   });
 
   factory MediaDetail.fromJson(Map<String, dynamic> json) =>
@@ -229,6 +236,7 @@ class MediaDetail extends Equatable {
     String? nativeTitle,
     List<String>? synonyms,
     bool? isAdult,
+    bool? hasScheduledVideos,
   }) => MediaDetail(
     id: id ?? this.id,
     title: title ?? this.title,
@@ -269,6 +277,7 @@ class MediaDetail extends Equatable {
     nativeTitle: nativeTitle ?? this.nativeTitle,
     synonyms: synonyms ?? this.synonyms,
     isAdult: isAdult ?? this.isAdult,
+    hasScheduledVideos: hasScheduledVideos ?? this.hasScheduledVideos,
   );
 
   @override
@@ -312,6 +321,7 @@ class MediaDetail extends Equatable {
     nativeTitle,
     synonyms,
     isAdult,
+    hasScheduledVideos,
   ];
 }
 

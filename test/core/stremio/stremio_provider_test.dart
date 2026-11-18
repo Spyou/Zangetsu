@@ -82,6 +82,44 @@ const _movieMeta = {
   },
 };
 
+/// A live TV channel: no videos array by design (a channel IS the stream,
+/// played via stream/tv/{id}), no defaultVideoId.
+const _channelMeta = {
+  'meta': {
+    'id': 'tt9000001',
+    'type': 'tv',
+    'name': 'Example Live',
+    'poster': 'https://img.example/live.jpg',
+  },
+};
+
+/// A series the addon knows but hasn't released: no videos YET.
+const _scheduledMeta = {
+  'meta': {
+    'id': 'tt9999999',
+    'type': 'series',
+    'name': 'Coming Eventually',
+    'behaviorHints': {'hasScheduledVideos': true},
+  },
+};
+
+Map<String, Object?> _tvManifest() => {
+  ..._manifest,
+  'id': 'org.test.tv',
+  'types': ['tv'],
+  'catalogs': [
+    {
+      'type': 'tv',
+      'id': 'channels',
+      'name': 'Channels',
+      'extra': [
+        {'name': 'search'},
+        {'name': 'skip'},
+      ],
+    },
+  ],
+};
+
 const _streams = {
   'streams': [
     {
@@ -171,6 +209,7 @@ class _Server {
           ],
         });
       }
+      if (request.url.host == 'tv.example') return _json(_tvManifest());
       return _json(
         request.url.host == 'unique.example'
             ? {..._manifest, 'id': 'org.unique.catalogue'}
@@ -211,8 +250,10 @@ class _Server {
         ],
       });
     }
+    if (path.contains('tt9999999')) return _json(_scheduledMeta);
     if (path.contains('/meta/series/')) return _json(_seriesMeta);
     if (path.contains('/meta/movie/')) return _json(_movieMeta);
+    if (path.contains('/meta/tv/')) return _json(_channelMeta);
     if (path.contains('/stream/')) return _json(_streams);
     return _json({'metas': []});
   }
@@ -992,6 +1033,46 @@ void main() {
     expect(detail.id, 'movie:tt0372784');
     expect(detail.episodes.single.url, ref.encode());
     expect(StremioRef.parse(detail.episodes.single.url).videoId, isNull);
+  });
+
+  test('a scheduled series reports not-yet-aired with no episodes', () async {
+    final server = _Server();
+    final manager = makeManager(server);
+    final installation = await manager.install('https://addon.example/addon');
+    final provider = StremioProvider(manager);
+    final detail = await provider.getDetail(
+      StremioRef(
+        installationId: installation.id,
+        type: 'series',
+        itemId: 'tt9999999',
+      ).encode(),
+    );
+    expect(detail.hasScheduledVideos, isTrue);
+    expect(detail.episodes, isEmpty);
+  });
+
+  test('a live channel without videos gets one playable Live entry', () async {
+    final server = _Server();
+    final manager = makeManager(server);
+    final installation = await manager.install('https://tv.example/addon');
+    final provider = StremioProvider(manager);
+    final ref = StremioRef(
+      installationId: installation.id,
+      type: 'tv',
+      itemId: 'tt9000001',
+    );
+    final detail = await provider.getDetail(ref.encode());
+
+    expect(detail.episodes, hasLength(1));
+    final live = detail.episodes.single;
+    // No video id: streams resolve via stream/tv/{itemId}.
+    expect(StremioRef.parse(live.url).videoId, isNull);
+    final sources = await provider.getVideoSources(live.url);
+    expect(sources, isNotEmpty);
+    expect(
+      server.requests.any((u) => u.path.contains('/stream/')),
+      isTrue,
+    );
   });
 
   test('removed origin installation falls back for a verified id', () async {

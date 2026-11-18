@@ -380,6 +380,7 @@ class StremioProvider implements BaseProvider {
       tmdbId: int.tryParse(meta.externalId('tmdb') ?? ''),
       tmdbIsTv: !isStremioMovieType(mediaType),
       imdbId: meta.externalId('imdb'),
+      hasScheduledVideos: meta.hasScheduledVideos,
     );
   }
 
@@ -588,6 +589,29 @@ class StremioProvider implements BaseProvider {
     }
 
     if (isStremioMovieType(meta.type) || isStremioMovieType(ref.type)) {
+      return [
+        Episode(
+          id: stremioEpisodeId(
+            itemId: ref.itemId,
+            videoId: ref.itemId,
+            installationId: ref.installationId,
+          ),
+          title: meta.name,
+          number: 1,
+          url: StremioRef(
+            installationId: ref.installationId,
+            type: ref.type,
+            itemId: ref.itemId,
+          ).encode(),
+        ),
+      ];
+    }
+    // Live TV / channels carry no videos array by design — a channel IS the
+    // stream, played via stream/{type}/{id} with no video id. Without a row
+    // the detail screen dead-ends on "no episodes", so synthesize one playable
+    // Live entry (same shape as the movie fallback above). Non-series types
+    // are never gated on an episode list. ponytail: same shape, no machinery.
+    if (isStremioChannelType(meta.type) || isStremioChannelType(ref.type)) {
       return [
         Episode(
           id: stremioEpisodeId(

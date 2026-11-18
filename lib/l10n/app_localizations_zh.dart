@@ -2061,6 +2061,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get noEpisodesAvailableFromThisSource => '此来源没有可用剧集';
 
   @override
+  String get episodesNotYetAired => 'Episodes not yet aired — check back later';
+
+  @override
   String get noEpisodesMatchYourSearch => '没有符合搜索的剧集';
 
   @override

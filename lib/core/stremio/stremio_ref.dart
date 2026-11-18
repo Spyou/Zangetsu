@@ -110,3 +110,13 @@ bool isStremioMovieType(String type) {
   final lower = type.toLowerCase();
   return lower.startsWith('movie') || lower.startsWith('film');
 }
+
+/// Live TV / channel types: played straight from the meta id
+/// (`stream/tv/{id}`), never through an episode/video id.
+bool isStremioChannelType(String type) {
+  final lower = type.toLowerCase();
+  return lower == 'tv' ||
+      lower.startsWith('tv:') ||
+      lower.startsWith('channel') ||
+      lower == 'live';
+}

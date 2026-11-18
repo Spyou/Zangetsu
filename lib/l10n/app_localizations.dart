@@ -4066,6 +4066,12 @@ abstract class AppLocalizations {
   /// **'No episodes available from this source'**
   String get noEpisodesAvailableFromThisSource;
 
+  /// No description provided for @episodesNotYetAired.
+  ///
+  /// In en, this message translates to:
+  /// **'Episodes not yet aired — check back later'**
+  String get episodesNotYetAired;
+
   /// No description provided for @noEpisodesMatchYourSearch.
   ///
   /// In en, this message translates to:

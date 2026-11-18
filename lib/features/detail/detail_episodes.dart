@@ -37,7 +37,13 @@ class _EpisodesTab extends StatefulWidget {
     this.isReading = false,
     this.filmMeta,
     this.filmTitle,
+    this.hasScheduledVideos = false,
   });
+
+  /// The catalogue knows episodes exist but none are released yet — the empty
+  /// state says "not yet aired" instead of "no episodes". Defaults off so
+  /// every existing caller is unchanged.
+  final bool hasScheduledVideos;
 
   /// Opens the source picker for this title. Set only for catalogue titles,
   /// which are the ones that HAVE another source to try: when the one they
@@ -296,7 +302,9 @@ class _EpisodesTabState extends State<_EpisodesTab> {
       if (widget.loading) return const _EpisodeListSkeleton();
       return EmptyState(
         icon: Icons.video_library_outlined,
-        message: context.l10n.noEpisodesAvailableFromThisSource,
+        message: widget.hasScheduledVideos
+            ? context.l10n.episodesNotYetAired
+            : context.l10n.noEpisodesAvailableFromThisSource,
         actionLabel: widget.onSwitchSource == null
             ? null
             : context.l10n.switchSource,
