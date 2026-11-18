@@ -1109,11 +1109,7 @@ class PlayerCubit extends Cubit<PlayerState> {
         // no longer the one we chose, re-arm so _tryApplySubPref re-applies it.
         // Guarded on drift (not on every track change) so re-applying a URI sub
         // — which media_kit does via a fresh `sub-add` — can't loop.
-        if (!_manualSubtitleSelection &&
-            _wantedSubId != null &&
-            player.state.track.subtitle.id != _wantedSubId) {
-          _subApplied = false;
-        }
+        _reapplyIfDrifted();
         _tryApplyAudioPref();
         _tryApplySubPref();
       }),
@@ -1171,6 +1167,14 @@ class PlayerCubit extends Cubit<PlayerState> {
         // Opt-in auto-skip of the opening / ending. Sits here (not in the player
         // UI) so it still fires with the controls hidden or the screen off.
         _maybeAutoSkip(p);
+
+        // Slow safety net for mid-episode subtitle loss with no tracks event
+        // (HLS blip): re-apply at most every 30s while position advances.
+        final driftNowMs = DateTime.now().millisecondsSinceEpoch;
+        if (driftNowMs - _lastSubDriftCheckMs > 30000) {
+          _lastSubDriftCheckMs = driftNowMs;
+          _reapplyIfDrifted();
+        }
 
         if (p > Duration.zero) {
           _startedThisSource = true; // source is playing
@@ -1897,8 +1901,13 @@ class PlayerCubit extends Cubit<PlayerState> {
     } catch (_) {
       // A request can complete after close() disposed the native player. Do
       // not turn that cancellation into a second, late native call.
-      if (isCurrent()) {
-        await loadRemote(); // best-effort remote fallback while still active
+      if (!isCurrent()) return;
+      // Don't stay "applied" on failure: leave the retry open so a later
+      // tracks event or the drift poll can re-apply instead of going subless.
+      _subApplied = false;
+      await loadRemote(); // best-effort remote fallback while still active
+      if (isCurrent() && player.state.track.subtitle.id == url) {
+        _subApplied = true;
       }
     }
   }
@@ -2006,6 +2015,18 @@ class PlayerCubit extends Cubit<PlayerState> {
   bool _subReadyReapplied =
       false; // re-asserted the sub pref once at STATE_READY
   bool _autoTranslateTried = false; // auto-translate fired at most once/episode
+  int _lastSubDriftCheckMs = 0; // throttle for the position-poll drift check
+
+  /// Re-arm the subtitle preference when mpv drifted off the wanted sub.
+  /// The tracks stream is the fast path; the position poll below is the net
+  /// for drifts that arrive with no tracks event (HLS blip mid-episode).
+  void _reapplyIfDrifted() {
+    if (_manualSubtitleSelection || _wantedSubId == null || isClosed) return;
+    if (player.state.track.subtitle.id != _wantedSubId) {
+      _subApplied = false;
+      _tryApplySubPref();
+    }
+  }
 
   /// If auto-translate is on and a target language is set, translate the current
   /// subtitle to it once per episode — unless the source already has a sub in
@@ -2891,6 +2912,12 @@ class PlayerCubit extends Cubit<PlayerState> {
     }
     _startTimer?.cancel();
     _startedThisSource = false; // reset; set true once this source plays
+    // Every (re)open is a new file to mpv, which forgets the subtitle
+    // selection. Re-arm the preference + the STATE_READY re-assert so a
+    // same-episode reopen (failover, quality switch, retry) re-applies the
+    // wanted sub instead of playing on muted. ponytail: two flags, no logic.
+    _subApplied = false;
+    _subReadyReapplied = false;
     // Remember local-file playback for [_tryNextSource]: only plain paths and
     // file/content URIs count — http(s), including torrent-resolved local
     // servers, keeps today's failover behaviour.
