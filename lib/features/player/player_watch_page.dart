@@ -171,6 +171,17 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
   late final ScrollController _scroll;
   final ValueNotifier<double> _ambientOpacity = ValueNotifier(1);
 
+  // House pattern (see PlayerSeekBar): the raw position stream fires ~once
+  // per decoded frame, so a StreamBuilder on it rebuilds 60×/s. Sample to
+  // ~4Hz — invisible for a creeping thumb, and scrubbing stays smooth
+  // because it runs off the finger via onSeek, not this stream.
+  // ponytail: same 250ms bucket the fixed seekbar uses, no new machinery.
+  late final Stream<Duration> _sampledPosition = widget.positionStream
+      .map((p) => Duration(milliseconds: (p.inMilliseconds ~/ 250) * 250))
+      .distinct()
+      // Broadcast: the subtree can remount (miniplayer switches) and re-listen.
+      .asBroadcastStream();
+
   /// Row keys by real episode index, so scroll-to-current and jump land
   /// on the right row in list and grid alike.
   final Map<int, GlobalKey> _rowKeys = {};
@@ -855,7 +866,7 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
     );
   }
 
-  /// The only subtree that rebuilds every second.
+  /// Seek row rebuilds at ~4Hz off the sampled position (not per frame).
   Widget _seekRow() {
     return Directionality(
       textDirection: TextDirection.ltr,
@@ -870,7 +881,7 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
             builder: (context, durSnap) {
               final total = durSnap.data ?? Duration.zero;
               return StreamBuilder<Duration>(
-                stream: widget.positionStream,
+                stream: _sampledPosition,
                 initialData: widget.initialPosition,
                 builder: (context, posSnap) {
                   final pos = posSnap.data ?? Duration.zero;
