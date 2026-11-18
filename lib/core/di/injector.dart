@@ -421,6 +421,21 @@ Future<void> initDependencies({bool Function()? isOffline}) async {
   sl.registerSingleton<TitlePrefsStore>(TitlePrefsStore());
   await HomeCache.init();
   await PlaybackPrefs.init();
+  // One-time: Android phones default to the native ExoPlayer player. Boxes
+  // with a stored choice (including an explicit Built-in/mpv pick) are
+  // untouched; TV never reads externalPlayerPackage so no TV gate is needed
+  // beyond isTv for correctness.
+  final playbackBox = Hive.box<dynamic>(PlaybackPrefs.boxName);
+  final defaultEngine = resolveDefaultPlayerPackage(
+    isAndroidPhone: Platform.isAndroid && !isTv,
+    hasStoredChoice: playbackBox.containsKey('externalPlayerPackage'),
+    alreadyMigrated: playbackBox.containsKey('playerEngineMigrated'),
+  );
+  await playbackBox.put('playerEngineMigrated', true);
+  if (defaultEngine != null) {
+    await playbackBox.put('externalPlayerPackage', defaultEngine);
+    await playbackBox.put('externalPlayerLabel', 'Android Player');
+  }
   sl.registerSingleton<PlaybackPrefs>(PlaybackPrefs());
   sl.registerLazySingleton<MpvPlayerPool>(
     MpvPlayerPool.new,

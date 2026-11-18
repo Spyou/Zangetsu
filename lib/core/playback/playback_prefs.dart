@@ -223,6 +223,19 @@ enum PosterTitleStyle { text, artwork }
 /// never reads the preference.
 enum PlayerPresentation { watchPage, fullscreen }
 
+/// One-time default-engine migration target (wired in injector after
+/// [PlaybackPrefs.init]). Returns [PlaybackPrefs.androidPlayerId] when a box
+/// with no stored player choice belongs to an Android phone; null means leave
+/// the box alone. Pure so it is unit-testable without Hive.
+String? resolveDefaultPlayerPackage({
+  required bool isAndroidPhone,
+  required bool hasStoredChoice,
+  required bool alreadyMigrated,
+}) {
+  if (alreadyMigrated || hasStoredChoice || !isAndroidPhone) return null;
+  return PlaybackPrefs.androidPlayerId;
+}
+
 class PlaybackPrefs {
   static const String boxName = 'playback_prefs';
   static const String androidPlayerId = 'zangetsu.android.player';
