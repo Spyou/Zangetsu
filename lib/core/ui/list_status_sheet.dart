@@ -35,6 +35,11 @@ const String _kCategories = '__categories__';
 /// background (resolving the MAL/TMDB id from the detail when the caller doesn't
 /// already have it — e.g. a Home-banner card). [onChanged] fires after the
 /// local update so the caller can rebuild its button.
+/// [onRemove], when provided, takes over the "Remove from list" row: the sheet
+/// pops, then [onRemove] runs with the item and a [commit] that performs the
+/// exact removal below (store + status + tracker sync). Used by grids that
+/// animate the delete (Thanos-style) before committing it. Callers that don't
+/// pass it keep the current remove-it-now behavior.
 Future<void> showListStatusSheet(
   BuildContext context, {
   required MediaItem item,
@@ -43,6 +48,8 @@ Future<void> showListStatusSheet(
   bool tmdbIsTv = false,
   String? imdbId,
   VoidCallback? onChanged,
+  Future<void> Function(MediaItem item, Future<void> Function() commit)?
+  onRemove,
 }) async {
   final myList = sl<MyListStore>();
   final statusStore = sl<ListStatusStore>();
@@ -88,20 +95,28 @@ Future<void> showListStatusSheet(
   final isAnime = item.type == ProviderType.anime;
 
   if (picked == _kRemove) {
-    await myList.remove(item);
-    await statusStore.remove(item);
-    onChanged?.call();
-    _syncToTrackers(
-      item,
-      null,
-      malId,
-      tmdbId,
-      tmdbIsTv,
-      imdbId,
-      isAnime,
-      reading: reading,
-      remove: true,
-    );
+    Future<void> commit() async {
+      await myList.remove(item);
+      await statusStore.remove(item);
+      onChanged?.call();
+      _syncToTrackers(
+        item,
+        null,
+        malId,
+        tmdbId,
+        tmdbIsTv,
+        imdbId,
+        isAnime,
+        reading: reading,
+        remove: true,
+      );
+    }
+
+    if (onRemove != null) {
+      await onRemove(item, commit);
+      return;
+    }
+    await commit();
     return;
   }
 

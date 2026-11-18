@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 
@@ -33,6 +35,11 @@ class _RevealItemState extends State<RevealItem>
   AnimationController? _c;
   bool _fired = false;
 
+  /// Stagger starter. Cancellable (unlike a bare Future.delayed) so an item
+  /// that unmounts mid-cascade — mode switch, tab switch, fast scroll — never
+  /// leaves a dangling timer behind.
+  Timer? _starter;
+
   /// Captured once, at build time for this card. A card that has already
   /// revealed keeps the style it revealed with; a change applies as you scroll
   /// on, which is the only thing that makes sense for a one-shot entrance.
@@ -60,6 +67,7 @@ class _RevealItemState extends State<RevealItem>
 
   @override
   void dispose() {
+    _starter?.cancel();
     _c?.dispose();
     super.dispose();
   }
@@ -72,7 +80,7 @@ class _RevealItemState extends State<RevealItem>
     // no wave. Modulo 8 with a longer step reads as one continuous run, and
     // stays capped so a long list never accumulates a visible lag.
     final delay = Duration(milliseconds: 45 * (widget.index % 8));
-    Future.delayed(delay, () {
+    _starter = Timer(delay, () {
       if (mounted) _c?.forward();
     });
   }

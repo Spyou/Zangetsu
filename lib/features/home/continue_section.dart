@@ -10,6 +10,14 @@ import '../../core/playback/watch_history.dart';
 import '../../core/reading/read_history.dart';
 import '../../core/ui/content_row.dart';
 import '../../core/ui/continue_card.dart';
+import '../../core/ui/disintegrating_poster.dart';
+import '../../core/ui/placement_slide.dart';
+
+/// Identity for an exiting continue card. Plain `sourceId::showId` — the set
+/// only lives for the animation inside this row, so it needs a stable string,
+/// not the stores' profile-scoped keys.
+String watchGhostKey(HistoryEntry e) => '${e.sourceId}::${e.showId}';
+String readGhostKey(ReadEntry e) => '${e.sourceId}::${e.showId}';
 
 /// Home's "Continue Watching" / "Continue Reading" sliver. Anime mode renders
 /// the original [WatchHistory]-backed row exactly as before; reading modes
@@ -36,6 +44,12 @@ class ContinueSection extends StatelessWidget {
     required this.onSeeAll,
     required this.onResumeReading,
     required this.onLongPressReading,
+    this.exitingIds = const {},
+    this.ghostWatch = const [],
+    this.ghostReading = const [],
+    this.hiddenIds = const {},
+    this.pendingIds = const {},
+    this.onExited,
   });
 
   final void Function(HistoryEntry) onResume;
@@ -43,6 +57,24 @@ class ContinueSection extends StatelessWidget {
   final VoidCallback onSeeAll;
   final void Function(ReadEntry) onResumeReading;
   final void Function(ReadEntry) onLongPressReading;
+
+  /// Keys (watchGhostKey/readGhostKey) of cards currently crumbling, with
+  /// their ghost entries kept in the row until [onExited] commits the real
+  /// removal — same exiting-retention as My List's poster grid.
+  final Set<String> exitingIds;
+  final List<HistoryEntry> ghostWatch;
+  final List<ReadEntry> ghostReading;
+
+  /// Keys (w:/r: prefixed ghost keys) of cards committed but not yet
+  /// confirmed gone by the store's reload. Hidden instantly so the slot
+  /// closes and neighbours glide right away — instead of waiting out the
+  /// store write plus the cloud round-trip.
+  final Set<String> hiddenIds;
+
+  /// Keys with a commit currently in flight. A hidden key back in the list
+  /// with no commit in flight was re-added — show it again at once.
+  final Set<String> pendingIds;
+  final void Function(String key)? onExited;
 
   @override
   Widget build(BuildContext context) {
@@ -54,6 +86,29 @@ class ContinueSection extends StatelessWidget {
   }
 
   // ── Continue Watching ────────────────────────────────────────────────────
+
+  /// Hides committed-but-unconfirmed removals so the slot closes and
+  /// neighbours glide instantly instead of waiting out the store write plus
+  /// the cloud round-trip. A hidden key back with no commit in flight was
+  /// re-added — show it again. Fast path: with nothing hidden the caller's
+  /// list passes straight through.
+  List<T> _visible<T>(
+    List<T> entries,
+    String Function(T) keyOf,
+    String prefix,
+  ) {
+    if (hiddenIds.isEmpty) return entries;
+    hiddenIds.removeWhere(
+      (k) => libraryKeyVisible(
+        commitInFlight: pendingIds.contains(k),
+        presentInStore: entries.any((e) => '$prefix${keyOf(e)}' == k),
+      ),
+    );
+    if (hiddenIds.isEmpty) return entries;
+    return entries
+        .where((e) => !hiddenIds.contains('$prefix${keyOf(e)}'))
+        .toList();
+  }
 
   Widget _watchingRow() {
     // Watch history is local too, so signed-out users can continue watching.
@@ -75,11 +130,22 @@ class ContinueSection extends StatelessWidget {
         // Manga and novel stay separate — they are a different store and a
         // different row (Continue READING), routed above by `mode.isReading`.
         final history = sl<WatchHistory>().recent();
+        // Ghosts of cards mid-dissolve, re-sorted by recency so each holds
+        // its slot instead of jumping to the end.
+        final all = [...history];
+        for (final g in ghostWatch) {
+          if (all.every((e) => watchGhostKey(e) != watchGhostKey(g))) {
+            all.add(g);
+          }
+        }
+        all.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
         return ContinueWatchingRow(
-          history: history,
+          history: _visible(all, watchGhostKey, 'w::'),
           onSeeAll: onSeeAll,
           onResume: onResume,
           onLongPress: onLongPress,
+          exitingIds: exitingIds,
+          onExited: onExited,
         );
       },
     );
@@ -97,12 +163,24 @@ class ContinueSection extends StatelessWidget {
         : ProviderType.novel;
     return ValueListenableBuilder(
       valueListenable: Hive.box<Map>(ReadHistory.boxName).listenable(),
-      builder: (context, _, _) => ContinueReadingRow(
-        history: sl<ReadHistory>().recent(type: type),
-        onResumeReading: onResumeReading,
-        onLongPress: onLongPressReading,
-        onSeeAll: onSeeAll,
-      ),
+      builder: (context, _, _) {
+        final history = sl<ReadHistory>().recent(type: type);
+        final all = [...history];
+        for (final g in ghostReading) {
+          if (all.every((e) => readGhostKey(e) != readGhostKey(g))) {
+            all.add(g);
+          }
+        }
+        all.sort((a, b) => b.updatedMs.compareTo(a.updatedMs));
+        return ContinueReadingRow(
+          history: _visible(all, readGhostKey, 'r::'),
+          onResumeReading: onResumeReading,
+          onLongPress: onLongPressReading,
+          onSeeAll: onSeeAll,
+          exitingIds: exitingIds,
+          onExited: onExited,
+        );
+      },
     );
   }
 }
@@ -116,12 +194,16 @@ class ContinueWatchingRow extends StatelessWidget {
     required this.onSeeAll,
     required this.onResume,
     required this.onLongPress,
+    this.exitingIds = const {},
+    this.onExited,
   });
 
   final List<HistoryEntry> history;
   final VoidCallback onSeeAll;
   final void Function(HistoryEntry) onResume;
   final void Function(HistoryEntry) onLongPress;
+  final Set<String> exitingIds;
+  final void Function(String key)? onExited;
 
   @override
   Widget build(BuildContext context) {
@@ -136,9 +218,12 @@ class ContinueWatchingRow extends StatelessWidget {
         itemHeight: 107,
         onSeeAll: onSeeAll,
         itemCount: history.length,
+        itemKeys: [for (final e in history) watchGhostKey(e)],
         itemBuilder: (c, i) {
           final e = history[i];
-          return ContinueCard(
+          final key = watchGhostKey(e);
+          final exiting = exitingIds.contains(key) && onExited != null;
+          Widget card = ContinueCard(
             title: e.showTitle,
             // Prefer the landscape episode thumbnail; fall back to the
             // portrait cover (older entries / sources without them).
@@ -152,6 +237,15 @@ class ContinueWatchingRow extends StatelessWidget {
             onTap: () => onResume(e),
             onLongPress: () => onLongPress(e),
           );
+          if (exiting) {
+            card = DisintegratingPoster(
+              disintegrating: true,
+              borderRadius: 14,
+              onDisintegrated: () => onExited!(key),
+              child: card,
+            );
+          }
+          return card;
         },
       ),
     );
@@ -167,12 +261,16 @@ class ContinueReadingRow extends StatelessWidget {
     required this.onResumeReading,
     this.onLongPress,
     this.onSeeAll,
+    this.exitingIds = const {},
+    this.onExited,
   });
 
   final List<ReadEntry> history;
   final void Function(ReadEntry) onResumeReading;
   final void Function(ReadEntry)? onLongPress;
   final VoidCallback? onSeeAll;
+  final Set<String> exitingIds;
+  final void Function(String key)? onExited;
 
   @override
   Widget build(BuildContext context) {
@@ -183,18 +281,24 @@ class ContinueReadingRow extends StatelessWidget {
       child: ContentRow(
         title: 'Continue Reading',
         // Compact horizontal "keep reading" chip (cover + title + chapter +
-        // slim progress), NOT the landscape Continue Watching card nor a full
-        // portrait poster — smaller and its own shape for reading.
+        // slim progress bar, NOT the landscape Continue Watching card nor a
+        // full portrait poster — smaller and its own shape for reading.
         itemWidth: 236,
         itemHeight: 76,
         onSeeAll: onSeeAll,
         itemCount: history.length,
+        itemKeys: [for (final e in history) readGhostKey(e)],
         itemBuilder: (c, i) {
           final e = history[i];
+          final key = readGhostKey(e);
+          final exiting =
+              exitingIds.contains(key) &&
+              onExited != null &&
+              onLongPress != null;
           final progress = e.total > 0
               ? (e.pos / e.total).clamp(0.0, 1.0)
               : 0.0;
-          return ContinueReadingCard(
+          Widget card = ContinueReadingCard(
             title: e.title,
             imageUrl: e.cover,
             headers: e.coverHeaders,
@@ -205,6 +309,14 @@ class ContinueReadingRow extends StatelessWidget {
             onTap: () => onResumeReading(e),
             onLongPress: onLongPress == null ? null : () => onLongPress!(e),
           );
+          if (exiting) {
+            card = DisintegratingPoster(
+              disintegrating: true,
+              onDisintegrated: () => onExited!(key),
+              child: card,
+            );
+          }
+          return card;
         },
       ),
     );

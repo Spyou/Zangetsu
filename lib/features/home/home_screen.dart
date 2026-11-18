@@ -63,6 +63,7 @@ import '../sources/source_picker_row_actions.dart';
 import '../sources/zangetsu_sources_screen.dart';
 import '../update/update_dialog.dart';
 import 'continue_section.dart';
+import '../../core/ui/placement_slide.dart';
 import 'my_list_screen.dart';
 import 'tracker_continue_section.dart';
 import '../../core/ui/content_row.dart';
@@ -169,6 +170,20 @@ class _HomeViewState extends State<_HomeView>
   // or tab revisit). Static so it survives this widget being recreated.
   static bool _updateChecked = false;
 
+  /// Continue cards mid-dissolve (key → ghost entry), retained in the row
+  /// until the ash finishes and [_commitContinueExit] removes them for real —
+  /// same exiting-retention as My List's poster grid.
+  final _exitingWatch = <String, HistoryEntry>{};
+  final _exitingReading = <String, ReadEntry>{};
+
+  /// Committed-but-unconfirmed continue removals (w:/r: prefixed ghost keys).
+  /// The row hides these the instant the commit starts so the slot closes and
+  /// neighbours glide right away — instead of waiting out the store write
+  /// plus the cloud round-trip, which is the seconds-long gap. Same shape as
+  /// My List's `_gone`.
+  final _goneContinue = <String>{};
+  final _pendingContinue = <String, Future<void> Function()>{};
+
   @override
   void initState() {
     super.initState();
@@ -241,6 +256,51 @@ class _HomeViewState extends State<_HomeView>
       });
       _checkSourceUpdates();
     }
+  }
+
+  Future<void> _commitContinueExit(String key) async {
+    final watch = _exitingWatch.remove(key);
+    final reading = _exitingReading.remove(key);
+    final goneKey = watch != null
+        ? 'w::$key'
+        : reading != null
+        ? 'r::$key'
+        : null;
+    Future<void> commit() async {
+      if (watch != null) {
+        await sl<WatchHistory>().remove(watch.sourceId, watch.showId);
+      } else if (reading != null) {
+        await sl<ReadHistory>().remove(reading.sourceId, reading.showId);
+      }
+    }
+
+    if (goneKey == null) return;
+    if (_pendingContinue.containsKey(goneKey)) {
+      await _pendingContinue[goneKey]!();
+      return;
+    }
+    // Hide the slot NOW and glide shut while the store (and the cloud
+    // round-trip inside the commit) catch up — never after. The rebuild is
+    // deferred a frame: committing from an unmount-phase dispose (screen
+    // popped as the ash ended) must not setState synchronously.
+    _pendingContinue[goneKey] = commit;
+    _goneContinue.add(goneKey);
+    safeRebuild(this);
+    try {
+      await commit();
+    } catch (_) {
+      _goneContinue.remove(goneKey);
+      _pendingContinue.remove(goneKey);
+      if (!mounted) return;
+      safeRebuild(this);
+      showGlobalSnack(
+        reading != null
+            ? "Couldn't remove from Continue Reading"
+            : "Couldn't remove from Continue Watching",
+      );
+      return;
+    }
+    _pendingContinue.remove(goneKey);
   }
 
   @override
@@ -600,15 +660,12 @@ class _HomeViewState extends State<_HomeView>
         );
         return _myList.contains(stub);
       },
-      onRemoveFromContinue: () async {
-        // Tapping Remove and having the row stay put with no explanation is
-        // the worst version of this: it reads as the button being broken.
-        try {
-          await sl<WatchHistory>().remove(e.sourceId, e.showId);
-        } catch (_) {
-          showGlobalSnack("Couldn't remove from Continue Watching");
-          return;
-        }
+      onRemoveFromContinue: () {
+        // The sheet already popped: hold the card as a ghost so the ash
+        // plays in place, then commit the removal when it finishes.
+        final key = watchGhostKey(e);
+        if (_exitingWatch.containsKey(key)) return;
+        _exitingWatch[key] = e;
         if (mounted) setState(() {});
       },
     );
@@ -651,15 +708,10 @@ class _HomeViewState extends State<_HomeView>
         );
         return _myList.contains(stub);
       },
-      onRemoveFromContinue: () async {
-        // Tapping Remove and having the row stay put with no explanation is
-        // the worst version of this: it reads as the button being broken.
-        try {
-          await sl<ReadHistory>().remove(e.sourceId, e.showId);
-        } catch (_) {
-          showGlobalSnack("Couldn't remove from Continue Reading");
-          return;
-        }
+      onRemoveFromContinue: () {
+        final key = readGhostKey(e);
+        if (_exitingReading.containsKey(key)) return;
+        _exitingReading[key] = e;
         if (mounted) setState(() {});
       },
     );
@@ -1181,6 +1233,12 @@ class _HomeViewState extends State<_HomeView>
           onSeeAll: _openHistory,
           onResumeReading: _resumeReading,
           onLongPressReading: _showContinueReadingInfo,
+          exitingIds: {..._exitingWatch.keys, ..._exitingReading.keys},
+          ghostWatch: _exitingWatch.values.toList(),
+          ghostReading: _exitingReading.values.toList(),
+          hiddenIds: _goneContinue,
+          pendingIds: _pendingContinue.keys.toSet(),
+          onExited: _commitContinueExit,
         )
       : SliverToBoxAdapter(child: _homeRowContent(row));
 
@@ -2066,6 +2124,15 @@ class _HomeViewState extends State<_HomeView>
                           onSeeAll: _openHistory,
                           onResumeReading: _resumeReading,
                           onLongPressReading: _showContinueReadingInfo,
+                          exitingIds: {
+                            ..._exitingWatch.keys,
+                            ..._exitingReading.keys,
+                          },
+                          ghostWatch: _exitingWatch.values.toList(),
+                          ghostReading: _exitingReading.values.toList(),
+                          hiddenIds: _goneContinue,
+                          pendingIds: _pendingContinue.keys.toSet(),
+                          onExited: _commitContinueExit,
                         ),
                         if (_sourceCatalogueSelected)
                           _sourceCatalogueHomeSliver(),

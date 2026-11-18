@@ -21,6 +21,11 @@ import '../tracker/tracker_item_url.dart';
 /// and score, plus Remove. [onFind] drops into search to actually play the
 /// title (tracker items carry no playable source); [onChanged] fires after a
 /// write so the caller can refresh that tracker's list.
+///
+/// [onRemove], when provided, takes over the Remove row: the sheet pops,
+/// then [onRemove] runs with the item and a [commit] that performs the exact
+/// removal below. Used by grids that animate the delete before committing it.
+/// Callers that don't pass it keep the current remove-it-now behavior.
 Future<void> showTrackerEntrySheet(
   BuildContext context, {
   required Tracker tracker,
@@ -33,6 +38,8 @@ Future<void> showTrackerEntrySheet(
   VoidCallback? onChanged,
   List<String> customLists = const [],
   bool isPrivate = false,
+  Future<void> Function(MediaItem item, Future<void> Function() commit)?
+  onRemove,
 }) async {
   await showModalBottomSheet<void>(
     context: context,
@@ -52,6 +59,7 @@ Future<void> showTrackerEntrySheet(
       tmdbIsTv: tmdbIsTv,
       onFind: onFind,
       onChanged: onChanged,
+      onRemove: onRemove,
     ),
   );
 }
@@ -68,6 +76,7 @@ class _TrackerEntrySheet extends StatefulWidget {
     required this.tmdbIsTv,
     required this.onFind,
     required this.onChanged,
+    this.onRemove,
   });
 
   final Tracker tracker;
@@ -83,6 +92,8 @@ class _TrackerEntrySheet extends StatefulWidget {
   final bool tmdbIsTv;
   final VoidCallback? onFind;
   final VoidCallback? onChanged;
+  final Future<void> Function(MediaItem item, Future<void> Function() commit)?
+  onRemove;
 
   @override
   State<_TrackerEntrySheet> createState() => _TrackerEntrySheetState();
@@ -159,19 +170,31 @@ class _TrackerEntrySheetState extends State<_TrackerEntrySheet> {
   Future<void> _remove() async {
     if (_busy) return;
     setState(() => _busy = true);
-    final ids = trackerIdsFromItem(widget.item);
-    await widget.tracker.removeFromList(
-      malId: ids.malId,
-      tmdbId: ids.tmdbId,
-      imdbId: widget.item.imdbId,
-      title: widget.item.title,
-      pinnedId: widget.tracker is AniListService
-          ? widget.item.anilistId?.toString()
-          : null,
-      tmdbIsTv: ids.tmdbIsTv || widget.tmdbIsTv,
-      kind: _kind,
-    );
-    widget.onChanged?.call();
+    Future<void> commit() async {
+      final ids = trackerIdsFromItem(widget.item);
+      await widget.tracker.removeFromList(
+        malId: ids.malId,
+        tmdbId: ids.tmdbId,
+        imdbId: widget.item.imdbId,
+        title: widget.item.title,
+        pinnedId: widget.tracker is AniListService
+            ? widget.item.anilistId?.toString()
+            : null,
+        tmdbIsTv: ids.tmdbIsTv || widget.tmdbIsTv,
+        kind: _kind,
+      );
+      widget.onChanged?.call();
+    }
+
+    final onRemove = widget.onRemove;
+    if (onRemove != null) {
+      // The grid behind is already revealed once we pop: hand the delete to
+      // the caller so it can animate first and commit after.
+      if (mounted) Navigator.pop(context);
+      await onRemove(widget.item, commit);
+      return;
+    }
+    await commit();
     if (mounted) Navigator.pop(context);
   }
 
