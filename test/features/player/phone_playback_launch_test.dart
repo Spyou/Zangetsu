@@ -737,4 +737,90 @@ void main() {
       );
     },
   );
+
+  group('autoDownloadedPhoneSubtitle', () {
+    test('skipped when the source already has subtitles', () async {
+      var called = false;
+      final got = await autoDownloadedPhoneSubtitle(
+        existing: const [Subtitle(url: 'https://x/a.srt', lang: 'en')],
+        autoDownload: true,
+        hasIdentifiers: true,
+        iso2: 'eng',
+        fetch: () async {
+          called = true;
+          return [];
+        },
+      );
+      expect(got, isNull);
+      expect(called, isFalse);
+    });
+
+    test('skipped when the preference is off or nothing identifies the title',
+        () async {
+      var called = false;
+      Future<List<({String lang, String url})>> noFetch() async {
+        called = true;
+        return [];
+      }
+
+      expect(
+        await autoDownloadedPhoneSubtitle(
+          existing: const [],
+          autoDownload: false,
+          hasIdentifiers: true,
+          iso2: 'eng',
+          fetch: noFetch,
+        ),
+        isNull,
+      );
+      expect(
+        await autoDownloadedPhoneSubtitle(
+          existing: const [],
+          autoDownload: true,
+          hasIdentifiers: false,
+          iso2: 'eng',
+          fetch: noFetch,
+        ),
+        isNull,
+      );
+      expect(called, isFalse);
+    });
+
+    test('maps the first result to a default track', () async {
+      final got = await autoDownloadedPhoneSubtitle(
+        existing: const [],
+        autoDownload: true,
+        hasIdentifiers: true,
+        iso2: 'eng',
+        fetch: () async => [(lang: 'en', url: 'https://x/b.srt')],
+      );
+      expect(got?.url, 'https://x/b.srt');
+      expect(got?.lang, 'en');
+      expect(got?.format, 'srt');
+      expect(got?.isDefault, isTrue);
+    });
+
+    test('empty results and blank urls yield nothing', () async {
+      expect(
+        await autoDownloadedPhoneSubtitle(
+          existing: const [],
+          autoDownload: true,
+          hasIdentifiers: true,
+          iso2: 'eng',
+          fetch: () async => [],
+        ),
+        isNull,
+      );
+      expect(
+        await autoDownloadedPhoneSubtitle(
+          existing: const [],
+          autoDownload: true,
+          hasIdentifiers: true,
+          iso2: 'eng',
+          fetch: () async => [(lang: '', url: '  ')],
+        ),
+        isNull,
+      );
+    });
+  });
 }

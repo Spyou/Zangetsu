@@ -23,6 +23,8 @@ import '../../core/playback/playback_prefs.dart';
 import '../../core/playback/title_prefs.dart';
 import '../../core/playback/resume_store.dart';
 import '../../core/playback/source_selection.dart';
+import '../../core/playback/subtitle_download_service.dart';
+import '../../core/playback/subtitle_language.dart';
 import '../../core/playback/subtitle_encode_skew.dart';
 import '../../core/playback/subtitle_font_stage.dart';
 import '../../core/playback/tv_track_helpers.dart';
@@ -164,6 +166,46 @@ Map<String, dynamic> _phoneSubtitlePayload(VideoSource source) {
     'subFormats': [for (final s in source.subtitles) s.format ?? ''],
     'subDefaults': [for (final s in source.subtitles) s.isDefault],
   };
+}
+
+/// Auto-downloaded subtitle for a native-player source that carries none.
+///
+/// Mirrors the built-in player's keyless fallback and the TV player's
+/// download-and-attach: the same [SubtitleDownloadService], remote-URL
+/// handoff, no temp files. [fetch] is the service call pre-bound by the
+/// caller so tests can substitute canned results.
+Future<Subtitle?> autoDownloadedPhoneSubtitle({
+  required List<Subtitle> existing,
+  required bool autoDownload,
+  required bool hasIdentifiers,
+  required String iso2,
+  String? label,
+  required Future<List<({String lang, String url})>> Function() fetch,
+}) async {
+  if (existing.isNotEmpty || !autoDownload || !hasIdentifiers) return null;
+  late final List<({String lang, String url})> found;
+  try {
+    found = await fetch();
+  } catch (_) {
+    return null;
+  }
+  if (found.isEmpty) return null;
+  final url = found.first.url.trim();
+  if (url.isEmpty) return null;
+  final lang = found.first.lang.trim();
+  final u = url.toLowerCase();
+  final format = u.contains('.vtt')
+      ? 'vtt'
+      : u.contains('.ass') || u.contains('.ssa')
+      ? 'ass'
+      : 'srt';
+  return Subtitle(
+    url: url,
+    lang: lang.isNotEmpty ? lang : iso2,
+    label: label ?? (lang.isNotEmpty ? lang : iso2),
+    format: format,
+    isDefault: true,
+  );
 }
 
 Map<String, dynamic> phoneSourceMap(VideoSource source, int index) {
@@ -1291,8 +1333,42 @@ class PhoneNativePlayer {
       return null;
     }
     if (_sourceId == stremioSourceId) _stremioSources[index] = prepared;
-    final src = seed == null ? _pickSource(prepared, ep) : prepared.first;
-    if (src == null) return null;
+    final src0 = seed == null ? _pickSource(prepared, ep) : prepared.first;
+    if (src0 == null) return null;
+    var src = src0;
+    // Keyless auto-download for subtitle-less sources: the native player has
+    // no fetch of its own, so mirror the built-in player's silent fallback
+    // here at resolve time (URL-handed, like the TV player — no temp files).
+    if (src.subtitles.isEmpty && sl<PlaybackPrefs>().autoDownloadSubtitles) {
+      final prefLang = languageByPref(
+        sl<PlaybackPrefs>().preferredSubtitleLanguage,
+      );
+      if (prefLang != null) {
+        final epNum = ep.number?.toInt();
+        final dl = await autoDownloadedPhoneSubtitle(
+          existing: src.subtitles,
+          autoDownload: true,
+          hasIdentifiers:
+              (_imdbId?.isNotEmpty ?? false) ||
+              _tmdbId != null ||
+              _showTitle.isNotEmpty,
+          iso2: prefLang.iso2,
+          label: prefLang.name,
+          fetch: () => SubtitleDownloadService().find(
+            imdbId: _imdbId,
+            tmdbId: _tmdbId,
+            isTv: _tmdbIsTv,
+            season: _tmdbIsTv ? 1 : null,
+            episode: _tmdbIsTv ? epNum : null,
+            title: _showTitle.isNotEmpty ? _showTitle : null,
+            iso2: prefLang.iso2,
+            iso1: prefLang.iso1,
+          ),
+        );
+        if (session != _sessionId || category != _category) return null;
+        if (dl != null) src = src.withSubtitles([dl]);
+      }
+    }
     final position = index == _startIndex && _forceInitialResume
         ? _resumeOverride
         : index == _startIndex
