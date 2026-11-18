@@ -424,15 +424,17 @@ Future<void> initDependencies({bool Function()? isOffline}) async {
   // One-time: Android phones default to the native ExoPlayer player. Absent
   // choices (fresh installs) AND the old Built-in default (empty string —
   // that was the default, not a stance) both move; real external apps stay.
-  // TV never reads externalPlayerPackage so no TV gate is needed beyond isTv
-  // for correctness.
+  // v2: the first pass stamped the flag before empty-string boxes were
+  // covered, so bump the key to run the wider rule once. TV never reads
+  // externalPlayerPackage so no TV gate is needed beyond isTv.
   final playbackBox = Hive.box<dynamic>(PlaybackPrefs.boxName);
+  const migrationKey = 'playerEngineMigratedV2';
   final defaultEngine = resolveDefaultPlayerPackage(
     isAndroidPhone: Platform.isAndroid && !isTv,
     storedPackage: playbackBox.get('externalPlayerPackage') as String?,
-    alreadyMigrated: playbackBox.containsKey('playerEngineMigrated'),
+    alreadyMigrated: playbackBox.containsKey(migrationKey),
   );
-  await playbackBox.put('playerEngineMigrated', true);
+  await playbackBox.put(migrationKey, true);
   if (defaultEngine != null) {
     await playbackBox.put('externalPlayerPackage', defaultEngine);
     await playbackBox.put('externalPlayerLabel', 'Android Player');
