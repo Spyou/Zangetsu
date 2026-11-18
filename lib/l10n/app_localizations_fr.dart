@@ -2920,6 +2920,9 @@ class AppLocalizationsFr extends AppLocalizations {
   String get builtInPlayer => 'Lecteur intégré';
 
   @override
+  String get mpvPlayer => 'mpv';
+
+  @override
   String get otherApps => 'Autres apps';
 
   @override

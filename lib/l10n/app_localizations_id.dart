@@ -2908,6 +2908,9 @@ class AppLocalizationsId extends AppLocalizations {
   String get builtInPlayer => 'Pemutar bawaan';
 
   @override
+  String get mpvPlayer => 'mpv';
+
+  @override
   String get otherApps => 'Aplikasi lain';
 
   @override

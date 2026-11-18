@@ -9,18 +9,29 @@ void main() {
     expect(
       resolveDefaultPlayerPackage(
         isAndroidPhone: true,
-        hasStoredChoice: false,
+        storedPackage: null,
         alreadyMigrated: false,
       ),
       PlaybackPrefs.androidPlayerId,
     );
   });
 
-  test('explicit mpv pick (stored empty choice) is left alone', () {
+  test('old Built-in default (stored empty) migrates to the native player', () {
     expect(
       resolveDefaultPlayerPackage(
         isAndroidPhone: true,
-        hasStoredChoice: true,
+        storedPackage: '',
+        alreadyMigrated: false,
+      ),
+      PlaybackPrefs.androidPlayerId,
+    );
+  });
+
+  test('explicit external player choice is left alone', () {
+    expect(
+      resolveDefaultPlayerPackage(
+        isAndroidPhone: true,
+        storedPackage: 'org.videolan.vlc',
         alreadyMigrated: false,
       ),
       isNull,
@@ -31,7 +42,7 @@ void main() {
     expect(
       resolveDefaultPlayerPackage(
         isAndroidPhone: true,
-        hasStoredChoice: false,
+        storedPackage: null,
         alreadyMigrated: true,
       ),
       isNull,
@@ -42,7 +53,7 @@ void main() {
     expect(
       resolveDefaultPlayerPackage(
         isAndroidPhone: false,
-        hasStoredChoice: false,
+        storedPackage: null,
         alreadyMigrated: false,
       ),
       isNull,

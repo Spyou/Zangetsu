@@ -1012,6 +1012,7 @@
 	"markThisAndAllAboveAsWatched": "Mark this and all above as watched",
 	"playThisEpisodeWith": "Play this episode with",
 	"builtInPlayer": "Built-in player",
+	"mpvPlayer": "mpv",
 	"otherApps": "Other apps",
 	"seeAll2": "See All",
 	"webView": "WebView",

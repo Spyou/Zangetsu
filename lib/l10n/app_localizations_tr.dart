@@ -2904,6 +2904,9 @@ class AppLocalizationsTr extends AppLocalizations {
   String get builtInPlayer => 'Yerleşik oynatıcı';
 
   @override
+  String get mpvPlayer => 'mpv';
+
+  @override
   String get otherApps => 'Diğer uygulamalar';
 
   @override

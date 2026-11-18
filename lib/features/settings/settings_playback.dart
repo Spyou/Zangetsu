@@ -510,9 +510,10 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
     // extras they read, so external subtitles and the resume position may be
     // dropped. Flagged rather than hidden: it's a real caveat, not a blocker.
     final androidPlayerLabel = context.l10n.androidPlayer;
+    // Android first (the default), mpv second, then external apps.
     final options = <(String, String)>[
-      ('', context.l10n.builtInPlayer),
       (PlaybackPrefs.androidPlayerId, androidPlayerLabel),
+      ('', context.l10n.mpvPlayer),
       for (final p in players) (p.package, p.known ? p.label : '${p.label}${context.l10n.noSubsResumeSuffix}'),
     ];
     if (players.isEmpty) {
@@ -724,7 +725,7 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                   subtitle: _prefs.externalPlayerPackage == PlaybackPrefs.androidPlayerId
                       ? context.l10n.androidPlayer
                       : _prefs.externalPlayerPackage.isEmpty
-                          ? context.l10n.builtIn
+                          ? context.l10n.mpvPlayer
                           : (_prefs.externalPlayerLabel.isNotEmpty ? _prefs.externalPlayerLabel : context.l10n.externalApp),
                   onTap: _pickPlayer,
                 ),

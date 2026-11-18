@@ -2911,6 +2911,9 @@ class AppLocalizationsEs extends AppLocalizations {
   String get builtInPlayer => 'Reproductor integrado';
 
   @override
+  String get mpvPlayer => 'mpv';
+
+  @override
   String get otherApps => 'Otras apps';
 
   @override

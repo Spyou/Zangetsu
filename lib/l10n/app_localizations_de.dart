@@ -2909,6 +2909,9 @@ class AppLocalizationsDe extends AppLocalizations {
   String get builtInPlayer => 'Eingebauter Player';
 
   @override
+  String get mpvPlayer => 'mpv';
+
+  @override
   String get otherApps => 'Andere Apps';
 
   @override

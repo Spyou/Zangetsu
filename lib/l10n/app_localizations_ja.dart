@@ -2825,6 +2825,9 @@ class AppLocalizationsJa extends AppLocalizations {
   String get builtInPlayer => '内蔵プレーヤー';
 
   @override
+  String get mpvPlayer => 'mpv';
+
+  @override
   String get otherApps => 'ほかのアプリ';
 
   @override

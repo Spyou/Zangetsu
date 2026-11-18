@@ -5524,6 +5524,12 @@ abstract class AppLocalizations {
   /// **'Built-in player'**
   String get builtInPlayer;
 
+  /// No description provided for @mpvPlayer.
+  ///
+  /// In en, this message translates to:
+  /// **'mpv'**
+  String get mpvPlayer;
+
   /// No description provided for @otherApps.
   ///
   /// In en, this message translates to:

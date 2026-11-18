@@ -224,16 +224,20 @@ enum PosterTitleStyle { text, artwork }
 enum PlayerPresentation { watchPage, fullscreen }
 
 /// One-time default-engine migration target (wired in injector after
-/// [PlaybackPrefs.init]). Returns [PlaybackPrefs.androidPlayerId] when a box
-/// with no stored player choice belongs to an Android phone; null means leave
-/// the box alone. Pure so it is unit-testable without Hive.
+/// [PlaybackPrefs.init]). Returns [PlaybackPrefs.androidPlayerId] when the
+/// stored choice is absent (fresh install) or the old Built-in default (empty
+/// string); a real external package is left alone. Null means keep the box.
+/// Pure so it is unit-testable without Hive.
 String? resolveDefaultPlayerPackage({
   required bool isAndroidPhone,
-  required bool hasStoredChoice,
+  required String? storedPackage,
   required bool alreadyMigrated,
 }) {
-  if (alreadyMigrated || hasStoredChoice || !isAndroidPhone) return null;
-  return PlaybackPrefs.androidPlayerId;
+  if (alreadyMigrated || !isAndroidPhone) return null;
+  if (storedPackage == null || storedPackage.isEmpty) {
+    return PlaybackPrefs.androidPlayerId;
+  }
+  return null;
 }
 
 class PlaybackPrefs {

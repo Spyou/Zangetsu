@@ -2807,6 +2807,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get builtInPlayer => '内置播放器';
 
   @override
+  String get mpvPlayer => 'mpv';
+
+  @override
   String get otherApps => '其他应用';
 
   @override

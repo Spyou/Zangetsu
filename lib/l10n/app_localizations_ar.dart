@@ -2902,6 +2902,9 @@ class AppLocalizationsAr extends AppLocalizations {
   String get builtInPlayer => 'المشغّل المدمج';
 
   @override
+  String get mpvPlayer => 'mpv';
+
+  @override
   String get otherApps => 'تطبيقات أخرى';
 
   @override
