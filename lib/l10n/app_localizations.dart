@@ -3799,7 +3799,7 @@ abstract class AppLocalizations {
   /// No description provided for @androidPlayer.
   ///
   /// In en, this message translates to:
-  /// **'Android Player (Experimental)'**
+  /// **'Android Player'**
   String get androidPlayer;
 
   /// No description provided for @androidPlayerUnavailable.
@@ -7039,7 +7039,7 @@ abstract class AppLocalizations {
   /// No description provided for @styledSubtitlesLibassSubtitlePlayback.
   ///
   /// In en, this message translates to:
-  /// **'Real .ass styling — fonts, positions, karaoke, signs. Best for anime. Only the Built-in player renders it fully; the native player uses your font, size, colours and outline instead. Applies from the next episode.'**
+  /// **'Real .ass styling — fonts, positions, karaoke, signs. Only mpv renders it fully; the Android player uses your style settings instead.'**
   String get styledSubtitlesLibassSubtitlePlayback;
 
   /// No description provided for @subtitleStyleSubtitle.

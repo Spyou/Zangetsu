@@ -1976,7 +1976,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get audioDelay => 'Audio delay';
 
   @override
-  String get androidPlayer => 'Android Player (Experimental)';
+  String get androidPlayer => 'Android Player';
 
   @override
   String get androidPlayerUnavailable => 'Android Player could not start';
@@ -3866,7 +3866,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get styledSubtitlesLibassSubtitlePlayback =>
-      'Real .ass styling — fonts, positions, karaoke, signs. Best for anime. Only the Built-in player renders it fully; the native player uses your font, size, colours and outline instead. Applies from the next episode.';
+      'Real .ass styling — fonts, positions, karaoke, signs. Only mpv renders it fully; the Android player uses your style settings instead.';
 
   @override
   String get subtitleStyleSubtitle =>

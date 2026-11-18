@@ -1990,7 +1990,7 @@ class AppLocalizationsDe extends AppLocalizations {
   String get audioDelay => 'Audio-Delay';
 
   @override
-  String get androidPlayer => 'Android Player (Experimental)';
+  String get androidPlayer => 'Android Player';
 
   @override
   String get androidPlayerUnavailable => 'Android Player could not start';
