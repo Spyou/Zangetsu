@@ -458,6 +458,24 @@ class PhonePlayerActivity : Activity() {
                 hideLoading()
             }
 
+            // Force cues onto the user's vertical Position (0=top … 100=bottom).
+            // Bottom padding alone can't do this: most VTT/SRT cues set their
+            // own line and ignore it. Same helper the TV player uses.
+            override fun onCues(cueGroup: androidx.media3.common.text.CueGroup) {
+                val view = playerView.subtitleView ?: return
+                view.setCues(
+                    SubtitleCuePositioning.position(
+                        cueGroup.cues,
+                        positionPercent = intent.getIntExtra(
+                            PhonePlayerIntent.EXTRA_SUB_POSITION, 95,
+                        ),
+                        textSizeFraction = 0.0533f * intent.getFloatExtra(
+                            PhonePlayerIntent.EXTRA_SUB_SCALE, 1f,
+                        ),
+                    ),
+                )
+            }
+
             override fun onPlaybackStateChanged(state: Int) {
                 sendDiscordPresence()
                 updateKeepScreenOn()

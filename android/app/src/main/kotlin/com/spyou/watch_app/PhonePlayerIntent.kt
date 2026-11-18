@@ -42,6 +42,7 @@ object PhonePlayerIntent {
     const val EXTRA_SUB_EDGE_TYPE = "subtitleEdgeType"
     const val EXTRA_SUB_EDGE_COLOR = "subtitleEdgeColor"
     const val EXTRA_SUB_PREFERENCE = "subtitlePreference"
+    const val EXTRA_SUB_POSITION = "subtitlePosition"
     const val EXTRA_SUB_FONT = "subtitleFontPath"
     const val EXTRA_AUTO_RESUME = "autoResume"
     const val EXTRA_KEEP_SCREEN_ON = "keepScreenOn"

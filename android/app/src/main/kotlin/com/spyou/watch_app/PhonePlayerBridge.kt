@@ -216,6 +216,10 @@ object PhonePlayerBridge {
                 PhonePlayerIntent.EXTRA_SUB_PREFERENCE,
                 call.argument<String>("subtitlePreference") ?: "",
             )
+            i.putExtra(
+                PhonePlayerIntent.EXTRA_SUB_POSITION,
+                (call.argument<Number>("subtitlePosition") ?: 95).toInt(),
+            )
             call.argument<String>("subtitleFontPath")
                 ?.let { i.putExtra(PhonePlayerIntent.EXTRA_SUB_FONT, it) }
             call.argument<String>("cover")

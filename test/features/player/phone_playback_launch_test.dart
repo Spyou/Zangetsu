@@ -292,6 +292,32 @@ void main() {
       expect(a['availableCategories'], ['sub', 'dub']);
     });
 
+    test('carries the subtitle position for the native player', () {
+      expect(args()['subtitlePosition'], 95);
+      final custom = phonePlayerArgs(
+        title: 'A Show',
+        episodeLabel: 'Episode 1',
+        episodeLabels: const ['Episode 1'],
+        startIndex: 0,
+        accentColor: 0xFFFF4D5E,
+        softwareDecoding: false,
+        defaultSpeed: 1.0,
+        bufferParams: const {},
+        subtitleScale: 1.0,
+        subtitleFgColor: 0xFFFFFFFF,
+        subtitleBgColor: 0x00000000,
+        subtitleEdgeType: 1,
+        subtitleEdgeColor: 0xFF000000,
+        subtitlePreference: '',
+        subtitlePosition: 40,
+        autoResume: true,
+        keepScreenOn: true,
+        autoplayNext: true,
+        seekSeconds: 10,
+      );
+      expect(custom['subtitlePosition'], 40);
+    });
+
     test('carries phone playback settings and subtitle metadata', () {
       final a = args(
         source: _src(
