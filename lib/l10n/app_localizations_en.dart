@@ -3863,7 +3863,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get styledSubtitlesLibassSubtitlePlayback =>
-      'Real .ass styling — fonts, positions, karaoke, signs. Best for anime. Applies from the next episode.';
+      'Real .ass styling — fonts, positions, karaoke, signs. Best for anime. Only the Built-in player renders it fully; the native player uses your font, size, colours and outline instead. Applies from the next episode.';
 
   @override
   String get subtitleStyleSubtitle =>

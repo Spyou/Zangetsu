@@ -1830,7 +1830,7 @@
 	"externalApp": "External app",
 	"noSubsResumeSuffix": " ·  no subs/resume",
 	"pickWhatShowsOverVideo": "Pick what shows over the video (appears with the controls). Like YouTube's \"Stats for nerds\".",
-	"styledSubtitlesLibassSubtitlePlayback": "Real .ass styling — fonts, positions, karaoke, signs. Best for anime. Applies from the next episode.",
+	"styledSubtitlesLibassSubtitlePlayback": "Real .ass styling — fonts, positions, karaoke, signs. Best for anime. Only the Built-in player renders it fully; the native player uses your font, size, colours and outline instead. Applies from the next episode.",
 	"subtitleStyleSubtitle": "Font, colour, outline, opacity, size, position — with live preview",
 	"keySavedOnlineSearchEnabled": "Key saved — online search enabled",
 	"incognitoModeBlurb": "While on, searches, watch history, tracker scrobbling and Discord presence are paused — nothing is recorded until you turn it off.",
