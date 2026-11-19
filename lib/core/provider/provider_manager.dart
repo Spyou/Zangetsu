@@ -1017,12 +1017,6 @@ class JsProvider implements BaseProvider, ReadingProvider {
         ),
       );
     }
-    if (kDebugMode) {
-      debugPrint(
-        '[js-home] source=$sourceId rows=${out.length} '
-        'ids=${out.map((s) => s.more?.categoryId ?? '-').join(',')}',
-      );
-    }
     return out;
   }
 
@@ -1032,9 +1026,6 @@ class JsProvider implements BaseProvider, ReadingProvider {
     String category = 'sub',
   }) async {
     try {
-      if (kDebugMode) {
-        debugPrint('[js-home] getHomePage CALL row=$rowId page=$page');
-      }
       final raw = await _call('getHomePage', [
         rowId,
         page,
@@ -1051,17 +1042,8 @@ class JsProvider implements BaseProvider, ReadingProvider {
               'sourceId': sourceId,
             }),
       ];
-      if (kDebugMode) {
-        debugPrint(
-          '[js-home] getHomePage row=$rowId page=$page '
-          'items=${items.length}',
-        );
-      }
       return items;
-    } catch (e) {
-      if (kDebugMode) {
-        debugPrint('[js-home] getHomePage FAILED row=$rowId page=$page err=$e');
-      }
+    } catch (_) {
       // Missing method, bad payload, provider error → no more items.
       return const [];
     }

@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/app_mode.dart';
@@ -127,12 +126,6 @@ class _SeeAllScreenState extends State<SeeAllScreen> {
 
   Future<void> _loadMore() async {
     final loader = widget.onLoadMore;
-    if (kDebugMode) {
-      debugPrint(
-        '[see-all] loadMore page=${_page + 1} '
-        'loader=${loader != null} lazy=${widget.lazyFixedList}',
-      );
-    }
     if ((loader == null && widget.onSearch == null && !widget.lazyFixedList) ||
         _loading ||
         _end) {
