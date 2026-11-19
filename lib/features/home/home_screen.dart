@@ -89,6 +89,7 @@ import '../auth/auth_cubit.dart';
 import '../auth/reconnect.dart';
 import '../detail/detail_screen.dart';
 import '../history/history_screen.dart';
+import '../player/episode_player_route.dart';
 import '../player/player_screen.dart';
 import '../shell/dock_icons.dart';
 import '../../core/zmode/source_matcher.dart';
@@ -751,7 +752,8 @@ class _HomeViewState extends State<_HomeView>
     // Instant nav — the player resolves the episode list behind its loader.
     await Navigator.push(
       context,
-      MaterialPageRoute(
+      episodePlayerRoute(
+        nativeHandoff: _nativePlayerHandoff,
         builder: (_) => PlayerScreen(
           sourceId: item.sourceId,
           episodesResolver: () =>
@@ -776,13 +778,23 @@ class _HomeViewState extends State<_HomeView>
     if (mounted) setState(() {});
   }
 
+  /// True when PlayerScreen will hand off to the native ExoPlayer activity.
+  /// The route must then paint nothing (like Detail's handoff) so the grey
+  /// loading skeleton never flashes before the Activity takes over. No seed
+  /// or override here, so the choice is exactly [PlaybackPrefs]'s package.
+  bool get _nativePlayerHandoff =>
+      Platform.isAndroid &&
+      sl<PlaybackPrefs>().externalPlayerPackage ==
+          PlaybackPrefs.androidPlayerId;
+
   /// Resume from Continue Watching. Navigates to the player INSTANTLY; the
   /// player resolves the episode list behind its own branded loader (no blocking
   /// pre-navigation spinner).
   Future<void> _resume(HistoryEntry e) async {
     await Navigator.push(
       context,
-      MaterialPageRoute(
+      episodePlayerRoute(
+        nativeHandoff: _nativePlayerHandoff,
         builder: (_) => PlayerScreen(
           sourceId: e.sourceId,
           episodesResolver: () => _repo.episodes(

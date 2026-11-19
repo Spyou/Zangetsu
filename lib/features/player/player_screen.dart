@@ -3771,6 +3771,20 @@ class _PlayerScreenState extends State<PlayerScreen> {
   @override
   Widget build(BuildContext context) {
     final route = ModalRoute.of(context);
+    // Callers that hand us a resolver (Continue Watching, history, search…)
+    // need a visible instant "loading" state: the episode list is still on the
+    // wire, so the handoff route alone would leave a dead, silent screen.
+    // Cover art + spinner on BLACK — the native player's own loading look —
+    // until its Activity covers this route. Detail passes episodes directly
+    // and keeps the invisible handoff (no flash).
+    if (_chosenPlayer == PlaybackPrefs.androidPlayerId &&
+        widget.episodesResolver != null &&
+        !_ready) {
+      return Scaffold(
+        backgroundColor: Colors.black,
+        body: _loadingBackdropBody(context.l10n.loading),
+      );
+    }
     if (_chosenPlayer == PlaybackPrefs.androidPlayerId &&
         (route is NativePlayerHandoffRoute || widget.onEngineChange != null)) {
       return const SizedBox.shrink();

@@ -2,8 +2,14 @@
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/loading_overlay"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:background="@android:color/black">
 
+    <!-- The scrim below is deliberately translucent, meant to darken the
+         backdrop photo once it loads — it was never meant to be the only
+         thing covering the video surface. Before the photo arrives (a real
+         network fetch), there was nothing opaque here, so the surface's own
+         default grey showed straight through. This background is that. -->
     <ImageView
         android:id="@+id/loading_backdrop"
         android:layout_width="match_parent"

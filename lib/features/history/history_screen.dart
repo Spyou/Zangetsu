@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -11,6 +12,7 @@ import '../../core/models/media_detail.dart';
 import '../../core/models/media_item.dart';
 import '../../core/models/provider_info.dart';
 import '../../core/playback/my_list.dart';
+import '../../core/playback/playback_prefs.dart';
 import '../../core/playback/resume_store.dart';
 import '../../core/playback/watch_history.dart';
 import '../../core/reading/read_history.dart';
@@ -23,6 +25,7 @@ import '../../core/ui/list_status_sheet.dart';
 import '../../core/ui/media_info_sheet.dart';
 import '../detail/detail_screen.dart';
 import '../home/home_screen.dart' show readerFor;
+import '../player/episode_player_route.dart';
 import '../player/player_screen.dart';
 
 /// Full history, newest-first and grouped by day (Today / Yesterday / date),
@@ -195,7 +198,11 @@ class _HistoryScreenState extends State<HistoryScreen>
   Future<void> _resume(HistoryEntry e) async {
     await Navigator.push(
       context,
-      MaterialPageRoute(
+      episodePlayerRoute(
+        nativeHandoff:
+            Platform.isAndroid &&
+            sl<PlaybackPrefs>().externalPlayerPackage ==
+                PlaybackPrefs.androidPlayerId,
         builder: (_) => PlayerScreen(
           sourceId: e.sourceId,
           episodesResolver: () => _repo.episodes(
