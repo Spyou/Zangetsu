@@ -3187,5 +3187,7 @@
 	"androidCacheClearBusy": "Close the Android player before clearing its playback cache.",
 	"androidCacheUnavailable": "Could not read the playback cache. Try opening this page again.",
 	"autoPlayerFallback": "Auto-switch player",
-	"autoPlayerFallbackDescription": "Experimental · Retry failed playback"
+	"autoPlayerFallbackDescription": "Experimental · Retry failed playback",
+	"ambientPlayer": "Ambient player screen",
+	"ambientPlayerDescription": "Tinted glow behind the portrait player, matched to the video"
 }

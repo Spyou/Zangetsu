@@ -257,6 +257,7 @@ Map<String, dynamic> phonePlayerArgs({
   bool isMovie = false,
   bool stremioSubtitles = false,
   bool autoPlayerFallback = false,
+  bool ambientPlayer = true,
   bool megaSkip = true,
   int megaSkipSeconds = 85,
   String? subtitleFontPath,
@@ -274,6 +275,7 @@ Map<String, dynamic> phonePlayerArgs({
   return <String, dynamic>{
     if (stremioSubtitles) 'stremioSubtitles': true,
     if (autoPlayerFallback) 'autoPlayerFallback': true,
+    'ambientPlayer': ambientPlayer,
     // No url: the Activity opens on its loading screen and asks Dart for the
     // episode over the channel, so the user never waits on a blank route.
     if (source != null) ...{
@@ -526,12 +528,28 @@ class PhoneNativePlayer {
       return sources;
     }
     _engineSources[index] = sources;
+    return _blockedFiltered(index, sources);
+  }
+
+  static List<VideoSource> _blockedFiltered(
+    int index,
+    List<VideoSource> sources,
+  ) {
     final blocked = sl<PlaybackPrefs>().autoPlayerFallback
-        ? _engineFallback!.blockedUrls(_episodes[index].url, _category)
-        : <String>{};
+        ? _engineFallback?.blockedUrls(_episodes[index].url, _category) ??
+              const <String>{}
+        : const <String>{};
     return blocked.isEmpty
         ? sources
         : sources.where((source) => !blocked.contains(source.url)).toList();
+  }
+
+  /// What's already resolved for [index], if the episode's own open/switch
+  /// already fetched it — null only before anything has resolved at all.
+  static List<VideoSource>? _cachedSourcesFor(int index) {
+    final raw = _engineSources[index];
+    if (raw == null || raw.isEmpty) return null;
+    return _blockedFiltered(index, raw);
   }
 
   /// Returns false when the Activity cannot be started; stream errors are
@@ -628,6 +646,7 @@ class PhoneNativePlayer {
           engineFallback != null &&
           onEngineFallback != null &&
           prefs.autoPlayerFallback,
+      ambientPlayer: prefs.ambientPlayer,
       startIndex: startIndex,
       accentColor: AppColors.accent.toARGB32(),
       softwareDecoding: prefs.videoDecoder == 'sw',
@@ -1125,6 +1144,18 @@ class PhoneNativePlayer {
         final args = _callArgs(call);
         final index = (args?['index'] as num?)?.toInt() ?? -1;
         if (index < 0 || index >= _episodes.length) return const <Map>[];
+        // Reuse what the episode's own open/switch already resolved instead
+        // of re-scraping: a fresh scrape queues behind that still-running
+        // call on the JS engine's one-at-a-time lane, so the Server sheet
+        // (and native's own mirror failover, which hits this same case)
+        // would sit there not opening until the original load cleared.
+        final cached = _cachedSourcesFor(index);
+        if (cached != null) {
+          return [
+            for (var i = 0; i < cached.length; i++)
+              phoneSourceMap(cached[i], i),
+          ];
+        }
         final session = _sessionId;
         final requestCategory = _category;
         final sources = await _resolveSources(
@@ -1175,6 +1206,13 @@ class PhoneNativePlayer {
           final value = _callArgs(call)?['value'] as bool?;
           if (value == null) return null;
           await sl<PlaybackPrefs>().setAutoplayNext(value);
+          return null;
+        }
+      case 'setAmbientPlayer':
+        {
+          final value = _callArgs(call)?['value'] as bool?;
+          if (value == null) return null;
+          await sl<PlaybackPrefs>().setAmbientPlayer(value);
           return null;
         }
       case 'saveControlLayout':

@@ -10005,6 +10005,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Experimental · Retry failed playback'**
   String get autoPlayerFallbackDescription;
+
+  /// No description provided for @ambientPlayer.
+  ///
+  /// In en, this message translates to:
+  /// **'Ambient player screen'**
+  String get ambientPlayer;
+
+  /// No description provided for @ambientPlayerDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Tinted glow behind the portrait player, matched to the video'**
+  String get ambientPlayerDescription;
 }
 
 class _AppLocalizationsDelegate

@@ -209,6 +209,7 @@ class PhonePlayerActivity : Activity() {
     private var currentUrl = ""
     private val attemptedUrls = mutableSetOf<String>()
     private var autoplayNext = true
+    private var ambientEnabled = true
     private var seekMs = 10_000L
     private var megaSkipEnabled = true
     private var megaSkipSeconds = 85
@@ -318,6 +319,7 @@ class PhonePlayerActivity : Activity() {
         episodeCount = intent.getIntExtra(PhonePlayerIntent.EXTRA_EP_COUNT, 1)
         episodeLabels = intent.getStringArrayExtra(PhonePlayerIntent.EXTRA_EP_LABELS) ?: emptyArray()
         autoplayNext = intent.getBooleanExtra(PhonePlayerIntent.EXTRA_AUTOPLAY_NEXT, true)
+        ambientEnabled = intent.getBooleanExtra(PhonePlayerIntent.EXTRA_AMBIENT_ENABLED, true)
         seekMs = (intent.getIntExtra(PhonePlayerIntent.EXTRA_SEEK_SECONDS, 10) * 1000L)
             .coerceAtLeast(1_000L)
         subtitlePreference = intent.getStringExtra(PhonePlayerIntent.EXTRA_SUB_PREFERENCE).orEmpty()
@@ -968,14 +970,19 @@ class PhonePlayerActivity : Activity() {
         val root = findViewById<View>(R.id.watch_root)
         if (portrait && watchPage) {
             // Reattach the glow if a previous layout pass flattened it to black;
-            // a fresh page starts unfaded.
-            val ambient = ambientLayer
+            // a fresh page starts unfaded. Off (ambientEnabled == false) stays
+            // plain black and never (re)starts sampling.
+            val ambient = if (ambientEnabled) ambientLayer else null
             if (ambient != null) {
                 ambientDrawable?.alpha = 255
                 ambientInfoDrawable?.alpha = 255
                 root.background = ambient
             } else {
                 root.setBackgroundColor(android.graphics.Color.BLACK)
+                // applyAmbientColors only ever SETS this background from the
+                // sampling loop — stopping that loop leaves whatever glow it
+                // last painted here, so clear it explicitly.
+                watchPanel?.header?.background = null
             }
             // 16:9 stage as an inset rounded card (MPV mini-player).
             val w = resources.displayMetrics.widthPixels
@@ -990,7 +997,7 @@ class PhonePlayerActivity : Activity() {
             video.clipToOutline = true
             val info = ensureWatchInfo()
             info?.visibility = View.VISIBLE
-            startAmbient()
+            if (ambientEnabled) startAmbient()
         } else {
             root.setBackgroundColor(getColor(R.color.phone_player_background))
             val lp = video.layoutParams
@@ -1680,14 +1687,24 @@ class PhonePlayerActivity : Activity() {
     private fun showSourceMenu() {
         val ch = PhonePlayerBridge.channel ?: return
         handler.removeCallbacks(hideRunnable)
-        setBuffering(true)
+        // A tap mid-load otherwise showed nothing until the stream itself
+        // started — this request queues behind that same in-flight resolve
+        // on the JS engine's one-at-a-time lane (see sourcesFor on the Dart
+        // side), so a plain spinner-only wait looked like the tap did
+        // nothing. Open feedback immediately instead of waiting on it.
+        var canceled = false
+        val waiting = android.app.AlertDialog.Builder(this, R.style.PhonePlayerDialog)
+            .setMessage(R.string.phone_player_watch_loading_mirrors).create()
+        waiting.setOnCancelListener { canceled = true }
+        waiting.show()
+        PhoneWatchMotion.enter(waiting)
         ch.invokeMethod(
             "sourcesFor",
             mapOf("index" to currentIndex),
             object : io.flutter.plugin.common.MethodChannel.Result {
                 override fun success(result: Any?) {
-                    if (!uiAlive()) return
-                    setBuffering(false)
+                    waiting.dismiss()
+                    if (canceled || !uiAlive()) return
                     mirrors = mapList(result)
                     if (mirrors.isEmpty()) {
                         toast("Couldn't load sources")
@@ -1721,15 +1738,15 @@ class PhonePlayerActivity : Activity() {
                 }
 
                 override fun error(code: String, msg: String?, details: Any?) {
-                    if (!uiAlive()) return
-                    setBuffering(false)
+                    waiting.dismiss()
+                    if (canceled || !uiAlive()) return
                     toast("Couldn't load sources")
                     bumpControls()
                 }
 
                 override fun notImplemented() {
-                    if (!uiAlive()) return
-                    setBuffering(false)
+                    waiting.dismiss()
+                    if (canceled || !uiAlive()) return
                     toast("Couldn't load sources")
                     bumpControls()
                 }
@@ -2246,6 +2263,16 @@ class PhonePlayerActivity : Activity() {
         bumpControls()
     }
 
+    /** "Ambient player screen" setting, flipped live from the More menu.
+     * [updateOrientationLayout] already knows how to apply/clear the glow and
+     * start/stop sampling, so re-running it is the whole live-apply step. */
+    private fun toggleAmbient() {
+        ambientEnabled = !ambientEnabled
+        updateOrientationLayout()
+        bumpControls()
+        PhonePlayerBridge.channel?.invokeMethod("setAmbientPlayer", mapOf("value" to ambientEnabled))
+    }
+
     private fun cycleDisplayMode() {
         val modes = intArrayOf(AspectRatioFrameLayout.RESIZE_MODE_FIT,
             AspectRatioFrameLayout.RESIZE_MODE_FILL, AspectRatioFrameLayout.RESIZE_MODE_ZOOM)
@@ -2327,6 +2354,12 @@ class PhonePlayerActivity : Activity() {
         labels += getString(R.string.phone_player_menu_switch_player)
         icons += R.drawable.phone_player_sources
         actions += { requestManualSwitch() }
+        labels += getString(
+            if (ambientEnabled) R.string.phone_player_menu_ambient_on
+            else R.string.phone_player_menu_ambient_off
+        )
+        icons += R.drawable.phone_player_display
+        actions += { toggleAmbient() }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             labels += getString(R.string.phone_player_menu_pip)
             icons += R.drawable.ic_pip_play

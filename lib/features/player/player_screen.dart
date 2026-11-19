@@ -235,7 +235,7 @@ class PlayerScreen extends StatefulWidget {
   final VideoSource? initialSource;
   final PlayerEngineFallback? engineFallback;
   final void Function(PlaybackEngine, PhonePlaybackFailure, Future<void>)?
-      onEngineChange;
+  onEngineChange;
   final bool engineRecovery;
 
   /// Uses movie wording without changing the playable entries.
@@ -741,7 +741,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
   int _ambientEp = -1;
 
   void _startAmbientSampler() {
-    if (!_ready || (_ambientTimer?.isActive ?? false)) return;
+    if (!_ready ||
+        !sl<PlaybackPrefs>().ambientPlayer ||
+        (_ambientTimer?.isActive ?? false)) {
+      return;
+    }
     _ambientTimer = Timer.periodic(const Duration(seconds: 6), (_) {
       _sampleAmbientFrame();
     });
@@ -804,17 +808,19 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   void _applyPlayerSystemUi() {
-    final watchPage = _watchPageEnabled &&
-        _presentation == PlayerPresentation.watchPage;
+    final watchPage =
+        _watchPageEnabled && _presentation == PlayerPresentation.watchPage;
     SystemChrome.setEnabledSystemUIMode(
       watchPage ? SystemUiMode.edgeToEdge : SystemUiMode.immersiveSticky,
     );
     if (watchPage) {
-      SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-        statusBarColor: Colors.transparent,
-        statusBarIconBrightness: Brightness.light,
-        statusBarBrightness: Brightness.dark,
-      ));
+      SystemChrome.setSystemUIOverlayStyle(
+        const SystemUiOverlayStyle(
+          statusBarColor: Colors.transparent,
+          statusBarIconBrightness: Brightness.light,
+          statusBarBrightness: Brightness.dark,
+        ),
+      );
     }
   }
 
@@ -1894,10 +1900,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final routeLease = _routeTeardownLease;
     if (_ready) {
       _c.close();
-      unawaited(_c.nativeTeardown.whenComplete(() {
-        routeLease?.release();
-        _engineTeardown?.complete();
-      }));
+      unawaited(
+        _c.nativeTeardown.whenComplete(() {
+          routeLease?.release();
+          _engineTeardown?.complete();
+        }),
+      );
     } else {
       routeLease?.release();
       _engineTeardown?.complete();
@@ -2584,9 +2592,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       controller: _c.videoController,
                       controls: NoVideoControls,
                       fit: _fits[_fitIndex].$1,
-                      subtitleViewConfiguration: const SubtitleViewConfiguration(
-                        visible: false,
-                      ),
+                      subtitleViewConfiguration:
+                          const SubtitleViewConfiguration(visible: false),
                     ),
                     if (!_c.styledSubtitlesOn)
                       StreamBuilder<List<String>>(
@@ -2918,7 +2925,22 @@ class _PlayerScreenState extends State<PlayerScreen> {
       onSleep: _openSleepSheet,
       onPip: _pipSupported ? _enterPip : null,
       onSwitchPlayer: _canSwitchToNative ? _switchToNativePlayer : null,
+      ambientActive: sl<PlaybackPrefs>().ambientPlayer,
+      onAmbientToggle: _toggleAmbientPlayer,
     );
+  }
+
+  /// Flips the "Ambient player screen" setting from the player's own More
+  /// sheet — same pref both engines read, so Settings stays in sync too.
+  Future<void> _toggleAmbientPlayer() async {
+    final next = !sl<PlaybackPrefs>().ambientPlayer;
+    await sl<PlaybackPrefs>().setAmbientPlayer(next);
+    if (next) {
+      _startAmbientSampler();
+    } else {
+      _stopAmbientSampler();
+    }
+    if (mounted) setState(() {});
   }
 
   /// Portrait watch page: the stable surface on top, episode info below.
@@ -3177,6 +3199,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       firstFrameStream: _c.player.stream.width,
       initialFirstFrame: _c.player.state.width ?? 0,
       ambientFrameStream: _ambientFrames.stream,
+      ambientEnabled: sl<PlaybackPrefs>().ambientPlayer,
       positionStream: _c.player.stream.position,
       durationStream: _c.player.stream.duration,
       playingStream: _c.player.stream.playing,
@@ -4377,6 +4400,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           enhanceActive:
                               sl<PlaybackPrefs>().videoShaderStyle != 'off',
                           onColorProfile: _openColorProfileSheet,
+                          ambientActive: sl<PlaybackPrefs>().ambientPlayer,
+                          onAmbientToggle: _toggleAmbientPlayer,
                         ),
                       ),
                     )

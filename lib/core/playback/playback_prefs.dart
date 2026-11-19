@@ -925,6 +925,12 @@ class PlaybackPrefs {
   Future<void> setAutoPlayerFallback(bool value) =>
       _box.put('autoPlayerFallback', value);
 
+  /// The mpv-style ambient glow behind the portrait player (both mpv and the
+  /// native player sample the frame and tint the backdrop). On by default.
+  bool get ambientPlayer =>
+      _box.get('ambientPlayer', defaultValue: true) as bool;
+  Future<void> setAmbientPlayer(bool value) => _box.put('ambientPlayer', value);
+
   /// Default player. Empty string = the built-in player; otherwise the package
   /// id of an external player (e.g. 'org.videolan.vlc') to hand streams to.
   /// [externalPlayerLabel] is the human name shown in settings.

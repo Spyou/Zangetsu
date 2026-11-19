@@ -32,6 +32,8 @@ class _ControlsOverlay extends StatelessWidget {
     required this.onMegaSkip,
     this.onPip,
     this.onSwitchPlayer,
+    required this.ambientActive,
+    required this.onAmbientToggle,
     this.onChat,
     this.onInfo,
     this.infoOpen = false,
@@ -77,6 +79,9 @@ class _ControlsOverlay extends StatelessWidget {
   final VoidCallback onMegaSkip;
   final VoidCallback? onPip; // null = PiP unsupported (hide the button)
   final VoidCallback? onSwitchPlayer; // null = no other engine to switch to
+  final bool
+  ambientActive; // current state of the "Ambient player screen" setting
+  final VoidCallback onAmbientToggle;
   final VoidCallback? onChat; // in-room chat toggle (null = no active room)
   final VoidCallback? onInfo; // toggle the info panel (null = no fields picked)
   final bool infoOpen; // whether the info panel is currently shown
@@ -104,6 +109,8 @@ class _ControlsOverlay extends StatelessWidget {
       onSleep: onSleep,
       onPip: onPip,
       onSwitchPlayer: onSwitchPlayer,
+      ambientActive: ambientActive,
+      onAmbientToggle: onAmbientToggle,
     );
   }
 
@@ -123,6 +130,8 @@ class _ControlsOverlay extends StatelessWidget {
     required VoidCallback onSleep,
     required VoidCallback? onPip,
     required VoidCallback? onSwitchPlayer,
+    required bool ambientActive,
+    required VoidCallback onAmbientToggle,
     bool animatePortraitEntrance = false,
   }) {
     final portrait =
@@ -247,6 +256,18 @@ class _ControlsOverlay extends StatelessWidget {
                             onSwitchPlayer();
                           },
                         ),
+                      _MoreRow(
+                        icon: ambientActive
+                            ? Icons.gradient_rounded
+                            : Icons.gradient_outlined,
+                        label: ambientActive
+                            ? ctx.l10n.ambientPlayer
+                            : '${ctx.l10n.ambientPlayer} · ${ctx.l10n.off}',
+                        onTap: () {
+                          Navigator.pop(ctx);
+                          onAmbientToggle();
+                        },
+                      ),
                     ],
                   ),
                 ),
@@ -581,7 +602,9 @@ class _ControlsOverlay extends StatelessWidget {
                                 builder: (context, _, _) =>
                                     c.isFillerAt(state.currentIndex)
                                     ? const Padding(
-                                        padding: EdgeInsetsDirectional.only(start: 8),
+                                        padding: EdgeInsetsDirectional.only(
+                                          start: 8,
+                                        ),
                                         // No colour passed: TagBadge falls back
                                         // to the app accent, so the badge
                                         // follows the user's theme colour.

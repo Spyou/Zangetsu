@@ -31,6 +31,7 @@ class PlayerWatchPage extends StatefulWidget {
     this.firstFrameStream,
     this.initialFirstFrame = 0,
     this.ambientFrameStream,
+    this.ambientEnabled = true,
     required this.positionStream,
     required this.durationStream,
     required this.playingStream,
@@ -95,6 +96,10 @@ class PlayerWatchPage extends StatefulWidget {
   /// Live video frame for the ambient glow (see [_ambientBackdrop]). Null
   /// stream = still art only.
   final Stream<Uint8List?>? ambientFrameStream;
+
+  /// Off hides the glow entirely (also skips the cover-art sample below) —
+  /// the "Ambient player screen" setting.
+  final bool ambientEnabled;
   final Stream<Duration> positionStream;
   final Stream<Duration?> durationStream;
   final Stream<bool> playingStream;
@@ -215,14 +220,18 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
       if (!mounted || _frameUp || (w ?? 0) <= 0) return;
       setState(() => _frameUp = true);
     });
-    _ambientSub = widget.ambientFrameStream?.listen((bytes) {
-      if (!mounted || bytes == null || bytes.isEmpty) return;
-      unawaited(_applyAmbientBytes(bytes));
-    });
+    if (widget.ambientEnabled) {
+      _ambientSub = widget.ambientFrameStream?.listen((bytes) {
+        if (!mounted || bytes == null || bytes.isEmpty) return;
+        unawaited(_applyAmbientBytes(bytes));
+      });
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _scrollToCurrent();
-      _sampledCover = null;
-      unawaited(_sampleCoverArt());
+      if (widget.ambientEnabled) {
+        _sampledCover = null;
+        unawaited(_sampleCoverArt());
+      }
     });
     _playingSub = widget.playingStream.listen((p) {
       if (!mounted || p == _playing) return;
@@ -596,7 +605,7 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
 
   /// Both glows fade with scrolling; the lower one ends below Comments.
   Widget _ambientBackdrop({bool belowVideo = false}) {
-    if (_glowRev <= 0) return const SizedBox.shrink();
+    if (!widget.ambientEnabled || _glowRev <= 0) return const SizedBox.shrink();
     return Positioned.fill(
       child: IgnorePointer(
         child: ValueListenableBuilder<double>(
