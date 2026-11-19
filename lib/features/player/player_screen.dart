@@ -344,10 +344,13 @@ class PlayerScreen extends StatefulWidget {
       initialSource,
       playerOverride ?? sl<PlaybackPrefs>().externalPlayerPackage,
     );
+    // Not gated on autoPlayerFallback: a torrent must yield native→mpv even
+    // with the toggle off (see tryOtherPlayer), and only this host actually
+    // performs the swap via onEngineChange. Without it that handoff silently
+    // no-ops — the native player closes and nothing replaces it.
     if (engineFallback == null &&
         Platform.isAndroid &&
         !sl<AppMode>().isTv &&
-        sl<PlaybackPrefs>().autoPlayerFallback &&
         (preferred.isEmpty || preferred == PlaybackPrefs.androidPlayerId)) {
       return _PlayerEngineHostState();
     }
@@ -365,7 +368,25 @@ class _PlayerEngineHostState extends State<PlayerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_changing) return const SizedBox.shrink();
+    // Opaque, not blank: the native Activity already finished by the time
+    // this shows, so an empty widget lets Detail flash through underneath
+    // for a frame. A full-bleed loader reads as "switching player", not
+    // "closed".
+    if (_changing) {
+      return ColoredBox(
+        color: Colors.black,
+        child: Center(
+          child: SizedBox(
+            width: 36,
+            height: 36,
+            child: CircularProgressIndicator(
+              color: AppColors.accent,
+              strokeWidth: 2.5,
+            ),
+          ),
+        ),
+      );
+    }
     final failure = _failure;
     return PlayerScreen(
       key: ValueKey(_generation),

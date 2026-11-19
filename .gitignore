@@ -49,6 +49,7 @@ app.*.map.json
 # Internal docs (plans, specs, audits) — not part of the shipped app
 /AGENTS.md
 /docs/
+/HANDOFF-*.md
 # Built release APK artifacts (any version)
 release-v*/
 # Marketing/banner scratch (mockups, screenshots) — not part of the app
