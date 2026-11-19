@@ -10,6 +10,13 @@ function getInfo() {
            logo: SITE + '/favicon.ico', type: 'anime', version: '1.0.0' };
 }
 
+// Optional: return an `id` on a getHome row to opt that row into paging, and
+// implement this to serve page 2+ for it. Rows without an id stay a fixed list.
+function getHomePage(rowId, page, opts) {
+  // return [{ id, title, url, cover?, type:'anime', sourceId: SOURCE_ID }]
+  return [];
+}
+
 function search(query, page, opts) {
   // return [{ id, title, url, cover, coverHeaders?, type:'anime', sourceId: SOURCE_ID }]
   return [];

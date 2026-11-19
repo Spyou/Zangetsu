@@ -26,6 +26,15 @@ test('getHome returns named sections of MediaItem rows', async () => {
   assert.ok(sections[0].items[0].id && sections[0].items[0].url, 'items are MediaItem-shaped');
 });
 
+test('getHome rows can opt into paging via id + getHomePage', async () => {
+  const sections = JSON.parse(await callProvider('example', 'getHome', [{}]));
+  assert.equal(sections[0].id, 'trending');
+  const page = JSON.parse(
+    await callProvider('example', 'getHomePage', ['trending', 2, {}]));
+  assert.ok(Array.isArray(page) && page.length === 1);
+  assert.equal(page[0].id, 'paged-1');
+});
+
 test('getDetail returns episodes', async () => {
   const detail = JSON.parse(
     await callProvider('example', 'getDetail', ['https://example.test/anime/one-piece']));

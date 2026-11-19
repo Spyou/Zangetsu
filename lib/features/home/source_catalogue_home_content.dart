@@ -23,7 +23,6 @@ import '../detail/detail_screen.dart';
 import '../search/browse_source_screen.dart' show canonicalTargetFor;
 import '../sources/providers_hub_screen.dart';
 import '../sources/stremio_sources_screen.dart';
-import 'cubit/home_rows_composer.dart' show providerRowSections;
 import 'see_all_screen.dart';
 
 /// Use the same metadata identity as source browsing, or keep source-only
@@ -399,6 +398,7 @@ class SourceCatalogueHomeContentState
         builder: (_) => SeeAllScreen(
           title: section.title,
           items: section.items,
+          lazyFixedList: section.more == null && section.lazyFallback,
           onTap: _openItem,
           onLoadMore: section.more == null
               ? null
@@ -424,9 +424,9 @@ class SourceCatalogueHomeContentState
     if (sections.isEmpty || _failed || _sources.isEmpty) {
       return SliverToBoxAdapter(child: _content(sections));
     }
-    final rows = widget.sectionBuilder == null
-        ? sections
-        : providerRowSections(sections, isTv: false);
+    // No hero lives in this widget to absorb the dropped first row the way
+    // the main Home screen's does — show every row the source returned.
+    final rows = sections;
     final keys = [
       for (var i = 0; i < rows.length; i++)
         ValueKey(rows[i].more?.categoryId ?? '${rows[i].title}:$i'),
@@ -516,10 +516,8 @@ class SourceCatalogueHomeContentState
       key: const ValueKey('source-catalogue-content-results'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        for (final section
-            in widget.sectionBuilder == null
-                ? sections
-                : providerRowSections(sections, isTv: false))
+        // No hero here either — same reasoning as the sliver build path above.
+        for (final section in sections)
           widget.sectionBuilder?.call(section) ?? _sectionRow(section),
         if (_loading) _shimmerRow(),
       ],

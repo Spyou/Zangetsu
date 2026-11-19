@@ -58,6 +58,44 @@ void main() {
     expect(loadCalls, 0);
   });
 
+  testWidgets('lazyFixedList reveals a fixed list in batches on scroll', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _wrap(
+        SeeAllScreen(
+          title: 'Lazy JS',
+          items: _page(0, 50),
+          onTap: (_) {},
+          lazyFixedList: true,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    GridView grid = tester.widget<GridView>(find.byType(GridView));
+    expect(
+      (grid.childrenDelegate as SliverChildBuilderDelegate).childCount,
+      24,
+    );
+
+    await tester.fling(find.byType(GridView), const Offset(0, -6000), 6000);
+    await tester.pumpAndSettle();
+    grid = tester.widget<GridView>(find.byType(GridView));
+    expect(
+      (grid.childrenDelegate as SliverChildBuilderDelegate).childCount,
+      greaterThan(24),
+    );
+
+    await tester.fling(find.byType(GridView), const Offset(0, -6000), 6000);
+    await tester.pumpAndSettle();
+    grid = tester.widget<GridView>(find.byType(GridView));
+    expect(
+      (grid.childrenDelegate as SliverChildBuilderDelegate).childCount,
+      50,
+    );
+  });
+
   testWidgets('appends the next page and dedupes already-seen items', (
     tester,
   ) async {

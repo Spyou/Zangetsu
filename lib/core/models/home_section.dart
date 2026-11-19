@@ -6,10 +6,20 @@ import 'media_item.dart';
 /// that returns no sections (or has no `getHome`) falls back to a default set
 /// built from `popular()` — see [SourceRepository.home].
 class HomeSection {
-  const HomeSection({required this.title, required this.items, this.more});
+  const HomeSection({
+    required this.title,
+    required this.items,
+    this.more,
+    this.lazyFallback = false,
+  });
 
   final String title;
   final List<MediaItem> items;
+
+  /// True for JS provider rows that have no server-side paging descriptor.
+  /// See All reveals their already-loaded items in batches instead of dumping
+  /// the whole row at once — infinite scroll with no provider change.
+  final bool lazyFallback;
 
   /// Optional paging descriptor. When non-null the "See all" grid for this row
   /// can fetch further pages (infinite scroll) via [SourceRepository.browseMore].

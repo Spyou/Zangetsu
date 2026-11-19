@@ -156,6 +156,7 @@ class _JsHost {
   // clearance cookie + matching User-Agent per host. Android-only; on platforms
   // without the handler the invoke throws and we fall back to a plain request.
   static const MethodChannel _cf = MethodChannel('zangetsu/cloudstream');
+
   /// The novel path's OkHttp lane — see [_retryOverNative].
   static const MethodChannel _novelHttp = MethodChannel('zangetsu/novel_http');
   final Map<String, String> _cfCookie = {}; // host -> cf_clearance cookie(s)
@@ -212,6 +213,7 @@ class _JsHost {
       _passiveDepth--;
     }
   }
+
   final Map<String, _ProviderHealth> _health = {};
 
   ProviderHealthStatus healthFor(String sourceId) =>
@@ -243,9 +245,7 @@ class _JsHost {
   }
 
   void removeProvider(String sourceId) {
-    _engine.post(
-      'delete globalThis.__providers[${jsonEncode(sourceId)}];',
-    );
+    _engine.post('delete globalThis.__providers[${jsonEncode(sourceId)}];');
   }
 
   /// Pushes [settings] into the JS runtime as `__settings[sourceId]`.
@@ -284,22 +284,22 @@ class _JsHost {
     bool Function()? abandoned,
   }) async {
     try {
-        final v = await _scheduler
-            .enqueue<String>(
-              sourceId,
-              method,
-              () => _runCall(sourceId, method, args, timeout),
-              lane: _laneNow(),
-              abandoned: abandoned,
-            )
-            // One call owns the shared engine, so a call that overruns holds
-            // every other source hostage. `maxProviderFetchTimeoutMs` bounds a
-            // single fetch, but a call is several fetches chained inside the
-            // provider, so the total could still reach ~30s (measured: a
-            // `fuckingfast.net` download ran 30306ms and 82 calls queued behind
-            // it, each then burning the full queue wait). Bound the whole call
-            // so one slow site costs its own search and nothing else.
-            .timeout(maxProviderCallTimeout);
+      final v = await _scheduler
+          .enqueue<String>(
+            sourceId,
+            method,
+            () => _runCall(sourceId, method, args, timeout),
+            lane: _laneNow(),
+            abandoned: abandoned,
+          )
+          // One call owns the shared engine, so a call that overruns holds
+          // every other source hostage. `maxProviderFetchTimeoutMs` bounds a
+          // single fetch, but a call is several fetches chained inside the
+          // provider, so the total could still reach ~30s (measured: a
+          // `fuckingfast.net` download ran 30306ms and 82 calls queued behind
+          // it, each then burning the full queue wait). Bound the whole call
+          // so one slow site costs its own search and nothing else.
+          .timeout(maxProviderCallTimeout);
       _health.remove(sourceId);
       return v;
     } on ProviderCallAbandoned {
@@ -628,9 +628,11 @@ class _JsHost {
     // whenComplete awaits a returned Future — an arrow would await the very
     // future being completed and never finish.
     unawaited(
-      started.whenComplete(() {
-        _inFlightFetches.remove(key);
-      }).then<void>((_) {}, onError: (Object _) {}),
+      started
+          .whenComplete(() {
+            _inFlightFetches.remove(key);
+          })
+          .then<void>((_) {}, onError: (Object _) {}),
     );
     return started;
   }
@@ -655,8 +657,9 @@ class _JsHost {
     // nothing about how long a source the viewer chose gets. It only stops
     // unbounded and 30s requests holding everyone else hostage. A request
     // asking for less still gets less.
-    final ms =
-        tMs > 0 && tMs < maxProviderFetchTimeoutMs ? tMs : maxProviderFetchTimeoutMs;
+    final ms = tMs > 0 && tMs < maxProviderFetchTimeoutMs
+        ? tMs
+        : maxProviderFetchTimeoutMs;
     return dio.requestUri<dynamic>(
       Uri.parse(url),
       data: body,
@@ -823,8 +826,7 @@ class _JsHost {
         statusCode: status,
         data: res['body'] as String? ?? '',
         headers: Headers.fromMap({
-          for (final e in rawHeaders.entries)
-            '${e.key}': ['${e.value}'],
+          for (final e in rawHeaders.entries) '${e.key}': ['${e.value}'],
         }),
       );
     } catch (_) {
@@ -963,34 +965,105 @@ class JsProvider implements BaseProvider, ReadingProvider {
       ], timeout: const Duration(seconds: 30));
       final decoded = await _decodeBig(raw);
       if (decoded is! List) return null;
-      final out = <HomeSection>[];
-      for (final s in decoded) {
-        if (s is! Map) continue;
-        final m = Map<String, dynamic>.from(s);
-        final title = (m['title'] ?? '').toString().trim();
-        if (title.isEmpty) continue;
-        final rawItems = m['items'];
-        final items = <MediaItem>[];
-        if (rawItems is List) {
-          for (final e in rawItems) {
-            if (e is Map) {
-              items.add(
-                MediaItem.fromJson({
-                  ...Map<String, dynamic>.from(e),
-                  'sourceId': sourceId,
-                }),
-              );
-            }
-          }
-        }
-        out.add(HomeSection(title: title, items: items));
-      }
-      return out;
+      return homeSectionsFromJson(decoded, sourceId);
     } catch (e) {
       final msg = e is JsRuntimeException ? e.message : e.toString();
       // The bootstrap signals an absent function with this exact phrase.
       if (msg.contains('missing method: getHome')) return null;
       rethrow;
+    }
+  }
+
+  /// Pure parse of a JS `getHome()` payload. A row with an `id` opts into
+  /// server-side paging via `getHomePage`; rows without one (every existing
+  /// provider) get the client-side lazy fallback in See All.
+  static List<HomeSection> homeSectionsFromJson(
+    List<dynamic> decoded,
+    String sourceId,
+  ) {
+    final out = <HomeSection>[];
+    for (final s in decoded) {
+      if (s is! Map) continue;
+      final m = Map<String, dynamic>.from(s);
+      final title = (m['title'] ?? '').toString().trim();
+      if (title.isEmpty) continue;
+      final rowId = (m['id'] ?? '').toString().trim();
+      final rawItems = m['items'];
+      final items = <MediaItem>[];
+      if (rawItems is List) {
+        for (final e in rawItems) {
+          if (e is Map) {
+            items.add(
+              MediaItem.fromJson({
+                ...Map<String, dynamic>.from(e),
+                'sourceId': sourceId,
+              }),
+            );
+          }
+        }
+      }
+      out.add(
+        HomeSection(
+          title: title,
+          items: items,
+          lazyFallback: rowId.isEmpty,
+          more: rowId.isEmpty
+              ? null
+              : BrowseMore(
+                  sourceId: sourceId,
+                  kind: 'js_home',
+                  categoryId: rowId,
+                ),
+        ),
+      );
+    }
+    if (kDebugMode) {
+      debugPrint(
+        '[js-home] source=$sourceId rows=${out.length} '
+        'ids=${out.map((s) => s.more?.categoryId ?? '-').join(',')}',
+      );
+    }
+    return out;
+  }
+
+  Future<List<MediaItem>> getHomePage(
+    String rowId,
+    int page, {
+    String category = 'sub',
+  }) async {
+    try {
+      if (kDebugMode) {
+        debugPrint('[js-home] getHomePage CALL row=$rowId page=$page');
+      }
+      final raw = await _call('getHomePage', [
+        rowId,
+        page,
+        {'category': category},
+      ], timeout: const Duration(seconds: 20));
+      final decoded = await _decodeBig(raw);
+      final list = decoded is Map ? decoded['items'] : decoded;
+      if (list is! List) return const [];
+      final items = [
+        for (final e in list)
+          if (e is Map)
+            MediaItem.fromJson({
+              ...Map<String, dynamic>.from(e),
+              'sourceId': sourceId,
+            }),
+      ];
+      if (kDebugMode) {
+        debugPrint(
+          '[js-home] getHomePage row=$rowId page=$page '
+          'items=${items.length}',
+        );
+      }
+      return items;
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[js-home] getHomePage FAILED row=$rowId page=$page err=$e');
+      }
+      // Missing method, bad payload, provider error → no more items.
+      return const [];
     }
   }
 
@@ -1040,10 +1113,15 @@ class JsProvider implements BaseProvider, ReadingProvider {
   }) async {
     // 30s: some providers enrich detail with extra metadata round-trips
     // (e.g. TMDB episode names/stills) on top of the page fetch.
-    final raw = await _call('getDetail', [
-      url,
-      {'category': category},
-    ], timeout: const Duration(seconds: 30), abandoned: abandoned);
+    final raw = await _call(
+      'getDetail',
+      [
+        url,
+        {'category': category},
+      ],
+      timeout: const Duration(seconds: 30),
+      abandoned: abandoned,
+    );
     final map = jsonDecode(raw) as Map<String, dynamic>;
     // Sozo Read manga/novel detail payloads carry the chapter list under
     // `chapters`; Zangetsu's MediaDetail reads `episodes` (Task E4 compat
@@ -1276,7 +1354,7 @@ class AniyomiManager extends ChangeNotifier {
 
   /// Overridable checker (test seam). Defaults to the real service fetch.
   Future<List<AniyomiUpdate>> Function(String url, Map<String, int> codes)?
-      checkerOverride;
+  checkerOverride;
 
   DateTime? _lastUpdateCheck;
   static const Duration _updatesTtl = Duration(minutes: 30);

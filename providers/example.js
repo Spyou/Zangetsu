@@ -30,9 +30,15 @@ function search(query, page, opts) {
 function getHome(opts) {
   var all = _catalog();
   return [
-    { title: 'Trending Now', items: all },
+    { title: 'Trending Now', id: 'trending', items: all },
     { title: 'New Releases', items: all },
   ];
+}
+
+function getHomePage(rowId, page, opts) {
+  if (rowId !== 'trending' || page !== 2) return [];
+  return [{ id: 'paged-1', title: 'Paged item', url: SITE + '/watch/paged-1',
+            type: 'anime', sourceId: SOURCE_ID }];
 }
 
 function _episodes() {

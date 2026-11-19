@@ -711,6 +711,7 @@ class SourceRepository implements CatalogueRepository {
   ///   * `mihon_latest`  → the Mihon manga provider's `latest(page:)`
   ///   * `lnr_popular` → the LNReader novel provider's `popular(page:)`
   ///   * `cs_mainpage` → the CloudStream provider's `browseMainPage(id, page)`
+  ///   * `js_home`    → a JS provider's `getHomePage(rowId, page)`
   ///
   /// Never throws — any failure (unknown kind, wrong provider type, provider
   /// error) degrades to an empty list so the caller just stops the scroll.
@@ -747,6 +748,10 @@ class SourceRepository implements CatalogueRepository {
         case 'cs_mainpage':
           return (p is CloudStreamProvider && more.categoryId != null)
               ? p.browseMainPage(more.categoryId!, page)
+              : const [];
+        case 'js_home':
+          return (p is JsProvider && more.categoryId != null)
+              ? p.getHomePage(more.categoryId!, page)
               : const [];
         default:
           return const [];
@@ -972,9 +977,7 @@ class SourceRepository implements CatalogueRepository {
       // Providers disagree on order (Aniyomi/Tachiyomi extensions are
       // newest-first); the toggle only flips, so normalize here, once.
       final ordered = normalizeEpisodeOrder(d.episodes);
-      return identical(ordered, d.episodes)
-          ? d
-          : d.copyWith(episodes: ordered);
+      return identical(ordered, d.episodes) ? d : d.copyWith(episodes: ordered);
     } catch (e, st) {
       AppLogger.instance.log(
         '[detail] source fetch failed ${sw.elapsedMilliseconds}ms: $e',

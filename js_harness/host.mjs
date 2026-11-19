@@ -155,6 +155,7 @@ function wrapProvider(sourceId, src) {
     globalThis.__providers['${sourceId}']={
       getInfo:typeof getInfo==='function'?getInfo:null,
       getHome:typeof getHome==='function'?getHome:null,
+      getHomePage:typeof getHomePage==='function'?getHomePage:null,
       search:typeof search==='function'?search:null,
       popular:typeof popular==='function'?popular:null,
       getDetail:typeof getDetail==='function'?getDetail:null,

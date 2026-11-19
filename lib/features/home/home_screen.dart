@@ -1437,6 +1437,7 @@ class _HomeViewState extends State<_HomeView>
         builder: (_) => SeeAllScreen(
           title: section.title,
           items: section.items,
+          lazyFixedList: section.more == null && section.lazyFallback,
           onTap: sourceCatalogue ? _openSourceCatalogueDetail : _openDetail,
           onLongPress: sourceCatalogue ? _showSourceCatalogueInfo : _showInfo,
           // Only paginable rows carry a `more` descriptor; everything else

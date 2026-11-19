@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/app_mode.dart';
@@ -31,6 +32,7 @@ class SeeAllScreen extends StatefulWidget {
     this.onLongPress,
     this.tagsFor,
     this.onLoadMore,
+    this.lazyFixedList = false,
     this.onSearch,
     this.filterKind,
     this.initialFilters = const MetaFilters(),
@@ -50,6 +52,11 @@ class SeeAllScreen extends StatefulWidget {
   /// empty list (or only already-seen items) ends pagination. Null → fixed list.
   final Future<List<MediaItem>> Function(int page)? onLoadMore;
 
+  /// For rows that have no server-side paging (legacy JS providers): reveal
+  /// [items] in batches on scroll. No extra network — the provider already
+  /// returned the whole row — but the grid behaves like an infinite list.
+  final bool lazyFixedList;
+
   /// Optional query/filter fetcher. When set, the app bar exposes search and
   /// filters and the grid can be refreshed without leaving this page.
   final Future<MediaItemPage> Function(
@@ -66,7 +73,13 @@ class SeeAllScreen extends StatefulWidget {
 }
 
 class _SeeAllScreenState extends State<SeeAllScreen> {
-  late final List<MediaItem> _items = [...widget.items];
+  static const _lazyBatch = 24;
+
+  late final List<MediaItem> _items = [
+    ...widget.items.take(
+      widget.lazyFixedList ? _lazyBatch : widget.items.length,
+    ),
+  ];
   final Set<String> _seen = {};
   final ScrollController _controller = ScrollController();
 
@@ -87,7 +100,9 @@ class _SeeAllScreenState extends State<SeeAllScreen> {
     for (final it in _items) {
       _seen.add(_keyOf(it));
     }
-    if (widget.onLoadMore != null || widget.onSearch != null) {
+    if (widget.onLoadMore != null ||
+        widget.onSearch != null ||
+        widget.lazyFixedList) {
       _controller.addListener(_onScroll);
     }
   }
@@ -112,7 +127,15 @@ class _SeeAllScreenState extends State<SeeAllScreen> {
 
   Future<void> _loadMore() async {
     final loader = widget.onLoadMore;
-    if ((loader == null && widget.onSearch == null) || _loading || _end) {
+    if (kDebugMode) {
+      debugPrint(
+        '[see-all] loadMore page=${_page + 1} '
+        'loader=${loader != null} lazy=${widget.lazyFixedList}',
+      );
+    }
+    if ((loader == null && widget.onSearch == null && !widget.lazyFixedList) ||
+        _loading ||
+        _end) {
       return;
     }
     final generation = _queryGeneration;
@@ -130,8 +153,10 @@ class _SeeAllScreenState extends State<SeeAllScreen> {
           _page + 1,
         );
         next = searchPage.items;
-      } else {
-        next = await loader!(_page + 1);
+      } else if (loader != null) {
+        next = await loader(_page + 1);
+      } else if (widget.lazyFixedList) {
+        next = widget.items.skip(_items.length).take(_lazyBatch).toList();
       }
     } catch (_) {
       next = const [];
@@ -256,7 +281,10 @@ class _SeeAllScreenState extends State<SeeAllScreen> {
     ];
     final gridHeight = heights.fold<double>(0, (a, b) => a > b ? a : b);
 
-    final paginating = widget.onLoadMore != null || widget.onSearch != null;
+    final paginating =
+        widget.onLoadMore != null ||
+        widget.onSearch != null ||
+        widget.lazyFixedList;
     // A trailing spinner cell spanning the full row while a page is loading.
     final showSpinner = paginating && _loading;
     return Scaffold(

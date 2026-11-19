@@ -80,15 +80,36 @@ class HomeCache {
         for (final j in items) {
           if (j is! Map) continue;
           try {
-            decoded.add(
-              MediaItem.fromJson(Map<String, dynamic>.from(j)),
-            );
+            decoded.add(MediaItem.fromJson(Map<String, dynamic>.from(j)));
           } catch (_) {
             // One unreadable row item must not drop the whole home.
           }
         }
         if (decoded.isEmpty) continue;
-        out.add(HomeSection(title: '${sm['title'] ?? ''}', items: decoded));
+        BrowseMore? more;
+        final rawMore = sm['more'];
+        if (rawMore is Map) {
+          final sourceId = rawMore['sourceId']?.toString();
+          final kind = rawMore['kind']?.toString();
+          if (sourceId != null &&
+              sourceId.isNotEmpty &&
+              kind != null &&
+              kind.isNotEmpty) {
+            more = BrowseMore(
+              sourceId: sourceId,
+              kind: kind,
+              categoryId: rawMore['categoryId']?.toString(),
+            );
+          }
+        }
+        out.add(
+          HomeSection(
+            title: '${sm['title'] ?? ''}',
+            items: decoded,
+            more: more,
+            lazyFallback: sm['lazyFallback'] == true,
+          ),
+        );
       }
       return out.isEmpty ? null : out;
     } catch (_) {
@@ -114,6 +135,13 @@ class HomeCache {
               'items': [
                 for (final i in s.items.take(maxItemsPerSection)) i.toJson(),
               ],
+              'lazyFallback': s.lazyFallback,
+              if (s.more != null)
+                'more': {
+                  'sourceId': s.more!.sourceId,
+                  'kind': s.more!.kind,
+                  'categoryId': s.more!.categoryId,
+                },
             },
         ],
       });
