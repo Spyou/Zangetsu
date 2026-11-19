@@ -692,7 +692,7 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
             MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "zangetsu/pip")
         // Same channel both ways now: Dart arms auto-PiP and pushes playback
         // state down it, and a tapped window button comes back up it.
-        pip.channel = pipChannel
+        pip.onControl = { control -> pipChannel.invokeMethod(control, null) }
         pip.register()
         pipChannel.setMethodCallHandler { call, result ->
             when (call.method) {

@@ -23,6 +23,8 @@
     <string name="phone_player_menu_rotate">Rotate</string>
     <string name="phone_player_menu_cast">Cast</string>
     <string name="phone_player_menu_info">Info</string>
+    <string name="phone_player_menu_switch_player">Switch to mpv</string>
+    <string name="phone_player_menu_pip">Picture-in-Picture</string>
     <string name="phone_player_menu_settings">Settings</string>
     <string name="phone_player_menu_playlist">Playlist</string>
     <string name="phone_player_menu_sleep_timer">Sleep timer</string>

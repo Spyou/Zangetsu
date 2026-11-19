@@ -162,6 +162,10 @@ object PhonePlayerBridge {
                 call.argument<Boolean>("autoResume") ?: true,
             )
             i.putExtra(
+                PhonePlayerIntent.EXTRA_AUTO_PIP,
+                call.argument<Boolean>("autoPip") ?: false,
+            )
+            i.putExtra(
                 PhonePlayerIntent.EXTRA_KEEP_SCREEN_ON,
                 call.argument<Boolean>("keepScreenOn") ?: true,
             )

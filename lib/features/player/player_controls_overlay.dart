@@ -31,6 +31,7 @@ class _ControlsOverlay extends StatelessWidget {
     required this.megaSkipSeconds,
     required this.onMegaSkip,
     this.onPip,
+    this.onSwitchPlayer,
     this.onChat,
     this.onInfo,
     this.infoOpen = false,
@@ -75,6 +76,7 @@ class _ControlsOverlay extends StatelessWidget {
   final int megaSkipSeconds;
   final VoidCallback onMegaSkip;
   final VoidCallback? onPip; // null = PiP unsupported (hide the button)
+  final VoidCallback? onSwitchPlayer; // null = no other engine to switch to
   final VoidCallback? onChat; // in-room chat toggle (null = no active room)
   final VoidCallback? onInfo; // toggle the info panel (null = no fields picked)
   final bool infoOpen; // whether the info panel is currently shown
@@ -101,6 +103,7 @@ class _ControlsOverlay extends StatelessWidget {
       sleepActive: sleepActive,
       onSleep: onSleep,
       onPip: onPip,
+      onSwitchPlayer: onSwitchPlayer,
     );
   }
 
@@ -119,6 +122,7 @@ class _ControlsOverlay extends StatelessWidget {
     required bool sleepActive,
     required VoidCallback onSleep,
     required VoidCallback? onPip,
+    required VoidCallback? onSwitchPlayer,
     bool animatePortraitEntrance = false,
   }) {
     final portrait =
@@ -232,6 +236,15 @@ class _ControlsOverlay extends StatelessWidget {
                           onTap: () {
                             Navigator.pop(ctx);
                             onPip();
+                          },
+                        ),
+                      if (onSwitchPlayer != null)
+                        _MoreRow(
+                          icon: Icons.swap_horiz_rounded,
+                          label: ctx.l10n.switchPlayer,
+                          onTap: () {
+                            Navigator.pop(ctx);
+                            onSwitchPlayer();
                           },
                         ),
                     ],

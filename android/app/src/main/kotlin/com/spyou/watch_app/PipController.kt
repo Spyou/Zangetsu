@@ -12,7 +12,6 @@ import android.graphics.Rect
 import android.graphics.drawable.Icon
 import android.os.Build
 import android.util.Rational
-import io.flutter.plugin.common.MethodChannel
 
 /**
  * Picture-in-Picture: the window's action buttons, its aspect ratio, and the
@@ -44,8 +43,8 @@ class PipController(private val activity: Activity) {
         private const val MAX_RATIO = 2.39f
     }
 
-    /** Channel to Dart; set by MainActivity once the engine exists. */
-    var channel: MethodChannel? = null
+    /** Forwards a tapped PiP window action ("rewind"/"play_pause"/"forward"). */
+    var onControl: ((String) -> Unit)? = null
 
     private var playing = true
     private var aspect = Rational(16, 9)
@@ -63,7 +62,7 @@ class PipController(private val activity: Activity) {
                 playing = !playing
                 applyParams()
             }
-            channel?.invokeMethod(control, null)
+            onControl?.invoke(control)
         }
     }
 

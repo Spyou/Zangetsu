@@ -3634,6 +3634,12 @@ abstract class AppLocalizations {
   /// **'Picture-in-picture'**
   String get pictureInPicture;
 
+  /// No description provided for @switchPlayer.
+  ///
+  /// In en, this message translates to:
+  /// **'Switch Player'**
+  String get switchPlayer;
+
   /// No description provided for @cast.
   ///
   /// In en, this message translates to:

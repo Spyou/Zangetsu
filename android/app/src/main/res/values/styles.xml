@@ -62,6 +62,13 @@
     <style name="Theme.PhonePlayer" parent="android:style/Theme.Black.NoTitleBar.Fullscreen">
         <item name="android:windowDisablePreview">true</item>
         <item name="android:windowAnimationStyle">@style/PhonePlayerWindowAnimation</item>
+        <!-- The legacy Fullscreen ancestor theme doesn't reliably hand off
+             to a runtime-only Window.setStatusBarColor() call on every OEM
+             skin (some keep drawing an opaque scrim regardless) — declaring
+             it here too, the way MainActivity's modern AppCompat theme
+             already effectively does, is what actually makes it stick. -->
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
     </style>
 
     <style name="PhonePlayerWindowAnimation">

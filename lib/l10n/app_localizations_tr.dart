@@ -1907,6 +1907,9 @@ class AppLocalizationsTr extends AppLocalizations {
   String get pictureInPicture => 'Resim içinde resim';
 
   @override
+  String get switchPlayer => 'Switch Player';
+
+  @override
   String get cast => 'Yayınla';
 
   @override

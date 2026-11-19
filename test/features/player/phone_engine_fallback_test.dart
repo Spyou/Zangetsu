@@ -89,13 +89,18 @@ void main() {
     await opened.future;
   }
 
-  Future<dynamic> request({int? session, String? url, int index = 0}) =>
-      send('tryOtherPlayer', {
-        'sessionId': session ?? launch['sessionId'],
-        'index': index,
-        'url': url ?? source.url,
-        'positionMs': 42000,
-      });
+  Future<dynamic> request({
+    int? session,
+    String? url,
+    int index = 0,
+    bool manual = false,
+  }) => send('tryOtherPlayer', {
+    'sessionId': session ?? launch['sessionId'],
+    'index': index,
+    'url': url ?? source.url,
+    'positionMs': 42000,
+    if (manual) 'manual': true,
+  });
 
   setUp(() async {
     dir = await Directory.systemTemp.createTemp('engine_fallback');
@@ -132,6 +137,25 @@ void main() {
     await send('resolveEpisode', {'index': 0});
     expect(await request(url: torrent.url), isTrue);
   });
+
+  test(
+    'off still honours a manual switch for a normal (non-torrent) source',
+    () async {
+      await start(enabled: false);
+      await send('resolveEpisode', {'index': 0});
+      expect(await request(manual: true), isTrue);
+    },
+  );
+
+  test(
+    'a second manual switch for the same episode still works',
+    () async {
+      await start();
+      await send('resolveEpisode', {'index': 0});
+      expect(await request(manual: true), isTrue);
+      expect(await request(manual: true), isTrue);
+    },
+  );
 
   test(
     'confirmed handoff retains episode, headers, subtitles and position',

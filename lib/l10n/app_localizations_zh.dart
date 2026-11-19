@@ -1843,6 +1843,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get pictureInPicture => '画中画';
 
   @override
+  String get switchPlayer => 'Switch Player';
+
+  @override
   String get cast => '投屏';
 
   @override

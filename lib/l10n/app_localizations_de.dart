@@ -1906,6 +1906,9 @@ class AppLocalizationsDe extends AppLocalizations {
   String get pictureInPicture => 'Bild-in-Bild';
 
   @override
+  String get switchPlayer => 'Switch Player';
+
+  @override
   String get cast => 'Übertragen';
 
   @override

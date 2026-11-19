@@ -1411,6 +1411,33 @@ class _PlayerScreenState extends State<PlayerScreen> {
     ), _engineTeardown!.future);
   }
 
+  /// Manual switch back to the native player from mpv. Only for sources the
+  /// native engine can actually open — a torrent or DRM stays in mpv.
+  bool get _canSwitchToNative {
+    final active = _c.state.active;
+    return widget.onEngineChange != null &&
+        Platform.isAndroid &&
+        !sl<AppMode>().isTv &&
+        active != null &&
+        !active.isDrm &&
+        !isNativeBlockedTorrent(active);
+  }
+
+  Future<void> _switchToNativePlayer() async {
+    final source = _c.state.active;
+    if (!mounted || _switchingEngine || source == null || !_canSwitchToNative) {
+      return;
+    }
+    await _replacePlayerEngine(
+      engine: PlaybackEngine.nativePlayer,
+      episodes: _c.episodes,
+      index: _c.state.currentIndex,
+      source: source,
+      position: _c.player.state.position,
+      category: _c.activeCategory,
+    );
+  }
+
   Future<void> _launchExternalThenPop() async {
     try {
       var eps = widget.episodes;
@@ -2890,6 +2917,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       sleepActive: _sleepActive,
       onSleep: _openSleepSheet,
       onPip: _pipSupported ? _enterPip : null,
+      onSwitchPlayer: _canSwitchToNative ? _switchToNativePlayer : null,
     );
   }
 
@@ -4298,6 +4326,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           barConfig: _barConfig,
                           onZoom: _cycleFit,
                           onPip: _pipSupported ? _enterPip : null,
+                          onSwitchPlayer: _canSwitchToNative
+                              ? _switchToNativePlayer
+                              : null,
                           onSleep: _openSleepSheet,
                           sleepActive: _sleepActive,
                           decoderLabel: _shortDecoder(_c.decoderMode),

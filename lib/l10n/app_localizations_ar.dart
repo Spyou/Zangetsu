@@ -1907,6 +1907,9 @@ class AppLocalizationsAr extends AppLocalizations {
   String get pictureInPicture => 'صورة داخل صورة';
 
   @override
+  String get switchPlayer => 'Switch Player';
+
+  @override
   String get cast => 'البث';
 
   @override

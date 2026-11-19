@@ -1905,6 +1905,9 @@ class AppLocalizationsIt extends AppLocalizations {
   String get pictureInPicture => 'Immagine nell’immagine';
 
   @override
+  String get switchPlayer => 'Switch Player';
+
+  @override
   String get cast => 'Trasmetti';
 
   @override

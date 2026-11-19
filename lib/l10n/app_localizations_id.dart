@@ -1905,6 +1905,9 @@ class AppLocalizationsId extends AppLocalizations {
   String get pictureInPicture => 'Gambar dalam gambar';
 
   @override
+  String get switchPlayer => 'Switch Player';
+
+  @override
   String get cast => 'Siaran';
 
   @override

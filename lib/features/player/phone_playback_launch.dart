@@ -240,6 +240,7 @@ Map<String, dynamic> phonePlayerArgs({
   int nativeCacheMb = 128,
   bool diskCacheEnabled = false,
   int diskCacheGb = 2,
+  bool autoPip = false,
   required double defaultSpeed,
   required Map<String, dynamic> bufferParams,
   required double subtitleScale,
@@ -299,6 +300,7 @@ Map<String, dynamic> phonePlayerArgs({
     ...bufferParams,
     'autoResume': autoResume,
     'keepScreenOn': keepScreenOn,
+    'autoPip': autoPip,
     'autoplayNext': autoplayNext,
     'seekSeconds': seekSeconds,
     'megaSkip': megaSkip,
@@ -634,6 +636,7 @@ class PhoneNativePlayer {
       nativeCacheMb: prefs.phoneNativeCacheMb,
       diskCacheEnabled: prefs.phoneDiskCacheEnabled,
       diskCacheGb: prefs.phoneDiskCacheGb,
+      autoPip: prefs.autoPip,
       defaultSpeed: prefs.defaultSpeed,
       bufferParams: prefs.exoBufferParams,
       subtitleScale: prefs.subtitleScale,
@@ -1087,12 +1090,19 @@ class PhoneNativePlayer {
         }
         if (source == null) return false;
         // A torrent can never play natively — yield to mpv even when the
-        // auto-switch toggle is off. Anything else needs the toggle.
-        if (!isNativeBlockedTorrent(source) &&
+        // auto-switch toggle is off. Anything else needs the toggle, unless
+        // the user tapped Switch Player themselves.
+        final manual = args?['manual'] == true;
+        if (!manual &&
+            !isNativeBlockedTorrent(source) &&
             !sl<PlaybackPrefs>().autoPlayerFallback) {
           return false;
         }
-        if (_engineFallback!.next(
+        // A manual switch isn't a failure — recording it in the shared
+        // fallback tracker would make the SECOND manual switch for the same
+        // episode permanently a no-op (next() is one-shot per engine/source).
+        if (!manual &&
+            _engineFallback!.next(
                   enabled: true,
                   failedEngine: PlaybackEngine.nativePlayer,
                   episodeUrl: _episodes[index].url,

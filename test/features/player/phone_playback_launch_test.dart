@@ -135,6 +135,7 @@ void main() {
       int nativeCacheMb = 128,
       bool diskCacheEnabled = false,
       int diskCacheGb = 2,
+      bool autoPip = false,
     }) => phonePlayerArgs(
       source: source ?? _src(),
       positionMs: positionMs,
@@ -149,6 +150,7 @@ void main() {
       nativeCacheMb: nativeCacheMb,
       diskCacheEnabled: diskCacheEnabled,
       diskCacheGb: diskCacheGb,
+      autoPip: autoPip,
       defaultSpeed: 1.0,
       bufferParams: const {
         'minBufferMs': 15000,
@@ -290,6 +292,11 @@ void main() {
       expect(a['playerOrientation'], 'system');
       expect(a['showDescription'], 'The show saga.');
       expect(a['availableCategories'], ['sub', 'dub']);
+    });
+
+    test('carries autoPip from prefs for the native player', () {
+      expect(args()['autoPip'], isFalse);
+      expect(args(autoPip: true)['autoPip'], isTrue);
     });
 
     test('carries the subtitle position for the native player', () {

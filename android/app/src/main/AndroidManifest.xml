@@ -253,6 +253,7 @@
             android:exported="false"
             android:screenOrientation="unspecified"
             android:theme="@style/Theme.PhonePlayer"
+            android:supportsPictureInPicture="true"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode" />
         <!-- Google Cast Framework configuration. -->
         <meta-data

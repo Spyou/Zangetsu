@@ -6,6 +6,7 @@ import android.content.res.ColorStateList
 import android.content.res.Configuration
 import android.graphics.Matrix
 import android.media.AudioManager
+import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.view.Gravity
@@ -30,6 +31,7 @@ import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
+import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
@@ -202,6 +204,8 @@ class PhonePlayerActivity : Activity() {
     private var mediaGeneration = 0
     private var failoverInFlight = false
     private var engineFallbackRequested = false
+    private val pip by lazy { PipController(this) }
+    private var autoPipEnabled = false
     private var currentUrl = ""
     private val attemptedUrls = mutableSetOf<String>()
     private var autoplayNext = true
@@ -236,6 +240,16 @@ class PhonePlayerActivity : Activity() {
         megaSkipEnabled = intent.getBooleanExtra(PhonePlayerIntent.EXTRA_MEGA_SKIP, true)
         megaSkipSeconds = intent.getIntExtra(PhonePlayerIntent.EXTRA_MEGA_SKIP_SECONDS, 85).coerceIn(5, 180)
         keepScreenOn = intent.getBooleanExtra(PhonePlayerIntent.EXTRA_KEEP_SCREEN_ON, true)
+        autoPipEnabled = intent.getBooleanExtra(PhonePlayerIntent.EXTRA_AUTO_PIP, false)
+        pip.onControl = { control ->
+            when (control) {
+                PipController.PLAY_PAUSE -> togglePlay()
+                PipController.REWIND -> player?.seekTo(((player?.currentPosition ?: 0L) - 10_000L).coerceAtLeast(0L))
+                PipController.FORWARD -> player?.seekTo((player?.currentPosition ?: 0L) + 10_000L)
+            }
+        }
+        pip.autoEnter = autoPipEnabled
+        pip.register()
         sessionId = intent.getLongExtra(PhonePlayerIntent.EXTRA_SESSION, 0L)
         playerOrientation = when (intent.getStringExtra(PhonePlayerIntent.EXTRA_ORIENTATION)) {
             "portrait" -> "portrait"
@@ -531,6 +545,11 @@ class PhonePlayerActivity : Activity() {
                 updateKeepScreenOn()
                 syncPlayIcon()
                 bumpControls()
+                pip.setState(isPlaying, player?.videoSize?.width ?: 0, player?.videoSize?.height ?: 0)
+            }
+
+            override fun onVideoSizeChanged(videoSize: VideoSize) {
+                pip.setState(player?.isPlaying == true, videoSize.width, videoSize.height)
             }
         })
 
@@ -946,8 +965,18 @@ class PhonePlayerActivity : Activity() {
         val portrait =
             resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT
         val video = findViewById<View>(R.id.player_root)
-        findViewById<View>(R.id.watch_root).setBackgroundColor(if (portrait && watchPage) android.graphics.Color.BLACK else getColor(R.color.phone_player_background))
+        val root = findViewById<View>(R.id.watch_root)
         if (portrait && watchPage) {
+            // Reattach the glow if a previous layout pass flattened it to black;
+            // a fresh page starts unfaded.
+            val ambient = ambientLayer
+            if (ambient != null) {
+                ambientDrawable?.alpha = 255
+                ambientInfoDrawable?.alpha = 255
+                root.background = ambient
+            } else {
+                root.setBackgroundColor(android.graphics.Color.BLACK)
+            }
             // 16:9 stage as an inset rounded card (MPV mini-player).
             val w = resources.displayMetrics.widthPixels
             val m = dp(12)
@@ -961,7 +990,9 @@ class PhonePlayerActivity : Activity() {
             video.clipToOutline = true
             val info = ensureWatchInfo()
             info?.visibility = View.VISIBLE
+            startAmbient()
         } else {
+            root.setBackgroundColor(getColor(R.color.phone_player_background))
             val lp = video.layoutParams
             lp.height = ViewGroup.LayoutParams.MATCH_PARENT
             if (lp is android.widget.LinearLayout.LayoutParams) {
@@ -971,6 +1002,7 @@ class PhonePlayerActivity : Activity() {
             video.background = null
             video.clipToOutline = false
             watchInfo?.visibility = View.GONE
+            stopAmbient()
         }
         val topScrim = controls.findViewById<View>(R.id.top_scrim)
         topScrim.setBackgroundResource(if (portrait && watchPage)
@@ -1159,11 +1191,164 @@ class PhonePlayerActivity : Activity() {
         refreshWatchInfo()
     }
 
+    private var ambientHandler: android.os.Handler? = null
+    private var ambientDrawable: android.graphics.drawable.GradientDrawable? = null
+    private var ambientLayer: android.graphics.drawable.LayerDrawable? = null
+    private var ambientInfoDrawable: android.graphics.drawable.GradientDrawable? = null
+    private var ambientAnimator: android.animation.ValueAnimator? = null
+    private var ambientTopColor = android.graphics.Color.BLACK
+    private var ambientBottomColor = android.graphics.Color.BLACK
+    private var ambientReady = false
+    private val ambientRunnable = object : Runnable {
+        override fun run() {
+            if (!uiAlive() || watchInfo == null) return
+            // A paused picture never changes — resampling it only burns
+            // battery for identical colors (mpv's sampler does the same).
+            if (player?.isPlaying != true && ambientReady) {
+                ambientHandler?.postDelayed(this, 6_000L)
+                return
+            }
+            // A tiny grab is enough to average a color from — no need for a
+            // full-resolution frame just to collapse it to one swatch. The
+            // crop drops letterbox bars so the average is the picture, not
+            // the black around it (mpv screenshots the frame, not the view).
+            val view = textureView()
+            val vw = view?.width ?: 0
+            val vh = view?.height ?: 0
+            val frame = if (view != null && vw > 0 && vh > 0) {
+                runCatching { view.getBitmap(32, (32 * vh / vw).coerceAtLeast(1)) }.getOrNull()
+            } else null
+            if (frame != null) {
+                // Letterbox bars only exist in FIT mode — in FILL/ZOOM the
+                // video already covers the view, so cropping as if there
+                // were bars would sample the wrong sub-rect.
+                val vs = if (playerView.resizeMode == AspectRatioFrameLayout.RESIZE_MODE_FIT) {
+                    player?.videoSize
+                } else null
+                val r = videoSampleRect(frame.width, frame.height, vs?.width ?: 0, vs?.height ?: 0)
+                val cropped = if (r[0] != 0 || r[1] != 0 || r[2] != frame.width || r[3] != frame.height) {
+                    runCatching { android.graphics.Bitmap.createBitmap(frame, r[0], r[1], r[2], r[3]) }.getOrNull()
+                } else null
+                val (top, bottom) = ambientGlowColor(cropped ?: frame)
+                cropped?.recycle()
+                frame.recycle()
+                val lum = (((top shr 16) and 0xFF) + ((top shr 8) and 0xFF) + (top and 0xFF) +
+                    ((bottom shr 16) and 0xFF) + ((bottom shr 8) and 0xFF) + (bottom and 0xFF)) / 6
+                // A fully unreadable grab must not paint an existing glow away.
+                if (lum >= 28 || !ambientReady) applyAmbientColors(top, bottom)
+            }
+            ambientHandler?.postDelayed(this, 6_000L)
+        }
+    }
+
+    /**
+     * mpv's two pieces: a radial glow bounded to just the top strip
+     * (status bar through the end of the video card), plus a linear
+     * wash on the header row below it. The strip is hard-bounded via a
+     * LayerDrawable inset over a black base, same as mpv's own Positioned
+     * box — nothing paints past it, so a corner like the card's rounded
+     * bottom never picks up a residual tint (a GradientDrawable paints its
+     * edge color flat everywhere past its radius; unbounded, that leaked
+     * into the card's corners and made their curve visible). The hot
+     * center sits inside the video card so the brightest ring is hidden
+     * behind the opaque video, and the header's starting alpha is
+     * computed to exactly continue the radial's tail at the boundary.
+     * Colors crossfade over 900ms, same pace as mpv's AnimatedSwitcher.
+     */
+    private fun applyAmbientColors(newTop: Int, newBottom: Int) {
+        val root = findViewById<View>(R.id.watch_root)
+        val card = findViewById<View>(R.id.player_root)
+        if (root.height <= 0 || card.height <= 0) return
+        val stripHeight = (card.bottom + dp(4)).coerceAtMost(root.height)
+        val radius = 1.4f * minOf(root.width, stripHeight).toFloat()
+        val centerYPx = card.top + card.height * 0.8f
+        val drawable = ambientDrawable ?: android.graphics.drawable.GradientDrawable().also {
+            it.gradientType = android.graphics.drawable.GradientDrawable.RADIAL_GRADIENT
+            ambientDrawable = it
+        }
+        val layer = ambientLayer ?: android.graphics.drawable.LayerDrawable(arrayOf(
+            android.graphics.drawable.ColorDrawable(android.graphics.Color.BLACK), drawable,
+        )).also { ambientLayer = it }
+        layer.setLayerInset(1, 0, 0, 0, (root.height - stripHeight).coerceAtLeast(0))
+        // updateOrientationLayout may have replaced the background with a
+        // flat color; reattach so the glow survives rotation.
+        root.background = layer
+        // The inset shrinks the radial's own bounds to the strip, so its
+        // center fraction has to be measured against stripHeight, not
+        // root.height — otherwise it lands in the wrong place.
+        drawable.setGradientCenter(0.5f, (centerYPx / stripHeight).coerceIn(0f, 1f))
+        drawable.gradientRadius = radius
+        // GradientDrawable interpolates linearly from the center color to
+        // the edge color over [0, radius] — same math here, so this is
+        // exactly what the radial itself renders at the boundary, not a
+        // guess.
+        val edgeFraction = ((stripHeight - centerYPx).coerceAtLeast(0f) / radius).coerceIn(0f, 1f)
+        val headerStartAlpha = (166 + (64 - 166) * edgeFraction + 0.5f).toInt().coerceIn(0, 255)
+        val info = ambientInfoDrawable ?: android.graphics.drawable.GradientDrawable(
+            android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
+            intArrayOf(0, 0, 0),
+        ).also { ambientInfoDrawable = it }
+        watchPanel?.header?.background = info
+        val fromTop = ambientTopColor
+        val fromBottom = ambientBottomColor
+        val evaluator = android.animation.ArgbEvaluator()
+        ambientAnimator?.cancel()
+        ambientAnimator = android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = 900L
+            addUpdateListener { anim ->
+                val f = anim.animatedValue as Float
+                val t = evaluator.evaluate(f, fromTop, newTop) as Int
+                val b = evaluator.evaluate(f, fromBottom, newBottom) as Int
+                drawable.setColors(intArrayOf(withAlpha(b, 166), withAlpha(t, 64)))
+                info.setColors(intArrayOf(
+                    withAlpha(b, headerStartAlpha),
+                    withAlpha(b, headerStartAlpha / 2),
+                    withAlpha(b, 0),
+                ))
+                // Track what's actually on screen, not the target — a tick
+                // landing mid-crossfade must resume from here, not snap.
+                ambientTopColor = t
+                ambientBottomColor = b
+            }
+            start()
+        }
+        ambientReady = true
+    }
+
+    /** Fades the glow out over the same 180dp of scroll mpv's watch page
+     * uses, so it reads as a smooth dissolve into the list instead of an
+     * episode row abruptly scrolling over a still-fully-lit background. */
+    private fun installAmbientScrollFade(rv: androidx.recyclerview.widget.RecyclerView) {
+        val fadeDistance = dp(180)
+        rv.addOnScrollListener(object : androidx.recyclerview.widget.RecyclerView.OnScrollListener() {
+            override fun onScrolled(recyclerView: androidx.recyclerview.widget.RecyclerView, dx: Int, dy: Int) {
+                val offset = recyclerView.computeVerticalScrollOffset()
+                val fraction = (1f - offset.toFloat() / fadeDistance).coerceIn(0f, 1f)
+                ambientDrawable?.alpha = (fraction * 255).toInt()
+                ambientInfoDrawable?.alpha = (fraction * 255).toInt()
+            }
+        })
+    }
+
+    private fun startAmbient() {
+        if (ambientHandler != null) return
+        ambientHandler = handler
+        handler.post(ambientRunnable)
+    }
+
+    private fun stopAmbient() {
+        ambientHandler?.removeCallbacks(ambientRunnable)
+        ambientHandler = null
+        ambientAnimator?.cancel()
+        ambientAnimator = null
+    }
+
     private fun ensureWatchInfo(): ViewGroup? {
         watchInfo?.let { return it }
         val stub = findViewById<ViewStub>(R.id.watch_info_stub) ?: return null
         val inflated = stub.inflate() as? androidx.recyclerview.widget.RecyclerView ?: return null
         watchInfo = inflated
+        installAmbientScrollFade(inflated)
         val panel = PhoneWatchPage(inflated, PhonePlayerBridge.watchDataFor(sessionId), episodeLabels,
             intent.getIntExtra(PhonePlayerIntent.EXTRA_ACCENT, getColor(R.color.phone_player_accent)),
             { fullscreenIcon(it)?.constantState?.newDrawable(resources)?.mutate() }) { index ->
@@ -2139,6 +2324,14 @@ class PhonePlayerActivity : Activity() {
             icons += android.R.drawable.ic_menu_preferences
             actions += { showControlArrangement() }
         }
+        labels += getString(R.string.phone_player_menu_switch_player)
+        icons += R.drawable.phone_player_sources
+        actions += { requestManualSwitch() }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            labels += getString(R.string.phone_player_menu_pip)
+            icons += R.drawable.ic_pip_play
+            actions += { pip.enter(null) }
+        }
         labels += getString(R.string.phone_player_menu_info)
         icons += R.drawable.phone_player_info
         actions += { showInfo() }
@@ -2155,6 +2348,22 @@ class PhonePlayerActivity : Activity() {
             }
             .showForPlayer()
         moreDialog = dialog
+    }
+
+    /** User-tapped Switch Player — bypasses the auto-fallback toggle. */
+    private fun requestManualSwitch() {
+        if (failoverInFlight || engineFallbackRequested) return
+        val channel = PhonePlayerBridge.channel ?: return
+        channel.invokeMethod("tryOtherPlayer", mapOf(
+            "sessionId" to sessionId, "index" to currentIndex, "url" to currentUrl,
+            "positionMs" to (player?.currentPosition ?: 0L), "manual" to true,
+        ), object : io.flutter.plugin.common.MethodChannel.Result {
+            override fun success(result: Any?) {
+                if (result == true) { engineFallbackRequested = true; finish() }
+            }
+            override fun error(code: String, message: String?, details: Any?) {}
+            override fun notImplemented() {}
+        })
     }
 
     private fun showInfo() {
@@ -2840,7 +3049,8 @@ class PhonePlayerActivity : Activity() {
         orientationObserver?.disable()
         super.onPause()
         sendProgress()
-        player?.pause()
+        // PiP is still "paused" as an Activity but must keep playing.
+        if (!isInPictureInPictureMode) player?.pause()
         updateKeepScreenOn()
         handler.removeCallbacks(ticker)
     }
@@ -2855,12 +3065,42 @@ class PhonePlayerActivity : Activity() {
         handler.post(ticker)
     }
 
+    // Android 8.0–11 have no auto-enter API, so arm PiP on Home; 12+ uses
+    // setAutoEnterEnabled and would double-trigger.
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        if (autoPipEnabled &&
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.S &&
+            playbackStarted &&
+            !isInPictureInPictureMode
+        ) {
+            pip.enter(null)
+        }
+    }
+
+    override fun onPictureInPictureModeChanged(
+        isInPictureInPictureMode: Boolean,
+        newConfig: Configuration,
+    ) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        if (isInPictureInPictureMode) {
+            pip.applyParams()
+            // Only the system window chrome should be visible in PiP.
+            controls.visibility = View.GONE
+        } else {
+            bumpControls()
+        }
+    }
+
     override fun onDestroy() {
+        pip.unregister()
         watchDownloadSheet?.dismiss()
         watchDownloadSheet = null
         orientationObserver?.disable()
         orientationObserver = null
         watchPanel?.close()
+        stopAmbient()
         PhonePlayerBridge.clearWatchData(sessionId)
         val finalPosition = player?.currentPosition ?: 0L
         val finalDuration = (player?.duration ?: 0L).coerceAtLeast(0L)
@@ -2902,6 +3142,11 @@ class PhonePlayerActivity : Activity() {
 
     private fun goImmersive() {
         val portraitPage = isPortraitCard()
+        // The activity theme is Theme.Black.NoTitleBar.Fullscreen, which
+        // never draws system bar backgrounds — statusBarColor below is a
+        // no-op without this, so the bar stayed opaque black regardless of
+        // what we set it to.
+        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, false)
         // The activity theme also hides the status bar through a window flag.
         if (portraitPage) {
             window.clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
@@ -2910,13 +3155,24 @@ class PhonePlayerActivity : Activity() {
         }
         @Suppress("DEPRECATION")
         window.statusBarColor = android.graphics.Color.TRANSPARENT
+        @Suppress("DEPRECATION")
+        window.navigationBarColor = android.graphics.Color.TRANSPARENT
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            // A contrast scrim would paint a flat band over the glow in
+            // exactly the place mpv shows it through.
+            window.isStatusBarContrastEnforced = false
+            window.isNavigationBarContrastEnforced = false
+        }
         val root = findViewById<View>(R.id.watch_root)
         val statusBarId = resources.getIdentifier("status_bar_height", "dimen", "android")
         val topInset = if (portraitPage && statusBarId > 0) resources.getDimensionPixelSize(statusBarId) else 0
         root?.setPadding(root.paddingLeft, topInset, root.paddingRight, root.paddingBottom)
         @Suppress("DEPRECATION")
         window.decorView.systemUiVisibility = if (portraitPage) {
-            View.SYSTEM_UI_FLAG_LAYOUT_STABLE or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+            // LIGHT_STATUS_BAR/LIGHT_NAVIGATION_BAR deliberately absent:
+            // white icons read over the ambient wash, like mpv.
+            View.SYSTEM_UI_FLAG_LAYOUT_STABLE or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
+                View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
         } else (
             View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
                 or View.SYSTEM_UI_FLAG_FULLSCREEN

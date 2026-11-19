@@ -1919,6 +1919,9 @@ class AppLocalizationsPt extends AppLocalizations {
   String get pictureInPicture => 'Picture-in-picture';
 
   @override
+  String get switchPlayer => 'Switch Player';
+
+  @override
   String get cast => 'Transmitir';
 
   @override

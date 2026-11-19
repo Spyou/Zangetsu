@@ -1854,6 +1854,9 @@ class AppLocalizationsJa extends AppLocalizations {
   String get pictureInPicture => 'ピクチャーインピクチャー';
 
   @override
+  String get switchPlayer => 'Switch Player';
+
+  @override
   String get cast => 'キャスト';
 
   @override
