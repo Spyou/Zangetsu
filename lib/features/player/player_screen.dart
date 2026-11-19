@@ -651,19 +651,22 @@ class _PlayerScreenState extends State<PlayerScreen> {
     // Refresh the "enhancement shaders downloaded?" flag so the in-player picker
     // gates correctly (they're fetched on demand from Settings). Fire-and-forget.
     unawaited(ShaderPresets.refreshDownloaded());
-    if (Platform.isAndroid && _chosenPlayer == PlaybackPrefs.androidPlayerId) {
-      // A torrent seed can't be handed to ExoPlayer — open it in mpv (which
-      // streams torrents) instead of failing in native first. Episode-list
-      // flows resolve later; those yield via the engine fallback instead.
-      if (widget.initialSource == null ||
-          !isNativeBlockedTorrent(widget.initialSource!)) {
+    // Routed through resolvePhonePlayerRoute (unit-tested): the external
+    // branch matches any non-empty id, so the native choice must never fall
+    // through into it — that pops straight back to Detail.
+    switch (resolvePhonePlayerRoute(
+      isAndroid: Platform.isAndroid,
+      chosenPlayer: _chosenPlayer,
+      initialSource: widget.initialSource,
+    )) {
+      case PhonePlayerRoute.exo:
         _launchExoThenPop();
         return;
-      }
-    }
-    if (Platform.isAndroid && _chosenPlayer.isNotEmpty) {
-      _launchExternalThenPop();
-      return;
+      case PhonePlayerRoute.external:
+        _launchExternalThenPop();
+        return;
+      case PhonePlayerRoute.inApp:
+        break;
     }
     _initInApp();
     if (Platform.isAndroid && !sl<AppMode>().isTv && _followSensor) {

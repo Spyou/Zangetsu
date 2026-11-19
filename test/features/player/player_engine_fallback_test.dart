@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:watch_app/core/models/video_source.dart';
+import 'package:watch_app/core/playback/playback_prefs.dart';
 import 'package:watch_app/features/player/player_engine_fallback.dart';
 
 void main() {
@@ -89,5 +90,52 @@ void main() {
     // mpv plays torrents itself; bouncing one to native is an instant loop.
     expect(fail(PlaybackEngine.mpv, source: torrent), isNull);
     expect(fallback.blockedUrls('episode-1', 'sub'), isEmpty);
+  });
+
+  test('phone route never sends the native choice down the external path', () {
+    const torrent = VideoSource(url: 'magnet:?xt=urn:btih:abc');
+    const http = VideoSource(url: 'https://cdn.test/video');
+    // Native choice, no seed yet (episode flow resolves later) → native.
+    expect(
+      resolvePhonePlayerRoute(
+        isAndroid: true,
+        chosenPlayer: PlaybackPrefs.androidPlayerId,
+      ),
+      PhonePlayerRoute.exo,
+    );
+    // Native choice, playable seed → native.
+    expect(
+      resolvePhonePlayerRoute(
+        isAndroid: true,
+        chosenPlayer: PlaybackPrefs.androidPlayerId,
+        initialSource: http,
+      ),
+      PhonePlayerRoute.exo,
+    );
+    // Native choice, torrent seed → in-app mpv (never external, never native).
+    expect(
+      resolvePhonePlayerRoute(
+        isAndroid: true,
+        chosenPlayer: PlaybackPrefs.androidPlayerId,
+        initialSource: torrent,
+      ),
+      PhonePlayerRoute.inApp,
+    );
+    // Real external package → external; unset choice → in-app; iOS → in-app.
+    expect(
+      resolvePhonePlayerRoute(isAndroid: true, chosenPlayer: 'org.videolan.vlc'),
+      PhonePlayerRoute.external,
+    );
+    expect(
+      resolvePhonePlayerRoute(isAndroid: true, chosenPlayer: ''),
+      PhonePlayerRoute.inApp,
+    );
+    expect(
+      resolvePhonePlayerRoute(
+        isAndroid: false,
+        chosenPlayer: PlaybackPrefs.androidPlayerId,
+      ),
+      PhonePlayerRoute.inApp,
+    );
   });
 }

@@ -1,4 +1,5 @@
 import '../../core/models/video_source.dart';
+import '../../core/playback/playback_prefs.dart';
 import '../../core/torrent/torrent_util.dart';
 
 enum PlaybackEngine { mpv, nativePlayer }
@@ -9,6 +10,31 @@ enum PlaybackEngine { mpv, nativePlayer }
 /// in one place.
 bool isNativeBlockedTorrent(VideoSource source) =>
     isTorrentUrl(source.url) || source.container == SourceContainer.torrent;
+
+/// Which player implementation [PlayerScreen.initState] must open. Extracted
+/// so the branching is unit-testable: the external-player branch matches any
+/// non-empty id (including [PlaybackPrefs.androidPlayerId]), so an inline
+/// fall-through can silently route the native choice into an external launch
+/// that pops straight back to Detail.
+enum PhonePlayerRoute { exo, external, inApp }
+
+PhonePlayerRoute resolvePhonePlayerRoute({
+  required bool isAndroid,
+  required String chosenPlayer,
+  VideoSource? initialSource,
+}) {
+  if (isAndroid && chosenPlayer == PlaybackPrefs.androidPlayerId) {
+    // A torrent seed can't be handed to ExoPlayer — open it in mpv (which
+    // streams torrents) instead of failing in native first. Episode-list
+    // flows (null seed) resolve later and yield via the engine fallback.
+    if (initialSource != null && isNativeBlockedTorrent(initialSource)) {
+      return PhonePlayerRoute.inApp;
+    }
+    return PhonePlayerRoute.exo;
+  }
+  if (isAndroid && chosenPlayer.isNotEmpty) return PhonePlayerRoute.external;
+  return PhonePlayerRoute.inApp;
+}
 
 /// Tracks failed engines for the current episode without changing saved choices.
 class PlayerEngineFallback {
