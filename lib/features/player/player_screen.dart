@@ -1275,7 +1275,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
         tmdbIsTv: widget.tmdbIsTv,
         imdbId: widget.imdbId,
         isMovie: widget.isMovie,
-        engineFallback: _canTryOtherPlayer ? _engineFallback : null,
+        // Passed untoggled: the handler yields torrents to mpv even with the
+        // auto-switch toggle off (native can never play them); everything
+        // else still needs the toggle. See tryOtherPlayer.
+        engineFallback: _engineFallback,
         forceInitialResume: widget.engineRecovery,
         onEngineFallback: (failure) => _nativeEngineFailure = failure,
       );

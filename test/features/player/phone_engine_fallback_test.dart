@@ -126,6 +126,13 @@ void main() {
     expect(failure, isNull);
   });
 
+  test('off still yields a torrent to mpv (native can never play it)', () async {
+    const torrent = VideoSource(url: 'magnet:?xt=urn:btih:abc');
+    await start(enabled: false, resolve: (_) async => [torrent]);
+    await send('resolveEpisode', {'index': 0});
+    expect(await request(url: torrent.url), isTrue);
+  });
+
   test(
     'confirmed handoff retains episode, headers, subtitles and position',
     () async {

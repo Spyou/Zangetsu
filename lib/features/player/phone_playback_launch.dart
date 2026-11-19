@@ -1073,8 +1073,7 @@ class PhoneNativePlayer {
         );
         if (index == null ||
             _onEngineFallback == null ||
-            _engineFallback == null ||
-            !sl<PlaybackPrefs>().autoPlayerFallback) {
+            _engineFallback == null) {
           return false;
         }
         final url = args?['url'];
@@ -1086,8 +1085,14 @@ class PhoneNativePlayer {
             break;
           }
         }
-        if (source == null ||
-            _engineFallback!.next(
+        if (source == null) return false;
+        // A torrent can never play natively — yield to mpv even when the
+        // auto-switch toggle is off. Anything else needs the toggle.
+        if (!isNativeBlockedTorrent(source) &&
+            !sl<PlaybackPrefs>().autoPlayerFallback) {
+          return false;
+        }
+        if (_engineFallback!.next(
                   enabled: true,
                   failedEngine: PlaybackEngine.nativePlayer,
                   episodeUrl: _episodes[index].url,

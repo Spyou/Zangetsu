@@ -1555,7 +1555,11 @@ class PhonePlayerActivity : Activity() {
     private fun failover() {
         if (failoverInFlight || engineFallbackRequested) return
         val channel = PhonePlayerBridge.channel
-        if (!intent.getBooleanExtra(PhonePlayerIntent.EXTRA_AUTO_ENGINE_FALLBACK, false) || channel == null) {
+        // A torrent can never play in ExoPlayer — yield to mpv even when the
+        // auto-switch toggle is off. Mirrors Dart isTorrentUrl (magnet: / .torrent).
+        val u = currentUrl.trim().lowercase()
+        val unplayableTorrent = u.startsWith("magnet:") || u.endsWith(".torrent")
+        if ((!intent.getBooleanExtra(PhonePlayerIntent.EXTRA_AUTO_ENGINE_FALLBACK, false) && !unplayableTorrent) || channel == null) {
             failoverMirrors()
             return
         }
