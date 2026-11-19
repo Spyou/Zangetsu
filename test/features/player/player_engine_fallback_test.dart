@@ -65,12 +65,8 @@ void main() {
     );
   });
 
-  test('DRM and torrents never switch engines', () {
+  test('DRM never switches engines', () {
     for (final engine in PlaybackEngine.values) {
-      expect(
-        fail(engine, source: const VideoSource(url: 'magnet:?xt=urn:btih:abc')),
-        isNull,
-      );
       expect(
         fail(
           engine,
@@ -83,6 +79,15 @@ void main() {
         isNull,
       );
     }
+    expect(fallback.blockedUrls('episode-1', 'sub'), isEmpty);
+  });
+
+  test('torrents only move native toward mpv, never the reverse', () {
+    const torrent = VideoSource(url: 'magnet:?xt=urn:btih:abc');
+    // Native can't open magnets — may yield to mpv once.
+    expect(fail(PlaybackEngine.nativePlayer, source: torrent), PlaybackEngine.mpv);
+    // mpv plays torrents itself; bouncing one to native is an instant loop.
+    expect(fail(PlaybackEngine.mpv, source: torrent), isNull);
     expect(fallback.blockedUrls('episode-1', 'sub'), isEmpty);
   });
 }

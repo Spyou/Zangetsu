@@ -652,8 +652,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
     // gates correctly (they're fetched on demand from Settings). Fire-and-forget.
     unawaited(ShaderPresets.refreshDownloaded());
     if (Platform.isAndroid && _chosenPlayer == PlaybackPrefs.androidPlayerId) {
-      _launchExoThenPop();
-      return;
+      // A torrent seed can't be handed to ExoPlayer — open it in mpv (which
+      // streams torrents) instead of failing in native first. Episode-list
+      // flows resolve later; those yield via the engine fallback instead.
+      if (widget.initialSource == null ||
+          !isNativeBlockedTorrent(widget.initialSource!)) {
+        _launchExoThenPop();
+        return;
+      }
     }
     if (Platform.isAndroid && _chosenPlayer.isNotEmpty) {
       _launchExternalThenPop();

@@ -3,6 +3,13 @@ import '../../core/torrent/torrent_util.dart';
 
 enum PlaybackEngine { mpv, nativePlayer }
 
+/// True when [source] is a torrent ExoPlayer can't open (magnet link or
+/// torrent container) — the native flow must yield to mpv instead of failing
+/// on it. Shared by the fallback and the launch pre-route so the rule lives
+/// in one place.
+bool isNativeBlockedTorrent(VideoSource source) =>
+    isTorrentUrl(source.url) || source.container == SourceContainer.torrent;
+
 /// Tracks failed engines for the current episode without changing saved choices.
 class PlayerEngineFallback {
   (String, String)? _episode;
@@ -15,10 +22,13 @@ class PlayerEngineFallback {
     required String category,
     required VideoSource source,
   }) {
-    if (!enabled ||
-        source.isDrm ||
-        isTorrentUrl(source.url) ||
-        source.container == SourceContainer.torrent) {
+    if (!enabled || source.isDrm) {
+      return null;
+    }
+    if (isNativeBlockedTorrent(source) &&
+        failedEngine != PlaybackEngine.nativePlayer) {
+      // mpv plays torrents itself; bouncing one to native is an instant
+      // error loop. The reverse (native yielding to mpv) is allowed below.
       return null;
     }
     final scope = (episodeUrl, category);
