@@ -15,6 +15,7 @@ import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
 import '../../core/playback/my_list.dart';
 import '../../core/playback/category_store.dart';
+import '../../core/playback/series_groups.dart';
 import '../../core/playback/watch_history.dart';
 import '../../core/profiles/viewer_profile.dart';
 import '../../core/profiles/viewer_profile_avatar.dart';
@@ -182,7 +183,8 @@ class _RootShellState extends State<RootShell>
     if (!sl.isRegistered<MyListStore>() ||
         !sl.isRegistered<WatchHistory>() ||
         !sl.isRegistered<ReadHistory>() ||
-        !sl.isRegistered<CategoryStore>()) {
+        !sl.isRegistered<CategoryStore>() ||
+        !sl.isRegistered<SeriesGroupStore>()) {
       return;
     }
     try {
@@ -197,6 +199,7 @@ class _RootShellState extends State<RootShell>
         sl<WatchHistory>().pullFromCloud(forProfileId: profileId),
         sl<ReadHistory>().pullFromCloud(forProfileId: profileId),
         sl<CategoryStore>().pullFromCloud(),
+        sl<SeriesGroupStore>().pullFromCloud(),
       ]).timeout(const Duration(seconds: 8));
       if (mounted && sl<ViewerProfileStore>().activeId == profileId) {
         sl<HomeCubit>().relayout();

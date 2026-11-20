@@ -39,6 +39,7 @@ import 'package:watch_app/core/models/watch_status.dart';
 import 'package:watch_app/core/playback/list_status_store.dart';
 import 'package:watch_app/core/playback/category_store.dart';
 import 'package:watch_app/core/playback/my_list.dart';
+import 'package:watch_app/core/playback/series_groups.dart';
 import 'package:watch_app/core/playback/watch_history.dart';
 import 'package:watch_app/core/reading/read_history.dart';
 import 'package:watch_app/core/theme/app_colors.dart';
@@ -133,6 +134,19 @@ class _CountingCategoryStore implements CategoryStore {
 
   @override
   bool isIn(MediaItem item, String id) => member && id == 'cat';
+  @override
+  noSuchMethod(Invocation i) => super.noSuchMethod(i);
+}
+
+class _FakeSeriesGroupStore implements SeriesGroupStore {
+  @override
+  final ValueNotifier<int> revision = ValueNotifier<int>(0);
+  @override
+  List<SeriesGroup> all() => const [];
+  @override
+  SeriesGroup? groupOf(String key) => null;
+  @override
+  Future<void> purgeTitle(String key) async {}
   @override
   noSuchMethod(Invocation i) => super.noSuchMethod(i);
 }
@@ -613,6 +627,7 @@ void main() {
         _FakeMyListStore([animeItem, movieItem, mangaItem, novelItem]),
       );
       sl.registerSingleton<ListStatusStore>(_FakeListStatusStore());
+      sl.registerSingleton<SeriesGroupStore>(_FakeSeriesGroupStore());
     });
 
     tearDown(() async {
@@ -765,6 +780,7 @@ void main() {
       sl.registerSingleton<AppMode>(const AppMode(isTv: false));
       sl.registerSingleton<TrackerHub>(TrackerHub(const []));
       sl.registerSingleton<ListStatusStore>(_FakeListStatusStore());
+      sl.registerSingleton<SeriesGroupStore>(_FakeSeriesGroupStore());
     });
 
     tearDown(() async {
@@ -806,7 +822,7 @@ void main() {
         expect(category().count, 0);
         expect(cats.reads, 2);
         await tester.pumpWidget(const SizedBox.shrink());
-        },
+      },
     );
 
     testWidgets('anime mode, list truly empty — unchanged wording, no button '

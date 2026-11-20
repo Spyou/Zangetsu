@@ -2948,6 +2948,22 @@ class AppLocalizationsAr extends AppLocalizations {
   String get customLists => 'قوائم مخصّصة';
 
   @override
+  String get addToSeries => 'Add to series';
+
+  @override
+  String get noSeries => 'No series';
+
+  @override
+  String get newSeries => 'New series';
+
+  @override
+  String get deleteSeries => 'Delete series';
+
+  @override
+  String get deleteSeriesConfirm =>
+      'Delete this series? Your titles stay on My List.';
+
+  @override
   String get notInAny => 'ليس في أيٍّ منها';
 
   @override

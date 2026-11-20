@@ -41,6 +41,7 @@ import 'core/ui/poster_card.dart';
 import 'core/notify/subscription_checker.dart';
 import 'core/notify/subscription_store.dart';
 import 'core/playback/category_store.dart';
+import 'core/playback/series_groups.dart';
 import 'core/playback/my_list.dart';
 import 'core/playback/history_merge.dart';
 import 'core/playback/resume_store.dart';
@@ -673,6 +674,7 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
         // My List categories ride the same trigger — two small SELECTs, and
         // they have to arrive with the list they label.
         sl<CategoryStore>().pullFromCloudIfStale(maxAge: maxAge),
+        sl<SeriesGroupStore>().pullFromCloudIfStale(maxAge: maxAge),
       ]);
       await Future.wait([
         sl<MyListStore>().retryPending(),
@@ -787,6 +789,7 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
         sl<WatchHistory>().pullFromCloudIfStale(maxAge: _syncFreshness),
         sl<ReadHistory>().pullFromCloudIfStale(maxAge: _syncFreshness),
         sl<CategoryStore>().pullFromCloudIfStale(maxAge: _syncFreshness),
+        sl<SeriesGroupStore>().pullFromCloudIfStale(maxAge: _syncFreshness),
       ]).timeout(const Duration(seconds: 6));
       if (!isCurrentUser() || sl<ViewerProfileStore>().activeId != profileId) {
         return;

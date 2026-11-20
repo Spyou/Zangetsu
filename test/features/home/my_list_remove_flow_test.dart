@@ -11,6 +11,7 @@ import 'package:watch_app/core/models/provider_info.dart';
 import 'package:watch_app/core/models/watch_status.dart';
 import 'package:watch_app/core/playback/list_status_store.dart';
 import 'package:watch_app/core/playback/my_list.dart';
+import 'package:watch_app/core/playback/series_groups.dart';
 import 'package:watch_app/core/supabase/auth_user.dart';
 import 'package:watch_app/core/tracker/tracker_hub.dart';
 import 'package:watch_app/core/ui/poster_card.dart';
@@ -87,12 +88,26 @@ const _beta = MediaItem(
   sourceId: 's',
 );
 
+class _FakeSeriesGroupStore implements SeriesGroupStore {
+  @override
+  final ValueNotifier<int> revision = ValueNotifier<int>(0);
+  @override
+  List<SeriesGroup> all() => const [];
+  @override
+  SeriesGroup? groupOf(String key) => null;
+  @override
+  Future<void> purgeTitle(String key) async {}
+  @override
+  noSuchMethod(Invocation i) => super.noSuchMethod(i);
+}
+
 void main() {
   setUp(() async {
     await sl.reset();
     sl.registerSingleton<AppMode>(const AppMode(isTv: false));
     sl.registerSingleton<TrackerHub>(TrackerHub(const []));
     sl.registerSingleton<ListStatusStore>(_Statuses());
+    sl.registerSingleton<SeriesGroupStore>(_FakeSeriesGroupStore());
     sl.registerSingleton<ContentModeCubit>(_Mode(ContentMode.anime));
   });
 

@@ -9,10 +9,13 @@ import '../models/provider_info.dart';
 import '../models/watch_status.dart';
 import '../playback/list_status_store.dart';
 import '../playback/category_store.dart';
+import '../playback/series_groups.dart';
+import '../../features/home/series_sheet.dart';
 import 'category_picker_sheet.dart';
 import '../../features/auth/auth_screens.dart' show requireLogin;
 import '../playback/my_list.dart';
 import '../repository/catalogue_repository.dart';
+import '../../l10n/l10n.dart';
 import '../theme/app_colors.dart';
 import '../tracker/tracker_item_url.dart';
 import '../zmode/zmode_ids.dart';
@@ -28,6 +31,10 @@ const String _kRemove = '__remove__';
 /// registered, so a title can be filed from anywhere it can be added — detail,
 /// home rows, history, My List — rather than only from the library screen.
 const String _kCategories = '__categories__';
+
+/// Sentinel for the "Add to series" row. Same reach as the Categories row
+/// above: anywhere a title can be added, it can be grouped into a series.
+const String _kSeries = '__series__';
 
 /// Show the Add-to-List status picker for [item] and apply the choice
 /// everywhere: My List membership, the local [WatchStatus], and a push to every
@@ -75,10 +82,12 @@ Future<void> showListStatusSheet(
       inList: inList,
       reading: reading,
       showCategories: sl.isRegistered<CategoryStore>(),
+      showSeries: sl.isRegistered<SeriesGroupStore>(),
     ),
   );
   if (picked == null) return;
   if (!context.mounted) return;
+
   final signedIn = context.read<AuthCubit>().state.isLoggedIn;
 
   if (picked == _kCategories) {
@@ -92,12 +101,27 @@ Future<void> showListStatusSheet(
     return;
   }
 
+  if (picked == _kSeries) {
+    if (!signedIn && !requireLogin(context, action: 'manage My List')) return;
+    if (!inList) {
+      await myList.add(item);
+      onChanged?.call();
+    }
+    if (context.mounted) await showSeriesSheet(context, item);
+    return;
+  }
+
   final isAnime = item.type == ProviderType.anime;
 
   if (picked == _kRemove) {
     Future<void> commit() async {
       await myList.remove(item);
       await statusStore.remove(item);
+      // The title leaves the library entirely: drop its series membership
+      // too, or the group keeps a dead key that renders as a ghost.
+      if (sl.isRegistered<SeriesGroupStore>()) {
+        await sl<SeriesGroupStore>().purgeTitle('${item.sourceId}::${item.id}');
+      }
       onChanged?.call();
       _syncToTrackers(
         item,
@@ -219,10 +243,14 @@ class ListStatusSheet extends StatelessWidget {
     required this.inList,
     required this.reading,
     this.showCategories = false,
+    this.showSeries = false,
   });
 
   /// Adds the "Categories" row. Off unless the caller wired it up.
   final bool showCategories;
+
+  /// Adds the "Add to series" row. Off unless the caller wired it up.
+  final bool showSeries;
 
   final WatchStatus? current;
   final bool inList;
@@ -290,6 +318,25 @@ class ListStatusSheet extends StatelessWidget {
                     onTap: () => Navigator.pop(context, statuses[i]),
                   ),
                 ),
+              if (showSeries) ...[
+                const Divider(height: 1, color: AppColors.hairline),
+                _row(
+                  onTap: () => Navigator.pop(context, _kSeries),
+                  child: ListTile(
+                    leading: const Icon(
+                      Icons.dynamic_feed_rounded,
+                      color: AppColors.textSecondary,
+                    ),
+                    title: Text(context.l10n.addToSeries),
+                    trailing: const Icon(
+                      Icons.chevron_right_rounded,
+                      color: AppColors.textSecondary,
+                      size: 20,
+                    ),
+                    onTap: () => Navigator.pop(context, _kSeries),
+                  ),
+                ),
+              ],
               if (showCategories) ...[
                 const Divider(height: 1, color: AppColors.hairline),
                 _row(

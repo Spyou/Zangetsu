@@ -23,6 +23,7 @@ import 'package:watch_app/core/models/home_section.dart';
 import 'package:watch_app/core/models/media_item.dart';
 import 'package:watch_app/core/playback/list_status_store.dart';
 import 'package:watch_app/core/playback/my_list.dart';
+import 'package:watch_app/core/playback/series_groups.dart';
 import 'package:watch_app/core/playback/playback_prefs.dart';
 import 'package:watch_app/core/playback/search_history.dart';
 import 'package:watch_app/core/playback/search_prefs.dart';
@@ -315,6 +316,19 @@ class _FakeAnnouncementService extends AnnouncementService {
 
 // ── Test ───────────────────────────────────────────────────────────────────
 
+class _FakeSeriesGroupStore implements SeriesGroupStore {
+  @override
+  final ValueNotifier<int> revision = ValueNotifier<int>(0);
+  @override
+  List<SeriesGroup> all() => const [];
+  @override
+  SeriesGroup? groupOf(String key) => null;
+  @override
+  Future<void> purgeTitle(String key) async {}
+  @override
+  noSuchMethod(Invocation i) => super.noSuchMethod(i);
+}
+
 void main() {
   late ActiveSourceCubit activeSource;
   late AuthCubit authCubit;
@@ -362,6 +376,7 @@ void main() {
     sl.registerSingleton<SourceRepository>(fakeRepo);
     sl.registerSingleton<CatalogueRepository>(fakeRepo);
     sl.registerSingleton<MyListStore>(_FakeMyListStore());
+    sl.registerSingleton<SeriesGroupStore>(_FakeSeriesGroupStore());
     sl.registerSingleton<SearchHistory>(_FakeSearchHistory());
     sl.registerSingleton<SearchPrefs>(_FakeSearchPrefs());
     sl.registerSingleton<SearchSourcePrefs>(_FakeSearchSourcePrefs());

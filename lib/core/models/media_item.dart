@@ -158,6 +158,7 @@ class MediaItem extends Equatable {
   Map<String, dynamic> toJson() => _$MediaItemToJson(this);
 
   MediaItem copyWith({
+    String? title,
     String? titleLogo,
     String? posterShape,
     String? landscapePoster,
@@ -172,7 +173,7 @@ class MediaItem extends Equatable {
     int? savedAtMs,
   }) => MediaItem(
     id: id,
-    title: title,
+    title: title ?? this.title,
     englishTitle: englishTitle,
     cover: cover,
     coverHeaders: coverHeaders,

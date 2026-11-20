@@ -1,14 +1,27 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 import 'package:watch_app/core/models/media_item.dart';
 import 'package:watch_app/core/models/provider_info.dart';
 import 'package:watch_app/core/playback/my_list.dart';
+import 'package:watch_app/core/playback/series_groups.dart';
 import 'package:watch_app/core/playback/list_status_store.dart';
 import 'package:watch_app/core/prefs/list_sort.dart';
 import 'package:watch_app/core/supabase/supabase_service.dart';
 import 'package:watch_app/features/home/cubit/my_list_cubit.dart';
+
+class _FakeSeriesGroupStore implements SeriesGroupStore {
+  @override
+  final ValueNotifier<int> revision = ValueNotifier<int>(0);
+  @override
+  List<SeriesGroup> all() => const [];
+  @override
+  SeriesGroup? groupOf(String key) => null;
+  @override
+  noSuchMethod(Invocation i) => super.noSuchMethod(i);
+}
 
 /// In-memory fake for [MyListRemote] so the store's pending-queue and
 /// pull-merge logic can be tested without a live Supabase project.
@@ -256,7 +269,11 @@ void main() {
 
   test('sync and deleting another title keep the newest title first', () async {
     await ListStatusStore.init();
-    final cubit = MyListCubit(store, ListStatusStore());
+    final cubit = MyListCubit(
+      store,
+      ListStatusStore(),
+      _FakeSeriesGroupStore(),
+    );
     addTearDown(cubit.close);
     final old = _item(id: 'old').copyWith(savedAtMs: 100);
     final newest = _item(id: 'newest').copyWith(savedAtMs: 200);
@@ -312,7 +329,11 @@ void main() {
       await store.pullFromCloud();
       final box = Hive.box<Map>(MyListStore.boxName);
       await box.put('src::id', _item().toJson());
-      final cubit = MyListCubit(store, ListStatusStore());
+      final cubit = MyListCubit(
+        store,
+        ListStatusStore(),
+        _FakeSeriesGroupStore(),
+      );
       addTearDown(cubit.close);
       expect(cubit.state.single.item.savedAtMs, isNull);
 

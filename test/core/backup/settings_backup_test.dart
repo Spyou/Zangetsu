@@ -33,20 +33,23 @@ void main() {
     });
   });
 
-  test('restores the last tracker view without backing up sign-in data', () async {
-    final selection = await Hive.openBox('tracker_switch_prefs');
-    await selection.put('lastTracker', 'AniList');
-    final auth = await Hive.openBox('anilist');
-    await auth.put('token', 'test-only-token');
+  test(
+    'restores the last tracker view without backing up sign-in data',
+    () async {
+      final selection = await Hive.openBox('tracker_switch_prefs');
+      await selection.put('lastTracker', 'AniList');
+      final auth = await Hive.openBox('anilist');
+      await auth.put('token', 'test-only-token');
 
-    final backup = SettingsBackup().build();
-    expect(backup['tracker_switch_prefs'], {'lastTracker': 'AniList'});
-    expect(backup.containsKey('anilist'), isFalse);
-    await selection.clear();
-    await SettingsBackup().merge(backup);
-    expect(selection.get('lastTracker'), 'AniList');
-    expect(auth.get('token'), 'test-only-token');
-  });
+      final backup = SettingsBackup().build();
+      expect(backup['tracker_switch_prefs'], {'lastTracker': 'AniList'});
+      expect(backup.containsKey('anilist'), isFalse);
+      await selection.clear();
+      await SettingsBackup().merge(backup);
+      expect(selection.get('lastTracker'), 'AniList');
+      expect(auth.get('token'), 'test-only-token');
+    },
+  );
 
   test('backs up viewer profile metadata', () async {
     final profile = {
@@ -118,6 +121,7 @@ void _driftGuard() {
       'list_status': 'library backup',
       'list_categories': 'library backup',
       'tracker_bindings': 'library backup',
+      'my_list_series_groups': 'library backup',
       'reader_overrides': 'per-title, library-shaped',
       'chapter_downloads': 'downloads, not settings',
       'downloads': 'downloads, not settings',

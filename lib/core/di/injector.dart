@@ -22,6 +22,7 @@ import '../cache/app_image_cache.dart';
 import '../platform/apple_tv.dart';
 import '../platform/app_paths.dart';
 import '../playback/category_store.dart';
+import '../playback/series_groups.dart';
 import '../playback/list_status_store.dart';
 import '../playback/my_list.dart';
 import '../playback/playback_prefs.dart';
@@ -388,6 +389,20 @@ Future<void> initDependencies({bool Function()? isOffline}) async {
       currentUserId: currentUserId,
       currentProfileId: currentProfileId,
       backendNamespace: backendNamespace,
+    ),
+  );
+  // Series groups: manual card-merge for My List. Its own box, beside the
+  // category store and for the same reason: a cloud pull clears the list
+  // box, and a series group must not go with it.
+  await SeriesGroupStore.init();
+  sl.registerSingleton<SeriesGroupStore>(
+    SeriesGroupStore(
+      remote: SeriesGroupRemote(
+        sl<SupabaseService>(),
+        vpsClient: vpsClient,
+        accessToken: cloudAccessToken,
+      ),
+      currentUserId: currentUserId,
     ),
   );
   await MyListStore.init();
