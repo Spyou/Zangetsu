@@ -18,6 +18,7 @@ Future<void> showSeriesSheet(BuildContext context, MediaItem item) async {
 
   await showModalBottomSheet<void>(
     context: context,
+    isScrollControlled: true,
     backgroundColor: AppColors.surface,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
@@ -49,11 +50,9 @@ class _SeriesSheetState extends State<SeriesSheet> {
 
   Future<void> _create() async {
     final made = await _store.create(_newGroupController.text);
-    if (made != null) {
-      await _store.addMember(made.id, widget.titleKey);
-      _newGroupController.clear();
-    }
-    if (mounted) setState(() {});
+    if (made == null) return; // blank name: nothing happened, stay open
+    await _store.addMember(made.id, widget.titleKey);
+    if (mounted) Navigator.pop(context);
   }
 
   @override
@@ -61,86 +60,104 @@ class _SeriesSheetState extends State<SeriesSheet> {
     final store = _store;
     final groups = store.all();
     final currentGroupId = store.groupOf(widget.titleKey)?.id;
-    return SafeArea(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 18, 20, 6),
-            child: Align(
-              alignment: AlignmentDirectional.centerStart,
-              child: Text(context.l10n.addToSeries, style: AppText.title),
+    return Padding(
+      // isScrollControlled lets the sheet grow past the default half-screen
+      // cap, but it still won't shift above the keyboard on its own — this
+      // padding does that, the same amount the keyboard actually occupies.
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      child: SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 18, 20, 6),
+              child: Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: Text(context.l10n.addToSeries, style: AppText.title),
+              ),
             ),
-          ),
-          Flexible(
-            child: ListView(
-              shrinkWrap: true,
-              children: [
-                RadioListTile<String?>(
-                  value: null,
-                  groupValue: currentGroupId,
-                  activeColor: AppColors.accent,
-                  title: Text(
-                    context.l10n.noSeries,
-                    style: AppText.body.copyWith(
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                  onChanged: (_) async {
-                    if (currentGroupId != null) {
-                      await store.removeMember(currentGroupId, widget.titleKey);
-                    }
-                    if (mounted) setState(() {});
-                  },
-                ),
-                for (final group in groups)
+            Flexible(
+              child: ListView(
+                shrinkWrap: true,
+                children: [
                   RadioListTile<String?>(
-                    value: group.id,
+                    value: null,
                     groupValue: currentGroupId,
                     activeColor: AppColors.accent,
                     title: Text(
-                      group.title,
+                      context.l10n.noSeries,
                       style: AppText.body.copyWith(
-                        color: AppColors.textPrimary,
+                        color: AppColors.textSecondary,
                       ),
                     ),
                     onChanged: (_) async {
-                      await store.addMember(group.id, widget.titleKey);
-                      if (mounted) setState(() {});
+                      if (currentGroupId != null) {
+                        await store.removeMember(
+                          currentGroupId,
+                          widget.titleKey,
+                        );
+                      }
+                      if (mounted) Navigator.pop(context);
                     },
                   ),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
-            child: Container(
-              decoration: BoxDecoration(
-                color: AppColors.surface2,
-                borderRadius: BorderRadius.circular(12),
+                  for (final group in groups)
+                    RadioListTile<String?>(
+                      value: group.id,
+                      groupValue: currentGroupId,
+                      activeColor: AppColors.accent,
+                      title: Text(
+                        group.title,
+                        style: AppText.body.copyWith(
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                      onChanged: (_) async {
+                        await store.addMember(group.id, widget.titleKey);
+                        if (mounted) Navigator.pop(context);
+                      },
+                    ),
+                ],
               ),
-              child: TextField(
-                controller: _newGroupController,
-                style: AppText.body.copyWith(color: AppColors.textPrimary),
-                decoration: InputDecoration(
-                  hintText: context.l10n.newSeries,
-                  hintStyle: AppText.body.copyWith(
-                    color: AppColors.textSecondary,
-                  ),
-                  prefixIcon: Icon(Icons.add_rounded, color: AppColors.accent),
-                  border: InputBorder.none,
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 14,
-                  ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: AppColors.surface2,
+                  borderRadius: BorderRadius.circular(12),
                 ),
-                textInputAction: TextInputAction.done,
-                onSubmitted: (_) => _create(),
+                child: TextField(
+                  controller: _newGroupController,
+                  style: AppText.body.copyWith(color: AppColors.textPrimary),
+                  decoration: InputDecoration(
+                    hintText: context.l10n.newSeries,
+                    hintStyle: AppText.body.copyWith(
+                      color: AppColors.textSecondary,
+                    ),
+                    prefixIcon: Icon(
+                      Icons.add_rounded,
+                      color: AppColors.accent,
+                    ),
+                    suffixIcon: IconButton(
+                      icon: const Icon(Icons.check_rounded),
+                      color: AppColors.accent,
+                      tooltip: context.l10n.newSeries,
+                      onPressed: _create,
+                    ),
+                    border: InputBorder.none,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 14,
+                    ),
+                  ),
+                  textInputAction: TextInputAction.done,
+                  onSubmitted: (_) => _create(),
+                ),
               ),
             ),
-          ),
-          const SizedBox(height: 8),
-        ],
+            const SizedBox(height: 8),
+          ],
+        ),
       ),
     );
   }

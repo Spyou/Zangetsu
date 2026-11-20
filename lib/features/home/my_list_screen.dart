@@ -54,6 +54,11 @@ import 'library_tabs.dart';
 import 'my_list_screen_tv.dart';
 import 'search_screen.dart';
 
+/// How much smaller a grouped-series card renders than a normal poster, so
+/// the fanned side peeks have margin to show inside the cell instead of
+/// overflowing it and getting clipped by the grid.
+const double _stackedCoverScale = 0.85;
+
 /// My List — one library the user browses by source (their own saved list plus
 /// each connected tracker) via a segmented control, and by status via tabs.
 /// Trackers are connected/managed from the header's accounts button.
@@ -1412,6 +1417,14 @@ class _MyListViewState extends State<_MyListView> with WidgetsBindingObserver {
   }) {
     final exitingKey = _entryKey(entry);
     final exiting = _exiting.contains(exitingKey);
+    // A stacked card needs margin inside the cell for the rotated side
+    // peeks to show — at full cell size the front poster leaves none, so
+    // the peeks were overflowing the cell and getting clipped by the grid.
+    // Shrinking the whole ensemble (front card AND cellWidth together, so
+    // text/badge sizing inside PosterCard stays consistent) opens that
+    // margin up.
+    final stacked = entry is SeriesCardEntry && entry.memberItems.length > 1;
+    final effectiveCellW = stacked ? cellW * _stackedCoverScale : cellW;
     final card = PosterCard(
       title: entry.item.title,
       logoItem: entry.item,
@@ -1431,7 +1444,7 @@ class _MyListViewState extends State<_MyListView> with WidgetsBindingObserver {
           ? null
           : '${entry.item.type == ProviderType.manga || entry.item.type == ProviderType.novel ? 'Ch' : 'EP'} ${entry.progress}',
       headers: entry.item.coverHeaders,
-      cellWidth: cellW,
+      cellWidth: effectiveCellW,
       onTap: () => entry is SeriesCardEntry
           ? Navigator.of(context).push(
               MaterialPageRoute(
@@ -1446,6 +1459,18 @@ class _MyListViewState extends State<_MyListView> with WidgetsBindingObserver {
       // status/remove; tracker → the tracker editor).
       onLongPress: onMore == null ? null : () => onMore(entry),
     );
+    final visual = stacked
+        ? Center(
+            child: FractionallySizedBox(
+              widthFactor: _stackedCoverScale,
+              heightFactor: _stackedCoverScale,
+              child: SeriesStackedCover(
+                covers: entry.memberItems,
+                child: card,
+              ),
+            ),
+          )
+        : card;
     return PlacementSlide(
       from: slide.from,
       duration: slide.duration,
@@ -1453,9 +1478,7 @@ class _MyListViewState extends State<_MyListView> with WidgetsBindingObserver {
       child: DisintegratingPoster(
         disintegrating: exiting,
         onDisintegrated: () => _commitExiting(exitingKey),
-        child: entry is SeriesCardEntry && entry.memberItems.length > 1
-            ? SeriesStackedCover(covers: entry.memberItems, child: card)
-            : card,
+        child: visual,
       ),
     );
   }
@@ -1611,7 +1634,6 @@ class _MyListViewState extends State<_MyListView> with WidgetsBindingObserver {
     );
   }
 }
-
 
 /// EmptyState message for My List's per-status/type filter turning up
 /// nothing (the mode filter itself is applied before this — see [_grid]).

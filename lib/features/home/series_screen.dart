@@ -67,7 +67,8 @@ class _SeriesScreenState extends State<SeriesScreen>
     final key = '${item.sourceId}::${item.id}';
     return _episodesByMember.putIfAbsent(
       key,
-      () => sl<CatalogueRepository>().episodes(item.url, sourceId: item.sourceId),
+      () =>
+          sl<CatalogueRepository>().episodes(item.url, sourceId: item.sourceId),
     );
   }
 
@@ -78,8 +79,11 @@ class _SeriesScreenState extends State<SeriesScreen>
         builder: (_) => PlayerScreen(
           sourceId: item.sourceId,
           resume: sl<ResumeStore>(),
-          resolveSources: (u) =>
-              sl<CatalogueRepository>().sources(u, sourceId: item.sourceId, fast: true),
+          resolveSources: (u) => sl<CatalogueRepository>().sources(
+            u,
+            sourceId: item.sourceId,
+            fast: true,
+          ),
           episodes: episodes,
           startIndex: index,
           showTitle: item.title,
@@ -175,76 +179,147 @@ class _SeriesScreenState extends State<SeriesScreen>
     final group = _live;
     final byKey = _byKey;
     final hero = _heroCover(group);
+    final statusInset = MediaQuery.paddingOf(context).top;
 
     return Scaffold(
       backgroundColor: AppColors.bg,
       extendBodyBehindAppBar: true,
       body: Stack(
         children: [
-          Positioned.fill(child: _Backdrop(cover: hero)),
+          // RepaintBoundary: the blur behind this is expensive to redraw
+          // every frame, and without it the engine tries to redo that work
+          // mid-transition, drops frames, and the push/pop slide ends up
+          // reading as a hard cut instead of an animation. Caching it as its
+          // own layer lets the transition just transform the cached bitmap.
+          Positioned.fill(
+            child: RepaintBoundary(child: _Backdrop(cover: hero)),
+          ),
           SafeArea(
-            child: Column(
-              children: [
-                _topBar(context, group),
-                Center(
+            top: false,
+            child: NestedScrollView(
+              headerSliverBuilder: (context, _) => [
+                SliverToBoxAdapter(
                   child: Padding(
-                    padding: const EdgeInsets.only(top: 8),
-                    child: SizedBox(
-                      width: 140,
-                      height: 140 / 0.7,
-                      child: SeriesStackedCover(
-                        covers: widget.members,
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: hero?.cover == null
-                              ? Container(color: AppColors.surface2)
-                              : CachedNetworkImage(
-                                  imageUrl: hero!.cover!,
-                                  cacheManager: AppImageCache.manager,
-                                  httpHeaders: hero.coverHeaders,
-                                  fit: BoxFit.cover,
-                                ),
+                    padding: EdgeInsets.only(top: statusInset),
+                    child: _topBar(context, group),
+                  ),
+                ),
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 16, 20, 20),
+                    child: Row(
+                      children: [
+                        SizedBox(
+                          width: 76,
+                          height: 108,
+                          child: SeriesStackedCover(
+                            covers: widget.members,
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(10),
+                              child: hero?.cover == null
+                                  ? ColoredBox(color: AppColors.surface2)
+                                  : CachedNetworkImage(
+                                      imageUrl: hero!.cover!,
+                                      cacheManager: AppImageCache.manager,
+                                      httpHeaders: hero.coverHeaders,
+                                      fit: BoxFit.cover,
+                                    ),
+                            ),
+                          ),
                         ),
-                      ),
+                        const SizedBox(width: 20),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                group.title,
+                                maxLines: 3,
+                                overflow: TextOverflow.ellipsis,
+                                style: AppText.title.copyWith(fontSize: 22),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                group.memberKeys.length == 1
+                                    ? '1 title'
+                                    : '${group.memberKeys.length} titles',
+                                style: AppText.body.copyWith(
+                                  color: AppColors.textSecondary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
-                const SizedBox(height: 16),
-                Text(
-                  group.title,
-                  textAlign: TextAlign.center,
-                  style: AppText.title.copyWith(fontSize: 24),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  group.memberKeys.length == 1
-                      ? '1 title'
-                      : '${group.memberKeys.length} titles',
-                  textAlign: TextAlign.center,
-                  style: AppText.body.copyWith(color: AppColors.textSecondary),
-                ),
-                const SizedBox(height: 16),
-                TabBar(
-                  controller: _tabs,
-                  isScrollable: false,
-                  labelColor: AppColors.textPrimary,
-                  unselectedLabelColor: AppColors.textSecondary,
-                  indicatorColor: AppColors.accent,
-                  indicatorSize: TabBarIndicatorSize.label,
-                  dividerColor: Colors.transparent,
-                  tabs: const [Tab(text: 'Titles'), Tab(text: 'Episodes')],
-                ),
-                Expanded(
-                  child: TabBarView(
-                    controller: _tabs,
-                    children: [
-                      _titlesTab(context, group, byKey),
-                      _episodesTab(context, group, byKey),
-                    ],
-                  ),
+                SliverLayoutBuilder(
+                  builder: (context, constraints) {
+                    const fadeDistance = 48.0;
+                    final distanceToTop =
+                        constraints.viewportMainAxisExtent -
+                        constraints.remainingPaintExtent;
+                    final backgroundOpacity =
+                        (1.0 - distanceToTop / fadeDistance).clamp(0.0, 1.0);
+                    return SliverOverlapAbsorber(
+                      handle: NestedScrollView.sliverOverlapAbsorberHandleFor(
+                        context,
+                      ),
+                      sliver: SliverAppBar(
+                        automaticallyImplyLeading: false,
+                        primary: true,
+                        pinned: true,
+                        toolbarHeight: 0,
+                        backgroundColor: AppColors.bg.withValues(
+                          alpha: backgroundOpacity,
+                        ),
+                        elevation: 0,
+                        scrolledUnderElevation: 0,
+                        surfaceTintColor: Colors.transparent,
+                        bottom: TabBar(
+                          controller: _tabs,
+                          isScrollable: false,
+                          labelColor: AppColors.textPrimary,
+                          unselectedLabelColor: AppColors.textSecondary,
+                          indicatorColor: AppColors.accent,
+                          indicatorSize: TabBarIndicatorSize.label,
+                          dividerColor: Colors.transparent,
+                          tabs: const [
+                            Tab(text: 'Titles'),
+                            Tab(text: 'Episodes'),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
                 ),
               ],
+              body: TabBarView(
+                controller: _tabs,
+                children: [
+                  _titlesTab(context, group, byKey),
+                  _episodesTab(context, group, byKey),
+                ],
+              ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _tabScroll(String key, Widget sliver) {
+    return Builder(
+      builder: (context) => CustomScrollView(
+        key: PageStorageKey(key),
+        slivers: [
+          SliverOverlapInjector(
+            handle: NestedScrollView.sliverOverlapAbsorberHandleFor(context),
+          ),
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+            sliver: sliver,
           ),
         ],
       ),
@@ -256,36 +331,37 @@ class _SeriesScreenState extends State<SeriesScreen>
     SeriesGroup group,
     Map<String, MediaItem> byKey,
   ) {
-    return ReorderableListView.builder(
-      buildDefaultDragHandles: false,
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-      itemCount: group.memberKeys.length,
-      onReorder: (oldIndex, newIndex) async {
-        var to = newIndex;
-        if (oldIndex < newIndex) to -= 1;
-        final key = group.memberKeys[oldIndex];
-        await _store.moveMember(group.id, key, to);
-        if (mounted) setState(() {});
-      },
-      itemBuilder: (context, i) {
-        final key = group.memberKeys[i];
-        final item = byKey[key];
-        return _MemberRow(
-          key: ValueKey(key),
-          index: i,
-          item: item,
-          fallbackTitle: key,
-          onTap: item == null
-              ? null
-              : () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => DetailScreen(item: item)),
-                ),
-          onRemove: () async {
-            await _store.removeMember(group.id, key);
-            if (mounted) setState(() {});
-          },
-        );
-      },
+    return _tabScroll(
+      'series-titles',
+      SliverReorderableList(
+        itemCount: group.memberKeys.length,
+        onReorder: (oldIndex, newIndex) async {
+          var to = newIndex;
+          if (oldIndex < newIndex) to -= 1;
+          final key = group.memberKeys[oldIndex];
+          await _store.moveMember(group.id, key, to);
+          if (mounted) setState(() {});
+        },
+        itemBuilder: (context, i) {
+          final key = group.memberKeys[i];
+          final item = byKey[key];
+          return _MemberRow(
+            key: ValueKey(key),
+            index: i,
+            item: item,
+            fallbackTitle: key,
+            onTap: item == null
+                ? null
+                : () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => DetailScreen(item: item)),
+                  ),
+            onRemove: () async {
+              await _store.removeMember(group.id, key);
+              if (mounted) setState(() {});
+            },
+          );
+        },
+      ),
     );
   }
 
@@ -298,19 +374,21 @@ class _SeriesScreenState extends State<SeriesScreen>
       for (final k in group.memberKeys)
         if (byKey[k] != null) byKey[k]!,
     ];
-    return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-      itemCount: members.length,
-      itemBuilder: (context, i) {
-        final item = members[i];
-        return _MemberEpisodes(
-          key: ValueKey('${item.sourceId}::${item.id}'),
-          item: item,
-          episodes: _episodesFor(item),
-          onTapEpisode: (episodes, index) =>
-              _openEpisode(item, episodes, index),
-        );
-      },
+    return _tabScroll(
+      'series-episodes',
+      SliverList.builder(
+        itemCount: members.length,
+        itemBuilder: (context, i) {
+          final item = members[i];
+          return _MemberEpisodes(
+            key: ValueKey('${item.sourceId}::${item.id}'),
+            item: item,
+            episodes: _episodesFor(item),
+            onTapEpisode: (episodes, index) =>
+                _openEpisode(item, episodes, index),
+          );
+        },
+      ),
     );
   }
 
@@ -474,7 +552,9 @@ class _CoverPickerSheet extends StatelessWidget {
                       m.title,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: AppText.body.copyWith(color: AppColors.textPrimary),
+                      style: AppText.body.copyWith(
+                        color: AppColors.textPrimary,
+                      ),
                     ),
                     onChanged: (_) =>
                         Navigator.pop(context, '${m.sourceId}::${m.id}'),
@@ -649,7 +729,8 @@ class _MemberEpisodes extends StatefulWidget {
 
 class _MemberEpisodesState extends State<_MemberEpisodes> {
   static const _batchSize = 20;
-  static const _lookahead = 400.0; // px of slack before the sentinel is on screen
+  static const _lookahead =
+      400.0; // px of slack before the sentinel is on screen
   int _visibleCount = _batchSize;
   int _knownTotal = 0;
   final _sentinelKey = GlobalKey();

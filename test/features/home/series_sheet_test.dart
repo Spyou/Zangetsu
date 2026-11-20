@@ -128,5 +128,6 @@ void main() {
 
     expect(store.all().single.title, 'Fate');
     expect(store.groupOf('s::1')!.id, store.all().single.id);
+    expect(find.byType(SeriesSheet), findsNothing);
   });
 }
