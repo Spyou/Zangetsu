@@ -35,4 +35,8 @@
         <item name="android:windowMinWidthMinor">84%</item>
         <item name="android:colorAccent">@color/phone_player_accent</item>
     </style>
+    <style name="PhoneEpisodePanelAnimation">
+        <item name="android:windowEnterAnimation">@anim/phone_episode_panel_enter</item>
+        <item name="android:windowExitAnimation">@anim/phone_episode_panel_exit</item>
+    </style>
 </resources>

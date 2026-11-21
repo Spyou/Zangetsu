@@ -154,6 +154,23 @@ class PhoneWatchPageTest {
                 val ripple = button.background as RippleDrawable
                 assertTrue(ripple.findDrawableByLayerId(android.R.id.mask) is android.graphics.drawable.GradientDrawable)
             }
+            panel.header.findViewById<View>(R.id.watch_action_more).performClick()
+            val more = org.robolectric.shadows.ShadowDialog.getLatestDialog() as android.app.AlertDialog
+            val adapter = more.listView.adapter
+            val labels = (0 until adapter.count).map { adapter.getItem(it).toString() }
+            for (id in listOf(
+                R.string.phone_player_title_tracks, R.string.phone_player_menu_sources,
+                R.string.phone_player_menu_episodes, R.string.phone_player_menu_rotate,
+            )) {
+                assertFalse(activity.getString(id), activity.getString(id) in labels)
+            }
+            for (id in listOf(
+                R.string.phone_player_title_speed, R.string.phone_player_title_quality,
+                R.string.phone_player_menu_display, R.string.phone_player_menu_switch_player,
+            )) {
+                assertTrue(activity.getString(id), activity.getString(id) in labels)
+            }
+            more.dismiss()
             panel.header.findViewById<View>(R.id.watch_search).performClick()
             val dialog = org.robolectric.shadows.ShadowDialog.getLatestDialog()
             val input = dialog.findViewById<EditText>(android.R.id.edit)

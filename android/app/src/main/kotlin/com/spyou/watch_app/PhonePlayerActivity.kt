@@ -253,6 +253,7 @@ class PhonePlayerActivity : Activity() {
     private var mirrors: List<Map<String, Any?>> = emptyList()
     private var castManager: CastManager? = null
     private var castSupported = false
+    private var episodePanel: PhoneEpisodePanel? = null
     private var moreDialog: android.app.Dialog? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -899,6 +900,7 @@ class PhonePlayerActivity : Activity() {
         resetRotationPull(animate = false)
         super.onConfigurationChanged(newConfig)
         moreDialog?.dismiss()
+        episodePanel?.dismiss()
         watchPage = newConfig.orientation == Configuration.ORIENTATION_PORTRAIT
         updateOrientationLayout()
         inflateQuickActions()
@@ -1592,17 +1594,27 @@ class PhonePlayerActivity : Activity() {
     }
 
     private fun showEpisodeMenu() {
-        if (isMovie) return
-        if (episodeLabels.isEmpty()) return
-        handler.removeCallbacks(hideRunnable) // a dialog must not race the auto-hide
-        PhonePlayerSheet(this)
-            .setTitle(getString(R.string.phone_player_title_episodes))
-            .setSingleChoiceItems(episodeLabels, currentIndex) { dialog, which ->
-                dialog.dismiss()
-                if (which != currentIndex) loadEpisode(which)
+        if (isMovie || episodeLabels.isEmpty() || episodePanel?.isShowing == true) return
+        handler.removeCallbacks(hideRunnable)
+        val episodes = watchPanel?.episodes
+            ?: PhoneWatchEpisode.from(PhonePlayerBridge.watchDataFor(sessionId), episodeLabels)
+        episodePanel = PhoneEpisodePanel(
+            this, episodes, currentIndex,
+            intent.getStringExtra(PhonePlayerIntent.EXTRA_COVER).orEmpty(),
+            PhonePlayerIntent.headersFromArray(intent.getStringArrayExtra(PhonePlayerIntent.EXTRA_COVER_HEADERS)),
+            intent.getIntExtra(PhonePlayerIntent.EXTRA_ACCENT, getColor(R.color.phone_player_accent)),
+            ::loadEpisode,
+        ).apply {
+            setOnDismissListener {
+                episodePanel = null
+                bumpControls()
             }
-            .setOnDismissListener { bumpControls() }
-            .showForPlayer()
+            show()
+            if (!isPortraitCard()) {
+                window?.decorView?.systemUiVisibility =
+                    this@PhonePlayerActivity.window.decorView.systemUiVisibility
+            }
+        }
     }
 
     /** Ask Dart for [index]'s stream, then play it. */
@@ -2377,68 +2389,53 @@ class PhonePlayerActivity : Activity() {
 
     private fun showMoreMenu() {
         handler.removeCallbacks(hideRunnable)
-        val labels = mutableListOf(
-            getString(R.string.phone_player_title_speed),
-            getString(R.string.phone_player_title_tracks),
-            getString(R.string.phone_player_title_quality),
-            getString(R.string.phone_player_menu_sources),
-        )
-        val icons = mutableListOf(
-            R.drawable.phone_player_speed,
-            R.drawable.phone_player_tracks,
-            R.drawable.phone_player_quality,
-            R.drawable.phone_player_sources,
-        )
-        val actions = mutableListOf<() -> Unit>(
-            { showSpeedMenu() },
-            { showTracksMenu() },
-            { showQualityMenu() },
-            { showSourceMenu() },
-        )
+        val portrait = isPortraitCard()
+        val portraitShortcuts = setOf("tracks", "sources", "episodes", "rotate")
+        val items = mutableListOf<Triple<String, Int, () -> Unit>>()
+        fun add(label: Int, icon: Int, shortcut: String? = null, action: () -> Unit) {
+            if (shortcut != null) {
+                val duplicate = if (portrait) {
+                    shortcut in portraitShortcuts
+                } else {
+                    val id = controlSpec(shortcut)?.first
+                    id != null && controls.findViewById<View>(id)?.visibility == View.VISIBLE
+                }
+                if (duplicate) return
+            }
+            items += Triple(getString(label), icon, action)
+        }
+
+        add(R.string.phone_player_title_speed, R.drawable.phone_player_speed, "speed") { showSpeedMenu() }
+        add(R.string.phone_player_title_tracks, R.drawable.phone_player_tracks, "tracks") { showTracksMenu() }
+        add(R.string.phone_player_title_quality, R.drawable.phone_player_quality, "quality") { showQualityMenu() }
+        add(R.string.phone_player_menu_sources, R.drawable.phone_player_sources, "sources") { showSourceMenu() }
         if (!isMovie) {
-            labels += getString(R.string.phone_player_menu_episodes)
-            icons += R.drawable.phone_player_episodes
-            actions += { showEpisodeMenu() }
+            add(R.string.phone_player_menu_episodes, R.drawable.phone_player_episodes, "episodes") { showEpisodeMenu() }
         }
-        labels += getString(R.string.phone_player_menu_display)
-        icons += R.drawable.phone_player_display
-        actions += { showDisplayMenu() }
-        labels += getString(R.string.phone_player_menu_rotate)
-        icons += R.drawable.phone_player_rotate
-        actions += { toggleRotation() }
+        add(R.string.phone_player_menu_display, R.drawable.phone_player_display, "fit") { showDisplayMenu() }
+        add(R.string.phone_player_menu_rotate, R.drawable.phone_player_rotate, "rotate") { toggleRotation() }
         if (castSupported) {
-            labels += getString(R.string.phone_player_menu_cast)
-            icons += R.drawable.phone_player_cast
-            actions += { pickCast() }
+            add(R.string.phone_player_menu_cast, R.drawable.phone_player_cast, "cast") { pickCast() }
         }
-        if (!isPortraitCard()) {
-            labels += getString(R.string.phone_player_arrange_controls)
-            icons += android.R.drawable.ic_menu_preferences
-            actions += { showControlArrangement() }
+        if (!portrait) {
+            add(R.string.phone_player_arrange_controls, android.R.drawable.ic_menu_preferences, "settings") {
+                showControlArrangement()
+            }
         }
-        labels += getString(R.string.phone_player_menu_switch_player)
-        icons += R.drawable.phone_player_sources
-        actions += { requestManualSwitch() }
-        labels += getString(
-            if (ambientEnabled) R.string.phone_player_menu_ambient_on
+        add(R.string.phone_player_menu_switch_player, R.drawable.phone_player_sources) { requestManualSwitch() }
+        val ambientLabel = if (ambientEnabled) R.string.phone_player_menu_ambient_on
             else R.string.phone_player_menu_ambient_off
-        )
-        icons += R.drawable.phone_player_display
-        actions += { toggleAmbient() }
+        add(ambientLabel, R.drawable.phone_player_display) { toggleAmbient() }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            labels += getString(R.string.phone_player_menu_pip)
-            icons += R.drawable.ic_pip_play
-            actions += { pip.enter(null) }
+            add(R.string.phone_player_menu_pip, R.drawable.ic_pip_play) { pip.enter(null) }
         }
-        labels += getString(R.string.phone_player_menu_info)
-        icons += R.drawable.phone_player_info
-        actions += { showInfo() }
+        add(R.string.phone_player_menu_info, R.drawable.phone_player_info, "info") { showInfo() }
         val dialog = PhonePlayerSheet(this)
-            .setItemIcons(icons)
+            .setItemIcons(items.map { it.second })
             .setTitle(getString(R.string.phone_player_title_more))
-            .setItems(labels.toTypedArray()) { dialog, index ->
+            .setItems(items.map { it.first }.toTypedArray()) { dialog, index ->
                 dialog.dismiss()
-                actions[index]()
+                items[index].third()
             }
             .setOnDismissListener {
                 moreDialog = null
@@ -3353,6 +3350,9 @@ class PhonePlayerActivity : Activity() {
     }
 
     override fun onDestroy() {
+        episodePanel?.setOnDismissListener(null)
+        episodePanel?.dismiss()
+        episodePanel = null
         subtitleStyleDialog?.dismiss()
         subtitleStyleDialog = null
         pip.unregister()

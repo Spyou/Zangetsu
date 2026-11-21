@@ -97,4 +97,6 @@
     <string name="phone_player_watch_download_pause">Pause download</string>
     <string name="phone_player_watch_download_resume">Resume download</string>
     <string name="phone_player_watch_download_cancel">Cancel download</string>
+    <string name="phone_player_episode_panel_season">Choose season</string>
+    <string name="phone_player_episode_panel_playing">Now playing</string>
 </resources>
