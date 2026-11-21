@@ -331,6 +331,11 @@ class PlaybackPrefs {
   Future<void> setPlayerOrientation(String value) =>
       _box.put('playerOrientation', value);
 
+  bool get portraitVideoEdgeToEdge =>
+      _box.get('portraitVideoEdgeToEdge', defaultValue: false) as bool;
+  Future<void> setPortraitVideoEdgeToEdge(bool value) =>
+      _box.put('portraitVideoEdgeToEdge', value);
+
   /// The [DeviceOrientation] lock for a saved [playerOrientation] choice.
   /// Unknown values fall back to landscape — never to portrait.
   static List<DeviceOrientation> orientationLockFor(String choice) {

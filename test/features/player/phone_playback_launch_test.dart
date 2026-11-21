@@ -137,6 +137,7 @@ void main() {
       int diskCacheGb = 2,
       bool autoPip = false,
       bool holdSpeed = true,
+      bool portraitVideoEdgeToEdge = false,
     }) => phonePlayerArgs(
       source: source ?? _src(),
       positionMs: positionMs,
@@ -154,6 +155,7 @@ void main() {
       autoPip: autoPip,
       defaultSpeed: 1.0,
       holdSpeed: holdSpeed,
+      portraitVideoEdgeToEdge: portraitVideoEdgeToEdge,
       bufferParams: const {
         'minBufferMs': 15000,
         'maxBufferMs': 50000,
@@ -304,6 +306,11 @@ void main() {
     test('carries the hold-to-speed preference for the native player', () {
       expect(args()['holdSpeed'], isTrue);
       expect(args(holdSpeed: false)['holdSpeed'], isFalse);
+    });
+
+    test('portrait video margins are opt-in for the native player', () {
+      expect(args()['portraitVideoEdgeToEdge'], isFalse);
+      expect(args(portraitVideoEdgeToEdge: true)['portraitVideoEdgeToEdge'], isTrue);
     });
 
     test('carries the subtitle position for the native player', () {

@@ -22,6 +22,7 @@ class PlayerWatchPage extends StatefulWidget {
   const PlayerWatchPage({
     super.key,
     required this.video,
+    this.edgeToEdge = false,
     required this.header,
     this.coverHeaders,
     this.loading = false,
@@ -77,6 +78,7 @@ class PlayerWatchPage extends StatefulWidget {
 
   /// The one video surface, built by the parent. This page only sizes it.
   final Widget video;
+  final bool edgeToEdge;
   final WatchPageHeader header;
   final Map<String, String>? coverHeaders;
 
@@ -574,7 +576,9 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
-    final w = size.width - 24;
+    final sideInset = widget.edgeToEdge ? 0.0 : 12.0;
+    final w =
+        size.width - MediaQuery.paddingOf(context).horizontal - 2 * sideInset;
     final videoH = (w * 9 / 16).clamp(0.0, size.height * 0.38);
     return Scaffold(
       backgroundColor: Colors.black,
@@ -591,7 +595,7 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
             bottom: false,
             child: Column(
               children: [
-                _video(videoH),
+                _video(videoH, sideInset),
                 Expanded(child: _info()),
               ],
             ),
@@ -654,15 +658,15 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
     );
   }
 
-  /// Mini player card: inset box with rounded corners, not full-bleed. Same
-  /// transparent scrims as the fullscreen player wash over it so the chrome
-  /// stays legible on bright frames.
-  Widget _video(double h) {
+  /// Transparent scrims keep the controls legible on bright frames.
+  Widget _video(double h, double sideInset) {
     return Padding(
       // SafeArea already clears the status bar — no double inset.
-      padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
+      padding: EdgeInsets.fromLTRB(sideInset, 4, sideInset, 0),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: widget.edgeToEdge
+            ? BorderRadius.zero
+            : BorderRadius.circular(18),
         child: SizedBox(
           key: const ValueKey('watch-video'),
           height: h,

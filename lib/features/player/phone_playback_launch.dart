@@ -267,6 +267,7 @@ Map<String, dynamic> phonePlayerArgs({
   String? cover,
   Map<String, String>? coverHeaders,
   String playerOrientation = 'landscape',
+  bool portraitVideoEdgeToEdge = false,
   Map<String, List<String>>? controlLayout,
   Map<String, dynamic>? watchData,
   String? showDescription,
@@ -325,6 +326,7 @@ Map<String, dynamic> phonePlayerArgs({
     'cover': ?cover,
     'coverHeaders': coverHeaders ?? const <String, String>{},
     'playerOrientation': playerOrientation,
+    'portraitVideoEdgeToEdge': portraitVideoEdgeToEdge,
     'controlLayout': ?controlLayout,
     'watchData': ?watchData,
     'showDescription': ?showDescription,
@@ -688,6 +690,7 @@ class PhoneNativePlayer {
       cover: _cover,
       coverHeaders: _coverHeaders,
       playerOrientation: prefs.playerOrientation,
+      portraitVideoEdgeToEdge: prefs.portraitVideoEdgeToEdge,
       controlLayout: {
         'top': prefs.playerBarTop ?? PlayerControlsConfig.defaultTop,
         'left': prefs.playerBarLeft ?? PlayerControlsConfig.defaultLeft,

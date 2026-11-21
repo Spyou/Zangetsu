@@ -335,6 +335,8 @@ object PhonePlayerBridge {
                 PhonePlayerIntent.EXTRA_ORIENTATION,
                 call.argument<String>("playerOrientation") ?: "landscape",
             )
+            i.putExtra(PhonePlayerIntent.EXTRA_PORTRAIT_VIDEO_EDGE_TO_EDGE,
+                call.argument<Boolean>("portraitVideoEdgeToEdge") ?: false)
             call.argument<String>("showDescription")
                 ?.let { i.putExtra(PhonePlayerIntent.EXTRA_SHOW_DESC, it) }
             call.argument<List<String>>("availableCategories")

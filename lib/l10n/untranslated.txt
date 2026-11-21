@@ -152,7 +152,8 @@
     "autoPlayerFallback",
     "autoPlayerFallbackDescription",
     "ambientPlayer",
-    "ambientPlayerDescription"
+    "ambientPlayerDescription",
+    "portraitVideoEdgeToEdge"
   ],
 
   "de": [
@@ -422,7 +423,8 @@
     "autoPlayerFallback",
     "autoPlayerFallbackDescription",
     "ambientPlayer",
-    "ambientPlayerDescription"
+    "ambientPlayerDescription",
+    "portraitVideoEdgeToEdge"
   ],
 
   "es": [
@@ -692,7 +694,8 @@
     "autoPlayerFallback",
     "autoPlayerFallbackDescription",
     "ambientPlayer",
-    "ambientPlayerDescription"
+    "ambientPlayerDescription",
+    "portraitVideoEdgeToEdge"
   ],
 
   "fr": [
@@ -962,7 +965,8 @@
     "autoPlayerFallback",
     "autoPlayerFallbackDescription",
     "ambientPlayer",
-    "ambientPlayerDescription"
+    "ambientPlayerDescription",
+    "portraitVideoEdgeToEdge"
   ],
 
   "id": [
@@ -1118,7 +1122,8 @@
     "autoPlayerFallback",
     "autoPlayerFallbackDescription",
     "ambientPlayer",
-    "ambientPlayerDescription"
+    "ambientPlayerDescription",
+    "portraitVideoEdgeToEdge"
   ],
 
   "it": [
@@ -1388,7 +1393,8 @@
     "autoPlayerFallback",
     "autoPlayerFallbackDescription",
     "ambientPlayer",
-    "ambientPlayerDescription"
+    "ambientPlayerDescription",
+    "portraitVideoEdgeToEdge"
   ],
 
   "ja": [
@@ -1658,7 +1664,8 @@
     "autoPlayerFallback",
     "autoPlayerFallbackDescription",
     "ambientPlayer",
-    "ambientPlayerDescription"
+    "ambientPlayerDescription",
+    "portraitVideoEdgeToEdge"
   ],
 
   "pt": [
@@ -1814,7 +1821,8 @@
     "autoPlayerFallback",
     "autoPlayerFallbackDescription",
     "ambientPlayer",
-    "ambientPlayerDescription"
+    "ambientPlayerDescription",
+    "portraitVideoEdgeToEdge"
   ],
 
   "tr": [
@@ -1970,7 +1978,8 @@
     "autoPlayerFallback",
     "autoPlayerFallbackDescription",
     "ambientPlayer",
-    "ambientPlayerDescription"
+    "ambientPlayerDescription",
+    "portraitVideoEdgeToEdge"
   ],
 
   "zh": [
@@ -2240,7 +2249,8 @@
     "autoPlayerFallback",
     "autoPlayerFallbackDescription",
     "ambientPlayer",
-    "ambientPlayerDescription"
+    "ambientPlayerDescription",
+    "portraitVideoEdgeToEdge"
   ],
 
   "zh_TW": [
@@ -2510,6 +2520,7 @@
     "autoPlayerFallback",
     "autoPlayerFallbackDescription",
     "ambientPlayer",
-    "ambientPlayerDescription"
+    "ambientPlayerDescription",
+    "portraitVideoEdgeToEdge"
   ]
 }

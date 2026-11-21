@@ -3194,5 +3194,6 @@
 	"autoPlayerFallback": "Auto-switch player",
 	"autoPlayerFallbackDescription": "Experimental · Retry failed playback",
 	"ambientPlayer": "Ambient player screen",
-	"ambientPlayerDescription": "Tinted glow behind the portrait player, matched to the video"
+	"ambientPlayerDescription": "Tinted glow behind the portrait player, matched to the video",
+	"portraitVideoEdgeToEdge": "Edge-to-edge portrait video"
 }

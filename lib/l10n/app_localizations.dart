@@ -10047,6 +10047,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Tinted glow behind the portrait player, matched to the video'**
   String get ambientPlayerDescription;
+
+  /// No description provided for @portraitVideoEdgeToEdge.
+  ///
+  /// In en, this message translates to:
+  /// **'Edge-to-edge portrait video'**
+  String get portraitVideoEdgeToEdge;
 }
 
 class _AppLocalizationsDelegate

@@ -3186,6 +3186,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final nextNum = next == null ? null : episodeNumberInt(next);
     return PlayerWatchPage(
       video: _buildVideoSurface(),
+      edgeToEdge: prefs.portraitVideoEdgeToEdge,
       header: header,
       isMovie: widget.isMovie,
       coverHeaders: widget.coverHeaders,

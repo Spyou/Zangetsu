@@ -1077,6 +1077,16 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                   ),
                   onTap: _pickOrientation,
                 ),
+              if (!sl<AppMode>().isTv)
+                _toggleRow(
+                  icon: Icons.width_full_outlined,
+                  title: context.l10n.portraitVideoEdgeToEdge,
+                  value: _prefs.portraitVideoEdgeToEdge,
+                  onChanged: (v) async {
+                    await _prefs.setPortraitVideoEdgeToEdge(v);
+                    if (mounted) setState(() {});
+                  },
+                ),
               // Portrait-only concept — the TV player has no "watch page" for
               // it to sit behind. Both engines (mpv and native) read this.
               if (!sl<AppMode>().isTv)

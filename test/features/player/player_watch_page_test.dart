@@ -11,6 +11,7 @@ import 'package:watch_app/features/player/watch_page_motion.dart';
 import 'package:watch_app/features/player/watch_page_info.dart';
 
 PlayerWatchPage _page({
+  bool edgeToEdge = false,
   bool isMovie = false,
   bool loading = false,
   String? loadingStatus,
@@ -41,6 +42,7 @@ PlayerWatchPage _page({
   void Function(int?)? onSelectSeason,
 }) {
   return PlayerWatchPage(
+    edgeToEdge: edgeToEdge,
     isMovie: isMovie,
     loading: loading,
     loadingStatus: loadingStatus,
@@ -95,6 +97,24 @@ Future<void> _pump(WidgetTester tester, PlayerWatchPage page) {
 }
 
 void main() {
+  testWidgets('portrait video uses the full width only when enabled', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final video = find.byKey(const ValueKey('watch-video'));
+
+    await _pump(tester, _page());
+    expect(tester.getRect(video).left, 12);
+    expect(tester.getRect(video).right, 388);
+
+    await _pump(tester, _page(edgeToEdge: true));
+    expect(tester.getRect(video).left, 0);
+    expect(tester.getRect(video).right, 400);
+    expect(tester.getSize(video).height, 225);
+  });
+
   Offset videoSide(WidgetTester tester, double side) {
     final rect = tester.getRect(find.byKey(const ValueKey('watch-video')));
     return Offset(rect.left + rect.width * side, rect.top + rect.height * .24);

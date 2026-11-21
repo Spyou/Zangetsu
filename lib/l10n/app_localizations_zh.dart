@@ -5638,6 +5638,9 @@ class AppLocalizationsZh extends AppLocalizations {
   @override
   String get ambientPlayerDescription =>
       'Tinted glow behind the portrait player, matched to the video';
+
+  @override
+  String get portraitVideoEdgeToEdge => 'Edge-to-edge portrait video';
 }
 
 /// The translations for Chinese, as used in Taiwan (`zh_TW`).

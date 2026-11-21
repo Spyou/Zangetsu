@@ -56,6 +56,35 @@ class PhonePlayerLayoutTest {
 
     @Test
     @Config(manifest = Config.NONE, sdk = [34], qualifiers = "port")
+    fun `edge to edge portrait video uses the full width`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val intent = Intent(context, PhonePlayerActivity::class.java)
+            .putExtra(PhonePlayerIntent.EXTRA_URL, "file:///dev/null")
+            .putExtra(PhonePlayerIntent.EXTRA_ORIENTATION, "portrait")
+            .putExtra(PhonePlayerIntent.EXTRA_PORTRAIT_VIDEO_EDGE_TO_EDGE, true)
+        val controller = Robolectric.buildActivity(PhonePlayerActivity::class.java, intent)
+            .create().start().resume()
+        try {
+            val activity = controller.get()
+            val video = activity.findViewById<View>(R.id.player_root)
+            val params = video.layoutParams as ViewGroup.MarginLayoutParams
+            assertEquals(0, params.leftMargin)
+            assertEquals(0, params.rightMargin)
+            assertEquals(dp(activity, 4), params.topMargin)
+            assertEquals(
+                minOf(activity.resources.displayMetrics.widthPixels * 9 / 16,
+                    (activity.resources.displayMetrics.heightPixels * .38f).toInt()),
+                params.height,
+            )
+            assertEquals(false, video.clipToOutline)
+            assertEquals(View.VISIBLE, activity.findViewById<View>(R.id.watch_info).visibility)
+        } finally {
+            controller.pause().stop().destroy()
+        }
+    }
+
+    @Test
+    @Config(manifest = Config.NONE, sdk = [34], qualifiers = "port")
     fun `system orientation switches the page and fullscreen on rotation`() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val intent = Intent(context, PhonePlayerActivity::class.java)

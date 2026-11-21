@@ -5816,4 +5816,7 @@ class AppLocalizationsEs extends AppLocalizations {
   @override
   String get ambientPlayerDescription =>
       'Tinted glow behind the portrait player, matched to the video';
+
+  @override
+  String get portraitVideoEdgeToEdge => 'Edge-to-edge portrait video';
 }

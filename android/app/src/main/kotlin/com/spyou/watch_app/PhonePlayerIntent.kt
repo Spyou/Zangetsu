@@ -61,6 +61,7 @@ object PhonePlayerIntent {
 
     // Phone orientation preference; TV uses its own Activity and extras.
     const val EXTRA_ORIENTATION = "playerOrientation" // landscape, portrait, system
+    const val EXTRA_PORTRAIT_VIDEO_EDGE_TO_EDGE = "portraitVideoEdgeToEdge"
     const val EXTRA_SHOW_DESC = "showDescription"
     const val EXTRA_CATEGORIES = "availableCategories" // e.g. ["sub","dub"]
     const val EXTRA_CATEGORY = "category" // launch version (sub/dub)

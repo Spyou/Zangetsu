@@ -989,17 +989,18 @@ class PhonePlayerActivity : Activity() {
                 // last painted here, so clear it explicitly.
                 watchPanel?.header?.background = null
             }
-            // 16:9 stage as an inset rounded card (MPV mini-player).
+            val edgeToEdge = intent.getBooleanExtra(PhonePlayerIntent.EXTRA_PORTRAIT_VIDEO_EDGE_TO_EDGE, false)
             val w = resources.displayMetrics.widthPixels
-            val m = dp(12)
+            val m = if (edgeToEdge) 0 else dp(12)
             video.layoutParams = video.layoutParams.apply {
                 height = minOf((w - 2 * m) * 9 / 16, (resources.displayMetrics.heightPixels * .38f).toInt()).coerceAtLeast(1)
                 if (this is android.widget.LinearLayout.LayoutParams) {
                     setMargins(m, dp(4), m, 0)
                 }
             }
-            video.background = getDrawable(R.drawable.phone_player_video_card)
-            video.clipToOutline = true
+            if (edgeToEdge) video.setBackgroundColor(android.graphics.Color.BLACK)
+            else video.background = getDrawable(R.drawable.phone_player_video_card)
+            video.clipToOutline = !edgeToEdge
             val info = ensureWatchInfo()
             info?.visibility = View.VISIBLE
             if (ambientEnabled) startAmbient()
