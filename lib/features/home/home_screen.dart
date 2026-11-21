@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -109,10 +110,12 @@ class HomeScreen extends StatelessWidget {
   const HomeScreen({
     super.key,
     this.isTabActive = true,
+    this.activeDockTab,
     this.deferStartupPrompts = false,
   });
 
   final bool isTabActive;
+  final ValueListenable<DockTab>? activeDockTab;
   final bool deferStartupPrompts;
 
   @override
@@ -122,6 +125,7 @@ class HomeScreen extends StatelessWidget {
       value: sl<HomeCubit>(),
       child: _HomeView(
         isTabActive: isTabActive,
+        activeDockTab: activeDockTab,
         deferStartupPrompts: deferStartupPrompts,
       ),
     );
@@ -131,10 +135,12 @@ class HomeScreen extends StatelessWidget {
 class _HomeView extends StatefulWidget {
   const _HomeView({
     required this.isTabActive,
+    required this.activeDockTab,
     required this.deferStartupPrompts,
   });
 
   final bool isTabActive;
+  final ValueListenable<DockTab>? activeDockTab;
   final bool deferStartupPrompts;
 
   @override
@@ -966,7 +972,11 @@ class _HomeViewState extends State<_HomeView> {
 
   /// The banner for [bannerId], with the same items and the same callbacks
   /// whichever one is showing.
-  Widget _featuredBanner(String bannerId, List<MediaItem> heroItems) {
+  Widget _featuredBanner(
+    String bannerId,
+    List<MediaItem> heroItems,
+    bool isActive,
+  ) {
     final reading = sl<ContentModeCubit>().state.isReading;
     void toggleList(MediaItem m) {
       Future<void> showSheet(MediaItem target) => showListStatusSheet(
@@ -1010,7 +1020,7 @@ class _HomeViewState extends State<_HomeView> {
         return FeaturedBannerEdge(
           items: heroItems,
           reading: reading,
-          isActive: widget.isTabActive,
+          isActive: isActive,
           onInfo: onInfo,
           meta: _heroMeta,
           onArtColor: ThemeController.adaptiveColour
@@ -1037,7 +1047,7 @@ class _HomeViewState extends State<_HomeView> {
                     : tintFromDominant(c, blend: adaptiveColourBlend)
               : null,
           backgroundTint: ThemeController.adaptiveColour ? _heroTint : null,
-          isActive: widget.isTabActive,
+          isActive: isActive,
         );
     }
   }
@@ -1599,8 +1609,24 @@ class _HomeViewState extends State<_HomeView> {
                                   showSkeletons &&
                                   !noSourceForMode &&
                                   !_sourceCatalogueSelected,
-                              bannerBuilder: (bannerId) =>
-                                  _featuredBanner(bannerId, heroItems),
+                              bannerBuilder: (bannerId) {
+                                final activeDockTab = widget.activeDockTab;
+                                if (activeDockTab == null) {
+                                  return _featuredBanner(
+                                    bannerId,
+                                    heroItems,
+                                    widget.isTabActive,
+                                  );
+                                }
+                                return ValueListenableBuilder<DockTab>(
+                                  valueListenable: activeDockTab,
+                                  builder: (_, tab, _) => _featuredBanner(
+                                    bannerId,
+                                    heroItems,
+                                    tab == DockTab.home,
+                                  ),
+                                );
+                              },
                               headerBuilder: (edgeBanner) =>
                                   _buildHeader(edgeBanner: edgeBanner),
                             );

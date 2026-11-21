@@ -47,13 +47,11 @@ import 'mode_bar.dart';
 import '../../core/ui/dock_visibility.dart';
 import 'root_shell_tv.dart';
 
-/// Shared pages for [RootShell] (phone bottom nav) and [RootShellTv] (TV left
-/// rail). TV uses Settings at index 3; phone uses its viewer overview instead.
+/// Main pages for [RootShellTv]'s navigation rail.
 ///
 /// [searchFocusSignal] is bumped each time the Search rail item is
 /// (re)selected on TV so the embedded search screen can auto-focus its
-/// field. [RootShell] always passes null — a tapped Search dock tab just
-/// shows its page, and the Home header icon pushes a fresh one.
+/// field.
 ///
 /// [searchFixedSourceId] pins the Search page to one source catalogue. TV
 /// leaves it null; the phone dock passes [dockSearchFixedSourceId].
@@ -116,7 +114,8 @@ class _RootShellState extends State<RootShell>
   ///
   /// Starts wherever the user chose to land; [NavPrefs.startTab] falls back to
   /// the leftmost tab, so an untouched install still opens on Home.
-  late DockTab _tab = _navPrefs.startTab;
+  late final _selectedTab = ValueNotifier(_navPrefs.startTab);
+  DockTab get _tab => _selectedTab.value;
   final _visitedTabs = <DockTab>{};
   String? _visitedTabsProfileId;
 
@@ -143,6 +142,23 @@ class _RootShellState extends State<RootShell>
   DateTime? _lastBackPress;
   DateTime? _lastProfileTap;
   bool _deferTabsForPicker = false;
+  late final _homePage = HomeScreen(activeDockTab: _selectedTab);
+  late final _deferredHomePage = HomeScreen(
+    activeDockTab: _selectedTab,
+    deferStartupPrompts: true,
+  );
+  late final _profilePage = ViewerProfileHomeScreen(
+    onProfileSelected: () {
+      setState(() => _deferTabsForPicker = true);
+      _onTabSelected(DockTab.home);
+    },
+    onPickerClosed: () {
+      if (mounted && _deferTabsForPicker) {
+        setState(() => _deferTabsForPicker = false);
+      }
+    },
+  );
+  SearchScreen _searchPage = const SearchScreen(showBack: false);
 
   /// Tab-switch entrance: the visible page swaps immediately and the INCOMING
   /// tab fades + slides up into place (200ms, ease-out). We never fade the old
@@ -227,7 +243,7 @@ class _RootShellState extends State<RootShell>
     setState(() {
       _modeBarOpen = false;
       final visible = _visibleTabs();
-      if (!visible.contains(_tab)) _tab = visible.first;
+      if (!visible.contains(_tab)) _selectedTab.value = visible.first;
     });
   }
 
@@ -242,7 +258,7 @@ class _RootShellState extends State<RootShell>
     }
     final visible = _visibleTabs();
     setState(() {
-      if (!visible.contains(_tab)) _tab = visible.first;
+      if (!visible.contains(_tab)) _selectedTab.value = visible.first;
     });
   }
 
@@ -262,6 +278,7 @@ class _RootShellState extends State<RootShell>
       );
     }
     _switchCtrl.dispose();
+    _selectedTab.dispose();
     super.dispose();
   }
 
@@ -285,7 +302,7 @@ class _RootShellState extends State<RootShell>
     }
     if (tab == _tab) return; // Re-tapping the current tab: no transition.
     DockScrollCollapse.reset();
-    setState(() => _tab = tab);
+    _selectedTab.value = tab;
     _switchCtrl.forward(from: 0);
     if (tab == DockTab.myList && sl.isRegistered<MyListStore>()) {
       unawaited(sl<MyListStore>().pullFromCloud());
@@ -348,12 +365,12 @@ class _RootShellState extends State<RootShell>
       ..retainAll(tabs)
       ..add(tabs.contains(_tab) ? _tab : tabs.first);
 
-    final shared = buildShellPages(
-      null,
-      homeIsActive: _tab == DockTab.home,
-      deferHomeStartupPrompts: deferInactiveTabs,
-      searchFixedSourceId: dockSearchFixedSourceId(),
-    );
+    if (_visitedTabs.contains(DockTab.search)) {
+      final sourceId = dockSearchFixedSourceId();
+      if (sourceId != _searchPage.fixedSourceId) {
+        _searchPage = SearchScreen(showBack: false, fixedSourceId: sourceId);
+      }
+    }
     return [
       for (final t in tabs)
         KeyedSubtree(
@@ -366,20 +383,11 @@ class _RootShellState extends State<RootShell>
           child: !_visitedTabs.contains(t)
               ? const SizedBox.shrink()
               : switch (t) {
-                  DockTab.home => shared[0],
-                  DockTab.search => shared[1],
-                  DockTab.myList => shared[2],
-                  DockTab.profile => ViewerProfileHomeScreen(
-                    onProfileSelected: () {
-                      setState(() => _deferTabsForPicker = true);
-                      _onTabSelected(DockTab.home);
-                    },
-                    onPickerClosed: () {
-                      if (mounted && _deferTabsForPicker) {
-                        setState(() => _deferTabsForPicker = false);
-                      }
-                    },
-                  ),
+                  DockTab.home =>
+                    deferInactiveTabs ? _deferredHomePage : _homePage,
+                  DockTab.search => _searchPage,
+                  DockTab.myList => const MyListScreen(),
+                  DockTab.profile => _profilePage,
                   // Both normally get pushed with a back button; as tabs they own the
                   // whole screen, so their own back affordance is suppressed.
                   DockTab.downloads => const DownloadsScreen(showBack: false),
@@ -433,7 +441,6 @@ class _RootShellState extends State<RootShell>
                     _deferTabsForPicker ||
                     ProfileShellScope.shouldDeferTabs(context);
                 final visible = _visibleTabs();
-                final active = visible.indexOf(_tab);
                 return AnimatedBuilder(
                   animation: _switch,
                   builder: (context, child) {
@@ -450,12 +457,15 @@ class _RootShellState extends State<RootShell>
                   // RepaintBoundary → the page is a single cached layer the transition
                   // just composites (opacity + translate), so no repaint per frame.
                   child: RepaintBoundary(
-                    child: ValueListenableBuilder<int>(
-                      valueListenable: ThemeController.revision,
-                      builder: (context, _, _) => IndexedStack(
+                    child: ListenableBuilder(
+                      listenable: Listenable.merge([
+                        _selectedTab,
+                        ThemeController.revision,
+                      ]),
+                      builder: (context, _) => IndexedStack(
                         // indexOf can be -1 for one frame if the mode flipped before
                         // the listener ran; clamp rather than throw.
-                        index: active < 0 ? 0 : active,
+                        index: math.max(0, visible.indexOf(_tab)),
                         children: _pagesFor(
                           visible,
                           sl.isRegistered<ViewerProfileStore>()
@@ -472,6 +482,7 @@ class _RootShellState extends State<RootShell>
           ),
           bottomNavigationBar: ListenableBuilder(
             listenable: Listenable.merge([
+              _selectedTab,
               dockHiddenBySection,
               HomeCataloguePrefs.revision,
             ]),

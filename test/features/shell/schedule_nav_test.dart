@@ -823,6 +823,27 @@ void main() {
     expect(tester.element(profile), same(profileElement));
   });
 
+  testWidgets('switching tabs reuses the mounted Home and Profile widgets', (
+    tester,
+  ) async {
+    sl.registerSingleton<AppMode>(const AppMode(isTv: false));
+    await tester.pumpWidget(wrap(const RootShell()));
+    await pumpHomeAnimations(tester);
+    final home = find.byType(HomeScreen, skipOffstage: false);
+    final profile = find.byType(ViewerProfileHomeScreen, skipOffstage: false);
+    final homeWidget = tester.widget(home);
+
+    await tester.tap(dockLabel('Profile'));
+    await pumpHomeAnimations(tester);
+    expect(tester.widget(home), same(homeWidget));
+    final profileWidget = tester.widget(profile);
+
+    await tester.tap(dockLabel('Home'));
+    await pumpHomeAnimations(tester);
+    expect(tester.widget(home), same(homeWidget));
+    expect(tester.widget(profile), same(profileWidget));
+  });
+
   testWidgets('Search fits a short screen with the keyboard open', (
     tester,
   ) async {
