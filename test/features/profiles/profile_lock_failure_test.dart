@@ -29,6 +29,13 @@ class _Locks extends ProfileLockStore {
   bool bioAvailable = false;
   bool bioEnabled = false;
   int enrollments = 0;
+  int removals = 0;
+  int? knownPinLength;
+  String currentPinValue = '1234';
+  bool removedRemotely = false;
+
+  @override
+  Future<int?> pinLength(String profileId) async => knownPinLength;
 
   @override
   Future<bool> isLocked(String id) {
@@ -56,15 +63,24 @@ class _Locks extends ProfileLockStore {
   }
 
   @override
-  Future<bool> verify(String id, String pin, {String? localPin}) async =>
-      pin == '1234';
+  Future<bool> verify(String id, String pin, {String? localPin}) async {
+    if (removedRemotely) throw const ProfileLockException('not_locked');
+    return pin == currentPinValue;
+  }
+
+  @override
+  Future<void> clear(String profileId, {String? pin}) async {
+    if (pin != '1234') throw const ProfileLockException('verification_failed');
+    removals++;
+  }
 
   @override
   Future<bool> setPin(String id, String pin, {String? currentPin}) async {
-    if (await lookup && currentPin != '1234') {
+    if (await lookup && currentPin != currentPinValue) {
       throw const ProfileLockException('verification_failed');
     }
     writes++;
+    markUnlocked(id);
     return true;
   }
 }
@@ -112,6 +128,20 @@ Future<void> _openSetup(
   }
 }
 
+Future<void> _enterPin(WidgetTester tester, String pin) async {
+  for (final digit in pin.split('')) {
+    await tester.tap(
+      find.byKey(ValueKey('profile-pin-key-$digit')).hitTestable(),
+    );
+    await tester.pump();
+  }
+}
+
+Future<void> _continue(WidgetTester tester) async {
+  await tester.tap(find.widgetWithText(FilledButton, 'Continue'));
+  await tester.pumpAndSettle();
+}
+
 void main() {
   late _Locks locks;
   setUp(() async {
@@ -122,30 +152,34 @@ void main() {
   });
   tearDown(() => sl.reset());
 
-  testWidgets(
-    'PIN setup uses a numeric keypad and accepts four or six digits',
-    (tester) async {
+  for (final pin in ['0123', '012345']) {
+    testWidgets('PIN setup accepts and confirms ${pin.length} digits', (
+      tester,
+    ) async {
       locks.lookup = Future.value(false);
       await _openSetup(tester, locks);
-      final fields = find.byType(TextField);
-      expect(
-        tester.widget<TextField>(fields.first).keyboardType,
-        TextInputType.number,
-      );
-      await tester.enterText(fields.first, '12345');
-      await tester.enterText(fields.last, '12345');
+      expect(find.text('Use legacy PIN'), findsNothing);
+      expect(find.byType(TextField), findsNothing);
+      await tester.tap(find.text('${pin.length} digits'));
+      await tester.pumpAndSettle();
+      await _enterPin(tester, pin.substring(0, pin.length - 1));
+      await _continue(tester);
+      expect(locks.writes, 0);
+      expect(find.text('Enter all ${pin.length} digits.'), findsOneWidget);
+      await _enterPin(tester, pin.substring(pin.length - 1));
+      await _continue(tester);
+      await _enterPin(tester, '${pin.substring(0, pin.length - 1)}9');
       await tester.tap(find.widgetWithText(FilledButton, 'Set profile PIN'));
       await tester.pumpAndSettle();
       expect(locks.writes, 0);
-      expect(find.text('Choose a 4 or 6 digit PIN.'), findsOneWidget);
-      await tester.enterText(fields.first, 'a012345b');
-      await tester.enterText(fields.last, '012345');
-      expect(tester.widget<TextField>(fields.first).controller!.text, '012345');
+      await tester.tap(find.byKey(const ValueKey('profile-pin-key-⌫')));
+      await tester.pump();
+      await _enterPin(tester, pin.substring(pin.length - 1));
       await tester.tap(find.widgetWithText(FilledButton, 'Set profile PIN'));
       await tester.pumpAndSettle();
       expect(locks.writes, 1);
-    },
-  );
+    });
+  }
 
   testWidgets(
     'unapproved in-session profile switch blocks content immediately',
@@ -221,13 +255,14 @@ void main() {
     expect(find.byType(TextField), findsNothing);
     await tester.tap(find.byType(Switch));
     await tester.pumpAndSettle();
-    expect(find.byType(TextField), findsOneWidget);
+    expect(find.byType(TextField), findsNothing);
+    expect(find.byKey(const ValueKey('profile-pin-key-1')), findsOneWidget);
     expect(locks.enrollments, 0);
-    await tester.enterText(find.byType(TextField), '0000');
+    await _enterPin(tester, '0000');
     await tester.tap(find.widgetWithText(FilledButton, 'Enable fingerprint'));
     await tester.pumpAndSettle();
     expect(locks.bioEnabled, isFalse);
-    await tester.enterText(find.byType(TextField), '1234');
+    await _enterPin(tester, '1234');
     await tester.tap(find.widgetWithText(FilledButton, 'Enable fingerprint'));
     await tester.pumpAndSettle();
     expect(locks.bioEnabled, isTrue);
@@ -245,7 +280,9 @@ void main() {
     await _openSetup(tester, locks, edit: false);
     await tester.tap(find.byType(Switch));
     await tester.pumpAndSettle();
-    Navigator.of(tester.element(find.byType(TextField))).pop(false);
+    Navigator.of(
+      tester.element(find.byKey(const ValueKey('profile-pin-key-1'))),
+    ).pop(false);
     await tester.pumpAndSettle();
     expect(locks.bioEnabled, isFalse);
     expect(locks.enrollments, 0);
@@ -310,6 +347,145 @@ void main() {
     expect(allowed, isFalse);
   });
 
+  testWidgets('remove PIN uses the keypad and requires the current PIN', (
+    tester,
+  ) async {
+    locks.lookup = Future.value(true);
+    await _openSetup(tester, locks, edit: false);
+    await tester.tap(find.widgetWithText(TextButton, 'Remove lock'));
+    await tester.pumpAndSettle();
+    expect(find.text('Use legacy PIN'), findsNothing);
+    expect(find.byType(TextField), findsNothing);
+    expect(find.byKey(const ValueKey('profile-pin-key-1')), findsOneWidget);
+    await _enterPin(tester, '0000');
+    await tester.tap(find.widgetWithText(FilledButton, 'Remove lock'));
+    await tester.pumpAndSettle();
+    expect(locks.removals, 0);
+    await _enterPin(tester, '1234');
+    await tester.tap(find.widgetWithText(FilledButton, 'Remove lock'));
+    await tester.pumpAndSettle();
+    expect(locks.removals, 1);
+  });
+
+  testWidgets('PIN setup fits a compact phone dialog', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(320, 460));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    locks.lookup = Future.value(false);
+    await _openSetup(tester, locks);
+    await tester.tap(find.text('6 digits'));
+    await tester.pumpAndSettle();
+    final keypadKey = find.byKey(const ValueKey('profile-pin-key-1'));
+    expect(tester.getSize(keypadKey), const Size(58, 58));
+    final keyStyle = tester.widget<OutlinedButton>(keypadKey).style!;
+    expect(keyStyle.shape!.resolve({}), isA<CircleBorder>());
+    expect(keyStyle.backgroundColor!.resolve({}), Colors.transparent);
+    expect(find.byType(BackdropFilter), findsOneWidget);
+    expect(find.text('Enter a new PIN'), findsOneWidget);
+    expect(find.text('Set profile PIN'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'current four-digit PIN stays four when choosing a six-digit replacement',
+    (tester) async {
+      locks.lookup = Future.value(true);
+      locks.knownPinLength = 4;
+      await _openSetup(tester, locks);
+      await tester.tap(find.text('6 digits'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('profile-pin-dot-3')), findsOneWidget);
+      expect(find.byKey(const ValueKey('profile-pin-dot-4')), findsNothing);
+      await _enterPin(tester, '1234');
+      await _continue(tester);
+      expect(find.text('Enter a new PIN'), findsOneWidget);
+      expect(find.byKey(const ValueKey('profile-pin-dot-5')), findsOneWidget);
+    },
+  );
+
+  for (final removed in [false, true]) {
+    final change = removed ? 'removal' : 'length change';
+    testWidgets('open PIN prompt handles remote lock $change', (tester) async {
+      locks.lookup = Future.value(true);
+      locks.knownPinLength = 4;
+      var unlocked = false;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => TextButton(
+                onPressed: () async {
+                  unlocked = await ensureProfileUnlocked(
+                    context,
+                    const ViewerProfile(id: 'locked', name: 'Locked'),
+                    locks: locks,
+                  );
+                },
+                child: const Text('Open profile'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('Open profile'));
+      await tester.pumpAndSettle();
+
+      locks.removedRemotely = removed;
+      locks.currentPinValue = '123456';
+      await _enterPin(tester, '1234');
+      if (!removed) {
+        expect(unlocked, isFalse);
+        await _enterPin(tester, '123456');
+        await tester.tap(find.widgetWithText(FilledButton, 'Unlock profile'));
+      }
+      await tester.pumpAndSettle();
+      expect(unlocked, isTrue);
+    });
+  }
+
+  testWidgets('an old PIN can migrate through Change PIN from unlock', (
+    tester,
+  ) async {
+    locks.lookup = Future.value(true);
+    locks.currentPinValue = 'old-pin';
+    var unlocked = false;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              onPressed: () async {
+                unlocked = await ensureProfileUnlocked(
+                  context,
+                  const ViewerProfile(id: 'locked', name: 'Locked'),
+                  locks: locks,
+                );
+              },
+              child: const Text('Open profile'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('Open profile'));
+    await tester.pumpAndSettle();
+    expect(find.text('Use legacy PIN'), findsNothing);
+    await tester.tap(find.widgetWithText(TextButton, 'Change PIN'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('4 digits'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Use legacy PIN'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'old-pin');
+    await _continue(tester);
+    await _enterPin(tester, '0123');
+    await _continue(tester);
+    await _enterPin(tester, '0123');
+    await tester.tap(find.widgetWithText(FilledButton, 'Change PIN'));
+    await tester.pumpAndSettle();
+    expect(locks.writes, 1);
+    expect(unlocked, isTrue);
+  });
+
   testWidgets('PIN setup cannot save while existing lock lookup is pending', (
     tester,
   ) async {
@@ -322,14 +498,24 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('profile-change-pin')));
     await tester.pumpAndSettle();
-    expect(find.byType(TextField), findsNWidgets(3));
-    await tester.enterText(find.byType(TextField).at(0), '0000');
-    await tester.enterText(find.byType(TextField).at(1), '4321');
-    await tester.enterText(find.byType(TextField).at(2), '4321');
+    await tester.tap(find.text('4 digits'));
+    await tester.pumpAndSettle();
+    expect(find.text('Use legacy PIN'), findsOneWidget);
+    await _continue(tester);
+    expect(find.text('Enter your current PIN.'), findsOneWidget);
+    expect(locks.writes, 0);
+    await _enterPin(tester, '0000');
+    await _continue(tester);
+    await _enterPin(tester, '4321');
+    await _continue(tester);
+    await _enterPin(tester, '4321');
     await tester.tap(find.widgetWithText(FilledButton, 'Change PIN'));
     await tester.pumpAndSettle();
     expect(locks.writes, 0);
-    await tester.enterText(find.byType(TextField).first, '1234');
+    await tester.tap(find.text('Edit current PIN'));
+    await tester.pumpAndSettle();
+    await _enterPin(tester, '1234');
+    await _continue(tester);
     await tester.tap(find.widgetWithText(FilledButton, 'Change PIN'));
     await tester.pumpAndSettle();
     expect(locks.writes, 1);
@@ -352,7 +538,8 @@ void main() {
       expect(find.byType(TextField), findsNothing);
       await tester.tap(find.byKey(const ValueKey('profile-change-pin')));
       await tester.pumpAndSettle();
-      expect(find.byType(TextField), findsNWidgets(3));
+      expect(find.text('4 digits'), findsOneWidget);
+      expect(find.text('6 digits'), findsOneWidget);
       expect(locks.writes, 0);
     },
   );

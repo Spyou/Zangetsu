@@ -17,6 +17,23 @@ class OfflineProfilePin {
   static const _iterations = 100000;
 
   Future<void> save(String key, String pin, int version) async {
+    // The server versions each PIN change. An existing verifier for the
+    // accepted version can be kept while resetting offline retry counters.
+    Map<String, dynamic>? cached;
+    try {
+      cached = await _read(key);
+    } on FormatException {
+      // A successful online unlock can restore a malformed cache.
+    }
+    if (cached != null && cached['version'] == version) {
+      await _write(key, {
+        ...cached,
+        'length': pin.length,
+        'attempts': 0,
+        'retry_at': 0,
+      });
+      return;
+    }
     final random = Random.secure();
     final salt = Uint8List.fromList(
       List.generate(16, (_) => random.nextInt(256)),
@@ -26,8 +43,19 @@ class OfflineProfilePin {
       'salt': base64Encode(salt),
       'hash': base64Encode(hash),
       'version': version,
+      'length': pin.length,
       'attempts': 0,
     });
+  }
+
+  Future<int?> pinLength(String key, int version) async {
+    final value = await _read(key);
+    final length = value?['length'];
+    return value?['version'] == version &&
+            length is int &&
+            (length == 4 || length == 6)
+        ? length
+        : null;
   }
 
   Future<bool> hasVersion(String key, int version) async {
@@ -73,6 +101,8 @@ class OfflineProfilePin {
     final attempts = valid ? 0 : (value['attempts'] as int) + 1;
     await _write(key, {
       ...value,
+      if (valid && RegExp(r'^(?:[0-9]{4}|[0-9]{6})$').hasMatch(pin))
+        'length': pin.length,
       'attempts': attempts,
       'retry_at': attempts >= 5 ? now + 300000 : 0,
     });

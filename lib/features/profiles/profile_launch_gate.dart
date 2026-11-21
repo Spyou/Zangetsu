@@ -21,13 +21,6 @@ class ProfileLaunchGate extends StatefulWidget {
   State<ProfileLaunchGate> createState() => _ProfileLaunchGateState();
 }
 
-class _ProfilePickerRoute extends MaterialPageRoute<void> {
-  _ProfilePickerRoute({required super.builder});
-
-  @override
-  Duration get reverseTransitionDuration => const Duration(milliseconds: 300);
-}
-
 class _ProfileLaunchGateState extends State<ProfileLaunchGate> {
   late bool _deferContent =
       sl<ViewerProfileStore>().askOnLaunch ||
@@ -149,28 +142,32 @@ class _ProfileLaunchGateState extends State<ProfileLaunchGate> {
   }
 
   Future<void> _showPicker() async {
-    await Navigator.of(context).push<void>(
-      _ProfilePickerRoute(
-        builder: (pickerContext) => PopScope(
-          canPop: false,
-          child: ViewerProfilesScreen(
-            selectionOnly: true,
-            onSelected: () => _popPicker(pickerContext),
-          ),
+    final route = ProfilePickerRoute(
+      reduceMotion: MediaQuery.disableAnimationsOf(context),
+      builder: (pickerContext) => PopScope(
+        canPop: false,
+        child: ViewerProfilesScreen(
+          selectionOnly: true,
+          onProfilePrepared: _releaseShell,
+          onSelected: () => _popPicker(pickerContext),
         ),
       ),
     );
-    _pickerShown = false;
+    await Navigator.of(context).push<void>(route);
+    await route.completed;
+    if (!mounted) return;
+    setState(() => _pickerShown = false);
     if (mounted && _deferContent) {
       _ensureGate(checkLaunchPreference: false);
     }
   }
 
+  void _releaseShell() {
+    if (mounted && _deferContent) setState(() => _deferContent = false);
+  }
+
   Future<void> _popPicker(BuildContext pickerContext) async {
-    // Release the shell BEFORE popping: the avatar Hero's destination (the
-    // navbar slot) must be built while the pop transition flies. Flipping
-    // after the pop would leave the flight with no landing end.
-    if (mounted) setState(() => _deferContent = false);
+    // Wait until the dock and the enabled source Hero both have a layout.
     await WidgetsBinding.instance.endOfFrame;
     if (pickerContext.mounted) Navigator.of(pickerContext).pop();
   }
@@ -179,6 +176,7 @@ class _ProfileLaunchGateState extends State<ProfileLaunchGate> {
   Widget build(BuildContext context) {
     return ProfileShellScope(
       deferContent: _deferContent,
+      deferTabs: _pickerShown,
       child: _lockError != null
           ? Material(
               color: AppColors.bg,

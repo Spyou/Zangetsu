@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -5,7 +7,6 @@ import '../../core/di/injector.dart';
 import '../../core/profiles/profile_lock_store.dart';
 import '../../core/profiles/profile_lock_remote.dart';
 import '../../core/profiles/viewer_profile.dart';
-import '../../core/profiles/viewer_profile_avatar.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../l10n/l10n.dart';
@@ -45,16 +46,11 @@ Future<bool> ensureProfileUnlocked(
     return true;
   }
   if (!context.mounted) return false;
-  final ok = await showModalBottomSheet<bool>(
-    context: context,
-    isScrollControlled: true,
-    backgroundColor: AppColors.surface,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-    ),
-    builder: (_) => _PinUnlockSheet(profile: profile, locks: store),
-  );
-  return ok ?? false;
+  return await _showPinDialog(
+        context,
+        builder: (_) => _PinUnlockSheet(profile: profile, locks: store),
+      ) ??
+      false;
 }
 
 String _lockErrorText(BuildContext context, Object error) =>
@@ -111,31 +107,109 @@ Future<bool?> manageProfilePin(
   required String profileId,
   required String profileName,
   ProfileLockStore? locks,
+  bool openChange = false,
 }) {
   final store =
       locks ??
       (sl.isRegistered<ProfileLockStore>() ? sl<ProfileLockStore>() : null);
   if (store == null) return Future.value();
-  return showModalBottomSheet<bool>(
-    context: context,
-    isScrollControlled: true,
-    backgroundColor: AppColors.surface,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-    ),
+  return _showPinDialog(
+    context,
     builder: (_) => _PinSetupSheet(
       profileId: profileId,
       profileName: profileName,
       locks: store,
+      openChange: openChange,
+    ),
+  );
+}
+
+Future<bool?> _showPinDialog(
+  BuildContext context, {
+  required WidgetBuilder builder,
+  bool barrierDismissible = true,
+}) async {
+  final navigator = Navigator.of(context);
+  final themes = InheritedTheme.capture(from: context, to: navigator.context);
+  final reduceMotion = MediaQuery.disableAnimationsOf(context);
+  final route = RawDialogRoute<bool>(
+    barrierDismissible: barrierDismissible,
+    barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
+    barrierColor: Colors.black54,
+    traversalEdgeBehavior: TraversalEdgeBehavior.closedLoop,
+    transitionDuration: reduceMotion
+        ? Duration.zero
+        : const Duration(milliseconds: 200),
+    pageBuilder: (_, _, _) => themes.wrap(
+      SafeArea(
+        child: _PinDialog(child: Builder(builder: builder)),
+      ),
+    ),
+    transitionBuilder: (_, animation, _, child) {
+      final eased = animation.drive(CurveTween(curve: Curves.easeInOutCubic));
+      return FadeTransition(
+        key: const ValueKey('profile-pin-dialog-fade'),
+        opacity: eased,
+        child: SlideTransition(
+          position: eased.drive(
+            Tween(begin: const Offset(0, 0.035), end: Offset.zero),
+          ),
+          child: child,
+        ),
+      );
+    },
+  );
+  final result = await navigator.push(route);
+  await route.completed;
+  return result;
+}
+
+class _PinDialog extends StatelessWidget {
+  const _PinDialog({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Dialog(
+    backgroundColor: Colors.transparent,
+    elevation: 0,
+    insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+    child: ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 304),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: BackdropFilter(
+          filter: ui.ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+          child: Material(
+            color: const Color(0x65101115),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(24),
+              side: const BorderSide(color: Color(0x26FFFFFF)),
+            ),
+            child: AnimatedSize(
+              duration: MediaQuery.disableAnimationsOf(context)
+                  ? Duration.zero
+                  : const Duration(milliseconds: 180),
+              curve: Curves.easeOutCubic,
+              child: child,
+            ),
+          ),
+        ),
+      ),
     ),
   );
 }
 
 class _SheetShell extends StatelessWidget {
-  const _SheetShell({required this.title, required this.child});
+  const _SheetShell({
+    required this.title,
+    required this.child,
+    this.dialog = false,
+  });
 
   final String title;
   final Widget child;
+  final bool dialog;
 
   @override
   Widget build(BuildContext context) {
@@ -144,28 +218,36 @@ class _SheetShell extends StatelessWidget {
       child: SingleChildScrollView(
         child: Padding(
           padding: EdgeInsets.only(
-            left: 20,
-            right: 20,
-            top: 12,
-            bottom: MediaQuery.viewInsetsOf(context).bottom + 20,
+            left: dialog ? 16 : 20,
+            right: dialog ? 16 : 20,
+            top: dialog ? 18 : 12,
+            bottom:
+                MediaQuery.viewInsetsOf(context).bottom + (dialog ? 12 : 20),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Center(
-                child: Container(
-                  margin: const EdgeInsets.only(bottom: 14),
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: AppColors.textTertiary,
-                    borderRadius: BorderRadius.circular(2),
+              if (!dialog)
+                Center(
+                  child: Container(
+                    margin: const EdgeInsets.only(bottom: 14),
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: AppColors.textTertiary,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
                   ),
                 ),
+              Text(
+                title,
+                style: dialog
+                    ? AppText.headline.copyWith(fontSize: 22)
+                    : AppText.headline,
+                textAlign: TextAlign.center,
               ),
-              Text(title, style: AppText.headline, textAlign: TextAlign.center),
-              const SizedBox(height: 16),
+              SizedBox(height: dialog ? 10 : 16),
               child,
             ],
           ),
@@ -209,6 +291,136 @@ Widget _pinField({
   );
 }
 
+class _ProfilePinKeypad extends StatelessWidget {
+  const _ProfilePinKeypad({
+    required this.controller,
+    required this.length,
+    required this.enabled,
+    this.onComplete,
+    this.unknownLength = false,
+  });
+
+  final TextEditingController controller;
+  final int length;
+  final bool enabled;
+  final VoidCallback? onComplete;
+  final bool unknownLength;
+
+  void _press(String key) {
+    final pin = controller.text;
+    if (key == '⌫') {
+      controller.text = pin.substring(0, pin.length - 1);
+    } else {
+      controller.text = pin + key;
+      if (controller.text.length == length) onComplete?.call();
+    }
+    HapticFeedback.selectionClick();
+  }
+
+  @override
+  Widget build(BuildContext context) => ValueListenableBuilder(
+    valueListenable: controller,
+    builder: (context, value, _) => Column(
+      children: [
+        Semantics(
+          label: '${value.text.length} digits entered',
+          child: ExcludeSemantics(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                for (
+                  var i = 0;
+                  i < (unknownLength && value.text.length <= 4 ? 4 : length);
+                  i++
+                )
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 6.5),
+                    child: AnimatedContainer(
+                      key: ValueKey('profile-pin-dot-$i'),
+                      duration: const Duration(milliseconds: 120),
+                      width: 9,
+                      height: 9,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: i < value.text.length
+                            ? Colors.white
+                            : Colors.transparent,
+                        border: Border.all(
+                          color: i < value.text.length
+                              ? Colors.white
+                              : const Color(0xAAE4E4E7),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 14),
+        for (final row in const [
+          ['1', '2', '3'],
+          ['4', '5', '6'],
+          ['7', '8', '9'],
+          ['', '0', '⌫'],
+        ])
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                for (final key in row)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 5),
+                    child: SizedBox.square(
+                      dimension: 58,
+                      child: key.isEmpty
+                          ? null
+                          : OutlinedButton(
+                              key: ValueKey('profile-pin-key-$key'),
+                              style: OutlinedButton.styleFrom(
+                                padding: EdgeInsets.zero,
+                                shape: const CircleBorder(),
+                                side: const BorderSide(
+                                  color: Color(0x24FFFFFF),
+                                ),
+                                backgroundColor: Colors.transparent,
+                                foregroundColor: const Color(0xFFF4F4F5),
+                                disabledForegroundColor: const Color(
+                                  0x59F4F4F5,
+                                ),
+                              ),
+                              onPressed:
+                                  enabled &&
+                                      (key == '⌫'
+                                          ? value.text.isNotEmpty
+                                          : value.text.length < length)
+                                  ? () => _press(key)
+                                  : null,
+                              child: key == '⌫'
+                                  ? const Icon(
+                                      Icons.backspace_outlined,
+                                      semanticLabel: 'Backspace',
+                                      size: 24,
+                                    )
+                                  : Text(
+                                      key,
+                                      style: const TextStyle(
+                                        fontSize: 26,
+                                        fontWeight: FontWeight.w400,
+                                      ),
+                                    ),
+                            ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+      ],
+    ),
+  );
+}
+
 class _PinUnlockSheet extends StatefulWidget {
   const _PinUnlockSheet({required this.profile, required this.locks});
 
@@ -227,11 +439,22 @@ class _PinUnlockSheetState extends State<_PinUnlockSheet> {
   bool _canBio = false;
   bool _needsLegacyPin = false;
   bool _needsNumericPin = false;
+  int? _knownLength;
 
   @override
   void initState() {
     super.initState();
     _loadBiometrics();
+    _loadPinLength();
+  }
+
+  Future<void> _loadPinLength() async {
+    try {
+      final length = await widget.locks.pinLength(widget.profile.id);
+      if (mounted && _pin.text.isEmpty) setState(() => _knownLength = length);
+    } catch (_) {
+      // Length only affects the keypad; verification can still proceed.
+    }
   }
 
   Future<void> _loadBiometrics() async {
@@ -259,7 +482,14 @@ class _PinUnlockSheetState extends State<_PinUnlockSheet> {
   Future<void> _tryUnlock([String? pin]) async {
     final value = (pin ?? _pin.text).trim();
     if (value.isEmpty || _busy) return;
-    setState(() => _busy = true);
+    if (!ProfileLockStore.isValidNewPin(value)) {
+      setState(() => _error = 'Enter a 4 or 6 digit PIN.');
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
     bool ok;
     try {
       ok = await widget.locks.verify(
@@ -268,14 +498,18 @@ class _PinUnlockSheetState extends State<_PinUnlockSheet> {
         localPin: _localPin.text.trim(),
       );
     } catch (error) {
-      if (mounted) {
-        setState(() {
-          _busy = false;
-          _error = _lockErrorText(context, error);
-          _needsNumericPin =
-              error is ProfileLockException && error.code == 'invalid_pin';
-        });
+      if (!mounted) return;
+      if (error is ProfileLockException && error.code == 'not_locked') {
+        Navigator.of(context).pop(true);
+        return;
       }
+      _pin.clear();
+      setState(() {
+        _busy = false;
+        _error = _lockErrorText(context, error);
+        _needsNumericPin =
+            error is ProfileLockException && error.code == 'invalid_pin';
+      });
       return;
     }
     if (!mounted) return;
@@ -290,8 +524,10 @@ class _PinUnlockSheetState extends State<_PinUnlockSheet> {
       setState(() => _needsLegacyPin = legacy);
     } catch (_) {}
     if (!mounted) return;
+    if (!_needsLegacyPin) _pin.clear();
     setState(() {
       _busy = false;
+      _knownLength = null;
       _error = context.l10n.wrongPin;
     });
   }
@@ -327,31 +563,24 @@ class _PinUnlockSheetState extends State<_PinUnlockSheet> {
     final l10n = context.l10n;
     return _SheetShell(
       title: l10n.unlockProfile,
+      dialog: true,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            children: [
-              ProfileAvatarFace(
-                profile: widget.profile,
-                iconSize: 20,
-                photoDiameter: 44,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  l10n.enterProfilePin(widget.profile.name),
-                  style: AppText.body,
-                ),
-              ),
-            ],
+          Text(
+            widget.profile.name,
+            style: AppText.body.copyWith(color: AppColors.textSecondary),
+            textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 14),
-          _pinField(
+          const SizedBox(height: 22),
+          _ProfilePinKeypad(
             controller: _pin,
-            hint: 'PIN',
-            autofocus: !_canBio,
-            onSubmitted: (_) => _tryUnlock(),
+            length: _knownLength ?? 6,
+            unknownLength: _knownLength == null,
+            enabled: !_busy,
+            onComplete: _knownLength == null || _needsLegacyPin
+                ? null
+                : _tryUnlock,
           ),
           if (_needsLegacyPin) ...[
             const SizedBox(height: 10),
@@ -370,10 +599,11 @@ class _PinUnlockSheetState extends State<_PinUnlockSheet> {
             const SizedBox(height: 8),
             Text(
               _error!,
+              textAlign: TextAlign.center,
               style: AppText.caption.copyWith(color: AppColors.accent),
             ),
           ],
-          if (_needsNumericPin)
+          if (_knownLength == null || _needsNumericPin)
             TextButton(
               onPressed: _busy
                   ? null
@@ -383,6 +613,7 @@ class _PinUnlockSheetState extends State<_PinUnlockSheet> {
                         profileId: widget.profile.id,
                         profileName: widget.profile.name,
                         locks: widget.locks,
+                        openChange: true,
                       );
                       if (context.mounted &&
                           changed == true &&
@@ -390,7 +621,7 @@ class _PinUnlockSheetState extends State<_PinUnlockSheet> {
                         Navigator.of(context).pop(true);
                       }
                     },
-              child: const Text('Set a numeric PIN'),
+              child: Text(l10n.changeProfilePin),
             ),
           const SizedBox(height: 14),
           Row(
@@ -404,17 +635,13 @@ class _PinUnlockSheetState extends State<_PinUnlockSheet> {
                   ),
                 ),
               if (_canBio) const SizedBox(width: 10),
-              Expanded(
-                child: FilledButton(
-                  onPressed: _busy ? null : () => _tryUnlock(),
-                  child: _busy
-                      ? const SizedBox.square(
-                          dimension: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : Text(l10n.unlockProfile),
+              if (_knownLength == null || _needsLegacyPin)
+                Expanded(
+                  child: FilledButton(
+                    onPressed: _busy ? null : () => _tryUnlock(),
+                    child: Text(l10n.unlockProfile),
+                  ),
                 ),
-              ),
             ],
           ),
           TextButton(
@@ -447,11 +674,13 @@ class _PinSetupSheet extends StatefulWidget {
     required this.profileId,
     required this.profileName,
     required this.locks,
+    required this.openChange,
   });
 
   final String profileId;
   final String profileName;
   final ProfileLockStore locks;
+  final bool openChange;
 
   @override
   State<_PinSetupSheet> createState() => _PinSetupSheetState();
@@ -466,8 +695,13 @@ class _PinSetupSheetState extends State<_PinSetupSheet> {
   bool _busy = false;
   bool? _hasLock;
   bool _fingerprint = false;
-  bool _editingPin = false;
+  late bool _editingPin = widget.openChange;
   bool _supportsBiometrics = false;
+  int? _pinLength;
+  int? _currentPinLength;
+  bool _confirming = false;
+  bool _currentEntered = false;
+  bool _legacyCurrent = false;
 
   @override
   void initState() {
@@ -482,12 +716,18 @@ class _PinSetupSheetState extends State<_PinSetupSheet> {
     });
     try {
       final locked = await widget.locks.isLocked(widget.profileId);
+      final currentPinLength = locked
+          ? await widget.locks
+                .pinLength(widget.profileId)
+                .catchError((Object _) => null)
+          : null;
       final available = await widget.locks.canUseBiometrics;
       final enabled =
           locked && await widget.locks.biometricEnabled(widget.profileId);
       if (mounted) {
         setState(() {
           _hasLock = locked;
+          _currentPinLength = currentPinLength;
           _supportsBiometrics = available;
           _fingerprint = enabled;
         });
@@ -514,8 +754,37 @@ class _PinSetupSheetState extends State<_PinSetupSheet> {
     }
   }
 
+  bool get _enteringCurrent => _hasLock == true && !_currentEntered;
+
+  void _continueSetup() {
+    if (_enteringCurrent) {
+      final value = _current.text.trim();
+      if (_legacyCurrent
+          ? value.isEmpty
+          : !ProfileLockStore.isValidNewPin(value)) {
+        setState(() => _error = 'Enter your current PIN.');
+        return;
+      }
+      setState(() {
+        _currentEntered = true;
+        _error = null;
+      });
+    } else if (_confirming) {
+      _save();
+    } else if (_pin.text.length == _pinLength) {
+      setState(() {
+        _confirming = true;
+        _error = null;
+      });
+    } else {
+      setState(() => _error = 'Enter all $_pinLength digits.');
+    }
+  }
+
   Future<void> _save() async {
-    if (_busy || _hasLock == null) return;
+    if (_busy || _hasLock == null || (_hasLock == true && !_currentEntered)) {
+      return;
+    }
     final pin = _pin.text.trim();
     if (!ProfileLockStore.isValidNewPin(pin)) {
       setState(() => _error = 'Choose a 4 or 6 digit PIN.');
@@ -555,15 +824,20 @@ class _PinSetupSheetState extends State<_PinSetupSheet> {
     required String button,
     required Future<void> Function(String) confirm,
   }) async {
-    return await showModalBottomSheet<bool>(
-          context: context,
-          isScrollControlled: true,
-          isDismissible: false,
-          enableDrag: false,
-          backgroundColor: AppColors.surface,
+    int? length;
+    try {
+      length = await widget.locks.pinLength(widget.profileId);
+    } catch (_) {
+      // Confirmation can still verify an explicitly submitted PIN.
+    }
+    if (!mounted) return false;
+    return await _showPinDialog(
+          context,
+          barrierDismissible: false,
           builder: (_) => _PinConfirmationSheet(
             title: title,
             button: button,
+            length: length,
             confirm: confirm,
           ),
         ) ??
@@ -623,7 +897,14 @@ class _PinSetupSheetState extends State<_PinSetupSheet> {
   Widget build(BuildContext context) {
     final l10n = context.l10n;
     return _SheetShell(
-      title: _hasLock == true
+      dialog: true,
+      title: _pinLength != null
+          ? _enteringCurrent
+                ? 'Current PIN'
+                : _confirming
+                ? l10n.confirmProfilePin
+                : 'Enter a new PIN'
+          : _hasLock == true
           ? (_editingPin ? l10n.changeProfilePin : l10n.profileLock)
           : l10n.setProfilePin,
       child: _loadError != null
@@ -668,6 +949,7 @@ class _PinSetupSheetState extends State<_PinSetupSheet> {
                 if (_error != null)
                   Text(
                     _error!,
+                    textAlign: TextAlign.center,
                     style: AppText.caption.copyWith(color: AppColors.accent),
                   ),
                 TextButton(
@@ -679,58 +961,116 @@ class _PinSetupSheetState extends State<_PinSetupSheet> {
           : Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                if (_hasLock == true) ...[
-                  _pinField(
-                    controller: _current,
-                    hint: 'Current PIN',
-                    onSubmitted: (_) {},
+                if (_pinLength == null) ...[
+                  Text(
+                    'Choose your PIN length',
+                    textAlign: TextAlign.center,
+                    style: AppText.caption.copyWith(
+                      color: AppColors.textSecondary,
+                    ),
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      for (final length in [4, 6])
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 4),
+                            child: OutlinedButton(
+                              onPressed: () =>
+                                  setState(() => _pinLength = length),
+                              child: Text('$length digits'),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ] else ...[
+                  if (_enteringCurrent && _legacyCurrent)
+                    _pinField(
+                      controller: _current,
+                      hint: 'Current PIN',
+                      numeric: false,
+                      onSubmitted: (_) => _continueSetup(),
+                    )
+                  else
+                    _ProfilePinKeypad(
+                      controller: _enteringCurrent
+                          ? _current
+                          : _confirming
+                          ? _confirm
+                          : _pin,
+                      length: _enteringCurrent
+                          ? _currentPinLength ?? 6
+                          : _pinLength!,
+                      unknownLength:
+                          _enteringCurrent && _currentPinLength == null,
+                      enabled: !_busy,
+                    ),
+                  Wrap(
+                    alignment: WrapAlignment.center,
+                    children: [
+                      if (_enteringCurrent && _currentPinLength == null)
+                        TextButton(
+                          onPressed: _busy
+                              ? null
+                              : () => setState(() {
+                                  _current.clear();
+                                  _legacyCurrent = !_legacyCurrent;
+                                }),
+                          child: Text(
+                            _legacyCurrent
+                                ? 'Use PIN keypad'
+                                : 'Use legacy PIN',
+                          ),
+                        )
+                      else if (_hasLock == true && !_enteringCurrent)
+                        TextButton(
+                          onPressed: _busy
+                              ? null
+                              : () => setState(() {
+                                  _current.clear();
+                                  _currentEntered = false;
+                                  _error = null;
+                                }),
+                          child: const Text('Edit current PIN'),
+                        ),
+                      TextButton(
+                        onPressed: _busy
+                            ? null
+                            : () => setState(() {
+                                _pin.clear();
+                                _confirm.clear();
+                                _pinLength = null;
+                                _confirming = false;
+                                _error = null;
+                              }),
+                        child: const Text('Change PIN length'),
+                      ),
+                    ],
+                  ),
                 ],
-                _pinField(
-                  controller: _pin,
-                  hint: 'New PIN (4 or 6 digits)',
-                  newPin: true,
-                  autofocus: _hasLock != true,
-                  onSubmitted: (_) {},
-                ),
-                const SizedBox(height: 10),
-                _pinField(
-                  controller: _confirm,
-                  hint: l10n.confirmProfilePin,
-                  newPin: true,
-                  onSubmitted: (_) => _save(),
-                ),
                 if (_error != null) ...[
                   const SizedBox(height: 8),
                   Text(
                     _error!,
+                    textAlign: TextAlign.center,
                     style: AppText.caption.copyWith(color: AppColors.accent),
                   ),
                 ],
                 const SizedBox(height: 14),
-                FilledButton(
-                  onPressed: _busy ? null : _save,
-                  child: Text(
-                    _busy
-                        ? l10n.loading
-                        : _hasLock == true
-                        ? l10n.changeProfilePin
-                        : l10n.setProfilePin,
-                  ),
-                ),
-                if (_hasLock == true)
-                  TextButton(
-                    onPressed: _busy
-                        ? null
-                        : () => setState(() {
-                            _editingPin = false;
-                            _error = null;
-                            _current.clear();
-                            _pin.clear();
-                            _confirm.clear();
-                          }),
-                    child: const Text('Back'),
+                if (_pinLength != null)
+                  FilledButton(
+                    onPressed: _busy ? null : _continueSetup,
+                    child: Text(
+                      _busy
+                          ? l10n.loading
+                          : _enteringCurrent || !_confirming
+                          ? 'Continue'
+                          : _hasLock == true
+                          ? l10n.changeProfilePin
+                          : l10n.setProfilePin,
+                    ),
                   ),
               ],
             ),
@@ -743,9 +1083,11 @@ class _PinConfirmationSheet extends StatefulWidget {
     required this.title,
     required this.button,
     required this.confirm,
+    required this.length,
   });
   final String title;
   final String button;
+  final int? length;
   final Future<void> Function(String) confirm;
   @override
   State<_PinConfirmationSheet> createState() => _PinConfirmationSheetState();
@@ -762,16 +1104,22 @@ class _PinConfirmationSheetState extends State<_PinConfirmationSheet> {
   }
 
   Future<void> _confirm() async {
-    if (_busy || _pin.text.trim().isEmpty) return;
+    final pin = _pin.text.trim();
+    if (_busy || pin.isEmpty) return;
+    if (!ProfileLockStore.isValidNewPin(pin)) {
+      setState(() => _error = 'Enter a 4 or 6 digit PIN.');
+      return;
+    }
     setState(() {
       _busy = true;
       _error = null;
     });
     try {
-      await widget.confirm(_pin.text.trim());
+      await widget.confirm(pin);
       if (mounted) Navigator.of(context).pop(true);
     } catch (error) {
       if (mounted) {
+        _pin.clear();
         setState(() {
           _busy = false;
           _error = _lockErrorText(context, error);
@@ -785,20 +1133,19 @@ class _PinConfirmationSheetState extends State<_PinConfirmationSheet> {
     canPop: !_busy,
     child: _SheetShell(
       title: widget.title,
+      dialog: true,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Text('Enter this profile’s current PIN to continue.'),
-          const SizedBox(height: 12),
-          _pinField(
+          _ProfilePinKeypad(
             controller: _pin,
-            hint: 'Current PIN',
-            autofocus: true,
-            onSubmitted: (_) => _confirm(),
+            length: widget.length ?? 6,
+            enabled: !_busy,
           ),
           if (_error != null)
             Text(
               _error!,
+              textAlign: TextAlign.center,
               style: AppText.caption.copyWith(color: AppColors.accent),
             ),
           const SizedBox(height: 14),
@@ -931,6 +1278,7 @@ class _PinRecoverySheetState extends State<_PinRecoverySheet> {
         if (_error != null)
           Text(
             _error!,
+            textAlign: TextAlign.center,
             style: AppText.caption.copyWith(color: AppColors.accent),
           ),
         const SizedBox(height: 14),

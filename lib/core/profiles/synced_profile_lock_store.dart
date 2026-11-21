@@ -201,6 +201,20 @@ class SyncedProfileLockStore extends ProfileLockStore {
     return saved;
   }
 
+  @override
+  Future<int?> pinLength(String profileId) async {
+    final owner = _checkOwner();
+    final version = _versions[profileId];
+    if (owner == null || version == null) return null;
+    final length = await _offlinePins.pinLength(
+      _key('offline_pin', profileId),
+      version,
+    );
+    return _checkOwner() == owner && _versions[profileId] == version
+        ? length
+        : null;
+  }
+
   Future<void> _rememberPin(String id, String pin) async {
     final owner = _checkOwner();
     final key = _key('offline_pin', id);
@@ -279,6 +293,54 @@ class SyncedProfileLockStore extends ProfileLockStore {
   }
 
   @override
+  Future<Set<String>> lockedProfileIds(Iterable<String> ids) async {
+    final owner = _checkOwner();
+    if (owner == null) return {};
+    final requested = ids.toSet();
+    if (requested.isEmpty) return {};
+    final saved = await _secure.readAll();
+    if (_checkOwner() != owner) return {};
+    final legacy = {
+      for (final id in requested)
+        if (saved.containsKey('profile_lock_$id')) id,
+    };
+    if (isOffline?.call() != true) {
+      try {
+        final result = await _request('status');
+        final profiles = result['profiles'];
+        if (profiles is List) {
+          return {
+            ...legacy,
+            for (final profile in profiles)
+              if (profile is Map &&
+                  profile['locked'] == true &&
+                  requested.contains(profile['profile_id']))
+                profile['profile_id'] as String,
+          };
+        }
+      } on ProfileLockException catch (error) {
+        if (error.code != 'online_required') rethrow;
+      }
+    }
+    if (_checkOwner() != owner) return {};
+    return {
+      ...legacy,
+      for (final id in requested)
+        if (_hasCachedLockBadge(saved[_key('status', id)])) id,
+    };
+  }
+
+  bool _hasCachedLockBadge(String? raw) {
+    if (raw == null) return false;
+    try {
+      final status = jsonDecode(raw);
+      return status is Map && status['locked'] == true;
+    } on FormatException {
+      return false;
+    }
+  }
+
+  @override
   bool isUnlocked(String profileId) {
     final online = grantHeaders.containsKey(profileId);
     return online ||
@@ -326,6 +388,7 @@ class SyncedProfileLockStore extends ProfileLockStore {
   @override
   Future<bool> verify(String profileId, String pin, {String? localPin}) async {
     try {
+      final owner = _checkOwner();
       final hasLegacy = await super.isLocked(profileId);
       final originalPin = localPin == null || localPin.trim().isEmpty
           ? pin
@@ -333,19 +396,19 @@ class SyncedProfileLockStore extends ProfileLockStore {
       if (hasLegacy && !await super.verify(profileId, originalPin)) {
         return false;
       }
-      final status = await _status(profileId);
-      Map<String, dynamic> result;
-      if (status['locked'] == true) {
-        result = await _request('unlock', profileId: profileId, pin: pin);
-      } else {
-        if (!hasLegacy) return false;
-        // A local hash cannot be sent as a PIN. Enroll only after the user
-        // supplies the original PIN and the VPS confirms it has been saved.
-        result = await _request('set', profileId: profileId, newPin: pin);
+      if (_checkOwner() != owner) {
+        throw const ProfileLockException('session_changed');
+      }
+      final result = hasLegacy && (await _status(profileId))['locked'] == false
+          ? await _request('set', profileId: profileId, newPin: pin)
+          : await _request('unlock', profileId: profileId, pin: pin);
+      if (result['locked'] == false) {
+        await _cacheStatus(profileId, result);
+        throw const ProfileLockException('not_locked');
       }
       await _accept(profileId, result);
       await _rememberPin(profileId, pin);
-      await super.clear(profileId);
+      if (hasLegacy) await super.clear(profileId);
       return true;
     } on ProfileLockException catch (error) {
       if (error.code == 'verification_failed') return false;

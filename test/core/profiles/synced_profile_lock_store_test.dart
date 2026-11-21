@@ -125,6 +125,7 @@ class _Remote implements ProfileLockRemote {
     if (action == 'status') {
       return {'ok': true, 'locked': locked, 'version': version};
     }
+    if (action == 'unlock' && !locked) return {'ok': true, 'locked': false};
     if (action == 'unlock' && pin != '1234') {
       throw const ProfileLockException('verification_failed');
     }
@@ -169,12 +170,51 @@ void main() {
     owner = 'account-a';
   });
 
+  test('verification reports when the server removed an open lock', () async {
+    final locks = create();
+    expect(await locks.isLocked('private'), isTrue);
+    remote.locked = false;
+    await expectLater(
+      locks.verify('private', '0000'),
+      throwsA(
+        isA<ProfileLockException>().having(
+          (error) => error.code,
+          'code',
+          'not_locked',
+        ),
+      ),
+    );
+  });
+
+  test(
+    'repeat unlock makes one request and reuses the current verifier',
+    () async {
+      final locks = create();
+      expect(await locks.isLocked('private'), isTrue);
+      remote.actions.clear();
+      expect(await locks.verify('private', '1234'), isTrue);
+      expect(remote.actions, ['unlock']);
+
+      const key = 'synced_profile_offline_pin_account-a_private';
+      final saved = storage.values[key];
+      remote.actions.clear();
+      expect(await locks.verify('private', '1234'), isTrue);
+      expect(remote.actions, ['unlock']);
+      final original = jsonDecode(saved!) as Map<String, dynamic>;
+      final reused = jsonDecode(storage.values[key]!) as Map<String, dynamic>;
+      expect(reused['salt'], original['salt']);
+      expect(reused['hash'], original['hash']);
+      expect(reused['attempts'], 0);
+    },
+  );
+
   test('a verified PIN unlocks cached data offline after restart', () async {
     final locks = create();
     expect(await locks.verify('private', '1234'), isTrue);
     remote.offline = true;
     final restarted = create();
     expect(await restarted.isLocked('private'), isTrue);
+    expect(await restarted.pinLength('private'), 4);
     expect(await restarted.verify('private', '0000'), isFalse);
     expect(restarted.isUnlocked('private'), isFalse);
     expect(await restarted.verify('private', '1234'), isTrue);
@@ -182,10 +222,28 @@ void main() {
     expect(restarted.grantHeaders, isEmpty);
   });
 
+  test(
+    'lock badges read bulk status and fall back to cached status offline',
+    () async {
+      final locks = create();
+      expect(await locks.verify('private', '1234'), isTrue);
+      final grants = locks.grantHeaders;
+      remote.actions.clear();
+      expect(await locks.lockedProfileIds(['private', 'other']), {'private'});
+      expect(remote.actions, ['status']);
+      expect(locks.grantHeaders, grants);
+      remote.offline = true;
+      expect(await locks.lockedProfileIds(['private', 'other']), {'private'});
+      owner = 'account-b';
+      expect(await locks.lockedProfileIds(['private', 'other']), isEmpty);
+    },
+  );
+
   test('offline PIN approval belongs to its account and profile', () async {
     await create().verify('private', '1234');
     remote.offline = true;
     owner = 'account-b';
+    expect(await create().pinLength('private'), isNull);
     await expectLater(
       create().verify('private', '1234'),
       throwsA(isA<ProfileLockException>()),
@@ -202,6 +260,7 @@ void main() {
     await locks.verify('private', '1234');
     remote.version++;
     expect(await locks.isLocked('private'), isTrue);
+    expect(await locks.pinLength('private'), isNull);
     remote.offline = true;
     await expectLater(
       create().verify('private', '1234'),

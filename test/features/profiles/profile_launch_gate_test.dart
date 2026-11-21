@@ -1,11 +1,15 @@
+import 'dart:async';
 import 'dart:io';
+import 'dart:ui' as ui;
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_it/get_it.dart';
 import 'package:hive/hive.dart';
+import 'package:watch_app/core/app_config.dart';
 import 'package:watch_app/core/app_mode.dart';
+import 'package:watch_app/core/cache/app_image_cache.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:watch_app/core/profiles/viewer_profile.dart';
 import 'package:watch_app/core/profiles/viewer_profile_avatar.dart';
@@ -95,7 +99,7 @@ void main() {
     expect(profiles.recoverableProfiles.single.id, 'old-guest');
   });
 
-  testWidgets('profile tap finishes the picker transition within 400ms', (
+  testWidgets('profile tap finishes the picker transition within 500ms', (
     tester,
   ) async {
     await tester.pumpWidget(app());
@@ -103,8 +107,9 @@ void main() {
 
     await tester.tap(find.text('Home'));
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 16));
-    await tester.pump(const Duration(milliseconds: 400));
+    for (var elapsed = 0; elapsed < 500; elapsed += 8) {
+      await tester.pump(const Duration(milliseconds: 8));
+    }
 
     expect(find.text("Who's watching?"), findsNothing);
     expect(find.text('Main screen'), findsOneWidget);
@@ -154,8 +159,8 @@ void main() {
       find.byKey(ValueKey('profile-avatar-fill-${profiles.profiles.first.id}')),
     );
     final outline = (avatar.shape! as CircleBorder).side;
-    expect(outline.width, 1);
-    expect(outline.color, AppColors.textPrimary.withValues(alpha: 0.25));
+    expect(outline.width, 2.8);
+    expect(outline.color, const Color(0xFF2B3137));
     expect(find.text('Add'), findsOneWidget);
     expect(find.text('Edit'), findsNothing);
   });
@@ -445,8 +450,9 @@ void main() {
       ValueKey('profile-avatar-fill-${profile.id}'),
     );
     final fill = tester.widget<Material>(fillFinder);
-    expect(fill.color, AppColors.accent);
+    expect(fill.color, viewerProfileAvatarFill);
     expect(fill.shape, isA<CircleBorder>());
+    expect((fill.shape as CircleBorder).side.width, 2.8);
     expect(tester.getSize(avatar), tester.getSize(fillFinder));
     expect(
       find.descendant(
@@ -474,11 +480,7 @@ void main() {
 
     await gesture.up();
     await tester.pump();
-    expect(selected, isTrue);
-    await tester.pump(const Duration(milliseconds: 90));
-    expect(scale.value, greaterThan(1.04));
-    await tester.pump(const Duration(milliseconds: 250));
-    expect(scale.value, 1);
+    expect(selected, isFalse);
     await tester.pumpAndSettle();
     expect(selected, isTrue);
   });
@@ -628,6 +630,26 @@ void main() {
     expect(find.text("Who's watching?"), findsNothing);
   });
 
+  testWidgets('profile picker badges only protected avatars', (tester) async {
+    final unlocked = await tester.runAsync(() => profiles.create('Unlocked'));
+    final locked = profiles.profiles.first;
+    GetIt.instance.registerSingleton<ProfileLockStore>(
+      _BadgeLockStore(locked.id),
+    );
+
+    await tester.pumpWidget(app());
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(ValueKey('profile-lock-badge-${locked.id}')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(ValueKey('profile-lock-badge-${unlocked!.id}')),
+      findsNothing,
+    );
+  });
+
   testWidgets('locked profile with asking on still forces the picker', (
     tester,
   ) async {
@@ -698,14 +720,18 @@ void main() {
     expect(tester.widget<FadeTransition>(footerFade).opacity.value, 1);
   });
 
-  testWidgets('gate releases content before popping the picker', (
+  testWidgets('gate prepares the shell while the avatar is still gliding', (
     tester,
   ) async {
     final deferredStates = <bool>[];
+    final tabStates = <bool>[];
     await tester.pumpWidget(
       MaterialApp(
         home: ProfileLaunchGate(
-          child: _ProfileGateShellProbe(onBuild: deferredStates.add),
+          child: _ProfileGateShellProbe(
+            onBuild: deferredStates.add,
+            onTabs: tabStates.add,
+          ),
         ),
       ),
     );
@@ -713,9 +739,14 @@ void main() {
     expect(deferredStates.last, isTrue);
     final id = profiles.profiles.first.id;
     await tester.tap(find.byKey(ValueKey('profile-avatar-ink-$id')));
-    await tester.pump(); // one frame: content released, pop not yet done
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 16));
     expect(deferredStates.last, isFalse);
     expect(find.text("Who's watching?"), findsOneWidget);
+    expect(find.byKey(const ValueKey('profile-center-glide')), findsOneWidget);
+    expect(tabStates.last, isTrue);
+    await tester.pumpAndSettle();
+    expect(tabStates.last, isFalse);
   });
 
   testWidgets('launch selection flies a full-size avatar to the dock', (
@@ -734,10 +765,38 @@ void main() {
       find.byKey(ValueKey('profile-avatar-ink-${profiles.profiles.first.id}')),
     );
     await tester.pump();
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 40));
-
+    final glide = find.byKey(const ValueKey('profile-center-glide'));
+    expect(glide, findsOneWidget);
+    expect(tester.getCenter(glide), isNot(const Offset(400, 300)));
+    expect(
+      find.ancestor(
+        of: find.byKey(
+          ValueKey('profile-avatar-ink-${profiles.profiles.first.id}'),
+        ),
+        matching: find.byWidgetPredicate(
+          (widget) => widget is Opacity && widget.opacity == 0,
+        ),
+      ),
+      findsOneWidget,
+    );
+    await tester.pump(const Duration(milliseconds: 210));
+    expect(tester.getCenter(glide), const Offset(400, 300));
+    await tester.pump(const Duration(milliseconds: 45));
+    final sweep = find.descendant(
+      of: glide,
+      matching: find.byWidgetPredicate(
+        (widget) =>
+            widget is CustomPaint &&
+            widget.child is Hero &&
+            widget.foregroundPainter != null,
+      ),
+    );
+    expect(sweep, findsOneWidget);
+    expect(tester.getCenter(glide), const Offset(400, 300));
     final flight = find.byKey(const ValueKey('profile-flight-avatar'));
+    for (var frame = 0; frame < 10 && flight.evaluate().isEmpty; frame++) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
     expect(flight, findsOneWidget);
     expect(
       find.descendant(
@@ -748,10 +807,125 @@ void main() {
       ),
       findsOneWidget,
     );
-    await tester.pump(const Duration(milliseconds: 120));
-    expect(flight, findsOneWidget);
     await tester.pump(const Duration(milliseconds: 200));
     expect(flight, findsNothing);
+  });
+
+  testWidgets(
+    'cached zoom lines keep moving while a profile switch is pending',
+    (tester) async {
+      final delayed = _DelayedProfileStore();
+      await tester.runAsync(delayed.loadForUser);
+      await GetIt.instance.unregister<ViewerProfileStore>();
+      GetIt.instance.registerSingleton<ViewerProfileStore>(delayed);
+      profiles = delayed;
+
+      final provider = AppImageCache.imageProvider(kProfileZoomLinesUrl);
+      await provider.evict();
+
+      final recorder = ui.PictureRecorder();
+      Canvas(recorder).drawPaint(Paint()..color = Colors.white);
+      final picture = recorder.endRecording();
+      final sheet = picture.toImageSync(2400, 1700);
+      picture.dispose();
+      PaintingBinding.instance.imageCache.putIfAbsent(
+        provider,
+        () =>
+            OneFrameImageStreamCompleter(Future.value(ImageInfo(image: sheet))),
+      );
+      addTearDown(provider.evict);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ProfileLaunchGate(
+            child: _ProfileGateHeroProbe(profiles: profiles),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final profile = profiles.profiles.first;
+      await tester.tap(
+        find.byKey(ValueKey('profile-avatar-ink-${profile.id}')),
+      );
+      await tester.pump();
+      final zoomLines = find.byKey(const ValueKey('profile-zoom-lines'));
+      expect(tester.widget<CustomPaint>(zoomLines).painter, isNull);
+
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(tester.widget<CustomPaint>(zoomLines).painter, isNotNull);
+      expect(
+        tester.getCenter(find.byKey(const ValueKey('profile-center-glide'))),
+        const Offset(400, 300),
+      );
+      await tester.pump(const Duration(milliseconds: 900));
+      final frame = tester.widget<CustomPaint>(zoomLines).painter!;
+      await tester.pump(const Duration(milliseconds: 50));
+      final nextFrame = tester.widget<CustomPaint>(zoomLines).painter!;
+      expect(nextFrame.shouldRepaint(frame), isTrue);
+      expect(find.byKey(const ValueKey('profile-flight-avatar')), findsNothing);
+
+      delayed.ready.complete();
+      await tester.pumpAndSettle();
+      expect(find.text("Who's watching?"), findsNothing);
+      expect(zoomLines, findsNothing);
+    },
+  );
+
+  testWidgets('known six-digit PIN dismisses before the avatar glides', (
+    tester,
+  ) async {
+    final locks = _SixDigitLockStore();
+    GetIt.instance.registerSingleton<ProfileLockStore>(locks);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ProfileLaunchGate(
+          child: _ProfileGateHeroProbe(profiles: profiles),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final id = profiles.profiles.first.id;
+    await tester.tap(find.byKey(ValueKey('profile-avatar-ink-$id')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 80));
+    final fade = find.byKey(const ValueKey('profile-pin-dialog-fade'));
+    final opacity = tester.widget<FadeTransition>(fade).opacity.value;
+    expect(opacity, allOf(greaterThan(0), lessThan(1)));
+    await tester.pumpAndSettle();
+
+    Future<void> enter(String digits) async {
+      for (final digit in digits.split('')) {
+        await tester.tap(find.byKey(ValueKey('profile-pin-key-$digit')));
+        await tester.pump();
+      }
+    }
+
+    final glide = find.byKey(const ValueKey('profile-center-glide'));
+    await enter('000000');
+    await tester.pumpAndSettle();
+    final error = tester.widget<Text>(find.text('Wrong PIN, try again'));
+    expect(error.textAlign, TextAlign.center);
+    expect(locks.attempts, 1);
+    expect(glide, findsNothing);
+
+    await enter('0123');
+    expect(locks.attempts, 1);
+    await enter('45');
+    expect(locks.attempts, 1);
+    await tester.tap(find.widgetWithText(FilledButton, 'Unlock profile'));
+    await tester.pump();
+    expect(locks.attempts, 2);
+    expect(glide, findsNothing);
+    await tester.pump(const Duration(milliseconds: 80));
+    expect(fade, findsOneWidget);
+    expect(glide, findsNothing);
+    for (var frame = 0; frame < 30 && glide.evaluate().isEmpty; frame++) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    expect(find.byKey(const ValueKey('profile-pin-key-1')), findsNothing);
+    expect(glide, findsOneWidget);
+    await tester.pumpAndSettle();
+    expect(find.text("Who's watching?"), findsNothing);
   });
 
   testWidgets('double selection fires once', (tester) async {
@@ -768,7 +942,7 @@ void main() {
     final name = find.text(profiles.profiles.first.name).first;
     await tester.tap(name);
     await tester.pump();
-    await tester.tap(name);
+    await tester.tap(name, warnIfMissed: false);
     await tester.pumpAndSettle();
     expect(selections, 1);
   });
@@ -928,6 +1102,11 @@ void main() {
     final avatar = find.byKey(
       ValueKey('profile-avatar-fill-${customProfile!.id}'),
     );
+    final material = tester.widget<Material>(avatar);
+    expect(
+      (material.shape! as CircleBorder).side,
+      const BorderSide(color: Color(0xFF2B3137), width: 2.8),
+    );
     final imageFinder = find.descendant(
       of: avatar,
       matching: find.byType(Image),
@@ -1075,9 +1254,31 @@ void main() {
   });
 }
 
+class _BadgeLockStore extends ProfileLockStore {
+  _BadgeLockStore(this.lockedId);
+
+  final String lockedId;
+
+  @override
+  Future<bool> isLocked(String profileId) async => profileId == lockedId;
+}
+
 class _AlwaysLockedStore extends ProfileLockStore {
   @override
   Future<bool> isLocked(String profileId) async => true;
+}
+
+class _SixDigitLockStore extends _AlwaysLockedStore {
+  int attempts = 0;
+
+  @override
+  Future<int?> pinLength(String profileId) async => 6;
+
+  @override
+  Future<bool> verify(String profileId, String pin, {String? localPin}) async {
+    attempts++;
+    return pin == '012345';
+  }
 }
 
 class _ThrowingLockStore extends ProfileLockStore {
@@ -1086,7 +1287,8 @@ class _ThrowingLockStore extends ProfileLockStore {
       throw const ProfileLockException('online_required');
 }
 
-class _CountingNavigatorObserver extends NavigatorObserver {  int pushes = 0;
+class _CountingNavigatorObserver extends NavigatorObserver {
+  int pushes = 0;
 
   @override
   void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
@@ -1123,15 +1325,27 @@ class _UnusedCatalogueRepository implements CatalogueRepository {
 }
 
 class _ProfileGateShellProbe extends StatelessWidget {
-  const _ProfileGateShellProbe({required this.onBuild});
+  const _ProfileGateShellProbe({required this.onBuild, this.onTabs});
 
   final ValueChanged<bool> onBuild;
+  final ValueChanged<bool>? onTabs;
 
   @override
   Widget build(BuildContext context) {
     final deferContent = ProfileShellScope.shouldDeferContent(context);
     onBuild(deferContent);
+    onTabs?.call(ProfileShellScope.shouldDeferTabs(context));
     return deferContent ? const SizedBox.expand() : const Text('Main screen');
+  }
+}
+
+class _DelayedProfileStore extends ViewerProfileStore {
+  final ready = Completer<void>();
+
+  @override
+  Future<void> switchTo(String profileId) async {
+    await ready.future;
+    await super.switchTo(profileId);
   }
 }
 

@@ -68,6 +68,15 @@ Future<void> _chooseLocked(
   await tester.pumpAndSettle();
 }
 
+final _keypad = find.byKey(const ValueKey('profile-pin-key-1'));
+
+Future<void> _enterPin(WidgetTester tester, String pin) async {
+  for (final digit in pin.split('')) {
+    await tester.tap(find.byKey(ValueKey('profile-pin-key-$digit')));
+    await tester.pump();
+  }
+}
+
 void main() {
   late _Profiles profiles;
   late _Locks locks;
@@ -87,15 +96,12 @@ void main() {
   ) async {
     locks.legacy = true;
     await _chooseLocked(tester);
-    expect(find.byType(TextField), findsOneWidget);
-    expect(
-      tester.widget<TextField>(find.byType(TextField)).keyboardType,
-      TextInputType.number,
-    );
-    await tester.enterText(find.byType(TextField), '0000');
+    expect(_keypad, findsOneWidget);
+    expect(find.byType(TextField), findsNothing);
+    await _enterPin(tester, '0000');
     await tester.tap(find.widgetWithText(FilledButton, 'Unlock profile'));
     await tester.pumpAndSettle();
-    expect(find.byType(TextField), findsNWidgets(2));
+    expect(find.byType(TextField), findsOneWidget);
     expect(profiles.activeId, kDefaultProfileId);
   });
 
@@ -103,18 +109,20 @@ void main() {
     tester,
   ) async {
     await _chooseLocked(tester);
+    expect(find.text('Use legacy PIN'), findsNothing);
+    expect(find.text('Change PIN'), findsOneWidget);
     expect(profiles.activeId, kDefaultProfileId);
-    expect(find.byType(TextField), findsOneWidget);
-    await tester.enterText(find.byType(TextField), '0000');
+    expect(_keypad, findsOneWidget);
+    await _enterPin(tester, '0000');
     await tester.tap(find.widgetWithText(FilledButton, 'Unlock profile'));
     await tester.pumpAndSettle();
     expect(profiles.activeId, kDefaultProfileId);
-    expect(find.byType(TextField), findsOneWidget);
-    await tester.enterText(find.byType(TextField), '1234');
+    expect(_keypad, findsOneWidget);
+    await _enterPin(tester, '1234');
     await tester.tap(find.widgetWithText(FilledButton, 'Unlock profile'));
     await tester.pumpAndSettle();
     expect(profiles.activeId, 'locked');
-    expect(find.byType(TextField), findsNothing);
+    expect(_keypad, findsNothing);
   });
 
   testWidgets(
@@ -122,7 +130,7 @@ void main() {
     (tester) async {
       await _chooseLocked(tester);
       profiles.owner = 'account-b';
-      await tester.enterText(find.byType(TextField), '1234');
+      await _enterPin(tester, '1234');
       await tester.tap(find.widgetWithText(FilledButton, 'Unlock profile'));
       await tester.pumpAndSettle();
       expect(profiles.activeId, kDefaultProfileId);
@@ -133,8 +141,8 @@ void main() {
     tester,
   ) async {
     await _chooseLocked(tester);
-    expect(find.byType(TextField), findsOneWidget);
-    Navigator.of(tester.element(find.byType(TextField))).pop();
+    expect(_keypad, findsOneWidget);
+    Navigator.of(tester.element(_keypad)).pop();
     await tester.pumpAndSettle();
     expect(profiles.activeId, kDefaultProfileId);
   });
@@ -145,7 +153,7 @@ void main() {
     locks.locked = false;
     await _chooseLocked(tester);
     expect(profiles.activeId, 'locked');
-    expect(find.byType(TextField), findsNothing);
+    expect(_keypad, findsNothing);
   });
 
   testWidgets(
@@ -154,7 +162,7 @@ void main() {
       locks.markUnlocked('locked');
       await _chooseLocked(tester);
       expect(profiles.activeId, kDefaultProfileId);
-      expect(find.byType(TextField), findsOneWidget);
+      expect(_keypad, findsOneWidget);
     },
   );
 
@@ -165,6 +173,6 @@ void main() {
     locks.markUnlocked('locked');
     await _chooseLocked(tester, choiceKey: 'profile-switcher-active');
     expect(profiles.activeId, 'locked');
-    expect(find.byType(TextField), findsNothing);
+    expect(_keypad, findsNothing);
   });
 }

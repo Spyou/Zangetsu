@@ -4,10 +4,12 @@ class ProfileShellScope extends InheritedWidget {
   const ProfileShellScope({
     super.key,
     required this.deferContent,
+    this.deferTabs = false,
     required super.child,
   });
 
   final bool deferContent;
+  final bool deferTabs;
 
   static bool shouldDeferContent(BuildContext context) =>
       context
@@ -15,7 +17,14 @@ class ProfileShellScope extends InheritedWidget {
           ?.deferContent ??
       false;
 
+  static bool shouldDeferTabs(BuildContext context) =>
+      context
+          .dependOnInheritedWidgetOfExactType<ProfileShellScope>()
+          ?.deferTabs ??
+      false;
+
   @override
   bool updateShouldNotify(ProfileShellScope oldWidget) =>
-      deferContent != oldWidget.deferContent;
+      deferContent != oldWidget.deferContent ||
+      deferTabs != oldWidget.deferTabs;
 }

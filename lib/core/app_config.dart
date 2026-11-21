@@ -44,6 +44,9 @@ const String kLogIntakeUrl = 'https://zangetsu-logs.log-intake.workers.dev';
 const String kProfilePickerArtworkManifestUrl =
     'https://avatars.zangetsu.online/profile-picker/manifest.json';
 
+const String kProfileZoomLinesUrl =
+    'https://avatars.zangetsu.online/profile-picker/anime-zoom-lines-sheet.png?v=1';
+
 /// Developer announcements feed (a plain JSON file in the public app repo).
 /// The app READS this on launch to show in-app announcements — never writes.
 /// Edit + push that file to broadcast a message to every user.

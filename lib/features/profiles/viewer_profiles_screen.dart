@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -7,6 +8,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:hive/hive.dart';
 
 import '../../core/app_mode.dart';
+import '../../core/cache/app_image_cache.dart';
 import '../../core/di/injector.dart';
 import '../../core/models/media_item.dart';
 import '../../core/profiles/viewer_profile.dart';
@@ -47,29 +49,69 @@ String _pickerBackdropUrl(String url) {
       .toString();
 }
 
+class ProfilePickerRoute extends MaterialPageRoute<void> {
+  ProfilePickerRoute({required super.builder, required this.reduceMotion});
+
+  final bool reduceMotion;
+
+  @override
+  Duration get transitionDuration => Duration.zero;
+
+  @override
+  Duration get reverseTransitionDuration =>
+      reduceMotion ? Duration.zero : const Duration(milliseconds: 160);
+
+  @override
+  Widget buildTransitions(
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) => FadeTransition(opacity: animation, child: child);
+}
+
 class ViewerProfilesScreen extends StatefulWidget {
   const ViewerProfilesScreen({
     super.key,
     this.selectionOnly = false,
     this.onSelected,
+    this.onProfilePrepared,
   });
 
   final bool selectionOnly;
   final VoidCallback? onSelected;
+  final VoidCallback? onProfilePrepared;
 
   @override
   State<ViewerProfilesScreen> createState() => _ViewerProfilesScreenState();
 }
 
 class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late final AnimationController _pickerEntrance;
   late final Animation<double> _screenOpacity;
   late final Animation<Offset> _screenSlide;
   late final Animation<double> _titleOpacity;
   late final Animation<double> _footerOpacity;
   final _enableSelectionHero = ValueNotifier(false);
+  static const _avatarArrivalMs = 210;
+  ImageStream? _zoomLinesStream;
+  ImageStreamListener? _zoomLinesListener;
+  ImageInfo? _zoomLines;
+  bool _playZoomLines = false;
+  late final _avatarGlide = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 310),
+  );
+  late final _centerLoop = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 800),
+  );
+  ({ViewerProfile profile, Rect origin, double diameter})? _flyingAvatar;
+  final _pickerBounds = GlobalKey();
   bool _selecting = false;
+  Set<String> _lockedProfileIds = {};
+  int _lockBadgeLoad = 0;
   bool _managingProfiles = false;
   bool _recoveryPromptShown = false;
   String? _pickerArtworkUrl;
@@ -120,6 +162,7 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
       curve: const Interval(0.7, 1, curve: Curves.easeOutCubic),
     );
     if (widget.selectionOnly) {
+      unawaited(_refreshLockBadges());
       if (Hive.isBoxOpen(ViewerProfileStore.boxName)) {
         final artwork = _pickerArtwork = ProfilePickerArtwork(
           box: Hive.box(ViewerProfileStore.boxName),
@@ -137,9 +180,46 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
           _pickerEntrance.value = 1.0;
         } else {
           _pickerEntrance.forward();
+          if (widget.onSelected != null &&
+              !(sl.isRegistered<AppMode>() && sl<AppMode>().isTv)) {
+            _preloadZoomLines();
+          }
         }
       });
     }
+  }
+
+  Future<void> _refreshLockBadges() async {
+    if (!sl.isRegistered<ProfileLockStore>()) return;
+    final request = ++_lockBadgeLoad;
+    final owner = _profiles.ownerKey;
+    try {
+      final locked = await sl<ProfileLockStore>().lockedProfileIds(
+        _profiles.profiles.map((profile) => profile.id),
+      );
+      if (mounted && request == _lockBadgeLoad && owner == _profiles.ownerKey) {
+        setState(() => _lockedProfileIds = locked);
+      }
+    } catch (_) {
+      // The picker can show profiles while status is unavailable.
+    }
+  }
+
+  void _preloadZoomLines() {
+    final stream = AppImageCache.imageProvider(
+      kProfileZoomLinesUrl,
+    ).resolve(createLocalImageConfiguration(context));
+    final listener = ImageStreamListener((info, _) {
+      if (info.image.width != 2400 || info.image.height != 1700) {
+        info.dispose();
+        return;
+      }
+      _zoomLines?.dispose();
+      _zoomLines = info;
+    }, onError: (error, stack) {});
+    _zoomLinesStream = stream;
+    _zoomLinesListener = listener;
+    stream.addListener(listener);
   }
 
   Future<void> _loadNextArtwork() async {
@@ -181,45 +261,244 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
     _artworkRotation?.cancel();
     _enableSelectionHero.dispose();
     _pickerEntrance.dispose();
+    _avatarGlide.dispose();
+    _centerLoop.dispose();
+    final listener = _zoomLinesListener;
+    if (listener != null) _zoomLinesStream?.removeListener(listener);
+    _zoomLines?.dispose();
     super.dispose();
   }
 
-  Future<void> _switchTo(ViewerProfile profile) async {
+  Future<void> _switchTo(
+    ViewerProfile profile, {
+    BuildContext? avatarContext,
+  }) async {
     // Both the avatar and the name label land here. Sticky: every real flow
     // closes the picker after a selection, so a second tap is always a
     // double-tap, never a new choice.
     if (_selecting) return;
+    _selecting = true;
+    final start = _captureAvatar(avatarContext);
+    final glide = start != null;
     final owner = _profiles.ownerKey;
-    if (!await ensureProfileUnlocked(context, profile)) return;
+    if (!await ensureProfileUnlocked(context, profile)) {
+      _selecting = false;
+      return;
+    }
     if (!mounted ||
         _profiles.ownerKey != owner ||
         !_profiles.profiles.any((p) => p.id == profile.id)) {
+      _selecting = false;
       return;
     }
     final locks = sl.isRegistered<ProfileLockStore>()
         ? sl<ProfileLockStore>()
         : null;
     if (_profiles.activeId != profile.id) locks?.approveSwitch(profile.id);
-    _selecting = true;
     try {
-      await _profiles.switchTo(profile.id);
+      if (glide) {
+        _playZoomLines = _zoomLines != null;
+        _avatarGlide.duration = Duration(
+          milliseconds: _avatarArrivalMs + (_playZoomLines ? 440 : 100),
+        );
+        setState(() {
+          _flyingAvatar = (
+            profile: profile,
+            origin: start.origin,
+            diameter: start.diameter,
+          );
+        });
+      }
+      if (glide) _centerLoop.repeat();
+      await Future.wait<void>([
+        if (glide) _avatarGlide.forward(from: 0).orCancel,
+        _prepareProfile(owner, profile),
+      ]);
+      if (!mounted) return;
       if (_profiles.ownerKey != owner || _profiles.activeId != profile.id) {
-        _selecting = false;
+        _resetAvatarGlide();
         return;
       }
+      if (glide) _centerLoop.stop();
       final onSelected = widget.onSelected;
       if (mounted && onSelected != null) {
         _enableSelectionHero.value = true;
         onSelected();
       }
       if (mounted && onSelected == null) Navigator.of(context).pop();
+    } on TickerCanceled {
+      _resetAvatarGlide();
     } catch (_) {
-      _selecting = false;
+      _resetAvatarGlide();
       rethrow;
     } finally {
       locks?.consumeSwitchApproval(profile.id);
     }
   }
+
+  ({Rect origin, double diameter})? _captureAvatar(BuildContext? context) {
+    if (widget.onSelected == null ||
+        MediaQuery.disableAnimationsOf(this.context) ||
+        context?.mounted != true) {
+      return null;
+    }
+    final picker = _pickerBounds.currentContext?.findRenderObject();
+    final avatar = context!.findRenderObject();
+    if (picker is! RenderBox ||
+        avatar is! RenderBox ||
+        !picker.hasSize ||
+        !avatar.hasSize) {
+      return null;
+    }
+    return (
+      origin: MatrixUtils.transformRect(
+        avatar.getTransformTo(picker),
+        Offset.zero & avatar.size,
+      ),
+      diameter: avatar.size.width,
+    );
+  }
+
+  Future<void> _prepareProfile(String owner, ViewerProfile profile) async {
+    await _profiles.switchTo(profile.id);
+    if (mounted &&
+        _profiles.ownerKey == owner &&
+        _profiles.activeId == profile.id) {
+      widget.onProfilePrepared?.call();
+    }
+  }
+
+  void _resetAvatarGlide() {
+    _centerLoop.stop();
+    _selecting = false;
+    if (mounted) setState(() => _flyingAvatar = null);
+  }
+
+  Widget _withLockBadge(ViewerProfile profile, Widget avatar) {
+    if (!_lockedProfileIds.contains(profile.id)) return avatar;
+    return Stack(
+      children: [
+        avatar,
+        PositionedDirectional(
+          end: 0,
+          bottom: 0,
+          child: IgnorePointer(
+            child: Container(
+              key: ValueKey('profile-lock-badge-${profile.id}'),
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: AppColors.surface2,
+                border: Border.all(color: AppColors.bg, width: 2),
+              ),
+              child: const Icon(
+                Icons.lock_rounded,
+                size: 14,
+                semanticLabel: 'Locked profile',
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAvatarGlide(Size size) {
+    final flight = _flyingAvatar!;
+    final profile = flight.profile;
+    final diameter = flight.diameter;
+    final photo = profilePhotoForFace(
+      profile: profile,
+      accountPhotoUrl: _accountPhoto(),
+    );
+    final center = Rect.fromCenter(
+      center: size.center(Offset.zero),
+      width: diameter,
+      height: diameter,
+    );
+    return AnimatedBuilder(
+      key: const ValueKey('profile-center-glide'),
+      animation: _playZoomLines
+          ? _avatarGlide
+          : Listenable.merge([_avatarGlide, _centerLoop]),
+      builder: (context, child) {
+        final time = _avatarGlide.value;
+        final arrival =
+            _avatarArrivalMs / _avatarGlide.duration!.inMilliseconds;
+        return Positioned.fromRect(
+          rect: Rect.lerp(
+            flight.origin,
+            center,
+            Interval(0, arrival, curve: Curves.easeInOutCubic).transform(time),
+          )!,
+          child: CustomPaint(
+            foregroundPainter: !_playZoomLines && time > arrival
+                ? _AvatarInkSweep(_centerLoop.value)
+                : null,
+            child: child!,
+          ),
+        );
+      },
+      child: Hero(
+        tag: viewerProfileHeroTag(profile.id),
+        flightShuttleBuilder: (_, animation, _, from, to) {
+          final landingOpacity = ReverseAnimation(
+            animation,
+          ).drive(CurveTween(curve: const Interval(0.6, 1)));
+          return Stack(
+            key: const ValueKey('profile-flight-avatar'),
+            fit: StackFit.expand,
+            children: [
+              FadeTransition(
+                opacity: ReverseAnimation(landingOpacity),
+                child: FittedBox(child: (from.widget as Hero).child),
+              ),
+              FadeTransition(
+                opacity: landingOpacity,
+                child: (to.widget as Hero).child,
+              ),
+            ],
+          );
+        },
+        child: Material(
+          key: ValueKey('profile-avatar-fill-${profile.id}'),
+          color: viewerProfileAvatarColor(profile.avatar),
+          shape: _profileAvatarOutline,
+          clipBehavior: Clip.antiAlias,
+          child: Center(
+            child: ProfileAvatarFace(
+              profile: profile,
+              photoUrl: photo,
+              iconSize: diameter * 0.42,
+              photoDiameter: diameter,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildZoomLines() => Positioned.fill(
+    child: IgnorePointer(
+      child: RepaintBoundary(
+        child: AnimatedBuilder(
+          animation: Listenable.merge([_avatarGlide, _centerLoop]),
+          builder: (context, _) {
+            final elapsed =
+                _avatarGlide.value * _avatarGlide.duration!.inMilliseconds;
+            final fade = ((elapsed - _avatarArrivalMs) / 120).clamp(0.0, 1.0);
+            return CustomPaint(
+              key: const ValueKey('profile-zoom-lines'),
+              painter: fade > 0
+                  ? _AvatarZoomLines(_zoomLines!.image, _centerLoop.value, fade)
+                  : null,
+            );
+          },
+        ),
+      ),
+    ),
+  );
 
   Future<void> _edit([ViewerProfile? profile, int initialAvatar = 0]) async {
     if (profile != null && !await ensureProfileUnlocked(context, profile)) {
@@ -232,6 +511,7 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
       profile: profile,
       initialAvatar: initialAvatar,
     );
+    if (mounted && widget.selectionOnly) unawaited(_refreshLockBadges());
   }
 
   /// Turning the launch picker off opens straight into the active profile —
@@ -348,13 +628,36 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
         valueListenable: _enableSelectionHero,
         builder: (context, enabled, child) =>
             HeroMode(enabled: enabled, child: child!),
-        child: FadeTransition(
-          key: const ValueKey('profile-picker-entry-screen-fade'),
-          opacity: _screenOpacity,
-          child: SlideTransition(
-            key: const ValueKey('profile-picker-entry-screen-slide'),
-            position: _screenSlide,
-            child: _buildProfilePicker(),
+        child: LayoutBuilder(
+          builder: (context, constraints) => Stack(
+            key: _pickerBounds,
+            fit: StackFit.expand,
+            children: [
+              ColoredBox(color: AppColors.bg),
+              IgnorePointer(
+                ignoring: _flyingAvatar != null,
+                child: HeroMode(
+                  enabled: _flyingAvatar == null,
+                  child: AnimatedOpacity(
+                    opacity: _flyingAvatar == null ? 1 : 0,
+                    duration: const Duration(milliseconds: 140),
+                    child: FadeTransition(
+                      key: const ValueKey('profile-picker-entry-screen-fade'),
+                      opacity: _screenOpacity,
+                      child: SlideTransition(
+                        key: const ValueKey(
+                          'profile-picker-entry-screen-slide',
+                        ),
+                        position: _screenSlide,
+                        child: _buildProfilePicker(),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              if (_flyingAvatar != null && _playZoomLines) _buildZoomLines(),
+              if (_flyingAvatar != null) _buildAvatarGlide(constraints.biggest),
+            ],
           ),
         ),
       );
@@ -917,18 +1220,21 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
             ),
             child: Row(
               children: [
-                _ProfileAvatarTapTarget(
-                  key: avatarKey,
-                  profileId: profile.id,
-                  diameter: 64,
-                  fill: viewerProfileAvatarColor(profile.avatar),
-                  shape: const CircleBorder(),
-                  onTap: () => _switchTo(profile),
-                  child: ProfileAvatarFace(
-                    profile: profile,
-                    photoUrl: photo,
-                    iconSize: 28,
-                    photoDiameter: 64,
+                _withLockBadge(
+                  profile,
+                  _ProfileAvatarTapTarget(
+                    key: avatarKey,
+                    profileId: profile.id,
+                    diameter: 64,
+                    fill: viewerProfileAvatarColor(profile.avatar),
+                    shape: _profileAvatarOutline,
+                    onTap: () => _switchTo(profile),
+                    child: ProfileAvatarFace(
+                      profile: profile,
+                      photoUrl: photo,
+                      iconSize: 28,
+                      photoDiameter: 64,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -1132,27 +1438,39 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _ProfileAvatarTapTarget(
-            key: avatarKey,
-            profileId: profile.id,
-            diameter: diameter,
-            fill: fill,
-            shape: CircleBorder(
-              side: BorderSide(
-                color: AppColors.textPrimary.withValues(alpha: 0.25),
+          Opacity(
+            opacity: _flyingAvatar?.profile.id == profile.id ? 0 : 1,
+            child: _withLockBadge(
+              profile,
+              _ProfileAvatarTapTarget(
+                key: avatarKey,
+                profileId: profile.id,
+                diameter: diameter,
+                fill: fill,
+                shape: _profileAvatarOutline,
+                onTap: () => _switchTo(
+                  profile,
+                  avatarContext: isTv
+                      ? null
+                      : avatarKey.currentState?._faceKey.currentContext,
+                ),
+                child: ProfileAvatarFace(
+                  profile: profile,
+                  photoUrl: photo,
+                  iconSize: diameter * 0.42,
+                  photoDiameter: diameter,
+                ),
               ),
-            ),
-            onTap: () => _switchTo(profile),
-            child: ProfileAvatarFace(
-              profile: profile,
-              photoUrl: photo,
-              iconSize: diameter * 0.42,
-              photoDiameter: diameter,
             ),
           ),
           GestureDetector(
             behavior: HitTestBehavior.opaque,
-            onTap: () => _switchTo(profile),
+            onTap: () => _switchTo(
+              profile,
+              avatarContext: isTv
+                  ? null
+                  : avatarKey.currentState?._faceKey.currentContext,
+            ),
             child: Column(
               children: [
                 const SizedBox(height: 6),
@@ -1331,6 +1649,74 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
   }
 }
 
+class _AvatarZoomLines extends CustomPainter {
+  const _AvatarZoomLines(this.sheet, this.progress, this.opacity);
+
+  final ui.Image sheet;
+  final double progress;
+  final double opacity;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const frameWidth = 480.0;
+    const frameHeight = 340.0;
+    final frame = (progress * 24).floor().clamp(0, 23);
+    final source = Rect.fromLTWH(
+      frame % 5 * frameWidth,
+      frame ~/ 5 * frameHeight,
+      frameWidth,
+      frameHeight,
+    );
+    canvas.drawImageRect(
+      sheet,
+      source,
+      Offset.zero & size,
+      Paint()
+        ..filterQuality = FilterQuality.low
+        ..colorFilter = const ColorFilter.mode(Colors.white, BlendMode.srcIn)
+        ..color = Colors.white.withValues(alpha: opacity),
+    );
+  }
+
+  @override
+  bool shouldRepaint(_AvatarZoomLines oldDelegate) =>
+      sheet != oldDelegate.sheet ||
+      opacity != oldDelegate.opacity ||
+      (progress * 24).floor() != (oldDelegate.progress * 24).floor();
+}
+
+class _AvatarInkSweep extends CustomPainter {
+  const _AvatarInkSweep(this.progress);
+
+  final double progress;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final opacity = math.sin(math.pi * progress);
+    final ring = (Offset.zero & size).inflate(3 + 4 * progress);
+    final start = -math.pi / 2 + math.pi * 2 * progress;
+    final sweep = math.pi * 1.35;
+    final ink = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeWidth = 5 - 2 * progress
+      ..color = Colors.black.withValues(alpha: opacity * 0.7);
+    canvas.drawArc(ring, start, sweep, false, ink);
+    ink
+      ..strokeWidth = 2
+      ..color = Colors.white.withValues(alpha: opacity);
+    canvas.drawArc(ring, start + 0.12, sweep - 0.15, false, ink);
+  }
+
+  @override
+  bool shouldRepaint(_AvatarInkSweep oldDelegate) =>
+      progress != oldDelegate.progress;
+}
+
+const _profileAvatarOutline = CircleBorder(
+  side: BorderSide(color: Color(0xFF2B3137), width: 2.8),
+);
+
 class _ProfileAvatarTapTarget extends StatefulWidget {
   const _ProfileAvatarTapTarget({
     super.key,
@@ -1356,6 +1742,7 @@ class _ProfileAvatarTapTarget extends StatefulWidget {
 
 class _ProfileAvatarTapTargetState extends State<_ProfileAvatarTapTarget>
     with SingleTickerProviderStateMixin {
+  final _faceKey = GlobalKey();
   late final AnimationController _controller;
   late final Animation<double> _scale;
   TickerFuture? _releaseAnimation;
@@ -1366,29 +1753,16 @@ class _ProfileAvatarTapTargetState extends State<_ProfileAvatarTapTarget>
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 260),
+      duration: const Duration(milliseconds: 160),
     );
     _scale = TweenSequence<double>([
+      TweenSequenceItem(tween: Tween(begin: 1.0, end: 0.94), weight: 25),
       TweenSequenceItem(
-        tween: Tween<double>(
-          begin: 1,
-          end: 0.94,
-        ).chain(CurveTween(curve: Curves.easeOutCubic)),
-        weight: 25,
-      ),
-      TweenSequenceItem(
-        tween: Tween<double>(
+        tween: Tween(
           begin: 0.94,
-          end: 1.05,
-        ).chain(CurveTween(curve: Curves.easeOutBack)),
-        weight: 35,
-      ),
-      TweenSequenceItem(
-        tween: Tween<double>(
-          begin: 1.05,
-          end: 1,
-        ).chain(CurveTween(curve: Curves.easeInOutCubic)),
-        weight: 40,
+          end: 1.0,
+        ).chain(CurveTween(curve: Curves.easeOutCubic)),
+        weight: 75,
       ),
     ]).animate(_controller);
   }
@@ -1442,7 +1816,9 @@ class _ProfileAvatarTapTargetState extends State<_ProfileAvatarTapTarget>
         key: ValueKey('profile-avatar-${widget.profileId}'),
         scale: _scale,
         child: Hero(
+          key: _faceKey,
           tag: viewerProfileHeroTag(widget.profileId),
+          curve: Curves.linear,
           flightShuttleBuilder: (_, _, _, fromHeroContext, _) => FittedBox(
             key: const ValueKey('profile-flight-avatar'),
             fit: BoxFit.contain,

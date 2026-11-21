@@ -41,6 +41,22 @@ class ProfileLockStore {
     return true;
   }
 
+  Future<Set<String>> lockedProfileIds(Iterable<String> ids) async {
+    final statuses = await Future.wait(
+      ids.map((id) async {
+        try {
+          return (id, await isLocked(id));
+        } catch (_) {
+          return (id, false);
+        }
+      }),
+    );
+    return {
+      for (final (id, locked) in statuses)
+        if (locked) id,
+    };
+  }
+
   bool isUnlocked(String profileId) => _unlocked.contains(profileId);
 
   void markUnlocked(String profileId) => _unlocked.add(profileId);
@@ -50,6 +66,8 @@ class ProfileLockStore {
       _switchApprovals.remove(profileId);
   void clearSwitchApprovals() => _switchApprovals.clear();
   void lockEntry(String profileId) => _unlocked.remove(profileId);
+  Future<int?> pinLength(String profileId) async => null;
+
   Future<bool> needsLegacyPin(String profileId) async => false;
 
   /// Set (or replace) the PIN. Minimum 4 characters — enforced here, not

@@ -20,7 +20,14 @@ import 'viewer_profile_editor_screen.dart';
 import 'viewer_profiles_screen.dart';
 
 class ViewerProfileHomeScreen extends StatelessWidget {
-  const ViewerProfileHomeScreen({super.key});
+  const ViewerProfileHomeScreen({
+    super.key,
+    this.onProfileSelected,
+    this.onPickerClosed,
+  });
+
+  final VoidCallback? onProfileSelected;
+  final VoidCallback? onPickerClosed;
 
   static const _zoroGifUrl =
       'https://custom-doodle.com/wp-content/uploads/doodle/auto-draft/one-piece-dancing-roronoa-zoro-doodle.gif';
@@ -36,11 +43,24 @@ class ViewerProfileHomeScreen extends StatelessWidget {
     ),
   );
 
-  void _openChooser(BuildContext context) => Navigator.of(context).push<void>(
-    MaterialPageRoute<void>(
-      builder: (_) => const ViewerProfilesScreen(selectionOnly: true),
-    ),
-  );
+  Future<void> _openChooser(BuildContext context) async {
+    final route = ProfilePickerRoute(
+      reduceMotion: MediaQuery.disableAnimationsOf(context),
+      builder: (pickerContext) => ViewerProfilesScreen(
+        selectionOnly: true,
+        onProfilePrepared: onProfileSelected,
+        onSelected: onProfileSelected == null
+            ? null
+            : () async {
+                await WidgetsBinding.instance.endOfFrame;
+                if (pickerContext.mounted) Navigator.of(pickerContext).pop();
+              },
+      ),
+    );
+    await Navigator.of(context).push<void>(route);
+    await route.completed;
+    onPickerClosed?.call();
+  }
 
   void _openMenu(BuildContext context) {
     showModalBottomSheet<void>(

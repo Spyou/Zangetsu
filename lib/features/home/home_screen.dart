@@ -110,24 +110,36 @@ import 'see_all_screen.dart';
 /// Stateful for the per-item lazy hero-description cache and the navigation
 /// helpers.
 class HomeScreen extends StatelessWidget {
-  const HomeScreen({super.key, this.isTabActive = true});
+  const HomeScreen({
+    super.key,
+    this.isTabActive = true,
+    this.deferStartupPrompts = false,
+  });
 
   final bool isTabActive;
+  final bool deferStartupPrompts;
 
   @override
   Widget build(BuildContext context) {
     // Use the shared singleton so the splash can warm it before this mounts.
     return BlocProvider.value(
       value: sl<HomeCubit>(),
-      child: _HomeView(isTabActive: isTabActive),
+      child: _HomeView(
+        isTabActive: isTabActive,
+        deferStartupPrompts: deferStartupPrompts,
+      ),
     );
   }
 }
 
 class _HomeView extends StatefulWidget {
-  const _HomeView({required this.isTabActive});
+  const _HomeView({
+    required this.isTabActive,
+    required this.deferStartupPrompts,
+  });
 
   final bool isTabActive;
+  final bool deferStartupPrompts;
 
   @override
   State<_HomeView> createState() => _HomeViewState();
@@ -242,21 +254,27 @@ class _HomeViewState extends State<_HomeView>
       final cubit = context.read<HomeCubit>();
       if (cubit.state.sections == null && !cubit.state.loading) cubit.load();
     }
-    // Silently check GitHub Releases once on launch; the dialog only appears if
-    // a newer, non-skipped version exists. Best-effort — never blocks startup.
-    if (!_updateChecked && !isAppleTv) {
-      _updateChecked = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) async {
-        if (!mounted) return;
-        await maybeShowUpdateDialog(context);
-        // One-time community welcome (its own flag, independent of the per-id
-        // announcement feed), then any new developer announcement — all awaited
-        // in sequence so the modals never fight over the stack.
-        if (mounted) await maybeShowCommunitySheet(context);
-        if (mounted) await maybeShowAnnouncement(context);
-      });
-      _checkSourceUpdates();
+    _maybeStartLaunchChecks();
+  }
+
+  @override
+  void didUpdateWidget(covariant _HomeView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.deferStartupPrompts && !widget.deferStartupPrompts) {
+      _maybeStartLaunchChecks();
     }
+  }
+
+  void _maybeStartLaunchChecks() {
+    if (widget.deferStartupPrompts || _updateChecked || isAppleTv) return;
+    _updateChecked = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      await maybeShowUpdateDialog(context);
+      if (mounted) await maybeShowCommunitySheet(context);
+      if (mounted) await maybeShowAnnouncement(context);
+    });
+    _checkSourceUpdates();
   }
 
   Future<void> _commitContinueExit(String key) async {

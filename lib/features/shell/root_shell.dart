@@ -60,9 +60,13 @@ import 'root_shell_tv.dart';
 List<Widget> buildShellPages(
   ValueNotifier<int>? searchFocusSignal, {
   bool homeIsActive = true,
+  bool deferHomeStartupPrompts = false,
   String? searchFixedSourceId,
 }) => [
-  HomeScreen(isTabActive: homeIsActive),
+  HomeScreen(
+    isTabActive: homeIsActive,
+    deferStartupPrompts: deferHomeStartupPrompts,
+  ),
   SearchScreen(
     showBack: false,
     focusSignal: searchFocusSignal,
@@ -136,6 +140,7 @@ class _RootShellState extends State<RootShell>
   /// within 2s exits the app; the first just shows the "press back again" toast.
   DateTime? _lastBackPress;
   DateTime? _lastProfileTap;
+  bool _deferTabsForPicker = false;
 
   /// Tab-switch entrance: the visible page swaps immediately and the INCOMING
   /// tab fades + slides up into place (200ms, ease-out). We never fade the old
@@ -328,10 +333,15 @@ class _RootShellState extends State<RootShell>
   /// catalogue or metadata) — [dockSearchFixedSourceId], re-read on every
   /// rebuild so it follows catalogue picks. TV keeps its Settings rail
   /// destination.
-  List<Widget> _pagesFor(List<DockTab> tabs, String profileId) {
+  List<Widget> _pagesFor(
+    List<DockTab> tabs,
+    String profileId, {
+    required bool deferInactiveTabs,
+  }) {
     final shared = buildShellPages(
       null,
       homeIsActive: _tab == DockTab.home,
+      deferHomeStartupPrompts: deferInactiveTabs,
       searchFixedSourceId: dockSearchFixedSourceId(),
     );
     return [
@@ -343,17 +353,29 @@ class _RootShellState extends State<RootShell>
           key: ValueKey(
             '$profileId:${t.name}:${ThemeController.revision.value}',
           ),
-          child: switch (t) {
-            DockTab.home => shared[0],
-            DockTab.search => shared[1],
-            DockTab.myList => shared[2],
-            DockTab.profile => const ViewerProfileHomeScreen(),
-            // Both normally get pushed with a back button; as tabs they own the
-            // whole screen, so their own back affordance is suppressed.
-            DockTab.downloads => const DownloadsScreen(showBack: false),
-            DockTab.history => const HistoryScreen(showBack: false),
-            DockTab.sources => const BrowseSourcesScreen(),
-          },
+          child: deferInactiveTabs && t != _tab
+              ? const SizedBox.shrink()
+              : switch (t) {
+                  DockTab.home => shared[0],
+                  DockTab.search => shared[1],
+                  DockTab.myList => shared[2],
+                  DockTab.profile => ViewerProfileHomeScreen(
+                    onProfileSelected: () {
+                      setState(() => _deferTabsForPicker = true);
+                      _onTabSelected(DockTab.home);
+                    },
+                    onPickerClosed: () {
+                      if (mounted && _deferTabsForPicker) {
+                        setState(() => _deferTabsForPicker = false);
+                      }
+                    },
+                  ),
+                  // Both normally get pushed with a back button; as tabs they own the
+                  // whole screen, so their own back affordance is suppressed.
+                  DockTab.downloads => const DownloadsScreen(showBack: false),
+                  DockTab.history => const HistoryScreen(showBack: false),
+                  DockTab.sources => const BrowseSourcesScreen(),
+                },
         ),
     ];
   }
@@ -397,6 +419,9 @@ class _RootShellState extends State<RootShell>
             ),
             child: Builder(
               builder: (context) {
+                final deferInactiveTabs =
+                    _deferTabsForPicker ||
+                    ProfileShellScope.shouldDeferTabs(context);
                 final visible = _visibleTabs();
                 final active = visible.indexOf(_tab);
                 return AnimatedBuilder(
@@ -426,6 +451,7 @@ class _RootShellState extends State<RootShell>
                           sl.isRegistered<ViewerProfileStore>()
                               ? sl<ViewerProfileStore>().dataProfileId
                               : 'default',
+                          deferInactiveTabs: deferInactiveTabs,
                         ),
                       ),
                     ),
@@ -609,25 +635,23 @@ class _LiquidNavDock extends StatelessWidget {
           ? sl<ViewerProfileStore>().activeProfile
           : null;
       if (profile != null) {
-        // Hero landing spot for the profile-picker avatar flight — the old
-        // dock has the same tag, so the flight works on both navbars. Only
-        // one of icon/activeIcon is ever mounted, so the tag stays unique.
-        return Hero(
-          tag: viewerProfileHeroTag(profile.id),
-          child: ClipOval(
-            child: ProfileAvatarFace(
+        final avatar = ClipOval(
+          child: ProfileAvatarFace(
+            profile: profile,
+            photoUrl: profilePhotoForFace(
               profile: profile,
-              photoUrl: profilePhotoForFace(
-                profile: profile,
-                accountPhotoUrl: sl.isRegistered<AuthCubit>()
-                    ? sl<AuthCubit>().state.avatarUrl
-                    : null,
-              ),
-              iconSize: 18,
-              photoDiameter: 26,
+              accountPhotoUrl: sl.isRegistered<AuthCubit>()
+                  ? sl<AuthCubit>().state.avatarUrl
+                  : null,
             ),
+            iconSize: 18,
+            photoDiameter: 26,
           ),
         );
+        // The glass indicator renders a second, selected copy of nearby tabs.
+        return selected
+            ? avatar
+            : Hero(tag: viewerProfileHeroTag(profile.id), child: avatar);
       }
       return Icon(Icons.person_outline_rounded, color: color);
     }

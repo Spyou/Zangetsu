@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../cache/app_image_cache.dart';
-import '../theme/app_colors.dart';
 import '../ui/image_fade.dart';
 import 'klipy_gif_service.dart';
 import 'profile_avatar_reference.dart';
@@ -22,13 +21,9 @@ const viewerProfileAvatarIcons = <IconData>[
   Icons.book_rounded,
 ];
 
-const _avatarColors = <Color>[
-  Color(0xFF408CFF),
-  Color(0xFF8D63D6),
-  Color(0xFF2EAA87),
-  Color(0xFFE58A37),
-  Color(0xFFE65D7A),
-];
+/// Flat neutral fill behind every avatar glyph/photo. Fixed, not tied to
+/// Material You tones, so the border ring always reads against it.
+const viewerProfileAvatarFill = Color(0xFF23262B);
 
 IconData viewerProfileAvatarIcon(int avatar) =>
     viewerProfileAvatarIcons[avatar.clamp(
@@ -36,9 +31,7 @@ IconData viewerProfileAvatarIcon(int avatar) =>
       viewerProfileAvatarIcons.length - 1,
     )];
 
-Color viewerProfileAvatarColor(int avatar) => avatar == 0
-    ? AppColors.accent
-    : _avatarColors[(avatar - 1) % _avatarColors.length];
+Color viewerProfileAvatarColor(int avatar) => viewerProfileAvatarFill;
 
 String viewerProfileHeroTag(String profileId) => 'viewer-profile-$profileId';
 
