@@ -791,6 +791,38 @@ void main() {
     await tester.pump(const Duration(seconds: 2));
   }
 
+  testWidgets('phone dock mounts tabs on first visit and keeps them alive', (
+    tester,
+  ) async {
+    sl.registerSingleton<AppMode>(const AppMode(isTv: false));
+    await tester.pumpWidget(
+      wrap(
+        const ProfileShellScope(
+          deferContent: false,
+          deferTabs: true,
+          child: RootShell(),
+        ),
+      ),
+    );
+    await pumpHomeAnimations(tester);
+    final profile = find.byType(ViewerProfileHomeScreen, skipOffstage: false);
+    expect(profile, findsNothing);
+
+    await tester.pumpWidget(
+      wrap(const ProfileShellScope(deferContent: false, child: RootShell())),
+    );
+    await pumpHomeAnimations(tester);
+    expect(profile, findsNothing);
+
+    await tester.tap(dockLabel('Profile'));
+    await pumpHomeAnimations(tester);
+    final profileElement = tester.element(profile);
+
+    await tester.tap(dockLabel('Home'));
+    await pumpHomeAnimations(tester);
+    expect(tester.element(profile), same(profileElement));
+  });
+
   testWidgets('Search fits a short screen with the keyboard open', (
     tester,
   ) async {

@@ -117,6 +117,8 @@ class _RootShellState extends State<RootShell>
   /// Starts wherever the user chose to land; [NavPrefs.startTab] falls back to
   /// the leftmost tab, so an untouched install still opens on Home.
   late DockTab _tab = _navPrefs.startTab;
+  final _visitedTabs = <DockTab>{};
+  String? _visitedTabsProfileId;
 
   /// Whether the floating mode bar (Anime / Movie/TV / Manga / Novel) is
   /// showing above the dock. Z Mode only — the centre button that toggles it
@@ -338,6 +340,14 @@ class _RootShellState extends State<RootShell>
     String profileId, {
     required bool deferInactiveTabs,
   }) {
+    if (_visitedTabsProfileId != profileId) {
+      _visitedTabsProfileId = profileId;
+      _visitedTabs.clear();
+    }
+    _visitedTabs
+      ..retainAll(tabs)
+      ..add(tabs.contains(_tab) ? _tab : tabs.first);
+
     final shared = buildShellPages(
       null,
       homeIsActive: _tab == DockTab.home,
@@ -353,7 +363,7 @@ class _RootShellState extends State<RootShell>
           key: ValueKey(
             '$profileId:${t.name}:${ThemeController.revision.value}',
           ),
-          child: deferInactiveTabs && t != _tab
+          child: !_visitedTabs.contains(t)
               ? const SizedBox.shrink()
               : switch (t) {
                   DockTab.home => shared[0],
@@ -511,8 +521,8 @@ class _RootShellState extends State<RootShell>
                     // Scaffold's bottomNavigationBar, and the shell sets
                     // extendBody. So every distinct value here relays out the
                     // Scaffold and rebuilds the body — and the body is an
-                    // IndexedStack, which builds EVERY tab, not just the one
-                    // on screen. Easing it smoothly meant ~14 rebuilds of
+                    // IndexedStack, which lays out all mounted tabs. Easing
+                    // it smoothly meant ~14 rebuilds of
                     // Home, My List and Sources for a dock animation, which
                     // measured 13-36ms of build per frame while raster sat
                     // at 3-5ms. It is why opening a Settings section stuttered
@@ -540,8 +550,7 @@ class _RootShellState extends State<RootShell>
                         ignoring: hide,
                         // Scoped to the dock subtree on purpose. The dock's
                         // HEIGHT never changes below, so the Scaffold keeps its
-                        // bottom inset and the body — an IndexedStack that
-                        // builds every tab — is never rebuilt by this.
+                        // bottom inset and the body is never rebuilt by this.
                         child: ValueListenableBuilder<bool>(
                           valueListenable: dockCollapsedByScroll,
                           builder: (context, collapsed, child) {
@@ -970,8 +979,7 @@ class _FloatingDock extends StatelessWidget {
 
     // The SLOT stays the size of the open dock, always. The pill shrinks
     // inside it and hangs from the bottom, so the Scaffold's bottom inset
-    // never moves — and the body, an IndexedStack that builds every tab, is
-    // never relaid out while you scroll.
+    // never moves and the body is never relaid out while you scroll.
     //
     // Taken through the text scaler, not from a constant: at a larger system
     // font the label is taller, and a slot that assumed 10px would clip the
