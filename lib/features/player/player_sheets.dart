@@ -717,27 +717,33 @@ class _OnlineSubtitleSheetState extends State<_OnlineSubtitleSheet> {
 /// Opens the shared Subtitle-style sheet (live preview + all controls). Pass a
 /// [controller] from the player so changes apply to the video live; pass null
 /// from Settings, where there's no active player and it just persists prefs.
-void openSubtitleStyleSheet(
+Future<void> openSubtitleStyleSheet(
   BuildContext context,
   PlayerCubit? controller,
-  VoidCallback onInteract,
-) {
-  showModalBottomSheet<void>(
+  VoidCallback onInteract, {
+  Future<void> Function()? onStyleChanged,
+  ValueChanged<ModalRoute<dynamic>?>? onRoute,
+}) {
+  return showModalBottomSheet<void>(
     context: context,
     backgroundColor: Colors.transparent,
     isScrollControlled: true,
-    builder: (_) => _SheetSurface(
-      blur: true,
-      opacity: 0.82,
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-      child: SafeArea(
-        top: false,
-        child: _SubtitleStyleSheet(
-          controller: controller,
-          onInteract: onInteract,
+    builder: (sheetContext) {
+      onRoute?.call(ModalRoute.of(sheetContext));
+      return _SheetSurface(
+        blur: true,
+        opacity: 0.82,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        child: SafeArea(
+          top: false,
+          child: _SubtitleStyleSheet(
+            controller: controller,
+            onInteract: onInteract,
+            onStyleChanged: onStyleChanged,
+          ),
         ),
-      ),
-    ),
+      );
+    },
   );
 }
 
@@ -748,9 +754,11 @@ class _SubtitleStyleSheet extends StatefulWidget {
   const _SubtitleStyleSheet({
     required this.controller,
     required this.onInteract,
+    this.onStyleChanged,
   });
   final PlayerCubit? controller;
   final VoidCallback onInteract;
+  final Future<void> Function()? onStyleChanged;
 
   @override
   State<_SubtitleStyleSheet> createState() => _SubtitleStyleSheetState();
@@ -858,6 +866,7 @@ class _SubtitleStyleSheetState extends State<_SubtitleStyleSheet> {
   Future<void> _apply(Future<void> Function() mutate) async {
     await mutate();
     await widget.controller?.applySubtitleStyle();
+    await widget.onStyleChanged?.call();
     if (mounted) setState(() {});
     widget.onInteract();
   }
@@ -1061,7 +1070,8 @@ class _SubtitleStyleSheetState extends State<_SubtitleStyleSheet> {
                   min: 0,
                   max: 100,
                   divisions: 100,
-                  label: '${_prefs.subtitlePosition}% · ${_prefs.subtitlePosition >= 50 ? context.l10n.positionBottom : context.l10n.positionTop}',
+                  label:
+                      '${_prefs.subtitlePosition}% · ${_prefs.subtitlePosition >= 50 ? context.l10n.positionBottom : context.l10n.positionTop}',
                   onChanged: (v) =>
                       _apply(() => _prefs.setSubtitlePosition(v.round())),
                 ),

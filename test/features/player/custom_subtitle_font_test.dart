@@ -7,12 +7,16 @@
 
 import 'dart:io';
 
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_it/get_it.dart';
 import 'package:hive/hive.dart';
+import 'package:watch_app/core/app_mode.dart';
 import 'package:watch_app/core/playback/playback_prefs.dart';
+import 'package:watch_app/features/player/player_screen.dart';
 import 'package:watch_app/features/player/subtitle_font_service.dart';
+import 'package:watch_app/l10n/app_localizations.dart';
 
 void main() {
   late Directory dir;
@@ -41,6 +45,48 @@ void main() {
     await GetIt.instance.reset();
     await Hive.close();
     await dir.delete(recursive: true);
+  });
+
+  testWidgets('native styling can use the shared sheet and receive live changes', (
+    tester,
+  ) async {
+    GetIt.instance.registerSingleton<AppMode>(const AppMode(isTv: false));
+    await GetIt.instance.unregister<PlaybackPrefs>();
+    final stylePrefs = _StyleTestPrefs();
+    GetIt.instance.registerSingleton<PlaybackPrefs>(stylePrefs);
+    ModalRoute<dynamic>? route;
+    var changed = false;
+    await tester.pumpWidget(MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      home: Scaffold(body: Builder(builder: (context) {
+        return TextButton(
+          onPressed: () => openSubtitleStyleSheet(
+            context,
+            null,
+            () {},
+            onRoute: (value) => route = value,
+            onStyleChanged: () async => changed = true,
+          ),
+          child: const Text('Open style'),
+        );
+      })),
+    ));
+    await tester.tap(find.text('Open style'));
+    await tester.pumpAndSettle();
+    expect(route, isA<ModalBottomSheetRoute<void>>());
+    expect(find.text('The quick brown fox'), findsOneWidget);
+
+    final swatch = tester.widget<GestureDetector>(find.ancestor(
+      of: find.text('Yellow').first,
+      matching: find.byWidgetPredicate(
+        (widget) => widget is GestureDetector && widget.child is Column && widget.onTap != null,
+      ),
+    ).first);
+    swatch.onTap!();
+    await tester.pump();
+    expect(changed, isTrue);
+    expect(stylePrefs.subtitleColorHex, '#FFFF00FF');
   });
 
   group('customSubtitleFonts pref', () {
@@ -249,4 +295,16 @@ void main() {
       expect(prefs.customSubtitleFonts.length, 2);
     });
   });
+}
+
+class _StyleTestPrefs extends PlaybackPrefs {
+  String _color = '#FFFFFFFF';
+
+  @override
+  String get subtitleColorHex => _color;
+
+  @override
+  Future<void> setSubtitleColorHex(String value) async {
+    _color = value;
+  }
 }

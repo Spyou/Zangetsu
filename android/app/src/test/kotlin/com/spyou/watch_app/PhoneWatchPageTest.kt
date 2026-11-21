@@ -2,6 +2,7 @@ package com.spyou.watch_app
 
 import android.content.Context
 import android.content.Intent
+import android.graphics.drawable.RippleDrawable
 import android.view.View
 import android.widget.FrameLayout
 import android.widget.CheckedTextView
@@ -148,6 +149,11 @@ class PhoneWatchPageTest {
             assertEquals(dp(16), params.marginStart + bar.paddingLeft)
             val panelField = PhonePlayerActivity::class.java.getDeclaredField("watchPanel").apply { isAccessible = true }
             val panel = panelField.get(activity) as PhoneWatchPage
+            for (id in listOf(R.id.watch_action_subtitles, R.id.watch_search, R.id.watch_episode_more)) {
+                val button = panel.header.findViewById<View>(id)
+                val ripple = button.background as RippleDrawable
+                assertTrue(ripple.findDrawableByLayerId(android.R.id.mask) is android.graphics.drawable.GradientDrawable)
+            }
             panel.header.findViewById<View>(R.id.watch_search).performClick()
             val dialog = org.robolectric.shadows.ShadowDialog.getLatestDialog()
             val input = dialog.findViewById<EditText>(android.R.id.edit)
@@ -178,6 +184,16 @@ class PhoneWatchPageTest {
             assertEquals(!wasAutoplay, (reopened.getChildAt(1) as CheckedTextView).isChecked)
             reopened.getChildAt(0).performClick()
             assertTrue((openOptions().getChildAt(0) as CheckedTextView).isChecked)
+            (field.get(panel) as PopupWindow).dismiss()
+
+            panel.header.findViewById<View>(R.id.watch_action_subtitles).performClick()
+            val tracks = org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog()
+            val styleRows = arrayListOf<View>()
+            tracks.window!!.decorView.findViewsWithText(styleRows, "Subtitle style", View.FIND_VIEWS_WITH_TEXT)
+            assertEquals(1, styleRows.size)
+            activity.updateSubtitleStyle(1.5f, 75, -1, 0x80000000.toInt(), 1, 0, null)
+            val subtitleScale = PhonePlayerActivity::class.java.getDeclaredField("subtitleScale").apply { isAccessible = true }
+            assertEquals(1.5f, subtitleScale.getFloat(activity), 0.001f)
         } finally { controller.pause().stop().destroy() }
     }
 }

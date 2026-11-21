@@ -9,7 +9,6 @@ import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.RippleDrawable
 import android.text.TextUtils
-import android.util.TypedValue
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
@@ -106,8 +105,9 @@ internal class PhoneWatchPage(
         listOf(R.id.watch_action_server, R.id.watch_action_audio, R.id.watch_action_subtitles, R.id.watch_action_more)
             .forEachIndexed { i, id ->
                 header.findViewById<Button>(id).apply {
-                    background = shape(999, surface)
+                    background = pressHighlight(999, surface)
                     backgroundTintList = null
+                    foreground = null
                     isAllCaps = false
                     textSize = 15f
                     minWidth = 0
@@ -145,9 +145,14 @@ internal class PhoneWatchPage(
     private fun shape(radius: Int, color: Int) = GradientDrawable().apply {
         setColor(color); cornerRadius = dp(radius).toFloat()
     }
+    private fun pressHighlight(radius: Int, fill: Int = Color.TRANSPARENT) = RippleDrawable(
+        ColorStateList.valueOf(0x1AFFFFFF),
+        shape(radius, fill),
+        shape(radius, Color.WHITE),
+    )
     private fun button(id: Int, glyph: String, action: () -> Unit) {
         header.findViewById<ImageButton>(id).apply {
-            background = shape(999, surface)
+            background = pressHighlight(999, surface)
             setImageDrawable(icon(glyph))
             setOnClickListener { action() }
             PhoneWatchMotion.press(this)
@@ -223,8 +228,6 @@ internal class PhoneWatchPage(
             isOutsideTouchable = true
             setOnDismissListener { episodeOptions = null }
         }
-        val selectable = TypedValue()
-        context.theme.resolveAttribute(android.R.attr.selectableItemBackground, selectable, true)
         fun row(label: Int, glyph: Int, checked: Boolean, action: () -> Unit) {
             items.addView(CheckedTextView(context).apply {
                 setText(label)
@@ -236,7 +239,7 @@ internal class PhoneWatchPage(
                 maxLines = 1
                 ellipsize = TextUtils.TruncateAt.END
                 isFocusable = true
-                setBackgroundResource(selectable.resourceId)
+                background = pressHighlight(8)
                 val leading = context.getDrawable(glyph)?.mutate()?.apply {
                     setTint(primary)
                     setBounds(0, 0, dp(20), dp(20))

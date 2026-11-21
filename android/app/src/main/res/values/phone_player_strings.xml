@@ -16,6 +16,7 @@
     <string name="phone_player_title_episodes">Episodes</string>
     <string name="phone_player_title_sources">Sources</string>
     <string name="phone_player_title_subtitles">Subtitles</string>
+    <string name="phone_player_subtitle_style">Subtitle style</string>
     <string name="phone_player_title_playback_info">Playback info</string>
     <string name="phone_player_menu_sources">Sources</string>
     <string name="phone_player_menu_episodes">Episodes</string>

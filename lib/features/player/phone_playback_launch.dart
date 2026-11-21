@@ -32,9 +32,11 @@ import '../../core/playback/watch_history.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/tracker/tracker_hub.dart';
 import '../../core/tracker/simkl_playback_session.dart';
+import '../../core/ui/global_messenger.dart';
 import 'subtitle_font_service.dart';
 import 'player_controls_config.dart';
 import 'player_engine_fallback.dart';
+import 'player_screen.dart' show openSubtitleStyleSheet;
 import 'subtitle_style.dart';
 import 'watch_page_info.dart';
 import '../detail/cubit/detail_cubit.dart' show seasonOf;
@@ -762,6 +764,66 @@ class PhoneNativePlayer {
   }
 
   static final _stremioSources = <int, List<VideoSource>>{};
+  static ModalRoute<dynamic>? _subtitleStyleRoute;
+  static bool _subtitleStyleOpen = false;
+
+  static Future<void> _showSubtitleStyle(int sessionId) async {
+    final navigator = rootNavigatorKey.currentState;
+    if (navigator == null || _subtitleStyleOpen) return;
+    _subtitleStyleOpen = true;
+    // Only the sheet and its scrim should paint over the native video.
+    final cover = PageRouteBuilder<void>(
+      transitionDuration: Duration.zero,
+      reverseTransitionDuration: Duration.zero,
+      pageBuilder: (_, _, _) => const SizedBox.expand(),
+    );
+    unawaited(navigator.push(cover));
+    String? stagedFont;
+    Future<String?>? fontPath;
+    var revision = 0;
+    try {
+      await openSubtitleStyleSheet(
+        navigator.context,
+        null,
+        () {},
+        onRoute: (route) => _subtitleStyleRoute = route,
+        onStyleChanged: () async {
+          final current = ++revision;
+          final prefs = sl<PlaybackPrefs>();
+          final family = prefs.subtitleFont;
+          if (family != stagedFont) {
+            stagedFont = family;
+            fontPath = _stageSubtitleFont(family);
+          }
+          final path = await fontPath;
+          if (current != revision || sessionId != _sessionId) return;
+          await _ch.invokeMethod('updateSubtitleStyle', {
+            'sessionId': sessionId,
+            'scale': prefs.subtitleScale,
+            'position': prefs.subtitlePosition,
+            'foreground': parseSubtitleHex(
+              prefs.subtitleColorHex,
+              opacity: prefs.subtitleTextOpacity,
+            ).toARGB32(),
+            'background': parseSubtitleHex(
+              '#000000',
+              opacity: prefs.subtitleBgOpacity,
+            ).toARGB32(),
+            'edgeType': tvEdgeTypeFromOutlinePref(prefs.subtitleOutlineType),
+            'edgeColor': parseSubtitleHex(
+              prefs.subtitleOutlineColorHex,
+            ).toARGB32(),
+            'fontPath': path,
+          });
+        },
+      );
+      await _subtitleStyleRoute?.completed;
+    } finally {
+      _subtitleStyleRoute = null;
+      _subtitleStyleOpen = false;
+      if (navigator.mounted && cover.isActive) navigator.removeRoute(cover);
+    }
+  }
 
   static Future<dynamic> _onNativeCall(MethodCall call) async {
     switch (call.method) {
@@ -810,6 +872,20 @@ class PhoneNativePlayer {
         );
         if (session != _sessionId || _closed?.isCompleted != false) return null;
         return _phoneSubtitlePayload(enriched);
+      case 'openSubtitleStyle':
+        final args = _callArgs(call);
+        if (_closed?.isCompleted != false || args?['sessionId'] != _sessionId) {
+          return null;
+        }
+        await _showSubtitleStyle(_sessionId);
+        return null;
+      case 'closeSubtitleStyle':
+        final route = _subtitleStyleRoute;
+        if (_callArgs(call)?['sessionId'] == _sessionId &&
+            route?.isActive == true) {
+          route?.navigator?.removeRoute(route);
+        }
+        return null;
       case 'rememberSubtitle':
         final args = _callArgs(call);
         if (_closed?.isCompleted != false ||

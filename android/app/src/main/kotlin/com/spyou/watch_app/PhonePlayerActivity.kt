@@ -32,6 +32,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
 import androidx.media3.common.VideoSize
+import androidx.media3.common.text.Cue
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
@@ -40,6 +41,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.RenderersFactory
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
 import com.spyou.watch_app.cast.CastManager
 import io.github.anilbeesetti.nextlib.media3ext.ffdecoder.NextRenderersFactory
@@ -217,6 +219,15 @@ class PhonePlayerActivity : Activity() {
     private var megaSkipSeconds = 85
     private var keepScreenOn = true
     private var subtitlePreference = ""
+    private var subtitleScale = 1f
+    private var subtitlePosition = 95
+    private var subtitleBackground = android.graphics.Color.TRANSPARENT
+    private var subtitleForeground = android.graphics.Color.WHITE
+    private var subtitleEdgeType = CaptionStyleCompat.EDGE_TYPE_OUTLINE
+    private var subtitleEdgeColor = android.graphics.Color.BLACK
+    private var subtitleFontPath: String? = null
+    private var subtitleTypeface: android.graphics.Typeface? = null
+    private var subtitleStyleDialog: android.app.Dialog? = null
     private var subtitlePreferenceApplied = false
     private var pendingAddonSubtitleId: String? = null
     private var currentSourceFactory: DefaultMediaSourceFactory? = null
@@ -325,6 +336,15 @@ class PhonePlayerActivity : Activity() {
         seekMs = (intent.getIntExtra(PhonePlayerIntent.EXTRA_SEEK_SECONDS, 10) * 1000L)
             .coerceAtLeast(1_000L)
         subtitlePreference = intent.getStringExtra(PhonePlayerIntent.EXTRA_SUB_PREFERENCE).orEmpty()
+        subtitleScale = intent.getFloatExtra(PhonePlayerIntent.EXTRA_SUB_SCALE, 1f)
+        subtitlePosition = intent.getIntExtra(PhonePlayerIntent.EXTRA_SUB_POSITION, 95)
+        subtitleBackground = intent.getIntExtra(
+            PhonePlayerIntent.EXTRA_SUB_BG_COLOR, android.graphics.Color.TRANSPARENT,
+        )
+        subtitleForeground = intent.getIntExtra(PhonePlayerIntent.EXTRA_SUB_FG, android.graphics.Color.WHITE)
+        subtitleEdgeType = intent.getIntExtra(PhonePlayerIntent.EXTRA_SUB_EDGE_TYPE, CaptionStyleCompat.EDGE_TYPE_OUTLINE)
+        subtitleEdgeColor = intent.getIntExtra(PhonePlayerIntent.EXTRA_SUB_EDGE_COLOR, android.graphics.Color.BLACK)
+        updateSubtitleFont(intent.getStringExtra(PhonePlayerIntent.EXTRA_SUB_FONT))
 
         bindWatchInfo()
         updateOrientationLayout()
@@ -450,30 +470,10 @@ class PhonePlayerActivity : Activity() {
         player = exo
         playerView.player = exo
         playerView.subtitleView?.apply {
-            setStyle(
-                androidx.media3.ui.CaptionStyleCompat(
-                    intent.getIntExtra(PhonePlayerIntent.EXTRA_SUB_FG, android.graphics.Color.WHITE),
-                    intent.getIntExtra(PhonePlayerIntent.EXTRA_SUB_BG_COLOR, android.graphics.Color.TRANSPARENT),
-                    android.graphics.Color.TRANSPARENT, // window colour: never drawn
-                    intent.getIntExtra(
-                        PhonePlayerIntent.EXTRA_SUB_EDGE_TYPE,
-                        androidx.media3.ui.CaptionStyleCompat.EDGE_TYPE_OUTLINE,
-                    ),
-                    intent.getIntExtra(
-                        PhonePlayerIntent.EXTRA_SUB_EDGE_COLOR,
-                        android.graphics.Color.BLACK,
-                    ),
-                    intent.getStringExtra(PhonePlayerIntent.EXTRA_SUB_FONT)
-                        ?.let { runCatching { android.graphics.Typeface.createFromFile(it) }.getOrNull() },
-                ),
-            )
-            // FRACTION_TEXT_SIZE, not absolute: the same setting has to read
-            // the same on a small phone and a tablet.
-            setFractionalTextSize(0.0533f * intent.getFloatExtra(PhonePlayerIntent.EXTRA_SUB_SCALE, 1f))
             setApplyEmbeddedStyles(false)
             setApplyEmbeddedFontSizes(false)
-            invalidate()
         }
+        applySubtitleStyle()
         exo.playbackParameters =
             PlaybackParameters(intent.getFloatExtra(PhonePlayerIntent.EXTRA_SPEED, 1f))
 
@@ -492,18 +492,7 @@ class PhonePlayerActivity : Activity() {
             // Bottom padding alone can't do this: most VTT/SRT cues set their
             // own line and ignore it. Same helper the TV player uses.
             override fun onCues(cueGroup: androidx.media3.common.text.CueGroup) {
-                val view = playerView.subtitleView ?: return
-                view.setCues(
-                    SubtitleCuePositioning.position(
-                        cueGroup.cues,
-                        positionPercent = intent.getIntExtra(
-                            PhonePlayerIntent.EXTRA_SUB_POSITION, 95,
-                        ),
-                        textSizeFraction = 0.0533f * intent.getFloatExtra(
-                            PhonePlayerIntent.EXTRA_SUB_SCALE, 1f,
-                        ),
-                    ),
-                )
+                renderSubtitleCues(cueGroup.cues)
             }
 
             override fun onPlaybackStateChanged(state: Int) {
@@ -2040,6 +2029,55 @@ class PhonePlayerActivity : Activity() {
         )
     }
 
+    private fun renderSubtitleCues(cues: List<Cue>) {
+        playerView.subtitleView?.setCues(
+            SubtitleCuePositioning.position(cues, subtitlePosition, 0.0533f * subtitleScale),
+        )
+    }
+
+    private fun applySubtitleStyle() {
+        playerView.subtitleView?.apply {
+            setStyle(CaptionStyleCompat(
+                subtitleForeground,
+                subtitleBackground,
+                android.graphics.Color.TRANSPARENT,
+                subtitleEdgeType,
+                subtitleEdgeColor,
+                subtitleTypeface,
+            ))
+            setFractionalTextSize(0.0533f * subtitleScale)
+        }
+        player?.currentCues?.let { renderSubtitleCues(it.cues) }
+    }
+
+    private fun updateSubtitleFont(path: String?) {
+        if (subtitleFontPath == path) return
+        subtitleFontPath = path
+        subtitleTypeface = path?.let {
+            runCatching { android.graphics.Typeface.createFromFile(it) }.getOrNull()
+        }
+    }
+
+    internal fun updateSubtitleStyle(
+        scale: Float, position: Int, foreground: Int, background: Int,
+        edgeType: Int, edgeColor: Int, fontPath: String?,
+    ) {
+        subtitleScale = scale.coerceIn(0.25f, 5f)
+        subtitlePosition = position.coerceIn(0, 100)
+        subtitleForeground = foreground
+        subtitleBackground = background
+        subtitleEdgeType = edgeType
+        subtitleEdgeColor = edgeColor
+        updateSubtitleFont(fontPath)
+        applySubtitleStyle()
+    }
+
+    private fun showSubtitleStyle() {
+        if (subtitleStyleDialog?.isShowing != true) {
+            subtitleStyleDialog = PhonePlayerBridge.openSubtitleStyle(this)
+        }
+    }
+
     private fun showTracksMenu() {
         val p = player ?: return
         handler.removeCallbacks(hideRunnable)
@@ -2069,11 +2107,6 @@ class PhonePlayerActivity : Activity() {
         // audioPicks[0] ("Auto") sits at this label index; tracks follow.
         val audioBase = labels.size - 1
         val addonSubtitles = intent.getBooleanExtra(PhonePlayerIntent.EXTRA_STREMIO_SUBTITLES, false)
-        if (!addonSubtitles && audioTracks.size + textTracks.size < 2 && versionFor.size <= 1) {
-            toast(getString(R.string.phone_player_toast_no_tracks))
-            bumpControls()
-            return
-        }
         val audioPicks = mutableListOf<TrackSelectionOverride?>(null)
         for ((g, i) in audioTracks) {
             val f = g.getTrackFormat(i)
@@ -2096,6 +2129,9 @@ class PhonePlayerActivity : Activity() {
             labels += "Addon subtitles…"
             versionFor += null
         }
+        val styleRow = labels.size
+        labels += getString(R.string.phone_player_subtitle_style)
+        versionFor += null
         val selectedRows = mutableSetOf<Int>()
         if (categories.size > 1) categories.indexOf(currentCategory).takeIf { it >= 0 }?.let { selectedRows += it }
         val audioIndex = audioTracks.indexOfFirst { (group, index) ->
@@ -2108,6 +2144,10 @@ class PhonePlayerActivity : Activity() {
         PhonePlayerSheet(this)
             .setTitle(getString(R.string.phone_player_title_tracks))
             .setTrackItems(labels.toTypedArray(), audioBase, textBase, selectedRows) { _, which ->
+                if (which == styleRow) {
+                    showSubtitleStyle()
+                    return@setTrackItems
+                }
                 if (which == addonRow) {
                     showAddonSubtitles()
                     return@setTrackItems
@@ -3143,6 +3183,7 @@ class PhonePlayerActivity : Activity() {
     // A phone gets interrupted by calls and notifications; the TV player never
     // had to handle this. Pause on the way out and leave resuming to the user.
     override fun onPause() {
+        if (subtitleStyleDialog?.isShowing == true) PhonePlayerBridge.setSubtitleOverlayResumed(false)
         restoreSpeedAfterHold()
         orientationObserver?.disable()
         super.onPause()
@@ -3158,6 +3199,7 @@ class PhonePlayerActivity : Activity() {
     // here rather than in onCreate.
     override fun onResume() {
         super.onResume()
+        if (subtitleStyleDialog?.isShowing == true) PhonePlayerBridge.setSubtitleOverlayResumed(true)
         orientationObserver?.enable()
         updateKeepScreenOn()
         handler.post(ticker)
@@ -3192,6 +3234,8 @@ class PhonePlayerActivity : Activity() {
     }
 
     override fun onDestroy() {
+        subtitleStyleDialog?.dismiss()
+        subtitleStyleDialog = null
         pip.unregister()
         watchDownloadSheet?.dismiss()
         watchDownloadSheet = null

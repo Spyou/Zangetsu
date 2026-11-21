@@ -15,9 +15,9 @@
     <color name="phone_player_background">#FF000000</color>
     <color name="phone_player_surface">#FF211E26</color>
     <color name="phone_player_surface_container">#E6302A33</color>
-    <!-- MPV default accent (Coral) + matching ripple. -->
+    <!-- Player accent and neutral control press feedback. -->
     <color name="phone_player_accent">#FFFF4D57</color>
-    <color name="phone_player_ripple">#554D57FF</color>
+    <color name="phone_player_ripple">#1AFFFFFF</color>
     <color name="phone_player_primary_ripple">#55FFFFFF</color>
     <color name="phone_player_on_primary">#FFFFFFFF</color>
     <color name="phone_player_on_surface">#FFF9F4F5</color>

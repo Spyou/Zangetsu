@@ -1,9 +1,19 @@
 package com.spyou.watch_app
 
 import android.app.Activity
+import android.app.Dialog
 import android.content.Intent
+import android.graphics.Color
+import android.graphics.PixelFormat
+import android.graphics.drawable.ColorDrawable
 import android.util.Log
+import android.view.ViewGroup
+import androidx.core.view.WindowCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
 import androidx.media3.common.util.UnstableApi
+import io.flutter.embedding.android.FlutterTextureView
+import io.flutter.embedding.android.FlutterView
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
@@ -27,6 +37,7 @@ object PhonePlayerBridge {
 
     // Display rows stay in-process: long libraries must not fill an Intent parcel.
     private var watchData: Pair<Long, Map<String, Any?>>? = null
+    private var flutterHost: Pair<Activity, FlutterEngine>? = null
 
     internal fun watchDataFor(session: Long): Map<String, Any?> =
         watchData?.takeIf { it.first == session }?.second.orEmpty()
@@ -36,6 +47,7 @@ object PhonePlayerBridge {
     }
 
     fun register(engine: FlutterEngine, activity: Activity) {
+        flutterHost = activity to engine
         val ch = MethodChannel(engine.dartExecutor.binaryMessenger, CHANNEL)
         ch.setMethodCallHandler { call, result ->
             when (call.method) {
@@ -72,6 +84,26 @@ object PhonePlayerBridge {
                         result.success(false)
                     }
                 }
+                "updateSubtitleStyle" -> {
+                    val target = PhonePlayerActivity.active
+                    val session = call.argument<Number>("sessionId")?.toLong()
+                    val scale = call.argument<Number>("scale")?.toFloat()
+                    val position = call.argument<Number>("position")?.toInt()
+                    val foreground = call.argument<Number>("foreground")?.toInt()
+                    val background = call.argument<Number>("background")?.toInt()
+                    val edgeType = call.argument<Number>("edgeType")?.toInt()
+                    val edgeColor = call.argument<Number>("edgeColor")?.toInt()
+                    if (target != null && target.sessionId == session && scale?.isFinite() == true &&
+                        position != null && foreground != null && background != null &&
+                        edgeType != null && edgeColor != null
+                    ) {
+                        target.updateSubtitleStyle(scale, position, foreground, background,
+                            edgeType, edgeColor, call.argument<String>("fontPath"))
+                        result.success(true)
+                    } else {
+                        result.success(false)
+                    }
+                }
                 else -> result.notImplemented()
             }
         }
@@ -80,8 +112,76 @@ object PhonePlayerBridge {
 
     fun dispose() {
         watchData = null
+        flutterHost = null
         channel?.setMethodCallHandler(null)
         channel = null
+    }
+
+    internal fun openSubtitleStyle(player: PhonePlayerActivity): Dialog? {
+        if (player.isFinishing || player.isDestroyed) return null
+        val (host, engine) = flutterHost ?: return null
+        val bridge = channel ?: return null
+        val original = host.findViewById<ViewGroup>(R.id.flutter_container)
+            ?.getChildAt(0) as? FlutterView ?: return null
+        if (original.attachedFlutterEngine !== engine || host.isDestroyed) return null
+        val texture = FlutterTextureView(player).apply { isOpaque = false }
+        val overlay = FlutterView(player, texture)
+        val args = mapOf("sessionId" to player.sessionId)
+        var closedByFlutter = false
+        val dialog = object : Dialog(player, android.R.style.Theme_DeviceDefault_NoActionBar) {
+            @Deprecated("Flutter handles back navigation in the overlay")
+            override fun onBackPressed() {
+                engine.navigationChannel.popRoute()
+            }
+        }
+        dialog.setContentView(overlay)
+        dialog.window?.apply {
+            setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+            setFormat(PixelFormat.TRANSLUCENT)
+            clearFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+            WindowCompat.setDecorFitsSystemWindows(this, false)
+            decorView.systemUiVisibility = player.window.decorView.systemUiVisibility
+        }
+        fun restoreHost() {
+            overlay.detachFromFlutterEngine()
+            if (!host.isDestroyed) {
+                original.attachToFlutterEngine(engine)
+                if ((host as? LifecycleOwner)?.lifecycle?.currentState == Lifecycle.State.RESUMED) {
+                    engine.lifecycleChannel.appIsResumed()
+                } else {
+                    engine.lifecycleChannel.appIsPaused()
+                }
+            }
+        }
+        dialog.setOnDismissListener {
+            restoreHost()
+            if (!closedByFlutter) bridge.invokeMethod("closeSubtitleStyle", args)
+        }
+        original.detachFromFlutterEngine()
+        overlay.attachToFlutterEngine(engine)
+        try {
+            dialog.show()
+        } catch (_: android.view.WindowManager.BadTokenException) {
+            restoreHost()
+            return null
+        }
+        dialog.window?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+        bridge.invokeMethod("openSubtitleStyle", args, object : MethodChannel.Result {
+            override fun success(result: Any?) {
+                closedByFlutter = true
+                dialog.dismiss()
+            }
+            override fun error(code: String, message: String?, details: Any?) = success(null)
+            override fun notImplemented() = success(null)
+        })
+        engine.lifecycleChannel.appIsResumed()
+        engine.lifecycleChannel.aWindowIsFocused()
+        return dialog
+    }
+
+    internal fun setSubtitleOverlayResumed(resumed: Boolean) {
+        val lifecycle = flutterHost?.second?.lifecycleChannel ?: return
+        if (resumed) lifecycle.appIsResumed() else lifecycle.appIsPaused()
     }
 
     @Suppress("UNCHECKED_CAST")
