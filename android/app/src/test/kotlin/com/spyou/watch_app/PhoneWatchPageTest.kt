@@ -4,7 +4,11 @@ import android.content.Context
 import android.content.Intent
 import android.view.View
 import android.widget.FrameLayout
+import android.widget.CheckedTextView
+import android.widget.EditText
+import android.widget.PopupWindow
 import android.widget.SeekBar
+import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import androidx.test.core.app.ApplicationProvider
 import org.junit.Assert.*
@@ -145,11 +149,35 @@ class PhoneWatchPageTest {
             val panelField = PhonePlayerActivity::class.java.getDeclaredField("watchPanel").apply { isAccessible = true }
             val panel = panelField.get(activity) as PhoneWatchPage
             panel.header.findViewById<View>(R.id.watch_search).performClick()
-            val dialog = org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog()
-            dialog.findViewById<android.widget.EditText>(android.R.id.edit).setText("3")
-            dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE).performClick()
+            val dialog = org.robolectric.shadows.ShadowDialog.getLatestDialog()
+            val input = dialog.findViewById<EditText>(android.R.id.edit)
+            assertTrue(input.hasFocus())
+            val go = dialog.findViewById<TextView>(android.R.id.button1)
+            assertEquals("Go", go.text.toString())
+            input.setText("3")
+            go.performClick()
             val index = PhonePlayerActivity::class.java.getDeclaredField("currentIndex").apply { isAccessible = true }
             assertEquals("Searching must not play another episode", 0, index.getInt(activity))
+
+            val field = PhoneWatchPage::class.java.getDeclaredField("episodeOptions").apply { isAccessible = true }
+            fun openOptions(): android.view.ViewGroup {
+                panel.header.findViewById<View>(R.id.watch_episode_more).performClick()
+                val options = field.get(panel) as PopupWindow
+                assertTrue(options.isShowing)
+                return options.contentView as android.view.ViewGroup
+            }
+            val items = openOptions()
+            val reverse = items.getChildAt(0) as CheckedTextView
+            val autoplay = items.getChildAt(1) as CheckedTextView
+            assertEquals("Reverse order", reverse.text)
+            assertFalse(reverse.isChecked)
+            assertEquals("Auto-play", autoplay.text)
+            val wasAutoplay = autoplay.isChecked
+            autoplay.performClick()
+            val reopened = openOptions()
+            assertEquals(!wasAutoplay, (reopened.getChildAt(1) as CheckedTextView).isChecked)
+            reopened.getChildAt(0).performClick()
+            assertTrue((openOptions().getChildAt(0) as CheckedTextView).isChecked)
         } finally { controller.pause().stop().destroy() }
     }
 }

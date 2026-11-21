@@ -242,6 +242,7 @@ Map<String, dynamic> phonePlayerArgs({
   int diskCacheGb = 2,
   bool autoPip = false,
   required double defaultSpeed,
+  bool holdSpeed = true,
   required Map<String, dynamic> bufferParams,
   required double subtitleScale,
   required int subtitleFgColor,
@@ -299,6 +300,7 @@ Map<String, dynamic> phonePlayerArgs({
     'diskCacheEnabled': diskCacheEnabled,
     'diskCacheGb': diskCacheGb.clamp(1, 20),
     'defaultSpeed': defaultSpeed,
+    'holdSpeed': holdSpeed,
     ...bufferParams,
     'autoResume': autoResume,
     'keepScreenOn': keepScreenOn,
@@ -657,6 +659,7 @@ class PhoneNativePlayer {
       diskCacheGb: prefs.phoneDiskCacheGb,
       autoPip: prefs.autoPip,
       defaultSpeed: prefs.defaultSpeed,
+      holdSpeed: prefs.holdSpeed,
       bufferParams: prefs.exoBufferParams,
       subtitleScale: prefs.subtitleScale,
       subtitleFgColor: parseSubtitleHex(
@@ -707,6 +710,9 @@ class PhoneNativePlayer {
             !ep.url.startsWith('file:') &&
             !ep.url.startsWith('content:'),
         'surface': AppColors.surface2.toARGB32(),
+        'episodeSurface': AppColors.surface.toARGB32(),
+        'episodeDialogSurface': AppColors.bg.toARGB32(),
+        'episodeForeground': AppColors.textPrimary.toARGB32(),
         'downloadSurface': AppColors.surface.toARGB32(),
         'secondary': AppColors.textSecondary.toARGB32(),
       },

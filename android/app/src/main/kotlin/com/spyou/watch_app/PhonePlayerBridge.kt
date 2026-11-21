@@ -159,6 +159,7 @@ object PhonePlayerBridge {
                 PhonePlayerIntent.EXTRA_SPEED,
                 (call.argument<Number>("defaultSpeed") ?: 1.0).toFloat(),
             )
+            i.putExtra(PhonePlayerIntent.EXTRA_HOLD_SPEED, call.argument<Boolean>("holdSpeed") ?: true)
             i.putExtra(
                 PhonePlayerIntent.EXTRA_AUTO_RESUME,
                 call.argument<Boolean>("autoResume") ?: true,

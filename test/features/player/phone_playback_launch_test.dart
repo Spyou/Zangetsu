@@ -136,6 +136,7 @@ void main() {
       bool diskCacheEnabled = false,
       int diskCacheGb = 2,
       bool autoPip = false,
+      bool holdSpeed = true,
     }) => phonePlayerArgs(
       source: source ?? _src(),
       positionMs: positionMs,
@@ -152,6 +153,7 @@ void main() {
       diskCacheGb: diskCacheGb,
       autoPip: autoPip,
       defaultSpeed: 1.0,
+      holdSpeed: holdSpeed,
       bufferParams: const {
         'minBufferMs': 15000,
         'maxBufferMs': 50000,
@@ -297,6 +299,11 @@ void main() {
     test('carries autoPip from prefs for the native player', () {
       expect(args()['autoPip'], isFalse);
       expect(args(autoPip: true)['autoPip'], isTrue);
+    });
+
+    test('carries the hold-to-speed preference for the native player', () {
+      expect(args()['holdSpeed'], isTrue);
+      expect(args(holdSpeed: false)['holdSpeed'], isFalse);
     });
 
     test('carries the subtitle position for the native player', () {

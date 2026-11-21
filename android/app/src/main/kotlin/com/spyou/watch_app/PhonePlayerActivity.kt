@@ -120,6 +120,7 @@ class PhonePlayerActivity : Activity() {
     // time bubble; vertical swipe left/right adjusts brightness/volume with a
     // Netflix-style HUD; pinch zooms the TextureView (1–4x, pans when zoomed).
     private var gestureMode = 0 // 0 idle, 1 horizontal scrub, 2 vertical slide
+    private var speedBeforeHold: PlaybackParameters? = null
     private var downX = 0f
     private var downY = 0f
     private var hSeekBase = 0L
@@ -153,6 +154,7 @@ class PhonePlayerActivity : Activity() {
     private lateinit var hudBar: ProgressBar
     private lateinit var hudLabel: TextView
     private lateinit var seekBubble: TextView
+    private lateinit var holdSpeedBadge: TextView
     private lateinit var dblLeft: TextView
     private lateinit var dblRight: TextView
 
@@ -381,6 +383,18 @@ class PhonePlayerActivity : Activity() {
         val taps = android.view.GestureDetector(
             this,
             object : android.view.GestureDetector.SimpleOnGestureListener() {
+                override fun onLongPress(e: MotionEvent) {
+                    if (controlsLocked || gestureMode != 0 || pinchActive ||
+                        !intent.getBooleanExtra(PhonePlayerIntent.EXTRA_HOLD_SPEED, true)
+                    ) return
+                    val p = player ?: return
+                    if (!p.playWhenReady) return
+                    val previous = p.playbackParameters
+                    speedBeforeHold = previous
+                    p.playbackParameters = PlaybackParameters(2f, previous.pitch)
+                    holdSpeedBadge.visibility = View.VISIBLE
+                }
+
                 override fun onSingleTapConfirmed(e: android.view.MotionEvent): Boolean {
                     if (controls.visibility == View.VISIBLE) hideControls() else showControls()
                     return true
@@ -827,6 +841,7 @@ class PhonePlayerActivity : Activity() {
     })
 
     private fun setControlsLocked(locked: Boolean) {
+        if (locked) restoreSpeedAfterHold()
         controlsLocked = locked
         if (unlockControl == null) {
             val column = LinearLayout(this).apply {
@@ -884,6 +899,7 @@ class PhonePlayerActivity : Activity() {
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
+        restoreSpeedAfterHold()
         super.onConfigurationChanged(newConfig)
         moreDialog?.dismiss()
         watchPage = newConfig.orientation == Configuration.ORIENTATION_PORTRAIT
@@ -2562,6 +2578,33 @@ class PhonePlayerActivity : Activity() {
             ).apply { topMargin = (72 * density).toInt() },
         )
 
+        holdSpeedBadge = TextView(this).apply {
+            text = "2×"
+            setTextColor(android.graphics.Color.WHITE)
+            textSize = 13.5f
+            typeface = android.graphics.Typeface.create("sans-serif-medium", 0)
+            gravity = Gravity.CENTER_VERTICAL
+            background = pill().apply {
+                cornerRadius = dp(13).toFloat()
+                setColor(0x80000000.toInt())
+            }
+            setPaddingRelative(dp(10), dp(6), dp(12), dp(6))
+            val icon = getDrawable(R.drawable.ic_seek_forward)?.apply {
+                setBounds(0, 0, dp(18), dp(18))
+            }
+            setCompoundDrawablesRelative(icon, null, null, null)
+            compoundDrawablePadding = dp(5)
+            visibility = View.GONE
+        }
+        root.addView(
+            holdSpeedBadge,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.TOP or Gravity.CENTER_HORIZONTAL,
+            ).apply { topMargin = dp(12) },
+        )
+
         fun seekLabel(): TextView =
             TextView(this).apply {
                 setTextColor(0xFFFFFFFFL.toInt())
@@ -2597,7 +2640,26 @@ class PhonePlayerActivity : Activity() {
         ev: MotionEvent,
         taps: android.view.GestureDetector,
     ) {
-        when (ev.actionMasked) {
+        val action = ev.actionMasked
+        val holding = speedBeforeHold != null
+        when (action) {
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL, MotionEvent.ACTION_POINTER_DOWN ->
+                restoreSpeedAfterHold()
+        }
+        if (isPortraitCard() || (holding && action != MotionEvent.ACTION_POINTER_DOWN)) {
+            taps.onTouchEvent(ev)
+            if (action == MotionEvent.ACTION_UP && !holding) v.performClick()
+            return
+        }
+        // Let the detector see the move or second finger that claims the gesture,
+        // so it cancels the pending long press before swipe or pinch takes over.
+        if (action == MotionEvent.ACTION_CANCEL ||
+            (!pinchActive && gestureMode == 0 &&
+                (pinchEndAt == 0L || android.os.SystemClock.uptimeMillis() - pinchEndAt > 300L))
+        ) {
+            taps.onTouchEvent(ev)
+        }
+        when (action) {
             MotionEvent.ACTION_DOWN -> {
                 pointers.clear()
                 pointers[ev.getPointerId(0)] = ev.x to ev.y
@@ -2654,11 +2716,13 @@ class PhonePlayerActivity : Activity() {
                 if (ev.actionMasked == MotionEvent.ACTION_UP) v.performClick()
             }
         }
-        if (!pinchActive && gestureMode == 0 &&
-            android.os.SystemClock.uptimeMillis() - pinchEndAt > 300L
-        ) {
-            taps.onTouchEvent(ev)
-        }
+    }
+
+    private fun restoreSpeedAfterHold() {
+        val previous = speedBeforeHold ?: return
+        speedBeforeHold = null
+        player?.playbackParameters = previous
+        holdSpeedBadge.visibility = View.GONE
     }
 
     /** Accumulating double-tap label, Dantotsu-style: "-20s", "+30s". */
@@ -3079,6 +3143,7 @@ class PhonePlayerActivity : Activity() {
     // A phone gets interrupted by calls and notifications; the TV player never
     // had to handle this. Pause on the way out and leave resuming to the user.
     override fun onPause() {
+        restoreSpeedAfterHold()
         orientationObserver?.disable()
         super.onPause()
         sendProgress()

@@ -36,6 +36,7 @@ object PhonePlayerIntent {
     const val EXTRA_DISK_CACHE = "diskCacheEnabled"
     const val EXTRA_DISK_CACHE_GB = "diskCacheGb"
     const val EXTRA_SPEED = "defaultSpeed"
+    const val EXTRA_HOLD_SPEED = "holdSpeed"
     const val EXTRA_SUB_SCALE = "subtitleScale"
     const val EXTRA_SUB_FG = "subtitleFgColor"
     const val EXTRA_SUB_BG_COLOR = "subtitleBgColor"
