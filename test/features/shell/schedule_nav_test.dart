@@ -864,18 +864,18 @@ void main() {
     expect(find.byTooltip('Schedule'), findsNothing);
   });
 
-  // The remaining mode/genre cards still fit narrow screens.
-  testWidgets('the card row survives a narrow phone', (tester) async {
-    tester.view.physicalSize = const Size(320 * 3, 640 * 3);
-    tester.view.devicePixelRatio = 3;
-    addTearDown(tester.view.reset);
-
+  testWidgets('Home has no content mode shortcut cards outside Z Mode', (
+    tester,
+  ) async {
     sl.registerSingleton<AppMode>(const AppMode(isTv: false));
-    await tester.pumpWidget(wrap(const RootShell()));
+    await tester.pumpWidget(wrap(const HomeScreen()));
     await pumpHomeAnimations(tester);
 
-    expect(find.byKey(const ValueKey('home_schedule_card')), findsNothing);
-    expect(tester.takeException(), isNull);
+    for (final mode in ContentMode.values.where(
+      (m) => m != contentMode.state,
+    )) {
+      expect(find.text(mode.label), findsNothing);
+    }
   });
 
   // The row above only ever holds one card, because no MetadataRepository is

@@ -68,6 +68,51 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('the row stays put when the loading hero appears', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final style = ValueNotifier<String>(BannerStyle.edgeId);
+    addTearDown(style.dispose);
+
+    Future<void> pumpHeader({required bool loading, required bool hasHero}) =>
+        tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: Column(
+                children: [
+                  HomeBannerHeader(
+                    bannerStyle: style,
+                    hasHero: hasHero,
+                    loading: loading,
+                    bannerBuilder: (_) => const Text('banner'),
+                    headerBuilder: (_) => const SizedBox(height: 40),
+                  ),
+                  const Text('first row'),
+                ],
+              ),
+            ),
+          ),
+        );
+
+    await pumpHeader(loading: true, hasHero: false);
+    final row = find.text('first row');
+    final loadingTop = tester.getTopLeft(row).dy;
+    for (final part in ['artwork', 'title', 'metadata', 'actions']) {
+      expect(find.byKey(ValueKey('hero-skeleton-$part')), findsOneWidget);
+    }
+    expect(find.text('banner'), findsNothing);
+
+    await pumpHeader(loading: false, hasHero: true);
+    expect(tester.getTopLeft(row).dy, loadingTop);
+    expect(find.byKey(const ValueKey('hero-skeleton-artwork')), findsNothing);
+
+    await pumpHeader(loading: false, hasHero: false);
+    expect(tester.getTopLeft(row).dy, 40);
+  });
+
   testWidgets('loading keeps the header style selected for the banner', (
     tester,
   ) async {
