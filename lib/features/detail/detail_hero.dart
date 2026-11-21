@@ -68,6 +68,12 @@ class _Hero extends StatelessWidget {
       memCacheWidth: imageDecodeWidth,
       placeholder: (c, u) => ColoredBox(color: AppColors.surface2),
       errorWidget: (c, u, e) => ColoredBox(color: AppColors.surface2),
+      // The TMDB backdrop upgrade swaps coverUrl in after the hero is already
+      // showing AniList's banner — keep that on screen and crossfade to the
+      // new one instead of dropping to the placeholder in between.
+      useOldImageOnUrlChange: true,
+      fadeOutDuration: const Duration(milliseconds: 300),
+      fadeInDuration: const Duration(milliseconds: 300),
     );
   }
 

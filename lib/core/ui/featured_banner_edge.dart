@@ -15,6 +15,7 @@ import 'mobile_hero_art.dart';
 import 'native_cover_provider.dart';
 import 'poster_palette.dart';
 import 'route_observer.dart';
+import 'tmdb_hero_banner.dart';
 
 /// Full-bleed Home banner with centered title art and one details action.
 class FeaturedBannerEdge extends StatefulWidget {
@@ -60,6 +61,11 @@ class _FeaturedBannerEdgeState extends State<FeaturedBannerEdge>
   PageRoute<dynamic>? _route;
   bool _routeIsCurrent = true;
 
+  /// TMDB backdrop per AniList anime item (by id), once resolved — AniList's
+  /// own `bannerImage` is often missing or low-res. Items with no entry here
+  /// just keep their own banner.
+  final Map<String, String> _tmdbBanners = {};
+
   bool get _isVisible => widget.isActive && _routeIsCurrent;
 
   /// Current background tint from [widget.backgroundTint] (null → theme bg).
@@ -73,7 +79,21 @@ class _FeaturedBannerEdgeState extends State<FeaturedBannerEdge>
     widget.backgroundTint?.addListener(_onBackgroundTint);
     _startTimer();
     _syncTintAfterFrame();
+    _loadTmdbBanners();
   }
+
+  /// Each title's TMDB backdrop resolves (and precaches) independently; one
+  /// already on screen when its backdrop lands just crossfades to it via
+  /// [_artwork]'s own AnimatedSwitcher.
+  void _loadTmdbBanners() => loadTmdbBanners(
+    _pages,
+    _tmdbBanners,
+    context: context,
+    mounted: () => mounted,
+    onResolved: (id, url) => setState(() => _tmdbBanners[id] = url),
+  );
+
+  String? _bannerFor(MediaItem item) => tmdbBannerFor(item, _tmdbBanners);
 
   @override
   void didChangeDependencies() {
@@ -133,6 +153,7 @@ class _FeaturedBannerEdgeState extends State<FeaturedBannerEdge>
         _pages = next;
         _index = 0;
       });
+      _loadTmdbBanners();
     }
     if (changed || oldWidget.isActive != widget.isActive) _startTimer();
     if (changed ||
@@ -178,13 +199,14 @@ class _FeaturedBannerEdgeState extends State<FeaturedBannerEdge>
       return;
     }
     final item = _pages[_index];
-    final art = mobileHeroArt(item.cover, item.banner);
+    final banner = _bannerFor(item);
+    final art = mobileHeroArt(item.cover, banner);
     if (art == null || art.isEmpty) {
       widget.onArtColor?.call(null);
       return;
     }
     final poster = item.cover?.trim();
-    final backdrop = item.banner?.trim();
+    final backdrop = banner?.trim();
     final sampleArt = adaptiveArtUrl(poster, backdrop) ?? art;
     final usingBackdrop =
         (poster == null || poster.isEmpty) &&
@@ -215,7 +237,7 @@ class _FeaturedBannerEdgeState extends State<FeaturedBannerEdge>
         _pages,
         _index,
         artwork: (item) {
-          final url = mobileHeroArt(item.cover, item.banner);
+          final url = mobileHeroArt(item.cover, _bannerFor(item));
           return url == null || url.isEmpty
               ? null
               : ResizeImage(
@@ -386,7 +408,7 @@ class _FeaturedBannerEdgeState extends State<FeaturedBannerEdge>
   }
 
   Widget _artwork(MediaItem item) {
-    final url = mobileHeroArt(item.cover, item.banner);
+    final url = mobileHeroArt(item.cover, _bannerFor(item));
     final provider = url == null || url.isEmpty
         ? null
         : nativeCoverProvider(url, item.coverHeaders);
@@ -407,15 +429,28 @@ class _FeaturedBannerEdgeState extends State<FeaturedBannerEdge>
           ),
         ),
         if (provider != null)
-          Image(
-            image: ResizeImage(
-              provider,
-              width: mobileHeroDecodeWidth(item.sourceId, width),
+          // Keyed on the resolved url: when the TMDB backdrop lands for this
+          // (already-visible) item, this crossfades to it instead of popping
+          // — precached in _loadTmdbBanners first, so it's never a blank
+          // frame. The outer page-to-page switch (keyed on item.id) is
+          // unaffected since that key doesn't change.
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 300),
+            layoutBuilder: (currentChild, previousChildren) => Stack(
+              fit: StackFit.expand,
+              children: [...previousChildren, ?currentChild],
             ),
-            fit: BoxFit.cover,
-            alignment: Alignment.topCenter,
-            frameBuilder: imageFadeIn,
-            errorBuilder: (_, _, _) => const SizedBox.shrink(),
+            child: Image(
+              key: ValueKey(url),
+              image: ResizeImage(
+                provider,
+                width: mobileHeroDecodeWidth(item.sourceId, width),
+              ),
+              fit: BoxFit.cover,
+              alignment: Alignment.topCenter,
+              frameBuilder: imageFadeIn,
+              errorBuilder: (_, _, _) => const SizedBox.shrink(),
+            ),
           ),
       ],
     );

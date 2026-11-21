@@ -12,6 +12,7 @@ import 'featured_carousel.dart' show heroHeightFor;
 import 'featured_hero.dart' show HeroMeta, heroTopReserve;
 import 'image_fade.dart';
 import 'native_cover_provider.dart';
+import 'tmdb_hero_banner.dart';
 
 /// The "Panels" Home banner: a manga spread.
 ///
@@ -55,14 +56,29 @@ class _FeaturedBannerPanelsState extends State<FeaturedBannerPanels> {
   Timer? _timer;
   final _imagePreloader = BannerImagePreloader();
 
+  /// TMDB backdrop per AniList anime item (by id), once resolved — AniList's
+  /// own `bannerImage` is often missing or low-res.
+  final Map<String, String> _tmdbBanners = {};
+
   MediaItem _at(int offset) => _pages[(_i + offset) % _pages.length];
-  static String? _art(MediaItem m) => m.banner ?? m.cover;
+  String? _art(MediaItem m) => _bannerFor(m) ?? m.cover;
+
+  String? _bannerFor(MediaItem item) => tmdbBannerFor(item, _tmdbBanners);
+
+  void _loadTmdbBanners() => loadTmdbBanners(
+    _pages,
+    _tmdbBanners,
+    context: context,
+    mounted: () => mounted,
+    onResolved: (id, url) => setState(() => _tmdbBanners[id] = url),
+  );
 
   @override
   void initState() {
     super.initState();
     _pages = widget.items.take(6).toList();
     _startTimer();
+    _loadTmdbBanners();
   }
 
   @override
@@ -76,6 +92,7 @@ class _FeaturedBannerPanelsState extends State<FeaturedBannerPanels> {
         _i = 0;
       });
       _startTimer();
+      _loadTmdbBanners();
     }
   }
 
@@ -340,7 +357,7 @@ class _FeaturedBannerPanelsState extends State<FeaturedBannerPanels> {
   Widget _cover(MediaItem item, {required bool wide}) {
     // The big panel is landscape, so it takes the wide art when there is one;
     // the small ones are portrait and always want the poster.
-    final url = wide ? _art(item) : (item.cover ?? item.banner);
+    final url = wide ? _art(item) : (item.cover ?? _bannerFor(item));
     if (url == null || url.isEmpty) {
       return ColoredBox(color: AppColors.surface2);
     }

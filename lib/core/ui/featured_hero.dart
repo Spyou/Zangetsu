@@ -15,6 +15,7 @@ import '../stremio/stremio_ref.dart';
 import '../models/media_item.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text.dart';
+import 'tmdb_hero_banner.dart';
 
 /// Height of the floating home header the hero reserves room for, measured
 /// from the bottom of the status bar: 8px of top padding, a 48px icon row and
@@ -110,6 +111,11 @@ class _FeaturedHeroState extends State<FeaturedHero> {
   Color? _artColor;
   String? _logoUrl; // TMDB title logo (null → show the text title)
 
+  /// TMDB backdrop for an AniList anime, keyed by item id, once resolved —
+  /// AniList's own `bannerImage` is frequently missing or low-res. No entry
+  /// keeps the AniList/source banner exactly as before.
+  final Map<String, String> _tmdbBanners = {};
+
   /// Current background tint from [widget.backgroundTint] (null → theme bg).
   Color? _bgTint;
 
@@ -120,6 +126,7 @@ class _FeaturedHeroState extends State<FeaturedHero> {
     widget.backgroundTint?.addListener(_onBackgroundTint);
     _loadPalette();
     _loadLogo();
+    _loadTmdbBanner();
   }
 
   void _onBackgroundTint() {
@@ -128,7 +135,20 @@ class _FeaturedHeroState extends State<FeaturedHero> {
   }
 
   /// Tall phone artwork uses TMDB's portrait poster when available.
-  static String? _art(MediaItem item) => mobileHeroArt(item.cover, item.banner);
+  String? _art(MediaItem item) => mobileHeroArt(item.cover, _bannerFor(item));
+
+  String? _bannerFor(MediaItem item) => tmdbBannerFor(item, _tmdbBanners);
+
+  void _loadTmdbBanner() {
+    final item = widget.item;
+    loadTmdbBanners(
+      [item],
+      _tmdbBanners,
+      context: context,
+      mounted: () => mounted && _sameItem(item, widget.item),
+      onResolved: (id, url) => setState(() => _tmdbBanners[id] = url),
+    );
+  }
 
   @override
   void didUpdateWidget(FeaturedHero old) {
@@ -143,6 +163,7 @@ class _FeaturedHeroState extends State<FeaturedHero> {
       _logoUrl = null;
       _loadPalette();
       _loadLogo();
+      _loadTmdbBanner();
     }
     if (old.backgroundTint != widget.backgroundTint) {
       old.backgroundTint?.removeListener(_onBackgroundTint);
@@ -278,18 +299,31 @@ class _FeaturedHeroState extends State<FeaturedHero> {
         fit: StackFit.expand,
         children: [
           if (provider != null)
-            Image(
-              image: ResizeImage(
-                provider,
-                width: mobileHeroDecodeWidth(widget.item.sourceId, memW),
+            // Keyed on the resolved art URL: when the TMDB backdrop swaps in
+            // for AniList's banner, AnimatedSwitcher crossfades the old frame
+            // into the new one instead of popping — the image is precached in
+            // _loadTmdbBanner first, so the new child never starts on a blank.
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 300),
+              layoutBuilder: (currentChild, previousChildren) => Stack(
+                fit: StackFit.expand,
+                children: [...previousChildren, ?currentChild],
               ),
-              fit: BoxFit.cover,
-              frameBuilder: imageFadeIn,
-              // Crop from the top so the poster's own printed title block (and
-              // the thin rule above it) is pushed off the bottom and hidden by
-              // the gradient — also removes the duplicate "ghosted" title.
-              alignment: Alignment.topCenter,
-              gaplessPlayback: true,
+              child: Image(
+                key: ValueKey(_art(widget.item)),
+                image: ResizeImage(
+                  provider,
+                  width: mobileHeroDecodeWidth(widget.item.sourceId, memW),
+                ),
+                fit: BoxFit.cover,
+                frameBuilder: imageFadeIn,
+                // Crop from the top so the poster's own printed title block
+                // (and the thin rule above it) is pushed off the bottom and
+                // hidden by the gradient — also removes the duplicate
+                // "ghosted" title.
+                alignment: Alignment.topCenter,
+                gaplessPlayback: true,
+              ),
             )
           else
             ColoredBox(color: AppColors.surface2),

@@ -12,6 +12,7 @@ import 'featured_hero.dart';
 import 'mobile_hero_art.dart';
 import 'native_cover_provider.dart';
 import 'poster_palette.dart';
+import 'tmdb_hero_banner.dart';
 
 /// Hero height as a share of the screen, so the banner keeps the same
 /// proportions everywhere instead of the same pixel count.
@@ -121,6 +122,12 @@ class _FeaturedCarouselState extends State<FeaturedCarousel> with RouteAware {
   PageRoute<dynamic>? _route;
   bool _routeIsCurrent = true;
 
+  /// TMDB backdrop per AniList anime item (by id), once resolved — see
+  /// [FeaturedBannerEdge]/[tmdbBannerFor]. [FeaturedHero] (the card itself)
+  /// resolves its own; this copy is only for [_syncActiveTint] and the
+  /// preloader below, which read item art directly rather than through it.
+  final Map<String, String> _tmdbBanners = {};
+
   int get _count => _pages.length;
   bool get _shouldAutoAdvance => widget.isActive && _routeIsCurrent;
 
@@ -142,7 +149,19 @@ class _FeaturedCarouselState extends State<FeaturedCarousel> with RouteAware {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _syncActiveTint();
     });
+    _loadTmdbBanners();
   }
+
+  void _loadTmdbBanners() => loadTmdbBanners(
+    _pages,
+    _tmdbBanners,
+    context: context,
+    mounted: () => mounted,
+    onResolved: (id, url) {
+      setState(() => _tmdbBanners[id] = url);
+      if (_pages[_realIndex].id == id) _syncActiveTint();
+    },
+  );
 
   @override
   void didChangeDependencies() {
@@ -229,6 +248,7 @@ class _FeaturedCarouselState extends State<FeaturedCarousel> with RouteAware {
       });
       if (_pc.hasClients) _pc.jumpToPage(_index);
       _startTimer();
+      _loadTmdbBanners();
     }
     if (changed || (old.onArtColor == null && widget.onArtColor != null)) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -264,13 +284,14 @@ class _FeaturedCarouselState extends State<FeaturedCarousel> with RouteAware {
       return;
     }
     final item = _pages[_realIndex];
-    final art = mobileHeroArt(item.cover, item.banner);
+    final banner = tmdbBannerFor(item, _tmdbBanners);
+    final art = mobileHeroArt(item.cover, banner);
     if (art == null || art.isEmpty) {
       widget.onArtColor?.call(null);
       return;
     }
     final poster = item.cover?.trim();
-    final backdrop = item.banner?.trim();
+    final backdrop = banner?.trim();
     final sampleArt = adaptiveArtUrl(poster, backdrop) ?? art;
     final usingBackdrop =
         (poster == null || poster.isEmpty) &&
@@ -371,7 +392,10 @@ class _FeaturedCarouselState extends State<FeaturedCarousel> with RouteAware {
         _pages,
         _realIndex,
         artwork: (item) {
-          final url = mobileHeroArt(item.cover, item.banner);
+          final url = mobileHeroArt(
+            item.cover,
+            tmdbBannerFor(item, _tmdbBanners),
+          );
           return url == null || url.isEmpty
               ? null
               : ResizeImage(

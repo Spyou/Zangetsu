@@ -5,51 +5,67 @@ import 'package:watch_app/core/hive/safe_box.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 import '../models/media_item.dart';
+import '../models/provider_info.dart';
 import '../stremio/stremio_ref.dart';
 import 'tmdb.dart';
 
-/// Best-effort TMDB "title logo" (the stylized title-art PNG) for a hero item,
-/// so the banner can show the logo instead of plain text — CloudStream-style.
-/// Resolves by tmdbId when the item has one, else a title search.
+/// Best-effort TMDB "title logo" (the stylized title-art PNG) and backdrop
+/// ("banner") for a hero item — the logo lets the banner show stylized title
+/// art instead of plain text, and the banner lets an AniList-sourced anime
+/// (whose own `bannerImage` is often missing or low-res) show TMDB's backdrop
+/// instead. Resolves by tmdbId when the item has one, else a title search —
+/// both come off the one `/images` response, so asking for both costs one
+/// network round trip, not two.
 ///
-/// Two-level cache so the logo doesn't "pop in" every time:
+/// Two-level cache so neither "pops in" every time:
 ///  - in-memory (per session),
-///  - Hive ([_boxName], persisted) — keyed by tmdbId/title, value = logo URL
-///    ('' means "this title genuinely has no logo", so we don't re-search it).
+///  - Hive ([_boxName] / [_bannerBoxName], persisted) — keyed by tmdbId/title,
+///    value = image URL ('' means "genuinely has none", so we don't re-search
+///    it).
 /// Only RESOLVED results are cached; a network error (e.g. a TMDB reset) is NOT
 /// cached, so a later attempt can still succeed once TMDB is reachable. Any
-/// failure yields null → the banner keeps its text title.
+/// failure yields null → the banner keeps its text title / original art.
 class TitleLogoService {
   TitleLogoService(this._dio, {this.addonLogoFor});
   final Dio _dio;
   final Future<String?> Function(MediaItem)? addonLogoFor;
 
   static const String _boxName = 'logo_cache';
+  // Bumped each time what gets cached here changes shape (v2: w780→original;
+  // v3: prefer poster over backdrop) — otherwise an already-cached (now
+  // stale) banner would be served forever instead of being re-resolved.
+  static const String _bannerBoxName = 'tmdb_banner_cache_v3';
 
   final Map<String, String> _mem = {}; // '' = known "no logo"
+  final Map<String, String> _bannerMem = {}; // '' = known "no backdrop"
   final Set<String> _failedAddonLogos = {};
   final Map<String, Future<String?>> _stremioLookups = {};
-  final Map<String, Future<String?>> _tmdbLookups = {};
+  final Map<String, Future<_TmdbImages>> _tmdbLookups = {};
   Future<void> _posterLogoQueue = Future<void>.value();
   Box<String>? _boxRef;
   Box<String> get _box => _boxRef ??= Hive.box<String>(_boxName);
+  Box<String>? _bannerBoxRef;
+  Box<String> get _bannerBox =>
+      _bannerBoxRef ??= Hive.box<String>(_bannerBoxName);
 
-  /// Open the persisted cache. Call once in initDependencies before use.
+  /// Open the persisted caches. Call once in initDependencies before use.
   ///
   /// Resilient: a half-written frame (e.g. the app was killed mid-cache) can make
-  /// the box fail — or hang — to open, which would trap the whole app on the
-  /// splash. The logo cache is disposable, so on any failure/timeout we wipe it
-  /// from disk and reopen fresh instead of blocking boot.
+  /// a box fail — or hang — to open, which would trap the whole app on the
+  /// splash. Both caches are disposable, so on any failure/timeout we wipe the
+  /// offending one from disk and reopen fresh instead of blocking boot.
   static Future<void> init() async {
-    try {
-      await openBoxSafely<String>(_boxName).timeout(const Duration(seconds: 6));
-    } catch (_) {
+    for (final box in [_boxName, _bannerBoxName]) {
       try {
-        await Hive.deleteBoxFromDisk(_boxName);
-      } catch (_) {}
-      try {
-        await openBoxSafely<String>(_boxName);
-      } catch (_) {}
+        await openBoxSafely<String>(box).timeout(const Duration(seconds: 6));
+      } catch (_) {
+        try {
+          await Hive.deleteBoxFromDisk(box);
+        } catch (_) {}
+        try {
+          await openBoxSafely<String>(box);
+        } catch (_) {}
+      }
     }
   }
 
@@ -138,33 +154,43 @@ class TitleLogoService {
       ? 'id:${item.tmdbId}:${item.tmdbIsTv}'
       : 'q:${(item.englishTitle ?? item.title).toLowerCase()}';
 
-  Future<String?> _tmdbLogoFor(MediaItem item) {
+  Future<String?> _tmdbLogoFor(MediaItem item) async {
     final key = _key(item);
-    return _tmdbLookups.putIfAbsent(
-      key,
-      () => _resolveTmdbLogo(item, key).whenComplete(() {
-        _tmdbLookups.remove(key);
-      }),
-    );
-  }
-
-  Future<String?> _resolveTmdbLogo(MediaItem item, String key) async {
     final cached = _mem[key] ?? _box.get(key);
     if (cached != null) {
       _mem[key] = cached;
       return cached.isEmpty ? null : cached;
     }
-
     try {
-      final url = await _resolve(item).timeout(const Duration(seconds: 5));
+      final url = (await _images(item, key)).logo;
       // Cache the resolved result (a URL, or '' for a genuine "no logo").
-      final value = url ?? '';
-      _mem[key] = value;
-      await _box.put(key, value);
+      _mem[key] = url ?? '';
+      if (url != null) await _box.put(key, url);
       return url;
     } catch (_) {
       // Network error (e.g. a TMDB reset) — do NOT cache, so a later attempt
       // (this session or a future launch) can still resolve the logo.
+      return null;
+    }
+  }
+
+  /// TMDB backdrop ("banner") for an item whose own art is missing or weak —
+  /// an AniList anime's `bannerImage`, mainly. Same id resolution and cache
+  /// shape as [logoFor], in a separate box so a title with a logo but no
+  /// backdrop (or vice versa) caches each independently.
+  Future<String?> bannerFor(MediaItem item) async {
+    final key = _key(item);
+    final cached = _bannerMem[key] ?? _bannerBox.get(key);
+    if (cached != null) {
+      _bannerMem[key] = cached;
+      return cached.isEmpty ? null : cached;
+    }
+    try {
+      final url = (await _images(item, key)).banner;
+      _bannerMem[key] = url ?? '';
+      if (url != null) await _bannerBox.put(key, url);
+      return url;
+    } catch (_) {
       return null;
     }
   }
@@ -183,29 +209,66 @@ class TitleLogoService {
     }
   }
 
-  Future<String?> _resolve(MediaItem item) async {
+  /// Fetches TMDB's `/images` for [item] (search-by-title when it has no
+  /// tmdbId) and pulls both the logo and the lead backdrop out of the one
+  /// response, so asking for logo and banner together is one network call,
+  /// not two. Keyed on [key] (shared with the logo/banner caches) and
+  /// deduplicated across concurrent callers — the hero's logo lookup and
+  /// banner lookup for the same title land on the same in-flight request.
+  ///
+  /// Failures (timeout, TMDB reset, …) propagate to every caller awaiting
+  /// this key — each of [_tmdbLogoFor]/[bannerFor] catches its own and skips
+  /// caching, so a transient failure isn't mistaken for a genuine "no image"
+  /// and locked in forever.
+  Future<_TmdbImages> _images(MediaItem item, String key) {
+    return _tmdbLookups.putIfAbsent(
+      key,
+      () => _fetchImages(item).timeout(const Duration(seconds: 5)).whenComplete(
+        () {
+          _tmdbLookups.remove(key);
+        },
+      ),
+    );
+  }
+
+  Future<_TmdbImages> _fetchImages(MediaItem item) async {
     int? id = item.tmdbId;
     var isTv = item.tmdbIsTv;
     if (id == null) {
       final q = (item.englishTitle ?? item.title).trim();
-      if (q.isEmpty) return null;
+      if (q.isEmpty) return const _TmdbImages();
       final s = await _dio.get<dynamic>(
         '${Tmdb.base}/search/multi',
         queryParameters: {'query': q},
         options: Options(validateStatus: (c) => c != null && c < 500),
       );
       final results = (s.data is Map) ? s.data['results'] : null;
-      if (results is! List) return null;
+      if (results is! List) return const _TmdbImages();
+      // Anime is almost always a TV entry on TMDB, never a movie — but
+      // search/multi ranks by TMDB's own popularity, so a same-named movie
+      // can outrank the actual series and we'd grab ITS art instead. For an
+      // anime item, scan every result for a tv match before settling for
+      // whichever (movie or tv) came first.
+      final preferTv = item.type == ProviderType.anime;
+      Map<dynamic, dynamic>? movie;
       for (final r in results) {
         if (r is! Map) continue;
         final mt = r['media_type'];
-        if (mt == 'movie' || mt == 'tv') {
+        if (mt == 'tv') {
           id = (r['id'] as num?)?.toInt();
-          isTv = mt == 'tv';
+          isTv = true;
           break;
         }
+        if (mt == 'movie') {
+          movie ??= r;
+          if (!preferTv) break;
+        }
       }
-      if (id == null) return null;
+      if (id == null && movie != null) {
+        id = (movie['id'] as num?)?.toInt();
+        isTv = false;
+      }
+      if (id == null) return const _TmdbImages();
     }
     final kind = isTv ? 'tv' : 'movie';
     final imgs = await _dio.get<dynamic>(
@@ -213,20 +276,47 @@ class TitleLogoService {
       queryParameters: {'include_image_language': 'en,null'},
       options: Options(validateStatus: (c) => c != null && c < 500),
     );
-    final logos = (imgs.data is Map) ? imgs.data['logos'] : null;
-    if (logos is! List || logos.isEmpty) return null;
-    // Prefer an English logo; else the first available.
-    Map<dynamic, dynamic>? best;
-    for (final l in logos) {
-      if (l is! Map) continue;
-      if (l['iso_639_1'] == 'en') {
-        best = l;
-        break;
+    final data = imgs.data is Map ? imgs.data as Map : const {};
+
+    final logos = data['logos'];
+    String? logo;
+    if (logos is List) {
+      // Prefer an English logo; else the first available.
+      Map<dynamic, dynamic>? best;
+      for (final l in logos) {
+        if (l is! Map) continue;
+        if (l['iso_639_1'] == 'en') {
+          best = l;
+          break;
+        }
+        best ??= l;
       }
-      best ??= l;
+      final path = best?['file_path'] as String?;
+      if (path != null && path.isNotEmpty) logo = '${Tmdb.img}/w500$path';
     }
-    final path = best?['file_path'] as String?;
-    if (path == null || path.isEmpty) return null;
-    return '${Tmdb.img}/w500$path';
+
+    // A movie/tv hero already looks sharp because mobileHeroArt swaps ITS
+    // poster in at full size for the phone hero — not the backdrop, which is
+    // usually just a duller screenshot. Give an AniList anime the same
+    // treatment: prefer its TMDB poster for the hero art too, and only fall
+    // back to the backdrop when TMDB has no poster for it.
+    String? lead(dynamic list) {
+      if (list is! List || list.isEmpty) return null;
+      final first = list.first; // TMDB already orders these by vote.
+      final path = first is Map ? first['file_path'] as String? : null;
+      return path != null && path.isNotEmpty
+          ? '${Tmdb.img}/original$path'
+          : null;
+    }
+
+    final banner = lead(data['posters']) ?? lead(data['backdrops']);
+
+    return _TmdbImages(logo: logo, banner: banner);
   }
+}
+
+class _TmdbImages {
+  const _TmdbImages({this.logo, this.banner});
+  final String? logo;
+  final String? banner;
 }
