@@ -65,6 +65,7 @@ class PhonePlayerActivity : Activity() {
 
     companion object {
         private const val TAG = "PhonePlayer"
+        private const val ROTATION_PULL_DISTANCE_DP = 64
 
         internal fun megaSkipTarget(position: Long, duration: Long, seconds: Int): Long? {
             if (duration <= 0) return null
@@ -121,7 +122,10 @@ class PhonePlayerActivity : Activity() {
     // (accumulating, with a transient label); horizontal swipe scrubs with a
     // time bubble; vertical swipe left/right adjusts brightness/volume with a
     // Netflix-style HUD; pinch zooms the TextureView (1–4x, pans when zoomed).
-    private var gestureMode = 0 // 0 idle, 1 horizontal scrub, 2 vertical slide
+    private var gestureMode = 0 // 0 idle, 1 horizontal scrub, 2 vertical slide, 3 rotate
+    private var singleFingerRotation = false
+    private var rotationDownX = 0f
+    private var rotationDownY = 0f
     private var speedBeforeHold: PlaybackParameters? = null
     private var downX = 0f
     private var downY = 0f
@@ -157,6 +161,9 @@ class PhonePlayerActivity : Activity() {
     private lateinit var hudLabel: TextView
     private lateinit var seekBubble: TextView
     private lateinit var holdSpeedBadge: TextView
+    private lateinit var rotationPullHint: LinearLayout
+    private lateinit var rotationPullArrow: TextView
+    private lateinit var rotationPullProgress: ProgressBar
     private lateinit var dblLeft: TextView
     private lateinit var dblRight: TextView
 
@@ -889,6 +896,7 @@ class PhonePlayerActivity : Activity() {
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         restoreSpeedAfterHold()
+        resetRotationPull(animate = false)
         super.onConfigurationChanged(newConfig)
         moreDialog?.dismiss()
         watchPage = newConfig.orientation == Configuration.ORIENTATION_PORTRAIT
@@ -2555,6 +2563,38 @@ class PhonePlayerActivity : Activity() {
                 setColor(0xCC0B0B0FL.toInt())
             }
 
+        val pullColors = ColorStateList(
+            arrayOf(intArrayOf(android.R.attr.state_selected), intArrayOf()),
+            intArrayOf(
+                intent.getIntExtra(PhonePlayerIntent.EXTRA_ACCENT, getColor(R.color.phone_player_accent)),
+                android.graphics.Color.WHITE,
+            ),
+        )
+        rotationPullArrow = TextView(this).apply {
+            setTextColor(pullColors)
+            textSize = 16f
+        }
+        rotationPullProgress = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+            max = 100
+            progressTintList = pullColors
+            progressBackgroundTintList = ColorStateList.valueOf(0x40FFFFFF)
+        }
+        rotationPullHint = LinearLayout(this).apply {
+            gravity = Gravity.CENTER_VERTICAL
+            background = pill()
+            setPadding(dp(10), dp(6), dp(10), dp(6))
+            visibility = View.GONE
+            addView(rotationPullArrow)
+            addView(rotationPullProgress, LinearLayout.LayoutParams(dp(48), dp(3)).apply {
+                marginStart = dp(6)
+            })
+        }
+        root.addView(rotationPullHint, FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            Gravity.TOP or Gravity.CENTER_HORIZONTAL,
+        ).apply { topMargin = dp(16) })
+
         hudPill =
             LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -2684,12 +2724,43 @@ class PhonePlayerActivity : Activity() {
         val action = ev.actionMasked
         val holding = speedBeforeHold != null
         when (action) {
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL, MotionEvent.ACTION_POINTER_DOWN ->
+            MotionEvent.ACTION_DOWN -> {
+                singleFingerRotation = true
+                downX = ev.x
+                downY = ev.y
+                rotationDownX = ev.rawX
+                rotationDownY = ev.rawY
+            }
+            MotionEvent.ACTION_POINTER_DOWN -> {
+                singleFingerRotation = false
                 restoreSpeedAfterHold()
+                resetRotationPull()
+            }
+            MotionEvent.ACTION_CANCEL -> {
+                restoreSpeedAfterHold()
+                resetRotationPull()
+            }
+            MotionEvent.ACTION_UP -> restoreSpeedAfterHold()
         }
+        val rotationY = ev.rawY - rotationDownY
+        val rotationX = kotlin.math.abs(ev.rawX - rotationDownX)
         if (isPortraitCard() || (holding && action != MotionEvent.ACTION_POINTER_DOWN)) {
             taps.onTouchEvent(ev)
-            if (action == MotionEvent.ACTION_UP && !holding) v.performClick()
+            val up = -rotationY
+            val pullingUp = singleFingerRotation && !holding && up > rotationX
+            if (action == MotionEvent.ACTION_MOVE && !holding) {
+                if (pullingUp && up >= dp(12)) updateRotationPull(v, rotationY)
+                else resetRotationPull()
+            }
+            if (action == MotionEvent.ACTION_UP && !holding) {
+                val commit = pullingUp && up >= dp(ROTATION_PULL_DISTANCE_DP)
+                resetRotationPull(animate = !commit)
+                if (commit) {
+                    toggleRotation()
+                } else {
+                    v.performClick()
+                }
+            }
             return
         }
         // Let the detector see the move or second finger that claims the gesture,
@@ -2704,8 +2775,6 @@ class PhonePlayerActivity : Activity() {
             MotionEvent.ACTION_DOWN -> {
                 pointers.clear()
                 pointers[ev.getPointerId(0)] = ev.x to ev.y
-                downX = ev.x
-                downY = ev.y
                 gestureMode = 0
             }
             MotionEvent.ACTION_POINTER_DOWN -> {
@@ -2725,13 +2794,25 @@ class PhonePlayerActivity : Activity() {
                     val dy = ev.y - downY
                     val slop = 24f * resources.displayMetrics.density
                     if (kotlin.math.max(kotlin.math.abs(dx), kotlin.math.abs(dy)) > slop) {
-                        gestureMode = if (kotlin.math.abs(dx) > kotlin.math.abs(dy)) 1 else 2
-                        if (gestureMode == 1) startHSeek() else startVSlide(ev.x)
+                        gestureMode = when {
+                            kotlin.math.abs(dx) > kotlin.math.abs(dy) -> 1
+                            singleFingerRotation &&
+                                resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE &&
+                                downX >= v.width / 3f && downX <= v.width * 2 / 3f -> 3
+                            else -> 2
+                        }
+                        if (gestureMode == 1) startHSeek()
+                        if (gestureMode == 2) startVSlide(ev.x)
                     }
                 } else if (gestureMode == 1) {
                     updateHSeek(ev.x)
                 } else if (gestureMode == 2) {
                     updateVSlide(ev.y)
+                }
+                if (gestureMode == 3 && singleFingerRotation && rotationY > rotationX) {
+                    updateRotationPull(v, rotationY)
+                } else if (gestureMode == 3) {
+                    resetRotationPull()
                 }
             }
             MotionEvent.ACTION_POINTER_UP -> {
@@ -2749,13 +2830,49 @@ class PhonePlayerActivity : Activity() {
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 if (gestureMode == 1 && ev.actionMasked == MotionEvent.ACTION_UP) commitHSeek()
                 if (gestureMode == 2) endVSlide()
+                val returnToPortrait = gestureMode == 3 && singleFingerRotation &&
+                    action == MotionEvent.ACTION_UP && rotationY >= dp(ROTATION_PULL_DISTANCE_DP) &&
+                    rotationY > rotationX
+                if (gestureMode == 3 && action == MotionEvent.ACTION_UP) {
+                    resetRotationPull(animate = !returnToPortrait)
+                }
                 if (pinchActive) endPinch()
                 pointers.clear()
                 gestureMode = 0
                 // Only a real release is a "click"; firing on every ACTION_MOVE
                 // spams TalkBack with a click event per drag sample.
-                if (ev.actionMasked == MotionEvent.ACTION_UP) v.performClick()
+                if (returnToPortrait) showWatchPage()
+                else if (action == MotionEvent.ACTION_UP) v.performClick()
             }
+        }
+    }
+
+    private fun rotationMotionEnabled() = Build.VERSION.SDK_INT < Build.VERSION_CODES.O ||
+        android.animation.ValueAnimator.areAnimatorsEnabled()
+
+    private fun updateRotationPull(video: View, distance: Float) {
+        val progress = (kotlin.math.abs(distance) * 100 / dp(ROTATION_PULL_DISTANCE_DP)).toInt().coerceAtMost(100)
+        video.animate().cancel()
+        if (rotationMotionEnabled()) {
+            video.translationY = (distance * .5f).coerceIn(-dp(36).toFloat(), dp(36).toFloat())
+        }
+        rotationPullArrow.text = if (distance < 0) "↑" else "↓"
+        rotationPullArrow.isSelected = progress == 100
+        rotationPullProgress.isSelected = progress == 100
+        rotationPullProgress.progress = progress
+        rotationPullHint.visibility = View.VISIBLE
+    }
+
+    private fun resetRotationPull(animate: Boolean = true) {
+        if (!::rotationPullHint.isInitialized) return
+        val video = findViewById<View>(R.id.player_root)
+        if (animate && rotationPullHint.visibility != View.VISIBLE) return
+        rotationPullHint.visibility = View.GONE
+        video.animate().cancel()
+        if (animate && rotationMotionEnabled() && video.translationY != 0f) {
+            video.animate().translationY(0f).setDuration(160).start()
+        } else {
+            video.translationY = 0f
         }
     }
 
@@ -3184,6 +3301,7 @@ class PhonePlayerActivity : Activity() {
     // A phone gets interrupted by calls and notifications; the TV player never
     // had to handle this. Pause on the way out and leave resuming to the user.
     override fun onPause() {
+        resetRotationPull(animate = false)
         if (subtitleStyleDialog?.isShowing == true) PhonePlayerBridge.setSubtitleOverlayResumed(false)
         restoreSpeedAfterHold()
         orientationObserver?.disable()

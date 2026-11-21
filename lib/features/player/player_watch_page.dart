@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_colors.dart';
@@ -162,6 +163,8 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
   bool _controlsVisible = true;
   bool _expanded = false;
   Timer? _videoTapTimer;
+  Offset _videoSwipeStart = Offset.zero;
+  final _rotationPull = ValueNotifier(0.0);
   Timer? _videoSeekTimer;
   Timer? _videoFeedbackTimer;
   int _lastVideoTapSide = 0;
@@ -258,6 +261,7 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
     _ambientSub?.cancel();
     _scroll.dispose();
     _ambientOpacity.dispose();
+    _rotationPull.dispose();
     super.dispose();
   }
 
@@ -659,7 +663,32 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
   }
 
   /// Transparent scrims keep the controls legible on bright frames.
-  Widget _video(double h, double sideInset) {
+  Widget _video(double h, double sideInset) => GestureDetector(
+    dragStartBehavior: DragStartBehavior.down,
+    onVerticalDragStart: (details) {
+      _videoTapTimer?.cancel();
+      _videoSwipeStart = details.globalPosition;
+    },
+    onVerticalDragUpdate: (details) {
+      final movement = _videoSwipeStart - details.globalPosition;
+      _rotationPull.value = movement.dy > movement.dx.abs() ? -movement.dy : 0;
+    },
+    onVerticalDragCancel: () => _rotationPull.value = 0,
+    onVerticalDragEnd: (details) {
+      final movement = _videoSwipeStart - details.globalPosition;
+      _rotationPull.value = 0;
+      if (movement.dy >= watchPageRotationSwipeDistance &&
+          movement.dy > movement.dx.abs()) {
+        widget.onFullscreen();
+      }
+    },
+    child: WatchPageRotationPreview(
+      pull: _rotationPull,
+      child: _videoCard(h, sideInset),
+    ),
+  );
+
+  Widget _videoCard(double h, double sideInset) {
     return Padding(
       // SafeArea already clears the status bar — no double inset.
       padding: EdgeInsets.fromLTRB(sideInset, 4, sideInset, 0),

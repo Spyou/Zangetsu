@@ -120,6 +120,47 @@ void main() {
     return Offset(rect.left + rect.width * side, rect.top + rect.height * .24);
   }
 
+  testWidgets('only an upward video swipe opens fullscreen', (tester) async {
+    var entered = 0;
+    await _pump(tester, _page(onFullscreen: () => entered++));
+    final video = tester.getRect(find.byKey(const ValueKey('watch-video')));
+    await tester.dragFrom(video.center, const Offset(0, 85));
+    expect(entered, 0);
+    await tester.dragFrom(video.center, const Offset(-100, 0));
+    expect(entered, 0);
+    await tester.dragFrom(video.center, const Offset(0, -100));
+    expect(entered, 1);
+  });
+
+  testWidgets('rotation pull previews progress and snaps back below the limit', (
+    tester,
+  ) async {
+    var entered = 0;
+    await _pump(tester, _page(onFullscreen: () => entered++));
+    final finder = find.byKey(const ValueKey('watch-video'));
+    final original = tester.getRect(finder);
+    final gesture = await tester.startGesture(original.center);
+    await gesture.moveBy(const Offset(0, -45));
+    await tester.pump();
+    expect(tester.getRect(finder).top, lessThan(original.top));
+    final progress = find.byKey(const ValueKey('watch-rotation-pull-progress'));
+    expect(tester.widget<LinearProgressIndicator>(progress).value, lessThan(1));
+    expect(entered, 0);
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(tester.getRect(finder), original);
+    expect(progress, findsNothing);
+    expect(entered, 0);
+
+    final longPull = await tester.startGesture(original.center);
+    await longPull.moveBy(const Offset(0, -75));
+    await tester.pump();
+    expect(tester.widget<LinearProgressIndicator>(progress).value, 1);
+    expect(entered, 0);
+    await longPull.up();
+    expect(entered, 1);
+  });
+
   testWidgets('video double taps seek left and right by the saved step', (
     tester,
   ) async {

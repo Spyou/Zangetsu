@@ -2,6 +2,7 @@ package com.spyou.watch_app
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ActivityInfo
 import android.os.Looper
 import android.os.SystemClock
 import android.view.MotionEvent
@@ -24,6 +25,31 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(manifest = Config.NONE, sdk = [34], qualifiers = "port")
 class PhonePlayerPortraitGestureTest {
+    @Test fun `portrait video swipe up opens landscape`() = withPlayer { activity, stage ->
+        swipe(stage, 160f, 140f, 35f)
+        assertEquals(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE, activity.requestedOrientation)
+    }
+
+    @Test fun `short portrait pull moves the video and snaps back`() = withPlayer { activity, stage ->
+        val down = SystemClock.uptimeMillis()
+        touch(stage, down, MotionEvent.ACTION_DOWN, 160f, 135f)
+        touch(stage, down, MotionEvent.ACTION_MOVE, 160f, 90f)
+        org.junit.Assert.assertTrue(stage.translationY < 0f)
+        assertEquals(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT, activity.requestedOrientation)
+        touch(stage, down, MotionEvent.ACTION_UP, 160f, 90f)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(250))
+        assertEquals(0f, stage.translationY, 0.001f)
+        assertEquals(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT, activity.requestedOrientation)
+    }
+
+    @Test
+    @Config(qualifiers = "land")
+    fun `landscape center swipe down returns to portrait`() =
+        withPlayer(orientation = "landscape") { activity, stage ->
+            swipe(stage, 160f, 35f, 140f)
+            assertEquals(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT, activity.requestedOrientation)
+        }
+
     @Test fun `holding portrait video shows the speed badge until release or cancel`() =
         withPlayer(block = ::assertHoldSpeed)
 
@@ -88,6 +114,14 @@ class PhonePlayerPortraitGestureTest {
         assertEquals(View.GONE, speedBadge(stage).visibility)
         touch(stage, down, MotionEvent.ACTION_UP, 60f, 55f)
         return activity.window.attributes.screenBrightness
+    }
+
+    private fun swipe(stage: View, x: Float, start: Float, end: Float) {
+        val down = SystemClock.uptimeMillis()
+        touch(stage, down, MotionEvent.ACTION_DOWN, x, start)
+        touch(stage, down, MotionEvent.ACTION_MOVE, x, (start + end) / 2)
+        touch(stage, down, MotionEvent.ACTION_MOVE, x, end)
+        touch(stage, down, MotionEvent.ACTION_UP, x, end)
     }
 
     private fun withPlayer(

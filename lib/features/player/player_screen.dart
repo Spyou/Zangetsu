@@ -541,6 +541,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
   Offset _zoomPan = Offset.zero; // pan offset while zoomed in
   int _zoomIndex = -1; // episode this zoom belongs to (reset on episode change)
   bool _pinching = false; // 2 fingers down → suppress the 1-finger swipes
+  double? _fullscreenExitStartY;
+  final _fullscreenRotationPull = ValueNotifier(0.0);
   final Map<int, Offset> _pointers = {}; // live pointers tracked for the pinch
   double _pinchBaseDist = 0; // finger spread when the pinch started
   double _pinchBaseZoom = 1.0;
@@ -1848,6 +1850,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   @override
   void dispose() {
+    _fullscreenRotationPull.dispose();
     _orientationTurns?.cancel();
     AppLogger.instance.log(
       '[player-route] dispose ready=$_ready '
@@ -2067,11 +2070,24 @@ class _PlayerScreenState extends State<PlayerScreen> {
     return system > 24 ? system : 24;
   }
 
-  // Vertical swipe: left half adjusts screen brightness, right half adjusts
-  // volume (MX/Netflix-style). Each drag seeds from the current value, then
+  // The center of landscape video is reserved for returning to the watch page.
+  // The sides adjust brightness and volume. Each drag seeds from the current value, then
   // tracks finger movement; a swipe across ~70% of the height covers 0→100%.
+  void _onVDragDown(DragDownDetails d) {
+    final width = MediaQuery.sizeOf(context).width;
+    final x = d.localPosition.dx;
+    if (_watchPageEnabled &&
+        MediaQuery.orientationOf(context) == Orientation.landscape &&
+        x >= width / 3 &&
+        x <= width * 2 / 3) {
+      _fullscreenExitStartY = _pinching ? double.infinity : d.globalPosition.dy;
+    } else {
+      _fullscreenExitStartY = null;
+    }
+  }
+
   Future<void> _onVDragStart(DragStartDetails d) async {
-    if (!_gesturesEnabled) return;
+    if (_fullscreenExitStartY != null || !_gesturesEnabled) return;
     _lastHudPct = -1; // fresh swipe → don't tick on the first sample
     _dragIsBrightness =
         d.localPosition.dx < MediaQuery.of(context).size.width / 2;
@@ -2096,7 +2112,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   void _onVDragUpdate(DragUpdateDetails d) {
-    if (!_gesturesEnabled || _pinching) return; // ignore once a pinch begins
+    final start = _fullscreenExitStartY;
+    if (start != null) {
+      final distance = d.globalPosition.dy - start;
+      _fullscreenRotationPull.value = distance > 0 ? distance : 0;
+      return;
+    }
+    if (!_gesturesEnabled || _pinching) return;
     final h = MediaQuery.of(context).size.height;
     // Drag up (negative delta) increases the value.
     _dragValue = (_dragValue - d.primaryDelta! / (h * 0.7)).clamp(0.0, 1.0);
@@ -2132,6 +2154,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   void _onVDragEnd(DragEndDetails d) {
+    final start = _fullscreenExitStartY;
+    _fullscreenExitStartY = null;
+    _fullscreenRotationPull.value = 0;
+    if (start != null) {
+      if (d.globalPosition.dy - start >= watchPageRotationSwipeDistance) {
+        _enterWatchPage();
+      }
+      return;
+    }
     if (!_gesturesEnabled) return;
     _hudTimer?.cancel();
     _hudTimer = Timer(const Duration(milliseconds: 500), () {
@@ -2174,6 +2205,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
   // near 1×). The video is scaled by [_zoom]/[_zoomPan] in build(). ──────────
   void _onPointerDown(PointerDownEvent e) {
     _pointers[e.pointer] = e.position;
+    if (_pointers.length > 1 && _fullscreenExitStartY != null) {
+      _fullscreenExitStartY = double.infinity;
+      _fullscreenRotationPull.value = 0;
+    }
     if (_pointers.length == 2 && !_locked) _startPinch();
   }
 
@@ -3986,7 +4021,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  _buildVideoSurface(),
+                  WatchPageRotationPreview(
+                    pull: _fullscreenRotationPull,
+                    child: _buildVideoSurface(),
+                  ),
 
                   // 2. Input layer — D-pad on TV; touch gestures on phone.
                   // On TV: PlayerTvControls owns the Focus/key-handler + bottom bar.
@@ -4100,9 +4138,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
                                       setState(() => _holding = false);
                                     }
                                   : null,
+                              onVerticalDragDown: _onVDragDown,
                               onVerticalDragStart: _onVDragStart,
                               onVerticalDragUpdate: _onVDragUpdate,
                               onVerticalDragEnd: _onVDragEnd,
+                              onVerticalDragCancel: () {
+                                _fullscreenExitStartY = null;
+                                _fullscreenRotationPull.value = 0;
+                              },
                               // Nulled rather than no-op'd when the setting is off:
                               // a live recognizer still joins the gesture arena and
                               // would swallow any tap that drifted sideways, so the
