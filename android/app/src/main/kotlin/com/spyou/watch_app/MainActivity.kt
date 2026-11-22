@@ -482,6 +482,43 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
                 }
             }
 
+        // Online scrub previews — keyframe_thumbs (standalone range-request +
+        // single-keyframe decode, no mpv involved). Same executor as the local
+        // (MMR) "frame" channel above: the two never run for the same preview
+        // session, so sharing the thread is free.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "zangetsu/keyframe_thumbs")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "frame" -> {
+                        val url = call.argument<String>("url")
+                        val positionMs = (call.argument<Number>("positionMs") ?: 0).toLong()
+                        val headers = call.argument<Map<String, String>>("headers")
+                        if (url == null) {
+                            result.success(null)
+                            return@setMethodCallHandler
+                        }
+                        val flatHeaders = headers?.flatMap { (k, v) -> listOf(k, v) }
+                            ?.toTypedArray() ?: arrayOf()
+                        executor.execute {
+                            val bytes = try {
+                                keyframethumbs.Native.requestThumbnail(url, positionMs, flatHeaders)
+                            } catch (e: Throwable) {
+                                android.util.Log.e("KeyframeThumbs", "requestThumbnail failed", e)
+                                null
+                            }
+                            runOnUiThread {
+                                result.success(if (bytes == null || bytes.isEmpty()) null else bytes)
+                            }
+                        }
+                    }
+                    "release" -> executor.execute {
+                        runCatching { keyframethumbs.Native.releaseThumbnailSession() }
+                        runOnUiThread { result.success(null) }
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
         // Manga page OCR/offline translation. Kept on its own method channel so
         // the reader feature does not alter player or source bridge behavior.
         MethodChannel(

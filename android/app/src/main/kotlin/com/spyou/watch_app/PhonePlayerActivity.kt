@@ -107,6 +107,7 @@ class PhonePlayerActivity : Activity() {
     private lateinit var quickActions: ViewGroup
     private lateinit var btnPlay: android.widget.ImageView
     private lateinit var seek: android.widget.SeekBar
+    private lateinit var seekPreview: PhoneSeekPreview
     private lateinit var timeText: android.widget.TextView
     private lateinit var titleText: android.widget.TextView
     private lateinit var episodeText: android.widget.TextView
@@ -466,6 +467,7 @@ class PhonePlayerActivity : Activity() {
         if (!isPortraitCard()) applyFullscreenControls()
         updateEpisodeNavigation()
 
+        seekPreview = PhoneSeekPreview(stage, seek)
         seek.setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(sb: android.widget.SeekBar, value: Int, fromUser: Boolean) {
                 if (!fromUser) return
@@ -474,6 +476,7 @@ class PhonePlayerActivity : Activity() {
                     val pos = d * value / 1000
                     timeText.text = if (isPortraitCard()) fmt(pos).padStart(5, '0') + " / " + fmt(d).padStart(5, '0') else fmt(pos) + " / " + fmt(d)
                     sb.contentDescription = getString(R.string.phone_player_desc_seek) + ", " + fmt(pos) + " of " + fmt(d)
+                    if (scrubbing) seekPreview.show(pos, fmt(pos))
                 }
             }
 
@@ -482,10 +485,16 @@ class PhonePlayerActivity : Activity() {
                 // Cancel the auto-hide: a slow scrub must not lose the bar.
                 restoreControls()
                 handler.removeCallbacks(hideRunnable)
+                val duration = player?.duration ?: 0L
+                if (duration > 0) {
+                    val position = duration * sb.progress / 1000
+                    seekPreview.show(position, fmt(position))
+                }
             }
 
             override fun onStopTrackingTouch(sb: android.widget.SeekBar) {
                 scrubbing = false
+                seekPreview.hide()
                 val d = player?.duration ?: 0L
                 if (d > 0) player?.seekTo(d * sb.progress / 1000)
                 bumpControls()
@@ -1614,6 +1623,7 @@ class PhonePlayerActivity : Activity() {
         subtitlePreferenceApplied = false
         pendingAddonSubtitleId = null
         currentUrl = url
+        seekPreview.setSource(url, headers)
         attemptedUrls.add(url)
         val httpFactory = DefaultHttpDataSource.Factory()
             .setAllowCrossProtocolRedirects(true)
@@ -3516,6 +3526,7 @@ class PhonePlayerActivity : Activity() {
     }
 
     override fun onDestroy() {
+        if (::seekPreview.isInitialized) seekPreview.close()
         segmentTimer.cancel()
         episodePanel?.setOnDismissListener(null)
         episodePanel?.dismiss()

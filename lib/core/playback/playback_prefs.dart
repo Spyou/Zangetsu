@@ -756,14 +756,6 @@ class PlaybackPrefs {
       _box.get('heroStyle', defaultValue: 'cinematic') as String;
   Future<void> setHeroStyle(String value) => _box.put('heroStyle', value);
 
-  /// Whether to show live scrub-preview thumbnails for ONLINE streams. Offline
-  /// downloads always preview (it's instant and free); online generates frames
-  /// live, which costs a little extra data, so it's user-toggleable.
-  bool get seekPreviewOnline =>
-      _box.get('seekPreviewOnline', defaultValue: false) as bool;
-  Future<void> setSeekPreviewOnline(bool value) =>
-      _box.put('seekPreviewOnline', value);
-
   /// Which fields the in-player info overlay shows (keys from
   /// [kPlayerInfoFields]). Empty = overlay off. Auto-shown with the controls.
   List<String> get playerInfoFields =>
