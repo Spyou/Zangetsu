@@ -22,7 +22,7 @@ void main() {
   });
 
   test(
-    'selection survives reopening and choosing Zangetsu List clears it',
+    'selection survives reopening and choosing AniAura List clears it',
     () async {
       await TrackerSwitchPrefs.init();
       await TrackerSwitchPrefs.saveLastTracker('AniList');

@@ -9,7 +9,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Zangetsu</string>
+	<string>AniAura</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -17,7 +17,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>Zangetsu</string>
+	<string>AniAura</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -69,24 +69,24 @@
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
 	<key>NSCameraUsageDescription</key>
-	<string>Zangetsu uses the photo picker so you can set a profile picture. The picker may also offer the camera.</string>
+	<string>AniAura uses the photo picker so you can set a profile picture. The picker may also offer the camera.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Zangetsu does not use your location. A linked library references location APIs, so iOS requires this explanation.</string>
+	<string>AniAura does not use your location. A linked library references location APIs, so iOS requires this explanation.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Zangetsu uses the microphone only when you start voice search.</string>
+	<string>AniAura uses the microphone only when you start voice search.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Turn your spoken title into text for voice search. Speech may be processed by Apple’s speech service.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>Zangetsu saves player screenshots and manga pages to your photo library when you choose Save.</string>
+	<string>AniAura saves player screenshots and manga pages to your photo library when you choose Save.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Zangetsu uses your photo library so you can choose a profile picture and save screenshots or manga pages to Photos.</string>
+	<string>AniAura uses your photo library so you can choose a profile picture and save screenshots or manga pages to Photos.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>
 		<true/>
 	</dict>
-	<!-- Custom-scheme hand-off from https://zangetsu.online/pair/ (and
-	     share / tracker OAuth). Without this, Safari's zangetsu:// redirect
+	<!-- Custom-scheme hand-off from https://AniAura.online/pair/ (and
+	     share / tracker OAuth). Without this, Safari's AniAura:// redirect
 	     after scanning the TV QR never reaches the app. Flutter's own
 	     deep-link handler is off so app_links receives the URI. -->
 	<key>FlutterDeepLinkingEnabled</key>
@@ -100,7 +100,7 @@
 			<string>com.spyou.watchApp</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>zangetsu</string>
+				<string>AniAura</string>
 				<string>discord-1518610045422665748</string>
 			</array>
 		</dict>

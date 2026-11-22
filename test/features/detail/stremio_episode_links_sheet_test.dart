@@ -13,7 +13,7 @@ import 'package:watch_app/core/models/video_source.dart';
 import 'package:watch_app/core/stremio/stremio_manager.dart';
 import 'package:watch_app/core/stremio/stremio_ref.dart';
 import 'package:watch_app/features/detail/stremio_episode_links_sheet.dart';
-import 'package:zangetsu_source_bridge/stremio.dart';
+import 'package:AniAura_source_bridge/stremio.dart';
 
 const _manifest = {
   'id': 'org.test.addon',

@@ -15,7 +15,7 @@ import 'package:watch_app/core/repository/source_repository.dart';
 import 'package:watch_app/core/state/active_source_cubit.dart';
 import 'package:watch_app/core/stremio/stremio_manager.dart';
 import 'package:watch_app/core/stremio/stremio_provider.dart';
-import 'package:zangetsu_source_bridge/stremio.dart';
+import 'package:AniAura_source_bridge/stremio.dart';
 
 const _manifest = {
   'id': 'org.test.addon',

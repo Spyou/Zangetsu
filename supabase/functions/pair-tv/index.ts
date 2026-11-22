@@ -9,7 +9,7 @@ const admin = createClient(
   { auth: { autoRefreshToken: false, persistSession: false } },
 );
 
-// The web tracker-login page (zangetsu.online/tv-connect) calls `drop` /
+// The web tracker-login page (AniAura.online/tv-connect) calls `drop` /
 // `exchange` from a browser, so those need CORS. No cookies/credentials are
 // used (only the public anon key header), so `*` is safe.
 const CORS = {
@@ -26,7 +26,7 @@ Deno.serve(async (req) => {
     // No-auth tracker drop: the web login page has done the tracker OAuth in
     // the phone browser and encrypted the session with the TV's nonce (which
     // never reaches us). We only store the ciphertext against a PENDING code —
-    // exactly like a trackers-only `approve`, but without a Zangetsu account
+    // exactly like a trackers-only `approve`, but without a AniAura account
     // (the user has no app). The nonce gates readability, so a stranger who
     // only knows the on-screen code can at worst drop an undecryptable blob.
     if (body.action === "drop") {

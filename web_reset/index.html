@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Zangetsu — Reset Password</title>
+  <title>AniAura — Reset Password</title>
   <style>
     :root {
       --bg: #0b0b0f; --surface: #16161d; --accent: #ff3b5c;
@@ -111,7 +111,7 @@
             for (var i = 0; i < inputs.length; i++) inputs[i].disabled = true;
             msg.className = "msg ok";
             msg.textContent =
-              "✓ Password updated. Open the Zangetsu app and sign in.";
+              "✓ Password updated. Open the AniAura app and sign in.";
           } else {
             return res.json().then(function (err) {
               msg.className = "msg err";

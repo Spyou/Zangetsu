@@ -70,7 +70,7 @@ class SearchSourceFilterChanged extends SearchEvent {
   List<Object?> get props => [sourceId];
 }
 
-/// Switches the active ecosystem tab (All / Zangetsu / CloudStream / Aniyomi).
+/// Switches the active ecosystem tab (All / AniAura / CloudStream / Aniyomi).
 /// Purely a view filter over the already-loaded groups — never re-runs search.
 class SearchEcosystemChanged extends SearchEvent {
   const SearchEcosystemChanged(this.ecosystem);

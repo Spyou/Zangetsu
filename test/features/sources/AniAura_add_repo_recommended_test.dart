@@ -12,9 +12,9 @@ import 'package:watch_app/core/provider/provider_downloader.dart';
 import 'package:watch_app/core/provider/provider_manager.dart';
 import 'package:watch_app/core/provider/provider_registry.dart';
 import 'package:watch_app/core/provider/provider_repo_registry.dart';
-import 'package:watch_app/features/sources/zangetsu_sources_screen.dart';
+import 'package:watch_app/features/sources/AniAura_sources_screen.dart';
 
-// The Zangetsu (JS-provider) "Add repo" dialog used to offer a recommended
+// The AniAura (JS-provider) "Add repo" dialog used to offer a recommended
 // repo pack with a one-tap add. The whole recommended-repo surface — data,
 // tile, and section — was removed app-wide so the app never ships or
 // suggests specific extension repositories; only the manual URL field
@@ -101,7 +101,7 @@ void main() {
   late Directory tempDir;
 
   setUp(() async {
-    tempDir = await Directory.systemTemp.createTemp('zangetsu_add_repo_test');
+    tempDir = await Directory.systemTemp.createTemp('AniAura_add_repo_test');
     Hive.init(tempDir.path);
     await ProviderRegistry.init();
     await ProviderReposRegistry.init();
@@ -131,9 +131,9 @@ void main() {
   // timeout. A couple of pumps is plenty for the AlertDialog's enter
   // transition.
   Future<void> openAddRepoDialog(WidgetTester tester) async {
-    await tester.pumpWidget(const MaterialApp(home: ZangetsuSourcesScreen()));
+    await tester.pumpWidget(const MaterialApp(home: AniAuraSourcesScreen()));
     await tester.pump();
-    await tester.tap(find.text('Add Zangetsu repo'));
+    await tester.tap(find.text('Add AniAura repo'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
   }

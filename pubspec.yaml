@@ -32,9 +32,9 @@ dependencies:
     sdk: flutter
   cue: ^0.4.0
   liquid_glass_widgets: ^1.15.0
-  zangetsu_source_bridge:
+  AniAura_source_bridge:
     git:
-      url: https://github.com/Spyou/Zangetsu-Source-Bridge.git
+      url: https://github.com/Spyou/AniAura-Source-Bridge.git
       ref: 9e72a71c68f0d0bfb806477d0dd764519f4cae68
   flutter_localizations:
     sdk: flutter
@@ -153,7 +153,7 @@ dependencies:
   # retired user-token path (OAuth tokens live in Hive, like trackers).
   web_socket_channel: ^3.0.1
   flutter_secure_storage: ^10.3.1
-  # Capture the OAuth redirect (zangetsu://anilist-auth) back into the app for
+  # Capture the OAuth redirect (AniAura://anilist-auth) back into the app for
   # AniList account linking.
   app_links: ^6.3.2
   # Render the QR on the TV device-pairing screen (pure Dart).
@@ -256,7 +256,7 @@ dependency_overrides:
   # forcing 0.7.1 unblocks resolution without affecting the Android build.
   js: ^0.7.1
 
-# App launcher icon (Zangetsu logo). Regenerate with:
+# App launcher icon (AniAura logo). Regenerate with:
 #   dart run flutter_launcher_icons
 flutter_launcher_icons:
   image_path: "assets/icon/app_icon.png"
@@ -280,7 +280,7 @@ flutter:
     # Shared with Android's native network security configuration.
     - android/app/src/main/res/raw/trusted_roots.pem
     - LICENSE-MPL-2.0.txt
-    # No built-in providers — sources are installed from the Zangetsu repo.
+    # No built-in providers — sources are installed from the AniAura repo.
     # Extractors stay bundled (shared video-host helpers, not providers).
     - extractors/example_embed.js
     - extractors/okru.js
@@ -300,7 +300,7 @@ flutter:
     - assets/icon/preview_crescent.png
     - assets/icon/preview_default.png
     - assets/icon/preview_classic.png
-    # New Zangetsu mark (black bg keyed out) — for the mode-switch transition.
+    # New AniAura mark (black bg keyed out) — for the mode-switch transition.
     - assets/icon/logo_mark.png
     # Metadata provider marks, from each service's own site, for the switcher
     # sheet. The sheet falls back to initials if one ever fails to decode.

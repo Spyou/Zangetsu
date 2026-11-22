@@ -1,5 +1,5 @@
-// Zangetsu sources — phone UI.
-part of 'zangetsu_sources_screen.dart';
+// AniAura sources — phone UI.
+part of 'AniAura_sources_screen.dart';
 
 // ---------------------------------------------------------------------------
 // Phone view
@@ -8,10 +8,10 @@ part of 'zangetsu_sources_screen.dart';
 class _ZPhoneView extends StatefulWidget {
   const _ZPhoneView({this.openToRepos = false, this.scopeToReading = false});
 
-  /// See [ZangetsuSourcesScreen.openToRepos].
+  /// See [AniAuraSourcesScreen.openToRepos].
   final bool openToRepos;
 
-  /// See [ZangetsuSourcesScreen.scopeToReading].
+  /// See [AniAuraSourcesScreen.scopeToReading].
   final bool scopeToReading;
 
   @override
@@ -23,7 +23,7 @@ class _ZPhoneViewState extends State<_ZPhoneView> {
   String _query = '';
 
   /// User-toggled escape hatch out of the reading-only scope. Only consulted
-  /// when [ZangetsuSourcesScreen.scopeToReading] is true; irrelevant (and
+  /// when [AniAuraSourcesScreen.scopeToReading] is true; irrelevant (and
   /// never surfaced) otherwise.
   bool _showAll = false;
 
@@ -54,7 +54,7 @@ class _ZPhoneViewState extends State<_ZPhoneView> {
             title: Text(
               widget.scopeToReading
                   ? 'Manga & Novel providers'
-                  : context.l10n.zangetsuProviders,
+                  : context.l10n.AniAuraProviders,
               style: AppText.barTitle,
             ),
             bottom: TabBar(
@@ -77,7 +77,7 @@ class _ZPhoneViewState extends State<_ZPhoneView> {
             onPressed: () => _showAddRepoDialog(context),
             icon: const Icon(Icons.add),
             label: Text(
-              context.l10n.addZangetsuRepo,
+              context.l10n.addAniAuraRepo,
               style: AppText.button.copyWith(color: Colors.white),
             ),
           ),

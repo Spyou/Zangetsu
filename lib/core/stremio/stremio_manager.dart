@@ -6,7 +6,7 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:hive_flutter/hive_flutter.dart';
-import 'package:zangetsu_source_bridge/stremio.dart';
+import 'package:AniAura_source_bridge/stremio.dart';
 
 import '../hive/safe_box.dart';
 import 'stremio_link_session.dart';

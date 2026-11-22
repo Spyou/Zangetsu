@@ -88,7 +88,7 @@ class PartyBar extends StatelessWidget {
   }
 
   Future<void> _copyInvite(String code) async {
-    await Clipboard.setData(ClipboardData(text: 'zangetsu://room/$code'));
+    await Clipboard.setData(ClipboardData(text: 'AniAura://room/$code'));
     final ctx = rootNavigatorKey.currentState?.overlay?.context;
     if (ctx == null) return;
     rootMessengerKey.currentState?.showSnackBar(

@@ -1,0 +1,19 @@
+[Unit]
+Description=Back up the AniAura VPS database to private R2
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=postgres
+Group=postgres
+Environment=HOME=/var/empty
+Environment=R2_BACKUP_URL=https://AniAura-vps-backup.log-intake.workers.dev/v1/backup
+Environment=R2_BACKUP_TOKEN_FILE=/etc/AniAura-backup/r2-upload-token
+ExecStart=/usr/bin/python3 /opt/AniAura-content/backup_to_r2.py
+TimeoutStartSec=2h
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/backups/AniAura-sync
+ProtectHome=true
+PrivateTmp=true

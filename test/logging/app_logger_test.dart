@@ -41,7 +41,7 @@ void main() {
 
     setUp(() async {
       dir = await Directory.systemTemp.createTemp('app-logger');
-      file = File('${dir.path}/zangetsu.log');
+      file = File('${dir.path}/AniAura.log');
       AppLogger.instance.clearForTest();
       await AppLogger.instance.initAt(file);
     });

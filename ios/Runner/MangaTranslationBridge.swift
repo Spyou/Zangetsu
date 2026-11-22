@@ -4,13 +4,13 @@ import Foundation
 import ImageIO
 import Vision
 
-/// iOS OCR implementation for `zangetsu/manga_translation`.
+/// iOS OCR implementation for `AniAura/manga_translation`.
 ///
 /// iOS keeps the app's iOS 15.0 deployment target and uses Vision for OCR.
 /// Online translation remains in Dart; native iOS never sends text or image
 /// data to a translation service.
 internal final class MangaTranslationBridge {
-  private static let channelName = "zangetsu/manga_translation"
+  private static let channelName = "AniAura/manga_translation"
   private static let onlineEngine = "online"
   private static let offlineEngine = "offline"
 
@@ -40,7 +40,7 @@ internal final class MangaTranslationBridge {
   ]
 
   private let workQueue = DispatchQueue(
-    label: "com.spyou.zangetsu.manga-translation.ocr",
+    label: "com.spyou.AniAura.manga-translation.ocr",
     qos: .userInitiated
   )
 

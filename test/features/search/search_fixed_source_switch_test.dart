@@ -11,7 +11,7 @@ import 'package:watch_app/core/models/provider_info.dart';
 import 'package:watch_app/core/stremio/stremio_provider.dart';
 import 'package:watch_app/core/stremio/stremio_manager.dart';
 import 'package:watch_app/core/stremio/stremio_ref.dart';
-import 'package:zangetsu_source_bridge/stremio.dart';
+import 'package:AniAura_source_bridge/stremio.dart';
 import 'package:watch_app/core/playback/my_list.dart';
 import 'package:watch_app/core/playback/search_history.dart';
 import 'package:watch_app/core/playback/search_prefs.dart';

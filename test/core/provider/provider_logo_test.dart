@@ -3,7 +3,7 @@ import 'package:watch_app/core/provider/provider_registry.dart';
 import 'package:watch_app/core/provider/provider_repo_registry.dart';
 import 'package:watch_app/features/sources/bloc/sources_state.dart';
 
-/// Zangetsu's own sources showed the plain letter tile while Aniyomi, Mihon and
+/// AniAura's own sources showed the plain letter tile while Aniyomi, Mihon and
 /// CloudStream all showed logos. `RepoSource.logo` and [resolveLogoUrl] existed
 /// the whole time and simply had no caller — nothing carried the URL from the
 /// manifest to the picker. These cover that wiring.

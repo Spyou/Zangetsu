@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:watch_app/core/mangayomi/mangayomi_manager.dart';
 import 'package:watch_app/core/mangayomi/mangayomi_provider.dart';
-import 'package:zangetsu_source_bridge/zangetsu_source_bridge.dart';
+import 'package:AniAura_source_bridge/AniAura_source_bridge.dart';
 
 class _FakeManager extends MangayomiManager {
   _FakeManager(this.worker)

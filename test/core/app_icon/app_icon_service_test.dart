@@ -18,7 +18,7 @@ void main() {
   /// 'set' call would otherwise throw MissingPluginException.
   void installNativeStub() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(const MethodChannel('zangetsu/app_icon'), (
+        .setMockMethodCallHandler(const MethodChannel('AniAura/app_icon'), (
           call,
         ) async {
           if (call.method != 'current') return null;
@@ -43,7 +43,7 @@ void main() {
     AppIconService.resetSupportedForTest();
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
-          const MethodChannel('zangetsu/app_icon'),
+          const MethodChannel('AniAura/app_icon'),
           null,
         );
     await Hive.deleteFromDisk();

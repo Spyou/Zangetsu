@@ -115,7 +115,7 @@ class RepoManager(private val context: Context) {
         cs3Dir.listFiles()?.filter { it.isFile && it.extension == "cs3" } ?: emptyList()
 
     companion object {
-        const val UA = "Mozilla/5.0 (Android) Zangetsu"
+        const val UA = "Mozilla/5.0 (Android) AniAura"
 
         /** A short, stable per-repo tag derived from the REPOSITORY URL the user
          *  added (NOT the .cs3 file url) — exactly like CloudStream keys its

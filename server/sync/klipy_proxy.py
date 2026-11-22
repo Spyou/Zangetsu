@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Authenticated, allowlisted KLIPY API proxy for Zangetsu."""
+"""Authenticated, allowlisted KLIPY API proxy for AniAura."""
 
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
@@ -66,7 +66,7 @@ class KlipyProxy:
             issuer=os.environ["SUPABASE_ISSUER"],
             additional_issuer=os.environ.get("VPS_AUTH_ISSUER"),
             jwks_path=os.environ.get(
-                "SUPABASE_JWKS_PATH", "/etc/zangetsu-sync/jwks.json"
+                "SUPABASE_JWKS_PATH", "/etc/AniAura-sync/jwks.json"
             ),
         )
 
@@ -278,7 +278,7 @@ class KlipyProxy:
     def _fetch_upstream(url, method, body):
         headers = {
             "Accept": "application/json",
-            "User-Agent": "Zangetsu (+https://zangetsu.online)",
+            "User-Agent": "AniAura (+https://AniAura.online)",
         }
         if body is not None:
             headers["Content-Type"] = "application/json"
@@ -308,7 +308,7 @@ class KlipyProxy:
 
 
 class _Handler(BaseHTTPRequestHandler):
-    server_version = "Zangetsu"
+    server_version = "AniAura"
     sys_version = ""
 
     def do_GET(self):

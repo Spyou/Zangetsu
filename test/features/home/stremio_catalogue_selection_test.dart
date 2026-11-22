@@ -16,7 +16,7 @@ import 'package:watch_app/core/zmode/metadata_provider_prefs.dart';
 import 'package:watch_app/core/zmode/zmode_prefs.dart';
 import 'package:watch_app/features/home/home_catalogue_prefs.dart';
 import 'package:watch_app/features/home/metadata_switch_sheet.dart';
-import 'package:zangetsu_source_bridge/stremio.dart';
+import 'package:AniAura_source_bridge/stremio.dart';
 
 const _manifest = {
   'id': 'org.test.addon',

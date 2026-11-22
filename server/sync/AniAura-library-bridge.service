@@ -1,0 +1,23 @@
+[Unit]
+Description=Temporary AniAura library bridge during VPS sync rollout
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=AniAura_bridge
+Group=AniAura_bridge
+WorkingDirectory=/opt/AniAura-sync
+Environment=SUPABASE_DSN_FILE=/etc/AniAura/supabase-db-url
+Environment=HOME=/var/empty
+Environment="VPS_DSN=dbname=AniAura_sync_stage user=AniAura_bridge"
+ExecStart=/usr/bin/python3 /opt/AniAura-sync/library_bridge.py
+Restart=on-failure
+RestartSec=15
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

@@ -232,7 +232,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  /// The metadata provider store is registered by `registerZangetsuMode`,
+  /// The metadata provider store is registered by `registerAniAuraMode`,
   /// which runs late in boot — and this screen is built eagerly as the dock's
   /// Profile tab. Guarded so it reads as the default rather than throwing if
   /// it is built first. Same guard `SourceRepository._domainOverride` uses.
@@ -390,7 +390,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       return;
     }
     await SharePlus.instance.share(
-      ShareParams(files: [XFile(file.path)], subject: 'Zangetsu logs'),
+      ShareParams(files: [XFile(file.path)], subject: 'AniAura logs'),
     );
   }
 

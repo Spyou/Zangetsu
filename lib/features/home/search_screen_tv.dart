@@ -91,7 +91,7 @@ class _SearchScreenTvState extends State<SearchScreenTv> {
 
   /// Native voice-search bridge (system RecognizerIntent; no plugin, no mic
   /// permission — the system dialog does the recording).
-  static const _voiceChannel = MethodChannel('zangetsu/voice_search');
+  static const _voiceChannel = MethodChannel('AniAura/voice_search');
 
   /// Only show the mic when the device actually has a speech recognizer.
   /// Stays false on any error and on non-Android, so the mic simply never

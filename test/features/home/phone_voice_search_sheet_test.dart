@@ -7,7 +7,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:watch_app/features/home/phone_voice_search_sheet.dart';
 
 void main() {
-  const voice = MethodChannel('zangetsu/phone_voice_search');
+  const voice = MethodChannel('AniAura/phone_voice_search');
   const permissions = MethodChannel('flutter.baseflow.com/permissions/methods');
   late PermissionStatus permission;
   late Completer<String?> result;

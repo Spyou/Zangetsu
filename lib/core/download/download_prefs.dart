@@ -16,7 +16,7 @@ String downloadDestinationLabel({
     keepPrivate ? 'Private (app storage)' : (locationLabel ?? publicFallback);
 
 /// Persists the user's chosen download folder (a SAF tree URI) for MP4
-/// downloads. Null = the default Downloads/Zangetsu location.
+/// downloads. Null = the default Downloads/AniAura location.
 class DownloadPrefs {
   static const String boxName = 'download_prefs';
 

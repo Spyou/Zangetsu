@@ -7,7 +7,7 @@ import android.content.res.Resources
 import android.os.Build
 
 /**
- * Vendored subset of CloudStream's `ui.settings.Globals` for the Zangetsu
+ * Vendored subset of CloudStream's `ui.settings.Globals` for the AniAura
  * plugin host.
  *
  * The upstream class lives in the full CloudStream *app*, NOT in the

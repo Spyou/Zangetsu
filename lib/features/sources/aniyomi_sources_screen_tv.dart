@@ -81,7 +81,7 @@ class _AniScreenTvViewState extends State<_AniScreenTvView> {
                 ],
               ),
             ),
-            // Tabs and search on separate rows — see zangetsu_sources_screen_tv.
+            // Tabs and search on separate rows — see AniAura_sources_screen_tv.
             Padding(
               padding: const EdgeInsets.fromLTRB(40, 0, 40, 12),
               child: Row(
@@ -131,7 +131,7 @@ class _AniScreenTvViewState extends State<_AniScreenTvView> {
                 onChanged: (q) => setState(() => _query = q),
               ),
             ),
-            // Add-repo above the list — see zangetsu_sources_screen_tv.
+            // Add-repo above the list — see AniAura_sources_screen_tv.
             if (_tab == 1)
               Padding(
                 padding: const EdgeInsets.fromLTRB(40, 0, 40, 12),

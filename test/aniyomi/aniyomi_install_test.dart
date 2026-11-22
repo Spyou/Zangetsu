@@ -14,7 +14,7 @@ void main() {
   late Directory tempDir;
   late AniyomiManager manager;
 
-  const channel = MethodChannel('zangetsu/aniyomi');
+  const channel = MethodChannel('AniAura/aniyomi');
 
   setUp(() async {
     tempDir = await Directory.systemTemp.createTemp('aniyomi_install_test_');

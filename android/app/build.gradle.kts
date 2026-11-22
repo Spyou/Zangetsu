@@ -65,7 +65,7 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
-        resValue("string", "app_name", if (isNightly) "Zangetsu Nightly" else "Zangetsu")
+        resValue("string", "app_name", if (isNightly) "AniAura Nightly" else "AniAura")
         if (noDiscord) {
             externalNativeBuild {
                 cmake {

@@ -74,33 +74,33 @@ void main() {
   group('discordSourceLine', () {
     test('title source renders the title', () {
       expect(
-        discordSourceLine('title', title: 'Frieren', episode: 'Episode 4', appText: 'Zangetsu'),
+        discordSourceLine('title', title: 'Frieren', episode: 'Episode 4', appText: 'AniAura'),
         'Frieren',
       );
     });
 
     test('episode source falls back to title without an episode', () {
       expect(
-        discordSourceLine('episode', title: 'Frieren', appText: 'Zangetsu'),
+        discordSourceLine('episode', title: 'Frieren', appText: 'AniAura'),
         'Frieren',
       );
       expect(
-        discordSourceLine('episode', title: 'Frieren', episode: 'Episode 4', appText: 'Zangetsu'),
+        discordSourceLine('episode', title: 'Frieren', episode: 'Episode 4', appText: 'AniAura'),
         'Episode 4',
       );
     });
 
     test('app source renders the per-line app text', () {
       expect(
-        discordSourceLine('app', title: 'Frieren', episode: 'Episode 4', appText: 'on Zangetsu'),
-        'on Zangetsu',
+        discordSourceLine('app', title: 'Frieren', episode: 'Episode 4', appText: 'on AniAura'),
+        'on AniAura',
       );
     });
 
     test('unknown source falls back to the app text', () {
       expect(
-        discordSourceLine('x', title: 'Frieren', appText: 'Zangetsu'),
-        'Zangetsu',
+        discordSourceLine('x', title: 'Frieren', appText: 'AniAura'),
+        'AniAura',
       );
     });
   });
@@ -123,12 +123,12 @@ void main() {
       final json = const DiscordActivity(
         name: 'Frieren',
         type: 3,
-        buttons: [(label: 'Open in Zangetsu', url: 'https://zangetsu.online/open/?s=x')],
+        buttons: [(label: 'Open in AniAura', url: 'https://AniAura.online/open/?s=x')],
       ).toJson('app');
-      expect(json['buttons'], ['Open in Zangetsu']);
+      expect(json['buttons'], ['Open in AniAura']);
       expect(
         (json['metadata'] as Map)['button_urls'],
-        ['https://zangetsu.online/open/?s=x'],
+        ['https://AniAura.online/open/?s=x'],
       );
     });
 

@@ -18,17 +18,17 @@ class Environment {
   // Supabase issues auth tokens; all app cloud-data sync uses the VPS.
   static const String vpsSyncUrl = String.fromEnvironment(
     'VPS_SYNC_URL',
-    defaultValue: 'https://sync.zangetsu.online',
+    defaultValue: 'https://sync.AniAura.online',
   );
 
   /// Password-reset landing page.
   /// Password-reset landing. Supabase now drives reset (via the auth `site_url`,
   /// which points at this same page); kept for reference. Not used by the
   /// Supabase AuthCubit, which calls `resetPasswordForEmail`.
-  static const String passwordResetUrl = 'https://zangetsu.online/';
+  static const String passwordResetUrl = 'https://AniAura.online/';
 
-  /// Base of the Zangetsu website (landing + reset + the share "open" page).
-  static const String siteBaseUrl = 'https://zangetsu.online';
+  /// Base of the AniAura website (landing + reset + the share "open" page).
+  static const String siteBaseUrl = 'https://AniAura.online';
 
   /// Share links point here. The page opens the app if installed (via the
   /// [openLinkScheme] scheme below), otherwise offers the download. Its domain
@@ -37,12 +37,12 @@ class Environment {
 
   /// TV pairing page on the website. Used when someone opens a shared/https
   /// pair link in a browser; the page can hand off to the app via
-  /// `zangetsu://pair`. App-facing TV QRs encode the deeplink directly.
+  /// `AniAura://pair`. App-facing TV QRs encode the deeplink directly.
   static const String sitePairUrl = '$siteBaseUrl/pair/';
 
-  /// The "open" page redirects to `zangetsu://open?…`; an installed app catches
+  /// The "open" page redirects to `AniAura://open?…`; an installed app catches
   /// it (see [OpenLinkService] + the Android manifest intent-filter).
-  static const String openLinkScheme = trackerRedirectScheme; // 'zangetsu'
+  static const String openLinkScheme = trackerRedirectScheme; // 'AniAura'
   static const String openLinkHost = 'open';
   static const String pairLinkHost = 'pair';
 
@@ -57,11 +57,11 @@ class Environment {
   static const String backupsCollectionId = 'backups';
 
   // ── Tracker OAuth ──────────────────────────────────────────────────────────
-  // All redirects share the zangetsu:// scheme; each has its own host with a
+  // All redirects share the AniAura:// scheme; each has its own host with a
   // matching Android intent-filter. Client secrets are embedded where the
   // provider's token exchange requires it (MAL = PKCE, no secret; Simkl needs
   // one) — standard for these APIs and low-risk.
-  static const String trackerRedirectScheme = 'zangetsu';
+  static const String trackerRedirectScheme = 'AniAura';
 
   // AniList — implicit grant (token in URL fragment, 1-year, no secret).
   static const String anilistClientId = '43052';
@@ -78,7 +78,7 @@ class Environment {
   // Simkl wants these on EVERY request (url params + a real User-Agent), or
   // the call is invisible in their debug log and they can't help when
   // something breaks. See https://api.simkl.org/conventions/headers.
-  static const String simklAppName = 'zangetsu';
+  static const String simklAppName = 'AniAura';
   static const String simklApiHost = 'api.simkl.com';
   static const String simklDataHost = 'data.simkl.in';
 

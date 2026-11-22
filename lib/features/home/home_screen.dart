@@ -58,7 +58,7 @@ import '../settings/streaming_services_screen.dart';
 import '../sources/aniyomi_repo_tab.dart' show kAniyomiReposBoxName;
 import '../sources/providers_hub_screen.dart';
 import '../sources/source_picker_row_actions.dart';
-import '../sources/zangetsu_sources_screen.dart';
+import '../sources/AniAura_sources_screen.dart';
 import '../update/update_dialog.dart';
 import 'continue_section.dart';
 import '../../core/ui/placement_slide.dart';
@@ -870,7 +870,7 @@ class _HomeViewState extends State<_HomeView> {
           final splitEdgeHeader = edgeBanner && constraints.maxWidth < 520;
           final brand = edgeBanner
               ? IconButton(
-                  tooltip: 'Zangetsu',
+                  tooltip: 'AniAura',
                   onPressed: () => _openHomeCataloguePicker(),
                   icon: Image.asset(
                     'assets/icon/logo_mark.png',
@@ -1881,7 +1881,7 @@ class HomeSourceSwitcherSlot extends StatelessWidget {
                 onInstallSources: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(
                     builder: (_) =>
-                        const ZangetsuSourcesScreen(openToRepos: true),
+                        const AniAuraSourcesScreen(openToRepos: true),
                   ),
                 ),
               ),

@@ -106,7 +106,7 @@ List<TeamMember> parseCommunity(List<dynamic> json) {
 Future<List<TeamMember>> fetchCommunity() async {
   try {
     final resp = await Dio().get<List<dynamic>>(
-      'https://api.github.com/repos/Spyou/Zangetsu/contributors',
+      'https://api.github.com/repos/Spyou/AniAura/contributors',
       queryParameters: const {'per_page': 100, 'anon': 0},
       options: Options(
         responseType: ResponseType.json,

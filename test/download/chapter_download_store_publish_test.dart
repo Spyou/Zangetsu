@@ -83,11 +83,11 @@ void main() {
       chapterUrl: 'u',
       mode: ContentMode.novel,
       status: ChapterDownloadStatus.done,
-      textPath: '/dl/Zangetsu/Show/Chapter 1/text.html',
+      textPath: '/dl/AniAura/Show/Chapter 1/text.html',
     );
     expect(
       ChapterDownloadStore.ownedFolder(novel)?.path,
-      '/dl/Zangetsu/Show/Chapter 1',
+      '/dl/AniAura/Show/Chapter 1',
     );
 
     final manga = ChapterDownload(
@@ -100,7 +100,7 @@ void main() {
       chapterUrl: 'u',
       mode: ContentMode.manga,
       status: ChapterDownloadStatus.done,
-      archivePath: '/dl/Zangetsu/Show/Chapter 1.cbz',
+      archivePath: '/dl/AniAura/Show/Chapter 1.cbz',
     );
     expect(
       ChapterDownloadStore.ownedFolder(manga),

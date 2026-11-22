@@ -30,7 +30,7 @@ String? discordEpisodeLabel(Episode ep, {int? fallbackNumber}) {
 
 /// Resolve one presence line from the user's chosen source: the app name, the
 /// title being watched, or the episode label. [appText] is what the App source
-/// renders for this line ('Zangetsu' for name, 'on Zangetsu' for state). The
+/// renders for this line ('AniAura' for name, 'on AniAura' for state). The
 /// episode source falls back to the title when there is no episode label, so
 /// a name line is never empty.
 String discordSourceLine(

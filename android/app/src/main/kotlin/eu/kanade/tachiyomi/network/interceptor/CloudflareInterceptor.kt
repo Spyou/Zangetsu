@@ -87,7 +87,7 @@ class CloudflareInterceptor(
                     else -> "MISMATCH"
                 }
                 android.util.Log.w(
-                    "ZangetsuCF",
+                    "AniAuraCF",
                     "still challenged after a manual solve: ${retried.code} " +
                         "${request.url.host} cookie=${if (cookieSent) "sent" else "MISSING"} " +
                         "ua=$uaState mit=${retried.header("cf-mitigated") ?: "-"}\n" +

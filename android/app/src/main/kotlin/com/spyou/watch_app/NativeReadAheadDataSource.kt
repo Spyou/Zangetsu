@@ -14,7 +14,7 @@ internal class NativeReadAheadDataSource(
     private val upstreamFactory: DataSource.Factory,
     private val capacity: Int,
     private val allocate: (Int) -> ByteBuffer = { bytes ->
-        SharedMemory.create("zangetsu_video_buffer", bytes).use { it.mapReadWrite() }
+        SharedMemory.create("AniAura_video_buffer", bytes).use { it.mapReadWrite() }
     },
     private val release: (ByteBuffer) -> Unit = { SharedMemory.unmap(it) },
 ) : DataSource {
@@ -55,7 +55,7 @@ internal class NativeReadAheadDataSource(
         val current = Session(memory, source)
         session = current
         try {
-            current.worker = Thread({ produce(current, chunk) }, "ZangetsuReadAhead").apply { isDaemon = true }
+            current.worker = Thread({ produce(current, chunk) }, "AniAuraReadAhead").apply { isDaemon = true }
             current.worker.start()
         } catch (_: OutOfMemoryError) {
             session = null

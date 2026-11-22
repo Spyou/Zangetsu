@@ -467,7 +467,7 @@ object CfWebViewSolver {
 
         val body = android.widget.TextView(context)
         body.text = "Tap the box below to prove you are not a robot. " +
-            "This is the source's own page, not Zangetsu."
+            "This is the source's own page, not AniAura."
         body.setTextColor(0xFFA7A7B2.toInt())
         body.textSize = 13f
         val blp = android.widget.LinearLayout.LayoutParams(

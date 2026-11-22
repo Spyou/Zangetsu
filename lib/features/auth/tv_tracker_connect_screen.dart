@@ -159,7 +159,7 @@ class _TvTrackerConnectScreenState extends State<TvTrackerConnectScreen> {
                           trackers: true,
                         ),
                         title: context.l10n.haveTheApp,
-                        subtitle: context.l10n.openZangetsuOnYourNphoneAndScan,
+                        subtitle: context.l10n.openAniAuraOnYourNphoneAndScan,
                       ),
                       const SizedBox(width: 36),
                       // QR 2 — no app needed. Opens a web page that runs the

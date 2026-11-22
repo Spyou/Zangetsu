@@ -1,0 +1,26 @@
+[Unit]
+Description=AniAura KLIPY API proxy
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=AniAura-klipy
+Group=AniAura-klipy
+SupplementaryGroups=sync_authenticator
+WorkingDirectory=/opt/AniAura-klipy
+Environment=SUPABASE_ISSUER=https://eogwzrlfoercfwcfwlmv.supabase.co/auth/v1
+Environment=VPS_AUTH_ISSUER=https://sb.AniAura.online/auth/v1
+Environment=SUPABASE_JWKS_PATH=/etc/AniAura-sync/jwks.json
+LoadCredential=klipy_api_key:/etc/AniAura-klipy/api_key
+ExecStart=/opt/AniAura-klipy/venv/bin/python /opt/AniAura-klipy/klipy_proxy.py
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

@@ -16,7 +16,7 @@ import '../../l10n/l10n.dart';
 class DonateScreen extends StatelessWidget {
   const DonateScreen({super.key});
 
-  static const String _bmcUrl = 'https://buymeacoffee.com/zangetsu6';
+  static const String _bmcUrl = 'https://buymeacoffee.com/AniAura6';
 
   Future<void> _open(String url) async {
     if (url.isEmpty) return;

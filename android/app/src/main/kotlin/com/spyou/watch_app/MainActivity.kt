@@ -49,7 +49,7 @@ import io.flutter.plugin.common.MethodChannel
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.Executors
 
-/// Hosts the "zangetsu/seek_preview" channel, which decodes a single video
+/// Hosts the "AniAura/seek_preview" channel, which decodes a single video
 /// frame at a given timestamp via [MediaMetadataRetriever] — the same technique
 /// native players (CloudStream etc.) use for seek-bar thumbnails. No second
 /// player, no video surface: just URL + time -> JPEG bytes.
@@ -72,7 +72,7 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
     // problem. Hosting Flutter in a fragment gets us the same thing: one real,
     // long-lived AppCompatActivity that plugins can safely hold on to.
     private lateinit var flutterFragment: FlutterFragment
-    private val channelName = "zangetsu/seek_preview"
+    private val channelName = "AniAura/seek_preview"
     private val executor = Executors.newSingleThreadExecutor()
 
     // CloudStream bridge. Mutating ops (install/load/delete repos) run on a
@@ -154,7 +154,7 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
     /// works at all. A newly shipped alias, though, arrives untouched, so it
     /// takes the manifest's android:enabled, which is true for [MANIFEST_ICON].
     /// Both carry a LAUNCHER intent-filter, so on the update that introduced
-    /// the crescent, everyone who had ever picked an icon got TWO Zangetsu
+    /// the crescent, everyone who had ever picked an icon got TWO AniAura
     /// entries on their home screen. (Verified on device: component overrides
     /// survive an upgrade, and an untouched alias is live from the manifest.)
     ///
@@ -413,7 +413,7 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
         // own, so without this line NO plugin (shared_preferences, path_provider,
         // media_kit …) would be attached and the app would come up dead.
         GeneratedPluginRegister.registerGeneratedPlugins(flutterEngine)
-        EventChannel(flutterEngine.dartExecutor.binaryMessenger, "zangetsu/player_orientation")
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, "AniAura/player_orientation")
             .setStreamHandler(object : EventChannel.StreamHandler {
                 override fun onListen(arguments: Any?, events: EventChannel.EventSink) {
                     playerOrientationObserver?.disable()
@@ -451,7 +451,7 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
 
         // TV ExoPlayer spike (SP0) — register the SurfaceView PlatformView.
         flutterEngine.platformViewsController.registry.registerViewFactory(
-            "zangetsu/exoplayer_view",
+            "AniAura/exoplayer_view",
             ExoPlayerViewFactory(flutterEngine.dartExecutor.binaryMessenger),
         )
 
@@ -486,12 +486,12 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
         // the reader feature does not alter player or source bridge behavior.
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
-            "zangetsu/manga_translation",
+            "AniAura/manga_translation",
         ).setMethodCallHandler(MangaTranslationBridge(applicationContext))
 
         // External-player channel: list installed players + hand a stream off to
         // one via ACTION_VIEW (URL + headers + subtitles + title).
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "zangetsu/external_player")
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "AniAura/external_player")
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "getPlayers" -> result.success(installedPlayers())
@@ -517,7 +517,7 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
             }
 
         // Unknown document providers return null rather than measuring a different drive.
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "zangetsu/storage")
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "AniAura/storage")
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "freeBytes" -> {
@@ -557,7 +557,7 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
         // "volumeKey" back with the direction.
         volumeKeyChannel = MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
-            "zangetsu/volume_keys",
+            "AniAura/volume_keys",
         ).apply {
             setMethodCallHandler { call, result ->
                 when (call.method) {
@@ -573,7 +573,7 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
         // Download channel: stream-copy remux of a concatenated-TS HLS download
         // into a real MP4 (MediaExtractor → MediaMuxer). Runs off the main thread;
         // returns false on any failure so Dart can fall back to a .ts file.
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "zangetsu/download")
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "AniAura/download")
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "remuxTsToMp4" -> {
@@ -624,7 +624,7 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
         // Native TV-player channel (bidirectional). Dart→native: launch. The same
         // channel is stored in tvBridge so TvPlayerActivity can call native→Dart
         // (resolveEpisode / saveProgress).
-        tvBridge = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "zangetsu/tv_player")
+        tvBridge = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "AniAura/tv_player")
             .also { ch ->
                 ch.setMethodCallHandler { call, result ->
                     when (call.method) {
@@ -650,7 +650,7 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
         // launch; onNewIntent (below) covers a tap while the app is running.
         notifChannel = MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
-            "zangetsu/notifications",
+            "AniAura/notifications",
         ).also { ch ->
             ch.setMethodCallHandler { call, result ->
                 when (call.method) {
@@ -667,7 +667,7 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
         // PiP channel: Dart arms/disarms auto-PiP while the player is on screen.
         // Home-screen icon picker. Each choice is an <activity-alias> in the
         // manifest; switching means enabling one and disabling the rest.
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "zangetsu/app_icon")
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "AniAura/app_icon")
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "current" -> result.success(currentIconAlias())
@@ -689,7 +689,7 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
             }
 
         val pipChannel =
-            MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "zangetsu/pip")
+            MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "AniAura/pip")
         // Same channel both ways now: Dart arms auto-PiP and pushes playback
         // state down it, and a tapped window button comes back up it.
         pip.onControl = { control -> pipChannel.invokeMethod(control, null) }
@@ -727,7 +727,7 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
         // RECORD_AUDIO permission is needed — the recogniser records in its own
         // process. isAvailable gates the mic button so it never shows on a box
         // without a recogniser.
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "zangetsu/voice_search")
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "AniAura/voice_search")
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "isAvailable" -> {
@@ -742,7 +742,7 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
         // Soft-IME force-show for TV text fields. Flutter's TextInput.show is
         // often cancelled on leanback (`PHASE_CLIENT_REPORT_REQUESTED_VISIBLE_TYPES`);
         // this retries via InputMethodManager + WindowInsetsController.
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "zangetsu/ime")
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "AniAura/ime")
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "show" -> {
@@ -765,7 +765,7 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
         // load / loadLinks. All handlers run on [csExecutor] (network + plugin
         // work is blocking) and post back via runOnUiThread; any failure is
         // surfaced to Dart as a "cs_error".
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "zangetsu/cloudstream")
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "AniAura/cloudstream")
             .also { csChannel = it }
             .setMethodCallHandler { call, result ->
                 when (call.method) {
@@ -1256,19 +1256,19 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
         // Aniyomi channel: load Aniyomi anime-extension APKs, register sources,
         // and expose them to the Flutter layer for browse/search/play. Mirrors the
         // CloudStream channel registration style above.
-        val aniyomiChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "zangetsu/aniyomi")
+        val aniyomiChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "AniAura/aniyomi")
         AniyomiBridge(applicationContext, extensionScope("aniyomi")).attach(aniyomiChannel)
 
         // Mihon channel: same idea for manga — load Mihon manga-extension APKs,
         // register sources, and expose them for browse/search/read. Separate
         // bridge and separate source registry from Aniyomi's; nothing shared.
-        val mihonChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "zangetsu/mihon")
+        val mihonChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "AniAura/mihon")
         MihonBridge(applicationContext, extensionScope("mihon")).attach(mihonChannel)
 
         // Tile channel: decodes just the visible region of a tall manga/manhwa
         // page (BitmapRegionDecoder) instead of the whole page, for the reader's
         // tiled-page path. Same registration shape as the two bridges above.
-        val tileChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "zangetsu/tiles")
+        val tileChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "AniAura/tiles")
         TileBridge(extensionScope("tiles")).attach(tileChannel)
 
         // Novel-fetch channel: routes the LNReader plugin's HTTP requests
@@ -1288,7 +1288,7 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
                     .takeIf { it.isNotBlank() }
             }.getOrNull()
         }
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "zangetsu/novel_http")
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "AniAura/novel_http")
             .setMethodCallHandler { call, result ->
                 if (call.method != "request") {
                     result.notImplemented()
@@ -1427,7 +1427,7 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
         // Cast channel: load media onto a Chromecast + transport controls.
         // CastContext init is guarded in CastManager — safe on devices without Play Services.
         val cm = CastManager(this).also { castManager = it }
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "zangetsu/cast")
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "AniAura/cast")
             .setMethodCallHandler { call, result ->
                 try {
                     when (call.method) {
@@ -1455,7 +1455,7 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
                     result.error("cast_error", e.message, null)
                 }
             }
-        EventChannel(flutterEngine.dartExecutor.binaryMessenger, "zangetsu/cast/events")
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, "AniAura/cast/events")
             .setStreamHandler(cm)
     }
 
@@ -2037,7 +2037,7 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
      *  PRESERVING the background worker's advanced episode counts (only brand-new
      *  subs take the incoming baseline), then (re)schedule the periodic worker. */
     private fun mergeSubscriptions(incoming: List<Map<String, Any?>>) {
-        val prefs = getSharedPreferences("zangetsu_cs", android.content.Context.MODE_PRIVATE)
+        val prefs = getSharedPreferences("AniAura_cs", android.content.Context.MODE_PRIVATE)
         val existing = runCatching {
             org.json.JSONArray(prefs.getString("subscriptions", "[]"))
         }.getOrDefault(org.json.JSONArray())
@@ -2067,7 +2067,7 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
     private fun scheduleSubscriptionWorker(hasSubs: Boolean) {
         val wm = WorkManager.getInstance(applicationContext)
         if (!hasSubs) {
-            wm.cancelUniqueWork("zangetsu_sub_check")
+            wm.cancelUniqueWork("AniAura_sub_check")
             return
         }
         val req = PeriodicWorkRequestBuilder<SubscriptionWorker>(6, TimeUnit.HOURS)
@@ -2078,7 +2078,7 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
             )
             .build()
         wm.enqueueUniquePeriodicWork(
-            "zangetsu_sub_check",
+            "AniAura_sub_check",
             ExistingPeriodicWorkPolicy.KEEP,
             req,
         )

@@ -6,7 +6,7 @@ import 'package:flutter/services.dart';
 // false-alarming on a guess.
 // ─────────────────────────────────────────────────────────────────────────────
 class StorageInfo {
-  static const MethodChannel _channel = MethodChannel('zangetsu/storage');
+  static const MethodChannel _channel = MethodChannel('AniAura/storage');
 
   static Future<int?> freeBytes({
     String? destination,

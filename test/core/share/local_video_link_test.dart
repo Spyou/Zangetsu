@@ -29,7 +29,7 @@ void main() {
     test('tracker OAuth redirects', () {
       for (final host in ['anilist-auth', 'mal-auth', 'simkl-auth']) {
         expect(
-          LocalVideoLink.matches(Uri.parse('zangetsu://$host?code=abc')),
+          LocalVideoLink.matches(Uri.parse('AniAura://$host?code=abc')),
           isFalse,
           reason: '$host must still reach its tracker service',
         );
@@ -38,10 +38,10 @@ void main() {
 
     test('share and pairing deep links', () {
       for (final u in [
-        'zangetsu://open?d=x&t=y',
-        'zangetsu://pair?code=1234',
-        'zangetsu://room?code=1234',
-        'https://zangetsu.online/pair/?code=1234',
+        'AniAura://open?d=x&t=y',
+        'AniAura://pair?code=1234',
+        'AniAura://room?code=1234',
+        'https://AniAura.online/pair/?code=1234',
       ]) {
         expect(LocalVideoLink.matches(Uri.parse(u)), isFalse, reason: u);
       }

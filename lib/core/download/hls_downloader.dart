@@ -997,7 +997,7 @@ double? hlsLeadingExtinfSkew(
   return null;
 }
 
-/// Compact playlist timing dump for `[zangetsu-sub-timing]` logs.
+/// Compact playlist timing dump for `[AniAura-sub-timing]` logs.
 String hlsExtinfFingerprint(List<HlsMediaSegment> segs) {
   if (segs.isEmpty) return 'empty';
   final durs = [for (final s in segs) s.duration];

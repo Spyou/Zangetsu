@@ -30,7 +30,7 @@ declare
 begin
   -- Only the bridge's direct postgres connection can suppress echo events.
   if session_user = 'postgres'
-      and current_setting('zangetsu.bridge_replay', true) = 'on' then
+      and current_setting('AniAura.bridge_replay', true) = 'on' then
     return coalesce(new, old);
   end if;
   if tg_op = 'UPDATE' and to_jsonb(new) = to_jsonb(old) then

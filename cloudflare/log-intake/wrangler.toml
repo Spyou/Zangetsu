@@ -1,4 +1,4 @@
-name = "zangetsu-logs"
+name = "AniAura-logs"
 main = "src/index.js"
 compatibility_date = "2026-09-13"
 
@@ -23,13 +23,13 @@ id = "4cb9a82d2b7349cab0ce4c99de730c76"
 # Profile photos live here (1 MiB cap, enforced in index.js).
 # Create once, then expose publicly (r2.dev domain or custom domain) and put
 # that URL in AVATAR_PUBLIC_BASE below:
-#   wrangler r2 bucket create zangetsu-avatars
+#   wrangler r2 bucket create AniAura-avatars
 [[r2_buckets]]
 binding = "AVATARS"
-bucket_name = "zangetsu-avatars"
+bucket_name = "AniAura-avatars"
 
 [vars]
-PROFILE_LOCK_API_BASE = "https://sync.zangetsu.online"
-AVATAR_PUBLIC_BASE = "https://avatars.zangetsu.online"
+PROFILE_LOCK_API_BASE = "https://sync.AniAura.online"
+AVATAR_PUBLIC_BASE = "https://avatars.AniAura.online"
 # Older saved profile URLs still need to be accepted for deletion.
 AVATAR_LEGACY_PUBLIC_BASE = "https://pub-a8b67f6edb404cb1b7545e19bc2b5b94.r2.dev"

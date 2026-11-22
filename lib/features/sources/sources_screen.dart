@@ -20,7 +20,7 @@ import '../../l10n/l10n.dart';
 
 /// Thin entry point for the Providers screen — delegates to
 /// [ProvidersHubScreen], which routes to a dedicated screen per ecosystem
-/// (Zangetsu / CloudStream / Aniyomi). Kept as a stable public class since
+/// (AniAura / CloudStream / Aniyomi). Kept as a stable public class since
 /// Settings and other callers push `const SourcesScreen()`.
 class SourcesScreen extends StatelessWidget {
   const SourcesScreen({super.key});

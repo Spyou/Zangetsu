@@ -2545,13 +2545,13 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "3.1.0"
-  zangetsu_source_bridge:
+  AniAura_source_bridge:
     dependency: "direct main"
     description:
       path: "."
       ref: "9e72a71c68f0d0bfb806477d0dd764519f4cae68"
       resolved-ref: "9e72a71c68f0d0bfb806477d0dd764519f4cae68"
-      url: "https://github.com/Spyou/Zangetsu-Source-Bridge.git"
+      url: "https://github.com/Spyou/AniAura-Source-Bridge.git"
     source: git
     version: "0.1.0"
 sdks:

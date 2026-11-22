@@ -13,7 +13,7 @@ import 'catalogue_repository.dart';
 /// Sits in front of both catalogues and forwards each call:
 ///
 /// * Browsing (`home`, `search`, `loadedSources`, …) follows the **toggle** —
-///   that is the whole point of Zangetsu Mode.
+///   that is the whole point of AniAura Mode.
 /// * Anything that names a title (`detail`, `episodes`, `sources`, …) follows
 ///   the **url**: a `zm://` url is metadata, everything else is a source. A
 ///   title opened from a metadata row must keep resolving through metadata

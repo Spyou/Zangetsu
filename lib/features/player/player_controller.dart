@@ -3861,7 +3861,7 @@ class PlayerCubit extends Cubit<PlayerState> {
         _toast("Couldn't capture the frame");
         return false;
       }
-      final name = 'Zangetsu_${DateTime.now().millisecondsSinceEpoch}';
+      final name = 'AniAura_${DateTime.now().millisecondsSinceEpoch}';
       // Saving needs no runtime permission on Android 10+; on older Android /
       // iOS the first attempt throws accessDenied — request, then retry once.
       try {
@@ -4216,7 +4216,7 @@ class PlayerCubit extends Cubit<PlayerState> {
         position: _lastPos,
         duration: _lastDur,
         playing: !_discordPaused,
-        // Friend tapping "Open in Zangetsu" lands on this exact title (or the
+        // Friend tapping "Open in AniAura" lands on this exact title (or the
         // install page without the app). Same anime/movie call as episode
         // enrichment so the link's type hint matches.
         openUrl: ShareLink.watchUrl(

@@ -510,7 +510,7 @@ void main() {
     );
     final r = resolver(sources: src, matcher: matcher, preferred: 'src-a');
     await r.resolveForPlayback(_ep2, category: 'dub');
-    // Zangetsu JS and CloudStream sources key their episode list on this and
+    // AniAura JS and CloudStream sources key their episode list on this and
     // quietly answer with sub when it is missing, which is why Dub never
     // played: the argument was never sent.
     expect(src.cats, contains('dub'));

@@ -11,7 +11,7 @@ import 'package:watch_app/core/provider/cf_solve_needed.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  const channel = MethodChannel('zangetsu/mihon');
+  const channel = MethodChannel('AniAura/mihon');
   final messenger =
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
 

@@ -7,7 +7,7 @@ import '../mihon/mihon_extension_service.dart';
 import '../provider/cf_solve_needed.dart';
 
 class MangayomiCloudflare {
-  static const MethodChannel _channel = MethodChannel('zangetsu/mihon');
+  static const MethodChannel _channel = MethodChannel('AniAura/mihon');
 
   static Future<void> solve(String url) async {
     if (!Platform.isIOS) {

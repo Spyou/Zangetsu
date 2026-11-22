@@ -11,8 +11,8 @@ import '../../core/playback/tv_track_helpers.dart';
 /// resolution / resume logic (that lives in TvExoPlayerScreen).
 class TvExoController {
   TvExoController(int viewId)
-      : _method = MethodChannel('zangetsu/exoplayer_$viewId'),
-        _events = EventChannel('zangetsu/exoplayer_events_$viewId') {
+      : _method = MethodChannel('AniAura/exoplayer_$viewId'),
+        _events = EventChannel('AniAura/exoplayer_events_$viewId') {
     _sub = _events.receiveBroadcastStream().listen((e) {
       if (e is Map) applyEvent(Map<String, dynamic>.from(e));
     });

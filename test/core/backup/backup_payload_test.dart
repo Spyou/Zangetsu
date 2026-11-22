@@ -7,7 +7,7 @@ void main() {
       {BackupBundle.settings: {'k': 1}},
       createdAtIso: '2026-07-02T00:00:00Z',
     );
-    expect(wrapped['app'], 'zangetsu');
+    expect(wrapped['app'], 'AniAura');
     expect(wrapped['version'], 1);
     final out = unwrapPayload(wrapped);
     expect(out[BackupBundle.settings], {'k': 1});
@@ -17,7 +17,7 @@ void main() {
   test('unwrap rejects a foreign or newer payload', () {
     expect(() => unwrapPayload({'app': 'other', 'version': 1, 'bundles': {}}),
         throwsA(isA<BackupFormatException>()));
-    expect(() => unwrapPayload({'app': 'zangetsu', 'version': 2, 'bundles': {}}),
+    expect(() => unwrapPayload({'app': 'AniAura', 'version': 2, 'bundles': {}}),
         throwsA(isA<BackupFormatException>()));
   });
 }

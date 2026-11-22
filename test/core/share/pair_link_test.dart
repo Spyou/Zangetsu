@@ -30,7 +30,7 @@ void main() {
     expect(uri.queryParameters['trackers'], '1');
   });
 
-  test('parse round-trips the QR URL and the zangetsu:// deep link', () {
+  test('parse round-trips the QR URL and the AniAura:// deep link', () {
     final web = Uri.parse(PairLink.qrData(code: code, nonce: nonce));
     final fromWeb = PairLink.parse(web);
     expect(fromWeb, isNotNull);
@@ -41,7 +41,7 @@ void main() {
     final deep = Uri.parse(
       PairLink.deepLink(code: code, nonce: nonce, trackers: true),
     );
-    expect(deep.scheme, 'zangetsu');
+    expect(deep.scheme, 'AniAura');
     expect(deep.host, 'pair');
     final fromDeep = PairLink.parse(deep);
     expect(fromDeep, isNotNull);
@@ -51,9 +51,9 @@ void main() {
   });
 
   test('parse ignores unrelated links', () {
-    expect(PairLink.parse(Uri.parse('zangetsu://open?s=x&u=y')), isNull);
+    expect(PairLink.parse(Uri.parse('AniAura://open?s=x&u=y')), isNull);
     expect(
-      PairLink.parse(Uri.parse('https://zangetsu.online/open/?s=x&u=y')),
+      PairLink.parse(Uri.parse('https://AniAura.online/open/?s=x&u=y')),
       isNull,
     );
     expect(
@@ -85,22 +85,22 @@ void main() {
   test('pair links retain authority and reject an unknown selector', () {
     expect(
       PairLink.parse(
-        Uri.parse('zangetsu://pair?code=$code&auth=vps'),
+        Uri.parse('AniAura://pair?code=$code&auth=vps'),
       )!.authority,
       'vps',
     );
     expect(
-      PairLink.parse(Uri.parse('zangetsu://pair?code=$code'))!.authority,
+      PairLink.parse(Uri.parse('AniAura://pair?code=$code'))!.authority,
       'cloud',
     );
     expect(
       PairLink.parse(
-        Uri.parse('zangetsu://pair?code=$code&auth=vps&auth=cloud'),
+        Uri.parse('AniAura://pair?code=$code&auth=vps&auth=cloud'),
       ),
       isNull,
     );
     expect(
-      PairLink.parse(Uri.parse('zangetsu://pair?code=$code&auth=unknown')),
+      PairLink.parse(Uri.parse('AniAura://pair?code=$code&auth=unknown')),
       isNull,
     );
   });

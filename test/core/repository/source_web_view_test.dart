@@ -61,7 +61,7 @@ void main() {
     // Z Mode gate — drop that gate and this fails instead of quietly passing
     // on an unregistered-repository guard.
     sl.registerSingleton<SourceRepository>(
-      _FakeSourceRepository(const {ZmodeIds.sourceId: 'https://zangetsu.online'}),
+      _FakeSourceRepository(const {ZmodeIds.sourceId: 'https://AniAura.online'}),
     );
     expect(
       source_actions.webViewUrlFor('not-zm'),

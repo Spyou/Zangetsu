@@ -39,7 +39,7 @@ class _Prefs extends PlaybackPrefs {
 }
 
 void main() {
-  const channel = MethodChannel('zangetsu/phone_player');
+  const channel = MethodChannel('AniAura/phone_player');
   late _Prefs prefs;
   final calls = <String>[];
   setUp(() async {

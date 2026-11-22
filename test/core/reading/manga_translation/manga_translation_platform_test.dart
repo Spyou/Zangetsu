@@ -3,7 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:watch_app/core/reading/manga_translation/manga_page_translation_models.dart';
 import 'package:watch_app/core/reading/manga_translation/manga_translation_platform.dart';
 
-const _channel = MethodChannel('zangetsu/manga_translation');
+const _channel = MethodChannel('AniAura/manga_translation');
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

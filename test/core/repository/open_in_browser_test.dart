@@ -116,7 +116,7 @@ void main() {
 /// These assert the SAFETY half: every path where the source cannot answer must
 /// fall back to exactly what [chapterWebUrl] returned before this existed.
 void resolveFallbackTests() {
-  const channel = MethodChannel('zangetsu/mihon');
+  const channel = MethodChannel('AniAura/mihon');
 
   void nativeReturns(Object? value, {bool throwIt = false}) {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger

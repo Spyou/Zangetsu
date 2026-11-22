@@ -2141,7 +2141,7 @@ void main() {
       final bytes = base64Decode(
         'iVBORw0KGgoAAAANSUhEUgAAAAIAAABACAIAAAC/RDEUAAAAGUlEQVR4nGP8//8/AwMDEwMYMI1STEMrCACm0QN9cILuRwAAAABJRU5ErkJggg==',
       );
-      const channel = MethodChannel('zangetsu/aniyomi');
+      const channel = MethodChannel('AniAura/aniyomi');
       final messenger =
           TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
       messenger.setMockMethodCallHandler(channel, (call) async {

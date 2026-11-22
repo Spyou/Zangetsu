@@ -1,4 +1,4 @@
-"""Run as zangetsu_bridge against its disposable VPS test database."""
+"""Run as AniAura_bridge against its disposable VPS test database."""
 
 import os
 import pathlib
@@ -12,7 +12,7 @@ import psycopg2
 test_path = pathlib.Path(__file__).resolve()
 sys.path.insert(0, str(
     test_path.parents[2] / "server" / "sync"
-    if len(test_path.parents) > 2 else pathlib.Path("/opt/zangetsu-sync")
+    if len(test_path.parents) > 2 else pathlib.Path("/opt/AniAura-sync")
 ))
 from content_bridge import JOURNAL, TABLE_FIELDS, TABLE_KEYS
 from library_bridge import LibraryEvent, PostgresLibraryDatabase
@@ -25,7 +25,7 @@ from library_bridge import LibraryEvent, PostgresLibraryDatabase
 class ContentBridgeIntegrationTest(unittest.TestCase):
     def test_reading_profile_and_backup_replay_does_not_echo(self):
         connection = psycopg2.connect(
-            dbname="zangetsu_sync_bridge_vps_test", user="zangetsu_bridge"
+            dbname="AniAura_sync_bridge_vps_test", user="AniAura_bridge"
         )
         self.addCleanup(connection.close)
         database = PostgresLibraryDatabase(

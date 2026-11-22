@@ -1,19 +1,19 @@
-# Contributing to Zangetsu
+# Contributing to AniAura
 
-First off, thanks for considering contributing to Zangetsu! Whether it's a bug fix, a new feature, a new provider, or just fixing a typo — it's appreciated.
+First off, thanks for considering contributing to AniAura! Whether it's a bug fix, a new feature, a new provider, or just fixing a typo — it's appreciated.
 
 ## Before You Start
 
 - Check [open issues](../../issues) to see if what you want to work on is already being tracked.
 - For anything bigger than a small fix (new features, big refactors, new providers), open an issue first to discuss the approach before writing code — saves everyone time.
 - By submitting a pull request, you agree to our [Contributor License Agreement](CLA.md). Please give it a quick read.
-- Zangetsu is licensed under **GPLv3 with additional terms** (see [`LICENSE`](LICENSE)) — your contributions will be distributed under those same terms.
+- AniAura is licensed under **GPLv3 with additional terms** (see [`LICENSE`](LICENSE)) — your contributions will be distributed under those same terms.
 - Using AI tools to help write your Contribution? That's allowed — read [`AI_POLICY.md`](AI_POLICY.md) first for disclosure and quality expectations.
-- Third-party code Zangetsu incorporates (and its licenses) is documented in [`NOTICE.md`](NOTICE.md) — worth a skim if you're touching provider/extractor code.
+- Third-party code AniAura incorporates (and its licenses) is documented in [`NOTICE.md`](NOTICE.md) — worth a skim if you're touching provider/extractor code.
 
 ## Repo Structure
 
-This repo is the main Zangetsu app (Flutter/Dart, with native `android/` and `ios/` platform folders). A few things worth knowing before you dive in:
+This repo is the main AniAura app (Flutter/Dart, with native `android/` and `ios/` platform folders). A few things worth knowing before you dive in:
 
 - `lib/` — the main Dart application code
 - `providers/` — provider integrations bundled with the app
@@ -22,14 +22,14 @@ This repo is the main Zangetsu app (Flutter/Dart, with native `android/` and `io
 - `assets/` — icons, splash screens, and other static assets
 - `test/` — tests
 
-**Note:** additional/community content sources live in a separate repo, [zangetsu-providers](https://github.com/Spyou/zangetsu-providers). If your contribution is a new content source rather than a core app change, check there first — it may be the better place for it.
+**Note:** additional/community content sources live in a separate repo, [AniAura-providers](https://github.com/Spyou/AniAura-providers). If your contribution is a new content source rather than a core app change, check there first — it may be the better place for it.
 
 ## Setting Up Your Dev Environment
 
 1. Fork the repo and clone your fork:
    ```bash
-   git clone https://github.com/Spyou/Zangetsu.git
-   cd Zangetsu
+   git clone https://github.com/Spyou/AniAura.git
+   cd AniAura
    ```
 2. Make sure you have the **Flutter SDK** installed (check `pubspec.yaml` / `.metadata` for the version this project targets).
 3. Get dependencies:

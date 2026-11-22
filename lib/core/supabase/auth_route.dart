@@ -20,7 +20,7 @@ class AuthRoute {
   final String anonKey;
 
   String get url => authority == 'vps'
-      ? 'https://sb.zangetsu.online'
+      ? 'https://sb.AniAura.online'
       : Environment.supabaseUrl;
 
   static const cloud = AuthRoute(

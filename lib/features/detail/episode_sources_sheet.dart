@@ -68,7 +68,7 @@ class _EpisodeSourcesBodyState extends State<_EpisodeSourcesBody> {
   /// picker shows, for the same reason.
   ///
   /// The bare display name is not enough to tell sources apart: "AniKoto" (a
-  /// Zangetsu provider) and "Anikage" (a CloudStream plugin) read as the same
+  /// AniAura provider) and "Anikage" (a CloudStream plugin) read as the same
   /// thing in a list, and several repos ship a source of the same name. The
   /// prefix says WHICH KIND of provider it is, the small line says which repo
   /// it came from.

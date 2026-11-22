@@ -4,7 +4,7 @@ import 'package:watch_app/features/sources/cloudstream_sources_screen.dart';
 import 'package:watch_app/features/sources/lnreader_sources_screen.dart';
 import 'package:watch_app/features/sources/manage_source_route.dart';
 import 'package:watch_app/features/sources/mihon_sources_screen.dart';
-import 'package:watch_app/features/sources/zangetsu_sources_screen.dart';
+import 'package:watch_app/features/sources/AniAura_sources_screen.dart';
 
 /// The health screen offers "uninstall" by sending the user to the screen that
 /// owns the source. Sending them to the WRONG one is the failure that matters:
@@ -28,11 +28,11 @@ void main() {
       expect(manageSourceScreenFor('lnr:x'), isA<LnReaderSourcesScreen>());
     });
 
-    test('an unprefixed id is a JS provider → Zangetsu', () {
+    test('an unprefixed id is a JS provider → AniAura', () {
       // JS provider ids carry no prefix, so this is the fallback. If a new
       // ecosystem ever ships an unprefixed id it would land here wrongly —
       // which is exactly why the prefixes above are pinned.
-      expect(manageSourceScreenFor('hianime'), isA<ZangetsuSourcesScreen>());
+      expect(manageSourceScreenFor('hianime'), isA<AniAuraSourcesScreen>());
     });
   });
 
@@ -56,10 +56,10 @@ void main() {
 
   test('a mihon id is not mistaken for a plain one', () {
     // 'mihon:' must be checked before the unprefixed fallback, or every Mihon
-    // source would route to the Zangetsu screen.
+    // source would route to the AniAura screen.
     expect(
       manageSourceScreenFor('mihon:9'),
-      isNot(isA<ZangetsuSourcesScreen>()),
+      isNot(isA<AniAuraSourcesScreen>()),
     );
   });
 }

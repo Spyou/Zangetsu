@@ -3,7 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:zangetsu_source_bridge/zangetsu_source_bridge.dart';
+import 'package:AniAura_source_bridge/AniAura_source_bridge.dart';
 
 import '../error/exceptions.dart';
 import '../models/source_pref.dart';

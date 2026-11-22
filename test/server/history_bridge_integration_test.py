@@ -19,8 +19,8 @@ from history_bridge import HistoryBridge, PostgresBridgeState, PostgresHistoryDa
 )
 class HistoryBridgeIntegrationTest(unittest.TestCase):
     def test_upsert_edit_delete_and_no_echo(self):
-        source_conn = psycopg2.connect(dbname="zangetsu_sync_bridge_test", user="postgres")
-        vps_conn = psycopg2.connect(dbname="zangetsu_sync_bridge_vps_test", user="postgres")
+        source_conn = psycopg2.connect(dbname="AniAura_sync_bridge_test", user="postgres")
+        vps_conn = psycopg2.connect(dbname="AniAura_sync_bridge_vps_test", user="postgres")
         self.addCleanup(source_conn.close)
         self.addCleanup(vps_conn.close)
         source = PostgresHistoryDatabase(source_conn, "supabase")
@@ -74,8 +74,8 @@ class HistoryBridgeIntegrationTest(unittest.TestCase):
             self.assertEqual(cursor.fetchone()[0], 0)
 
     def test_profile_history_stays_in_its_own_table(self):
-        source_conn = psycopg2.connect(dbname="zangetsu_sync_bridge_test", user="postgres")
-        vps_conn = psycopg2.connect(dbname="zangetsu_sync_bridge_vps_test", user="postgres")
+        source_conn = psycopg2.connect(dbname="AniAura_sync_bridge_test", user="postgres")
+        vps_conn = psycopg2.connect(dbname="AniAura_sync_bridge_vps_test", user="postgres")
         self.addCleanup(source_conn.close)
         self.addCleanup(vps_conn.close)
         source = PostgresHistoryDatabase(source_conn, "supabase")

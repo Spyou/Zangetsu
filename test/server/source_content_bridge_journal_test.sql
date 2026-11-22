@@ -20,7 +20,7 @@ begin
 end;
 $$;
 
-select set_config('zangetsu.bridge_replay', 'on', true);
+select set_config('AniAura.bridge_replay', 'on', true);
 insert into public.profile_reading_history
   (user_key, profile_id, source_id, show_id)
 values ('source-content-test', 'viewer', 'source', 'show');

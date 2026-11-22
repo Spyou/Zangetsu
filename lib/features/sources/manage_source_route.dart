@@ -5,7 +5,7 @@ import 'cloudstream_sources_screen.dart';
 import 'lnreader_sources_screen.dart';
 import 'mangayomi_sources_screen.dart';
 import 'mihon_sources_screen.dart';
-import 'zangetsu_sources_screen.dart';
+import 'AniAura_sources_screen.dart';
 
 /// Opens the Sources screen that owns [sourceId], so the user can uninstall it
 /// where uninstalling already lives.
@@ -29,9 +29,9 @@ Widget? manageSourceScreenFor(String sourceId) {
   if (sourceId.startsWith('mihon:')) return const MihonSourcesScreen();
   if (sourceId.startsWith('lnr:')) return const LnReaderSourcesScreen();
   if (sourceId.startsWith('mg:')) return const MangayomiSourcesScreen();
-  // Everything else is a JS provider from the Zangetsu repo — those ids carry
+  // Everything else is a JS provider from the AniAura repo — those ids carry
   // no prefix, so this is the fallback rather than a match.
-  return const ZangetsuSourcesScreen();
+  return const AniAuraSourcesScreen();
 }
 
 /// Whether [sourceId] can be managed at all. Z-Mode is the one that cannot:

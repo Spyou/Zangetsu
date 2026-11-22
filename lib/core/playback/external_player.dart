@@ -11,13 +11,13 @@ String _safeUrl(String url) {
   return q >= 0 ? '${url.substring(0, q)}?…' : url;
 }
 
-/// Bridge to the native `zangetsu/external_player` channel: lists installed
+/// Bridge to the native `AniAura/external_player` channel: lists installed
 /// external video players and hands a resolved stream off to one via an
 /// Android `ACTION_VIEW` intent (URL + headers + subtitles + title).
 ///
 /// Android-only — every method is a no-op (returns empty/false) elsewhere.
 class ExternalPlayer {
-  static const MethodChannel _ch = MethodChannel('zangetsu/external_player');
+  static const MethodChannel _ch = MethodChannel('AniAura/external_player');
 
   /// Installed video players as `(package, label, known)` rows, empty on
   /// non-Android.

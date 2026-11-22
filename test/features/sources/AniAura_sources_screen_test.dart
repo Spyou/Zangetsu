@@ -11,7 +11,7 @@ import 'package:watch_app/core/provider/provider_manager.dart';
 import 'package:watch_app/core/provider/provider_registry.dart';
 import 'package:watch_app/core/provider/provider_repo_registry.dart';
 import 'package:watch_app/core/tv/tv_focusable.dart';
-import 'package:watch_app/features/sources/zangetsu_sources_screen.dart';
+import 'package:watch_app/features/sources/AniAura_sources_screen.dart';
 
 // ── Fakes (mirrors test/provider/provider_registry_test.dart) ────────────────
 
@@ -60,7 +60,7 @@ void main() {
     // Real Hive (temp dir) + real registries — SourcesBloc subscribes to
     // both boxes' `.watch()` in its constructor, so a plain mock can't
     // stand in without reimplementing that surface.
-    tempDir = await Directory.systemTemp.createTemp('zangetsu_sources_test');
+    tempDir = await Directory.systemTemp.createTemp('AniAura_sources_test');
     Hive.init(tempDir.path);
     await ProviderRegistry.init();
     await ProviderReposRegistry.init();
@@ -82,12 +82,12 @@ void main() {
   });
 
   testWidgets(
-    'ZangetsuSourcesScreen (TV) exposes semantics labels for its tab chips, '
+    'AniAuraSourcesScreen (TV) exposes semantics labels for its tab chips, '
     'Back button and Add-repo action — with no duplicate-text nodes',
     (tester) async {
       final handle = tester.ensureSemantics();
 
-      await tester.pumpWidget(const MaterialApp(home: ZangetsuSourcesScreen()));
+      await tester.pumpWidget(const MaterialApp(home: AniAuraSourcesScreen()));
       await tester.pumpAndSettle();
 
       // Installed tab chip: autofocused, so this is where the D-pad lands.

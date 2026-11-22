@@ -204,7 +204,7 @@ test('cannot delete another user’s photo or profile-picker artwork', async () 
   for (const url of [
     `${env.AVATAR_PUBLIC_BASE}/avatars/other-user/${id}.jpg`,
     `${env.AVATAR_LEGACY_PUBLIC_BASE}/avatars/other-user/${id}.jpg`,
-    `${env.AVATAR_PUBLIC_BASE}/profile-picker/zangetsu-sword.webp`,
+    `${env.AVATAR_PUBLIC_BASE}/profile-picker/AniAura-sword.webp`,
   ]) {
     const response = await worker.fetch(deleteRequest(jwt, url), env);
     assert.equal(response.status, 400);

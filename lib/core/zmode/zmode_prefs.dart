@@ -3,13 +3,13 @@ import 'package:hive/hive.dart';
 
 import '../hive/safe_box.dart';
 
-/// Which kind of streaming catalogue Zangetsu Mode shows while the content
+/// Which kind of streaming catalogue AniAura Mode shows while the content
 /// mode is `anime`. Movie/TV isn't a `ContentMode` of its own on purpose:
 /// adding one would ripple through a dozen exhaustive switches, and the
 /// distinction only exists when the toggle is on.
 enum StreamKind { anime, movie }
 
-/// The Zangetsu Mode toggle. Off = the app exactly as it is without it.
+/// The AniAura Mode toggle. Off = the app exactly as it is without it.
 /// Same shape as `LocaleController`: Hive box + a revision notifier the shell
 /// listens to.
 class ZModePrefs {

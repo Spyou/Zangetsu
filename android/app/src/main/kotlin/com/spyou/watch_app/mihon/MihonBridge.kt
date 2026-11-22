@@ -12,7 +12,7 @@
  * limitations under the License.
  *
  * Adapted from the Mihon project (https://github.com/mihonapp/mihon)
- * for host-side MethodChannel bridging in the Zangetsu app.
+ * for host-side MethodChannel bridging in the AniAura app.
  */
 package com.spyou.watch_app.mihon
 
@@ -69,7 +69,7 @@ private val mihonChapterCache =
 
 /**
  * Exposes Mihon manga-extension capabilities to the Flutter layer via a
- * [MethodChannel] named "zangetsu/mihon".
+ * [MethodChannel] named "AniAura/mihon".
  *
  * Structural twin of [com.spyou.watch_app.aniyomi.AniyomiBridge] — deliberately
  * duplicated rather than abstracted, so the (frozen) anime path never has to

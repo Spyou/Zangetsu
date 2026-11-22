@@ -1,11 +1,11 @@
 [Unit]
-Description=Refresh Supabase public signing keys for Zangetsu staging sync
+Description=Refresh Supabase public signing keys for AniAura staging sync
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/local/sbin/zangetsu-refresh-jwks
+ExecStart=/usr/local/sbin/AniAura-refresh-jwks
 NoNewPrivileges=true
 ProtectHome=true
 PrivateTmp=true

@@ -39,7 +39,7 @@ import 'tv_progressive_sources.dart';
 /// real-window ExoPlayer/SurfaceView) instead of the Flutter platform-view
 /// player, for TVs that black-screen the embedded surface.
 ///
-/// The channel is bidirectional on `zangetsu/tv_player`:
+/// The channel is bidirectional on `AniAura/tv_player`:
 ///  - Dart → native `launch`      : open the player with the first episode ready.
 ///  - native → Dart `resolveEpisode`: resolve a stream on demand (episode switch,
 ///                                     Next Episode) using the SAME resolver +
@@ -50,7 +50,7 @@ import 'tv_progressive_sources.dart';
 /// Resolution and persistence stay entirely in Dart; nothing here touches the
 /// phone (media_kit) player.
 class TvNativePlayer {
-  static const _ch = MethodChannel('zangetsu/tv_player');
+  static const _ch = MethodChannel('AniAura/tv_player');
   static bool _handlerBound = false;
 
   /// Set when [play] fails during source resolution — surfaced by

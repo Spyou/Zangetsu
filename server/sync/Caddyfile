@@ -1,7 +1,7 @@
-sync.zangetsu.online {
+sync.AniAura.online {
 	@authRouting path /auth-routing/v1.json
 	handle @authRouting {
-		root * /opt/zangetsu-sync/public
+		root * /opt/AniAura-sync/public
 		header Cache-Control "no-store"
 		file_server
 	}
@@ -25,7 +25,7 @@ sync.zangetsu.online {
 	}
 }
 
-sb.zangetsu.online {
+sb.AniAura.online {
 	@admin path /auth/v1/admin /auth/v1/admin/*
 	handle @admin {
 		respond "Not found" 404

@@ -7,7 +7,7 @@
 class DiscordConfig {
   DiscordConfig._();
 
-  /// Zangetsu's Discord Application ID (Developer Portal → General Information).
+  /// AniAura's Discord Application ID (Developer Portal → General Information).
   static const String applicationId = '1518610045422665748';
 
   /// Rich-Presence art-asset key for a named portal upload (optional). We
@@ -18,9 +18,9 @@ class DiscordConfig {
 
   /// Public square app icon Discord can proxy (same file as the launcher).
   static const String appLogoUrl =
-      'https://cdn.jsdelivr.net/gh/Spyou/Zangetsu@main/assets/icon/app_icon.png';
+      'https://cdn.jsdelivr.net/gh/Spyou/AniAura@main/assets/icon/app_icon.png';
 
-  static const String appName = 'Zangetsu';
+  static const String appName = 'AniAura';
 
   /// Discord API base (v10).
   static const String api = 'https://discord.com/api/v10';

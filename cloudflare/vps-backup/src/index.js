@@ -1,6 +1,6 @@
 const MAX_BYTES = 90 * 1024 * 1024;
 const FILE_NAME =
-  /^zangetsu-sync-stage-\d{4}-\d{2}-\d{2}T\d{6}Z-([a-f0-9]{64})\.dump$/;
+  /^AniAura-sync-stage-\d{4}-\d{2}-\d{2}T\d{6}Z-([a-f0-9]{64})\.dump$/;
 
 function response(status, message) {
   return new Response(message, { status });

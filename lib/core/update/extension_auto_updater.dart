@@ -11,7 +11,7 @@ import '../provider/provider_registry.dart';
 import '../provider/provider_repo_registry.dart';
 
 /// Background auto-updater for installed extensions across all three ecosystems
-/// (Zangetsu JS, CloudStream `.cs3`, Aniyomi). Reuses each ecosystem's existing
+/// (AniAura JS, CloudStream `.cs3`, Aniyomi). Reuses each ecosystem's existing
 /// update path — the same code the Sources screen's "Update" buttons call.
 ///
 /// Every step is best-effort and wrapped so it can NEVER throw or break startup:
@@ -26,7 +26,7 @@ class ExtensionAutoUpdater {
 
   static Future<int> run() async {
     var updated = 0;
-    updated += await _updateZangetsu();
+    updated += await _updateAniAura();
     // CloudStream + Aniyomi are Android-only; their managers aren't registered
     // elsewhere, so guard on registration rather than platform.
     updated += await _updateCloudStream();
@@ -37,7 +37,7 @@ class ExtensionAutoUpdater {
   /// JS providers: re-fetch each tracked repo's manifest, then force-reinstall
   /// only the installed sources whose version went up. Mirrors
   /// SourcesBloc._onRepoUpdated, minus the UI.
-  static Future<int> _updateZangetsu() async {
+  static Future<int> _updateAniAura() async {
     if (!sl.isRegistered<ProviderReposRegistry>() ||
         !sl.isRegistered<ProviderRegistry>()) {
       return 0;

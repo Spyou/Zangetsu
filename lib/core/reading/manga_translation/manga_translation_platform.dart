@@ -54,7 +54,7 @@ class MangaTranslationMethodChannelPlatform
   const MangaTranslationMethodChannelPlatform();
 
   static const MethodChannel _channel = MethodChannel(
-    'zangetsu/manga_translation',
+    'AniAura/manga_translation',
   );
 
   @override

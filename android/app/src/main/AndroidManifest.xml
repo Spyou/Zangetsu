@@ -98,20 +98,20 @@
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
             <!-- Tracker OAuth redirects (AniList / MyAnimeList / Simkl) sent back
-                 to zangetsu://<host> and captured by app_links. -->
+                 to AniAura://<host> and captured by app_links. -->
             <intent-filter android:autoVerify="false">
                 <action android:name="android.intent.action.VIEW"/>
                 <category android:name="android.intent.category.DEFAULT"/>
                 <category android:name="android.intent.category.BROWSABLE"/>
-                <data android:scheme="zangetsu" android:host="anilist-auth"/>
-                <data android:scheme="zangetsu" android:host="mal-auth"/>
-                <data android:scheme="zangetsu" android:host="simkl-auth"/>
-                <data android:scheme="zangetsu" android:host="mangabaka-auth"/>
-                <!-- Shared-title deep link: zangetsu://open?d=…&t=… (see OpenLinkService). -->
-                <data android:scheme="zangetsu" android:host="open"/>
-                <data android:scheme="zangetsu" android:host="room"/>
-                <!-- TV pairing QR: zangetsu://pair?code=… (see OpenLinkService). -->
-                <data android:scheme="zangetsu" android:host="pair"/>
+                <data android:scheme="AniAura" android:host="anilist-auth"/>
+                <data android:scheme="AniAura" android:host="mal-auth"/>
+                <data android:scheme="AniAura" android:host="simkl-auth"/>
+                <data android:scheme="AniAura" android:host="mangabaka-auth"/>
+                <!-- Shared-title deep link: AniAura://open?d=…&t=… (see OpenLinkService). -->
+                <data android:scheme="AniAura" android:host="open"/>
+                <data android:scheme="AniAura" android:host="room"/>
+                <!-- TV pairing QR: AniAura://pair?code=… (see OpenLinkService). -->
+                <data android:scheme="AniAura" android:host="pair"/>
             </intent-filter>
             <!-- Keep the hostless Discord callback separate from tracker hosts. -->
             <intent-filter>
@@ -121,16 +121,16 @@
                 <data android:scheme="discord-1518610045422665748"/>
             </intent-filter>
             <!-- "Open with" for local video files, so a file manager / Downloads
-                 offers Zangetsu the way it offers any other player.
+                 offers AniAura the way it offers any other player.
 
-                 Deliberately NOT http/https: claiming those would put Zangetsu
+                 Deliberately NOT http/https: claiming those would put AniAura
                  in the chooser for every video link on the web, which is the
                  fast way to make the app feel like spyware. file:// and
                  content:// only — something the user already has on the device.
 
-                 Separate <intent-filter> from the zangetsu:// block above on
+                 Separate <intent-filter> from the AniAura:// block above on
                  purpose: within one filter Android ORs the schemes with the
-                 mime types, so merging them would also claim zangetsu://*
+                 mime types, so merging them would also claim AniAura://*
                  video/* and, worse, every file:// host for the tracker hosts. -->
             <intent-filter android:label="@string/app_name">
                 <action android:name="android.intent.action.VIEW"/>

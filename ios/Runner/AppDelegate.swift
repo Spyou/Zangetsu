@@ -27,7 +27,7 @@ import UIKit
 
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "MangayomiCloudflareBridge") {
       let channel = FlutterMethodChannel(
-        name: "zangetsu/mihon",
+        name: "AniAura/mihon",
         binaryMessenger: registrar.messenger()
       )
       let bridge = MangayomiCloudflareBridge()
@@ -39,7 +39,7 @@ import UIKit
 
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "MangaTranslationBridge") {
       let channel = FlutterMethodChannel(
-        name: "zangetsu/manga_translation",
+        name: "AniAura/manga_translation",
         binaryMessenger: registrar.messenger()
       )
       let bridge = MangaTranslationBridge()
@@ -54,7 +54,7 @@ import UIKit
     // its own request if this channel throws, so nothing regresses.
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "NovelHttp") {
       let channel = FlutterMethodChannel(
-        name: "zangetsu/novel_http",
+        name: "AniAura/novel_http",
         binaryMessenger: registrar.messenger()
       )
       channel.setMethodCallHandler { call, result in

@@ -1,6 +1,6 @@
 -- The bridge has only the private journal/state and history table permissions.
 begin;
-set local role zangetsu_bridge;
+set local role AniAura_bridge;
 select count(*) from sync_private.history_bridge_events;
 delete from sync_private.history_bridge_events where id = -1;
 select count(*) from sync_private.history_bridge_cursors;

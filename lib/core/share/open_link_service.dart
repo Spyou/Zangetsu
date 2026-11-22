@@ -16,8 +16,8 @@ import 'local_video_link.dart';
 import 'pair_link.dart';
 import 'share_link.dart';
 
-/// Listens for incoming share links (`zangetsu://open?…`) and pairing links
-/// (`zangetsu://pair?…` or `https://zangetsu.online/pair/?…`) and opens the
+/// Listens for incoming share links (`AniAura://open?…`) and pairing links
+/// (`AniAura://pair?…` or `https://AniAura.online/pair/?…`) and opens the
 /// matching screen. Tracker OAuth listeners share the same [AppLinks] stream
 /// and ignore anything they don't own.
 class OpenLinkService {
@@ -49,13 +49,13 @@ class OpenLinkService {
 
   void _route(Uri uri) {
     // A local video handed over from a file manager / Downloads ("Open with").
-    // Checked first because it's the one case that can't be a zangetsu:// or
+    // Checked first because it's the one case that can't be a AniAura:// or
     // https:// link, so it can never shadow the handlers below.
     if (LocalVideoLink.matches(uri)) {
       _openLocalVideo(uri);
       return;
     }
-    // zangetsu://pair?code=… (TV QR) or HTTPS /pair/?code=… (web share /
+    // AniAura://pair?code=… (TV QR) or HTTPS /pair/?code=… (web share /
     // landing page). Same payload either way.
     final pair = PairLink.parse(uri);
     if (pair != null) {

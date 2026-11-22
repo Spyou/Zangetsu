@@ -750,7 +750,7 @@ abstract class AppLocalizations {
   /// No description provided for @logsShareSubject.
   ///
   /// In en, this message translates to:
-  /// **'Zangetsu logs'**
+  /// **'AniAura logs'**
   String get logsShareSubject;
 
   /// No description provided for @signInSubtitle.
@@ -900,7 +900,7 @@ abstract class AppLocalizations {
   /// No description provided for @presenceButtonLabelHint.
   ///
   /// In en, this message translates to:
-  /// **'Open in Zangetsu'**
+  /// **'Open in AniAura'**
   String get presenceButtonLabelHint;
 
   /// No description provided for @presenceShowWhenPaused.
@@ -2004,7 +2004,7 @@ abstract class AppLocalizations {
   /// No description provided for @bootErrorTitle.
   ///
   /// In en, this message translates to:
-  /// **'Zangetsu didn\'t finish starting'**
+  /// **'AniAura didn\'t finish starting'**
   String get bootErrorTitle;
 
   /// No description provided for @bootErrorBody.
@@ -2028,13 +2028,13 @@ abstract class AppLocalizations {
   /// No description provided for @resetAppDataBody.
   ///
   /// In en, this message translates to:
-  /// **'This clears what Zangetsu has saved on this device so it can start fresh.\n\nYour account and anything synced to the cloud are not touched — sign in again and your library comes back.'**
+  /// **'This clears what AniAura has saved on this device so it can start fresh.\n\nYour account and anything synced to the cloud are not touched — sign in again and your library comes back.'**
   String get resetAppDataBody;
 
   /// No description provided for @resetAppDataDone.
   ///
   /// In en, this message translates to:
-  /// **'Close Zangetsu completely and open it again.'**
+  /// **'Close AniAura completely and open it again.'**
   String get resetAppDataDone;
 
   /// No description provided for @detailsCopied.
@@ -3027,11 +3027,11 @@ abstract class AppLocalizations {
   /// **'Turn off Material You to pick a colour yourself'**
   String get turnOffMaterialYouToPickAColourYourself;
 
-  /// No description provided for @downloadsZangetsu.
+  /// No description provided for @downloadsAniAura.
   ///
   /// In en, this message translates to:
-  /// **'Downloads › Zangetsu'**
-  String get downloadsZangetsu;
+  /// **'Downloads › AniAura'**
+  String get downloadsAniAura;
 
   /// No description provided for @removableDrive.
   ///
@@ -4396,11 +4396,11 @@ abstract class AppLocalizations {
   /// **'Have the app?'**
   String get haveTheApp;
 
-  /// No description provided for @openZangetsuOnYourNphoneAndScan.
+  /// No description provided for @openAniAuraOnYourNphoneAndScan.
   ///
   /// In en, this message translates to:
-  /// **'Open Zangetsu on your\\nphone and scan'**
-  String get openZangetsuOnYourNphoneAndScan;
+  /// **'Open AniAura on your\\nphone and scan'**
+  String get openAniAuraOnYourNphoneAndScan;
 
   /// No description provided for @noApp.
   ///
@@ -4510,11 +4510,11 @@ abstract class AppLocalizations {
   /// **'Sign in with your phone'**
   String get signInWithYourPhone;
 
-  /// No description provided for @onTheZangetsuAppOnYourPhoneOpenNPairATVAndEnterThisCodeOrScanTheQR.
+  /// No description provided for @onTheAniAuraAppOnYourPhoneOpenNPairATVAndEnterThisCodeOrScanTheQR.
   ///
   /// In en, this message translates to:
-  /// **'On the Zangetsu app on your phone, open\\n\"Pair a TV\" and enter this code — or scan the QR.'**
-  String get onTheZangetsuAppOnYourPhoneOpenNPairATVAndEnterThisCodeOrScanTheQR;
+  /// **'On the AniAura app on your phone, open\\n\"Pair a TV\" and enter this code — or scan the QR.'**
+  String get onTheAniAuraAppOnYourPhoneOpenNPairATVAndEnterThisCodeOrScanTheQR;
 
   /// No description provided for @signingIn.
   ///
@@ -4558,11 +4558,11 @@ abstract class AppLocalizations {
   /// **'Enter the code from your TV'**
   String get enterTheCodeFromYourTV;
 
-  /// No description provided for @openZangetsuOnYourTVAndSignInWithYourPhoneToSeeIt.
+  /// No description provided for @openAniAuraOnYourTVAndSignInWithYourPhoneToSeeIt.
   ///
   /// In en, this message translates to:
-  /// **'Open Zangetsu on your TV and sign in with your phone to see it.'**
-  String get openZangetsuOnYourTVAndSignInWithYourPhoneToSeeIt;
+  /// **'Open AniAura on your TV and sign in with your phone to see it.'**
+  String get openAniAuraOnYourTVAndSignInWithYourPhoneToSeeIt;
 
   /// No description provided for @abcd2345.
   ///
@@ -4636,11 +4636,11 @@ abstract class AppLocalizations {
   /// **'Restore complete'**
   String get restoreComplete;
 
-  /// No description provided for @reopenZangetsuToSeeRestoredLibrarySources.
+  /// No description provided for @reopenAniAuraToSeeRestoredLibrarySources.
   ///
   /// In en, this message translates to:
-  /// **'Reopen Zangetsu to see restored library & sources.'**
-  String get reopenZangetsuToSeeRestoredLibrarySources;
+  /// **'Reopen AniAura to see restored library & sources.'**
+  String get reopenAniAuraToSeeRestoredLibrarySources;
 
   /// No description provided for @saveToAFile.
   ///
@@ -5056,11 +5056,11 @@ abstract class AppLocalizations {
   /// **'No sources in this repo.'**
   String get noSourcesInThisRepo;
 
-  /// No description provided for @zangetsuProviders.
+  /// No description provided for @AniAuraProviders.
   ///
   /// In en, this message translates to:
-  /// **'Zangetsu providers'**
-  String get zangetsuProviders;
+  /// **'AniAura providers'**
+  String get AniAuraProviders;
 
   /// No description provided for @addRepo.
   ///
@@ -5248,11 +5248,11 @@ abstract class AppLocalizations {
   /// **'Open this source\'s own settings (e.g. server, language)'**
   String get openThisSourceSOwnSettingsEGServerLanguage;
 
-  /// No description provided for @addZangetsuRepo.
+  /// No description provided for @addAniAuraRepo.
   ///
   /// In en, this message translates to:
-  /// **'Add Zangetsu repo'**
-  String get addZangetsuRepo;
+  /// **'Add AniAura repo'**
+  String get addAniAuraRepo;
 
   /// No description provided for @theProviderWillBeRemovedFromYourInstalledSources.
   ///
@@ -7171,7 +7171,7 @@ abstract class AppLocalizations {
   /// No description provided for @appIconBlurb.
   ///
   /// In en, this message translates to:
-  /// **'The icon on your home screen. Zangetsu closes when you change it — Android has to swap the launcher entry.'**
+  /// **'The icon on your home screen. AniAura closes when you change it — Android has to swap the launcher entry.'**
   String get appIconBlurb;
 
   /// No description provided for @useTheIcon.
@@ -7183,7 +7183,7 @@ abstract class AppLocalizations {
   /// No description provided for @useTheIconBody.
   ///
   /// In en, this message translates to:
-  /// **'Zangetsu will close so Android can apply the new icon. Open it again from your home screen afterwards.\n\nIf you have Zangetsu in a folder or dock, you may need to add it again.'**
+  /// **'AniAura will close so Android can apply the new icon. Open it again from your home screen afterwards.\n\nIf you have AniAura in a folder or dock, you may need to add it again.'**
   String get useTheIconBody;
 
   /// No description provided for @animRise.
@@ -7312,11 +7312,11 @@ abstract class AppLocalizations {
   /// **'Cloud backup failed. Check you\'re online — if it keeps failing, the cloud backup store may not be set up yet.'**
   String get cloudBackupFailed;
 
-  /// No description provided for @savedToDownloadsZangetsu.
+  /// No description provided for @savedToDownloadsAniAura.
   ///
   /// In en, this message translates to:
-  /// **'Saved to Downloads › Zangetsu'**
-  String get savedToDownloadsZangetsu;
+  /// **'Saved to Downloads › AniAura'**
+  String get savedToDownloadsAniAura;
 
   /// No description provided for @restoreFailed.
   ///
@@ -7333,7 +7333,7 @@ abstract class AppLocalizations {
   /// No description provided for @backupScreenBlurb.
   ///
   /// In en, this message translates to:
-  /// **'Save your sources, list and settings — to a file on your device or to your Zangetsu account. Restoring only adds things back; it never deletes what you already have.'**
+  /// **'Save your sources, list and settings — to a file on your device or to your AniAura account. Restoring only adds things back; it never deletes what you already have.'**
   String get backupScreenBlurb;
 
   /// No description provided for @includeInTheBackup.
@@ -7435,7 +7435,7 @@ abstract class AppLocalizations {
   /// No description provided for @couldnTOpenInstaller.
   ///
   /// In en, this message translates to:
-  /// **'Couldn\'t open the installer. Enable \"Install unknown apps\" for Zangetsu in system settings, then try again.'**
+  /// **'Couldn\'t open the installer. Enable \"Install unknown apps\" for AniAura in system settings, then try again.'**
   String get couldnTOpenInstaller;
 
   /// No description provided for @downloadFailedCheckConnection.
@@ -7690,11 +7690,11 @@ abstract class AppLocalizations {
   /// **'LNReader'**
   String get lnreader;
 
-  /// No description provided for @zangetsu.
+  /// No description provided for @AniAura.
   ///
   /// In en, this message translates to:
-  /// **'Zangetsu'**
-  String get zangetsu;
+  /// **'AniAura'**
+  String get AniAura;
 
   /// No description provided for @cloudStream.
   ///
@@ -9631,7 +9631,7 @@ abstract class AppLocalizations {
   /// No description provided for @keepDownloadsPrivateSubtitle.
   ///
   /// In en, this message translates to:
-  /// **'New video downloads stay inside Zangetsu instead of the Downloads folder. They are deleted when you uninstall Zangetsu. Chapters and exports are unaffected.'**
+  /// **'New video downloads stay inside AniAura instead of the Downloads folder. They are deleted when you uninstall AniAura. Chapters and exports are unaffected.'**
   String get keepDownloadsPrivateSubtitle;
 
   /// No description provided for @mangaPageTranslationTitle.
@@ -9889,7 +9889,7 @@ abstract class AppLocalizations {
   /// No description provided for @mangaTranslationRestartRequiredMessage.
   ///
   /// In en, this message translates to:
-  /// **'Close and reopen Zangetsu to finish setting up on-device OCR, then try again.'**
+  /// **'Close and reopen AniAura to finish setting up on-device OCR, then try again.'**
   String get mangaTranslationRestartRequiredMessage;
 
   /// No description provided for @mangaTranslationSearchLanguages.

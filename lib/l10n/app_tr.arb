@@ -118,7 +118,7 @@
 	"settingsSectionAdvancedSummary": "DNS, gizlilik, günlükler",
 	"settingsSectionAboutSummary": "Güncellemeler, destek, sürüm",
 	"couldNotExportLogs": "Günlükler dışa aktarılamadı",
-	"logsShareSubject": "Zangetsu günlükleri",
+	"logsShareSubject": "AniAura günlükleri",
 	"signInSubtitle": "Listeni, geçmişini ve izlemeye devam etme akışını eşitle",
 	"signInSubtitleTv": "Listeni ve izlemeye devam etme akışını eşitle",
 	"connections": "Bağlantılar",
@@ -375,12 +375,12 @@
 			}
 		}
 	},
-	"bootErrorTitle": "Zangetsu açılışını tamamlayamadı",
+	"bootErrorTitle": "AniAura açılışını tamamlayamadı",
 	"bootErrorBody": "Bu cihazda kayıtlı bir şey açılmasını engelliyor. Hiçbir şey kaybolmadı — hesabın ve buluta eşitlenen her şey güvende.",
 	"resetAppData": "Uygulama verilerini sıfırla",
 	"resetAppDataTitle": "Uygulama verileri sıfırlansın mı?",
-	"resetAppDataBody": "Zangetsu'nun bu cihazda kaydettiği her şeyi temizler, böylece sıfırdan başlar.\n\nHesabın ve buluta eşitlenen hiçbir şey etkilenmez — tekrar oturum aç, kitaplığın geri gelir.",
-	"resetAppDataDone": "Zangetsu'yu tamamen kapat ve yeniden aç.",
+	"resetAppDataBody": "AniAura'nun bu cihazda kaydettiği her şeyi temizler, böylece sıfırdan başlar.\n\nHesabın ve buluta eşitlenen hiçbir şey etkilenmez — tekrar oturum aç, kitaplığın geri gelir.",
+	"resetAppDataDone": "AniAura'yu tamamen kapat ve yeniden aç.",
 	"detailsCopied": "Ayrıntılar kopyalandı — bize gönder",
 	"copyDetails": "Ayrıntıları kopyala",
 	"goodToHaveYouHere": "Burada olduğuna sevindik.",
@@ -528,7 +528,7 @@
 	"cardsFadeInAsYouScroll": "Kaydırdıkça kartlar belirir",
 	"animationStyle": "Animasyon stili",
 	"turnOffMaterialYouToPickAColourYourself": "Kendi rengini seçmek için Material You'u kapat",
-	"downloadsZangetsu": "İndirilenler › Zangetsu",
+	"downloadsAniAura": "İndirilenler › AniAura",
 	"removableDrive": "Çıkarılabilir sürücü",
 	"chooseFolder": "Klasör seç…",
 	"resetToDefault": "Varsayılana sıfırla",
@@ -742,7 +742,7 @@
 	"saveYourListAndContinueWatchingAnywhere": "Listeni kaydet, her yerden izlemeye devam et.",
 	"notSignedIn": "Oturum açık değil",
 	"haveTheApp": "Uygulamayı indirdin mi?",
-	"openZangetsuOnYourNphoneAndScan": "Telefonunda Zangetsu'yu aç ve tara",
+	"openAniAuraOnYourNphoneAndScan": "Telefonunda AniAura'yu aç ve tara",
 	"noApp": "Uygulama yok mu?",
 	"resetPassword": "Şifreyi sıfırla",
 	"youExampleCom": "sen@ornek.com",
@@ -761,7 +761,7 @@
 	"logOutAnyway": "Yine de çık",
 	"reconnect": "Yeniden bağlan",
 	"signInWithYourPhone": "Telefonunla oturum aç",
-	"onTheZangetsuAppOnYourPhoneOpenNPairATVAndEnterThisCodeOrScanTheQR": "Telefonundaki Zangetsu uygulamasında \"TV'yi eşle\" ekranını aç ve bu kodu gir — ya da QR kodunu tara.",
+	"onTheAniAuraAppOnYourPhoneOpenNPairATVAndEnterThisCodeOrScanTheQR": "Telefonundaki AniAura uygulamasında \"TV'yi eşle\" ekranını aç ve bu kodu gir — ya da QR kodunu tara.",
 	"signingIn": "Oturum açılıyor…",
 	"getANewCode": "Yeni kod al",
 	"sendTrackers": "İzleyicileri gönder",
@@ -769,7 +769,7 @@
 	"sendToTV": "TV'ye gönder",
 	"signInToYourAccountFirstNthenPairYourTV": "Önce hesabına oturum aç,\nsonra TV'ni eşle.",
 	"enterTheCodeFromYourTV": "TV'ndeki kodu gir",
-	"openZangetsuOnYourTVAndSignInWithYourPhoneToSeeIt": "TV'nde Zangetsu'yu aç ve görünmesi için telefonunla oturum aç.",
+	"openAniAuraOnYourTVAndSignInWithYourPhoneToSeeIt": "TV'nde AniAura'yu aç ve görünmesi için telefonunla oturum aç.",
 	"abcd2345": "ABCD 2345",
 	"thisTVWillSignIntoYourAccountYouCanSignItOutLater": "Bu TV hesabına oturum açacak. Daha sonra oturumu kapatabilirsin.",
 	"alsoSendYourTrackersAniListMyAnimeListSimkl": "İzleyicilerini de gönder (AniList, MyAnimeList, Simkl)",
@@ -782,7 +782,7 @@
 	"pickABackup": "Bir yedek seç",
 	"couldnTReadThatBackupFile": "Bu yedek dosyası okunamadı.",
 	"restoreComplete": "Geri yükleme tamamlandı",
-	"reopenZangetsuToSeeRestoredLibrarySources": "Geri yüklenen kitaplığı ve kaynakları görmek için Zangetsu'yu yeniden aç.",
+	"reopenAniAuraToSeeRestoredLibrarySources": "Geri yüklenen kitaplığı ve kaynakları görmek için AniAura'yu yeniden aç.",
 	"saveToAFile": "Bir dosyaya kaydet",
 	"saveABackupFileToYourDownloadsFolder": "Yedek dosyasını İndirilenler klasörüne kaydet",
 	"backUpToCloud": "Buluta yedekle",
@@ -852,7 +852,7 @@
 	"addNovelRepo": "Roman deposu ekle",
 	"removeRepository": "Depoyu kaldır",
 	"noSourcesInThisRepo": "Bu depoda kaynak yok.",
-	"zangetsuProviders": "Zangetsu sağlayıcıları",
+	"AniAuraProviders": "AniAura sağlayıcıları",
 	"addRepo": "Depo ekle",
 	"noProvidersInstalled": "Kurulu sağlayıcı yok.",
 	"noSourcesInThisRepoYet": "Bu depoda henüz kaynak yok.",
@@ -891,7 +891,7 @@
 	"resetToDefaults": "Varsayılanlara sıfırla",
 	"providerSettings": "Sağlayıcı ayarları",
 	"openThisSourceSOwnSettingsEGServerLanguage": "Bu kaynağın kendi ayarlarını aç (örn. sunucu, dil)",
-	"addZangetsuRepo": "Zangetsu deposu ekle",
+	"addAniAuraRepo": "AniAura deposu ekle",
 	"theProviderWillBeRemovedFromYourInstalledSources": "Sağlayıcı kurulu kaynakların arasından çıkarılacak.",
 	"addMihonRepo": "Mihon deposu ekle",
 	"noMihonReposAddedYetNTapAddMihonRepoToAddOne": "Henüz Mihon deposu eklenmedi.\nEklemek için \"Mihon deposu ekle\"ye dokun.",
@@ -1742,7 +1742,7 @@
 	"github": "GitHub",
 	"telegram": "Telegram",
 	"accentColourBlurb": "Düğmelerde, etiketlerde, ilerlemede ve seçili öğelerde kullanılan vurgu rengi.",
-	"appIconBlurb": "Ana ekranındaki simge. Simgeyi değiştirince Zangetsu kapanır — Android başlatıcı girdisini değiştirmeli.",
+	"appIconBlurb": "Ana ekranındaki simge. Simgeyi değiştirince AniAura kapanır — Android başlatıcı girdisini değiştirmeli.",
 	"useTheIcon": "{label} simgesi kullanılsın mı?",
 	"@useTheIcon": {
 		"placeholders": {
@@ -1751,7 +1751,7 @@
 			}
 		}
 	},
-	"useTheIconBody": "Android yeni simgeyi uygulayabilsin diye Zangetsu kapanacak. Sonra ana ekranından yeniden aç.\n\nZangetsu bir klasörde ya da uygulama çubuğundaysa yeniden eklemen gerekebilir.",
+	"useTheIconBody": "Android yeni simgeyi uygulayabilsin diye AniAura kapanacak. Sonra ana ekranından yeniden aç.\n\nAniAura bir klasörde ya da uygulama çubuğundaysa yeniden eklemen gerekebilir.",
 	"animRise": "Yüksel",
 	"animRiseDesc": "Yukarı kalkar ve belirir",
 	"animFade": "Belir",
@@ -1794,7 +1794,7 @@
 		}
 	},
 	"cloudBackupFailed": "Bulut yedeği başarısız. Çevrimiçi olduğunu denetle — hâlâ başarısızsa bulut yedeği deposu henüz kurulmamış olabilir.",
-	"savedToDownloadsZangetsu": "İndirilenler › Zangetsu'ya kaydedildi",
+	"savedToDownloadsAniAura": "İndirilenler › AniAura'ya kaydedildi",
 	"restoreFailed": "Geri yükleme başarısız: {error}",
 	"@restoreFailed": {
 		"placeholders": {
@@ -1804,7 +1804,7 @@
 		}
 	},
 	"noBackupFilesOnDevice": "Bu cihazda yedek dosyası bulunamadı. Önce bir tane kaydet ya da \"Buluttan geri yükle\"'yi kullan.",
-	"backupScreenBlurb": "Kaynaklarını, listeni ve ayarlarını kaydet — cihazındaki bir dosyaya ya da Zangetsu hesabına. Geri yükleme yalnızca geri ekler; elinde olanları asla silmez.",
+	"backupScreenBlurb": "Kaynaklarını, listeni ve ayarlarını kaydet — cihazındaki bir dosyaya ya da AniAura hesabına. Geri yükleme yalnızca geri ekler; elinde olanları asla silmez.",
 	"includeInTheBackup": "Yedeğe dahil et",
 	"sourcesAndRepos": "Kaynaklar ve depolar",
 	"installedSourcesAndRepoLinks": "Kurulu kaynaklar ve depo bağlantıları",
@@ -1849,7 +1849,7 @@
 	"betaUpdateAvailable": "Beta güncellemesi var",
 	"updateAvailable": "Güncelleme var",
 	"startingInstaller": "Kurulum sihirbazı başlatılıyor…",
-	"couldnTOpenInstaller": "Kurulum sihirbazı açılamadı. Sistem ayarlarında Zangetsu için \"Bilinmeyen uygulamaları yükle\"yi etkinleştir, sonra tekrar dene.",
+	"couldnTOpenInstaller": "Kurulum sihirbazı açılamadı. Sistem ayarlarında AniAura için \"Bilinmeyen uygulamaları yükle\"yi etkinleştir, sonra tekrar dene.",
 	"downloadFailedCheckConnection": "İndirme başarısız — bağlantını denetle ve tekrar dene.",
 	"libraryIsntSavedReconnect": "Kitaplığın henüz buluta kaydedilmedi, bu yüzden çıkınca bu cihazdan silinecek. Önce yedeklemek için yeniden bağlanılsın mı?",
 	"sessionExpiredEnterPassword": "Oturumun sona erdi. {account} hesabına yeniden bağlanıp kitaplığını eşitlemek için şifreni gir.",
@@ -1978,7 +1978,7 @@
 	"aniyomi": "Aniyomi",
 	"mihon": "Mihon",
 	"lnreader": "LNReader",
-	"zangetsu": "Zangetsu",
+	"AniAura": "AniAura",
 	"cloudStream": "CloudStream",
 	"installedCount": "{count} kurulu",
 	"@installedCount": {
@@ -3013,5 +3013,5 @@
 	"epubExportFailed": "EPUB kaydedilemedi",
 	"export": "Dışa aktar",
 	"keepDownloadsPrivate": "İndirilenleri gizli tut",
-	"keepDownloadsPrivateSubtitle": "Yeni video indirmeleri İndirilenler klasörü yerine Zangetsu içinde kalır. Zangetsu'yu kaldırdığında silinirler. Kitap bölümleri ve dışa aktarmalar etkilenmez."
+	"keepDownloadsPrivateSubtitle": "Yeni video indirmeleri İndirilenler klasörü yerine AniAura içinde kalır. AniAura'yu kaldırdığında silinirler. Kitap bölümleri ve dışa aktarmalar etkilenmez."
 }

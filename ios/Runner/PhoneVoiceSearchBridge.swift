@@ -37,7 +37,7 @@ final class PhoneVoiceSearchBridge {
     authorizationStatus: @escaping () -> SFSpeechRecognizerAuthorizationStatus = { SFSpeechRecognizer.authorizationStatus() },
     authorizeSpeech: @escaping (@escaping (SFSpeechRecognizerAuthorizationStatus) -> Void) -> Void = { SFSpeechRecognizer.requestAuthorization($0) }
   ) {
-    channel = FlutterMethodChannel(name: "zangetsu/phone_voice_search", binaryMessenger: messenger)
+    channel = FlutterMethodChannel(name: "AniAura/phone_voice_search", binaryMessenger: messenger)
     self.authorizationStatus = authorizationStatus
     self.authorizeSpeech = authorizeSpeech
     channel.setMethodCallHandler { [weak self] call, reply in

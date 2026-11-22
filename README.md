@@ -1,8 +1,8 @@
 <div align="center">
 
-<img width="100%" src="https://capsule-render.vercel.app/api?type=waving&color=0:FF4D57,100:1a1a2e&height=220&section=header&text=Zangetsu&fontSize=75&fontColor=ffffff&animation=fadeIn&fontAlignY=38&desc=Track.%20Search.%20Sync.%20Organize.&descAlignY=58&descSize=20" />
+<img width="100%" src="https://capsule-render.vercel.app/api?type=waving&color=0:FF4D57,100:1a1a2e&height=220&section=header&text=AniAura&fontSize=75&fontColor=ffffff&animation=fadeIn&fontAlignY=38&desc=Track.%20Search.%20Sync.%20Organize.&descAlignY=58&descSize=20" />
 
-<img src="assets/icon/app_icon.png" width="120" alt="Zangetsu" />
+<img src="assets/icon/app_icon.png" width="120" alt="AniAura" />
 
 ### A modern, open-source app for anime, movies, manga & light novels — on Android, TV and iOS
 
@@ -10,12 +10,12 @@
 
 <br/>
 
-[![Latest Release](https://img.shields.io/github/v/release/Spyou/Zangetsu?style=for-the-badge&label=Release&color=FF4D57&logo=github)](https://github.com/Spyou/Zangetsu/releases/latest)
-[![Downloads](https://img.shields.io/github/downloads/Spyou/Zangetsu/total?style=for-the-badge&color=FF4D57&logo=android&logoColor=white)](https://github.com/Spyou/Zangetsu/releases)
-[![Stars](https://img.shields.io/github/stars/Spyou/Zangetsu?style=for-the-badge&color=FF4D57&logo=github)](https://github.com/Spyou/Zangetsu/stargazers)
-[![Forks](https://img.shields.io/github/forks/Spyou/Zangetsu?style=for-the-badge&color=FF4D57&logo=github)](https://github.com/Spyou/Zangetsu/network/members)
-[![License](https://img.shields.io/github/license/Spyou/Zangetsu?style=for-the-badge&color=FF4D57)](LICENSE)
-[![Issues](https://img.shields.io/github/issues/Spyou/Zangetsu?style=for-the-badge&color=FF4D57&logo=github)](https://github.com/Spyou/Zangetsu/issues)
+[![Latest Release](https://img.shields.io/github/v/release/Spyou/AniAura?style=for-the-badge&label=Release&color=FF4D57&logo=github)](https://github.com/Spyou/AniAura/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/Spyou/AniAura/total?style=for-the-badge&color=FF4D57&logo=android&logoColor=white)](https://github.com/Spyou/AniAura/releases)
+[![Stars](https://img.shields.io/github/stars/Spyou/AniAura?style=for-the-badge&color=FF4D57&logo=github)](https://github.com/Spyou/AniAura/stargazers)
+[![Forks](https://img.shields.io/github/forks/Spyou/AniAura?style=for-the-badge&color=FF4D57&logo=github)](https://github.com/Spyou/AniAura/network/members)
+[![License](https://img.shields.io/github/license/Spyou/AniAura?style=for-the-badge&color=FF4D57)](LICENSE)
+[![Issues](https://img.shields.io/github/issues/Spyou/AniAura?style=for-the-badge&color=FF4D57&logo=github)](https://github.com/Spyou/AniAura/issues)
 
 <br/>
 
@@ -28,8 +28,8 @@
 
 <br/>
 
-<a href="https://github.com/Spyou/Zangetsu/releases/latest">
-  <img src="https://img.shields.io/badge/⬇️_DOWNLOAD_ZANGETSU-FF4D57?style=for-the-badge&logo=android&logoColor=white&labelColor=1a1a2e" alt="Download Zangetsu" height="42"/>
+<a href="https://github.com/Spyou/AniAura/releases/latest">
+  <img src="https://img.shields.io/badge/⬇️_DOWNLOAD_ZANGETSU-FF4D57?style=for-the-badge&logo=android&logoColor=white&labelColor=1a1a2e" alt="Download AniAura" height="42"/>
 </a>
 &nbsp;
 <a href="https://discord.gg/hey6vz9kg6">
@@ -54,7 +54,7 @@
 
 ## 🎬 Overview
 
-Zangetsu is a modern, open-source app for keeping anime, movies, series, manga and light novels in one place.
+AniAura is a modern, open-source app for keeping anime, movies, series, manga and light novels in one place.
 
 It has three modes — **Streaming**, **Manga** and **Novel** — each with its own sources and its own reader or player, plus a full **Android TV** interface built for a remote rather than a touchscreen.
 
@@ -104,21 +104,21 @@ It focuses on **discovery**, **tracking**, **syncing**, and **personal library m
 
 ## ⬇️ Download
 
-Get the latest version from the **[GitHub Releases](https://github.com/Spyou/Zangetsu/releases/latest)** page.
+Get the latest version from the **[GitHub Releases](https://github.com/Spyou/AniAura/releases/latest)** page.
 
 <div align="center">
 
 | APK | Recommended for |
 |---|---|
-| 🟢 `Zangetsu-vX.Y.Z-arm64-v8a.apk` | Modern 64-bit Android devices — **Recommended** |
-| 🟡 `Zangetsu-vX.Y.Z-armeabi-v7a.apk` | Older 32-bit Android devices |
-| 🔵 `Zangetsu-vX.Y.Z-universal.apk` | Not sure which one to use? Works on everything, but larger |
-| 📺 `Zangetsu-vX.Y.Z-tv.apk` | Android TV devices |
+| 🟢 `AniAura-vX.Y.Z-arm64-v8a.apk` | Modern 64-bit Android devices — **Recommended** |
+| 🟡 `AniAura-vX.Y.Z-armeabi-v7a.apk` | Older 32-bit Android devices |
+| 🔵 `AniAura-vX.Y.Z-universal.apk` | Not sure which one to use? Works on everything, but larger |
+| 📺 `AniAura-vX.Y.Z-tv.apk` | Android TV devices |
 
 </div>
 
 > [!TIP]
-> Zangetsu checks GitHub Releases for new versions and can update itself directly from
+> AniAura checks GitHub Releases for new versions and can update itself directly from
 > **`Settings → Check for updates`**
 
 ---
@@ -137,7 +137,7 @@ Get the latest version from the **[GitHub Releases](https://github.com/Spyou/Zan
 </div>
 
 > On iOS, CloudStream, Aniyomi and Mihon extensions can't be loaded — iOS
-> doesn't allow that kind of plugin. Zangetsu's own JavaScript sources, the
+> doesn't allow that kind of plugin. AniAura's own JavaScript sources, the
 > player, downloads and trackers all work.
 
 - [x] Android release
@@ -161,9 +161,9 @@ Get the latest version from the **[GitHub Releases](https://github.com/Spyou/Zan
 ## ❓ FAQ
 
 <details>
-<summary><b>Does Zangetsu host or stream any content?</b></summary>
+<summary><b>Does AniAura host or stream any content?</b></summary>
 <br/>
-No. Zangetsu is a tracking and management tool only — it does not host, provide, distribute, or maintain streaming content or extensions.
+No. AniAura is a tracking and management tool only — it does not host, provide, distribute, or maintain streaming content or extensions.
 </details>
 
 <details>
@@ -173,15 +173,15 @@ Use <code>arm64-v8a</code> on modern phones. If you're unsure or hit compatibili
 </details>
 
 <details>
-<summary><b>Is Zangetsu free?</b></summary>
+<summary><b>Is AniAura free?</b></summary>
 <br/>
-Yes — Zangetsu is fully open source under the GPL-3.0 license.
+Yes — AniAura is fully open source under the GPL-3.0 license.
 </details>
 
 <details>
 <summary><b>How do I get support or report a bug?</b></summary>
 <br/>
-Join the <a href="https://discord.gg/hey6vz9kg6">Discord server</a> or open an <a href="https://github.com/Spyou/Zangetsu/issues">issue on GitHub</a>.
+Join the <a href="https://discord.gg/hey6vz9kg6">Discord server</a> or open an <a href="https://github.com/Spyou/AniAura/issues">issue on GitHub</a>.
 </details>
 
 ---
@@ -189,11 +189,11 @@ Join the <a href="https://discord.gg/hey6vz9kg6">Discord server</a> or open an <
 ## ⚠️ Disclaimer
 
 > [!IMPORTANT]
-> **Zangetsu is a tracking and management tool only.** It does not host, provide, distribute, or maintain streaming content or extensions.
+> **AniAura is a tracking and management tool only.** It does not host, provide, distribute, or maintain streaming content or extensions.
 
 - **User Responsibility** — Users are solely responsible for how they use the app and any third-party services or extensions they choose to interact with, and must comply with all applicable laws, copyright, and intellectual property rights.
-- **No Liability** — The developer of Zangetsu disclaims all liability for misuse, legal issues, or violations arising from user actions. Legal concerns related to third-party services or extensions must be directed to their creators, not Zangetsu.
-- **Services** — Zangetsu integrates only with official APIs of supported services. Third-party extensions are the responsibility of their creators, not the Zangetsu developer.
+- **No Liability** — The developer of AniAura disclaims all liability for misuse, legal issues, or violations arising from user actions. Legal concerns related to third-party services or extensions must be directed to their creators, not AniAura.
+- **Services** — AniAura integrates only with official APIs of supported services. Third-party extensions are the responsibility of their creators, not the AniAura developer.
 
 ---
 
@@ -204,10 +204,10 @@ Join the <a href="https://discord.gg/hey6vz9kg6">Discord server</a> or open an <
 <a href="https://discord.gg/hey6vz9kg6">
   <img src="https://img.shields.io/badge/Discord-Join%20the%20Server-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"/>
 </a>
-<a href="https://www.reddit.com/r/ZangetsuOfficial/s/JgDHfIOlIT">
+<a href="https://www.reddit.com/r/AniAuraOfficial/s/JgDHfIOlIT">
   <img src="https://img.shields.io/badge/Reddit-Join%20the%20Community-FF4500?style=for-the-badge&logo=reddit&logoColor=white" alt="Reddit"/>
 </a>
-<a href="https://t.me/ZangetsuStream">
+<a href="https://t.me/AniAuraStream">
   <img src="https://img.shields.io/badge/Telegram-Join%20the%20Channel-26A5E4?style=for-the-badge&logo=telegram&logoColor=white" alt="Telegram"/>
 </a>
 
@@ -220,7 +220,7 @@ Join the <a href="https://discord.gg/hey6vz9kg6">Discord server</a> or open an <
 <div align="center">
 
 <a href="https://count.getloli.com/">
-  <img src="https://count.getloli.com/@Zangetsu?name=zangetsu&theme=rule34&padding=8&offset=0&align=top&scale=1&pixelated=1&darkmode=auto" alt="Visitor count"/>
+  <img src="https://count.getloli.com/@AniAura?name=AniAura&theme=rule34&padding=8&offset=0&align=top&scale=1&pixelated=1&darkmode=auto" alt="Visitor count"/>
 </a>
 
 </div>
@@ -229,18 +229,18 @@ Join the <a href="https://discord.gg/hey6vz9kg6">Discord server</a> or open an <
 
 ## 🙏 Acknowledgments
 
-A heartfelt thank you to everyone who has contributed to the development of Zangetsu. Your time, effort, feedback, and support help keep the project moving forward.
+A heartfelt thank you to everyone who has contributed to the development of AniAura. Your time, effort, feedback, and support help keep the project moving forward.
 
 <div align="center">
 
-<a href="https://github.com/Spyou/Zangetsu/graphs/contributors">
-  <img alt="GitHub contributors" src="https://img.shields.io/github/contributors/Spyou/Zangetsu?style=for-the-badge&label=Contributors&labelColor=1a1a2e&color=FF4D57" />
+<a href="https://github.com/Spyou/AniAura/graphs/contributors">
+  <img alt="GitHub contributors" src="https://img.shields.io/github/contributors/Spyou/AniAura?style=for-the-badge&label=Contributors&labelColor=1a1a2e&color=FF4D57" />
 </a>
 
 <br/><br/>
 
-<a href="https://github.com/Spyou/Zangetsu/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=Spyou/Zangetsu" alt="Contributors"/>
+<a href="https://github.com/Spyou/AniAura/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=Spyou/AniAura" alt="Contributors"/>
 </a>
 
 </div>
@@ -251,24 +251,24 @@ A heartfelt thank you to everyone who has contributed to the development of Zang
 
 Copyright © 2026 **Krishna Vishwakarma**
 
-Zangetsu is licensed under the **[GNU GPL-3.0](LICENSE)**. See the included license file for the complete terms.
+AniAura is licensed under the **[GNU GPL-3.0](LICENSE)**. See the included license file for the complete terms.
 
 <div align="center">
 
 <br/>
 
-<img src="assets/icon/app_icon.png" width="70" alt="Zangetsu"/>
+<img src="assets/icon/app_icon.png" width="70" alt="AniAura"/>
 
-### Zangetsu
+### AniAura
 *Made with ❤️ for anime, movie & manga fans.*
 
 <br/>
 
-[⭐ Star the repository](https://github.com/Spyou/Zangetsu)
+[⭐ Star the repository](https://github.com/Spyou/AniAura)
 &nbsp;&nbsp;•&nbsp;&nbsp;
-[⬇️ Download](https://github.com/Spyou/Zangetsu/releases/latest)
+[⬇️ Download](https://github.com/Spyou/AniAura/releases/latest)
 &nbsp;&nbsp;•&nbsp;&nbsp;
-[🐛 Report an issue](https://github.com/Spyou/Zangetsu/issues)
+[🐛 Report an issue](https://github.com/Spyou/AniAura/issues)
 
 <br/>
 

@@ -12,7 +12,7 @@ def refresh(source, stage):
     with stage.cursor() as cursor:
         cursor.execute("select current_database()")
         database = cursor.fetchone()[0]
-    if database != "zangetsu_sync_stage":
+    if database != "AniAura_sync_stage":
         raise ValueError("snapshot refresh is only allowed on the unpublished stage")
 
     source.set_session(isolation_level="REPEATABLE READ", readonly=True)
@@ -25,7 +25,7 @@ def refresh(source, stage):
 
         with stage:
             with stage.cursor() as cursor:
-                cursor.execute("set local zangetsu.bridge_replay = 'on'")
+                cursor.execute("set local AniAura.bridge_replay = 'on'")
                 for table in ("history", "profile_history"):
                     cursor.execute(f"delete from sync_api.{table}")
                     for start in range(0, len(snapshots[table]), 500):

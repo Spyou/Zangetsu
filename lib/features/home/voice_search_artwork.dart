@@ -5,7 +5,7 @@ class VoiceSearchArtwork {
 
   static const urls = [
     'https://media.tenor.com/EjowFmPUajMAAAAj/death-note-l-lawliet.gif',
-    'https://avatars.zangetsu.online/voice-search/zoro-hearing-bf88c2298404.gif',
+    'https://avatars.AniAura.online/voice-search/zoro-hearing-bf88c2298404.gif',
   ];
 
   final Random _random;

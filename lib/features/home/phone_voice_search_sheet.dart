@@ -38,7 +38,7 @@ class _PhoneVoiceSearchSheet extends StatefulWidget {
 
 class _PhoneVoiceSearchSheetState extends State<_PhoneVoiceSearchSheet>
     with WidgetsBindingObserver {
-  static const _channel = MethodChannel('zangetsu/phone_voice_search');
+  static const _channel = MethodChannel('AniAura/phone_voice_search');
   static int _nextSession = 0;
   static _PhoneVoiceSearchSheetState? _handlerOwner;
   int _session = 0;

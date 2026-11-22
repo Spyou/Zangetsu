@@ -352,7 +352,7 @@ void main() {
     // 'app_flags' Hive box, and SettingsScreen (also rendered via the shared
     // shell pages) reads the accent colour from 'theme_prefs'. Init Hive +
     // mark the sheet seen so those paths no-op / read safe defaults.
-    Hive.init('/tmp/zangetsu_root_shell_tv_test_hive');
+    Hive.init('/tmp/AniAura_root_shell_tv_test_hive');
     final flags = await Hive.openBox('app_flags');
     await flags.put('communitySheetSeen', true);
     await Hive.openBox(ThemeController.boxName);

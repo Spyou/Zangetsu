@@ -17,7 +17,7 @@ class NativePlayerCacheScreen extends StatefulWidget {
 }
 
 class _NativePlayerCacheScreenState extends State<NativePlayerCacheScreen> {
-  static const _channel = MethodChannel('zangetsu/phone_player');
+  static const _channel = MethodChannel('AniAura/phone_player');
   PlaybackPrefs get _prefs => sl<PlaybackPrefs>();
   late double _nativeMb = _prefs.phoneNativeCacheMb.toDouble();
   late double _diskGb = _prefs.phoneDiskCacheGb.toDouble();

@@ -14,7 +14,7 @@
  * limitations under the License.
  *
  * Adapted from the Mihon project (https://github.com/mihonapp/mihon)
- * for host-side extension loading in the Zangetsu app.
+ * for host-side extension loading in the AniAura app.
  */
 package com.spyou.watch_app.mihon
 

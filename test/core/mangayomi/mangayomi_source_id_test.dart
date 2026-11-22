@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:watch_app/core/mangayomi/mangayomi_source_id.dart';
 import 'package:watch_app/core/mode/content_mode.dart';
-import 'package:zangetsu_source_bridge/zangetsu_source_bridge.dart';
+import 'package:AniAura_source_bridge/AniAura_source_bridge.dart';
 
 void main() {
   test(

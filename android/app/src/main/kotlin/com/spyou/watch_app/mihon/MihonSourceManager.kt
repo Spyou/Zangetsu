@@ -12,7 +12,7 @@
  * limitations under the License.
  *
  * Adapted from the Mihon project (https://github.com/mihonapp/mihon)
- * for host-side source management in the Zangetsu app.
+ * for host-side source management in the AniAura app.
  */
 package com.spyou.watch_app.mihon
 

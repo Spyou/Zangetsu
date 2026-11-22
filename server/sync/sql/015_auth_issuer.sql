@@ -10,7 +10,7 @@ declare
 begin
   if coalesce(claims->>'iss', '') not in (
     'https://eogwzrlfoercfwcfwlmv.supabase.co/auth/v1',
-    'https://sb.zangetsu.online/auth/v1'
+    'https://sb.AniAura.online/auth/v1'
   ) or coalesce(claims->>'role', '') <> 'authenticated'
     or claims->>'is_anonymous' = 'true' then
     raise sqlstate 'PT401' using message = 'Invalid sign-in token';

@@ -57,7 +57,7 @@ import '../mihon/mihon_filter_sheet.dart';
 import '../auth/auth_screens.dart';
 import '../detail/detail_screen.dart';
 import '../player/player_screen.dart';
-import '../sources/zangetsu_sources_screen.dart';
+import '../sources/AniAura_sources_screen.dart';
 import 'search_screen_tv.dart';
 import 'see_all_screen.dart';
 import '../search/bloc/search_bloc.dart';
@@ -276,7 +276,7 @@ class _SearchViewState extends State<_SearchView>
   late final TextEditingController _controller;
   final _focusNode = FocusNode();
 
-  static const _voiceChannel = MethodChannel('zangetsu/phone_voice_search');
+  static const _voiceChannel = MethodChannel('AniAura/phone_voice_search');
   static final _voiceArtwork = VoiceSearchArtwork();
 
   /// Hidden until Android reports a recogniser, so non-Android and boxes
@@ -1661,7 +1661,7 @@ class _SearchViewState extends State<_SearchView>
     );
   }
 
-  // ── Ecosystem tabs (All · Zangetsu · CloudStream · Aniyomi) ────────────────
+  // ── Ecosystem tabs (All · AniAura · CloudStream · Aniyomi) ────────────────
   /// Real [TabBar]/[TabController] pair — same treatment as the History
   /// screen's tabs (`history_screen.dart:321`): sliding rounded accent
   /// underline + label-colour crossfade instead of a static border, so
@@ -3581,7 +3581,7 @@ class _SearchFilterSheet extends StatelessWidget {
   /// switches/"turn all on/off" behaviour as before, just moved off the main
   /// sheet. [filterSheetContext] is the MAIN sheet's context, kept so the
   /// empty-state's install CTA can close both sheets and push
-  /// [ZangetsuSourcesScreen], same as it always has.
+  /// [AniAuraSourcesScreen], same as it always has.
   void _openSourcesSheet(
     BuildContext filterSheetContext,
     List<
@@ -3639,7 +3639,7 @@ class _SearchFilterSheet extends StatelessWidget {
                             Navigator.of(filterSheetContext).pop();
                             Navigator.of(filterSheetContext).push(
                               MaterialPageRoute<void>(
-                                builder: (_) => const ZangetsuSourcesScreen(
+                                builder: (_) => const AniAuraSourcesScreen(
                                   openToRepos: true,
                                 ),
                               ),

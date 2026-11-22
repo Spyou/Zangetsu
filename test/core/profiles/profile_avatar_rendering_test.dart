@@ -118,7 +118,7 @@ class _KlipyAvatarUrlService extends KlipyGifService {
   _KlipyAvatarUrlService()
     : super(
         Dio(),
-        baseUrl: 'https://sync.zangetsu.online/klipy/v1',
+        baseUrl: 'https://sync.AniAura.online/klipy/v1',
         accessToken: () => 'test-access-token',
       );
 

@@ -12,7 +12,7 @@ import 'subscription_store.dart';
 class CsNotify {
   CsNotify._();
 
-  static const MethodChannel _ch = MethodChannel('zangetsu/cloudstream');
+  static const MethodChannel _ch = MethodChannel('AniAura/cloudstream');
 
   /// Push the current CS subscriptions to native (merged there so the worker's
   /// advanced counts survive) and (re)schedule / cancel the periodic worker.

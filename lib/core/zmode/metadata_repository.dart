@@ -32,7 +32,7 @@ import 'tmdb_catalogue.dart';
 import 'zmode_ids.dart';
 import 'zmode_source_prefs.dart';
 
-/// The Zangetsu Mode catalogue: browsing and episode lists come from
+/// The AniAura Mode catalogue: browsing and episode lists come from
 /// AniList/TMDB; playback sweeps installed sources at play time via
 /// [PlaybackResolver].
 class MetadataRepository implements CatalogueRepository {
@@ -862,7 +862,7 @@ class MetadataRepository implements CatalogueRepository {
     // options to offer and Settings › Default audio was checked against a list
     // that only ever contained 'sub' and therefore always lost.
     //
-    // [category] matters for the same reason. Zangetsu JS and CloudStream
+    // [category] matters for the same reason. AniAura JS and CloudStream
     // sources both key the episode list on it and quietly answer with the sub
     // list when it is missing — which is exactly why Dub never played, since
     // this argument was never sent. Aniyomi ignores it; it has no such split.

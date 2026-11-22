@@ -9,7 +9,7 @@ import 'package:http/testing.dart';
 import 'package:watch_app/core/stremio/stremio_link_session.dart';
 import 'package:watch_app/core/stremio/stremio_manager.dart';
 import 'package:watch_app/core/stremio/stremio_ref.dart';
-import 'package:zangetsu_source_bridge/stremio.dart';
+import 'package:AniAura_source_bridge/stremio.dart';
 
 const _manifest = {
   'id': 'org.test.addon',

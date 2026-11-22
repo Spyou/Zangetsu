@@ -10,7 +10,7 @@ import '../provider/base_provider.dart';
 import 'stremio_manager.dart';
 import 'stremio_ref.dart';
 import 'stremio_stream_mapping.dart';
-import 'package:zangetsu_source_bridge/stremio.dart';
+import 'package:AniAura_source_bridge/stremio.dart';
 
 /// Retains only catalogues that failed, while accepting genuinely empty results.
 List<HomeSection> retainFailedStremioRows(

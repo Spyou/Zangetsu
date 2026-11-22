@@ -19,7 +19,7 @@ import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 
 /**
- * Owns the `zangetsu/phone_player` channel and starts [PhonePlayerActivity].
+ * Owns the `AniAura/phone_player` channel and starts [PhonePlayerActivity].
  *
  * A separate object so MainActivity carries none of this: registering the
  * channel and releasing it are the only two lines it gains.
@@ -27,7 +27,7 @@ import io.flutter.plugin.common.MethodChannel
 @UnstableApi
 object PhonePlayerBridge {
     private const val TAG = "PhonePlayerBridge"
-    private const val CHANNEL = "zangetsu/phone_player"
+    private const val CHANNEL = "AniAura/phone_player"
 
     /** The live channel, used by the Activity for native→Dart calls. */
     @JvmStatic
@@ -68,7 +68,7 @@ object PhonePlayerBridge {
                     } catch (_: Exception) {
                         activity.runOnUiThread { result.error("cache_unavailable", "Playback cache is unavailable", null) }
                     }
-                }, "ZangetsuCacheInfo").start()
+                }, "AniAuraCacheInfo").start()
                 // Dart-side enrichment (e.g. the show synopsis) arriving after
                 // launch. Session-checked: a stale Dart session's late result
                 // must not paint over the live player's screen.

@@ -155,10 +155,10 @@ class _JsHost {
   // one the CloudStream side uses) over a MethodChannel and cache the solved
   // clearance cookie + matching User-Agent per host. Android-only; on platforms
   // without the handler the invoke throws and we fall back to a plain request.
-  static const MethodChannel _cf = MethodChannel('zangetsu/cloudstream');
+  static const MethodChannel _cf = MethodChannel('AniAura/cloudstream');
 
   /// The novel path's OkHttp lane — see [_retryOverNative].
-  static const MethodChannel _novelHttp = MethodChannel('zangetsu/novel_http');
+  static const MethodChannel _novelHttp = MethodChannel('AniAura/novel_http');
   final Map<String, String> _cfCookie = {}; // host -> cf_clearance cookie(s)
   final Map<String, String> _cfUa = {}; // host -> the solving User-Agent
   // Persists solved clearances across restarts so a JS source cleared once
@@ -495,7 +495,7 @@ class _JsHost {
       final wantCf = payload['browser'] == true || payload['cf'] == true;
       final host = Uri.parse(url).host;
       final hdr = headers.map((k, v) => MapEntry(k, v.toString()));
-      // OWNER-DISABLED 2026-10-03: Zangetsu-provider Cloudflare handling is
+      // OWNER-DISABLED 2026-10-03: AniAura-provider Cloudflare handling is
       // off (owner request). The lines below used to attach a cached
       // clearance, retry protocol blocks over the native lane, and solve +
       // replay real challenges. With them off, a challenged host's raw
@@ -1106,8 +1106,8 @@ class JsProvider implements BaseProvider, ReadingProvider {
     );
     final map = jsonDecode(raw) as Map<String, dynamic>;
     // Sozo Read manga/novel detail payloads carry the chapter list under
-    // `chapters`; Zangetsu's MediaDetail reads `episodes` (Task E4 compat
-    // alias). Only fills in when `episodes` is absent, so a Zangetsu-shaped
+    // `chapters`; AniAura's MediaDetail reads `episodes` (Task E4 compat
+    // alias). Only fills in when `episodes` is absent, so a AniAura-shaped
     // payload's own `episodes` key always wins.
     if (!map.containsKey('episodes') && map.containsKey('chapters')) {
       map['episodes'] = map['chapters'];

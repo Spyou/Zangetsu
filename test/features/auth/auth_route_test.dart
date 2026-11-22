@@ -34,7 +34,7 @@ void main() {
     client: MockClient((request) async {
       expect(request.followRedirects, isFalse);
       expect(request.headers.containsKey('authorization'), isFalse);
-      expect(request.url.host, 'sync.zangetsu.online');
+      expect(request.url.host, 'sync.AniAura.online');
       return http.Response(
         data == null ? '' : jsonEncode(data),
         data == null ? 404 : 200,
@@ -51,7 +51,7 @@ void main() {
 
   test('selects and caches VPS endpoint and public key together', () async {
     final decision = await resolver(manifest()).resolve();
-    expect(decision.route.url, 'https://sb.zangetsu.online');
+    expect(decision.route.url, 'https://sb.AniAura.online');
     expect(decision.route.anonKey, anonKey());
     expect(decision.changed, isTrue);
     expect(prefs.getString(AuthRouteResolver.cacheKey), isNotNull);

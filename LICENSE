@@ -622,41 +622,41 @@ copy of the Program in return for a fee.
 
       ADDITIONAL TERMS UNDER GPLv3 SECTION 7 — SPECIFIC TO ZANGETSU
 
-The following additional terms apply to Zangetsu, as permitted under
+The following additional terms apply to AniAura, as permitted under
 GPLv3 Section 7. These terms supplement, and do not replace, the GNU
 General Public License v3 above.
 
   A. Trademark and Name Restriction (Section 7(e))
 
-  This License does not grant any right to use the name "Zangetsu",
+  This License does not grant any right to use the name "AniAura",
 its associated logo, icon, or branding, in connection with any
 modified or unmodified version of the Program, except as required for
 reasonable and factual attribution of the Program's origin. In
 particular, a modified version may not be distributed, published, or
-advertised under the name "Zangetsu" or any confusingly similar name
+advertised under the name "AniAura" or any confusingly similar name
 without the prior written permission of the copyright holder.
 
   B. No Misrepresentation of Origin (Section 7(c))
 
   You may not represent a modified version of the Program as being the
-official Zangetsu project, or as being endorsed, certified, or
+official AniAura project, or as being endorsed, certified, or
 supported by its original author(s), unless you have received their
 express permission to do so. Any modified version you convey must be
 marked in a reasonably prominent way (e.g., in the app name, splash
 screen, "About" section, or repository README) as a modified,
-unofficial, or forked version, distinct from the original Zangetsu.
+unofficial, or forked version, distinct from the original AniAura.
 
   C. Attribution Preservation (Section 7(b))
 
   Any copy or modified version of the Program that you convey must
-retain a clearly visible statement crediting the original Zangetsu
+retain a clearly visible statement crediting the original AniAura
 project and its author(s), including a link to the original source
 repository, in at least one of: the application's "About" or
 "Credits" screen, the repository's README, or the NOTICE file.
 
   D. Publicity Limitation (Section 7(d))
 
-  You may not use the name of the original author(s) of Zangetsu to
+  You may not use the name of the original author(s) of AniAura to
 endorse or promote products or services derived from the Program
 without their prior written consent.
 
@@ -665,7 +665,7 @@ without their prior written consent.
   If you convey the Program, or a modified version of it, under terms
 that contractually impose liability on recipients toward you (for
 example, a paid support agreement, warranty, or SLA you offer), you
-agree to indemnify the original author(s) of Zangetsu for any
+agree to indemnify the original author(s) of AniAura for any
 liability those contractual assumptions impose on them, to the extent
 such liability arises from your added terms rather than from the
 Program itself.
@@ -675,9 +675,9 @@ GNU General Public License v3 terms above. If any additional term
 above is held unenforceable, the remaining additional terms and the
 underlying GPLv3 license remain in full effect.
 
-                  How to Apply This License to Zangetsu
+                  How to Apply This License to AniAura
 
-    Zangetsu
+    AniAura
     Copyright (C) 2026  Spyou
 
     This program is free software: you can redistribute it and/or modify

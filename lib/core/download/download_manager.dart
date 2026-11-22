@@ -59,7 +59,7 @@ class DownloadManager extends ChangeNotifier {
   final Map<String, TorrentDownloadProgress> torrentProgress = {};
 
   static const String boxName = 'downloads';
-  static const String _sharedDir = 'Zangetsu';
+  static const String _sharedDir = 'AniAura';
 
   /// When a source clearly supplies both cuts, keep only the selected one.
   /// Single-cut and unlabelled lists stay untouched; language tracks on a
@@ -857,7 +857,7 @@ class DownloadManager extends ChangeNotifier {
 
   /// Native TS→MP4 remux channel (Android only). See MainActivity + TsRemuxer.
   static const MethodChannel _downloadChannel = MethodChannel(
-    'zangetsu/download',
+    'AniAura/download',
   );
 
   /// Remux the concatenated-TS file at [input] into a real MP4 at [output] via
@@ -1449,7 +1449,7 @@ class DownloadManager extends ChangeNotifier {
     }
     // Delete the actual media file on disk. Two cases:
     //  • SAF custom folder → a content:// URI, removed via UriUtils.
-    //  • Default download (public Download/Zangetsu) → a plain file path the
+    //  • Default download (public Download/AniAura) → a plain file path the
     //    app owns. Previously ONLY the content:// case was handled, so default
     //    downloads left the file on disk (the "still in the folder" bug). Delete
     //    it directly; if scoped storage blocks the raw delete, fall back to the
@@ -1766,7 +1766,7 @@ class DownloadManager extends ChangeNotifier {
 
   /// Delete a downloaded media file. Two cases:
   ///  • SAF custom folder → a content:// URI, removed via UriUtils.
-  ///  • Default download (public Download/Zangetsu) → a plain file path the
+  ///  • Default download (public Download/AniAura) → a plain file path the
   ///    app owns. Previously ONLY the content:// case was handled, so default
   ///    downloads left the file on disk (the "still in the folder" bug). Delete
   ///    it directly; if scoped storage blocks the raw delete, fall back to the

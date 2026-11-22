@@ -86,7 +86,7 @@ class _SourcePriorityScreenState extends State<SourcePriorityScreen> {
   /// picker and the "where to watch" list show.
   ///
   /// The bare display name is not enough to order a list by: "AniKoto" (a
-  /// Zangetsu provider) and "Anikage" (a CloudStream plugin) read as the same
+  /// AniAura provider) and "Anikage" (a CloudStream plugin) read as the same
   /// word, and several repos ship a source of the same name — so you cannot
   /// tell which one you are moving. Built once; [categorizedSources] walks
   /// every installed manager and is not something to do per row.

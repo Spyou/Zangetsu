@@ -26,7 +26,7 @@ import android.content.SharedPreferences
  * Aniyomi extensions resolve this type via `Injekt.get<SourcePreferences>()` when
  * they need a preferences store scoped to their source. The underlying
  * [SharedPreferences] is the same store used by the host for all Aniyomi state
- * (`"zangetsu_aniyomi"`); individual source keys are namespaced by source id in
+ * (`"AniAura_aniyomi"`); individual source keys are namespaced by source id in
  * the extension itself (via [eu.kanade.tachiyomi.animesource.utils.preferencesKey]).
  */
 class SourcePreferences(val sharedPreferences: SharedPreferences)

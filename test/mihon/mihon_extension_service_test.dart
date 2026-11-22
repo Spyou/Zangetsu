@@ -10,14 +10,14 @@ import 'package:watch_app/core/mihon/mihon_extension_service.dart';
 /// listing method either — that lives one layer up, on the provider). What
 /// this file guards is the 6 methods this service DOES call: their exact
 /// string names and the exact argument keys sent, against a mock
-/// `zangetsu/mihon` channel. A typo'd method name here would compile fine and
+/// `AniAura/mihon` channel. A typo'd method name here would compile fine and
 /// fail only at runtime on-device — exactly the class of bug the spec warns
 /// about — so every assertion below checks the real `MethodCall.method` and
 /// `MethodCall.arguments`, not just "did not throw".
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  const channel = MethodChannel('zangetsu/mihon');
+  const channel = MethodChannel('AniAura/mihon');
   final log = <MethodCall>[];
 
   void install(Future<dynamic> Function(MethodCall call) handler) {

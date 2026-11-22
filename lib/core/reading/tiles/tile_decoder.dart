@@ -84,7 +84,7 @@ abstract class TileSource {
   void release(String path);
 }
 
-/// Decodes tiles via the native `zangetsu/tiles` MethodChannel
+/// Decodes tiles via the native `AniAura/tiles` MethodChannel
 /// (`BitmapRegionDecoder`, API 10+).
 ///
 /// A MethodChannel call is already asynchronous and the Kotlin side does the
@@ -93,7 +93,7 @@ abstract class TileSource {
 /// out also removes the isolate startup/teardown race this file used to
 /// guard against.
 class TileDecoder implements TileSource {
-  static const _channel = MethodChannel('zangetsu/tiles');
+  static const _channel = MethodChannel('AniAura/tiles');
 
   /// The channel only exists on Android — iOS never registers it, so a call
   /// there would just throw [MissingPluginException]. Checked as a plain

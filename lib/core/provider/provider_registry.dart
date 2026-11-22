@@ -68,7 +68,7 @@ class ProviderRegistryEntry {
   /// Absolute logo URL, snapshotted at install time for the same reason as
   /// [displayName] — the picker must not re-read a repo manifest per row.
   ///
-  /// Empty when the manifest declares no `logo`, which is every Zangetsu source
+  /// Empty when the manifest declares no `logo`, which is every AniAura source
   /// today: the field has existed on [RepoSource] all along and simply had no
   /// caller, so the app had no way to show an icon for its own sources while
   /// Aniyomi, Mihon and CloudStream all did. Empty keeps the letter tile.

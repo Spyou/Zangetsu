@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:zangetsu_source_bridge/stremio.dart';
+import 'package:AniAura_source_bridge/stremio.dart';
 
 import '../../core/stremio/stremio_manager.dart';
 import '../../core/stremio/stremio_provider.dart';

@@ -19,7 +19,7 @@ begin
 end;
 $$;
 
-select set_config('zangetsu.bridge_replay', 'on', true);
+select set_config('AniAura.bridge_replay', 'on', true);
 insert into public.profile_mylist
   (user_key, profile_id, source_id, item_id)
 values ('source-library-test', 'viewer', 'source', 'item');

@@ -17,7 +17,7 @@ import io.flutter.plugin.common.MethodChannel
 
 /** Phone-only recognition; TV keeps its system speech dialog. */
 class PhoneVoiceSearchBridge(private val activity: Activity, messenger: BinaryMessenger) {
-    private val channel = MethodChannel(messenger, "zangetsu/phone_voice_search")
+    private val channel = MethodChannel(messenger, "AniAura/phone_voice_search")
     private val handler = Handler(Looper.getMainLooper())
     private class Session(val id: Int, val result: MethodChannel.Result) {
         var recognizer: SpeechRecognizer? = null

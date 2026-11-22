@@ -118,7 +118,7 @@
 	"settingsSectionAdvancedSummary": "DNS, privasi, log",
 	"settingsSectionAboutSummary": "Pembaruan, dukungan, versi",
 	"couldNotExportLogs": "Tidak dapat mengekspor log",
-	"logsShareSubject": "Log Zangetsu",
+	"logsShareSubject": "Log AniAura",
 	"signInSubtitle": "Sinkronkan daftar, riwayat & melanjutkan menonton",
 	"signInSubtitleTv": "Sinkronkan daftar & melanjutkan menonton",
 	"connections": "Koneksi",
@@ -375,12 +375,12 @@
 			}
 		}
 	},
-	"bootErrorTitle": "Zangetsu tidak selesai memulai",
+	"bootErrorTitle": "AniAura tidak selesai memulai",
 	"bootErrorBody": "Ada sesuatu yang tersimpan di perangkat ini yang membuatnya tidak bisa terbuka. Tidak ada yang hilang — akunmu dan semua yang tersinkron ke cloud tetap aman.",
 	"resetAppData": "Atur ulang data aplikasi",
 	"resetAppDataTitle": "Atur ulang data aplikasi?",
-	"resetAppDataBody": "Ini menghapus yang tersimpan Zangetsu di perangkat ini agar bisa mulai dari awal.\n\nAkunmu dan yang tersinkron ke cloud tidak disentuh — masuk lagi dan pustakamu kembali.",
-	"resetAppDataDone": "Tutup Zangetsu sepenuhnya lalu buka lagi.",
+	"resetAppDataBody": "Ini menghapus yang tersimpan AniAura di perangkat ini agar bisa mulai dari awal.\n\nAkunmu dan yang tersinkron ke cloud tidak disentuh — masuk lagi dan pustakamu kembali.",
+	"resetAppDataDone": "Tutup AniAura sepenuhnya lalu buka lagi.",
 	"detailsCopied": "Detail disalin — kirimkan ke kami",
 	"copyDetails": "Salin detail",
 	"goodToHaveYouHere": "Senang kamu di sini.",
@@ -528,7 +528,7 @@
 	"cardsFadeInAsYouScroll": "Kartu memudar saat kamu menggulir",
 	"animationStyle": "Gaya animasi",
 	"turnOffMaterialYouToPickAColourYourself": "Matikan Material You untuk memilih warna sendiri",
-	"downloadsZangetsu": "Unduhan › Zangetsu",
+	"downloadsAniAura": "Unduhan › AniAura",
 	"removableDrive": "Drive yang bisa dilepas",
 	"chooseFolder": "Pilih folder…",
 	"resetToDefault": "Atur ke bawaan",
@@ -742,7 +742,7 @@
 	"saveYourListAndContinueWatchingAnywhere": "Simpan daftarmu dan lanjutkan menonton di mana saja.",
 	"notSignedIn": "Belum masuk",
 	"haveTheApp": "Punya aplikasinya?",
-	"openZangetsuOnYourNphoneAndScan": "Buka Zangetsu di\\nponselmu dan pindai",
+	"openAniAuraOnYourNphoneAndScan": "Buka AniAura di\\nponselmu dan pindai",
 	"noApp": "Belum punya aplikasi?",
 	"resetPassword": "Atur ulang kata sandi",
 	"youExampleCom": "you@example.com",
@@ -761,7 +761,7 @@
 	"logOutAnyway": "Tetap keluar",
 	"reconnect": "Hubungkan kembali",
 	"signInWithYourPhone": "Masuk dengan ponselmu",
-	"onTheZangetsuAppOnYourPhoneOpenNPairATVAndEnterThisCodeOrScanTheQR": "Di aplikasi Zangetsu di ponselmu, buka\\n\"Pasangkan TV\" lalu masukkan kode ini — atau pindai QR-nya.",
+	"onTheAniAuraAppOnYourPhoneOpenNPairATVAndEnterThisCodeOrScanTheQR": "Di aplikasi AniAura di ponselmu, buka\\n\"Pasangkan TV\" lalu masukkan kode ini — atau pindai QR-nya.",
 	"signingIn": "Sedang masuk…",
 	"getANewCode": "Ambil kode baru",
 	"sendTrackers": "Kirim pelacak",
@@ -769,7 +769,7 @@
 	"sendToTV": "Kirim ke TV",
 	"signInToYourAccountFirstNthenPairYourTV": "Masuk ke akunmu dulu,\\nlalu pasangkan TV-mu.",
 	"enterTheCodeFromYourTV": "Masukkan kode dari TV-mu",
-	"openZangetsuOnYourTVAndSignInWithYourPhoneToSeeIt": "Buka Zangetsu di TV-mu dan masuk dengan ponselmu untuk melihatnya.",
+	"openAniAuraOnYourTVAndSignInWithYourPhoneToSeeIt": "Buka AniAura di TV-mu dan masuk dengan ponselmu untuk melihatnya.",
 	"abcd2345": "ABCD 2345",
 	"thisTVWillSignIntoYourAccountYouCanSignItOutLater": "TV ini akan masuk ke akunmu. Kamu bisa mengeluarkannya nanti.",
 	"alsoSendYourTrackersAniListMyAnimeListSimkl": "Kirim juga pelacakmu (AniList, MyAnimeList, Simkl)",
@@ -782,7 +782,7 @@
 	"pickABackup": "Pilih cadangan",
 	"couldnTReadThatBackupFile": "Tidak bisa membaca file cadangan itu.",
 	"restoreComplete": "Pemulihan selesai",
-	"reopenZangetsuToSeeRestoredLibrarySources": "Buka lagi Zangetsu untuk melihat pustaka & sumber yang dipulihkan.",
+	"reopenAniAuraToSeeRestoredLibrarySources": "Buka lagi AniAura untuk melihat pustaka & sumber yang dipulihkan.",
 	"saveToAFile": "Simpan ke file",
 	"saveABackupFileToYourDownloadsFolder": "Simpan file cadangan ke folder Unduhanmu",
 	"backUpToCloud": "Cadangkan ke cloud",
@@ -852,7 +852,7 @@
 	"addNovelRepo": "Tambah repo novel",
 	"removeRepository": "Copot repositori",
 	"noSourcesInThisRepo": "Tidak ada sumber di repo ini.",
-	"zangetsuProviders": "Penyedia Zangetsu",
+	"AniAuraProviders": "Penyedia AniAura",
 	"addRepo": "Tambah repo",
 	"noProvidersInstalled": "Belum ada penyedia terpasang.",
 	"noSourcesInThisRepoYet": "Belum ada sumber di repo ini.",
@@ -891,7 +891,7 @@
 	"resetToDefaults": "Atur ke bawaan",
 	"providerSettings": "Pengaturan penyedia",
 	"openThisSourceSOwnSettingsEGServerLanguage": "Buka pengaturan milik sumber ini (mis. server, bahasa)",
-	"addZangetsuRepo": "Tambah repo Zangetsu",
+	"addAniAuraRepo": "Tambah repo AniAura",
 	"theProviderWillBeRemovedFromYourInstalledSources": "Penyedia akan dicopot dari sumber terpasangmu.",
 	"addMihonRepo": "Tambah repo Mihon",
 	"noMihonReposAddedYetNTapAddMihonRepoToAddOne": "Belum ada repo Mihon ditambahkan.\\nKetuk \"Tambah repo Mihon\" untuk menambahnya.",
@@ -1743,7 +1743,7 @@
 	"github": "GitHub",
 	"telegram": "Telegram",
 	"accentColourBlurb": "Warna sorotan yang dipakai di tombol, chip, progres, dan item terpilih.",
-	"appIconBlurb": "Ikon di layar berandamu. Zangetsu menutup diri saat kamu mengubahnya — Android harus mengganti entri launcher.",
+	"appIconBlurb": "Ikon di layar berandamu. AniAura menutup diri saat kamu mengubahnya — Android harus mengganti entri launcher.",
 	"useTheIcon": "Pakai ikon {label}?",
 	"@useTheIcon": {
 		"placeholders": {
@@ -1752,7 +1752,7 @@
 			}
 		}
 	},
-	"useTheIconBody": "Zangetsu akan menutup diri supaya Android bisa menerapkan ikon baru. Buka lagi dari layar berandamu setelahnya.\n\nKalau Zangetsu ada di folder atau dock, kamu mungkin perlu menambahkannya lagi.",
+	"useTheIconBody": "AniAura akan menutup diri supaya Android bisa menerapkan ikon baru. Buka lagi dari layar berandamu setelahnya.\n\nKalau AniAura ada di folder atau dock, kamu mungkin perlu menambahkannya lagi.",
 	"animRise": "Naik",
 	"animRiseDesc": "Naik dan memudar masuk",
 	"animFade": "Fade",
@@ -1795,7 +1795,7 @@
 		}
 	},
 	"cloudBackupFailed": "Cadangan cloud gagal. Pastikan kamu online — kalau terus gagal, penyimpanan cadangan cloud mungkin belum disiapkan.",
-	"savedToDownloadsZangetsu": "Disimpan ke Unduhan › Zangetsu",
+	"savedToDownloadsAniAura": "Disimpan ke Unduhan › AniAura",
 	"restoreFailed": "Pemulihan gagal: {error}",
 	"@restoreFailed": {
 		"placeholders": {
@@ -1805,7 +1805,7 @@
 		}
 	},
 	"noBackupFilesOnDevice": "Tidak ditemukan file cadangan di perangkat ini. Simpan dulu, atau pakai \"Pulihkan dari cloud\".",
-	"backupScreenBlurb": "Simpan sumber, daftar, dan pengaturanmu — ke file di perangkatmu atau ke akun Zangetsu-mu. Pemulihan hanya menambahkan kembali; tidak pernah menghapus yang sudah kamu punya.",
+	"backupScreenBlurb": "Simpan sumber, daftar, dan pengaturanmu — ke file di perangkatmu atau ke akun AniAura-mu. Pemulihan hanya menambahkan kembali; tidak pernah menghapus yang sudah kamu punya.",
 	"includeInTheBackup": "Masukkan ke cadangan",
 	"sourcesAndRepos": "Sumber & repo",
 	"installedSourcesAndRepoLinks": "Sumber terpasang dan tautan repo-nya",
@@ -1850,7 +1850,7 @@
 	"betaUpdateAvailable": "Pembaruan beta tersedia",
 	"updateAvailable": "Pembaruan tersedia",
 	"startingInstaller": "Memulai installer…",
-	"couldnTOpenInstaller": "Tidak bisa membuka installer. Aktifkan \"Pasang aplikasi tidak dikenal\" untuk Zangetsu di pengaturan sistem, lalu coba lagi.",
+	"couldnTOpenInstaller": "Tidak bisa membuka installer. Aktifkan \"Pasang aplikasi tidak dikenal\" untuk AniAura di pengaturan sistem, lalu coba lagi.",
 	"downloadFailedCheckConnection": "Unduhan gagal — cek koneksimu lalu coba lagi.",
 	"libraryIsntSavedReconnect": "Pustakamu belum tersimpan ke cloud, jadi keluar akan menghapusnya dari perangkat ini. Hubungkan kembali untuk mencadangkan dulu?",
 	"sessionExpiredEnterPassword": "Sesimu habis. Masukkan kata sandimu untuk menghubungkan kembali {account} dan menyinkronkan pustakamu.",
@@ -1979,7 +1979,7 @@
 	"aniyomi": "Aniyomi",
 	"mihon": "Mihon",
 	"lnreader": "LNReader",
-	"zangetsu": "Zangetsu",
+	"AniAura": "AniAura",
 	"cloudStream": "CloudStream",
 	"installedCount": "{count} terpasang",
 	"@installedCount": {
@@ -3014,5 +3014,5 @@
 	"epubExportFailed": "Tidak bisa menyimpan EPUB",
 	"export": "Ekspor",
 	"keepDownloadsPrivate": "Jaga unduhan tetap privat",
-	"keepDownloadsPrivateSubtitle": "Unduhan video baru tetap di dalam Zangetsu, bukan di folder Unduhan. Unduhan itu dihapus saat kamu mencopot Zangetsu. Bab dan hasil ekspor tidak terpengaruh."
+	"keepDownloadsPrivateSubtitle": "Unduhan video baru tetap di dalam AniAura, bukan di folder Unduhan. Unduhan itu dihapus saat kamu mencopot AniAura. Bab dan hasil ekspor tidak terpengaruh."
 }

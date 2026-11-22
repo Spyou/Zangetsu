@@ -126,7 +126,7 @@ class PostgresLibraryDatabase:
         keys = self.table_keys[event.table_name]
         with self.connection:
             with self.connection.cursor() as cursor:
-                cursor.execute("set local zangetsu.bridge_replay = 'on'")
+                cursor.execute("set local AniAura.bridge_replay = 'on'")
                 if event.operation == "delete":
                     filters = " and ".join(f"{key} = %s" for key in keys)
                     cursor.execute(

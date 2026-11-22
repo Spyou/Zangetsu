@@ -16,7 +16,7 @@ import 'package:watch_app/core/provider/provider_registry.dart';
 import 'package:watch_app/core/provider/provider_repo_registry.dart';
 import 'package:watch_app/core/state/active_source_cubit.dart';
 import 'package:watch_app/core/ui/source_switcher.dart';
-import 'package:watch_app/features/sources/zangetsu_sources_screen.dart';
+import 'package:watch_app/features/sources/AniAura_sources_screen.dart';
 
 // ---------------------------------------------------------------------------
 // Stubs (same shape as test/features/sources/mode_filtered_sources_test.dart)
@@ -134,7 +134,7 @@ void main() {
               onChanged: (_) {},
               onInstallSources: () => Navigator.of(context).push(
                 MaterialPageRoute<void>(
-                  builder: (_) => const ZangetsuSourcesScreen(openToRepos: true),
+                  builder: (_) => const AniAuraSourcesScreen(openToRepos: true),
                 ),
               ),
             ),
@@ -180,7 +180,7 @@ void main() {
 
   testWidgets(
     'manga mode, nothing installed: tabs are All/Manga only, empty state '
-    'shows an install CTA that opens ZangetsuSourcesScreen on Repositories',
+    'shows an install CTA that opens AniAuraSourcesScreen on Repositories',
     (tester) async {
       // setMode's persistence is fire-and-forget real Hive I/O — without
       // runAsync here those writes dangle under FakeAsync and tearDown's
@@ -205,7 +205,7 @@ void main() {
       await tester.tap(ctaButton);
       await tester.pumpAndSettle();
 
-      final screen = tester.widget<ZangetsuSourcesScreen>(find.byType(ZangetsuSourcesScreen));
+      final screen = tester.widget<AniAuraSourcesScreen>(find.byType(AniAuraSourcesScreen));
       expect(screen.openToRepos, isTrue);
     },
   );

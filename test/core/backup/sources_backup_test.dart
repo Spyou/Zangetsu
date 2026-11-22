@@ -19,7 +19,7 @@ import 'package:watch_app/core/provider/provider_manager.dart'
     show AniyomiManager;
 import 'package:watch_app/core/provider/provider_registry.dart';
 import 'package:watch_app/core/provider/provider_repo_registry.dart';
-import 'package:zangetsu_source_bridge/zangetsu_source_bridge.dart';
+import 'package:AniAura_source_bridge/AniAura_source_bridge.dart';
 
 // ── Stubs ──────────────────────────────────────────────────────────────────────
 

@@ -103,7 +103,7 @@ void main() {
       await expectLater(protected.authorize(), throwsStateError);
       allowed = true;
       await protected.authorize();
-      expect(protected.build({BackupBundle.library})['app'], 'zangetsu');
+      expect(protected.build({BackupBundle.library})['app'], 'AniAura');
       expect(() => protected.build({BackupBundle.library}), throwsStateError);
     },
   );
@@ -199,11 +199,11 @@ void main() {
 
   // 1. build with only settings bundle
   test(
-    'build(settings) returns zangetsu payload with only settings bundle',
+    'build(settings) returns AniAura payload with only settings bundle',
     () {
       final result = service.build({BackupBundle.settings});
 
-      expect(result['app'], 'zangetsu');
+      expect(result['app'], 'AniAura');
       expect(result['createdAt'], '2026-07-02T00:00:00.000Z');
 
       final bundles = result['bundles'] as Map;

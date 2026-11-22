@@ -28,7 +28,7 @@ import 'package:watch_app/core/state/active_source_cubit.dart';
 /// which native method went out over the channel, which items came back — not
 /// merely that a call didn't throw.
 
-const _channel = MethodChannel('zangetsu/mihon');
+const _channel = MethodChannel('AniAura/mihon');
 
 MihonSourceInfo _info({
   int id = 7,

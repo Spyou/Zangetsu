@@ -24,7 +24,7 @@ object CfClearance {
     // after an app restart the cached cookie was replayed with the WRONG (default)
     // UA and Cloudflare 403'd it → a full re-solve on the first play every launch.
     // Persist the UA too, so a restart reuses the clearance instead of re-verifying.
-    private const val PREFS = "zangetsu_cf"
+    private const val PREFS = "AniAura_cf"
     private const val KEY_UA = "cf_solving_ua"
 
     @Volatile

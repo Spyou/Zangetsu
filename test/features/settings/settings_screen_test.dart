@@ -305,7 +305,7 @@ void main() {
       ..unregister<ReaderPrefs>()
       ..registerSingleton<ReaderPrefs>(translationPrefs);
 
-    const translationChannel = MethodChannel('zangetsu/manga_translation');
+    const translationChannel = MethodChannel('AniAura/manga_translation');
     final methodCalls = <String>[];
     tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
       translationChannel,

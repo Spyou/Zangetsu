@@ -1,5 +1,5 @@
 // Search no longer offers its own Library/Sources choice — no chips, no
-// persisted pref. The scope is DERIVED from Zangetsu Mode: Sources when Z
+// persisted pref. The scope is DERIVED from AniAura Mode: Sources when Z
 // Mode is off, Library when it's on — or Sources regardless, when the
 // caller passes forceSources (the sources destination's own search action).
 // Coverage lives entirely in the widget tests below, against the real

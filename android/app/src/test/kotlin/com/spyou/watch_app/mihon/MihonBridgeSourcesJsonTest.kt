@@ -47,7 +47,7 @@ class MihonBridgeSourcesJsonTest {
         assertEquals("https://good.test", good.getString("baseUrl"))
         // The regression that matters most: the guard must not blanket-empty the
         // headers of sources that build them fine.
-        assertEquals("zangetsu-test", good.getJSONObject("headers").getString("User-Agent"))
+        assertEquals("AniAura-test", good.getJSONObject("headers").getString("User-Agent"))
     }
 
     @Test
@@ -56,7 +56,7 @@ class MihonBridgeSourcesJsonTest {
 
         val entry = json.getJSONObject(0)
         assertEquals("", entry.getString("baseUrl"))
-        assertEquals("zangetsu-test", entry.getJSONObject("headers").getString("User-Agent"))
+        assertEquals("AniAura-test", entry.getJSONObject("headers").getString("User-Agent"))
     }
 
     /**
@@ -113,7 +113,7 @@ class MihonBridgeSourcesJsonTest {
         override val lang = "en"
         override val supportsLatest = true
         override fun headersBuilder(): Headers.Builder =
-            Headers.Builder().add("User-Agent", "zangetsu-test")
+            Headers.Builder().add("User-Agent", "AniAura-test")
     }
 
     /** MangaDex's exact failure shape: a host class the extension links against is absent. */
@@ -133,7 +133,7 @@ class MihonBridgeSourcesJsonTest {
         override val lang = "en"
         override val supportsLatest = false
         override fun headersBuilder(): Headers.Builder =
-            Headers.Builder().add("User-Agent", "zangetsu-test")
+            Headers.Builder().add("User-Agent", "AniAura-test")
     }
 
     private class Unlistable : HttpSource() {
@@ -142,6 +142,6 @@ class MihonBridgeSourcesJsonTest {
         override val lang = "en"
         override val supportsLatest = false
         override fun headersBuilder(): Headers.Builder =
-            Headers.Builder().add("User-Agent", "zangetsu-test")
+            Headers.Builder().add("User-Agent", "AniAura-test")
     }
 }

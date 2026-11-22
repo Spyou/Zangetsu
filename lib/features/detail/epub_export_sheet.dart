@@ -254,12 +254,12 @@ class _EpubExportBodyState extends State<_EpubExportBody> {
       return;
     }
 
-    final show = 'Zangetsu/${ChapterDownloadStore.safeName(widget.showTitle)}';
+    final show = 'AniAura/${ChapterDownloadStore.safeName(widget.showTitle)}';
     final saved = await _publish(written, show);
     if (!mounted) return;
     setState(() => _exporting = false);
     final folderLabel =
-        sl<DownloadPrefs>().locationLabel ?? context.l10n.downloadsZangetsu;
+        sl<DownloadPrefs>().locationLabel ?? context.l10n.downloadsAniAura;
     Navigator.of(context).pop();
     showAppToast(
       context,
@@ -276,7 +276,7 @@ class _EpubExportBodyState extends State<_EpubExportBody> {
     final downloadedCount = _downloaded.length;
     final canExport = downloadedCount > 0 && !_exporting;
     final folderLabel =
-        sl<DownloadPrefs>().locationLabel ?? l10n.downloadsZangetsu;
+        sl<DownloadPrefs>().locationLabel ?? l10n.downloadsAniAura;
 
     return SafeArea(
       child: Padding(

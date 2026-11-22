@@ -1,6 +1,6 @@
 import 'package:hive/hive.dart';
 import 'package:watch_app/core/hive/safe_box.dart';
-import 'package:zangetsu_source_bridge/zangetsu_source_bridge.dart';
+import 'package:AniAura_source_bridge/AniAura_source_bridge.dart';
 
 import '../aniyomi/aniyomi_extension_service.dart';
 import '../aniyomi/aniyomi_repo.dart';

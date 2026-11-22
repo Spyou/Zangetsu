@@ -2,7 +2,7 @@ import '../environment.dart';
 import '../supabase/auth_route.dart';
 
 /// Encodes TV pairing links and parses incoming pair URLs from either the
-/// website (`https://zangetsu.online/pair/…`) or the `zangetsu://pair` deeplink.
+/// website (`https://AniAura.online/pair/…`) or the `AniAura://pair` deeplink.
 class PairLink {
   const PairLink({
     this.code,
@@ -84,7 +84,7 @@ class PairLink {
       )
       .toString();
 
-  /// Accepts `zangetsu://pair?…` and the configured [Environment.sitePairUrl].
+  /// Accepts `AniAura://pair?…` and the configured [Environment.sitePairUrl].
   static PairLink? parse(Uri uri) {
     if (!_isPairUri(uri)) return null;
     if ((uri.queryParametersAll['auth']?.length ?? 0) > 1) return null;

@@ -18,7 +18,7 @@ import 'package:flutter/services.dart';
 ///    strand a device with a dead volume rocker.
 class VolumeKeys {
   VolumeKeys._();
-  static const MethodChannel _ch = MethodChannel('zangetsu/volume_keys');
+  static const MethodChannel _ch = MethodChannel('AniAura/volume_keys');
 
   /// Called with `true` for volume-up, `false` for volume-down. Null when
   /// nobody is listening.

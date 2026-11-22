@@ -41,7 +41,7 @@ void main() {
 
     expect(
       first,
-      startsWith('https://avatars.zangetsu.online/profile-picker/'),
+      startsWith('https://avatars.AniAura.online/profile-picker/'),
     );
     expect(first, endsWith('/profile-picker/one.webp'));
     expect(second, endsWith('/profile-picker/two.jpg'));

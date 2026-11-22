@@ -205,9 +205,9 @@ Dart adaptation of the median-cut quantizer.
    See the License for the specific language governing permissions and
    limitations under the License.
 
-NOTE FOR THIS REPOSITORY (Zangetsu):
+NOTE FOR THIS REPOSITORY (AniAura):
 
-This file is included because Zangetsu incorporates and distributes certain
+This file is included because AniAura incorporates and distributes certain
 third-party code licensed under the Apache License, Version 2.0, including
 code derived from Aniyomi/Tachiyomi located under:
 
@@ -218,7 +218,7 @@ third-party code are retained in the relevant source files and/or documented
 in NOTICE.md.
 
 This file reproduces the Apache License, Version 2.0, and does not constitute
-a claim by Zangetsu or its author over copyright in third-party code.
+a claim by AniAura or its author over copyright in third-party code.
 
 See NOTICE.md for the applicable third-party attribution and licensing
 information.

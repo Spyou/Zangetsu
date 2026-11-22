@@ -26,7 +26,7 @@ import sys
 import tempfile
 
 cloud = 'https://eogwzrlfoercfwcfwlmv.supabase.co/auth/v1'
-vps = 'https://sb.zangetsu.online/auth/v1'
+vps = 'https://sb.AniAura.online/auth/v1'
 source = lambda issuer: {'issuer': issuer, 'url': issuer + '/.well-known/jwks.json'}
 key = lambda kid: {'kty': 'EC', 'crv': 'P-256', 'kid': kid, 'x': 'test-x', 'y': 'test-y', 'alg': 'ES256'}
 with tempfile.TemporaryDirectory() as directory:
@@ -34,7 +34,7 @@ with tempfile.TemporaryDirectory() as directory:
     destination = root / 'jwks.json'
     config = root / 'jwks-sources.json'
     script = root / 'refresh.sh'
-    script.write_text(Path(sys.argv[1]).read_text().replace('/etc/zangetsu-sync/jwks.json', str(destination)).replace('/etc/zangetsu-sync/jwks-sources.json', str(config)))
+    script.write_text(Path(sys.argv[1]).read_text().replace('/etc/AniAura-sync/jwks.json', str(destination)).replace('/etc/AniAura-sync/jwks-sources.json', str(config)))
     tools = root / 'bin'
     tools.mkdir()
     (tools / 'curl').write_text('''#!/usr/bin/env python3
@@ -73,7 +73,7 @@ print(os.environ.get('HTTP_STATUS', '200'), end='')
         else:
             assert destination.stat().st_mode & 0o777 == 0o640
             assert 'root:sync_authenticator' in actions.read_text()
-            assert '--signal=SIGUSR2 zangetsu-sync-stage.service' in actions.read_text()
+            assert '--signal=SIGUSR2 AniAura-sync-stage.service' in actions.read_text()
         assert not list(root.glob('jwks.json.tmp.*'))
         return json.loads(destination.read_text()) if success else None
     payloads = {source(cloud)['url']: {'keys': [key('cloud')]}, source(vps)['url']: {'keys': [key('vps')]}}

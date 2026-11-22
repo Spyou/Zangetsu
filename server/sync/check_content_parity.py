@@ -30,7 +30,7 @@ def compare(source, ssh_key, host, table):
     )
     result = subprocess.run(
         ["ssh", "-i", ssh_key, "-o", "BatchMode=yes", host,
-         "sudo -u zangetsu_bridge psql -d zangetsu_sync_stage -At -F ' ' -c "
+         "sudo -u AniAura_bridge psql -d AniAura_sync_stage -At -F ' ' -c "
          + '"' + stage_query + '"'],
         capture_output=True, text=True, check=True,
     )

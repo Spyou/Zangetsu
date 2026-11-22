@@ -138,7 +138,7 @@ void main() {
     // Picker rows probe the native side for per-source settings. These tests
     // are about matching, not settings, so answer "none" rather than let an
     // unimplemented channel throw mid-build.
-    for (final ch in const ['zangetsu/aniyomi', 'zangetsu/mihon']) {
+    for (final ch in const ['AniAura/aniyomi', 'AniAura/mihon']) {
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(
         MethodChannel(ch),

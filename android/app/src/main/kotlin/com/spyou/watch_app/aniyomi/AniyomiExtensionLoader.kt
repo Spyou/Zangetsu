@@ -14,7 +14,7 @@
  * limitations under the License.
  *
  * Adapted from the Aniyomi project (https://github.com/aniyomiorg/aniyomi)
- * for host-side extension loading in the Zangetsu app.
+ * for host-side extension loading in the AniAura app.
  */
 package com.spyou.watch_app.aniyomi
 

@@ -1,4 +1,4 @@
-import 'package:zangetsu_source_bridge/stremio.dart';
+import 'package:AniAura_source_bridge/stremio.dart';
 
 import '../models/video_source.dart';
 import '../playback/subtitle_language.dart';

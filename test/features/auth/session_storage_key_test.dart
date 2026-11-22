@@ -23,9 +23,9 @@ void main() {
 
     test('differs from what a destination URL would derive', () {
       // Documents the hazard the pin prevents: without the explicit
-      // localStorage override, sb.zangetsu.online derives a different key
+      // localStorage override, sb.AniAura.online derives a different key
       // and the saved session would be invisible to the app.
-      const destinationUrl = 'https://sb.zangetsu.online';
+      const destinationUrl = 'https://sb.AniAura.online';
       final destinationDerived =
           'sb-${Uri.parse(destinationUrl).host.split('.').first}-auth-token';
       expect(destinationDerived, isNot(Environment.supabaseSessionStorageKey));

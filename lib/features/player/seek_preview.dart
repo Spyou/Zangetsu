@@ -9,7 +9,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 ///
 /// Two engines, picked per source:
 /// * **Local files** (downloads) → native [MediaMetadataRetriever] via the
-///   `zangetsu/seek_preview` channel. Instant, free, reliable for files.
+///   `AniAura/seek_preview` channel. Instant, free, reliable for files.
 /// * **Online streams** (HLS / redirect mirrors) → a hidden, muted second mpv
 ///   player. MediaMetadataRetriever can't decode those (its HTTP layer throws
 ///   on byte-range reads), but mpv plays them natively. mpv only renders frames
@@ -27,7 +27,7 @@ class SeekPreview {
   /// True for on-device files (use MMR); false for http streams (use mpv).
   final bool local;
 
-  static const MethodChannel _ch = MethodChannel('zangetsu/seek_preview');
+  static const MethodChannel _ch = MethodChannel('AniAura/seek_preview');
 
   /// The most recent decoded frame (JPEG bytes), or null until the first lands.
   final ValueNotifier<Uint8List?> frame = ValueNotifier<Uint8List?>(null);

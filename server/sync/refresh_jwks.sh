@@ -36,9 +36,9 @@ fi
 
 # Only these fixed issuer/URL pairs may supply trusted signing keys.
 cloud_issuer=https://eogwzrlfoercfwcfwlmv.supabase.co/auth/v1
-vps_issuer=https://sb.zangetsu.online/auth/v1
-source_config=/etc/zangetsu-sync/jwks-sources.json
-destination=/etc/zangetsu-sync/jwks.json
+vps_issuer=https://sb.AniAura.online/auth/v1
+source_config=/etc/AniAura-sync/jwks-sources.json
+destination=/etc/AniAura-sync/jwks.json
 temp_dir=$(mktemp -d "${destination}.tmp.XXXXXX")
 trap 'rm -rf "$temp_dir"' EXIT
 
@@ -89,4 +89,4 @@ if [[ ! -f $destination ]] || ! cmp --silent "$temp_file" "$destination"; then
   mv -f "$temp_file" "$destination"
 fi
 # Re-signal even if the file is unchanged: a previous reload may have failed.
-systemctl kill --signal=SIGUSR2 zangetsu-sync-stage.service
+systemctl kill --signal=SIGUSR2 AniAura-sync-stage.service

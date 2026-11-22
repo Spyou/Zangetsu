@@ -333,7 +333,7 @@ class AppLocalizationsTr extends AppLocalizations {
   String get couldNotExportLogs => 'Günlükler dışa aktarılamadı';
 
   @override
-  String get logsShareSubject => 'Zangetsu günlükleri';
+  String get logsShareSubject => 'AniAura günlükleri';
 
   @override
   String get signInSubtitle =>
@@ -410,7 +410,7 @@ class AppLocalizationsTr extends AppLocalizations {
   String get presenceButtonLabel => 'Button label';
 
   @override
-  String get presenceButtonLabelHint => 'Open in Zangetsu';
+  String get presenceButtonLabelHint => 'Open in AniAura';
 
   @override
   String get presenceShowWhenPaused => 'Show when paused';
@@ -1040,7 +1040,7 @@ class AppLocalizationsTr extends AppLocalizations {
   }
 
   @override
-  String get bootErrorTitle => 'Zangetsu açılışını tamamlayamadı';
+  String get bootErrorTitle => 'AniAura açılışını tamamlayamadı';
 
   @override
   String get bootErrorBody =>
@@ -1054,10 +1054,10 @@ class AppLocalizationsTr extends AppLocalizations {
 
   @override
   String get resetAppDataBody =>
-      'Zangetsu\'nun bu cihazda kaydettiği her şeyi temizler, böylece sıfırdan başlar.\n\nHesabın ve buluta eşitlenen hiçbir şey etkilenmez — tekrar oturum aç, kitaplığın geri gelir.';
+      'AniAura\'nun bu cihazda kaydettiği her şeyi temizler, böylece sıfırdan başlar.\n\nHesabın ve buluta eşitlenen hiçbir şey etkilenmez — tekrar oturum aç, kitaplığın geri gelir.';
 
   @override
-  String get resetAppDataDone => 'Zangetsu\'yu tamamen kapat ve yeniden aç.';
+  String get resetAppDataDone => 'AniAura\'yu tamamen kapat ve yeniden aç.';
 
   @override
   String get detailsCopied => 'Ayrıntılar kopyalandı — bize gönder';
@@ -1589,7 +1589,7 @@ class AppLocalizationsTr extends AppLocalizations {
       'Kendi rengini seçmek için Material You\'u kapat';
 
   @override
-  String get downloadsZangetsu => 'İndirilenler › Zangetsu';
+  String get downloadsAniAura => 'İndirilenler › AniAura';
 
   @override
   String get removableDrive => 'Çıkarılabilir sürücü';
@@ -2298,8 +2298,8 @@ class AppLocalizationsTr extends AppLocalizations {
   String get haveTheApp => 'Uygulamayı indirdin mi?';
 
   @override
-  String get openZangetsuOnYourNphoneAndScan =>
-      'Telefonunda Zangetsu\'yu aç ve tara';
+  String get openAniAuraOnYourNphoneAndScan =>
+      'Telefonunda AniAura\'yu aç ve tara';
 
   @override
   String get noApp => 'Uygulama yok mu?';
@@ -2357,8 +2357,8 @@ class AppLocalizationsTr extends AppLocalizations {
 
   @override
   String
-  get onTheZangetsuAppOnYourPhoneOpenNPairATVAndEnterThisCodeOrScanTheQR =>
-      'Telefonundaki Zangetsu uygulamasında \"TV\'yi eşle\" ekranını aç ve bu kodu gir — ya da QR kodunu tara.';
+  get onTheAniAuraAppOnYourPhoneOpenNPairATVAndEnterThisCodeOrScanTheQR =>
+      'Telefonundaki AniAura uygulamasında \"TV\'yi eşle\" ekranını aç ve bu kodu gir — ya da QR kodunu tara.';
 
   @override
   String get signingIn => 'Oturum açılıyor…';
@@ -2383,8 +2383,8 @@ class AppLocalizationsTr extends AppLocalizations {
   String get enterTheCodeFromYourTV => 'TV\'ndeki kodu gir';
 
   @override
-  String get openZangetsuOnYourTVAndSignInWithYourPhoneToSeeIt =>
-      'TV\'nde Zangetsu\'yu aç ve görünmesi için telefonunla oturum aç.';
+  String get openAniAuraOnYourTVAndSignInWithYourPhoneToSeeIt =>
+      'TV\'nde AniAura\'yu aç ve görünmesi için telefonunla oturum aç.';
 
   @override
   String get abcd2345 => 'ABCD 2345';
@@ -2427,8 +2427,8 @@ class AppLocalizationsTr extends AppLocalizations {
   String get restoreComplete => 'Geri yükleme tamamlandı';
 
   @override
-  String get reopenZangetsuToSeeRestoredLibrarySources =>
-      'Geri yüklenen kitaplığı ve kaynakları görmek için Zangetsu\'yu yeniden aç.';
+  String get reopenAniAuraToSeeRestoredLibrarySources =>
+      'Geri yüklenen kitaplığı ve kaynakları görmek için AniAura\'yu yeniden aç.';
 
   @override
   String get saveToAFile => 'Bir dosyaya kaydet';
@@ -2650,7 +2650,7 @@ class AppLocalizationsTr extends AppLocalizations {
   String get noSourcesInThisRepo => 'Bu depoda kaynak yok.';
 
   @override
-  String get zangetsuProviders => 'Zangetsu sağlayıcıları';
+  String get AniAuraProviders => 'AniAura sağlayıcıları';
 
   @override
   String get addRepo => 'Depo ekle';
@@ -2757,7 +2757,7 @@ class AppLocalizationsTr extends AppLocalizations {
       'Bu kaynağın kendi ayarlarını aç (örn. sunucu, dil)';
 
   @override
-  String get addZangetsuRepo => 'Zangetsu deposu ekle';
+  String get addAniAuraRepo => 'AniAura deposu ekle';
 
   @override
   String get theProviderWillBeRemovedFromYourInstalledSources =>
@@ -3959,7 +3959,7 @@ class AppLocalizationsTr extends AppLocalizations {
 
   @override
   String get appIconBlurb =>
-      'Ana ekranındaki simge. Simgeyi değiştirince Zangetsu kapanır — Android başlatıcı girdisini değiştirmeli.';
+      'Ana ekranındaki simge. Simgeyi değiştirince AniAura kapanır — Android başlatıcı girdisini değiştirmeli.';
 
   @override
   String useTheIcon(String label) {
@@ -3968,7 +3968,7 @@ class AppLocalizationsTr extends AppLocalizations {
 
   @override
   String get useTheIconBody =>
-      'Android yeni simgeyi uygulayabilsin diye Zangetsu kapanacak. Sonra ana ekranından yeniden aç.\n\nZangetsu bir klasörde ya da uygulama çubuğundaysa yeniden eklemen gerekebilir.';
+      'Android yeni simgeyi uygulayabilsin diye AniAura kapanacak. Sonra ana ekranından yeniden aç.\n\nAniAura bir klasörde ya da uygulama çubuğundaysa yeniden eklemen gerekebilir.';
 
   @override
   String get animRise => 'Yüksel';
@@ -4048,8 +4048,8 @@ class AppLocalizationsTr extends AppLocalizations {
       'Bulut yedeği başarısız. Çevrimiçi olduğunu denetle — hâlâ başarısızsa bulut yedeği deposu henüz kurulmamış olabilir.';
 
   @override
-  String get savedToDownloadsZangetsu =>
-      'İndirilenler › Zangetsu\'ya kaydedildi';
+  String get savedToDownloadsAniAura =>
+      'İndirilenler › AniAura\'ya kaydedildi';
 
   @override
   String restoreFailed(String error) {
@@ -4062,7 +4062,7 @@ class AppLocalizationsTr extends AppLocalizations {
 
   @override
   String get backupScreenBlurb =>
-      'Kaynaklarını, listeni ve ayarlarını kaydet — cihazındaki bir dosyaya ya da Zangetsu hesabına. Geri yükleme yalnızca geri ekler; elinde olanları asla silmez.';
+      'Kaynaklarını, listeni ve ayarlarını kaydet — cihazındaki bir dosyaya ya da AniAura hesabına. Geri yükleme yalnızca geri ekler; elinde olanları asla silmez.';
 
   @override
   String get includeInTheBackup => 'Yedeğe dahil et';
@@ -4125,7 +4125,7 @@ class AppLocalizationsTr extends AppLocalizations {
 
   @override
   String get couldnTOpenInstaller =>
-      'Kurulum sihirbazı açılamadı. Sistem ayarlarında Zangetsu için \"Bilinmeyen uygulamaları yükle\"yi etkinleştir, sonra tekrar dene.';
+      'Kurulum sihirbazı açılamadı. Sistem ayarlarında AniAura için \"Bilinmeyen uygulamaları yükle\"yi etkinleştir, sonra tekrar dene.';
 
   @override
   String get downloadFailedCheckConnection =>
@@ -4289,7 +4289,7 @@ class AppLocalizationsTr extends AppLocalizations {
   String get lnreader => 'LNReader';
 
   @override
-  String get zangetsu => 'Zangetsu';
+  String get AniAura => 'AniAura';
 
   @override
   String get cloudStream => 'CloudStream';
@@ -5565,7 +5565,7 @@ class AppLocalizationsTr extends AppLocalizations {
 
   @override
   String get keepDownloadsPrivateSubtitle =>
-      'Yeni video indirmeleri İndirilenler klasörü yerine Zangetsu içinde kalır. Zangetsu\'yu kaldırdığında silinirler. Kitap bölümleri ve dışa aktarmalar etkilenmez.';
+      'Yeni video indirmeleri İndirilenler klasörü yerine AniAura içinde kalır. AniAura\'yu kaldırdığında silinirler. Kitap bölümleri ve dışa aktarmalar etkilenmez.';
 
   @override
   String get mangaPageTranslationTitle => 'Translate page';
@@ -5706,7 +5706,7 @@ class AppLocalizationsTr extends AppLocalizations {
 
   @override
   String get mangaTranslationRestartRequiredMessage =>
-      'Close and reopen Zangetsu to finish setting up on-device OCR, then try again.';
+      'Close and reopen AniAura to finish setting up on-device OCR, then try again.';
 
   @override
   String get mangaTranslationSearchLanguages => 'Search languages';

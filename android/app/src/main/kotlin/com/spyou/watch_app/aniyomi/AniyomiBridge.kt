@@ -12,7 +12,7 @@
  * limitations under the License.
  *
  * Adapted from the Aniyomi project (https://github.com/aniyomiorg/aniyomi)
- * for host-side MethodChannel bridging in the Zangetsu app.
+ * for host-side MethodChannel bridging in the AniAura app.
  */
 package com.spyou.watch_app.aniyomi
 
@@ -38,7 +38,7 @@ import java.io.File
 
 /**
  * Exposes Aniyomi extension capabilities to the Flutter layer via a
- * [MethodChannel] named "zangetsu/aniyomi".
+ * [MethodChannel] named "AniAura/aniyomi".
  *
  * The bridge is intentionally stateless — all mutable state lives in
  * [AniyomiSourceManager] and [AniyomiExtensionLoader]. Handlers that need

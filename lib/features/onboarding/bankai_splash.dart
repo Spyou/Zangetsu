@@ -2,14 +2,14 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-import '../../core/brand/zangetsu_mark.dart';
+import '../../core/brand/AniAura_mark.dart';
 
 /// The mark being cut into existence: the blade is thrown along its own axis,
 /// the crescent is revealed in its wake burning red, then cools to white as the
 /// red slash lands.
 ///
 /// Drawn rather than played back from frames. The paths are already geometry
-/// ([ZangetsuMark]) and the glow is a `MaskFilter.blur` on the same draw call,
+/// ([AniAuraMark]) and the glow is a `MaskFilter.blur` on the same draw call,
 /// so there is no sprite sheet in the APK and no `saveLayer` for the glow — the
 /// blur rides along with the fill.
 class BankaiSplash extends StatelessWidget {
@@ -46,13 +46,13 @@ class BankaiPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final s = size.width / ZangetsuMark.side;
+    final s = size.width / AniAuraMark.side;
     canvas.save();
     canvas.scale(s);
 
     final cut = _ease(_seg(t, 0.05, 0.55));
     final heat = 1 - _ease(_seg(t, 0.52, 0.98));
-    final rad = math.pi * ZangetsuMark.bladeAngleDeg / 180.0;
+    final rad = math.pi * AniAuraMark.bladeAngleDeg / 180.0;
     final ux = math.cos(rad), uy = math.sin(rad);
 
     // ── the crescent, revealed behind the cut ──────────────────────────────
@@ -62,13 +62,13 @@ class BankaiPainter extends CustomPainter {
       final body = Color.lerp(Colors.white, _energy, heat)!;
       if (heat > 0.02) {
         canvas.drawPath(
-          ZangetsuMark.crescent,
+          AniAuraMark.crescent,
           Paint()
             ..color = _energy.withValues(alpha: (0.35 + 0.5 * heat).clamp(0, 1))
             ..maskFilter = MaskFilter.blur(BlurStyle.normal, 8 + 26 * heat),
         );
       }
-      canvas.drawPath(ZangetsuMark.crescent, Paint()..color = body);
+      canvas.drawPath(AniAuraMark.crescent, Paint()..color = body);
       canvas.restore();
     }
 
@@ -87,13 +87,13 @@ class BankaiPainter extends CustomPainter {
         canvas.save();
         canvas.translate(ux * d, uy * d);
         canvas.drawPath(
-          ZangetsuMark.blade,
+          AniAuraMark.blade,
           Paint()..color = Colors.white.withValues(alpha: g.alpha * fadeIn),
         );
         canvas.restore();
       }
     } else {
-      canvas.drawPath(ZangetsuMark.blade, Paint()..color = Colors.white);
+      canvas.drawPath(AniAuraMark.blade, Paint()..color = Colors.white);
     }
 
     // ── the red slash: last in, and the last thing still glowing ───────────
@@ -104,7 +104,7 @@ class BankaiPainter extends CustomPainter {
       final flare = 1 - _ease(_seg(t, 0.5, 1.0));
       if (flare > 0.02) {
         canvas.drawPath(
-          ZangetsuMark.slash,
+          AniAuraMark.slash,
           Paint()
             ..color = _slashRed.withValues(
               alpha: (0.4 + 0.5 * flare).clamp(0, 1),
@@ -112,7 +112,7 @@ class BankaiPainter extends CustomPainter {
             ..maskFilter = MaskFilter.blur(BlurStyle.normal, 10 + 20 * flare),
         );
       }
-      canvas.drawPath(ZangetsuMark.slash, Paint()..color = _slashRed);
+      canvas.drawPath(AniAuraMark.slash, Paint()..color = _slashRed);
       canvas.restore();
     }
 
@@ -120,7 +120,7 @@ class BankaiPainter extends CustomPainter {
     final f = 1 - (_seg(t, 0.45, 0.70) * 2 - 1).abs();
     if (f > 0.01) {
       canvas.save();
-      canvas.translate(ZangetsuMark.side / 2, ZangetsuMark.side / 2);
+      canvas.translate(AniAuraMark.side / 2, AniAuraMark.side / 2);
       canvas.rotate(rad);
       canvas.drawRect(
         const Rect.fromLTRB(-700, -40, 700, 40),
@@ -137,14 +137,14 @@ class BankaiPainter extends CustomPainter {
   /// Clip to everything the cut has already passed — a half-plane whose edge is
   /// perpendicular to the blade, sweeping along it.
   void _clipWake(Canvas canvas, double p, double rad) {
-    canvas.translate(ZangetsuMark.side / 2, ZangetsuMark.side / 2);
+    canvas.translate(AniAuraMark.side / 2, AniAuraMark.side / 2);
     canvas.rotate(rad);
     // Starts fully behind the mark and ends fully past it, so p maps the whole
     // sweep rather than clipping early at the corners.
     final edge = -620 + 1240 * p;
     canvas.clipRect(Rect.fromLTRB(-700, -700, edge, 700));
     canvas.rotate(-rad);
-    canvas.translate(-ZangetsuMark.side / 2, -ZangetsuMark.side / 2);
+    canvas.translate(-AniAuraMark.side / 2, -AniAuraMark.side / 2);
   }
 
   @override

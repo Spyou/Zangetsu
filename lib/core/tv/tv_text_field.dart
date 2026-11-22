@@ -74,7 +74,7 @@ class TvTextField extends StatefulWidget {
 
 class _TvTextFieldState extends State<TvTextField> {
   /// Native backup when the framework's TextInput.show is cancelled on TV.
-  static const _imeChannel = MethodChannel('zangetsu/ime');
+  static const _imeChannel = MethodChannel('AniAura/ime');
 
   late final FocusNode _navFocus;
   late final bool _ownsNav;

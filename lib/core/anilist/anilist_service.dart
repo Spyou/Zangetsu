@@ -201,7 +201,7 @@ class AniListService extends ChangeNotifier implements Tracker {
 
   Future<void> _handleRedirect(Uri uri) async {
     // Implicit grant returns the token in the URL fragment:
-    //   zangetsu://anilist-auth#access_token=...&token_type=Bearer&expires_in=NNN
+    //   AniAura://anilist-auth#access_token=...&token_type=Bearer&expires_in=NNN
     final params = Uri.splitQueryString(uri.fragment);
     final token = params['access_token'];
     if (token == null || token.isEmpty) {

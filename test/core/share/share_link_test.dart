@@ -11,7 +11,7 @@ void main() {
         title: 'One Piece',
         type: ProviderType.anime,
       );
-      expect(url, startsWith('https://zangetsu.online/open/'));
+      expect(url, startsWith('https://AniAura.online/open/'));
       expect(url, contains('s=cs%3AhiAnime'));
       expect(url, contains('One+Piece'));
     });

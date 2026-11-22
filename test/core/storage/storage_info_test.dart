@@ -4,7 +4,7 @@ import 'package:watch_app/core/storage/storage_info.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-  const channel = MethodChannel('zangetsu/storage');
+  const channel = MethodChannel('AniAura/storage');
 
   setUp(() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger

@@ -28,7 +28,7 @@ class SubtitleFontService {
   static const Set<String> bundled = {'Inter', 'Noto Sans'};
 
   static const String _base =
-      'https://raw.githubusercontent.com/Spyou/Zangetsu/main/assets/fonts/';
+      'https://raw.githubusercontent.com/Spyou/AniAura/main/assets/fonts/';
 
   final Dio _dio = Dio(
     BaseOptions(

@@ -6,7 +6,7 @@ import 'package:watch_app/core/di/injector.dart';
 import 'package:watch_app/core/mangayomi/mangayomi_manager.dart';
 import 'package:watch_app/core/prefs/source_lang_prefs.dart';
 import 'package:watch_app/features/sources/mangayomi_sources_screen.dart';
-import 'package:zangetsu_source_bridge/zangetsu_source_bridge.dart';
+import 'package:AniAura_source_bridge/AniAura_source_bridge.dart';
 
 MangayomiSource source(
   Uri repository,

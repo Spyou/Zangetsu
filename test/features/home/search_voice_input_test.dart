@@ -25,7 +25,7 @@ import 'package:watch_app/features/home/search_screen.dart';
 
 import '../../support/picker_deps.dart';
 
-const _voiceChannel = MethodChannel('zangetsu/phone_voice_search');
+const _voiceChannel = MethodChannel('AniAura/phone_voice_search');
 const _permissions = MethodChannel('flutter.baseflow.com/permissions/methods');
 const _micKey = ValueKey('phone-search-voice');
 

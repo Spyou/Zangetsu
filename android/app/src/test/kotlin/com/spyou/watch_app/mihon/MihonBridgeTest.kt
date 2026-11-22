@@ -190,7 +190,7 @@ class MihonBridgeTest {
         override val supportsLatest = false
 
         override fun headersBuilder(): Headers.Builder =
-            Headers.Builder().add("User-Agent", "zangetsu-test")
+            Headers.Builder().add("User-Agent", "AniAura-test")
     }
 
     /**
@@ -208,7 +208,7 @@ class MihonBridgeTest {
         override val supportsLatest = false
 
         override fun headersBuilder(): Headers.Builder =
-            Headers.Builder().add("User-Agent", "zangetsu-test")
+            Headers.Builder().add("User-Agent", "AniAura-test")
 
         override fun imageRequest(page: Page): Request = Request.Builder()
             .url("https://cdn.test/override/${page.index}.jpg")

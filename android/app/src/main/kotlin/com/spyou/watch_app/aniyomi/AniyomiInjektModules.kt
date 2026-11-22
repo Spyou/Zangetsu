@@ -47,7 +47,7 @@ import uy.kohesive.injekt.api.get
  *                              optional DoH); extensions reach it via `injectLazy()`
  *   - [Json]                 — kotlinx-serialization instance (ignoreUnknownKeys)
  *   - [SourcePreferences]    — thin SharedPreferences wrapper; store name
- *                              `"zangetsu_aniyomi"` so all Aniyomi state is in one
+ *                              `"AniAura_aniyomi"` so all Aniyomi state is in one
  *                              named file
  */
 object AniyomiInjektModules {
@@ -136,7 +136,7 @@ object AniyomiInjektModules {
                     addSingleton<ProtoBuf>(ProtoBuf)
                     addSingleton(
                         SourcePreferences(
-                            app.getSharedPreferences("zangetsu_aniyomi", Context.MODE_PRIVATE),
+                            app.getSharedPreferences("AniAura_aniyomi", Context.MODE_PRIVATE),
                         ),
                     )
                 }

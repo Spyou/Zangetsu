@@ -15,7 +15,7 @@ MAX_BYTES = 90 * 1024 * 1024
 
 
 def backup(
-    directory="/var/backups/zangetsu-sync",
+    directory="/var/backups/AniAura-sync",
     run=subprocess.run,
     open_url=urllib.request.urlopen,
     endpoint=None,
@@ -24,7 +24,7 @@ def backup(
     os.umask(0o077)
     endpoint = endpoint or os.environ["R2_BACKUP_URL"]
     token_file = token_file or os.environ.get(
-        "R2_BACKUP_TOKEN_FILE", "/etc/zangetsu-backup/r2-upload-token",
+        "R2_BACKUP_TOKEN_FILE", "/etc/AniAura-backup/r2-upload-token",
     )
     token = Path(token_file).read_text().strip()
     if not token:
@@ -34,7 +34,7 @@ def backup(
         dump = Path(work) / "database.dump"
         downloaded = Path(work) / "verified.dump"
         run(["pg_dump", "--format=custom", "--file", str(dump),
-             "zangetsu_sync_stage"], check=True)
+             "AniAura_sync_stage"], check=True)
         run(["pg_restore", "--list", str(dump)], check=True,
             stdout=subprocess.DEVNULL)
         size = dump.stat().st_size
@@ -42,7 +42,7 @@ def backup(
             raise ValueError("database dump exceeds the 90 MiB backup limit")
         dump_bytes = dump.read_bytes()
         digest = hashlib.sha256(dump_bytes).hexdigest()
-        name = f"zangetsu-sync-stage-{stamp}-{digest}.dump"
+        name = f"AniAura-sync-stage-{stamp}-{digest}.dump"
         url = f"{endpoint.rstrip('/')}/{name}"
         headers = {
             "Authorization": f"Bearer {token}",

@@ -148,7 +148,7 @@ class NetworkHelper(
                 val cookie = req.header("Cookie").orEmpty()
                 fun tail(s: String) = if (s.length > 26) "…" + s.takeLast(26) else s
                 android.util.Log.w(
-                    "ZangetsuCF",
+                    "AniAuraCF",
                     "refused at the wire: ${res.code} ${req.url.host} " +
                         "cf=${if (cookie.contains("cf_clearance")) "yes" else "NO"} " +
                         "ua=${if (wireUa == solveUa) "same" else "DIFF"} " +

@@ -12,7 +12,7 @@ enum VideoDestination {
   /// A folder the user picked with the system picker (a `content://` tree).
   safTree,
 
-  /// The public Downloads/Zangetsu folder.
+  /// The public Downloads/AniAura folder.
   publicDownloads,
 }
 

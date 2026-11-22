@@ -35,13 +35,13 @@ void main() {
       expect(ecosystemOf('mg:repo:0:0:17'), SearchEcosystem.mangayomi);
     });
 
-    test('maps anything else to Zangetsu', () {
-      expect(ecosystemOf('allanime'), SearchEcosystem.zangetsu);
-      expect(ecosystemOf('netmirror'), SearchEcosystem.zangetsu);
-      // No colon → not an Aniyomi/CloudStream id, so it stays Zangetsu.
-      expect(ecosystemOf('anilist'), SearchEcosystem.zangetsu);
-      expect(ecosystemOf('csfd'), SearchEcosystem.zangetsu);
-      expect(ecosystemOf(''), SearchEcosystem.zangetsu);
+    test('maps anything else to AniAura', () {
+      expect(ecosystemOf('allanime'), SearchEcosystem.AniAura);
+      expect(ecosystemOf('netmirror'), SearchEcosystem.AniAura);
+      // No colon → not an Aniyomi/CloudStream id, so it stays AniAura.
+      expect(ecosystemOf('anilist'), SearchEcosystem.AniAura);
+      expect(ecosystemOf('csfd'), SearchEcosystem.AniAura);
+      expect(ecosystemOf(''), SearchEcosystem.AniAura);
     });
 
     test('never returns the All sentinel', () {
@@ -56,10 +56,10 @@ void main() {
       expect(ecosystemTabsFor(const []), [SearchEcosystem.all]);
     });
 
-    test('only Zangetsu sources → All + Zangetsu (no CS/Ani tabs)', () {
+    test('only AniAura sources → All + AniAura (no CS/Ani tabs)', () {
       expect(ecosystemTabsFor(const ['allanime', 'netmirror']), [
         SearchEcosystem.all,
-        SearchEcosystem.zangetsu,
+        SearchEcosystem.AniAura,
       ]);
     });
 
@@ -67,7 +67,7 @@ void main() {
       final tabs = ecosystemTabsFor(const ['allanime', 'cs:AnimePahe']);
       expect(tabs, [
         SearchEcosystem.all,
-        SearchEcosystem.zangetsu,
+        SearchEcosystem.AniAura,
         SearchEcosystem.cloudstream,
       ]);
       expect(tabs, isNot(contains(SearchEcosystem.aniyomi)));
@@ -88,7 +88,7 @@ void main() {
         ]),
         [
         SearchEcosystem.all,
-        SearchEcosystem.zangetsu,
+        SearchEcosystem.AniAura,
         SearchEcosystem.cloudstream,
         SearchEcosystem.aniyomi,
           SearchEcosystem.mangayomi,
@@ -101,14 +101,14 @@ void main() {
         ecosystemTabsFor(const ['ani:2', 'ani:1', 'cs:b', 'cs:a', 'zjs']),
         [
           SearchEcosystem.all,
-          SearchEcosystem.zangetsu,
+          SearchEcosystem.AniAura,
           SearchEcosystem.cloudstream,
           SearchEcosystem.aniyomi,
         ],
       );
     });
 
-    test('only an Aniyomi source → All + Aniyomi (no Zangetsu/CS tabs)', () {
+    test('only an Aniyomi source → All + Aniyomi (no AniAura/CS tabs)', () {
       expect(ecosystemTabsFor(const ['ani:1']), [
         SearchEcosystem.all,
         SearchEcosystem.aniyomi,
@@ -118,7 +118,7 @@ void main() {
 
   group('SearchState group filtering by ecosystem', () {
     final groups = [
-      _group('allanime', arrival: 0), // Zangetsu
+      _group('allanime', arrival: 0), // AniAura
       _group('cs:AnimePahe', arrival: 1), // CloudStream
       _group('ani:1', arrival: 2), // Aniyomi
     ];
@@ -142,8 +142,8 @@ void main() {
       expect(base.visibleResults, hasLength(3));
     });
 
-    test('Zangetsu tab shows only Zangetsu groups', () {
-      final s = base.copyWith(ecosystem: SearchEcosystem.zangetsu);
+    test('AniAura tab shows only AniAura groups', () {
+      final s = base.copyWith(ecosystem: SearchEcosystem.AniAura);
       expect(s.sortedVisibleGroups.map((g) => g.sourceId), ['allanime']);
       expect(s.visibleGroups.map((g) => g.sourceId), ['allanime']);
       expect(s.visibleResults.map((i) => i.sourceId), ['allanime']);

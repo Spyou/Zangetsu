@@ -73,7 +73,7 @@ void main() {
   late ZSourcePrefs prefs;
   late Directory dir;
   const fma = ZCanonical(ZKind.anime, 'mal:5114');
-  const aniChannel = MethodChannel('zangetsu/aniyomi');
+  const aniChannel = MethodChannel('AniAura/aniyomi');
   final aniCalls = <MethodCall>[];
 
   Widget harness(Widget child) => MaterialApp(

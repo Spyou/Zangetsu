@@ -11,7 +11,7 @@ import 'package:flutter/services.dart' show MethodChannel, rootBundle;
 import 'package:get_it/get_it.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show PostgrestClient;
-import 'package:zangetsu_source_bridge/zangetsu_source_bridge.dart';
+import 'package:AniAura_source_bridge/AniAura_source_bridge.dart';
 
 import '../announce/announcement.dart';
 import '../backup/backup_cloud.dart';
@@ -207,7 +207,7 @@ const Map<String, String> _lnreaderBrowserHeaders = {
 /// Android the LNReader fetch tries this channel (see NovelHttp.kt) before
 /// falling back to Dio. iOS/other platforms never touch this and keep using
 /// Dio as before.
-const MethodChannel _novelHttp = MethodChannel('zangetsu/novel_http');
+const MethodChannel _novelHttp = MethodChannel('AniAura/novel_http');
 
 /// One-time app bootstrap: Hive boxes, Dio, the shared provider runtime,
 /// the provider registry (built-in providers seeded from assets + any
@@ -649,7 +649,7 @@ Future<void> initDependencies({bool Function()? isOffline}) async {
     }),
   );
 
-  // Share deep links (zangetsu://open?…): opens a shared title's Detail, or
+  // Share deep links (AniAura://open?…): opens a shared title's Detail, or
   // reports an uninstalled source. Eager so its AppLinks listener is live from
   // boot; navigation is deferred until the root Navigator exists.
   sl.registerSingleton<OpenLinkService>(OpenLinkService());
@@ -867,7 +867,7 @@ Future<void> initDependencies({bool Function()? isOffline}) async {
   }
 
   // The app ships with NO built-in providers — every source comes from a repo
-  // (the Zangetsu repo is installed on first launch via onboarding). Drop any
+  // (the AniAura repo is installed on first launch via onboarding). Drop any
   // legacy `bundled://` entries left by older installs, then load the
   // repo-installed providers persisted from previous launches.
   await registry.purgeBundled();
@@ -1163,7 +1163,7 @@ Future<void> initDependencies({bool Function()? isOffline}) async {
 
   // Z Mode: the catalogue router and its metadata side. Off by default;
   // registering it costs nothing but makes the toggle instant.
-  await registerZangetsuMode(sl);
+  await registerAniAuraMode(sl);
 
   // TV never started loadAll above. Reapply the saved active source once the
   // shell is up (CloudStream/Aniyomi may still land later via their microtasks).
@@ -1217,7 +1217,7 @@ Future<void> initDependencies({bool Function()? isOffline}) async {
   );
   unawaited(sl<ChapterDownloader>().resumeInterrupted());
 
-  // Chromecast session controller. Wraps the native zangetsu/cast channel.
+  // Chromecast session controller. Wraps the native AniAura/cast channel.
   // init() is guarded: if the native side is absent (non-Android, test) the
   // controller stays in CastState.unavailable and never throws.
   sl.registerSingleton<CastController>(CastController());

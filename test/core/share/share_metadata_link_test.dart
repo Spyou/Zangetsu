@@ -25,7 +25,7 @@ void main() {
   test('a metadata title survives the share round trip', () {
     final link = ShareLink.forItem(_zItem('mal:1735'));
     final back = ShareLink.parse(
-      Uri.parse(link.replaceFirst(RegExp(r'^https?://[^?]*'), 'zangetsu://open')),
+      Uri.parse(link.replaceFirst(RegExp(r'^https?://[^?]*'), 'AniAura://open')),
     );
 
     expect(back, isNotNull);
@@ -53,7 +53,7 @@ void main() {
 
     final link = ShareLink.forItem(item);
     final back = ShareLink.parse(
-      Uri.parse(link.replaceFirst(RegExp(r'^https?://[^?]*'), 'zangetsu://open')),
+      Uri.parse(link.replaceFirst(RegExp(r'^https?://[^?]*'), 'AniAura://open')),
     );
 
     expect(back!.savedFrom, 'Simkl');
@@ -75,7 +75,7 @@ void main() {
     expect(link, contains('s=ani%3A1'));
     expect(link, isNot(contains('p=')));
     final back = ShareLink.parse(
-      Uri.parse(link.replaceFirst(RegExp(r'^https?://[^?]*'), 'zangetsu://open')),
+      Uri.parse(link.replaceFirst(RegExp(r'^https?://[^?]*'), 'AniAura://open')),
     );
     expect(back!.sourceId, 'ani:1');
     expect(back.savedFrom, isNull);
@@ -85,7 +85,7 @@ void main() {
     // Shared before this existed: it must resolve, just with the recipient's
     // own provider.
     final back = ShareLink.parse(
-      Uri.parse('zangetsu://open?s=zm&u=zm%3A%2F%2Fanime%2Fmal%3A1&t=X'),
+      Uri.parse('AniAura://open?s=zm&u=zm%3A%2F%2Fanime%2Fmal%3A1&t=X'),
     );
 
     expect(back, isNotNull);

@@ -18,7 +18,7 @@ import 'aniyomi_source_info.dart';
 import 'aniyomi_mapping.dart';
 
 /// Shared channel — matches the name registered in [AniyomiBridge.attach].
-const MethodChannel _aniChannel = MethodChannel('zangetsu/aniyomi');
+const MethodChannel _aniChannel = MethodChannel('AniAura/aniyomi');
 
 /// Returns true when [provider] should be visible in source lists.
 ///
@@ -40,7 +40,7 @@ bool aniyomiNsfwVisible(
 /// Identified by `'ani:<sourceId>'` so it lives alongside CloudStream (`cs:`)
 /// and JS providers without collisions.
 ///
-/// All data methods forward to the `zangetsu/aniyomi` channel, which Task 7
+/// All data methods forward to the `AniAura/aniyomi` channel, which Task 7
 /// populates with `getPopular`, `getLatest`, `search`, `getDetails`,
 /// `getEpisodes`, and `getVideoList`.  Until Task 7 is merged these calls
 /// return `MissingPluginException`; the provider swallows them and degrades

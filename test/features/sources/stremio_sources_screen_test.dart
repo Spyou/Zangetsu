@@ -13,7 +13,7 @@ import 'package:watch_app/core/tv/tv_alert_dialog.dart';
 import 'package:watch_app/core/stremio/stremio_manager.dart';
 import 'package:watch_app/core/stremio/stremio_sync.dart';
 import 'package:watch_app/features/sources/stremio_sources_screen.dart';
-import 'package:zangetsu_source_bridge/stremio.dart';
+import 'package:AniAura_source_bridge/stremio.dart';
 
 class _FakeSync extends ChangeNotifier implements StremioSync {
   @override

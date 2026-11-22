@@ -21,7 +21,7 @@ class DiscordSdkGateway extends DiscordGateway {
       super('');
 
   static DiscordSdkGateway? _owner;
-  static const _channel = MethodChannel('zangetsu/discord_presence');
+  static const _channel = MethodChannel('AniAura/discord_presence');
   String _token;
   bool _started = false;
   bool _closed = false;

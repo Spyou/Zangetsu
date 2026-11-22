@@ -14,10 +14,10 @@ class AboutSettingsScreen extends StatefulWidget {
 }
 
 class _AboutSettingsScreenState extends State<AboutSettingsScreen> {
-  static const String _websiteUrl = 'https://zangetsu.online';
+  static const String _websiteUrl = 'https://AniAura.online';
   static const String _telegramUrl = 'https://t.me/+9mQlsdvDlo83Mjk1';
   static const String _discordUrl = kDiscordInviteUrl;
-  static const String _githubUrl = 'https://github.com/Spyou/Zangetsu';
+  static const String _githubUrl = 'https://github.com/Spyou/AniAura';
 
   final UpdateService _updateService = UpdateService();
   bool _betaUpdates = false;
@@ -68,7 +68,7 @@ class _AboutSettingsScreenState extends State<AboutSettingsScreen> {
               SettingsTile(
                 icon: Icons.language_rounded,
                 title: context.l10n.website,
-                subtitle: 'zangetsu.online',
+                subtitle: 'AniAura.online',
                 onTap: () => _open(_websiteUrl),
               ),
               SettingsTile(

@@ -18,7 +18,7 @@ import 'package:watch_app/core/provider/provider_manager.dart';
 import 'package:watch_app/core/repository/source_repository.dart';
 import 'package:watch_app/core/state/active_source_cubit.dart';
 
-const _channel = MethodChannel('zangetsu/cloudstream');
+const _channel = MethodChannel('AniAura/cloudstream');
 
 /// Installs one CS source ("cs:Test") with [cachedMainUrl] as the value
 /// captured at listing time — the same shape `installedApis()` sends and

@@ -119,7 +119,7 @@ void main() {
       // The non-search path solves by itself, and when that solve fails there
       // was nothing left behind for the UI to offer — the source just looked
       // broken with nothing to press.
-      const channel = MethodChannel('zangetsu/cloudstream');
+      const channel = MethodChannel('AniAura/cloudstream');
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(channel, (call) async => null);
       addTearDown(() {
@@ -146,7 +146,7 @@ void main() {
     await provider.search('foo', 1);
     expect(CfSolveNeeded.hostFlagged('cf-blocked.test'), isTrue);
 
-    const channel = MethodChannel('zangetsu/cloudstream');
+    const channel = MethodChannel('AniAura/cloudstream');
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, (call) async {
       if (call.method == 'solveCloudflare') {

@@ -25,7 +25,7 @@ class _TvExoSpikeScreenState extends State<TvExoSpikeScreen> {
   bool _playing = false;
 
   void _onCreated(int id) {
-    _ch = MethodChannel('zangetsu/exoplayer_$id');
+    _ch = MethodChannel('AniAura/exoplayer_$id');
     _ch!.invokeMethod<void>('setUrl', {'url': _urlCtrl.text.trim()});
     if (mounted) setState(() => _playing = true);
   }
@@ -47,7 +47,7 @@ class _TvExoSpikeScreenState extends State<TvExoSpikeScreen> {
           // (a texture) — the exact thing we're trying to avoid.
           Positioned.fill(
             child: PlatformViewLink(
-              viewType: 'zangetsu/exoplayer_view',
+              viewType: 'AniAura/exoplayer_view',
               surfaceFactory: (context, controller) => AndroidViewSurface(
                 controller: controller as AndroidViewController,
                 gestureRecognizers:
@@ -57,7 +57,7 @@ class _TvExoSpikeScreenState extends State<TvExoSpikeScreen> {
               onCreatePlatformView: (params) {
                 final controller = PlatformViewsService.initExpensiveAndroidView(
                   id: params.id,
-                  viewType: 'zangetsu/exoplayer_view',
+                  viewType: 'AniAura/exoplayer_view',
                   layoutDirection: TextDirection.ltr,
                   creationParams: const <String, dynamic>{},
                   creationParamsCodec: const StandardMessageCodec(),

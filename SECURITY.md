@@ -2,7 +2,7 @@
 
 **Last Updated: September 18, 2026**
 
-Thanks for looking. If you've found a security problem in Zangetsu, please report it privately first — a public issue makes it exploitable before there's a fix.
+Thanks for looking. If you've found a security problem in AniAura, please report it privately first — a public issue makes it exploitable before there's a fix.
 
 ---
 
@@ -10,7 +10,7 @@ Thanks for looking. If you've found a security problem in Zangetsu, please repor
 
 **Use GitHub's private vulnerability reporting:**
 
-[**→ Report a vulnerability**](https://github.com/Spyou/Zangetsu/security/advisories/new)
+[**→ Report a vulnerability**](https://github.com/Spyou/AniAura/security/advisories/new)
 
 (Also reachable from the repo's **Security** tab → *Report a vulnerability*.)
 
@@ -43,7 +43,7 @@ The more of this you have, the faster it gets fixed:
 
 **Out of scope:**
 
-- **Third-party extensions and the sites they scrape.** Zangetsu ships no sources — extensions are installed by the user from repositories they choose. Bugs in someone else's extension belong to that extension's author. A bug in *how this app loads or sandboxes* an extension is very much in scope.
+- **Third-party extensions and the sites they scrape.** AniAura ships no sources — extensions are installed by the user from repositories they choose. Bugs in someone else's extension belong to that extension's author. A bug in *how this app loads or sandboxes* an extension is very much in scope.
 - Anything requiring a rooted device, a malicious build, or physical access to an unlocked phone
 - Missing hardening that isn't exploitable on its own (no HSTS, no certificate pinning, and so on) — still worth mentioning, just not treated as urgent
 - Reports from automated scanners with no demonstrated impact

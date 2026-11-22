@@ -1,4 +1,4 @@
-"""Run as zangetsu_bridge on a disposable VPS test database."""
+"""Run as AniAura_bridge on a disposable VPS test database."""
 
 import os
 import pathlib
@@ -21,7 +21,7 @@ from history_bridge import HistoryEvent, PostgresHistoryDatabase
 class BridgeRoleIntegrationTest(unittest.TestCase):
     def test_replay_can_replace_an_older_progress_timestamp_without_echo(self):
         connection = psycopg2.connect(
-            dbname="zangetsu_sync_bridge_vps_test", user="zangetsu_bridge"
+            dbname="AniAura_sync_bridge_vps_test", user="AniAura_bridge"
         )
         self.addCleanup(connection.close)
         database = PostgresHistoryDatabase(connection, "vps")

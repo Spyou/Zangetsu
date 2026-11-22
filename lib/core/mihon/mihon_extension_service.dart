@@ -19,7 +19,7 @@ import 'mihon_update.dart';
 
 export 'mihon_source_info.dart';
 
-/// Dart-side wrapper around the `zangetsu/mihon` [MethodChannel].
+/// Dart-side wrapper around the `AniAura/mihon` [MethodChannel].
 ///
 /// Structural twin of `AniyomiExtensionService`
 /// (`lib/core/aniyomi/aniyomi_extension_service.dart`) — deliberately
@@ -37,7 +37,7 @@ export 'mihon_source_info.dart';
 /// `AniyomiRepo`: Mihon repos publish `index.json` in a different shape (see
 /// `mihon_repo.dart`).
 class MihonExtensionService {
-  static const MethodChannel _channel = MethodChannel('zangetsu/mihon');
+  static const MethodChannel _channel = MethodChannel('AniAura/mihon');
 
   /// Hive box name used to persist installed pkg → apk-path entries so they
   /// can be reloaded on a cold start without re-downloading. Deliberately

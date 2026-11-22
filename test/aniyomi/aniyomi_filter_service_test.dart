@@ -5,7 +5,7 @@ import 'package:watch_app/core/aniyomi/aniyomi_extension_service.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  const channel = MethodChannel('zangetsu/aniyomi');
+  const channel = MethodChannel('AniAura/aniyomi');
   final log = <MethodCall>[];
 
   // ---------------------------------------------------------------------------

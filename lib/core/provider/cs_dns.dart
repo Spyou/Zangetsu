@@ -8,7 +8,7 @@ import 'package:flutter/services.dart';
 class CsDns {
   CsDns._();
 
-  static const MethodChannel _ch = MethodChannel('zangetsu/cloudstream');
+  static const MethodChannel _ch = MethodChannel('AniAura/cloudstream');
 
   static const int off = 0;
   static const int cloudflare = 1;

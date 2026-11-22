@@ -1,10 +1,10 @@
 [Unit]
-Description=Run Zangetsu VPS database backup daily
+Description=Run AniAura VPS database backup daily
 
 [Timer]
 OnCalendar=*-*-* 03:15:00 UTC
 Persistent=true
-Unit=zangetsu-db-backup.service
+Unit=AniAura-db-backup.service
 
 [Install]
 WantedBy=timers.target

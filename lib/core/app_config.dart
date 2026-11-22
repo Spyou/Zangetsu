@@ -1,7 +1,7 @@
 /// Single source of truth for the product name. Final rename = one
 /// find/replace on the token `WATCH_APP` across the repo, plus a bundle-id
 /// rename (`flutter pub run rename` or manual android/ios edits).
-const String kAppName = 'Zangetsu';
+const String kAppName = 'AniAura';
 
 /// Running app version shown in Settings/About. Populated from the real build
 /// (PackageInfo) at boot so it never goes stale; this literal is just the
@@ -37,21 +37,21 @@ const String kDiscordInviteUrl = 'https://discord.gg/hey6vz9kg6';
 /// Only the public URL lives here. The Discord webhook stays on the Worker:
 /// this app is open source and its APK is public, so anything put in the app
 /// can be read straight back out of it.
-const String kLogIntakeUrl = 'https://zangetsu-logs.log-intake.workers.dev';
+const String kLogIntakeUrl = 'https://AniAura-logs.log-intake.workers.dev';
 
 /// Public R2 manifest for the rotating profile-picker backdrops. The manifest
 /// contains up to three image filenames stored beside it in this bucket.
 const String kProfilePickerArtworkManifestUrl =
-    'https://avatars.zangetsu.online/profile-picker/manifest.json';
+    'https://avatars.AniAura.online/profile-picker/manifest.json';
 
 const String kProfileZoomLinesUrl =
-    'https://avatars.zangetsu.online/profile-picker/anime-zoom-lines-sheet.png?v=1';
+    'https://avatars.AniAura.online/profile-picker/anime-zoom-lines-sheet.png?v=1';
 
 /// Developer announcements feed (a plain JSON file in the public app repo).
 /// The app READS this on launch to show in-app announcements — never writes.
 /// Edit + push that file to broadcast a message to every user.
 const String kAnnouncementsUrl =
-    'https://raw.githubusercontent.com/Spyou/Zangetsu/main/announcements.json';
+    'https://raw.githubusercontent.com/Spyou/AniAura/main/announcements.json';
 
 /// TMDB API key for movie/TV trailer lookups (TrailerService). Anime trailers
 /// use AniList and need no key. Supply via `--dart-define=TMDB_API_KEY=...`,

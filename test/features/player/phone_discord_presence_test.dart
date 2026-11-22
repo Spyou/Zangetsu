@@ -61,7 +61,7 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   final messenger =
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
-  const channel = MethodChannel('zangetsu/phone_player');
+  const channel = MethodChannel('AniAura/phone_player');
   late Directory dir;
   late _Presence presence;
   late Completer<void> launched;

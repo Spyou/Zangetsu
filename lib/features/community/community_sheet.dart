@@ -10,7 +10,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/tv/tv_list_focusable.dart';
 
-const _telegramUrl = 'https://t.me/ZangetsuStream';
+const _telegramUrl = 'https://t.me/AniAuraStream';
 const _discordUrl = kDiscordInviteUrl;
 const _flagsBox = 'app_flags';
 const _seenKey = 'communitySheetSeen';
@@ -100,7 +100,7 @@ class _CommunitySheet extends StatelessWidget {
                 const SizedBox(width: 14),
                 Expanded(
                   child: Text(
-                    'Join the Zangetsu community',
+                    'Join the AniAura community',
                     style: AppText.headline.copyWith(
                       color: AppColors.textPrimary,
                       fontWeight: FontWeight.w700,
@@ -121,7 +121,7 @@ class _CommunitySheet extends StatelessWidget {
             _linkButton(
               context,
               icon: Icons.send_rounded,
-              label: 'Telegram  ·  @ZangetsuStream',
+              label: 'Telegram  ·  @AniAuraStream',
               color: const Color(0xFF229ED9),
               url: _telegramUrl,
               autofocus: isTv, // first button gets D-pad focus on TV

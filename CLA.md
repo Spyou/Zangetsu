@@ -1,16 +1,16 @@
-# Contributor License Agreement (CLA) for Zangetsu
+# Contributor License Agreement (CLA) for AniAura
 
 **Version 1** | **Last Updated: August 4, 2026**
 
-This Contributor License Agreement ("CLA") is between **Spyou** and each person or organization that submits a Contribution to the Zangetsu project.
+This Contributor License Agreement ("CLA") is between **Spyou** and each person or organization that submits a Contribution to the AniAura project.
 
-This CLA is intended to protect the Project, its maintainers, its users, and the integrity of the codebase — including giving Spyou the flexibility needed to develop and grow the Project over time — while allowing Contributors to retain ownership of their own work and operate under fair, predictable terms. **Zangetsu is, and will always remain, a free and open-source project** — see Section 3.1 for Spyou's permanent commitment on this.
+This CLA is intended to protect the Project, its maintainers, its users, and the integrity of the codebase — including giving Spyou the flexibility needed to develop and grow the Project over time — while allowing Contributors to retain ownership of their own work and operate under fair, predictable terms. **AniAura is, and will always remain, a free and open-source project** — see Section 3.1 for Spyou's permanent commitment on this.
 
 ---
 
 ## 1. Definitions
 
-- **"Project"** means Zangetsu and any official repositories, releases, documentation, build systems, assets, and related project infrastructure maintained by Spyou.
+- **"Project"** means AniAura and any official repositories, releases, documentation, build systems, assets, and related project infrastructure maintained by Spyou.
 - **"Contributor"** means any individual or organization submitting a Contribution.
 - **"You"** means the Contributor.
 - **"Contribution"** means any code, documentation, translations, artwork, design assets, bug fixes, patches, provider modules, extractor modules, configuration files, issue content, suggestions, or other material submitted to the Project in any form.
@@ -38,9 +38,9 @@ This license includes, without limitation, the right for Spyou to:
 - use your Contribution in releases, previews, forks maintained by the Project, documentation, changelogs, demos, promotional material, and repository history; and
 - authorize others (including future maintainers or organizations under Section 17.4) to exercise the rights above, subject to the same restrictions in this Section.
 
-**3.1 Permanent Commitment to Free and Open Source.** Zangetsu is, and will remain, free to use, free to download, and free of paid or proprietary licensing. Spyou will not sell the Project, place it or any Contribution behind a paywall, offer a closed-source/proprietary version of it, or sublicense it on terms that are not themselves an OSI-approved open-source license. This commitment applies to the Project as a whole and to every Contribution submitted under this CLA, and it survives any transfer under Section 17.4 — a successor maintainer or organization inherits this same restriction and cannot waive it unilaterally.
+**3.1 Permanent Commitment to Free and Open Source.** AniAura is, and will remain, free to use, free to download, and free of paid or proprietary licensing. Spyou will not sell the Project, place it or any Contribution behind a paywall, offer a closed-source/proprietary version of it, or sublicense it on terms that are not themselves an OSI-approved open-source license. This commitment applies to the Project as a whole and to every Contribution submitted under this CLA, and it survives any transfer under Section 17.4 — a successor maintainer or organization inherits this same restriction and cannot waive it unilaterally.
 
-**What this does not do:** this grant does not transfer your copyright, does not stop you from using your own Contribution elsewhere (see Section 10), and does not change the license under which the *current* public repository is distributed — that remains GPLv3 with additional terms per Section 18. The sublicensable/transferable language exists to give Spyou practical flexibility (for example, moving the Project to a foundation, or switching to a different open-source license if GPLv3 ever stops fitting the Project's needs) — never to open a path toward a paid or closed version of Zangetsu.
+**What this does not do:** this grant does not transfer your copyright, does not stop you from using your own Contribution elsewhere (see Section 10), and does not change the license under which the *current* public repository is distributed — that remains GPLv3 with additional terms per Section 18. The sublicensable/transferable language exists to give Spyou practical flexibility (for example, moving the Project to a foundation, or switching to a different open-source license if GPLv3 ever stops fitting the Project's needs) — never to open a path toward a paid or closed version of AniAura.
 
 ---
 
@@ -112,7 +112,7 @@ Once a Contribution is included in the Project, it may be used, modified, review
 However:
 - neither you nor Spyou is responsible for how unrelated third parties use or misuse the Project after release;
 - forks do not become official Project releases unless Spyou expressly approves them in writing;
-- use of the Zangetsu name, logo, branding, or official identity is not allowed unless Spyou gives written permission;
+- use of the AniAura name, logo, branding, or official identity is not allowed unless Spyou gives written permission;
 - Spyou may reject, remove, or request changes to any Contribution that does not fit the Project's standards, security expectations, legal requirements, or code of conduct.
 
 ---
@@ -154,7 +154,7 @@ Submitting a pull request, issue, patch, or message alone does not count as acce
 **Bot acceptance line:**
 Reply to the CLA bot with:
 
-`I agree to the Zangetsu CLA v1`
+`I agree to the AniAura CLA v1`
 
 The Project may require a bot comment, checkbox, signed statement, digital signature, or other explicit confirmation before merging. If this CLA is updated to a new version, the version number in the acceptance line will change, and returning contributors will be asked to re-confirm.
 
@@ -197,7 +197,7 @@ If the Project later discovers that a Contribution contains unauthorized materia
 
 ## 15. Trademarks
 
-This CLA does not grant you any right to use the names, logos, marks, or branding of Zangetsu or Spyou except as needed to identify the Project accurately or credit your Contribution.
+This CLA does not grant you any right to use the names, logos, marks, or branding of AniAura or Spyou except as needed to identify the Project accurately or credit your Contribution.
 
 Forks and derivative projects may not imply endorsement, sponsorship, affiliation, or official status without written permission from Spyou.
 
@@ -232,7 +232,7 @@ Sections 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 14, 15, 16, and 17 survive termination,
 
 ## 18. Main License and Third-Party Notices
 
-The main Zangetsu repository is currently licensed under **GNU GPL version 3.0, with additional terms**, unless otherwise stated. Section 3 of this CLA gives Spyou the right to move the Project to a different **open-source** license in the future if needed — see Section 3.1, which permanently rules out any paid or proprietary licensing of the Project or its Contributions.
+The main AniAura repository is currently licensed under **GNU GPL version 3.0, with additional terms**, unless otherwise stated. Section 3 of this CLA gives Spyou the right to move the Project to a different **open-source** license in the future if needed — see Section 3.1, which permanently rules out any paid or proprietary licensing of the Project or its Contributions.
 
 Third-party components and their respective licenses are listed in the Project's `NOTICE.md`, `LICENSE-Apache-2.0.txt`, or other included license notices.
 
@@ -244,4 +244,4 @@ Nothing in this CLA changes or overrides the licensing terms that apply to third
 
 Questions about this CLA may be raised through the Project issue tracker or by contacting **@Spyou**.
 
-**Thank you for contributing to Zangetsu.**
+**Thank you for contributing to AniAura.**

@@ -1,11 +1,11 @@
 [Unit]
-Description=Refresh Supabase public signing keys for Zangetsu staging sync
+Description=Refresh Supabase public signing keys for AniAura staging sync
 
 [Timer]
 OnBootSec=2min
 OnUnitActiveSec=5min
 RandomizedDelaySec=1min
-Unit=zangetsu-jwks-refresh.service
+Unit=AniAura-jwks-refresh.service
 
 [Install]
 WantedBy=timers.target

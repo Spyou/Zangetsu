@@ -45,8 +45,8 @@ declare
 begin
   -- The bridge writes to the destination with this flag to avoid echo loops.
   -- Only its direct database connection may suppress a journal event.
-  if session_user in ('postgres', 'zangetsu_bridge')
-      and current_setting('zangetsu.bridge_replay', true) = 'on' then
+  if session_user in ('postgres', 'AniAura_bridge')
+      and current_setting('AniAura.bridge_replay', true) = 'on' then
     return coalesce(new, old);
   end if;
   if tg_op = 'UPDATE' and to_jsonb(new) = to_jsonb(old) then

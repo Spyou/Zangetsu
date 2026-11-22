@@ -22,7 +22,7 @@ import 'cs_repo_url.dart';
 /// are async, Android-only, and return JSON-shaped collections. Every call is
 /// guarded by [Platform.isAndroid] at the call site; the channel itself never
 /// throws past the guards below (failures degrade to empty/safe values).
-const MethodChannel _csChannel = MethodChannel('zangetsu/cloudstream');
+const MethodChannel _csChannel = MethodChannel('AniAura/cloudstream');
 
 /// Keeps the provider's category name and opaque data intact for pagination.
 String csMainPageCategoryId(String name, String data) =>

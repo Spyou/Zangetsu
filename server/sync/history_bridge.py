@@ -86,7 +86,7 @@ class PostgresHistoryDatabase:
         keys = "user_key,profile_id,source_id,show_id" if event.profile_id else "user_key,source_id,show_id"
         with self.connection:
             with self.connection.cursor() as cursor:
-                cursor.execute("set local zangetsu.bridge_replay = 'on'")
+                cursor.execute("set local AniAura.bridge_replay = 'on'")
                 if event.operation == "delete":
                     filters = "user_key = %s and source_id = %s and show_id = %s"
                     values = [event.user_key, event.source_id, event.show_id]

@@ -37,8 +37,8 @@ declare
     else to_jsonb(new) end;
   row_key jsonb;
 begin
-  if session_user = 'zangetsu_bridge'
-      and current_setting('zangetsu.bridge_replay', true) = 'on' then
+  if session_user = 'AniAura_bridge'
+      and current_setting('AniAura.bridge_replay', true) = 'on' then
     return coalesce(new, old);
   end if;
   if tg_table_name in ('reading_history', 'profile_reading_history') then
@@ -75,15 +75,15 @@ begin
       'for each row execute function sync_private.capture_content_change()',
       table_name);
     execute format('grant select, insert, update, delete on sync_api.%I '
-      'to zangetsu_bridge', table_name);
+      'to AniAura_bridge', table_name);
     execute format('drop policy if exists bridge_rows on sync_api.%I',
       table_name);
     execute format('create policy bridge_rows on sync_api.%I for all '
-      'to zangetsu_bridge using (true) with check (true)', table_name);
+      'to AniAura_bridge using (true) with check (true)', table_name);
   end loop;
 end;
 $$;
-grant select, delete on sync_private.content_bridge_events to zangetsu_bridge;
+grant select, delete on sync_private.content_bridge_events to AniAura_bridge;
 grant select, insert, update, delete on
   sync_private.content_bridge_cursors,
-  sync_private.content_bridge_latest to zangetsu_bridge;
+  sync_private.content_bridge_latest to AniAura_bridge;

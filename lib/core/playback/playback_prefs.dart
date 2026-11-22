@@ -242,7 +242,7 @@ String? resolveDefaultPlayerPackage({
 
 class PlaybackPrefs {
   static const String boxName = 'playback_prefs';
-  static const String androidPlayerId = 'zangetsu.android.player';
+  static const String androidPlayerId = 'AniAura.android.player';
 
   /// Opens the prefs box. Call once during app bootstrap before constructing.
   static Future<void> init() async {
@@ -424,7 +424,7 @@ class PlaybackPrefs {
   Future<void> setCloseConfirmation(String value) =>
       _box.put('closeConfirmation', value);
 
-  /// Whether installed extensions (Zangetsu / CloudStream / Aniyomi) auto-update
+  /// Whether installed extensions (AniAura / CloudStream / Aniyomi) auto-update
   /// in the background on launch, throttled to ~once a day. Off by default —
   /// updates otherwise happen only when the user taps Update in Sources. A
   /// failed update always leaves the working version in place.
@@ -740,7 +740,7 @@ class PlaybackPrefs {
   static int exoBackBufferMsFor(String preset) => preset == 'low' ? 0 : 30000;
 
   /// The four values above for the current settings, shaped for the
-  /// `zangetsu/exoplayer_view` PlatformView's `creationParams` and for the
+  /// `AniAura/exoplayer_view` PlatformView's `creationParams` and for the
   /// native TV player's launch arguments. One accessor so every ExoPlayer entry
   /// point sends the same thing and none of them can drift.
   Map<String, dynamic> get exoBufferParams => <String, dynamic>{

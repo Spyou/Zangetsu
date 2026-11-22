@@ -16,7 +16,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../server/sync"))
 from history_bridge import load_source_dsn, source_connection_kwargs
 
 
-BASE = "https://sync.zangetsu.online/history"
+BASE = "https://sync.AniAura.online/history"
 SOURCE = "vps-bridge-pilot"
 
 

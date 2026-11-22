@@ -8,7 +8,7 @@ import 'package:http/testing.dart';
 import 'package:watch_app/core/stremio/stremio_manager.dart';
 import 'package:watch_app/core/stremio/stremio_remote.dart';
 import 'package:watch_app/core/stremio/stremio_sync.dart';
-import 'package:zangetsu_source_bridge/stremio.dart';
+import 'package:AniAura_source_bridge/stremio.dart';
 
 class Secrets implements StremioSecretStore {
   final values = <String, String>{};

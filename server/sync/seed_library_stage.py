@@ -19,7 +19,7 @@ ORDER = (
 def seed(source, stage):
     with stage.cursor() as cursor:
         cursor.execute("select current_database()")
-        if cursor.fetchone()[0] != "zangetsu_sync_stage":
+        if cursor.fetchone()[0] != "AniAura_sync_stage":
             raise ValueError("library seed is only allowed on the unpublished stage")
         for table in (*ORDER, "mylist_sync_clock", "mylist_sync_tombstones",
                       "library_bridge_events", "library_bridge_latest",
@@ -39,7 +39,7 @@ def seed(source, stage):
 
         with stage:
             with stage.cursor() as cursor:
-                cursor.execute("set local zangetsu.bridge_replay = 'on'")
+                cursor.execute("set local AniAura.bridge_replay = 'on'")
                 for table in ORDER:
                     columns = ", ".join(TABLE_FIELDS[table])
                     for start in range(0, len(snapshots[table]), 500):

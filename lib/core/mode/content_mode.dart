@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:zangetsu_source_bridge/zangetsu_source_bridge.dart';
+import 'package:AniAura_source_bridge/AniAura_source_bridge.dart';
 
 import '../mangayomi/mangayomi_source_id.dart';
 import '../models/provider_info.dart';

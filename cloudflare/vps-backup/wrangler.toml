@@ -1,4 +1,4 @@
-name = "zangetsu-vps-backup"
+name = "AniAura-vps-backup"
 main = "src/index.js"
 compatibility_date = "2026-10-19"
 workers_dev = true
@@ -6,4 +6,4 @@ account_id = "21426fc136d84f5598257c959dcb145f"
 
 [[r2_buckets]]
 binding = "BACKUPS"
-bucket_name = "zangetsu-db-backups"
+bucket_name = "AniAura-db-backups"

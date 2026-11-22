@@ -38,9 +38,9 @@ import io.flutter.plugin.platform.PlatformView
 
 /**
  * A PlatformView hosting an ExoPlayer + [PlayerView] (SurfaceView → hardware
- * overlay). Controlled from Dart via `zangetsu/exoplayer_<id>` (setSource /
+ * overlay). Controlled from Dart via `AniAura/exoplayer_<id>` (setSource /
  * play / pause / seekTo) and streams playback state on
- * `zangetsu/exoplayer_events_<id>`.
+ * `AniAura/exoplayer_events_<id>`.
  *
  * Default renderers + default SurfaceView + Hybrid Composition (on the Dart
  * side) — the exact combination that shipped WORKING in v1.7.0. FFmpeg software
@@ -78,8 +78,8 @@ class ExoPlayerView(
         // keepScreenOn is managed by syncKeepScreenOn() below — on while
         // playing/buffering, released on pause — not pinned on for the session.
     }
-    private val channel = MethodChannel(messenger, "zangetsu/exoplayer_$id")
-    private val events = EventChannel(messenger, "zangetsu/exoplayer_events_$id")
+    private val channel = MethodChannel(messenger, "AniAura/exoplayer_$id")
+    private val events = EventChannel(messenger, "AniAura/exoplayer_events_$id")
     private var sink: EventChannel.EventSink? = null
 
     /** Last player error, cleared on every new setSource. Null = no error. */

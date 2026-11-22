@@ -57,7 +57,7 @@ class KlipyProxyTest(unittest.TestCase):
             raise RuntimeError(url)
         return 200, self.upstream_response
 
-    def test_upstream_uses_zangetsu_user_agent(self):
+    def test_upstream_uses_AniAura_user_agent(self):
         with patch("klipy_proxy.build_opener") as build_opener:
             response = build_opener.return_value.open.return_value.__enter__.return_value
             response.status = 200
@@ -68,7 +68,7 @@ class KlipyProxyTest(unittest.TestCase):
             )
 
         request = build_opener.return_value.open.call_args.args[0]
-        self.assertEqual(request.get_header("User-agent"), "Zangetsu (+https://zangetsu.online)")
+        self.assertEqual(request.get_header("User-agent"), "AniAura (+https://AniAura.online)")
         self.assertEqual(status, 200)
         self.assertEqual(body, b'{"result":true}')
 
@@ -216,7 +216,7 @@ class KlipyProxyTest(unittest.TestCase):
             thread.join(timeout=2)
 
     def test_additional_authority_requires_its_own_bound_public_key(self):
-        vps = "https://sb.zangetsu.online/auth/v1"
+        vps = "https://sb.AniAura.online/auth/v1"
         other = ec.generate_private_key(ec.SECP256R1())
         vps_jwk = json.loads(jwt.algorithms.ECAlgorithm.to_jwk(other.public_key()))
         vps_jwk.update(kid="vps-key", alg="ES256", issuer=vps)
@@ -236,7 +236,7 @@ class KlipyProxyTest(unittest.TestCase):
         self.assertEqual(len(self.upstream_calls), 2)
 
     def test_additional_authority_is_not_implicitly_trusted(self):
-        vps = "https://sb.zangetsu.online/auth/v1"
+        vps = "https://sb.AniAura.online/auth/v1"
         jwk = json.loads(self.jwks_path.read_text())["keys"][0]
         jwk["issuer"] = vps
         self.jwks_path.write_text(json.dumps({"keys": [jwk]}))

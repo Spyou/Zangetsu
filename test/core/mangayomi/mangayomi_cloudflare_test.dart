@@ -4,7 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:watch_app/core/mangayomi/mangayomi_manager.dart';
 import 'package:watch_app/core/mangayomi/mangayomi_provider.dart';
-import 'package:zangetsu_source_bridge/zangetsu_source_bridge.dart';
+import 'package:AniAura_source_bridge/AniAura_source_bridge.dart';
 
 class _FakeManager extends MangayomiManager {
   _FakeManager(this.worker)
@@ -53,7 +53,7 @@ class _FakeWorker extends MangayomiRuntimeWorker {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-  const channel = MethodChannel('zangetsu/mihon');
+  const channel = MethodChannel('AniAura/mihon');
 
   final source = MangayomiSource(
     repository: Uri.parse('https://repo.example/index.json'),

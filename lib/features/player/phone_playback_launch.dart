@@ -462,12 +462,12 @@ Future<bool> launchPhonePlayback({
   );
 }
 
-/// Drives [PhonePlayerActivity] over `zangetsu/phone_player`.
+/// Drives [PhonePlayerActivity] over `AniAura/phone_player`.
 ///
 /// Resolution and persistence stay in Dart; the Activity is only a player.
 /// Only one player is on screen at a time, so plain statics hold the session.
 class PhoneNativePlayer {
-  static const _ch = MethodChannel('zangetsu/phone_player');
+  static const _ch = MethodChannel('AniAura/phone_player');
   static bool _handlerBound = false;
 
   /// Completes when the Activity reports it closed, carrying the final

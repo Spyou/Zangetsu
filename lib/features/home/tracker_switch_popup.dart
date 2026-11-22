@@ -95,7 +95,7 @@ class _TrackerSwitchDialog extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                _row(context, null, 'Zangetsu List', 0),
+                _row(context, null, 'AniAura List', 0),
                 for (var i = 0; i < trackers.length; i++)
                   _row(context, trackers[i], trackers[i].displayName, i + 1),
               ],

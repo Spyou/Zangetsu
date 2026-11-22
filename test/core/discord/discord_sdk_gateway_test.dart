@@ -19,7 +19,7 @@ void main() {
   test(
     'SDK transport preserves activity fields and closes after clearing',
     () async {
-      const channel = MethodChannel('zangetsu/discord_presence');
+      const channel = MethodChannel('AniAura/discord_presence');
       final calls = <MethodCall>[];
       final messenger =
           TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
@@ -36,7 +36,7 @@ void main() {
             details: 'Episode 2',
             startMs: 100,
             endMs: 200,
-            buttons: [(label: 'Open', url: 'https://zangetsu.online')],
+            buttons: [(label: 'Open', url: 'https://AniAura.online')],
           ),
           status: 'dnd',
         );
@@ -67,7 +67,7 @@ void main() {
     },
   );
   test('closing an old transport leaves its replacement running', () async {
-    const channel = MethodChannel('zangetsu/discord_presence');
+    const channel = MethodChannel('AniAura/discord_presence');
     final calls = <MethodCall>[];
     final messenger =
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;

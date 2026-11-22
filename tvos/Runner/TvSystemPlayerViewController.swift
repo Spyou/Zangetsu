@@ -4,7 +4,7 @@ import CoreText
 import Flutter
 import UIKit
 
-/// AVKit-based Apple TV player: stock transport chrome plus Zangetsu hooks
+/// AVKit-based Apple TV player: stock transport chrome plus AniAura hooks
 /// (`transportBarCustomMenuItems`, `contextualActions`, Episodes tab,
 /// Up Next content proposal). See Apple's "Customizing the tvOS Playback Experience".
 final class TvSystemPlayerViewController: AVPlayerViewController, AVPlayerViewControllerDelegate {
@@ -70,7 +70,7 @@ final class TvSystemPlayerViewController: AVPlayerViewController, AVPlayerViewCo
     private var captionFont: UIFont = .systemFont(ofSize: 36, weight: .semibold)
     private var captionFgColor: UIColor = .white
 
-    // Subtitle timing debug (`[zangetsu-sub-timing]` in Xcode console).
+    // Subtitle timing debug (`[AniAura-sub-timing]` in Xcode console).
     private var lastActiveCueIndex: Int?
     private var lastPlaybackT: Double = -1
     private var lastSubTimingHeartbeatAt: TimeInterval = 0
@@ -231,7 +231,7 @@ final class TvSystemPlayerViewController: AVPlayerViewController, AVPlayerViewCo
         captionWindow?.rootViewController?.view.bringSubviewToFront(captionHost)
     }
 
-    /// Apply Zangetsu Captions Styling (PlaybackPrefs) to the overlay.
+    /// Apply AniAura Captions Styling (PlaybackPrefs) to the overlay.
     private func applyCaptionAppearance() {
         let size = max(18, 36 * CGFloat(max(0.5, captionScale)))
         captionFont = Self.resolveFont(
@@ -577,7 +577,7 @@ final class TvSystemPlayerViewController: AVPlayerViewController, AVPlayerViewCo
                     }
                 } else if item.status == .failed {
                     let msg = item.error?.localizedDescription ?? "Playback failed"
-                    NSLog("[zangetsu-av-system] item failed: %@", msg)
+                    NSLog("[AniAura-av-system] item failed: %@", msg)
                 }
             }
         }
@@ -1082,7 +1082,7 @@ final class TvSystemPlayerViewController: AVPlayerViewController, AVPlayerViewCo
         item.select(embeddedLegibleOptions[index].option, in: group)
         selectedSubtitleKey = "embed:\(index)"
         rebuildTransportMenus()
-        NSLog("[zangetsu-av-system] selected embedded sub: %@", embeddedLegibleOptions[index].label)
+        NSLog("[AniAura-av-system] selected embedded sub: %@", embeddedLegibleOptions[index].label)
     }
 
     private func applySpeed(_ s: Float) {
@@ -1134,7 +1134,7 @@ final class TvSystemPlayerViewController: AVPlayerViewController, AVPlayerViewCo
 
     private func applyProviderSubtitle(_ s: [String: String], key: String) {
         guard let urlStr = s["url"], let url = URL(string: urlStr) else {
-            NSLog("[zangetsu-av-system] provider sub missing url")
+            NSLog("[AniAura-av-system] provider sub missing url")
             flashCaptionStatus("Subtitle URL missing")
             return
         }
@@ -1232,7 +1232,7 @@ final class TvSystemPlayerViewController: AVPlayerViewController, AVPlayerViewCo
             DispatchQueue.main.async {
                 let text = (result as? [String: Any])?["text"] as? String
                 if text == nil {
-                    NSLog("[zangetsu-av-system] fetchSubtitle nil for %@", url.absoluteString)
+                    NSLog("[AniAura-av-system] fetchSubtitle nil for %@", url.absoluteString)
                 }
                 applyText(text)
             }
@@ -1387,8 +1387,8 @@ final class TvSystemPlayerViewController: AVPlayerViewController, AVPlayerViewCo
     // MARK: - Subtitle timing debug
 
     private func logSubtitleTiming(_ message: String) {
-        NSLog("[zangetsu-sub-timing] %@", message)
-        // Also mirror to Flutter terminal (`flutter: [zangetsu-sub-timing] …`).
+        NSLog("[AniAura-sub-timing] %@", message)
+        // Also mirror to Flutter terminal (`flutter: [AniAura-sub-timing] …`).
         DispatchQueue.main.async { [weak self] in
             self?.channel.invokeMethod(
                 "subtitleTimingLog",
@@ -2115,7 +2115,7 @@ final class TvSystemPlayerViewController: AVPlayerViewController, AVPlayerViewCo
             previewImage: UIImage(systemName: "play.rectangle.fill")!
         )
         // URL filled after Dart resolve on accept — placeholder keeps proposal eligible.
-        proposal.url = URL(string: "zangetsu://next/\(nextIdx)")
+        proposal.url = URL(string: "AniAura://next/\(nextIdx)")
         proposal.automaticAcceptanceInterval = 8
         item.nextContentProposal = proposal
     }
@@ -2189,7 +2189,7 @@ final class TvSystemPlayerViewController: AVPlayerViewController, AVPlayerViewCo
             "durationMs": dur,
         ]
         if let error {
-            NSLog("[zangetsu-av-system] %@", error)
+            NSLog("[AniAura-av-system] %@", error)
         }
         launchResult?(payload)
         launchResult = nil

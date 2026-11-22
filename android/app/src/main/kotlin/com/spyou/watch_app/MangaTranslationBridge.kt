@@ -204,7 +204,7 @@ internal object MangaOcrScriptMapping {
     }
 }
 
-/** Android implementation of `zangetsu/manga_translation`. */
+/** Android implementation of `AniAura/manga_translation`. */
 internal class MangaTranslationBridge(context: Context) : MethodChannel.MethodCallHandler {
     private val appContext = context.applicationContext
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)

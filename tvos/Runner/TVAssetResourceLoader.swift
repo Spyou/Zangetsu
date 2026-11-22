@@ -9,7 +9,7 @@ final class TVAssetResourceLoader: NSObject, AVAssetResourceLoaderDelegate,
   URLSessionDataDelegate
 {
 
-  private static let schemePrefix = "zangetsu-"
+  private static let schemePrefix = "AniAura-"
   private static let playlistType = "com.apple.mpegurl"
 
   private final class PendingRequest {
@@ -37,12 +37,12 @@ final class TVAssetResourceLoader: NSObject, AVAssetResourceLoaderDelegate,
     }
   }
 
-  let delegateQueue = DispatchQueue(label: "app.zangetsu.tv-asset-resource-loader")
+  let delegateQueue = DispatchQueue(label: "app.AniAura.tv-asset-resource-loader")
 
   private let headers: [String: String]
   private let rootURL: URL
   private let mimeTypeHint: String?
-  private let stateQueue = DispatchQueue(label: "app.zangetsu.tv-asset-resource-loader-state")
+  private let stateQueue = DispatchQueue(label: "app.AniAura.tv-asset-resource-loader-state")
   private var pendingRequests: [Int: PendingRequest] = [:]
   private var requestIDs: [ObjectIdentifier: Int] = [:]
   private var session: URLSession!

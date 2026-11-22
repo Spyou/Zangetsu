@@ -70,7 +70,7 @@ void main() {
     dir = await Directory.systemTemp.createTemp('wrongtitlegrid');
     Hive.init(dir.path);
     await registerPickerDeps(aniyomi: [aniSource(id: 1, name: 'AllAnime')]);
-    for (final ch in const ['zangetsu/aniyomi', 'zangetsu/mihon']) {
+    for (final ch in const ['AniAura/aniyomi', 'AniAura/mihon']) {
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(
             MethodChannel(ch),

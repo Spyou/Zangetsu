@@ -2,7 +2,7 @@
 // invisible to the JS-provider `_looksLikeCfChallenge` check — a CF-gated CS
 // source used to just vanish from matching with no icon and no way to solve.
 // PluginHost's shared-client interceptor now pushes a challenge hit to Dart
-// over the existing `zangetsu/cloudstream` channel as `onCfChallenge`;
+// over the existing `AniAura/cloudstream` channel as `onCfChallenge`;
 // [CloudStreamManager.handleCfChallenge] is the Dart-side handler for that
 // push, pulled out so a test can call it directly instead of simulating a
 // full platform-channel round trip (native isn't reachable from here at all).
@@ -58,7 +58,7 @@ void main() {
     });
     expect(CfSolveNeeded.hostFlagged('cf-cs.test'), isTrue);
 
-    const channel = MethodChannel('zangetsu/cloudstream');
+    const channel = MethodChannel('AniAura/cloudstream');
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, (call) async {
       if (call.method == 'solveCloudflare') {

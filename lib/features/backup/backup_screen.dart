@@ -129,7 +129,7 @@ class _BackupScreenState extends State<BackupScreen> {
                 ? context
                       .l10n
                       .couldnTSaveTheBackupFileStoragePermissionMayBeNeeded
-                : context.l10n.savedToDownloadsZangetsu,
+                : context.l10n.savedToDownloadsAniAura,
           ),
         ),
       );
@@ -300,7 +300,7 @@ class _BackupScreenState extends State<BackupScreen> {
   }
 
   /// Friendly label for a backup file, parsed from its
-  /// `zangetsu-backup-YYYYMMDD-HHMM.json` name (falls back to the raw name).
+  /// `AniAura-backup-YYYYMMDD-HHMM.json` name (falls back to the raw name).
   String _backupLabel(File f) {
     final name = f.uri.pathSegments.last;
     final m = RegExp(r'(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})').firstMatch(name);
@@ -340,7 +340,7 @@ class _BackupScreenState extends State<BackupScreen> {
             Text(l10n.couldnTReinstall(r.failures.join('\n'))),
           ],
           const SizedBox(height: 8),
-          Text(l10n.reopenZangetsuToSeeRestoredLibrarySources),
+          Text(l10n.reopenAniAuraToSeeRestoredLibrarySources),
         ],
       ),
     );
@@ -411,7 +411,7 @@ class _BackupScreenState extends State<BackupScreen> {
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
                 child: Text(
                   'Save your sources, list and settings — to a file on your '
-                  'device or to your Zangetsu account. Restoring only adds '
+                  'device or to your AniAura account. Restoring only adds '
                   'things back; it never deletes what you already have.',
                   style: AppText.caption,
                 ),

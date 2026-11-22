@@ -1,4 +1,4 @@
-import 'package:zangetsu_source_bridge/zangetsu_source_bridge.dart';
+import 'package:AniAura_source_bridge/AniAura_source_bridge.dart';
 
 MangayomiContentType? mangayomiContentTypeOf(String sourceId) {
   final parts = sourceId.split(':');

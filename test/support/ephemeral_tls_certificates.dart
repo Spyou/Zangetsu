@@ -24,7 +24,7 @@ class EphemeralTlsCertificates {
     final password = base64UrlEncode(
       List<int>.generate(24, (_) => random.nextInt(256)),
     );
-    final directory = await Directory.systemTemp.createTemp('zangetsu-tls-');
+    final directory = await Directory.systemTemp.createTemp('AniAura-tls-');
     final certificates = EphemeralTlsCertificates._(directory, password);
     try {
       await certificates._generate('root', ca: true);
@@ -117,7 +117,7 @@ class EphemeralTlsCertificates {
         .where((part) => part.isNotEmpty)
         .last;
     if (!target.startsWith('$root${Platform.pathSeparator}') ||
-        !basename.startsWith('zangetsu-tls-')) {
+        !basename.startsWith('AniAura-tls-')) {
       throw StateError(
         'Refusing to remove a directory outside the TLS test temp area',
       );
@@ -142,7 +142,7 @@ class EphemeralTlsCertificates {
     '-keysize',
     '2048',
     '-dname',
-    'CN=Zangetsu TLS test $name',
+    'CN=AniAura TLS test $name',
     '-validity',
     '2',
     '-keypass',

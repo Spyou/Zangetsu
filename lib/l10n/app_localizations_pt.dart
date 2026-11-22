@@ -336,7 +336,7 @@ class AppLocalizationsPt extends AppLocalizations {
   String get couldNotExportLogs => 'Não foi possível exportar os logs';
 
   @override
-  String get logsShareSubject => 'Logs do Zangetsu';
+  String get logsShareSubject => 'Logs do AniAura';
 
   @override
   String get signInSubtitle =>
@@ -412,7 +412,7 @@ class AppLocalizationsPt extends AppLocalizations {
   String get presenceButtonLabel => 'Button label';
 
   @override
-  String get presenceButtonLabelHint => 'Open in Zangetsu';
+  String get presenceButtonLabelHint => 'Open in AniAura';
 
   @override
   String get presenceShowWhenPaused => 'Show when paused';
@@ -1043,7 +1043,7 @@ class AppLocalizationsPt extends AppLocalizations {
   }
 
   @override
-  String get bootErrorTitle => 'O Zangetsu não terminou de iniciar';
+  String get bootErrorTitle => 'O AniAura não terminou de iniciar';
 
   @override
   String get bootErrorBody =>
@@ -1057,11 +1057,11 @@ class AppLocalizationsPt extends AppLocalizations {
 
   @override
   String get resetAppDataBody =>
-      'Isso apaga o que o Zangetsu salvou neste dispositivo para que ele comece do zero.\n\nSua conta e o que está sincronizado na nuvem não são afetados — entre novamente e sua biblioteca volta.';
+      'Isso apaga o que o AniAura salvou neste dispositivo para que ele comece do zero.\n\nSua conta e o que está sincronizado na nuvem não são afetados — entre novamente e sua biblioteca volta.';
 
   @override
   String get resetAppDataDone =>
-      'Feche o Zangetsu completamente e abra de novo.';
+      'Feche o AniAura completamente e abra de novo.';
 
   @override
   String get detailsCopied => 'Detalhes copiados — envie para nós';
@@ -1598,7 +1598,7 @@ class AppLocalizationsPt extends AppLocalizations {
       'Desligue o Material You para escolher uma cor manualmente';
 
   @override
-  String get downloadsZangetsu => 'Downloads › Zangetsu';
+  String get downloadsAniAura => 'Downloads › AniAura';
 
   @override
   String get removableDrive => 'Unidade removível';
@@ -2315,8 +2315,8 @@ class AppLocalizationsPt extends AppLocalizations {
   String get haveTheApp => 'Tem o app?';
 
   @override
-  String get openZangetsuOnYourNphoneAndScan =>
-      'Abra o Zangetsu no seu\\ncelular e escaneie';
+  String get openAniAuraOnYourNphoneAndScan =>
+      'Abra o AniAura no seu\\ncelular e escaneie';
 
   @override
   String get noApp => 'Sem o app?';
@@ -2374,8 +2374,8 @@ class AppLocalizationsPt extends AppLocalizations {
 
   @override
   String
-  get onTheZangetsuAppOnYourPhoneOpenNPairATVAndEnterThisCodeOrScanTheQR =>
-      'No app Zangetsu no seu celular, abra\\n\"Parear uma TV\" e digite este código — ou escaneie o QR.';
+  get onTheAniAuraAppOnYourPhoneOpenNPairATVAndEnterThisCodeOrScanTheQR =>
+      'No app AniAura no seu celular, abra\\n\"Parear uma TV\" e digite este código — ou escaneie o QR.';
 
   @override
   String get signingIn => 'Entrando…';
@@ -2400,8 +2400,8 @@ class AppLocalizationsPt extends AppLocalizations {
   String get enterTheCodeFromYourTV => 'Digite o código da sua TV';
 
   @override
-  String get openZangetsuOnYourTVAndSignInWithYourPhoneToSeeIt =>
-      'Abra o Zangetsu na sua TV e entre com o celular para vê-lo.';
+  String get openAniAuraOnYourTVAndSignInWithYourPhoneToSeeIt =>
+      'Abra o AniAura na sua TV e entre com o celular para vê-lo.';
 
   @override
   String get abcd2345 => 'ABCD 2345';
@@ -2445,8 +2445,8 @@ class AppLocalizationsPt extends AppLocalizations {
   String get restoreComplete => 'Restauração concluída';
 
   @override
-  String get reopenZangetsuToSeeRestoredLibrarySources =>
-      'Abra o Zangetsu de novo para ver a biblioteca e as fontes restauradas.';
+  String get reopenAniAuraToSeeRestoredLibrarySources =>
+      'Abra o AniAura de novo para ver a biblioteca e as fontes restauradas.';
 
   @override
   String get saveToAFile => 'Salvar em um arquivo';
@@ -2668,7 +2668,7 @@ class AppLocalizationsPt extends AppLocalizations {
   String get noSourcesInThisRepo => 'Nenhuma fonte neste repo.';
 
   @override
-  String get zangetsuProviders => 'Provedores do Zangetsu';
+  String get AniAuraProviders => 'Provedores do AniAura';
 
   @override
   String get addRepo => 'Adicionar repo';
@@ -2776,7 +2776,7 @@ class AppLocalizationsPt extends AppLocalizations {
       'Abrir as configurações próprias desta fonte (ex.: servidor, idioma)';
 
   @override
-  String get addZangetsuRepo => 'Adicionar repo do Zangetsu';
+  String get addAniAuraRepo => 'Adicionar repo do AniAura';
 
   @override
   String get theProviderWillBeRemovedFromYourInstalledSources =>
@@ -3984,7 +3984,7 @@ class AppLocalizationsPt extends AppLocalizations {
 
   @override
   String get appIconBlurb =>
-      'O ícone na sua tela inicial. O Zangetsu fecha quando você muda — o Android precisa trocar a entrada do launcher.';
+      'O ícone na sua tela inicial. O AniAura fecha quando você muda — o Android precisa trocar a entrada do launcher.';
 
   @override
   String useTheIcon(String label) {
@@ -3993,7 +3993,7 @@ class AppLocalizationsPt extends AppLocalizations {
 
   @override
   String get useTheIconBody =>
-      'O Zangetsu vai fechar para que o Android possa aplicar o novo ícone. Abra de novo pela tela inicial depois.\n\nSe você tiver o Zangetsu em uma pasta ou dock, pode precisar adicioná-lo de novo.';
+      'O AniAura vai fechar para que o Android possa aplicar o novo ícone. Abra de novo pela tela inicial depois.\n\nSe você tiver o AniAura em uma pasta ou dock, pode precisar adicioná-lo de novo.';
 
   @override
   String get animRise => 'Subir';
@@ -4074,7 +4074,7 @@ class AppLocalizationsPt extends AppLocalizations {
       'O backup na nuvem falhou. Verifique se você está online — se continuar falhando, o armazenamento de backup na nuvem ainda pode não estar configurado.';
 
   @override
-  String get savedToDownloadsZangetsu => 'Salvo em Downloads › Zangetsu';
+  String get savedToDownloadsAniAura => 'Salvo em Downloads › AniAura';
 
   @override
   String restoreFailed(String error) {
@@ -4087,7 +4087,7 @@ class AppLocalizationsPt extends AppLocalizations {
 
   @override
   String get backupScreenBlurb =>
-      'Salve suas fontes, lista e configurações — em um arquivo do seu dispositivo ou na sua conta do Zangetsu. Restaurar só acrescenta itens de volta; nunca apaga o que você já tem.';
+      'Salve suas fontes, lista e configurações — em um arquivo do seu dispositivo ou na sua conta do AniAura. Restaurar só acrescenta itens de volta; nunca apaga o que você já tem.';
 
   @override
   String get includeInTheBackup => 'Incluir no backup';
@@ -4150,7 +4150,7 @@ class AppLocalizationsPt extends AppLocalizations {
 
   @override
   String get couldnTOpenInstaller =>
-      'Não foi possível abrir o instalador. Ative \"Instalar apps desconhecidos\" para o Zangetsu nas configurações do sistema e tente de novo.';
+      'Não foi possível abrir o instalador. Ative \"Instalar apps desconhecidos\" para o AniAura nas configurações do sistema e tente de novo.';
 
   @override
   String get downloadFailedCheckConnection =>
@@ -4314,7 +4314,7 @@ class AppLocalizationsPt extends AppLocalizations {
   String get lnreader => 'LNReader';
 
   @override
-  String get zangetsu => 'Zangetsu';
+  String get AniAura => 'AniAura';
 
   @override
   String get cloudStream => 'CloudStream';
@@ -5597,7 +5597,7 @@ class AppLocalizationsPt extends AppLocalizations {
 
   @override
   String get keepDownloadsPrivateSubtitle =>
-      'Os novos downloads de vídeo ficam dentro do Zangetsu em vez da pasta Downloads. Eles são apagados quando você desinstala o Zangetsu. Capítulos e exportações não são afetados.';
+      'Os novos downloads de vídeo ficam dentro do AniAura em vez da pasta Downloads. Eles são apagados quando você desinstala o AniAura. Capítulos e exportações não são afetados.';
 
   @override
   String get mangaPageTranslationTitle => 'Translate page';
@@ -5738,7 +5738,7 @@ class AppLocalizationsPt extends AppLocalizations {
 
   @override
   String get mangaTranslationRestartRequiredMessage =>
-      'Close and reopen Zangetsu to finish setting up on-device OCR, then try again.';
+      'Close and reopen AniAura to finish setting up on-device OCR, then try again.';
 
   @override
   String get mangaTranslationSearchLanguages => 'Search languages';

@@ -38,7 +38,7 @@ import uy.kohesive.injekt.api.get
  * Two bodies had to be adapted (both noted at the method):
  *
  *  1. The version pair is read off our own installed package rather than a
- *     `BuildConfig` — we report Zangetsu's real version either way.
+ *     `BuildConfig` — we report AniAura's real version either way.
  *  2. `getSupportedImageMimeTypes()` is a literal list, because the
  *     `ImageUtil.ImageType` enum upstream derives it from isn't vendored.
  */

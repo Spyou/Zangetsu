@@ -1,17 +1,17 @@
 import 'dart:ui';
 
-/// The Zangetsu mark as drawable geometry, split into the three parts the
+/// The AniAura mark as drawable geometry, split into the three parts the
 /// splash animates independently.
 ///
-/// Generated from `assets/brand/zangetsu-mark.svg` (the traced master) with the
+/// Generated from `assets/brand/AniAura-mark.svg` (the traced master) with the
 /// SVG's own transform baked in, so these coordinates already live in a
 /// {0, 0, 512, 512} box — a painter only has to scale that to its size.
 ///
 /// Kept as path data rather than pulling in an SVG package: the traced paths
 /// use only M/L/Z, so [parseMarkPath] is a dozen lines and there is nothing an
 /// SVG renderer would add. Regenerate if the artwork changes.
-class ZangetsuMark {
-  ZangetsuMark._();
+class AniAuraMark {
+  AniAuraMark._();
 
   /// The box the raw coordinates are expressed in.
   static const double side = 512;

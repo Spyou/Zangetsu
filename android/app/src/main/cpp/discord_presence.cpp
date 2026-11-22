@@ -35,7 +35,7 @@ discordpp::StatusType onlineStatusFor(const std::string& status) {
         status == "invisible" ? discordpp::StatusType::Invisible : discordpp::StatusType::Online;
 }
 void event(std::string value) {
-    __android_log_print(ANDROID_LOG_INFO, "ZangetsuDiscord", "%s", value.c_str());
+    __android_log_print(ANDROID_LOG_INFO, "AniAuraDiscord", "%s", value.c_str());
     if (events.size() == 32) events.pop_front();
     events.push_back(std::move(value));
 }

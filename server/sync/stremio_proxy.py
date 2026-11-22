@@ -100,7 +100,7 @@ class StremioProxy:
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = 'Zangetsu'
+    server_version = 'AniAura'
     sys_version = ''
 
     def do_POST(self):
@@ -135,7 +135,7 @@ def serve():
     credential = Path(os.environ['CREDENTIALS_DIRECTORY']) / 'stremio_key'
     key = base64.b64decode(credential.read_text().strip(), validate=True)
     verifier = KlipyProxy('', os.environ['SUPABASE_ISSUER'],
-                         os.environ.get('SUPABASE_JWKS_PATH', '/etc/zangetsu-sync/jwks.json'),
+                         os.environ.get('SUPABASE_JWKS_PATH', '/etc/AniAura-sync/jwks.json'),
                          additional_issuer=os.environ.get('VPS_AUTH_ISSUER'))
     server = ThreadingHTTPServer(('127.0.0.1', 3111), Handler)
     server.daemon_threads = True

@@ -12,7 +12,7 @@ import '../../l10n/l10n.dart';
 ///
 /// The phone sheet (`showMetaFilterSheet`) uses [InkWell] cells and a nested
 /// [GestureDetector] genre wrap — on a remote the only Material focusable is
-/// **Done**, which is the [#116](https://github.com/Spyou/Zangetsu/issues/116)
+/// **Done**, which is the [#116](https://github.com/Spyou/AniAura/issues/116)
 /// report. This dialog is full-size at 10 feet, every row is a [TvListFocusable],
 /// and the genre picker autofocuses the first genre (not Done).
 Future<MetaFilters?> showMetaFilterDialogTv(

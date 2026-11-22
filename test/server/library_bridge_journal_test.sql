@@ -28,8 +28,8 @@ begin
 end;
 $$;
 
-set session authorization zangetsu_bridge;
-select set_config('zangetsu.bridge_replay', 'on', true);
+set session authorization AniAura_bridge;
+select set_config('AniAura.bridge_replay', 'on', true);
 insert into sync_api.profile_mylist
   (user_key, profile_id, source_id, item_id)
 values ('library-journal-test', 'viewer', 'source', 'profile-item');

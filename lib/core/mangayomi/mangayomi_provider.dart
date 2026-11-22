@@ -1,7 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/services.dart';
-import 'package:zangetsu_source_bridge/zangetsu_source_bridge.dart';
+import 'package:AniAura_source_bridge/AniAura_source_bridge.dart';
 
 import '../models/episode.dart';
 import '../models/home_section.dart';
@@ -16,7 +16,7 @@ import '../torrent/torrent_util.dart';
 import 'mangayomi_manager.dart';
 
 const MethodChannel _mangayomiCloudflareChannel = MethodChannel(
-  'zangetsu/mihon',
+  'AniAura/mihon',
 );
 
 class MangayomiProvider implements BaseProvider, ReadingProvider {

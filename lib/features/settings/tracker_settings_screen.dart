@@ -10,7 +10,7 @@ import '../../core/ui/settings_widgets.dart';
 
 /// Connect / disconnect any [Tracker] (AniList, MyAnimeList, Simkl) and toggle
 /// its auto-sync. Connecting opens the provider's OAuth consent in the browser;
-/// the token returns via the `zangetsu://…` deep link captured by the service.
+/// the token returns via the `AniAura://…` deep link captured by the service.
 class TrackerSettingsScreen extends StatefulWidget {
   const TrackerSettingsScreen({super.key, required this.tracker});
 

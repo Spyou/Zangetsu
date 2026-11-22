@@ -1,20 +1,20 @@
 [Unit]
-Description=Zangetsu protected addon sync
+Description=AniAura protected addon sync
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-User=zangetsu-stremio
-Group=zangetsu-stremio
+User=AniAura-stremio
+Group=AniAura-stremio
 SupplementaryGroups=sync_authenticator
-WorkingDirectory=/opt/zangetsu-klipy
+WorkingDirectory=/opt/AniAura-klipy
 Environment=SUPABASE_ISSUER=https://eogwzrlfoercfwcfwlmv.supabase.co/auth/v1
-Environment=VPS_AUTH_ISSUER=https://sb.zangetsu.online/auth/v1
-Environment=SUPABASE_JWKS_PATH=/etc/zangetsu-sync/jwks.json
+Environment=VPS_AUTH_ISSUER=https://sb.AniAura.online/auth/v1
+Environment=SUPABASE_JWKS_PATH=/etc/AniAura-sync/jwks.json
 # Keep this key across deployments; encrypted backups depend on it.
-LoadCredential=stremio_key:/etc/zangetsu-sync/stremio_key
-ExecStart=/opt/zangetsu-klipy/venv/bin/python /opt/zangetsu-klipy/stremio_proxy.py
+LoadCredential=stremio_key:/etc/AniAura-sync/stremio_key
+ExecStart=/opt/AniAura-klipy/venv/bin/python /opt/AniAura-klipy/stremio_proxy.py
 Restart=on-failure
 RestartSec=3
 NoNewPrivileges=true

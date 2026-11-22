@@ -217,7 +217,7 @@ class SubtitleDownloadService {
           final token = (segs.isNotEmpty ? segs.last : 'sub')
               .replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '');
           final dir = await getTemporaryDirectory();
-          final out = File('${dir.path}/zangetsu-subdl-$token$ext');
+          final out = File('${dir.path}/AniAura-subdl-$token$ext');
           await out.writeAsBytes(file.content as List<int>);
           return out.path;
         }

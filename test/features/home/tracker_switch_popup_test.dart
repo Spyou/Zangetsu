@@ -69,7 +69,7 @@ void main() {
           picked = tracker;
         },
       );
-      expect(find.text('Zangetsu List'), findsOneWidget);
+      expect(find.text('AniAura List'), findsOneWidget);
       expect(find.text('AniList'), findsOneWidget);
       expect(find.text('MAL'), findsOneWidget);
 
@@ -94,7 +94,7 @@ void main() {
           picked = tracker;
         },
       );
-      await t.tap(find.text('Zangetsu List'));
+      await t.tap(find.text('AniAura List'));
       await t.pumpAndSettle();
       expect(fired, isTrue);
       expect(picked, isNull);

@@ -1,8 +1,8 @@
-# AI Usage Policy for Zangetsu
+# AI Usage Policy for AniAura
 
 **Last Updated: August 3, 2026**
 
-AI tools (Copilot, ChatGPT, Claude, Cursor, etc.) are welcome for contributing to Zangetsu — used well, they're a normal part of how software gets written in 2026. This policy exists to make sure AI-assisted contributions meet the same bar as any other contribution: correct, legally clean, and something a human actually understands and stands behind.
+AI tools (Copilot, ChatGPT, Claude, Cursor, etc.) are welcome for contributing to AniAura — used well, they're a normal part of how software gets written in 2026. This policy exists to make sure AI-assisted contributions meet the same bar as any other contribution: correct, legally clean, and something a human actually understands and stands behind.
 
 ---
 
@@ -51,7 +51,7 @@ AI models can reproduce memorized snippets from their training data, sometimes v
 - Check for anything that looks like it was lifted from a specific existing project (unusual comments, distinctive variable names matching a known library, license headers, etc.).
 - If AI output includes or closely resembles code from a project under a license incompatible with GPLv3 (or requiring attribution you haven't given), **do not submit it** — rewrite the logic yourself or find a compatible reference implementation.
 - This is the same disclosure obligation already in **Section 5 of the CLA** ("if the Contribution includes third-party code, assets, data, or references, you have clearly identified them...") — AI-generated code is not exempt just because a model produced it instead of a human copy-pasting.
-- If your Contribution is derived from, or closely modeled on, a specific third-party project (the way Zangetsu's existing CloudStream and Aniyomi/Tachiyomi integrations are), that needs its own entry in [`NOTICE.md`](NOTICE.md), same as any other third-party-derived code — regardless of whether a human or an AI wrote the derivation.
+- If your Contribution is derived from, or closely modeled on, a specific third-party project (the way AniAura's existing CloudStream and Aniyomi/Tachiyomi integrations are), that needs its own entry in [`NOTICE.md`](NOTICE.md), same as any other third-party-derived code — regardless of whether a human or an AI wrote the derivation.
 
 ---
 
@@ -69,7 +69,7 @@ review AI-generated code in those paths especially carefully, and call it out in
 
 ## 5. Providers, Extractors, and Scraping Logic
 
-This is the area where AI-assisted contributions need the most caution, because the legal risk isn't just about Zangetsu's own code:
+This is the area where AI-assisted contributions need the most caution, because the legal risk isn't just about AniAura's own code:
 
 - **Don't let AI invent plausible-looking scraping logic for a source you haven't personally verified.** AI models will confidently generate code that *looks* like it scrapes a real site correctly while being outdated, wrong, or targeting something that never worked to begin with.
 - **Don't use AI to help bypass anti-scraping protections, rate limits, DRM, or authentication on a third-party source** you don't have the right to access that way. This applies regardless of whether a human or an AI wrote the bypass.

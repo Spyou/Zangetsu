@@ -1,4 +1,4 @@
-Zangetsu
+AniAura
 Copyright (C) 2026 Krishna Vishwakarma (https://github.com/Spyou)
 
 This program is free software: you can redistribute it and/or modify it under
@@ -21,10 +21,10 @@ AndroidX Jetpack Compose
 CloudStream (recloudstream)
   https://github.com/recloudstream/cloudstream
   License: GPL-3.0
-  Zangetsu bundles the CloudStream `library` artifact and includes app-internal
+  AniAura bundles the CloudStream `library` artifact and includes app-internal
   compatibility classes under the `com.lagradost.cloudstream3` namespace so that
   CloudStream `.cs3` extensions load and run against it. Because CloudStream is
-  licensed under GPL-3.0 (copyleft), Zangetsu as a combined work is likewise
+  licensed under GPL-3.0 (copyleft), AniAura as a combined work is likewise
   licensed under GPL-3.0.
 
 Aniyomi / Tachiyomi
@@ -98,7 +98,7 @@ Runtime-loaded voice-search GIF (not bundled)
 Runtime-loaded Zoro voice-search GIF (not bundled)
   Source: https://media1.tenor.com/m/9Y5b3kVpNzsAAAAC/zoro-baron-omatsuri.gif
   Transparent redraw hosted at:
-  https://avatars.zangetsu.online/voice-search/zoro-hearing-bf88c2298404.gif
+  https://avatars.AniAura.online/voice-search/zoro-hearing-bf88c2298404.gif
   Fetched when selected for phone voice search and cached on the device.
   Not included in the repository or app package.
 

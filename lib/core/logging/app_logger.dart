@@ -34,7 +34,7 @@ class AppLogger {
   Future<void> init() async {
     try {
       final dir = await getWritableAppDirectory();
-      await _openAt(File('${dir.path}/zangetsu.log'));
+      await _openAt(File('${dir.path}/AniAura.log'));
     } catch (_) {
       _file = null;
     }
@@ -88,8 +88,8 @@ class AppLogger {
   Future<File?> exportFile() async {
     try {
       final dir = await getTemporaryDirectory();
-      final f = File('${dir.path}/zangetsu-logs.txt');
-      await f.writeAsString('Zangetsu logs\n\n$contents\n');
+      final f = File('${dir.path}/AniAura-logs.txt');
+      await f.writeAsString('AniAura logs\n\n$contents\n');
       return f;
     } catch (_) {
       return null;

@@ -44,7 +44,7 @@ class UpdateInfo {
 /// the latest tag to the running build, downloads the matching APK and hands it
 /// to the Android package installer. The repo is public, so no token is needed.
 class UpdateService {
-  static const String _repo = 'Spyou/Zangetsu';
+  static const String _repo = 'Spyou/AniAura';
   static const String _latestUrl =
       'https://api.github.com/repos/$_repo/releases/latest';
   static const String _releasesUrl =
@@ -153,7 +153,7 @@ class UpdateService {
     void Function(double progress)? onProgress,
   }) async {
     final dir = await getTemporaryDirectory();
-    final path = '${dir.path}/zangetsu-update.apk';
+    final path = '${dir.path}/AniAura-update.apk';
     final file = File(path);
     if (await file.exists()) await file.delete(); // drop any stale partial
     await _dio.download(

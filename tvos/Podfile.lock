@@ -125,7 +125,7 @@ DEPENDENCIES:
   - firebase_core_tvos (from `/Users/nathenbrewer/.pub-cache/hosted/pub.dev/firebase_core_tvos-0.0.2/tvos`)
   - firebase_messaging_tvos (from `/Users/nathenbrewer/.pub-cache/hosted/pub.dev/firebase_messaging_tvos-0.0.1/tvos`)
   - package_info_plus_tvos (from `/Users/nathenbrewer/.pub-cache/hosted/pub.dev/package_info_plus_tvos-0.0.1/tvos`)
-  - sqflite_tvos (from `/Users/nathenbrewer/Documents/GitHub/Zangetsu/third_party/sqflite_tvos/tvos`)
+  - sqflite_tvos (from `/Users/nathenbrewer/Documents/GitHub/AniAura/third_party/sqflite_tvos/tvos`)
   - video_player_tvos (from `/Users/nathenbrewer/.pub-cache/hosted/pub.dev/video_player_tvos-0.0.1/tvos`)
   - wakelock_plus_tvos (from `/Users/nathenbrewer/.pub-cache/hosted/pub.dev/wakelock_plus_tvos-0.0.1/tvos`)
 
@@ -155,7 +155,7 @@ EXTERNAL SOURCES:
   package_info_plus_tvos:
     :path: "/Users/nathenbrewer/.pub-cache/hosted/pub.dev/package_info_plus_tvos-0.0.1/tvos"
   sqflite_tvos:
-    :path: "/Users/nathenbrewer/Documents/GitHub/Zangetsu/third_party/sqflite_tvos/tvos"
+    :path: "/Users/nathenbrewer/Documents/GitHub/AniAura/third_party/sqflite_tvos/tvos"
   video_player_tvos:
     :path: "/Users/nathenbrewer/.pub-cache/hosted/pub.dev/video_player_tvos-0.0.1/tvos"
   wakelock_plus_tvos:

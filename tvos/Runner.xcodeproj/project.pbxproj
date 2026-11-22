@@ -375,7 +375,7 @@
 					"$(PROJECT_DIR)/Flutter",
 				);
 				INFOPLIST_FILE = Runner/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = Zangetsu;
+				INFOPLIST_KEY_CFBundleDisplayName = AniAura;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.entertainment";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -387,7 +387,7 @@
 					"-framework",
 					JavaScriptCore,
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.spyou.zangetsu;
+				PRODUCT_BUNDLE_IDENTIFIER = com.spyou.AniAura;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "appletvsimulator appletvos";
 				SWIFT_OBJC_BRIDGING_HEADER = "Runner/Runner-Bridging-Header.h";
@@ -469,7 +469,7 @@
 					"$(PROJECT_DIR)/Flutter",
 				);
 				INFOPLIST_FILE = Runner/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = Zangetsu;
+				INFOPLIST_KEY_CFBundleDisplayName = AniAura;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.entertainment";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -481,7 +481,7 @@
 					"-framework",
 					JavaScriptCore,
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.spyou.zangetsu;
+				PRODUCT_BUNDLE_IDENTIFIER = com.spyou.AniAura;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "appletvsimulator appletvos";
 				SWIFT_OBJC_BRIDGING_HEADER = "Runner/Runner-Bridging-Header.h";
@@ -557,7 +557,7 @@
 					"$(PROJECT_DIR)/Flutter",
 				);
 				INFOPLIST_FILE = Runner/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = Zangetsu;
+				INFOPLIST_KEY_CFBundleDisplayName = AniAura;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.entertainment";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -569,7 +569,7 @@
 					"-framework",
 					JavaScriptCore,
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.spyou.zangetsu;
+				PRODUCT_BUNDLE_IDENTIFIER = com.spyou.AniAura;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "appletvsimulator appletvos";
 				SWIFT_OBJC_BRIDGING_HEADER = "Runner/Runner-Bridging-Header.h";

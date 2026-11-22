@@ -26,7 +26,7 @@ import Flutter
     /// channel via `invokeMethod` (resolveEpisode / saveProgress / …).
     private func registerTvPlayerChannel(with messenger: FlutterBinaryMessenger) {
         let channel = FlutterMethodChannel(
-            name: "zangetsu/tv_player",
+            name: "AniAura/tv_player",
             binaryMessenger: messenger
         )
         tvPlayerChannel = channel
@@ -92,7 +92,7 @@ import Flutter
     /// back to Dio if this channel throws.
     private static func registerNovelHttp(with messenger: FlutterBinaryMessenger) {
         let channel = FlutterMethodChannel(
-            name: "zangetsu/novel_http",
+            name: "AniAura/novel_http",
             binaryMessenger: messenger
         )
         channel.setMethodCallHandler { call, result in

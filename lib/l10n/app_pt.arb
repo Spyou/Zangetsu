@@ -118,7 +118,7 @@
 	"settingsSectionAdvancedSummary": "DNS, privacidade, logs",
 	"settingsSectionAboutSummary": "Atualizações, suporte, versão",
 	"couldNotExportLogs": "Não foi possível exportar os logs",
-	"logsShareSubject": "Logs do Zangetsu",
+	"logsShareSubject": "Logs do AniAura",
 	"signInSubtitle": "Sincronize sua lista, histórico e continuar assistindo",
 	"signInSubtitleTv": "Sincronize sua lista e continuar assistindo",
 	"connections": "Conexões",
@@ -375,12 +375,12 @@
 			}
 		}
 	},
-	"bootErrorTitle": "O Zangetsu não terminou de iniciar",
+	"bootErrorTitle": "O AniAura não terminou de iniciar",
 	"bootErrorBody": "Algo salvo neste dispositivo está impedindo que ele abra. Nada foi perdido — sua conta e o que está sincronizado na nuvem estão seguros.",
 	"resetAppData": "Redefinir dados do app",
 	"resetAppDataTitle": "Redefinir dados do app?",
-	"resetAppDataBody": "Isso apaga o que o Zangetsu salvou neste dispositivo para que ele comece do zero.\n\nSua conta e o que está sincronizado na nuvem não são afetados — entre novamente e sua biblioteca volta.",
-	"resetAppDataDone": "Feche o Zangetsu completamente e abra de novo.",
+	"resetAppDataBody": "Isso apaga o que o AniAura salvou neste dispositivo para que ele comece do zero.\n\nSua conta e o que está sincronizado na nuvem não são afetados — entre novamente e sua biblioteca volta.",
+	"resetAppDataDone": "Feche o AniAura completamente e abra de novo.",
 	"detailsCopied": "Detalhes copiados — envie para nós",
 	"copyDetails": "Copiar detalhes",
 	"goodToHaveYouHere": "Que bom ter você aqui.",
@@ -528,7 +528,7 @@
 	"cardsFadeInAsYouScroll": "Os cartões aparecem suavemente ao rolar",
 	"animationStyle": "Estilo de animação",
 	"turnOffMaterialYouToPickAColourYourself": "Desligue o Material You para escolher uma cor manualmente",
-	"downloadsZangetsu": "Downloads › Zangetsu",
+	"downloadsAniAura": "Downloads › AniAura",
 	"removableDrive": "Unidade removível",
 	"chooseFolder": "Escolher pasta…",
 	"resetToDefault": "Redefinir para o padrão",
@@ -742,7 +742,7 @@
 	"saveYourListAndContinueWatchingAnywhere": "Salve sua lista e continue assistindo em qualquer lugar.",
 	"notSignedIn": "Não conectado",
 	"haveTheApp": "Tem o app?",
-	"openZangetsuOnYourNphoneAndScan": "Abra o Zangetsu no seu\\ncelular e escaneie",
+	"openAniAuraOnYourNphoneAndScan": "Abra o AniAura no seu\\ncelular e escaneie",
 	"noApp": "Sem o app?",
 	"resetPassword": "Redefinir senha",
 	"youExampleCom": "you@example.com",
@@ -761,7 +761,7 @@
 	"logOutAnyway": "Sair mesmo assim",
 	"reconnect": "Reconectar",
 	"signInWithYourPhone": "Entrar com seu celular",
-	"onTheZangetsuAppOnYourPhoneOpenNPairATVAndEnterThisCodeOrScanTheQR": "No app Zangetsu no seu celular, abra\\n\"Parear uma TV\" e digite este código — ou escaneie o QR.",
+	"onTheAniAuraAppOnYourPhoneOpenNPairATVAndEnterThisCodeOrScanTheQR": "No app AniAura no seu celular, abra\\n\"Parear uma TV\" e digite este código — ou escaneie o QR.",
 	"signingIn": "Entrando…",
 	"getANewCode": "Obter um novo código",
 	"sendTrackers": "Enviar rastreadores",
@@ -769,7 +769,7 @@
 	"sendToTV": "Enviar para a TV",
 	"signInToYourAccountFirstNthenPairYourTV": "Entre na sua conta primeiro,\\ndepois pareie sua TV.",
 	"enterTheCodeFromYourTV": "Digite o código da sua TV",
-	"openZangetsuOnYourTVAndSignInWithYourPhoneToSeeIt": "Abra o Zangetsu na sua TV e entre com o celular para vê-lo.",
+	"openAniAuraOnYourTVAndSignInWithYourPhoneToSeeIt": "Abra o AniAura na sua TV e entre com o celular para vê-lo.",
 	"abcd2345": "ABCD 2345",
 	"thisTVWillSignIntoYourAccountYouCanSignItOutLater": "Esta TV vai entrar na sua conta. Você pode desconectá-la depois.",
 	"alsoSendYourTrackersAniListMyAnimeListSimkl": "Enviar também seus rastreadores (AniList, MyAnimeList, Simkl)",
@@ -782,7 +782,7 @@
 	"pickABackup": "Escolha um backup",
 	"couldnTReadThatBackupFile": "Não foi possível ler esse arquivo de backup.",
 	"restoreComplete": "Restauração concluída",
-	"reopenZangetsuToSeeRestoredLibrarySources": "Abra o Zangetsu de novo para ver a biblioteca e as fontes restauradas.",
+	"reopenAniAuraToSeeRestoredLibrarySources": "Abra o AniAura de novo para ver a biblioteca e as fontes restauradas.",
 	"saveToAFile": "Salvar em um arquivo",
 	"saveABackupFileToYourDownloadsFolder": "Salve um arquivo de backup na sua pasta Downloads",
 	"backUpToCloud": "Fazer backup na nuvem",
@@ -852,7 +852,7 @@
 	"addNovelRepo": "Adicionar repo de novelas",
 	"removeRepository": "Remover repositório",
 	"noSourcesInThisRepo": "Nenhuma fonte neste repo.",
-	"zangetsuProviders": "Provedores do Zangetsu",
+	"AniAuraProviders": "Provedores do AniAura",
 	"addRepo": "Adicionar repo",
 	"noProvidersInstalled": "Nenhum provedor instalado.",
 	"noSourcesInThisRepoYet": "Ainda não há fontes neste repo.",
@@ -891,7 +891,7 @@
 	"resetToDefaults": "Redefinir para os padrões",
 	"providerSettings": "Configurações do provedor",
 	"openThisSourceSOwnSettingsEGServerLanguage": "Abrir as configurações próprias desta fonte (ex.: servidor, idioma)",
-	"addZangetsuRepo": "Adicionar repo do Zangetsu",
+	"addAniAuraRepo": "Adicionar repo do AniAura",
 	"theProviderWillBeRemovedFromYourInstalledSources": "O provedor será removido das suas fontes instaladas.",
 	"addMihonRepo": "Adicionar repo do Mihon",
 	"noMihonReposAddedYetNTapAddMihonRepoToAddOne": "Nenhum repo do Mihon adicionado ainda.\\nToque em \"Adicionar repo do Mihon\" para adicionar um.",
@@ -1743,7 +1743,7 @@
 	"github": "GitHub",
 	"telegram": "Telegram",
 	"accentColourBlurb": "A cor de destaque usada em botões, chips, progresso e itens selecionados.",
-	"appIconBlurb": "O ícone na sua tela inicial. O Zangetsu fecha quando você muda — o Android precisa trocar a entrada do launcher.",
+	"appIconBlurb": "O ícone na sua tela inicial. O AniAura fecha quando você muda — o Android precisa trocar a entrada do launcher.",
 	"useTheIcon": "Usar o ícone {label}?",
 	"@useTheIcon": {
 		"placeholders": {
@@ -1752,7 +1752,7 @@
 			}
 		}
 	},
-	"useTheIconBody": "O Zangetsu vai fechar para que o Android possa aplicar o novo ícone. Abra de novo pela tela inicial depois.\n\nSe você tiver o Zangetsu em uma pasta ou dock, pode precisar adicioná-lo de novo.",
+	"useTheIconBody": "O AniAura vai fechar para que o Android possa aplicar o novo ícone. Abra de novo pela tela inicial depois.\n\nSe você tiver o AniAura em uma pasta ou dock, pode precisar adicioná-lo de novo.",
 	"animRise": "Subir",
 	"animRiseDesc": "Sobe e aparece suavemente",
 	"animFade": "Esmaecer",
@@ -1795,7 +1795,7 @@
 		}
 	},
 	"cloudBackupFailed": "O backup na nuvem falhou. Verifique se você está online — se continuar falhando, o armazenamento de backup na nuvem ainda pode não estar configurado.",
-	"savedToDownloadsZangetsu": "Salvo em Downloads › Zangetsu",
+	"savedToDownloadsAniAura": "Salvo em Downloads › AniAura",
 	"restoreFailed": "Falha na restauração: {error}",
 	"@restoreFailed": {
 		"placeholders": {
@@ -1805,7 +1805,7 @@
 		}
 	},
 	"noBackupFilesOnDevice": "Nenhum arquivo de backup encontrado neste dispositivo. Salve um primeiro ou use \"Restaurar da nuvem\".",
-	"backupScreenBlurb": "Salve suas fontes, lista e configurações — em um arquivo do seu dispositivo ou na sua conta do Zangetsu. Restaurar só acrescenta itens de volta; nunca apaga o que você já tem.",
+	"backupScreenBlurb": "Salve suas fontes, lista e configurações — em um arquivo do seu dispositivo ou na sua conta do AniAura. Restaurar só acrescenta itens de volta; nunca apaga o que você já tem.",
 	"includeInTheBackup": "Incluir no backup",
 	"sourcesAndRepos": "Fontes e repos",
 	"installedSourcesAndRepoLinks": "Fontes instaladas e os links dos repos",
@@ -1850,7 +1850,7 @@
 	"betaUpdateAvailable": "Atualização beta disponível",
 	"updateAvailable": "Atualização disponível",
 	"startingInstaller": "Iniciando o instalador…",
-	"couldnTOpenInstaller": "Não foi possível abrir o instalador. Ative \"Instalar apps desconhecidos\" para o Zangetsu nas configurações do sistema e tente de novo.",
+	"couldnTOpenInstaller": "Não foi possível abrir o instalador. Ative \"Instalar apps desconhecidos\" para o AniAura nas configurações do sistema e tente de novo.",
 	"downloadFailedCheckConnection": "Falha no download — verifique sua conexão e tente de novo.",
 	"libraryIsntSavedReconnect": "Sua biblioteca ainda não foi salva na nuvem, então sair vai removê-la deste dispositivo. Reconectar para fazer o backup antes?",
 	"sessionExpiredEnterPassword": "Sua sessão expirou. Digite sua senha para reconectar {account} e sincronizar sua biblioteca.",
@@ -1979,7 +1979,7 @@
 	"aniyomi": "Aniyomi",
 	"mihon": "Mihon",
 	"lnreader": "LNReader",
-	"zangetsu": "Zangetsu",
+	"AniAura": "AniAura",
 	"cloudStream": "CloudStream",
 	"installedCount": "{count} instaladas",
 	"@installedCount": {
@@ -3014,5 +3014,5 @@
 	"epubExportFailed": "Não foi possível salvar o EPUB",
 	"export": "Exportar",
 	"keepDownloadsPrivate": "Manter os downloads privados",
-	"keepDownloadsPrivateSubtitle": "Os novos downloads de vídeo ficam dentro do Zangetsu em vez da pasta Downloads. Eles são apagados quando você desinstala o Zangetsu. Capítulos e exportações não são afetados."
+	"keepDownloadsPrivateSubtitle": "Os novos downloads de vídeo ficam dentro do AniAura em vez da pasta Downloads. Eles são apagados quando você desinstala o AniAura. Capítulos e exportações não são afetados."
 }

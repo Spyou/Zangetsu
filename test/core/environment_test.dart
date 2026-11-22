@@ -3,6 +3,6 @@ import 'package:watch_app/core/environment.dart';
 
 void main() {
   test('cloud sync defaults to the production VPS', () {
-    expect(Environment.vpsSyncUrl, 'https://sync.zangetsu.online');
+    expect(Environment.vpsSyncUrl, 'https://sync.AniAura.online');
   });
 }

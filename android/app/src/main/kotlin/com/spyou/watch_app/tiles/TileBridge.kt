@@ -13,7 +13,7 @@ import java.nio.ByteBuffer
 
 /**
  * Exposes tiled page decoding to Dart over a MethodChannel named
- * "zangetsu/tiles", backed by [BitmapRegionDecoder] (API 10+) rather than the
+ * "AniAura/tiles", backed by [BitmapRegionDecoder] (API 10+) rather than the
  * AImageDecoder NDK API (API 30+) the native shim this replaces used — the
  * whole point of the swap is to reach the low-memory phones that API floor
  * shut out.

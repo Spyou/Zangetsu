@@ -10,7 +10,7 @@ void main() {
     final adapter = _Adapter();
     final service = KlipyGifService(
       Dio()..httpClientAdapter = adapter,
-      baseUrl: 'https://sync.zangetsu.online/klipy/v1',
+      baseUrl: 'https://sync.AniAura.online/klipy/v1',
       accessToken: () => 'test-access-token',
     );
 
@@ -20,7 +20,7 @@ void main() {
     expect(results.first.thumbnailUrl, 'https://static.klipy.com/first-xs.gif');
     expect(results.first.avatarUrl, 'https://static.klipy.com/first-sm.gif');
     expect(adapter.request!.uri.path, '/klipy/v1/gifs/search');
-    expect(adapter.request!.uri.host, 'sync.zangetsu.online');
+    expect(adapter.request!.uri.host, 'sync.AniAura.online');
     expect(
       adapter.request!.headers['Authorization'],
       'Bearer test-access-token',
@@ -34,7 +34,7 @@ void main() {
       final adapter = _Adapter();
       final service = KlipyGifService(
         Dio()..httpClientAdapter = adapter,
-        baseUrl: 'https://sync.zangetsu.online/klipy/v1',
+        baseUrl: 'https://sync.AniAura.online/klipy/v1',
         accessToken: () => 'test-access-token',
       );
 
@@ -57,7 +57,7 @@ void main() {
     final adapter = _Adapter()..failNextItems = true;
     final service = KlipyGifService(
       Dio()..httpClientAdapter = adapter,
-      baseUrl: 'https://sync.zangetsu.online/klipy/v1',
+      baseUrl: 'https://sync.AniAura.online/klipy/v1',
       accessToken: () => 'test-access-token',
     );
 
@@ -85,7 +85,7 @@ void main() {
     final adapter = _Adapter();
     final service = KlipyGifService(
       Dio()..httpClientAdapter = adapter,
-      baseUrl: 'https://sync.zangetsu.online/klipy/v1',
+      baseUrl: 'https://sync.AniAura.online/klipy/v1',
       accessToken: () => null,
     );
 
@@ -109,7 +109,7 @@ void main() {
     final adapter = _Adapter();
     final service = KlipyGifService(
       Dio()..httpClientAdapter = adapter,
-      baseUrl: 'https://sync.zangetsu.online/klipy/v1',
+      baseUrl: 'https://sync.AniAura.online/klipy/v1',
       accessToken: () => 'test-access-token',
     );
 

@@ -211,7 +211,7 @@ void main() {
 
   test('the registered client is public: the id ships, no secret exists', () {
     expect(Environment.mangabakaClientId, isNotEmpty);
-    expect(Environment.mangabakaRedirectUri, 'zangetsu://mangabaka-auth');
+    expect(Environment.mangabakaRedirectUri, 'AniAura://mangabaka-auth');
     expect(Environment.mangabakaScopes, contains('library.write'));
     expect(Environment.mangabakaScopes, contains('offline_access'));
   });

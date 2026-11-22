@@ -9,7 +9,7 @@ import uuid
 import xml.etree.ElementTree as ET
 
 
-BASE_URL = "https://sync.zangetsu.online"
+BASE_URL = "https://sync.AniAura.online"
 PACKAGE = "com.spyou.watch_app.vpstest"
 ROUTES = ("reading_history", "profile_reading_history", "viewer_profiles", "backups")
 

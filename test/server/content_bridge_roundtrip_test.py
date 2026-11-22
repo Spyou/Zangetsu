@@ -1,7 +1,7 @@
 """Two-database round trip: a Supabase-shaped source and the VPS stage.
 
 Mirrors the real bridge wiring — the source is read/written as postgres, the
-stage as zangetsu_bridge — so both replay guards are exercised.
+stage as AniAura_bridge — so both replay guards are exercised.
 """
 
 import os
@@ -30,10 +30,10 @@ from library_bridge import (
 class ContentBridgeRoundTripTest(unittest.TestCase):
     def test_edits_deletes_and_profile_rows_reach_both_sides(self):
         source_conn = psycopg2.connect(
-            dbname="zangetsu_sync_bridge_test", user="postgres"
+            dbname="AniAura_sync_bridge_test", user="postgres"
         )
         vps_conn = psycopg2.connect(
-            dbname="zangetsu_sync_bridge_vps_test", user="zangetsu_bridge"
+            dbname="AniAura_sync_bridge_vps_test", user="AniAura_bridge"
         )
         self.addCleanup(source_conn.close)
         self.addCleanup(vps_conn.close)

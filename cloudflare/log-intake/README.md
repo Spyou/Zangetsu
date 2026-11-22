@@ -4,7 +4,7 @@ Receives the diagnostic log the app sends when someone taps **Settings → Share
 logs**, posts it to a Discord channel with the log attached, and keeps a copy in
 KV for 30 days.
 
-Deployed at `https://zangetsu-logs.log-intake.workers.dev` — that URL is
+Deployed at `https://AniAura-logs.log-intake.workers.dev` — that URL is
 in `kLogIntakeUrl` (`lib/core/app_config.dart`).
 
 The app only knows that URL. The Discord webhook lives on the Worker, because

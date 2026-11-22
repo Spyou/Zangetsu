@@ -22,8 +22,8 @@ import com.google.android.gms.cast.framework.media.RemoteMediaClient
 import io.flutter.plugin.common.EventChannel
 
 /**
- * Wraps the Google Cast SDK for Flutter via the `zangetsu/cast` MethodChannel
- * and a `zangetsu/cast/events` EventChannel.
+ * Wraps the Google Cast SDK for Flutter via the `AniAura/cast` MethodChannel
+ * and a `AniAura/cast/events` EventChannel.
  *
  * All public methods are safe to call from the Flutter/UI thread.
  * CastContext init is guarded so a missing-Play-Services device never crashes.
@@ -384,7 +384,7 @@ class CastManager(private val activity: Activity) : EventChannel.StreamHandler {
             "positionMs" to posMs.toInt(),
             "durationMs" to durMs.toInt(),
             "playing" to playing,
-            // CAF ints — Dart logs them on change so a shared zangetsu.log
+            // CAF ints — Dart logs them on change so a shared AniAura.log
             // shows play/pause/idle without a native logcat.
             "playerState" to (status?.playerState ?: MediaStatus.PLAYER_STATE_UNKNOWN),
             "idleReason" to (status?.idleReason ?: MediaStatus.IDLE_REASON_NONE),

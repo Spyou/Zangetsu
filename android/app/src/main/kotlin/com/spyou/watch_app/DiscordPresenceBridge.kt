@@ -8,7 +8,7 @@ import io.flutter.plugin.common.MethodChannel
 
 /** Owns SDK callbacks on the main thread, including while native playback is active. */
 class DiscordPresenceBridge(private val activity: Activity, messenger: BinaryMessenger) {
-    private val channel = MethodChannel(messenger, "zangetsu/discord_presence")
+    private val channel = MethodChannel(messenger, "AniAura/discord_presence")
     private val handler = Handler(Looper.getMainLooper())
     private var running = false
     private val pump = object : Runnable {
@@ -32,7 +32,7 @@ class DiscordPresenceBridge(private val activity: Activity, messenger: BinaryMes
                         val appId = requireNotNull(call.argument<String>("applicationId")).toLong()
                         require(token.isNotBlank() && appId > 0)
                         System.loadLibrary("discord_partner_sdk")
-                        System.loadLibrary("zangetsu_discord")
+                        System.loadLibrary("AniAura_discord")
                         // Reflective (not a direct import) so this file still
                         // compiles when the proprietary SDK is absent
                         // (ZANGETSU_NO_DISCORD=1 CI builds). Without the SDK the
@@ -59,7 +59,7 @@ class DiscordPresenceBridge(private val activity: Activity, messenger: BinaryMes
                         val urls = (metadata?.get("button_urls") as? List<*>)?.filterIsInstance<String>() ?: emptyList()
                         require(labels.size == urls.size && labels.size <= 2)
                         nativeUpdate(
-                            a["name"] as? String ?: "Zangetsu", (a["type"] as? Number)?.toInt() ?: 0,
+                            a["name"] as? String ?: "AniAura", (a["type"] as? Number)?.toInt() ?: 0,
                             a["details"] as? String, a["state"] as? String,
                             assets?.get("large_image") as? String, assets?.get("large_text") as? String,
                             assets?.get("small_image") as? String, assets?.get("small_text") as? String,

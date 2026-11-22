@@ -12,7 +12,7 @@ import 'tv_pairing_service.dart';
 import '../../l10n/l10n.dart';
 
 /// Phone: approve a TV pairing. Enter the code shown on the TV (or arrive here
-/// via the pairing QR — `zangetsu://pair?code=…`, or an https `/pair/` link
+/// via the pairing QR — `AniAura://pair?code=…`, or an https `/pair/` link
 /// forwarded to that deeplink), confirm the device, and sign the TV into this
 /// account. Requires the phone to be signed in.
 class PairTvScreen extends StatefulWidget {
@@ -146,7 +146,7 @@ class _PairTvScreenState extends State<PairTvScreen> {
         children: [
           Text(context.l10n.enterTheCodeFromYourTV, style: AppText.largeTitle),
           const SizedBox(height: 8),
-          Text(context.l10n.openZangetsuOnYourTVAndSignInWithYourPhoneToSeeIt,
+          Text(context.l10n.openAniAuraOnYourTVAndSignInWithYourPhoneToSeeIt,
               style: AppText.body),
           const SizedBox(height: 28),
           TextField(

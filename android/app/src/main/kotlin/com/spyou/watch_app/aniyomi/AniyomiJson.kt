@@ -12,7 +12,7 @@
  * limitations under the License.
  *
  * Adapted from the Aniyomi project (https://github.com/aniyomiorg/aniyomi)
- * for host-side JSON serialisation in the Zangetsu app.
+ * for host-side JSON serialisation in the AniAura app.
  */
 package com.spyou.watch_app.aniyomi
 

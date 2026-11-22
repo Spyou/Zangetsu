@@ -30,7 +30,7 @@ static std::optional<std::string> sdkText(id value) {
 - (instancetype)initWithMessenger:(NSObject<FlutterBinaryMessenger> *)messenger {
   self = [super init];
   if (self) {
-    _channel = [FlutterMethodChannel methodChannelWithName:@"zangetsu/discord_presence"
+    _channel = [FlutterMethodChannel methodChannelWithName:@"AniAura/discord_presence"
                                          binaryMessenger:messenger];
     __weak DiscordPresenceBridge *weakSelf = self;
     [_channel setMethodCallHandler:^(FlutterMethodCall *call, FlutterResult result) {
@@ -118,7 +118,7 @@ static std::optional<std::string> sdkText(id value) {
     NSDictionary *assets = [value[@"assets"] isKindOfClass:NSDictionary.class] ? value[@"assets"] : @{};
     NSDictionary *timestamps = [value[@"timestamps"] isKindOfClass:NSDictionary.class] ? value[@"timestamps"] : @{};
     discordpp::Activity activity;
-    activity.SetName((stringValue(value[@"name"]) ?: @"Zangetsu").UTF8String);
+    activity.SetName((stringValue(value[@"name"]) ?: @"AniAura").UTF8String);
     activity.SetType(static_cast<discordpp::ActivityTypes>([value[@"type"] intValue]));
     activity.SetDetails(sdkText(value[@"details"])); activity.SetState(sdkText(value[@"state"]));
     discordpp::ActivityAssets artwork;

@@ -71,7 +71,7 @@ object RepositoryManager {
         val conn = URL(u).openConnection()
         conn.connectTimeout = 15000
         conn.readTimeout = 20000
-        conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Android) Zangetsu")
+        conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Android) AniAura")
         return conn.getInputStream().bufferedReader().use { it.readText() }
     }
 }

@@ -7,7 +7,7 @@ import '../../core/ui/settings_widgets.dart';
 import '../../l10n/l10n.dart';
 import '../../core/ui/team_section.dart';
 
-/// The people behind Zangetsu: the curated core team (with roles) followed by
+/// The people behind AniAura: the curated core team (with roles) followed by
 /// "Community Contributors" — everyone else who's contributed on GitHub, pulled
 /// live. The community list is empty until someone new contributes.
 class ContributorsScreen extends StatefulWidget {

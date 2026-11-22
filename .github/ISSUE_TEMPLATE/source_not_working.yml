@@ -5,7 +5,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        **Zangetsu ships with no sources and doesn't run any of them** — apart
+        **AniAura ships with no sources and doesn't run any of them** — apart
         from its own JS repo, they're third-party and can break or disappear
         without notice.
 
@@ -32,7 +32,7 @@ body:
     attributes:
       label: What kind of source is it?
       options:
-        - Zangetsu (JS)
+        - AniAura (JS)
         - CloudStream (.cs3)
         - Aniyomi (anime)
         - Mihon (manga)

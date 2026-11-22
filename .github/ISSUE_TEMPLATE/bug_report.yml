@@ -83,7 +83,7 @@ body:
       label: Which source?
       description: >
         If it's a playback, reading or extension problem, name the source and
-        which kind it is (Zangetsu JS / CloudStream / Aniyomi / Mihon /
+        which kind it is (AniAura JS / CloudStream / Aniyomi / Mihon /
         LNReader). Leave blank if it isn't source-related.
       placeholder: "AnimePahe (CloudStream)"
 

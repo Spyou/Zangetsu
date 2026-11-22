@@ -3,7 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:watch_app/core/provider/provider_manager.dart';
 
 // Task E4 / Part A: Sozo Read's manga/novel JS contract uses different
-// method names than Zangetsu's for three things (chapter list, novel text,
+// method names than AniAura's for three things (chapter list, novel text,
 // detail's chapter-list key). These fixtures spin up a REAL QuickJS
 // provider (through the same [ProviderManager]/[JsProvider] path every
 // installed source uses) so the tests exercise the actual JS wrapper in
@@ -36,13 +36,13 @@ function getDetail(url) {
 }
 ''';
 
-/// A provider shaped like every existing anime JS source: only Zangetsu's
+/// A provider shaped like every existing anime JS source: only AniAura's
 /// primary names exist, PLUS the Sozo fallback names — but the fallback
 /// names throw if ever invoked. If the fallback path fires when it
 /// shouldn't (e.g. always tries both, or tries the fallback even after a
 /// successful primary call), these tests blow up with that thrown message
 /// instead of quietly passing.
-const String _zangetsuShapedJs = r'''
+const String _AniAuraShapedJs = r'''
 function getPages(chapterUrl) {
   return [{ url: 'https://img/primary.jpg' }];
 }
@@ -123,13 +123,13 @@ void main() {
     );
   });
 
-  group('Zangetsu-shaped provider (primary names) — anime-safety', () {
+  group('AniAura-shaped provider (primary names) — anime-safety', () {
     late JsProvider provider;
 
     setUp(() async {
       provider = await manager.load(
-        sourceId: 'zangetsu-fake',
-        jsSource: _zangetsuShapedJs,
+        sourceId: 'AniAura-fake',
+        jsSource: _AniAuraShapedJs,
       );
     });
 

@@ -152,7 +152,7 @@ class PluginHost(private val context: Context) {
     }
 
     private fun csPrefs() =
-        context.getSharedPreferences("zangetsu_cs", Context.MODE_PRIVATE)
+        context.getSharedPreferences("AniAura_cs", Context.MODE_PRIVATE)
 
     /** Current opt-in DNS-over-HTTPS choice (see [Doh]); [Doh.OFF] by default. */
     fun dnsChoice(): Int = csPrefs().getInt("dns_choice", Doh.OFF)

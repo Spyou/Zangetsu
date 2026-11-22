@@ -1,5 +1,5 @@
-// Zangetsu sources — TV (D-pad) UI.
-part of 'zangetsu_sources_screen.dart';
+// AniAura sources — TV (D-pad) UI.
+part of 'AniAura_sources_screen.dart';
 
 // ---------------------------------------------------------------------------
 // TV view
@@ -56,7 +56,7 @@ class _ZTvViewState extends State<_ZTvView> {
                     const SizedBox(width: 16),
                     Expanded(
                       child: Text(
-                        context.l10n.zangetsuProviders,
+                        context.l10n.AniAuraProviders,
                         style: AppText.largeTitle,
                       ),
                     ),

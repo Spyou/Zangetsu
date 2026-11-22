@@ -15,7 +15,7 @@ class _Tracker implements Tracker {
 class _MangaBaka extends _Tracker implements MangaBakaService {}
 
 void main() {
-  test('Zangetsu List keeps all categories', () {
+  test('AniAura List keeps all categories', () {
     expect(libraryKindsForTracker(null), ContentMode.values);
   });
   test('MangaBaka hides streaming and defaults to manga', () {

@@ -3,7 +3,7 @@ import { test } from "node:test";
 import worker from "./src/index.js";
 
 const token = "test-token";
-const filename = `zangetsu-sync-stage-2026-10-19T031500Z-${"a".repeat(64)}.dump`;
+const filename = `AniAura-sync-stage-2026-10-19T031500Z-${"a".repeat(64)}.dump`;
 
 function storage() {
   const objects = new Map();

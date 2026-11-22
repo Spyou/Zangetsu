@@ -21,7 +21,7 @@ import org.json.JSONArray
  * (the app may be killed), so it rebuilds the PluginHost + loads the cached
  * plugins if there isn't a warm one. CS-only; JS sources are checked on launch
  * (Dart side). Subscriptions + their last-seen counts live in the shared
- * "zangetsu_cs" prefs, mirrored from Dart on every change (see MainActivity
+ * "AniAura_cs" prefs, mirrored from Dart on every change (see MainActivity
  * syncSubscriptions, which merges so this worker's advanced counts survive).
  */
 class SubscriptionWorker(ctx: Context, params: WorkerParameters) :
@@ -34,7 +34,7 @@ class SubscriptionWorker(ctx: Context, params: WorkerParameters) :
 
     private fun check() {
         val prefs = applicationContext
-            .getSharedPreferences("zangetsu_cs", Context.MODE_PRIVATE)
+            .getSharedPreferences("AniAura_cs", Context.MODE_PRIVATE)
         val raw = prefs.getString("subscriptions", null)
         if (raw.isNullOrEmpty()) return
         val arr = JSONArray(raw)
@@ -99,6 +99,6 @@ class SubscriptionWorker(ctx: Context, params: WorkerParameters) :
     }
 
     companion object {
-        const val CHANNEL = "zangetsu_new_episodes"
+        const val CHANNEL = "AniAura_new_episodes"
     }
 }

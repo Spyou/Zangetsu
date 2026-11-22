@@ -71,7 +71,7 @@ class PageFileCache {
       if (marker != null) {
         final id = int.tryParse(marker);
         if (id == null) return null;
-        final channel = mihonId != null ? 'zangetsu/mihon' : 'zangetsu/aniyomi';
+        final channel = mihonId != null ? 'AniAura/mihon' : 'AniAura/aniyomi';
         return _cacheBytes(url, () => _fetchNativeBytes(channel, id, url));
       }
 

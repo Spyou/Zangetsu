@@ -50,7 +50,7 @@ class _FakeRepo implements SourceRepository {
 }
 
 void main() {
-  const mihonChannel = MethodChannel('zangetsu/mihon');
+  const mihonChannel = MethodChannel('AniAura/mihon');
   final mihonCalls = <MethodCall>[];
 
   Widget harness(Widget child) => MaterialApp(home: child);

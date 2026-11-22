@@ -10,7 +10,7 @@ import 'package:watch_app/core/privacy/incognito_mode.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-  const channel = MethodChannel('zangetsu/discord_presence');
+  const channel = MethodChannel('AniAura/discord_presence');
   final messenger =
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
   final calls = <MethodCall>[];

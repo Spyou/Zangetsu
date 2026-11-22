@@ -18,7 +18,7 @@
 // Flutter's `cached_network_image` cannot pass CF because it has no access to
 // the `cf_clearance` cookie. This provider fetches image bytes through the
 // SOURCE'S OWN OkHttpClient (which already carries the CF session used for
-// browsing/playback) via the `zangetsu/aniyomi` method channel's `getImage`
+// browsing/playback) via the `AniAura/aniyomi` method channel's `getImage`
 // call, then decodes the bytes in Flutter.
 //
 // The provider is keyed by `(sourceId, url)` so Flutter's ImageCache
@@ -34,7 +34,7 @@ import 'package:flutter/services.dart';
 
 import '../cache/app_image_cache.dart';
 
-const MethodChannel _kAniChannel = MethodChannel('zangetsu/aniyomi');
+const MethodChannel _kAniChannel = MethodChannel('AniAura/aniyomi');
 
 /// [ImageProvider] that fetches image bytes via the native Aniyomi OkHttpClient.
 ///

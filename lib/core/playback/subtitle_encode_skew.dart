@@ -161,7 +161,7 @@ Future<VideoSource> materializeSkewedSubtitles(VideoSource src) async {
   final baseAfter = src.subtitleSkewAfterSeconds ?? 0;
   final playingIntroEnd = baseAfter + baseSkew;
   final dir = Directory(
-    '${(await getTemporaryDirectory()).path}/zangetsu_sub_skew',
+    '${(await getTemporaryDirectory()).path}/AniAura_sub_skew',
   );
   if (!dir.existsSync()) dir.createSync(recursive: true);
   final dio = Dio(

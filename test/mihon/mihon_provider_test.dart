@@ -19,7 +19,7 @@ import 'package:watch_app/core/models/provider_info.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  const channel = MethodChannel('zangetsu/mihon');
+  const channel = MethodChannel('AniAura/mihon');
   final log = <MethodCall>[];
 
   void install(Future<dynamic> Function(MethodCall call) handler) {
