@@ -1985,13 +1985,16 @@ final class TvSystemPlayerViewController: AVPlayerViewController, AVPlayerViewCo
     }
 
     private func fetchSkips() {
-        let durSeconds = player?.currentItem?.duration.seconds ?? 0
+        let item = player?.currentItem
+        let index = episodeIndex
+        let durSeconds = item?.duration.seconds ?? 0
         let dur = durSeconds.isFinite && durSeconds > 0 ? Int(durSeconds * 1000) : 0
         channel.invokeMethod(
             "skipsFor",
-            arguments: ["index": episodeIndex, "durationMs": dur]
+            arguments: ["index": index, "durationMs": dur]
         ) { [weak self] result in
             DispatchQueue.main.async {
+                guard self?.episodeIndex == index, self?.player?.currentItem === item else { return }
                 let rows = result as? [[String: Any]] ?? []
                 self?.skipIntervals = rows.compactMap { r in
                     guard let start = (r["start"] as? NSNumber)?.int64Value,
