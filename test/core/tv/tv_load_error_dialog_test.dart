@@ -5,6 +5,33 @@ import 'package:watch_app/core/tv/tv_load_error_dialog.dart';
 import 'package:watch_app/core/tv/tv_playback_failure.dart';
 
 void main() {
+  testWidgets('TV startup overlay can close before its first frame', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => TextButton(
+            onPressed: () {
+              final close = showTvPlaybackLoadingOverlay(
+                context,
+                child: const Text('Starting'),
+              );
+              close();
+              close();
+            },
+            child: const Text('open'),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('open'));
+    await tester.pump();
+    expect(find.text('Starting'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('TV generic load-error dialog shows the change-sources message',
       (tester) async {
     await tester.pumpWidget(

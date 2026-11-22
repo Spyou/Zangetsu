@@ -699,39 +699,48 @@ class _ControlsOverlay extends StatelessWidget {
                 ),
                 const SizedBox(width: 24),
               ],
-              StreamBuilder<bool>(
-                stream: c.player.stream.buffering,
-                builder: (context, bSnap) {
-                  final buffering = bSnap.data ?? c.player.state.buffering;
-                  // While buffering, show the spinner IN PLACE OF the play/pause
-                  // button — no more spinner-over-button overlap. 58px matches
-                  // _AnimatedPlayPause's disc exactly, so the episode arrows
-                  // don't twitch every time playback stalls.
-                  if (buffering) {
-                    return const SizedBox(
-                      width: 58,
-                      height: 58,
-                      child: Center(
-                        child: SizedBox(
-                          width: 32,
-                          height: 32,
-                          child: CircularProgressIndicator(
-                            color: Colors.white,
-                            strokeWidth: 3,
-                          ),
-                        ),
-                      ),
-                    );
-                  }
+              StreamBuilder<int?>(
+                stream: c.player.stream.width,
+                initialData: c.player.state.width,
+                builder: (context, frame) {
                   return StreamBuilder<bool>(
-                    stream: c.player.stream.playing,
-                    builder: (context, snap) {
-                      final playing = snap.data ?? c.player.state.playing;
-                      return _AnimatedPlayPause(
-                        playing: playing,
-                        onTap: () {
-                          c.togglePlay();
-                          onInteract();
+                    stream: c.player.stream.buffering,
+                    builder: (context, bSnap) {
+                      final buffering = bSnap.data ?? c.player.state.buffering;
+                      // While buffering, show the spinner IN PLACE OF the play/pause
+                      // button — no more spinner-over-button overlap. 58px matches
+                      // _AnimatedPlayPause's disc exactly, so the episode arrows
+                      // don't twitch every time playback stalls.
+                      if (buffering) {
+                        if ((frame.data ?? 0) <= 0) {
+                          return const SizedBox(width: 58, height: 58);
+                        }
+                        return const SizedBox(
+                          width: 58,
+                          height: 58,
+                          child: Center(
+                            child: SizedBox(
+                              width: 32,
+                              height: 32,
+                              child: CircularProgressIndicator(
+                                color: Colors.white,
+                                strokeWidth: 3,
+                              ),
+                            ),
+                          ),
+                        );
+                      }
+                      return StreamBuilder<bool>(
+                        stream: c.player.stream.playing,
+                        builder: (context, snap) {
+                          final playing = snap.data ?? c.player.state.playing;
+                          return _AnimatedPlayPause(
+                            playing: playing,
+                            onTap: () {
+                              c.togglePlay();
+                              onInteract();
+                            },
+                          );
                         },
                       );
                     },

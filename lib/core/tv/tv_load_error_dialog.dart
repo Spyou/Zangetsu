@@ -5,7 +5,6 @@ import '../../features/sources/providers_hub_screen.dart';
 import '../../l10n/l10n.dart';
 import '../../l10n/ui_strings.dart';
 import '../mode/content_mode.dart';
-import '../theme/app_text.dart';
 import 'tv_alert_dialog.dart';
 import 'tv_playback_failure.dart';
 
@@ -13,45 +12,18 @@ import 'tv_playback_failure.dart';
 /// Returns a dismiss callback — call it in a `finally` block.
 VoidCallback showTvPlaybackLoadingOverlay(
   BuildContext context, {
-  String? message,
+  required Widget child,
 }) {
   final overlay = Overlay.of(context);
-  late OverlayEntry entry;
-  entry = OverlayEntry(
-    builder: (ctx) => Material(
-      color: Colors.black54,
-      child: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(
-              width: 52,
-              height: 52,
-              child: CircularProgressIndicator(strokeWidth: 3),
-            ),
-            if (message != null && message.isNotEmpty) ...[
-              const SizedBox(height: 20),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 96),
-                child: Text(
-                  message,
-                  textAlign: TextAlign.center,
-                  style: AppText.body.copyWith(
-                    fontSize: 20,
-                    height: 1.4,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
-    ),
+  final entry = OverlayEntry(
+    builder: (_) => Material(color: Colors.black54, child: child),
   );
   overlay.insert(entry);
+  var removed = false;
   return () {
-    if (entry.mounted) entry.remove();
+    if (removed) return;
+    removed = true;
+    entry.remove();
   };
 }
 

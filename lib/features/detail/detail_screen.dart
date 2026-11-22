@@ -1721,6 +1721,8 @@ class _DetailViewState extends State<_DetailView>
               showTitle: detail.title,
               showDescription: detail.description,
               cover: detail.cover ?? widget.item.cover,
+              loadingLogo: _logoUrl ?? widget.item.titleLogo,
+              loadingBackdrop: detail.banner ?? widget.item.banner,
               coverHeaders: detail.coverHeaders ?? widget.item.coverHeaders,
               showUrl: widget.item.url,
               downloadShowId: widget.item.id,

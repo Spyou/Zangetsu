@@ -17,6 +17,9 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import '../../core/cache/app_image_cache.dart';
 import '../../core/ui/copy_playback_link.dart';
 import '../../core/di/injector.dart';
+import '../../core/metadata/title_logo_service.dart';
+import '../../core/playback/tv_playback_helpers.dart' show mediaItemForPlayback;
+import '../../core/theme/theme_controller.dart';
 import '../../core/playback/filler_service.dart';
 import '../../core/repository/catalogue_repository.dart';
 import '../../core/repository/source_repository.dart';
@@ -58,7 +61,7 @@ import '../../core/theme/app_text.dart';
 import '../../core/ui/app_dialog.dart';
 import '../../core/ui/episode_unavailable_dialog.dart';
 import '../../core/ui/badge.dart';
-import '../../core/ui/brand_loader.dart';
+import 'playback_loading_title.dart';
 import '../../core/ui/frosted_surface.dart';
 import '../../core/ui/subtitle_language_picker.dart';
 import '../detail/cubit/detail_cubit.dart' show seasonOf, seasonsOf;
@@ -210,6 +213,8 @@ class PlayerScreen extends StatefulWidget {
     this.showDescription,
     this.cover,
     this.coverHeaders,
+    this.loadingLogo,
+    this.loadingBackdrop,
     this.showUrl,
     this.downloadShowId,
     this.category,
@@ -305,6 +310,8 @@ class PlayerScreen extends StatefulWidget {
   final String? showDescription;
   final String? cover;
   final Map<String, String>? coverHeaders;
+  final String? loadingLogo;
+  final String? loadingBackdrop;
   final String? showUrl;
   final String? category;
 
@@ -407,6 +414,8 @@ class _PlayerEngineHostState extends State<PlayerScreen> {
       showDescription: widget.showDescription,
       cover: widget.cover,
       coverHeaders: widget.coverHeaders,
+      loadingLogo: widget.loadingLogo,
+      loadingBackdrop: widget.loadingBackdrop,
       showUrl: widget.showUrl,
       downloadShowId: widget.downloadShowId,
       category: failure?.category ?? widget.category,
@@ -1297,6 +1306,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
         showDescription: widget.showDescription,
         cover: widget.cover,
         coverHeaders: widget.coverHeaders,
+        loadingArtwork: widget.loadingBackdrop,
+        loadingLogo: _loadingLogo,
         category: widget.category ?? 'sub',
         availableCategories: widget.availableCategories,
         history: widget.history,
@@ -2652,44 +2663,19 @@ class _PlayerScreenState extends State<PlayerScreen> {
           ),
         ),
 
-        // Poster-on-start: cover the black surface with the episode's
-        // poster until the first frame decodes, then fade it out. width
-        // emits non-null/>0 once dimensions are known (≈ first frame), and
-        // resets per new media so the poster re-shows each episode.
         Positioned.fill(
           child: StreamBuilder<int?>(
             stream: _c.player.stream.width,
             initialData: _c.player.state.width,
             builder: (context, snap) {
-              final hasFrame = (snap.data ?? 0) > 0;
-              final img =
-                  (_c.currentEpisode.thumbnail?.trim().isNotEmpty ?? false)
-                  ? _c.currentEpisode.thumbnail!.trim()
-                  : (widget.cover ?? '');
+              if ((snap.data ?? 0) > 0) return const SizedBox.shrink();
               return IgnorePointer(
-                child: AnimatedOpacity(
-                  opacity: hasFrame || img.isEmpty ? 0 : 1,
-                  duration: const Duration(milliseconds: 350),
-                  child: img.isEmpty
-                      ? const ColoredBox(color: Colors.black)
-                      : Stack(
-                          fit: StackFit.expand,
-                          children: [
-                            CachedNetworkImage(
-                              imageUrl: img,
-                              httpHeaders: widget.coverHeaders,
-                              fit: BoxFit.cover,
-                              errorWidget: (c, u, e) =>
-                                  const ColoredBox(color: Colors.black),
-                            ),
-                            // subtle scrim so it reads as a player background
-                            const DecoratedBox(
-                              decoration: BoxDecoration(
-                                color: Color(0x33000000),
-                              ),
-                            ),
-                          ],
-                        ),
+                child: _loadingBackdropBody(
+                  _c.state.torrentPhase ??
+                      (_c.state.loadingSources
+                          ? 'Finding streams…'
+                          : 'Starting playback…'),
+                  thumb: _c.currentEpisode.thumbnail,
                 ),
               );
             },
@@ -3666,29 +3652,51 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   // ── Build ───────────────────────────────────────────────────────────────
 
-  // Loading backdrop: the episode poster (dimmed under a scrim) behind the
-  // branded spinner, so tapping Play opens straight into a "player that's
-  // loading" instead of a black screen while the source resolves + buffers —
-  // the CloudStream-style instant-player feel. Purely visual; no logic change.
+  String? get _loadingLogo {
+    if (!ThemeController.titleLogo) return null;
+    final supplied = widget.loadingLogo;
+    if (supplied != null && supplied.trim().isNotEmpty) return supplied;
+    if (!sl.isRegistered<TitleLogoService>()) return null;
+    final item = mediaItemForPlayback(
+      sourceId: widget.sourceId,
+      showTitle: widget.showTitle,
+      showUrl: widget.showUrl,
+      tmdbId: widget.tmdbId,
+      tmdbIsTv: widget.tmdbIsTv,
+    );
+    return item == null ? null : sl<TitleLogoService>().cachedLogoFor(item);
+  }
+
   Widget _loadingBackdropBody(String label, {String? thumb}) {
-    final img = (thumb?.trim().isNotEmpty ?? false)
-        ? thumb!.trim()
-        : (widget.cover ?? '').trim();
+    final backdrop = (widget.loadingBackdrop ?? '').trim();
+    final cover = (widget.cover ?? '').trim();
+    final thumbnail = (thumb ?? '').trim();
+
+    Widget artwork(String url, {required Widget fallback}) {
+      if (url.isEmpty) return fallback;
+      return CachedNetworkImage(
+        imageUrl: url,
+        httpHeaders: playbackArtworkHeaders(url, cover, widget.coverHeaders),
+        fit: BoxFit.cover,
+        memCacheWidth: 1080,
+        errorWidget: (_, _, _) => fallback,
+      );
+    }
+
+    const background = ColoredBox(color: Colors.black);
+    final fallback = artwork(
+      backdrop == thumbnail ? '' : backdrop,
+      fallback: artwork(
+        cover == backdrop || cover == thumbnail ? '' : cover,
+        fallback: background,
+      ),
+    );
     return Stack(
       fit: StackFit.expand,
       children: [
-        if (img.isNotEmpty)
-          CachedNetworkImage(
-            imageUrl: img,
-            httpHeaders: widget.coverHeaders,
-            fit: BoxFit.cover,
-            // It's a dimmed, scrimmed backdrop behind the video — no need to
-            // hold the full-res poster in memory.
-            memCacheWidth: 1080,
-            errorWidget: (c, u, e) => const ColoredBox(color: Colors.black),
-            placeholder: (c, u) => const ColoredBox(color: Colors.black),
-          ),
-        // Scrim (top→bottom) so the spinner + label stay legible over art.
+        background,
+        artwork(thumbnail, fallback: fallback),
+        // Keep the moving title and status legible over the artwork.
         const DecoratedBox(
           decoration: BoxDecoration(
             gradient: LinearGradient(
@@ -3698,21 +3706,21 @@ class _PlayerScreenState extends State<PlayerScreen> {
             ),
           ),
         ),
-        Center(child: BrandLoader(label: label)),
+        PlaybackLoadingTitle(
+          title: widget.showTitle ?? '',
+          logo: _loadingLogo,
+          status: label,
+        ),
       ],
     );
   }
 
-  /// Portrait twin of [_loadingBackdropBody]: the same boxed surface card
-  /// (cover art dimmed, loader on top) with skeleton rows below — so opening
-  /// from detail lands straight on the portrait page instead of a fullscreen
-  /// cover interlude that then snaps into portrait. Static: no cubit, no
-  /// streams; it only paints until [_startSession]/[_resolveThenStart] flips
-  /// [_ready], at which point the real watch page takes over with everything
-  /// already in place.
   Widget _watchPageLoadingShell() {
-    final cover = (widget.cover ?? '').trim();
     final title = (widget.showTitle ?? '').trim();
+    final episodes = widget.episodes;
+    final initialThumb = episodes.isEmpty
+        ? null
+        : episodes[widget.startIndex.clamp(0, episodes.length - 1)].thumbnail;
     return Scaffold(
       backgroundColor: Colors.black,
       body: SafeArea(
@@ -3730,41 +3738,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
-                      if (cover.isNotEmpty)
-                        CachedNetworkImage(
-                          imageUrl: cover,
-                          httpHeaders: widget.coverHeaders,
-                          fit: BoxFit.cover,
-                          memCacheWidth: 1080,
-                          errorWidget: (c, u, e) =>
-                              const ColoredBox(color: Colors.black),
-                          placeholder: (c, u) =>
-                              const ColoredBox(color: Colors.black),
-                        )
-                      else
-                        const ColoredBox(color: Colors.black),
-                      const DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [Color(0x99000000), Color(0xCC000000)],
-                          ),
-                        ),
-                      ),
-                      Positioned.fill(
-                        bottom: 60,
-                        child: Align(
-                          alignment: const Alignment(0, 0.5),
-                          child: WatchPlayerButton(
-                            icon: Icons.play_arrow_rounded,
-                            label: context.l10n.loading,
-                            size: 56,
-                            iconSize: 32,
-                            busy: true,
-                            onTap: null,
-                          ),
-                        ),
+                      _loadingBackdropBody(
+                        'Finding streams…',
+                        thumb: initialThumb,
                       ),
                       Positioned(
                         top: 6,
@@ -3958,7 +3934,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
             }
             if (state.loadingSources) {
               return _loadingBackdropBody(
-                'Finding the best source…',
+                'Finding streams…',
                 thumb: _c.currentEpisode.thumbnail,
               );
             }
@@ -4210,7 +4186,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   StreamBuilder<bool>(
                     stream: _c.player.stream.buffering,
                     builder: (context, snap) {
-                      final show = (snap.data ?? false) && !_controlsVisible;
+                      final show =
+                          (snap.data ?? _c.player.state.buffering) &&
+                          (_c.player.state.width ?? 0) > 0 &&
+                          !_controlsVisible;
                       return IgnorePointer(
                         child: AnimatedOpacity(
                           opacity: show ? 1 : 0,

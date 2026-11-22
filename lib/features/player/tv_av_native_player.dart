@@ -32,6 +32,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/tv/tv_playback_failure.dart';
 import '../../core/zmode/playback_resolver.dart';
 import '../../core/zmode/source_matcher.dart';
+import 'playback_loading_title.dart' show playbackArtworkHeaders;
 import 'subtitle_font_service.dart';
 
 /// Launches the Apple TV native player over `zangetsu/tv_player`.
@@ -94,6 +95,9 @@ class TvAvNativePlayer {
     String? showTitle,
     String? cover,
     Map<String, String>? coverHeaders,
+    String? loadingArtwork,
+    String? loadingLogo,
+    void Function()? onOpeningPlayer,
     String category = 'sub',
     List<String> availableCategories = const [],
     int? malId,
@@ -205,12 +209,25 @@ class TvAvNativePlayer {
       );
     }
 
+    final startupArtwork = [
+      ep.thumbnail,
+      loadingArtwork,
+      cover,
+    ].whereType<String>().where((url) => url.trim().isNotEmpty).firstOrNull;
     Map<String, dynamic>? res;
     try {
+      onOpeningPlayer?.call();
       res = await _ch.invokeMapMethod<String, dynamic>('launch', {
         ..._streamPayload(src, mark?.position.inMilliseconds ?? 0),
         'playerMode': 'system',
         'title': _showTitle,
+        'loadingArtwork': startupArtwork,
+        'loadingLogo': ?loadingLogo,
+        'loadingArtworkHeaders': ?playbackArtworkHeaders(
+          startupArtwork,
+          cover,
+          coverHeaders,
+        ),
         'episodeLabel': _episodeLabel(ep),
         'episodeLabels': [for (final e in _episodes) _episodeLabel(e)],
         'episodeCount': _episodes.length,

@@ -748,6 +748,8 @@ class _HomeViewState extends State<_HomeView> {
               _repo.sources(u, sourceId: item.sourceId, fast: true),
           history: sl<WatchHistory>(),
           showTitle: item.title,
+          loadingLogo: item.titleLogo,
+          loadingBackdrop: item.banner,
           cover: item.cover,
           coverHeaders: item.coverHeaders,
           showUrl: item.url,

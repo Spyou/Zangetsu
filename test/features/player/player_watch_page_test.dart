@@ -17,6 +17,7 @@ PlayerWatchPage _page({
   String? loadingStatus,
   String? serverName,
   Stream<bool>? bufferingStream,
+  Stream<int?>? firstFrameStream,
   String? description = 'A great episode.',
   String? nextTitle = 'The Next One',
   List<WatchPageEpisode> episodes = const [],
@@ -61,6 +62,7 @@ PlayerWatchPage _page({
     initialDuration: Duration.zero,
     hasPrevious: true,
     bufferingStream: bufferingStream,
+    firstFrameStream: firstFrameStream,
     ambientFrameStream: ambientFrameStream,
     nextThumb: null,
     nextLabel: 'S1 E2',
@@ -97,6 +99,24 @@ Future<void> _pump(WidgetTester tester, PlayerWatchPage page) {
 }
 
 void main() {
+  testWidgets('startup hides the spinner and rebuffering shows it', (
+    tester,
+  ) async {
+    final frames = StreamController<int?>();
+    final buffering = StreamController<bool>.broadcast();
+    addTearDown(frames.close);
+    addTearDown(buffering.close);
+    await _pump(
+      tester,
+      _page(firstFrameStream: frames.stream, bufferingStream: buffering.stream),
+    );
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    frames.add(1920);
+    buffering.add(true);
+    await tester.pump();
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+  });
+
   testWidgets('portrait video uses the full width only when enabled', (
     tester,
   ) async {
@@ -824,53 +844,6 @@ void main() {
 
     // Silent streams must not read 00:00 — the handoff carries the values.
     expect(find.text('01:30 / 24:00'), findsOneWidget);
-  });
-
-  testWidgets('spinner stays up until the first frame, loading or not', (
-    tester,
-  ) async {
-    await _pump(
-      tester,
-      PlayerWatchPage(
-        video: const ColoredBox(color: Colors.black),
-        header: const WatchPageHeader(
-          title: 'T',
-          subtitle: 'S',
-          description: null,
-        ),
-        loading: false,
-        firstFrameStream: Stream<int?>.empty(),
-        initialFirstFrame: 0,
-        positionStream: Stream<Duration>.empty(),
-        durationStream: Stream<Duration?>.empty(),
-        playingStream: Stream.value(false),
-        initialPlaying: false,
-        initialPosition: Duration.zero,
-        initialDuration: Duration.zero,
-        hasPrevious: false,
-        nextThumb: null,
-        nextLabel: null,
-        nextTitle: null,
-        autoplay: true,
-        episodes: const [],
-        onOpenEpisode: (_) {},
-        onTogglePlay: () {},
-        onSeek: (_) {},
-        onPrevious: () {},
-        onNext: () {},
-        onFullscreen: () {},
-        onBack: () {},
-        onServer: () {},
-        onAudio: () {},
-        onSubtitles: () {},
-        onMore: () {},
-        onComments: () {},
-        onAutoplayChanged: (_) {},
-      ),
-    );
-
-    // No picture yet — the spinner holds even though nothing is "loading".
-    expect(find.byType(CircularProgressIndicator), findsOneWidget);
   });
 
   testWidgets('dead rows show their reason and ignore taps', (tester) async {

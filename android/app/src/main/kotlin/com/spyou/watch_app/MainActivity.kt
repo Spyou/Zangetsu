@@ -1701,6 +1701,14 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
             if (url.isNullOrEmpty()) { result.success(mapOf("launched" to false)); return }
             val intent = Intent(this, TvPlayerActivity::class.java)
             intent.putExtra(TvPlayerActivity.EXTRA_URL, url)
+            for (key in listOf("loadingArtwork", "loadingLogo")) {
+                call.argument<String>(key)?.let { intent.putExtra(key, it) }
+            }
+            val artworkHeaders = call.argument<Map<String, String>>("loadingArtworkHeaders")
+            intent.putExtra(
+                "loadingArtworkHeaders",
+                artworkHeaders.orEmpty().flatMap { (key, value) -> listOf(key, value) }.toTypedArray(),
+            )
             call.argument<String>("title")?.let { intent.putExtra(TvPlayerActivity.EXTRA_TITLE, it) }
             call.argument<String>("episodeLabel")?.let { intent.putExtra(TvPlayerActivity.EXTRA_EP_LABEL, it) }
             call.argument<String>("mimeType")?.let { intent.putExtra(TvPlayerActivity.EXTRA_MIME, it) }

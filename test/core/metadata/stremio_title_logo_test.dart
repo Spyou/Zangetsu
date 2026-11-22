@@ -80,6 +80,38 @@ void main() {
     expect(adapter.requests, isEmpty);
   });
 
+  test('playback can reuse artwork without requesting metadata', () async {
+    final item = _item();
+    expect(service.cachedLogoFor(item), isNull);
+    expect(service.cachedLogoFor(_item(logo: _addonLogo)), _addonLogo);
+    await service.logoFor(_item(logo: _addonLogo));
+    final resumeItem = MediaItem(
+      id: item.url,
+      title: item.title,
+      url: item.url,
+      type: item.type,
+      sourceId: item.sourceId,
+    );
+    expect(service.cachedLogoFor(resumeItem), _addonLogo);
+    expect(adapter.requests, isEmpty);
+  });
+
+  test(
+    'resume URL can recover the cached movie logo without a TMDB id',
+    () async {
+      await service.logoFor(_item(sourceId: 'zm'));
+      const resume = MediaItem(
+        id: 'tmdb:123',
+        title: 'Example',
+        url: 'zm://movie/tmdb:123',
+        type: ProviderType.movie,
+        sourceId: 'zm',
+      );
+      expect(service.cachedLogoFor(resume), _tmdbLogo);
+      expect(adapter.requests, hasLength(1));
+    },
+  );
+
   test('missing addon logo uses the cached TMDB fallback', () async {
     expect(await service.logoFor(_item()), _tmdbLogo);
     expect(await service.logoFor(_item()), _tmdbLogo);

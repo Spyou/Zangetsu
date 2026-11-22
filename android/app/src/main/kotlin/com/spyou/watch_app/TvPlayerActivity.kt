@@ -181,6 +181,7 @@ class TvPlayerActivity : Activity() {
     private lateinit var root: View
     private lateinit var playerView: PlayerView
     private lateinit var loading: View
+    private lateinit var startupArtwork: View
     private lateinit var controls: View
     private lateinit var timeBar: DefaultTimeBar
     private lateinit var positionText: TextView
@@ -360,6 +361,7 @@ class TvPlayerActivity : Activity() {
 
         setContentView(R.layout.tv_player)
         bindViews()
+        installStartupArtwork()
         styleControls()
         active = this
         // Android 13+ (the tester's Bravia) routes Back through the predictive-back
@@ -398,6 +400,7 @@ class TvPlayerActivity : Activity() {
             }
 
             override fun onRenderedFirstFrame() {
+                dismissStartupArtwork()
                 Log.i(TAG, "onRenderedFirstFrame — native surface is showing video")
             }
             override fun onPlayerError(error: PlaybackException) {
@@ -433,9 +436,15 @@ class TvPlayerActivity : Activity() {
             override fun onPlaybackStateChanged(state: Int) {
                 syncKeepScreenOn()
                 updatePlayPauseIcon()
+                if (state == Player.STATE_READY &&
+                    !exo.currentTracks.containsType(C.TRACK_TYPE_VIDEO) &&
+                    exo.currentTracks.containsType(C.TRACK_TYPE_AUDIO)
+                ) {
+                    dismissStartupArtwork()
+                }
                 if (!switching) {
                     loading.visibility =
-                        if (state == Player.STATE_BUFFERING) View.VISIBLE else View.GONE
+                        if (state == Player.STATE_BUFFERING && startupArtwork.visibility != View.VISIBLE) View.VISIBLE else View.GONE
                 }
                 // Duration is known once ready → fetch AniSkip for this episode.
                 if (state == Player.STATE_READY && skipsFetchedFor != currentIndex) fetchSkips()
@@ -479,6 +488,45 @@ class TvPlayerActivity : Activity() {
 
     /** Loads a resolved stream into the current player and starts it. Reused for
      *  the first episode and every switch. */
+    private fun dismissStartupArtwork() {
+        if (startupArtwork.visibility != View.VISIBLE) return
+        startupArtwork.visibility = View.GONE
+        startupArtwork.findViewById<PlaybackTitlePulse>(R.id.loading_title_pulse).stopPulse()
+        for (id in listOf(R.id.loading_backdrop, R.id.loading_logo)) {
+            startupArtwork.findViewById<android.widget.ImageView>(id).apply {
+                tag = null
+                setImageDrawable(null)
+            }
+        }
+    }
+
+    private fun installStartupArtwork() {
+        val root = findViewById<android.widget.FrameLayout>(R.id.player_root)
+        startupArtwork = layoutInflater.inflate(R.layout.phone_player_loading_overlay, root, false)
+        root.addView(startupArtwork, root.indexOfChild(loading))
+        val title = startupArtwork.findViewById<TextView>(R.id.loading_title)
+        title.text = intent.getStringExtra(EXTRA_TITLE)
+        startupArtwork.findViewById<TextView>(R.id.loading_episode).text =
+            intent.getStringExtra(EXTRA_EP_LABEL)
+        startupArtwork.findViewById<TextView>(R.id.loading_status)
+            .setText(R.string.phone_player_status_starting)
+        val headers = PhonePlayerIntent.headersFromArray(
+            intent.getStringArrayExtra("loadingArtworkHeaders"),
+        ).orEmpty()
+        startupArtwork.findViewById<android.widget.ImageView>(R.id.loading_backdrop)
+            .loadPlaybackArtwork(intent.getStringExtra("loadingArtwork"), headers)
+        val logo = startupArtwork.findViewById<android.widget.ImageView>(R.id.loading_logo)
+        val pulse = startupArtwork.findViewById<PlaybackTitlePulse>(R.id.loading_title_pulse)
+        val loadingLogoUrl = intent.getStringExtra("loadingLogo")
+        pulse.startPulse()
+        logo.loadPlaybackArtwork(loadingLogoUrl) {
+            logo.contentDescription = title.text
+            logo.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
+            logo.visibility = View.VISIBLE
+            title.visibility = View.GONE
+        }
+    }
+
     private fun loadStream(
         url: String,
         headers: Map<String, String>?,

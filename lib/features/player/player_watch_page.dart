@@ -93,8 +93,7 @@ class PlayerWatchPage extends StatefulWidget {
   final bool initialBuffering;
 
   /// First-frame signal (player width; null = latch off). While no frame has
-  /// decoded the spinner holds — even if the loading flag lapses between
-  /// progressive resolves, and no tap can dismiss it.
+  /// decoded, the startup artwork takes the place of transport controls.
   final Stream<int?>? firstFrameStream;
   final int initialFirstFrame;
 
@@ -810,8 +809,8 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
                   stream: widget.bufferingStream,
                   initialData: widget.initialBuffering,
                   builder: (context, snapshot) {
-                    final busy =
-                        widget.loading || !_frameUp || snapshot.data == true;
+                    if (!_frameUp) return const SizedBox.shrink();
+                    final busy = widget.loading || snapshot.data == true;
                     return AnimatedOpacity(
                       opacity: _controlsVisible || busy ? 1 : 0,
                       duration: const Duration(milliseconds: 200),

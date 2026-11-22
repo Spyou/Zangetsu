@@ -7,6 +7,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import '../models/media_item.dart';
 import '../models/provider_info.dart';
 import '../stremio/stremio_ref.dart';
+import '../zmode/zmode_ids.dart';
 import 'tmdb.dart';
 
 /// Best-effort TMDB "title logo" (the stylized title-art PNG) and backdrop
@@ -84,6 +85,43 @@ class TitleLogoService {
         /* best-effort */
       }
     }
+  }
+
+  /// Reuse title artwork during playback startup without a metadata request.
+  String? cachedLogoFor(MediaItem item) {
+    String? read(String key) =>
+        _mem[key] ?? (Hive.isBoxOpen(_boxName) ? _box.get(key) : null);
+
+    if (item.sourceId == stremioSourceId) {
+      var id = item.id;
+      if (StremioRef.isRef(item.url)) {
+        try {
+          final ref = StremioRef.parse(item.url);
+          id = stremioMediaId(
+            type: ref.type,
+            itemId: ref.itemId,
+            installationId: ref.installationId,
+          );
+        } on FormatException {
+          // Retain the item's existing identity if its reference is malformed.
+        }
+      }
+      final logo =
+          _imageUrl(item.titleLogo) ??
+          _imageUrl(read('stremio-title:$id')) ??
+          _imageUrl(read('stremio-title:${item.id}'));
+      if (logo != null && !_failedAddonLogos.contains(logo)) return logo;
+    }
+    if (item.tmdbId == null) {
+      final show = ZmodeIds.parseShow(item.url);
+      if (show != null && show.id.startsWith('tmdb:')) {
+        final id = int.tryParse(show.id.substring(5));
+        if (id != null) {
+          return _imageUrl(read('id:$id:${show.kind == ZKind.tv}'));
+        }
+      }
+    }
+    return _imageUrl(read(_key(item)));
   }
 
   Future<String?> logoFor(MediaItem item) async {

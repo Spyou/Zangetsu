@@ -358,6 +358,7 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
       showTitle: detail.title,
       cover: detail.cover ?? widget.item.cover,
       coverHeaders: detail.coverHeaders ?? widget.item.coverHeaders,
+      loadingArtwork: detail.banner ?? widget.item.banner,
       category: launchCategory,
       availableCategories: availableCategories,
       malId: detail.malId ?? widget.item.malId,

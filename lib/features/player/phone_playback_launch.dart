@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'playback_loading_title.dart' show playbackArtworkHeaders;
+
 import '../../core/di/injector.dart';
 import '../../core/stremio/stremio_manager.dart';
 import '../../core/stremio/stremio_ref.dart';
@@ -267,6 +269,8 @@ Map<String, dynamic> phonePlayerArgs({
   String? subtitleFontPath,
   String? cover,
   Map<String, String>? coverHeaders,
+  String? loadingArtwork,
+  String? loadingLogo,
   String playerOrientation = 'landscape',
   bool portraitVideoEdgeToEdge = false,
   Map<String, List<String>>? controlLayout,
@@ -325,6 +329,13 @@ Map<String, dynamic> phonePlayerArgs({
     'subtitlePosition': subtitlePosition.clamp(0, 100),
     'subtitleFontPath': ?subtitleFontPath,
     'cover': ?cover,
+    'loadingArtwork': ?loadingArtwork,
+    'loadingArtworkHeaders': ?playbackArtworkHeaders(
+      loadingArtwork,
+      cover,
+      coverHeaders,
+    ),
+    'loadingLogo': ?loadingLogo,
     'coverHeaders': coverHeaders ?? const <String, String>{},
     'playerOrientation': playerOrientation,
     'portraitVideoEdgeToEdge': portraitVideoEdgeToEdge,
@@ -416,6 +427,8 @@ Future<bool> launchPhonePlayback({
   String? showTitle,
   String? cover,
   Map<String, String>? coverHeaders,
+  String? loadingArtwork,
+  String? loadingLogo,
   String category = 'sub',
   List<String> availableCategories = const [],
   String? showDescription,
@@ -446,6 +459,8 @@ Future<bool> launchPhonePlayback({
     showTitle: showTitle,
     cover: cover,
     coverHeaders: coverHeaders,
+    loadingArtwork: loadingArtwork,
+    loadingLogo: loadingLogo,
     category: category,
     availableCategories: availableCategories,
     showDescription: showDescription,
@@ -577,6 +592,8 @@ class PhoneNativePlayer {
     String? showTitle,
     String? cover,
     Map<String, String>? coverHeaders,
+    String? loadingArtwork,
+    String? loadingLogo,
     String category = 'sub',
     List<String> availableCategories = const [],
     String? showDescription,
@@ -691,6 +708,12 @@ class PhoneNativePlayer {
       subtitleFontPath: subFontPath,
       cover: _cover,
       coverHeaders: _coverHeaders,
+      loadingArtwork: [
+        ep.thumbnail,
+        loadingArtwork,
+        cover,
+      ].whereType<String>().where((url) => url.trim().isNotEmpty).firstOrNull,
+      loadingLogo: loadingLogo,
       playerOrientation: prefs.playerOrientation,
       portraitVideoEdgeToEdge: prefs.portraitVideoEdgeToEdge,
       controlLayout: {

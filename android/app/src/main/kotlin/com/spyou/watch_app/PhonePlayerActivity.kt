@@ -88,9 +88,8 @@ class PhonePlayerActivity : Activity() {
     private lateinit var loadingTitle: android.widget.TextView
     private lateinit var loadingEpisode: android.widget.TextView
     private lateinit var loadingStatus: android.widget.TextView
-    private lateinit var loadingSpinner: View
     private lateinit var loadingActions: View
-    private var backdropRequested = false
+    private lateinit var loadingTitlePulse: PlaybackTitlePulse
 
     private val resolveTimeout = Runnable {
         if (switching) {
@@ -382,7 +381,6 @@ class PhonePlayerActivity : Activity() {
         loadingTitle = findViewById(R.id.loading_title)
         loadingEpisode = findViewById(R.id.loading_episode)
         loadingStatus = findViewById(R.id.loading_status)
-        loadingSpinner = findViewById(R.id.loading_spinner)
         loadingActions = findViewById(R.id.loading_actions)
         findViewById<View>(R.id.btn_loading_retry).setOnClickListener {
             switching = false
@@ -391,7 +389,24 @@ class PhonePlayerActivity : Activity() {
         findViewById<View>(R.id.btn_loading_back).setOnClickListener { finish() }
         loadingTitle.text = intent.getStringExtra(PhonePlayerIntent.EXTRA_TITLE) ?: ""
         loadingEpisode.text = intent.getStringExtra(PhonePlayerIntent.EXTRA_EP_LABEL) ?: ""
-        loadBackdrop()
+        loadingTitlePulse = findViewById(R.id.loading_title_pulse)
+        val loadingLogoUrl = intent.getStringExtra("loadingLogo")
+        loadingTitlePulse.startPulse()
+        val artworkHeaders = PhonePlayerIntent.headersFromArray(
+            intent.getStringArrayExtra("loadingArtworkHeaders"),
+        ).orEmpty()
+        loadingBackdrop.loadPlaybackArtwork(
+            intent.getStringExtra("loadingArtwork"),
+            artworkHeaders,
+        )
+        val logo = findViewById<android.widget.ImageView>(R.id.loading_logo)
+        logo.loadPlaybackArtwork(loadingLogoUrl) {
+            if (loadingOverlay.visibility != View.VISIBLE || loadingActions.visibility == View.VISIBLE) return@loadPlaybackArtwork
+            logo.contentDescription = loadingTitle.text
+            logo.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
+            logo.visibility = View.VISIBLE
+            loadingTitle.visibility = View.GONE
+        }
         controls = findViewById(R.id.controls)
         quickActions = findViewById(R.id.quick_actions)
         btnPlay = findViewById(R.id.btn_play)
@@ -656,31 +671,6 @@ class PhonePlayerActivity : Activity() {
         }
     }
 
-    /** Poster behind the status text, so a slow resolve never looks frozen. */
-    private fun loadBackdrop() {
-        if (backdropRequested) return
-        val url = intent.getStringExtra(PhonePlayerIntent.EXTRA_COVER).orEmpty()
-        if (url.isEmpty()) return
-        backdropRequested = true
-        val headers = PhonePlayerIntent.headersFromArray(
-            intent.getStringArrayExtra(PhonePlayerIntent.EXTRA_COVER_HEADERS),
-        )
-        Thread {
-            val bitmap = runCatching {
-                val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
-                conn.connectTimeout = 6_000
-                conn.readTimeout = 6_000
-                for ((k, v) in headers) conn.setRequestProperty(k, v)
-                conn.inputStream.use { android.graphics.BitmapFactory.decodeStream(it) }
-            }.getOrNull()
-            if (bitmap != null) {
-                runOnUiThread {
-                    if (!isFinishing && !isDestroyed) loadingBackdrop.setImageBitmap(bitmap)
-                }
-            }
-        }.start()
-    }
-
     private fun setLoadingStatus(text: String) {
         loadingStatus.text = text
     }
@@ -694,7 +684,7 @@ class PhonePlayerActivity : Activity() {
         controls.animate().cancel()
         controls.visibility = View.GONE
         loadingOverlay.visibility = View.VISIBLE
-        loadingSpinner.visibility = View.VISIBLE
+        if (loadingActions.visibility == View.VISIBLE) loadingTitlePulse.startPulse()
         loadingActions.visibility = View.GONE
         loadingStatus.visibility = View.VISIBLE
         loadingEpisode.text = episodeLabel ?: episodeText.text
@@ -706,7 +696,8 @@ class PhonePlayerActivity : Activity() {
      *  draws over; hide it while buffering or the morph reads as one blob. */
     private fun setBuffering(visible: Boolean) {
         val busy = visible || (isPortraitCard() && !playbackStarted && loadingActions.visibility != View.VISIBLE)
-        loading.visibility = if (busy) View.VISIBLE else View.GONE
+        loading.visibility =
+            if (busy && loadingOverlay.visibility != View.VISIBLE) View.VISIBLE else View.GONE
         btnPlay.visibility = if (busy) View.INVISIBLE else View.VISIBLE
     }
 
@@ -714,6 +705,7 @@ class PhonePlayerActivity : Activity() {
         handler.removeCallbacks(resolveTimeout)
         handler.removeCallbacks(startTimeout)
         loadingOverlay.visibility = View.GONE
+        loadingTitlePulse.stopPulse()
         setBuffering(false)
         everPlayed = true
     }
@@ -722,10 +714,10 @@ class PhonePlayerActivity : Activity() {
         handler.removeCallbacks(resolveTimeout)
         handler.removeCallbacks(startTimeout)
         loadingOverlay.visibility = View.VISIBLE
-        loadingSpinner.visibility = View.GONE
         loadingStatus.visibility = View.VISIBLE
         setLoadingStatus(message)
         loadingActions.visibility = View.VISIBLE
+        loadingTitlePulse.stopPulse()
         setBuffering(false)
     }
 
@@ -1251,11 +1243,6 @@ class PhonePlayerActivity : Activity() {
         if (mini) {
             timeText.setTextColor(android.graphics.Color.WHITE)
             timeText.text = fmt(player?.currentPosition ?: 0L).padStart(5, '0') + " / " + fmt((player?.duration ?: 0L).coerceAtLeast(0L)).padStart(5, '0')
-            if (loadingOverlay.visibility == View.VISIBLE && loadingActions.visibility != View.VISIBLE) {
-                loadingOverlay.visibility = View.GONE
-                controls.visibility = View.VISIBLE
-                setBuffering(!playbackStarted)
-            }
         }
     }
 

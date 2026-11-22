@@ -32,23 +32,32 @@
         android:paddingStart="32dp"
         android:paddingEnd="32dp">
 
-        <com.spyou.watch_app.PhoneLoadingIndicatorView
-            android:id="@+id/loading_spinner"
-            android:layout_width="64dp"
-            android:layout_height="64dp"
-            android:contentDescription="@string/phone_player_desc_loading" />
+        <com.spyou.watch_app.PlaybackTitlePulse
+            android:id="@+id/loading_title_pulse"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
 
-        <TextView
-            android:id="@+id/loading_title"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
-            android:ellipsize="end"
-            android:gravity="center"
-            android:maxLines="2"
-            android:textColor="@color/phone_player_on_surface"
-            android:textSize="20sp"
-            android:textStyle="bold" />
+            <ImageView
+                android:id="@+id/loading_logo"
+                android:layout_width="220dp"
+                android:layout_height="52dp"
+                android:layout_gravity="center"
+                android:importantForAccessibility="no"
+                android:scaleType="fitCenter"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/loading_title"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:layout_gravity="center"
+                android:gravity="center"
+                android:maxLines="2"
+                android:textColor="@color/phone_player_on_surface"
+                android:textSize="20sp"
+                android:textStyle="bold" />
+        </com.spyou.watch_app.PlaybackTitlePulse>
 
         <TextView
             android:id="@+id/loading_episode"

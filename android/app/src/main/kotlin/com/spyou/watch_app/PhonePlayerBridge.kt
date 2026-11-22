@@ -329,6 +329,12 @@ object PhonePlayerBridge {
             )
             call.argument<String>("subtitleFontPath")
                 ?.let { i.putExtra(PhonePlayerIntent.EXTRA_SUB_FONT, it) }
+            for (key in listOf("loadingArtwork", "loadingLogo")) {
+                call.argument<String>(key)?.let { i.putExtra(key, it) }
+            }
+            val artworkHeaders = call.argument<Map<String, String>>("loadingArtworkHeaders")
+            i.putExtra("loadingArtworkHeaders", artworkHeaders.orEmpty()
+                .flatMap { (key, value) -> listOf(key, value) }.toTypedArray())
             call.argument<String>("cover")
                 ?.let { i.putExtra(PhonePlayerIntent.EXTRA_COVER, it) }
             i.putExtra(
