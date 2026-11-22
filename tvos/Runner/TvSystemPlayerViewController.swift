@@ -2,11 +2,24 @@ import AVFoundation
 import AVKit
 import CoreText
 import Flutter
+import ImageIO
 import UIKit
 
 /// AVKit-based Apple TV player: stock transport chrome plus Zangetsu hooks
 /// (`transportBarCustomMenuItems`, `contextualActions`, Episodes tab,
 /// Up Next content proposal). See Apple's "Customizing the tvOS Playback Experience".
+private final class StartupArtworkRequestDelegate: NSObject, URLSessionTaskDelegate, Sendable {
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        willPerformHTTPRedirection response: HTTPURLResponse,
+        newRequest request: URLRequest,
+        completionHandler: @escaping (URLRequest?) -> Void
+    ) {
+        completionHandler(nil)
+    }
+}
+
 final class TvSystemPlayerViewController: AVPlayerViewController, AVPlayerViewControllerDelegate {
     static weak var active: TvSystemPlayerViewController?
 
@@ -90,6 +103,10 @@ final class TvSystemPlayerViewController: AVPlayerViewController, AVPlayerViewCo
     private var streamMimeType: String?
     private var assetResourceLoader: TVAssetResourceLoader?
 
+    private var startupArtwork: UIView?
+    private var artworkTasks: [URLSessionDataTask] = []
+    private var displayObservation: NSKeyValueObservation?
+
     convenience init(
         channel: FlutterMethodChannel,
         args: [String: Any],
@@ -111,6 +128,7 @@ final class TvSystemPlayerViewController: AVPlayerViewController, AVPlayerViewCo
         // Caption overlay is installed lazily when a track is selected.
         if let args = pendingArgs {
             pendingArgs = nil
+            installStartupArtwork(args)
             installEpisodesTab()
             rebuildTransportMenus()
             loadStream(
@@ -122,6 +140,118 @@ final class TvSystemPlayerViewController: AVPlayerViewController, AVPlayerViewCo
             startSaveLoop()
             refreshSourcesCache()
         }
+    }
+
+    private func installStartupArtwork(_ args: [String: Any]) {
+        let overlay = UIView(frame: view.bounds)
+        overlay.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        overlay.backgroundColor = .black
+        overlay.isUserInteractionEnabled = false
+        let backdrop = UIImageView(frame: overlay.bounds)
+        backdrop.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        backdrop.contentMode = .scaleAspectFill
+        backdrop.clipsToBounds = true
+        backdrop.alpha = 0.42
+        overlay.addSubview(backdrop)
+
+        let title = UILabel()
+        title.text = titleText
+        title.textColor = .white
+        title.font = .boldSystemFont(ofSize: 48)
+        title.numberOfLines = 2
+        title.textAlignment = .center
+        let logo = UIImageView()
+        logo.contentMode = .scaleAspectFit
+        logo.accessibilityLabel = titleText
+        logo.isHidden = true
+        let heading = UIView()
+        for content in [title as UIView, logo as UIView] {
+            content.translatesAutoresizingMaskIntoConstraints = false
+            heading.addSubview(content)
+            NSLayoutConstraint.activate([
+                content.leadingAnchor.constraint(equalTo: heading.leadingAnchor),
+                content.trailingAnchor.constraint(equalTo: heading.trailingAnchor),
+                content.topAnchor.constraint(equalTo: heading.topAnchor),
+                content.bottomAnchor.constraint(equalTo: heading.bottomAnchor),
+            ])
+        }
+
+        let status = UILabel()
+        status.text = "Starting playback…"
+        status.font = .systemFont(ofSize: 28)
+        status.textColor = .lightGray
+        status.textAlignment = .center
+        let stack = UIStackView(arrangedSubviews: [heading, status])
+        stack.axis = .vertical
+        stack.spacing = 14
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        overlay.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.centerXAnchor.constraint(equalTo: overlay.centerXAnchor),
+            stack.centerYAnchor.constraint(equalTo: overlay.centerYAnchor),
+            stack.widthAnchor.constraint(equalTo: overlay.widthAnchor, multiplier: 0.55),
+            heading.heightAnchor.constraint(equalToConstant: 120),
+        ])
+        view.addSubview(overlay)
+        startupArtwork = overlay
+        overlay.layoutIfNeeded()
+        let loadingLogo = args["loadingLogo"] as? String
+        pulseStartupTitle(heading)
+        loadStartupImage(args["loadingArtwork"] as? String,
+                         headers: args["loadingArtworkHeaders"] as? [String: String] ?? [:]) {
+            backdrop.image = $0
+        }
+        loadStartupImage(loadingLogo, headers: [:]) { image in
+            logo.image = image
+            logo.isHidden = false
+            logo.isAccessibilityElement = true
+            title.isHidden = true
+        }
+    }
+
+    private func pulseStartupTitle(_ heading: UIView) {
+        guard !UIAccessibility.isReduceMotionEnabled else { return }
+        let pulse = CABasicAnimation(keyPath: "transform.scale")
+        pulse.fromValue = 1
+        pulse.toValue = 1.035
+        pulse.duration = 1.4
+        pulse.autoreverses = true
+        pulse.repeatCount = .infinity
+        pulse.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        heading.layer.add(pulse, forKey: "titlePulse")
+    }
+
+    private func loadStartupImage(
+        _ address: String?, headers: [String: String], apply: @escaping (UIImage) -> Void
+    ) {
+        guard let address, let url = URL(string: address),
+              url.scheme == "https" || url.scheme == "http" else { return }
+        var request = URLRequest(url: url, timeoutInterval: 5)
+        for (name, value) in headers { request.setValue(value, forHTTPHeaderField: name) }
+        let task = URLSession.shared.dataTask(with: request) { [weak self] data, _, _ in
+            guard let data, data.count <= 4 * 1024 * 1024,
+                  let source = CGImageSourceCreateWithData(data as CFData, nil),
+                  let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                    kCGImageSourceCreateThumbnailFromImageAlways: true,
+                    kCGImageSourceCreateThumbnailWithTransform: true,
+                    kCGImageSourceThumbnailMaxPixelSize: 1080,
+                  ] as CFDictionary) else { return }
+            DispatchQueue.main.async {
+                guard self?.startupArtwork != nil else { return }
+                apply(UIImage(cgImage: image))
+            }
+        }
+        if !headers.isEmpty { task.delegate = StartupArtworkRequestDelegate() }
+        artworkTasks.append(task)
+        task.resume()
+    }
+
+    private func dismissStartupArtwork() {
+        artworkTasks.forEach { $0.cancel() }
+        artworkTasks.removeAll()
+        startupArtwork?.removeFromSuperview()
+        startupArtwork = nil
+        displayObservation = nil
     }
 
     private func captionParentView() -> UIView {
@@ -344,6 +474,7 @@ final class TvSystemPlayerViewController: AVPlayerViewController, AVPlayerViewCo
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
         if isBeingDismissed || presentingViewController == nil {
+            dismissStartupArtwork()
             assetResourceLoader?.invalidate()
             assetResourceLoader = nil
             finishIfNeeded()
@@ -550,11 +681,26 @@ final class TvSystemPlayerViewController: AVPlayerViewController, AVPlayerViewCo
         av.appliesMediaSelectionCriteriaAutomatically = false
         player = av
         av.replaceCurrentItem(with: item)
+        if startupArtwork != nil {
+            displayObservation = observe(\.isReadyForDisplay, options: [.initial, .new]) { [weak self, weak item] controller, _ in
+                guard controller.isReadyForDisplay else { return }
+                DispatchQueue.main.async {
+                    guard let self, let item, self.player?.currentItem === item else { return }
+                    self.dismissStartupArtwork()
+                }
+            }
+        }
 
         statusObservation = item.observe(\.status, options: [.new]) { [weak self] item, _ in
             guard let self else { return }
             DispatchQueue.main.async {
                 if item.status == .readyToPlay {
+                    if self.startupArtwork != nil, self.player?.currentItem === item {
+                        let mediaTypes = item.tracks.compactMap { $0.assetTrack?.mediaType }
+                        if mediaTypes.contains(.audio) && !mediaTypes.contains(.video) {
+                            self.dismissStartupArtwork()
+                        }
+                    }
                     self.refreshEmbeddedLegibleOptions()
                     self.rebuildTransportMenus()
                     self.logPlayerTimelineDiagnostics(item, label: "ready")
@@ -576,6 +722,9 @@ final class TvSystemPlayerViewController: AVPlayerViewController, AVPlayerViewCo
                         play()
                     }
                 } else if item.status == .failed {
+                    if self.player?.currentItem === item {
+                        self.dismissStartupArtwork()
+                    }
                     let msg = item.error?.localizedDescription ?? "Playback failed"
                     NSLog("[zangetsu-av-system] item failed: %@", msg)
                 }
