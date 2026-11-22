@@ -11,6 +11,7 @@ import 'package:watch_app/core/models/episode.dart';
 import 'package:watch_app/core/models/video_source.dart';
 import 'package:watch_app/core/playback/playback_prefs.dart';
 import 'package:watch_app/core/playback/resume_store.dart';
+import 'package:watch_app/core/playback/skip_service.dart';
 import 'package:watch_app/core/playback/title_prefs.dart';
 import 'package:watch_app/core/tracker/simkl_service.dart';
 import 'package:watch_app/core/tracker/tracker_hub.dart';
@@ -106,6 +107,65 @@ void main() {
     await Hive.close();
     await dir.delete(recursive: true);
   });
+
+  test(
+    'native segment lookup uses the active session and separate skip settings',
+    () async {
+      final prefs = sl<PlaybackPrefs>();
+      await prefs.setSkipIntro(false);
+      await prefs.setAutoSkipRecap(true);
+      final dio = Dio();
+      addTearDown(dio.close);
+      var requests = 0;
+      dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (options, handler) {
+            requests++;
+            handler.resolve(
+              Response(
+                requestOptions: options,
+                data: options.method == 'POST'
+                    ? {
+                        'data': {
+                          'Media': {'idMal': 21},
+                        },
+                      }
+                    : {
+                        'found': true,
+                        'results': [
+                          {
+                            'skipType': 'op',
+                            'interval': {'startTime': 20, 'endTime': 80},
+                          },
+                          {
+                            'skipType': 'recap',
+                            'interval': {'startTime': 0, 'endTime': 19},
+                          },
+                        ],
+                      },
+              ),
+            );
+          },
+        ),
+      );
+      sl.registerSingleton(SkipService(dio));
+      final args = {
+        'sessionId': launchArgs!['sessionId'],
+        'index': 0,
+        'durationMs': 1400000,
+      };
+      expect(await send('skipsFor', {...args, 'sessionId': -1}), isNull);
+      expect(requests, 0);
+      expect(await send('skipsFor', args), {
+        'manual': false,
+        'segments': [
+          {'start': 20000, 'end': 80000, 'type': 'op', 'auto': false},
+          {'start': 0, 'end': 19000, 'type': 'recap', 'auto': true},
+        ],
+      });
+      expect(requests, 2);
+    },
+  );
 
   test('Stremio resume reuses the picked link only for that episode', () async {
     await send('playerClosed', {'index': 0, 'positionMs': 0, 'durationMs': 0});

@@ -182,6 +182,32 @@ class PhonePlayerActivity : Activity() {
         }
     }
 
+    private data class SkipSegment(val start: Long, val end: Long, val label: Int, val auto: Boolean)
+
+    private lateinit var segmentButton: FrameLayout
+    private lateinit var segmentLabel: TextView
+    private lateinit var segmentFill: TextView
+    private var segmentProgress = 0
+    private val segmentTimer by lazy {
+        android.animation.ValueAnimator.ofInt(0, 10_000).apply {
+            duration = 10_000L
+            interpolator = android.view.animation.LinearInterpolator()
+            addUpdateListener {
+                val progress = it.animatedValue as Int
+                segmentProgress = progress
+                updateSegmentFill()
+                if (progress == 10_000 && !segmentControlsVisible()) {
+                    segmentButton.visibility = View.GONE
+                }
+            }
+        }
+    }
+    private var activeSegment: SkipSegment? = null
+    private var skipSegments = emptyList<SkipSegment>()
+    private var showSegmentButton = false
+    private var skipsRequested = false
+    private val autoSkipped = mutableSetOf<Long>()
+
     private var currentIndex = 0
     // The selected episode can change while the previous stream is still loaded.
     private var loadedEpisodeIndex = 0
@@ -219,6 +245,7 @@ class PhonePlayerActivity : Activity() {
     private var autoPipEnabled = false
     private var currentUrl = ""
     private val attemptedUrls = mutableSetOf<String>()
+    private var refreshedForbiddenLinks = false
     private var autoplayNext = true
     private var ambientEnabled = true
     private var seekMs = 10_000L
@@ -307,6 +334,48 @@ class PhonePlayerActivity : Activity() {
         setContentView(R.layout.phone_player)
         playerView = findViewById(R.id.player_view)
         playerView.keepSubtitlesInViewport()
+        fun label(color: Int) = TextView(this).apply {
+            gravity = Gravity.CENTER
+            minHeight = dp(44)
+            setPadding(dp(14), 0, dp(14), 0)
+            textSize = 13f
+            setTextColor(color)
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }
+        segmentLabel = label(android.graphics.Color.WHITE)
+        segmentFill = label(android.graphics.Color.BLACK).apply {
+            setBackgroundColor(android.graphics.Color.WHITE)
+            addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> updateSegmentFill() }
+        }
+        segmentButton = FrameLayout(this).apply {
+            visibility = View.GONE
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(0xC2000000.toInt())
+                cornerRadius = dp(22).toFloat()
+            }
+            clipToOutline = true
+            isFocusable = true
+            addView(segmentLabel, FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+            ))
+            addView(segmentFill, FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT,
+            ))
+            setOnClickListener {
+                val segment = activeSegment ?: return@setOnClickListener
+                autoSkipped.add(segment.start)
+                player?.seekTo(segment.end)
+                updateSegmentButton(null)
+            }
+        }
+        val stage = findViewById<FrameLayout>(R.id.player_root)
+        stage.addView(segmentButton, stage.indexOfChild(findViewById<View>(R.id.loading)), FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+            Gravity.BOTTOM or Gravity.END,
+        ).apply {
+            marginEnd = dp(16)
+            bottomMargin = dp(56)
+        })
         loading = findViewById(R.id.loading)
         loadingOverlay = findViewById(R.id.loading_overlay)
         loadingBackdrop = findViewById(R.id.loading_backdrop)
@@ -491,7 +560,7 @@ class PhonePlayerActivity : Activity() {
                 sendDiscordPresence()
                 PhonePlayerBridge.channel?.invokeMethod(
                     "playbackStarted",
-                    mapOf("index" to currentIndex),
+                    mapOf("index" to currentIndex, "sessionId" to sessionId),
                 )
                 hideLoading()
             }
@@ -550,7 +619,10 @@ class PhonePlayerActivity : Activity() {
             override fun onPlayerError(error: PlaybackException) {
                 playbackError = true
                 setBuffering(false)
-                failover()
+                val forbidden = generateSequence<Throwable>(error) { it.cause }
+                    .filterIsInstance<androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException>()
+                    .any { it.responseCode == 403 }
+                failover(forbidden)
             }
 
             override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -838,7 +910,10 @@ class PhonePlayerActivity : Activity() {
     })
 
     private fun setControlsLocked(locked: Boolean) {
-        if (locked) restoreSpeedAfterHold()
+        if (locked) {
+            restoreSpeedAfterHold()
+            updateSegmentButton(null)
+        }
         controlsLocked = locked
         if (unlockControl == null) {
             val column = LinearLayout(this).apply {
@@ -1131,14 +1206,11 @@ class PhonePlayerActivity : Activity() {
         val radius = seek.thumb.intrinsicWidth / 2
         seek.setPadding(radius, dp(if (mini) 7 else 6), radius, dp(if (mini) 7 else 6))
         seek.thumbOffset = radius
-        if (mini) {
-            val accent = intent.getIntExtra(PhonePlayerIntent.EXTRA_ACCENT, getColor(R.color.phone_player_accent))
-            seek.thumbTintList = android.content.res.ColorStateList.valueOf(accent)
-            seek.progressTintList = android.content.res.ColorStateList.valueOf(accent)
-        } else {
-            seek.thumbTintList = null
-            seek.progressTintList = null
-        }
+        val accent = ColorStateList.valueOf(
+            intent.getIntExtra(PhonePlayerIntent.EXTRA_ACCENT, getColor(R.color.phone_player_accent)),
+        )
+        seek.thumbTintList = accent
+        seek.progressTintList = accent
         val timeRow = timeText.parent as ViewGroup
         val bar = bottomBar as ViewGroup
         bar.removeView(timeRow)
@@ -1547,6 +1619,10 @@ class PhonePlayerActivity : Activity() {
     ) {
         val p = player ?: return
         p.pause()
+        if (loadedEpisodeIndex != currentIndex) autoSkipped.clear()
+        skipsRequested = false
+        skipSegments = emptyList()
+        updateSegmentButton(null)
         playbackStarted = false
         subtitlePreferenceApplied = false
         pendingAddonSubtitleId = null
@@ -1623,11 +1699,13 @@ class PhonePlayerActivity : Activity() {
         resetZoom()
         val generation = ++mediaGeneration
         attemptedUrls.clear()
+        refreshedForbiddenLinks = false
         val ch = PhonePlayerBridge.channel ?: return
         val p = player
         sendProgress()
         p?.pause() // don't leave the old episode running under the spinner
         playbackStarted = false
+        updateSegmentButton(null)
         handler.removeCallbacks(startTimeout)
         switching = true
         if (!everPlayed) {
@@ -1718,6 +1796,8 @@ class PhonePlayerActivity : Activity() {
         // on the JS engine's one-at-a-time lane (see sourcesFor on the Dart
         // side), so a plain spinner-only wait looked like the tap did
         // nothing. Open feedback immediately instead of waiting on it.
+        val index = currentIndex
+        val generation = mediaGeneration
         var canceled = false
         val waiting = android.app.AlertDialog.Builder(this, R.style.PhonePlayerDialog)
             .setMessage(R.string.phone_player_watch_loading_mirrors).create()
@@ -1726,34 +1806,36 @@ class PhonePlayerActivity : Activity() {
         PhoneWatchMotion.enter(waiting)
         ch.invokeMethod(
             "sourcesFor",
-            mapOf("index" to currentIndex),
+            mapOf("index" to index, "sessionId" to sessionId),
             object : io.flutter.plugin.common.MethodChannel.Result {
                 override fun success(result: Any?) {
                     waiting.dismiss()
-                    if (canceled || !uiAlive()) return
-                    mirrors = mapList(result)
-                    if (mirrors.isEmpty()) {
+                    if (canceled || !uiAlive() || currentIndex != index || mediaGeneration != generation) return
+                    val choices = mapList(result)
+                    if (choices.isEmpty()) {
                         toast("Couldn't load sources")
                         bumpControls()
                         return
                     }
-                    val labels = mirrors.mapIndexed { i, source ->
+                    val labels = choices.mapIndexed { i, source ->
                         val label = (source["label"] as? String).orEmpty()
                             .ifBlank { "Server ${i + 1}" }
                         val quality = (source["quality"] as? String).orEmpty()
                         if (quality.isEmpty() || label.contains(quality)) label
                         else "$label · $quality"
                     }.toTypedArray()
-                    val selected = mirrors.indexOfFirst { it["url"] == currentUrl }
+                    val selected = choices.indexOfFirst { it["url"] == currentUrl }
                     PhonePlayerSheet(this@PhonePlayerActivity)
                         .setTitle(getString(R.string.phone_player_title_sources))
                         .setSingleChoiceItems(labels, selected) { dialog, which ->
                             dialog.dismiss()
-                            if (which != selected) playMirror(mirrors[which])
+                            if (which != selected && currentIndex == index && mediaGeneration == generation) {
+                                playMirror(choices[which])
+                            }
                         }
                         .setOnDismissListener { bumpControls() }
                         .showForPlayer().listView.setOnItemLongClickListener { _, _, which, _ ->
-                            val url = mirrors.getOrNull(which)?.get("url") as? String
+                            val url = choices.getOrNull(which)?.get("url") as? String
                             if (!url.isNullOrEmpty()) {
                                 val clipboard = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
                                 clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Video link", url))
@@ -1765,14 +1847,14 @@ class PhonePlayerActivity : Activity() {
 
                 override fun error(code: String, msg: String?, details: Any?) {
                     waiting.dismiss()
-                    if (canceled || !uiAlive()) return
+                    if (canceled || !uiAlive() || currentIndex != index || mediaGeneration != generation) return
                     toast("Couldn't load sources")
                     bumpControls()
                 }
 
                 override fun notImplemented() {
                     waiting.dismiss()
-                    if (canceled || !uiAlive()) return
+                    if (canceled || !uiAlive() || currentIndex != index || mediaGeneration != generation) return
                     toast("Couldn't load sources")
                     bumpControls()
                 }
@@ -1780,7 +1862,7 @@ class PhonePlayerActivity : Activity() {
         )
     }
 
-    private fun failover() {
+    private fun failover(forbidden: Boolean = false) {
         if (failoverInFlight || engineFallbackRequested) return
         val channel = PhonePlayerBridge.channel
         // A torrent can never play in ExoPlayer — yield to mpv even when the
@@ -1788,7 +1870,7 @@ class PhonePlayerActivity : Activity() {
         val u = currentUrl.trim().lowercase()
         val unplayableTorrent = u.startsWith("magnet:") || u.endsWith(".torrent")
         if ((!intent.getBooleanExtra(PhonePlayerIntent.EXTRA_AUTO_ENGINE_FALLBACK, false) && !unplayableTorrent) || channel == null) {
-            failoverMirrors()
+            failoverMirrors(forbidden)
             return
         }
         failoverInFlight = true
@@ -1803,7 +1885,7 @@ class PhonePlayerActivity : Activity() {
                 engineFallbackRequested = true
                 finish()
             } else {
-                failoverMirrors()
+                failoverMirrors(forbidden)
             }
         }
         channel.invokeMethod("tryOtherPlayer", mapOf(
@@ -1816,7 +1898,7 @@ class PhonePlayerActivity : Activity() {
         })
     }
 
-    private fun failoverMirrors() {
+    private fun failoverMirrors(forbidden: Boolean, refresh: Boolean = false) {
         if (failoverInFlight) return
         val ch = PhonePlayerBridge.channel ?: run { finish(); return }
         failoverInFlight = true
@@ -1831,7 +1913,7 @@ class PhonePlayerActivity : Activity() {
         val position = player?.currentPosition ?: 0L
         ch.invokeMethod(
             "sourcesFor",
-            mapOf("index" to currentIndex),
+            mapOf("index" to requestedIndex, "sessionId" to sessionId, "refresh" to refresh),
             object : io.flutter.plugin.common.MethodChannel.Result {
                 override fun success(result: Any?) {
                     if (!uiAlive()) return
@@ -1848,7 +1930,10 @@ class PhonePlayerActivity : Activity() {
                         val url = source["url"] as? String
                         url != null && url !in attemptedUrls
                     }
-                    if (next == null) {
+                    if (next == null && forbidden && !refreshedForbiddenLinks) {
+                        refreshedForbiddenLinks = true
+                        failoverMirrors(forbidden, refresh = true)
+                    } else if (next == null) {
                         failoverFailed()
                     } else {
                         playMirror(next, position, generation)
@@ -3111,18 +3196,110 @@ class PhonePlayerActivity : Activity() {
             .start()
     }
 
+    private fun updateSegmentFill() {
+        segmentFill.clipBounds = android.graphics.Rect(
+            0, 0, (segmentFill.width * segmentProgress / 10_000), segmentFill.height,
+        )
+    }
+
+    private fun segmentControlsVisible() = controls.visibility == View.VISIBLE && !controlsHiding
+
+    private fun updateSegmentButton(segment: SkipSegment?) {
+        if (activeSegment != segment) {
+            activeSegment = segment
+            segmentTimer.cancel()
+            segmentProgress = 0
+            updateSegmentFill()
+            if (segment != null) {
+                segmentLabel.setText(segment.label)
+                segmentFill.setText(segment.label)
+                segmentButton.contentDescription = getString(segment.label)
+            }
+        }
+        if (segment == null) {
+            segmentButton.visibility = View.GONE
+            return
+        }
+
+        val controlsVisible = segmentControlsVisible()
+        if (segmentProgress < 10_000) {
+            if (segmentTimer.isPaused) segmentTimer.resume()
+            else if (!segmentTimer.isStarted) segmentTimer.start()
+        }
+        segmentButton.visibility = if (controlsVisible || segmentProgress < 10_000) {
+            View.VISIBLE
+        } else View.GONE
+
+        val params = segmentButton.layoutParams as FrameLayout.LayoutParams
+        val bottom = dp(if (isPortraitCard()) 52 else if (controlsVisible) 120 else 28)
+        if (params.bottomMargin != bottom) {
+            params.bottomMargin = bottom
+            segmentButton.layoutParams = params
+        }
+    }
+
+    private fun syncSkipSegments(p: ExoPlayer, position: Long, duration: Long) {
+        if (!playbackStarted || switching || p.playbackState != Player.STATE_READY ||
+            loadedEpisodeIndex != currentIndex || loadingOverlay.visibility == View.VISIBLE
+        ) {
+            updateSegmentButton(null)
+            return
+        }
+        if (!skipsRequested) {
+            skipsRequested = true
+            val sourceFactory = currentSourceFactory
+            val index = currentIndex
+            val generation = mediaGeneration
+            PhonePlayerBridge.channel?.invokeMethod(
+                "skipsFor",
+                mapOf("sessionId" to sessionId, "index" to index, "durationMs" to duration),
+                object : io.flutter.plugin.common.MethodChannel.Result {
+                    override fun success(result: Any?) {
+                        if (!uiAlive() || player !== p || currentSourceFactory !== sourceFactory ||
+                            index != currentIndex || generation != mediaGeneration) return
+                        val response = result as? Map<*, *> ?: return
+                        showSegmentButton = response["manual"] == true
+                        skipSegments = (response["segments"] as? List<*>).orEmpty().mapNotNull {
+                            val row = it as? Map<*, *> ?: return@mapNotNull null
+                            val start = (row["start"] as? Number)?.toLong() ?: return@mapNotNull null
+                            val end = (row["end"] as? Number)?.toLong() ?: return@mapNotNull null
+                            if (start < 0 || end <= start || end > duration) return@mapNotNull null
+                            val label = when (row["type"]) {
+                                "recap" -> R.string.phone_player_skip_recap
+                                "ed", "mixed-ed" -> R.string.phone_player_skip_ending
+                                else -> R.string.phone_player_skip_opening
+                            }
+                            SkipSegment(start, end, label, row["auto"] == true)
+                        }
+                    }
+                    override fun error(code: String, message: String?, details: Any?) {}
+                    override fun notImplemented() {}
+                },
+            )
+        }
+        val auto = if (p.isPlaying && !scrubbing) skipSegments.firstOrNull {
+            it.auto && it.start !in autoSkipped && position >= it.start && position < it.end - 1_000
+        } else null
+        if (auto != null) {
+            autoSkipped.add(auto.start)
+            p.seekTo(auto.end)
+            updateSegmentButton(null)
+            return
+        }
+        updateSegmentButton(if (showSegmentButton && !controlsLocked && !isInPictureInPictureMode && !scrubbing) {
+            skipSegments.firstOrNull { position >= it.start && position < it.end }
+        } else null)
+    }
+
     private fun syncProgress() {
         val p = player ?: return
         val d = p.duration
         if (d > 0) {
             val pos = p.currentPosition
+            syncSkipSegments(p, pos, d)
             if (!scrubbing) {
-                val progress = (pos * 1000 / d).toInt().coerceIn(0, 1000)
-                if (android.os.Build.VERSION.SDK_INT >= 24) {
-                    seek.setProgress(progress, true)
-                } else {
-                    seek.progress = progress
-                }
+                // Keep the drawable at the current position when rotation replaces the track.
+                seek.progress = (pos * 1000 / d).toInt().coerceIn(0, 1000)
                 timeText.text = if (isPortraitCard()) fmt(pos).padStart(5, '0') + " / " + fmt(d).padStart(5, '0') else fmt(pos) + " / " + fmt(d)
                 seek.contentDescription = getString(R.string.phone_player_desc_seek) + ", " + fmt(pos) + " of " + fmt(d)
             }
@@ -3308,6 +3485,7 @@ class PhonePlayerActivity : Activity() {
         if (!isInPictureInPictureMode) player?.pause()
         updateKeepScreenOn()
         handler.removeCallbacks(ticker)
+        if (segmentTimer.isRunning) segmentTimer.pause()
     }
 
     // The ticker is stopped in onPause so it doesn't keep polling a paused
@@ -3343,6 +3521,7 @@ class PhonePlayerActivity : Activity() {
         if (isInPictureInPictureMode) {
             pip.applyParams()
             // Only the system window chrome should be visible in PiP.
+            updateSegmentButton(null)
             controls.visibility = View.GONE
         } else {
             bumpControls()
@@ -3350,6 +3529,7 @@ class PhonePlayerActivity : Activity() {
     }
 
     override fun onDestroy() {
+        segmentTimer.cancel()
         episodePanel?.setOnDismissListener(null)
         episodePanel?.dismiss()
         episodePanel = null

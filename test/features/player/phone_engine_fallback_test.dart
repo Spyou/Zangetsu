@@ -10,8 +10,23 @@ import 'package:watch_app/core/models/video_source.dart';
 import 'package:watch_app/core/playback/playback_prefs.dart';
 import 'package:watch_app/core/playback/resume_store.dart';
 import 'package:watch_app/core/playback/title_prefs.dart';
+import 'package:watch_app/core/repository/catalogue_repository.dart';
 import 'package:watch_app/features/player/phone_playback_launch.dart';
 import 'package:watch_app/features/player/player_engine_fallback.dart';
+
+class _RefreshRepo extends Fake implements CatalogueRepository {
+  final requests = <({String url, String? sourceId, bool fast})>[];
+
+  @override
+  Future<List<VideoSource>> sources(
+    String episodeUrl, {
+    String? sourceId,
+    bool fast = false,
+  }) async {
+    requests.add((url: episodeUrl, sourceId: sourceId, fast: fast));
+    return const [VideoSource(url: 'https://cdn.test/refreshed')];
+  }
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -60,6 +75,7 @@ void main() {
     VideoSource? seed,
     bool forceResume = false,
     Future<List<VideoSource>> Function(String)? resolve,
+    PhoneSourcesPoll? poll,
   }) async {
     await sl<PlaybackPrefs>().setAutoPlayerFallback(enabled);
     final opened = Completer<void>();
@@ -79,6 +95,7 @@ void main() {
       resume: ResumeStore(),
       category: 'dub',
       resolveSources: resolve ?? (_) async => [source, second],
+      pollSources: poll,
       initialSource: seed,
       showDescription: 'Description',
       engineFallback: fallback,
@@ -131,12 +148,80 @@ void main() {
     expect(failure, isNull);
   });
 
-  test('off still yields a torrent to mpv (native can never play it)', () async {
-    const torrent = VideoSource(url: 'magnet:?xt=urn:btih:abc');
-    await start(enabled: false, resolve: (_) async => [torrent]);
-    await send('resolveEpisode', {'index': 0});
-    expect(await request(url: torrent.url), isTrue);
-  });
+  test(
+    'native source picker adds late mirrors without resolving again',
+    () async {
+      var resolutions = 0;
+      await start(
+        resolve: (_) async {
+          resolutions++;
+          return [source];
+        },
+        poll: (_) async => (sources: [source, second], done: true),
+      );
+      await send('resolveEpisode', {'index': 0});
+      final mirrors = await send('sourcesFor', {'index': 0}) as List;
+      expect(mirrors.map((mirror) => mirror['url']), [source.url, second.url]);
+      expect(resolutions, 1);
+    },
+  );
+
+  test(
+    'native player collects mirrors before the source picker opens',
+    () async {
+      final polled = Completer<void>();
+      await start(
+        resolve: (_) async => [source],
+        poll: (_) async {
+          if (polled.isCompleted) return (sources: [source], done: true);
+          polled.complete();
+          return (sources: [source, second], done: true);
+        },
+      );
+      await send('resolveEpisode', {'index': 0});
+      await send('playbackStarted', {
+        'index': 0,
+        'sessionId': launch['sessionId'],
+      });
+      await polled.future.timeout(const Duration(seconds: 3));
+      await Future<void>.delayed(Duration.zero);
+      final mirrors = await send('sourcesFor', {'index': 0}) as List;
+      expect(mirrors.map((mirror) => mirror['url']), [source.url, second.url]);
+    },
+  );
+
+  test(
+    'native recovery refreshes the same episode outside the fast cache',
+    () async {
+      final repo = _RefreshRepo();
+      sl.registerSingleton<CatalogueRepository>(repo);
+      await start(resolve: (_) async => [source]);
+      await send('resolveEpisode', {'index': 0});
+      final args = {'index': 0, 'refresh': true};
+      expect(await send('sourcesFor', {...args, 'sessionId': -1}), isEmpty);
+      expect(repo.requests, isEmpty);
+      final result =
+          await send('sourcesFor', {...args, 'sessionId': launch['sessionId']})
+              as List;
+      expect(result.map((mirror) => mirror['url']), [
+        source.url,
+        'https://cdn.test/refreshed',
+      ]);
+      expect(repo.requests, [
+        (url: 'episode-1', sourceId: 'source', fast: false),
+      ]);
+    },
+  );
+
+  test(
+    'off still yields a torrent to mpv (native can never play it)',
+    () async {
+      const torrent = VideoSource(url: 'magnet:?xt=urn:btih:abc');
+      await start(enabled: false, resolve: (_) async => [torrent]);
+      await send('resolveEpisode', {'index': 0});
+      expect(await request(url: torrent.url), isTrue);
+    },
+  );
 
   test(
     'off still honours a manual switch for a normal (non-torrent) source',
@@ -147,15 +232,12 @@ void main() {
     },
   );
 
-  test(
-    'a second manual switch for the same episode still works',
-    () async {
-      await start();
-      await send('resolveEpisode', {'index': 0});
-      expect(await request(manual: true), isTrue);
-      expect(await request(manual: true), isTrue);
-    },
-  );
+  test('a second manual switch for the same episode still works', () async {
+    await start();
+    await send('resolveEpisode', {'index': 0});
+    expect(await request(manual: true), isTrue);
+    expect(await request(manual: true), isTrue);
+  });
 
   test(
     'confirmed handoff retains episode, headers, subtitles and position',

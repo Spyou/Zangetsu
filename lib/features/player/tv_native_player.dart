@@ -77,7 +77,10 @@ class TvNativePlayer {
   static String? _cover;
   static Map<String, String>? _coverHeaders;
   static int? _malId;
-  static String? _skipTitle; // anime title for AniSkip (null = no skips)
+  static String? _skipTitle;
+  static String? _skipImdbId;
+  static int? _skipTmdbId;
+  static bool _skipIsTv = false;
   static TvPlaybackTracker? _tracker;
   static List<SubtitleSearchResult> _subResults =
       const []; // last online search
@@ -128,6 +131,9 @@ class TvNativePlayer {
     _coverHeaders = coverHeaders;
     _malId = malId;
     _skipTitle = scrobbleTitle;
+    _skipImdbId = imdbId;
+    _skipTmdbId = tmdbId;
+    _skipIsTv = tmdbIsTv;
     _category = category;
     _resume = resume;
     _tracker = TvPlaybackTracker(
@@ -486,21 +492,32 @@ class TvNativePlayer {
           return const <Map>[];
         }
       case 'skipsFor':
-        // AniSkip intro/outro intervals for the current episode (anime only).
         final args = (call.arguments as Map).cast<String, dynamic>();
         final index = (args['index'] as num?)?.toInt() ?? -1;
         final durMs = (args['durationMs'] as num?)?.toInt() ?? 0;
-        if (_skipTitle == null || index < 0 || index >= _episodes.length) {
+        if (index < 0 || index >= _episodes.length) {
           return const <Map>[];
         }
         final ep = _episodes[index];
         final epNo = ep.number?.toInt() ?? (index + 1);
         try {
-          final skips = await sl<SkipService>().skipTimes(
-            title: _skipTitle!,
-            episode: epNo,
-            duration: Duration(milliseconds: durMs),
-          );
+          final service = sl<SkipService>();
+          final duration = Duration(milliseconds: durMs);
+          final title = _skipTitle;
+          final skips = title != null
+              ? await service.skipTimes(
+                  title: title,
+                  episode: epNo,
+                  duration: duration,
+                )
+              : await service.introDbTimes(
+                  imdbId: _skipImdbId,
+                  tmdbId: _skipTmdbId,
+                  isTv: _skipIsTv,
+                  season: ep.season,
+                  episode: ep.number,
+                  duration: duration,
+                );
           return [
             for (final s in skips)
               {

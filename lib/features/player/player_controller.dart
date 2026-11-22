@@ -3800,16 +3800,45 @@ class PlayerCubit extends Cubit<PlayerState> {
   Future<void> _fetchSkips(int index, Duration dur) async {
     _skips = const [];
     final ep = episodes[index];
-    final num = ep.number?.toInt();
-    final title = showTitle;
-    if (num == null || title == null || title.isEmpty) return;
     try {
-      final s = await sl<SkipService>().skipTimes(
-        title: title,
-        episode: num,
-        duration: dur,
-      );
-      if (index == state.currentIndex) _skips = s; // ignore if switched away
+      final prefs = sl<PlaybackPrefs>();
+      if (!prefs.skipIntro &&
+          !prefs.autoSkipOp &&
+          !prefs.autoSkipEd &&
+          !prefs.autoSkipRecap) {
+        return;
+      }
+      final service = sl<SkipService>();
+      final useIntroDb =
+          scrobbleTitle == null &&
+          malId == null &&
+          (imdbId != null || tmdbId != null);
+      final List<SkipInterval> skips;
+      if (useIntroDb) {
+        skips = await service.introDbTimes(
+          imdbId: imdbId,
+          tmdbId: tmdbId,
+          isTv: tmdbIsTv,
+          season: ep.season,
+          episode: ep.number,
+          duration: dur,
+        );
+      } else {
+        final title = showTitle;
+        final number = ep.number?.toInt();
+        if (title == null || title.isEmpty || number == null) return;
+        skips = await service.skipTimes(
+          title: title,
+          episode: number,
+          duration: dur,
+        );
+      }
+      if (!isClosed &&
+          index == state.currentIndex &&
+          index < episodes.length &&
+          identical(episodes[index], ep)) {
+        _skips = skips;
+      }
     } catch (_) {}
   }
 

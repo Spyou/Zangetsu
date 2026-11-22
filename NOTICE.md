@@ -131,3 +131,5 @@ Local Authentication (Flutter)
   https://pub.dev/packages/local_auth
   License: BSD-3-Clause
   Used for optional device-local profile unlock with biometrics.
+
+Contains data from IntroDB (introdb.app), available under the ODbL.

@@ -723,16 +723,18 @@ class TvPlayerActivity : Activity() {
         )
     }
 
-    /** Fetch AniSkip intro/outro intervals for the current episode (anime only). */
+    /** Fetch skip intervals for the current episode. */
     private fun fetchSkips() {
         val bridge = MainActivity.tvBridge ?: return
         val p = player ?: return
-        skipsFetchedFor = currentIndex
+        val index = currentIndex
+        skipsFetchedFor = index
         bridge.invokeMethod(
             "skipsFor",
-            mapOf("index" to currentIndex, "durationMs" to p.duration.coerceAtLeast(0)),
+            mapOf("index" to index, "durationMs" to p.duration.coerceAtLeast(0)),
             object : MethodChannel.Result {
                 override fun success(result: Any?) {
+                    if (currentIndex != index || player !== p) return
                     @Suppress("UNCHECKED_CAST")
                     val list = result as? List<Map<String, Any?>> ?: emptyList()
                     skipIntervals = list.mapNotNull {

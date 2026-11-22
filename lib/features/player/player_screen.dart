@@ -2331,19 +2331,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _bumpControls(); // the top-bar zoom label reflects the new mode
   }
 
-  /// The skip button for the current [pos]: an accurate AniSkip "Skip
-  /// Shows "Skip opening/ending" ONLY when inside a real AniSkip interval
-  /// (anime). No blind manual fallback — movies/series with no skip data never
-  /// show an inaccurate "Skip intro".
-  Widget? _skipButtonFor(Duration pos) {
+  /// A manual skip action for the detected segment at [pos].
+  Widget? _skipButtonFor(Duration pos, {required bool controlsVisible}) {
     if (!_skipIntroEnabled) return null;
     for (final iv in _c.currentSkips) {
       // Hide a beat before the interval ends so it doesn't flicker at the edge.
       if (pos >= iv.start && pos < iv.end - const Duration(seconds: 1)) {
-        return _SkipButton(
-          // Only a recap is named. An opening/ending keeps the plain "Skip"
-          // it has always had — no reason to reword what already works.
-          label: isRecapSkip(iv.type) ? 'Skip Recap' : 'Skip',
+        return PlayerSegmentSkipButton(
+          key: ValueKey((_c.state.currentIndex, iv.start, iv.type)),
+          label: skipLabel(iv.type),
+          controlsVisible: controlsVisible,
           onTap: () {
             _c.seekTo(iv.end);
             _bumpControls();
@@ -3221,6 +3218,18 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final nextNum = next == null ? null : episodeNumberInt(next);
     return PlayerWatchPage(
       video: _buildVideoSurface(),
+      skipOverlay: state.loadingSources || state.torrentPhase != null
+          ? null
+          : (controlsVisible) => StreamBuilder<Duration>(
+              stream: _positionBySecond,
+              initialData: _c.player.state.position,
+              builder: (context, snap) =>
+                  _skipButtonFor(
+                    snap.data ?? Duration.zero,
+                    controlsVisible: controlsVisible,
+                  ) ??
+                  const SizedBox.shrink(),
+            ),
       edgeToEdge: prefs.portraitVideoEdgeToEdge,
       header: header,
       isMovie: widget.isMovie,
@@ -4509,15 +4518,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     ),
                   ),
 
-                  // 6c. Skip button — accurate AniSkip OP/ED intervals (anime) when
-                  // detected. Independent of the controls (stays visible like
-                  // Netflix). No blind/hardcoded fallback — the manual jump-forward
-                  // is MegaSkip (6c-ii) below.
+                  // 6c. Manual skip action for the current segment.
                   if (!_locked && !_upNext && !sl<AppMode>().isTv)
                     StreamBuilder<Duration>(
                       stream: _positionBySecond,
                       builder: (context, snap) {
-                        final btn = _skipButtonFor(snap.data ?? Duration.zero);
+                        final btn = _skipButtonFor(
+                          snap.data ?? Duration.zero,
+                          controlsVisible: _controlsVisible,
+                        );
                         if (btn == null) return const SizedBox.shrink();
                         // Sit low (Netflix-style) while watching; slide up above the
                         // seek bar when the controls are showing so they never clash.

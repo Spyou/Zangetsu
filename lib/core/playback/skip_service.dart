@@ -1,5 +1,7 @@
 import 'package:dio/dio.dart';
 
+import '../metadata/tmdb.dart';
+
 /// One opening/ending interval to skip.
 class SkipInterval {
   const SkipInterval({
@@ -26,17 +28,17 @@ bool isRecapSkip(String type) => type == 'recap';
 /// Which of the three toggles governs [type].
 bool _skipEnabled(String type, bool op, bool ed, bool recap) =>
     isRecapSkip(type)
-        ? recap
-        : isEndingSkip(type)
-            ? ed
-            : op;
+    ? recap
+    : isEndingSkip(type)
+    ? ed
+    : op;
 
 /// Button text for an interval — a recap reads wrong as "Skip Opening".
 String skipLabel(String type) => isRecapSkip(type)
     ? 'Skip Recap'
     : isEndingSkip(type)
-        ? 'Skip Ending'
-        : 'Skip Opening';
+    ? 'Skip Ending'
+    : 'Skip Opening';
 
 /// The interval to auto-skip at [pos], or null when nothing should fire.
 ///
@@ -63,11 +65,7 @@ SkipInterval? autoSkipAt(
   return null;
 }
 
-/// Accurate opening/ending skip times for ANIME via AniSkip
-/// (api.aniskip.com — free, no API key). Resolves the anime's MAL id from
-/// AniList by title, then queries AniSkip with the episode number + length.
-/// Returns `[]` for anything without data (movies, live-action, unmatched
-/// episodes) so the caller falls back to a manual skip.
+/// Skip timings from AniSkip for anime and IntroDB for movies and series.
 class SkipService {
   SkipService(this._dio);
   final Dio _dio;
@@ -78,6 +76,89 @@ class SkipService {
 
   // Cache MAL id per title so we don't re-hit AniList every episode.
   final Map<String, int?> _malCache = {};
+  final Map<(bool, int), String> _imdbCache = {};
+  static final _imdbPattern = RegExp(r'^tt[0-9]+$');
+
+  Future<List<SkipInterval>> introDbTimes({
+    required String? imdbId,
+    required int? tmdbId,
+    required bool isTv,
+    required int? season,
+    required double? episode,
+    required Duration duration,
+  }) async {
+    if (duration <= Duration.zero) return const [];
+    if (isTv &&
+        (season == null ||
+            season < 1 ||
+            episode == null ||
+            !episode.isFinite ||
+            episode < 1 ||
+            episode != episode.truncateToDouble())) {
+      return const [];
+    }
+    try {
+      var id = imdbId;
+      if (id == null || !_imdbPattern.hasMatch(id)) {
+        if (tmdbId == null || tmdbId <= 0) return const [];
+        final key = (isTv, tmdbId);
+        id = _imdbCache[key];
+        if (id == null) {
+          final kind = isTv ? 'tv' : 'movie';
+          final response = await _dio.get<Map<String, dynamic>>(
+            '${Tmdb.base}/$kind/$tmdbId/external_ids',
+          );
+          final value = response.data?['imdb_id'];
+          if (value is! String || !_imdbPattern.hasMatch(value)) {
+            return const [];
+          }
+          id = _imdbCache[key] = value;
+        }
+      }
+      final response = await _dio.get<Map<String, dynamic>>(
+        'https://api.introdb.app/segments',
+        queryParameters: {
+          'imdb_id': id,
+          if (isTv) ...{
+            'season': season,
+            'episode': episode!.toInt(),
+          } else
+            'is_movie': true,
+        },
+      );
+      final data = response.data;
+      if (data == null) return const [];
+      final result = <SkipInterval>[];
+      for (final entry in const {
+        'intro': 'op',
+        'recap': 'recap',
+        'outro': 'ed',
+      }.entries) {
+        if (!isTv && entry.key != 'outro') continue;
+        final segment = data[entry.key];
+        if (data['no_${entry.key}'] == true || segment is! Map) continue;
+        final start = segment['start_ms'];
+        final end = segment['end_ms'];
+        if (start is! int ||
+            end is! int ||
+            start < 0 ||
+            end <= start ||
+            end > duration.inMilliseconds) {
+          continue;
+        }
+        result.add(
+          SkipInterval(
+            start: Duration(milliseconds: start),
+            end: Duration(milliseconds: end),
+            type: entry.value,
+          ),
+        );
+      }
+      return result;
+    } catch (_) {
+      return const [];
+    }
+  }
 
   Future<int?> _malId(String title) async {
     if (_malCache.containsKey(title)) return _malCache[title];

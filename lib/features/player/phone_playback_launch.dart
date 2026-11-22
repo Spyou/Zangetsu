@@ -23,6 +23,7 @@ import '../../core/playback/playback_prefs.dart';
 import '../../core/playback/title_prefs.dart';
 import '../../core/playback/resume_store.dart';
 import '../../core/playback/source_selection.dart';
+import '../../core/playback/skip_service.dart';
 import '../../core/playback/subtitle_download_service.dart';
 import '../../core/playback/subtitle_language.dart';
 import '../../core/playback/subtitle_encode_skew.dart';
@@ -520,6 +521,7 @@ class PhoneNativePlayer {
   static PhonePlaybackFailure? _pendingEngineFailure;
   static bool _forceInitialResume = false;
   static final _engineSources = <int, List<VideoSource>>{};
+  static (int, int, String, Episode)? _mirrorPollScope;
 
   static List<VideoSource> _rememberEngineSources(
     int index,
@@ -527,8 +529,7 @@ class PhoneNativePlayer {
     required int session,
     required String category,
   }) {
-    if (_engineFallback == null ||
-        session != _sessionId ||
+    if (session != _sessionId ||
         category != _category ||
         _closed?.isCompleted != false) {
       return sources;
@@ -555,7 +556,7 @@ class PhoneNativePlayer {
   static List<VideoSource>? _cachedSourcesFor(int index) {
     final raw = _engineSources[index];
     if (raw == null || raw.isEmpty) return null;
-    return _blockedFiltered(index, raw);
+    return raw;
   }
 
   /// Returns false when the Activity cannot be started; stream errors are
@@ -597,6 +598,7 @@ class PhoneNativePlayer {
     _forceInitialResume = forceInitialResume;
     _pendingEngineFailure = null;
     _engineSources.clear();
+    _mirrorPollScope = null;
     _resolve = resolveSources;
     _pollSources = pollSources;
     _peek = peek;
@@ -908,13 +910,86 @@ class PhoneNativePlayer {
         }
         await sl<TitlePrefsStore>().setSubtitleChoice(_sourceId, show, choice);
         return null;
+      case 'skipsFor':
+        final args = _callArgs(call);
+        final index = (args?['index'] as num?)?.toInt() ?? -1;
+        final durationMs = (args?['durationMs'] as num?)?.toInt() ?? 0;
+        if (_closed?.isCompleted != false ||
+            args?['sessionId'] != _sessionId ||
+            index < 0 ||
+            index >= _episodes.length ||
+            durationMs <= 0) {
+          return null;
+        }
+        final prefs = sl<PlaybackPrefs>();
+        if (!prefs.skipIntro &&
+            !prefs.autoSkipOp &&
+            !prefs.autoSkipRecap &&
+            !prefs.autoSkipEd) {
+          return null;
+        }
+        final ep = _episodes[index];
+        final duration = Duration(milliseconds: durationMs);
+        final service = sl<SkipService>();
+        final useIntroDb =
+            _scrobbleTitle == null &&
+            _malId == null &&
+            (_imdbId != null || _tmdbId != null);
+        final List<SkipInterval> skips;
+        if (useIntroDb) {
+          skips = await service.introDbTimes(
+            imdbId: _imdbId,
+            tmdbId: _tmdbId,
+            isTv: !_isMovie,
+            season: ep.season,
+            episode: ep.number,
+            duration: duration,
+          );
+        } else {
+          if (_scrobbleTitle == null && _malId == null) return null;
+          final title = _scrobbleTitle ?? _showTitle;
+          final number = ep.number?.toInt();
+          if (title.isEmpty || number == null) return null;
+          skips = await service.skipTimes(
+            title: title,
+            episode: number,
+            duration: duration,
+          );
+        }
+        return {
+          'manual': prefs.skipIntro,
+          'segments': [
+            for (final skip in skips)
+              {
+                'start': skip.start.inMilliseconds,
+                'end': skip.end.inMilliseconds,
+                'type': skip.type,
+                'auto': isRecapSkip(skip.type)
+                    ? prefs.autoSkipRecap
+                    : isEndingSkip(skip.type)
+                    ? prefs.autoSkipEd
+                    : prefs.autoSkipOp,
+              },
+          ],
+        };
       case 'resolveEpisode':
         final rArgs = _callArgs(call);
         final index = (rArgs?['index'] as num?)?.toInt() ?? -1;
         if (index < 0 || index >= _episodes.length) return null;
         return _resolveEpisode(index);
       case 'playbackStarted':
-        final index = (_callArgs(call)?['index'] as num?)?.toInt() ?? -1;
+        final args = _callArgs(call);
+        final index = (args?['index'] as num?)?.toInt() ?? -1;
+        if (args?['sessionId'] == _sessionId &&
+            _closed?.isCompleted == false &&
+            index >= 0 &&
+            index < _episodes.length) {
+          final scope = (_sessionId, index, _category, _episodes[index]);
+          if (_pollSources != null && scope != _mirrorPollScope) {
+            _mirrorPollScope = scope;
+            unawaited(_pollLateMirrors(scope));
+          }
+        }
         if (!phoneShouldScrobbleOnFirstFrame(
           playerOpen: _closed?.isCompleted == false,
           alreadyScrobbled: _scrobbled,
@@ -1229,33 +1304,70 @@ class PhoneNativePlayer {
         final args = _callArgs(call);
         final index = (args?['index'] as num?)?.toInt() ?? -1;
         if (index < 0 || index >= _episodes.length) return const <Map>[];
-        // Reuse what the episode's own open/switch already resolved instead
-        // of re-scraping: a fresh scrape queues behind that still-running
-        // call on the JS engine's one-at-a-time lane, so the Server sheet
-        // (and native's own mirror failover, which hits this same case)
-        // would sit there not opening until the original load cleared.
-        final cached = _cachedSourcesFor(index);
-        if (cached != null) {
-          return [
-            for (var i = 0; i < cached.length; i++)
-              phoneSourceMap(cached[i], i),
-          ];
+        final refresh = args?['refresh'] == true;
+        final requestedSession = args?['sessionId'];
+        if ((refresh || requestedSession != null) &&
+            requestedSession != _sessionId) {
+          return const <Map>[];
         }
         final session = _sessionId;
         final requestCategory = _category;
-        final sources = await _resolveSources(
-          _episodes[index],
-          preferPolled: true,
-        );
-        final prepared = _rememberEngineSources(
-          index,
-          await _prepareSources(sources),
-          session: session,
-          category: requestCategory,
-        );
-        if (session != _sessionId || _closed?.isCompleted != false) {
+        final ep = _episodes[index];
+        final cached = _cachedSourcesFor(index);
+        final existing = cached ?? const <VideoSource>[];
+        List<VideoSource> arrivals = const [];
+        if (refresh) {
+          try {
+            if (sl.isRegistered<CatalogueRepository>()) {
+              arrivals = await sl<CatalogueRepository>()
+                  .sources(
+                    tvEpisodeUrl(ep.url, requestCategory),
+                    sourceId: _sourceId,
+                    fast: false,
+                  )
+                  .timeout(const Duration(seconds: 15));
+            } else {
+              arrivals = await _resolveSources(
+                ep,
+              ).timeout(const Duration(seconds: 15));
+            }
+          } catch (_) {
+            return const <Map>[];
+          }
+        } else if (cached == null ||
+            (_sourceId == stremioSourceId &&
+                index == _startIndex &&
+                cached.length == 1 &&
+                cached.single.url == _seedSource?.url)) {
+          arrivals = await _resolveSources(ep, preferPolled: cached == null);
+        } else if (_pollSources case final poll?) {
+          // Read the running resolve's snapshot without queuing another scrape.
+          try {
+            arrivals = (await poll(
+              tvEpisodeUrl(ep.url, requestCategory),
+            ).timeout(const Duration(seconds: 2))).sources;
+          } catch (_) {
+            // Keep the mirrors already available.
+          }
+        }
+        if (session != _sessionId ||
+            requestCategory != _category ||
+            _closed?.isCompleted != false) {
           return const <Map>[];
         }
+        final seen = existing.map((source) => source.url).toSet();
+        final additions = await _prepareSources(
+          arrivals.where((source) => seen.add(source.url)).toList(),
+        );
+        if (session != _sessionId ||
+            requestCategory != _category ||
+            _closed?.isCompleted != false) {
+          return const <Map>[];
+        }
+        final prepared = _blockedFiltered(
+          index,
+          _appendMirrorSources(index, additions),
+        );
         if (_sourceId == stremioSourceId) _stremioSources[index] = prepared;
         return [
           for (var i = 0; i < prepared.length; i++)
@@ -1579,6 +1691,68 @@ class PhoneNativePlayer {
   static int _indexOfSource(List<VideoSource> sources, VideoSource target) {
     final index = sources.indexWhere((source) => source.url == target.url);
     return index < 0 ? 0 : index;
+  }
+
+  static Future<void> _pollLateMirrors(
+    (int, int, String, Episode) scope,
+  ) async {
+    final (session, index, category, episode) = scope;
+    final poll = _pollSources;
+    if (poll == null) return;
+    final url = tvEpisodeUrl(episode.url, category);
+    bool current() =>
+        _mirrorPollScope == scope &&
+        _sessionId == session &&
+        _closed?.isCompleted == false &&
+        _category == category &&
+        index < _episodes.length &&
+        identical(_episodes[index], episode);
+    const delays = [
+      900,
+      1000,
+      2000,
+      3000,
+      5000,
+      8000,
+      10000,
+      10000,
+      10000,
+      10000,
+    ];
+    try {
+      for (final delay in delays) {
+        await Future<void>.delayed(Duration(milliseconds: delay));
+        if (!current()) return;
+        final snapshot = await poll(url);
+        if (!current()) return;
+        final seen = (_engineSources[index] ?? const <VideoSource>[])
+            .map((source) => source.url)
+            .toSet();
+        final extra = snapshot.sources
+            .where((source) => seen.add(source.url))
+            .toList();
+        if (extra.isNotEmpty) {
+          final additions = await _prepareSources(extra);
+          if (!current()) return;
+          _appendMirrorSources(index, additions);
+        }
+        if (snapshot.done) return;
+      }
+    } catch (_) {
+      // The first batch remains available if the background resolve fails.
+    }
+  }
+
+  static List<VideoSource> _appendMirrorSources(
+    int index,
+    List<VideoSource> additions,
+  ) {
+    final current = _engineSources[index] ?? const <VideoSource>[];
+    final seen = current.map((source) => source.url).toSet();
+    return _engineSources[index] = [
+      ...current,
+      ...additions.where((source) => seen.add(source.url)),
+    ];
   }
 
   static Future<List<VideoSource>> _resolveSources(

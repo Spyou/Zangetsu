@@ -715,19 +715,31 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
         !prefs.autoSkipRecap) {
       return;
     }
+    final service = sl<SkipService>();
+    final duration = Duration(milliseconds: c.duration.value);
     final title = widget.showTitle;
-    if (title == null || title.isEmpty) return;
-    final epNum = (ep.number ?? (_index + 1)).toInt();
-    sl<SkipService>()
-        .skipTimes(
-          title: title,
-          episode: epNum,
-          duration: Duration(milliseconds: c.duration.value),
-        )
-        .then((s) {
-          if (mounted) setState(() => _skips = s);
-        })
-        .catchError((_) {});
+    final timings =
+        widget.scrobbleTitle == null &&
+            widget.malId == null &&
+            (widget.imdbId != null || widget.tmdbId != null)
+        ? service.introDbTimes(
+            imdbId: widget.imdbId,
+            tmdbId: widget.tmdbId,
+            isTv: widget.tmdbIsTv,
+            season: ep.season,
+            episode: ep.number,
+            duration: duration,
+          )
+        : title == null || title.isEmpty
+        ? Future.value(const <SkipInterval>[])
+        : service.skipTimes(
+            title: title,
+            episode: (ep.number ?? (_index + 1)).toInt(),
+            duration: duration,
+          );
+    timings.then((skips) {
+      if (mounted && identical(_ep, ep)) setState(() => _skips = skips);
+    });
   }
 
   Future<void> _loadQualities(VideoSource src) async {

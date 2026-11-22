@@ -23,6 +23,7 @@ class PlayerWatchPage extends StatefulWidget {
   const PlayerWatchPage({
     super.key,
     required this.video,
+    this.skipOverlay,
     this.edgeToEdge = false,
     required this.header,
     this.coverHeaders,
@@ -79,6 +80,7 @@ class PlayerWatchPage extends StatefulWidget {
 
   /// The one video surface, built by the parent. This page only sizes it.
   final Widget video;
+  final Widget Function(bool controlsVisible)? skipOverlay;
   final bool edgeToEdge;
   final WatchPageHeader header;
   final Map<String, String>? coverHeaders;
@@ -899,6 +901,12 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
                       ),
                     ),
                   ),
+                ),
+              if (widget.skipOverlay case final overlay?)
+                PositionedDirectional(
+                  end: 12,
+                  bottom: 48,
+                  child: overlay(_controlsVisible),
                 ),
               Positioned(left: 0, right: 0, bottom: 0, child: _seekRow()),
             ],

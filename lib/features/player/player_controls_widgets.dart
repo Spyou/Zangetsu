@@ -1,77 +1,111 @@
 // Skip pills, round buttons, the bar capsule and the centre transport discs.
 part of 'player_screen.dart';
 
-class _SkipButton extends StatefulWidget {
-  const _SkipButton({required this.label, required this.onTap});
+class PlayerSegmentSkipButton extends StatefulWidget {
+  const PlayerSegmentSkipButton({
+    super.key,
+    required this.label,
+    required this.controlsVisible,
+    required this.onTap,
+  });
+
   final String label;
+  final bool controlsVisible;
   final VoidCallback onTap;
 
   @override
-  State<_SkipButton> createState() => _SkipButtonState();
+  State<PlayerSegmentSkipButton> createState() =>
+      _PlayerSegmentSkipButtonState();
 }
 
-class _SkipButtonState extends State<_SkipButton>
+class _PlayerSegmentSkipButtonState extends State<PlayerSegmentSkipButton>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _ctrl = AnimationController(
+  late final AnimationController _timer = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 340),
-  )..forward();
-  bool _pressed = false;
+    duration: const Duration(seconds: 10),
+    animationBehavior: AnimationBehavior.preserve,
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    _timer.forward();
+  }
 
   @override
   void dispose() {
-    _ctrl.dispose();
+    _timer.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return FadeTransition(
-      opacity: CurvedAnimation(parent: _ctrl, curve: Curves.easeOut),
-      child: SlideTransition(
-        position: Tween<Offset>(
-          begin: const Offset(0, 0.45),
-          end: Offset.zero,
-        ).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic)),
-        child: AnimatedScale(
-          scale: _pressed ? 0.94 : 1,
-          duration: const Duration(milliseconds: 110),
-          curve: Curves.easeOut,
-          child: Material(
-            color: Colors.black.withValues(alpha: 0.38),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-              side: BorderSide(
-                color: Colors.white.withValues(alpha: 0.6),
-                width: 1.2,
-              ),
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: InkWell(
-              onTap: widget.onTap,
-              onTapDown: (_) => setState(() => _pressed = true),
-              onTapCancel: () => setState(() => _pressed = false),
-              onTapUp: (_) => setState(() => _pressed = false),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 24,
-                  vertical: 10,
+    final labelStyle = AppText.body.copyWith(
+      fontSize: 13,
+      fontWeight: FontWeight.w600,
+    );
+    return AnimatedBuilder(
+      animation: _timer,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        child: Text(widget.label, style: labelStyle.copyWith(color: Colors.white)),
+      ),
+      builder: (context, label) {
+        if (_timer.isCompleted && !widget.controlsVisible) {
+          return const SizedBox.shrink();
+        }
+        return Material(
+          color: Colors.black.withValues(alpha: 0.76),
+          borderRadius: BorderRadius.circular(22),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: widget.onTap,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                SizedBox(
+                  height: 44,
+                  child: Center(widthFactor: 1, child: label),
                 ),
-                child: Text(
-                  widget.label,
-                  style: AppText.body.copyWith(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.3,
+                if (_timer.value > 0)
+                  Positioned.fill(
+                    child: ExcludeSemantics(
+                      child: ClipRect(
+                        clipper: _SkipFillClipper(_timer.value),
+                        child: ColoredBox(
+                          color: Colors.white,
+                          child: Center(
+                            child: RichText(
+                              text: TextSpan(
+                                text: widget.label,
+                                style: labelStyle.copyWith(color: Colors.black),
+                              ),
+                              textScaler: MediaQuery.textScalerOf(context),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
-                ),
-              ),
+              ],
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
+}
+
+class _SkipFillClipper extends CustomClipper<Rect> {
+  const _SkipFillClipper(this.progress);
+
+  final double progress;
+
+  @override
+  Rect getClip(Size size) => Rect.fromLTWH(0, 0, size.width * progress, size.height);
+
+  @override
+  bool shouldReclip(_SkipFillClipper oldClipper) => progress != oldClipper.progress;
 }
 
 // MegaSkip — Aniyomi-style manual "jump forward N seconds" pill. A compact,
