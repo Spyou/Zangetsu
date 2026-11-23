@@ -70,6 +70,7 @@ class TvNativePlayer {
   // enough (a new play() overwrites it).
   static Future<List<VideoSource>> Function(String episodeUrl)? _resolve;
   static TvProgressiveSources? _progressiveSources;
+  static int _session = 0;
   static List<Episode> _episodes = const [];
   static String _sourceId = '';
   static String _showId = '';
@@ -99,13 +100,13 @@ class TvNativePlayer {
     required ResumeStore resume,
     required Future<List<VideoSource>> Function(String episodeUrl)
     resolveSources,
+    Future<List<VideoSource>> Function(String episodeUrl)? pollSources,
     String? showUrl,
     String? showTitle,
     String? cover,
     Map<String, String>? coverHeaders,
     String? loadingArtwork,
     String? loadingLogo,
-    void Function()? onOpeningPlayer,
     String category = 'sub',
     List<String> availableCategories = const [],
     int? malId,
@@ -118,15 +119,10 @@ class TvNativePlayer {
     lastFailure = null;
     lastPlaybackErrorCode = null;
 
+    final session = ++_session;
     _stopProgressiveSources();
     _resolve = resolveSources;
-    _episodes = await _enrichEpisodes(
-      episodes,
-      malId: malId,
-      tmdbId: tmdbId,
-      tmdbIsTv: tmdbIsTv,
-      anime: scrobbleTitle != null || malId != null,
-    );
+    _episodes = episodes;
     _sourceId = sourceId;
     _showUrl = showUrl;
     _showId = showUrl ?? sourceId;
@@ -156,6 +152,11 @@ class TvNativePlayer {
         poll: (url, cut) async =>
             (await resolver.polledSources(url, category: cut)).sources,
       );
+    } else if (pollSources != null) {
+      _progressiveSources = TvProgressiveSources(
+        (url, _) => Stream.fromFuture(resolveSources(url)),
+        poll: (url, _) => pollSources(url),
+      );
     }
     if (!_handlerBound) {
       _ch.setMethodCallHandler(_onNativeCall);
@@ -163,25 +164,6 @@ class TvNativePlayer {
     }
 
     final ep = _episodes[startIndex];
-    VideoSource? src;
-    try {
-      src = await _resolveSource(ep);
-    } catch (_) {
-      _stopProgressiveSources();
-      return false;
-    }
-    if (src == null) {
-      _stopProgressiveSources();
-      return false;
-    }
-    final playUrl = await _playableUrl(src.url);
-    debugPrint('[TvNativePlayer] playUrl=$playUrl (src.url=${src.url})');
-    if (playUrl == null) {
-      _stopProgressiveSources();
-      return false; // torrent failed / Wi-Fi-only
-    }
-    final mark = resume.get(sourceId, _showId, ep.id);
-
     // Full subtitle style, computed the SAME way as the Flutter PlatformView TV
     // player so both render identically (colour, box, outline, font).
     final prefs = sl<PlaybackPrefs>();
@@ -196,18 +178,6 @@ class TvNativePlayer {
       await SubtitleFontService.instance.ensure(prefs.subtitleFont);
       return stageSubtitleFont(prefs.subtitleFont);
     }();
-
-    // Discord Rich Presence: the native Activity runs outside the Flutter
-    // engine and can't reach the Dart Discord service, so announce "Watching"
-    // from here — mirroring the phone player (player_controller.dart).
-    // Wait for native STATE_READY when duration is unknown. Sending Watching
-    // with end=null first is often the update Discord keeps (rate-limited).
-    _announceWatching(
-      ep,
-      positionMs: mark?.position.inMilliseconds ?? 0,
-      durationMs: mark?.duration.inMilliseconds ?? 0,
-    );
-    _tracker?.maybeMarkWatching();
 
     // Filler flags: use warm cache immediately so launch isn't blocked; push an
     // update over the channel if the Jikan fetch lands after the player is up.
@@ -233,10 +203,8 @@ class TvNativePlayer {
       loadingArtwork,
       cover,
     ].whereType<String>().where((url) => url.trim().isNotEmpty).firstOrNull;
-    onOpeningPlayer?.call();
     final launch = _ch.invokeMapMethod<String, dynamic>('launch', {
-      ..._streamPayload(src, mark?.position.inMilliseconds ?? 0),
-      'url': playUrl, // torrent → local stream URL; otherwise unchanged
+      'resolveOnOpen': true,
       'title': _showTitle,
       'loadingArtwork': startupArtwork,
       'loadingLogo': ?loadingLogo,
@@ -281,8 +249,31 @@ class TvNativePlayer {
       'autoSkipFiller': prefs.autoSkipFiller,
       'fillerFlags': fillerFlags,
     });
-    final res = await launch.whenComplete(_stopProgressiveSources);
+    // Enrichment can finish behind the player. Preserve the current cut if
+    // an episode/category switch replaced the list while metadata was loading.
+    unawaited(
+      _enrichEpisodes(
+        episodes,
+        malId: malId,
+        tmdbId: tmdbId,
+        tmdbIsTv: tmdbIsTv,
+        anime: scrobbleTitle != null || malId != null,
+      ).then((enriched) {
+        if (_session == session && identical(_episodes, episodes)) {
+          _episodes = enriched;
+        }
+      }),
+    );
+    var isCurrentSession = false;
+    final res = await launch.whenComplete(() {
+      isCurrentSession = _session == session;
+      if (isCurrentSession) {
+        _session++;
+        _stopProgressiveSources();
+      }
+    });
 
+    if (!isCurrentSession) return true;
     debugPrint('[TvNativePlayer] launch returned: $res');
 
     // Player closed — stop any active torrent stream.
@@ -303,13 +294,14 @@ class TvNativePlayer {
     // Player closed → drop Watching, then restore browsing. The detail screen
     // stays mounted underneath and won't re-fire it.
     _announceBrowsing();
-    return true;
+    return res?['launched'] == true && res?['sourceLookupFailed'] != true;
   }
 
   /// Handles native→Dart calls while the player is on screen.
   static Future<dynamic> _onNativeCall(MethodCall call) async {
     switch (call.method) {
       case 'resolveEpisode':
+        final session = _session;
         final args = (call.arguments as Map).cast<String, dynamic>();
         final index = (args['index'] as num?)?.toInt() ?? -1;
         final category = (args['category'] as String?) ?? _category;
@@ -317,14 +309,19 @@ class TvNativePlayer {
         // Self-contained Sub/Dub swap: don't rely on setCategory finishing
         // first (Kotlin fires both; Flutter may interleave them). Opaque
         // episode urls need the other cut's list or Sub keeps playing Dub.
-        final epIndex = await _ensureEpisodesForCategory(index, category);
-        if (epIndex < 0 || epIndex >= _episodes.length) return null;
+        final epIndex = args['opening'] == true
+            ? index
+            : await _ensureEpisodesForCategory(index, category);
+        if (_session != session || epIndex < 0 || epIndex >= _episodes.length) {
+          return null;
+        }
         final ep = _episodes[epIndex];
-        var src = await _resolveSource(ep, category: category);
-        if (src == null) return null;
+        final src = await _resolveSource(ep, category: category);
+        if (_session != session || src == null) return null;
         final playUrl = await _playableUrl(src.url);
-        if (playUrl == null) return null;
+        if (_session != session || playUrl == null) return null;
         _category = category;
+        _tracker?.maybeMarkWatching();
         final mark = _resume?.get(_sourceId, _showId, ep.id);
         // Episode switch / Next Episode → advance the Discord "Watching" line.
         _announceWatching(
@@ -367,6 +364,21 @@ class TvNativePlayer {
         final args = (call.arguments as Map).cast<String, dynamic>();
         final index = (args['index'] as num?)?.toInt() ?? -1;
         if (index < 0 || index >= _episodes.length) return null;
+        final position = (args['positionMs'] as num?)?.toInt() ?? 0;
+        final duration = (args['durationMs'] as num?)?.toInt() ?? 0;
+        final progressive = _progressiveSources;
+        if (progressive != null &&
+            duration > 0 &&
+            position >= duration * .85 &&
+            index + 1 < _episodes.length &&
+            args['playing'] == true) {
+          unawaited(
+            progressive.prefetch(
+              tvEpisodeUrl(_episodes[index + 1].url, _category),
+              _category,
+            ),
+          );
+        }
         _tracker?.liveProgress(
           index: index,
           episode: _episodes[index],
@@ -498,7 +510,7 @@ class TvNativePlayer {
         try {
           final url = tvEpisodeUrl(_episodes[index].url, category);
           final progressive = _progressiveSources;
-          final sources = progressive != null && ZmodeIds.isZ(url)
+          final sources = progressive != null
               ? await progressive.latest(url, category)
               : await _resolve!(url);
           return [
@@ -670,16 +682,23 @@ class TvNativePlayer {
     Episode ep, {
     String? category,
   }) async {
+    final session = _session;
     final cat = category ?? _category;
     try {
       final url = tvEpisodeUrl(ep.url, cat);
       final progressive = _progressiveSources;
-      final sources = progressive != null && ZmodeIds.isZ(url)
+      final sources = progressive != null
           ? await progressive.first(url, cat)
           : await _resolve!(url);
+      if (_session != session) return null;
       final picked = pickDefault(
         sources,
         prefer: cat == 'dub' ? AudioKind.dub : AudioKind.sub,
+        preferQuality:
+            (_showUrl != null && sl.isRegistered<TitlePrefsStore>()
+                ? sl<TitlePrefsStore>().quality(_sourceId, _showUrl!)
+                : null) ??
+            sl<PlaybackPrefs>().defaultQuality,
       );
       if (picked == null && sources.isEmpty) {
         lastFailure ??= const TvPlaybackLoadFailure(
@@ -688,18 +707,21 @@ class TvNativePlayer {
       }
       return picked;
     } on NoSourceMatch catch (e) {
+      if (_session != session) return null;
       lastFailure ??= classifyPlaybackError(
         e,
         mode: playbackContentMode(showUrl: _showUrl),
       );
       rethrow;
     } on EpisodeNotAvailable catch (e) {
+      if (_session != session) return null;
       lastFailure ??= classifyPlaybackError(
         e,
         mode: playbackContentMode(showUrl: _showUrl),
       );
       rethrow;
     } catch (_) {
+      if (_session != session) return null;
       lastFailure ??= TvPlaybackLoadFailure(
         TvPlaybackLoadFailureKind.generic,
         mode: playbackContentMode(showUrl: _showUrl),
@@ -720,12 +742,18 @@ class TvNativePlayer {
   /// torrent failure / Wi-Fi-only.
   static Future<String?> _playableUrl(String url) async {
     if (!isTorrentUrl(url)) return url;
+    final session = _session;
     _stopTorrent();
     try {
-      final t = await sl<TorrentService>().startStream(
+      final torrents = sl<TorrentService>();
+      final t = await torrents.startStream(
         url,
         allowMobileData: sl<TorrentPrefs>().allowMobileData,
       );
+      if (_session != session) {
+        await torrents.stop(t.id);
+        return null;
+      }
       _torrentId = t.id;
       return t.localUrl;
     } catch (_) {

@@ -88,6 +88,35 @@ void main() {
     },
   );
 
+  test('prefetch reuses a successful result for the next episode', () async {
+    var calls = 0;
+    final lookup = TvProgressiveSources((url, category) {
+      calls++;
+      return Stream.value(const [first]);
+    });
+    await lookup.prefetch('episode-2', 'dub');
+    await lookup.prefetch('episode-2', 'dub');
+    expect(await lookup.first('episode-2', 'dub'), [first]);
+    expect(calls, 1);
+    await lookup.dispose();
+  });
+
+  test(
+    'failed prefetch leaves explicit episode playback able to retry',
+    () async {
+      var calls = 0;
+      final lookup = TvProgressiveSources((url, category) {
+        return ++calls == 1
+            ? Stream.error(StateError('offline'))
+            : Stream.value(const [first]);
+      });
+      await lookup.prefetch('episode-2', 'sub');
+      expect(await lookup.first('episode-2', 'sub'), [first]);
+      expect(calls, 2);
+      await lookup.dispose();
+    },
+  );
+
   test('an empty completed sweep does not hang playback', () async {
     final lookup = TvProgressiveSources(
       (url, category) => const Stream.empty(),

@@ -67,6 +67,7 @@ import io.github.anilbeesetti.nextlib.media3ext.ffdecoder.NextRenderersFactory
 class TvPlayerActivity : Activity() {
 
     companion object {
+        const val EXTRA_RESOLVE_ON_OPEN = "resolveOnOpen"
         const val EXTRA_URL = "url"
         const val EXTRA_HEADERS = "headers"        // flat String[]: k,v,k,v
         const val EXTRA_TITLE = "title"
@@ -122,6 +123,7 @@ class TvPlayerActivity : Activity() {
         const val RESULT_DURATION = "durationMs"
         const val RESULT_EP_INDEX = "episodeIndex"
         const val RESULT_PLAYBACK_ERROR = "playbackError"
+        const val RESULT_SOURCE_LOOKUP_FAILED = "sourceLookupFailed"
         private const val TAG = "TvPlayer"
         private const val SEEK_MS = 10_000L
         private const val AUTO_HIDE_MS = 4_000L
@@ -169,6 +171,7 @@ class TvPlayerActivity : Activity() {
     private var subtitleApiKeySet = false
     private var seekButtonsEnabled = true
     private var seekButtonDurationMs = 10_000L
+    private val failedMirrors = mutableSetOf<String>()
     private var switching = false // guards against overlapping episode switches
 
     private data class Skip(val start: Long, val end: Long, val type: String)
@@ -272,6 +275,12 @@ class TvPlayerActivity : Activity() {
     private var seekTarget = -1L
 
     private val handler = Handler(Looper.getMainLooper())
+    private val startupTimeout = Runnable {
+        if (!isFinishing && !isDestroyed && !switching) {
+            player?.pause()
+            recoverPlaybackError("ERROR_CODE_TIMEOUT", getString(R.string.phone_player_error_timeout))
+        }
+    }
     private val hideRunnable = Runnable { hideControls() }
     private val engage2x = Runnable { engageSpeed() }
     private val hideSeekIndicator = Runnable { seekIndicator.visibility = View.GONE }
@@ -318,7 +327,7 @@ class TvPlayerActivity : Activity() {
         goImmersive()
 
         val url = intent.getStringExtra(EXTRA_URL)
-        if (url.isNullOrEmpty()) { finish(); return }
+        if (url.isNullOrEmpty() && !intent.getBooleanExtra(EXTRA_RESOLVE_ON_OPEN, false)) { finish(); return }
         accent = intent.getIntExtra(EXTRA_ACCENT, DEFAULT_ACCENT)
         episodeCount = intent.getIntExtra(EXTRA_EP_COUNT, 1)
         currentIndex = intent.getIntExtra(EXTRA_START_INDEX, 0)
@@ -400,31 +409,14 @@ class TvPlayerActivity : Activity() {
             }
 
             override fun onRenderedFirstFrame() {
+                handler.removeCallbacks(startupTimeout)
                 dismissStartupArtwork()
                 Log.i(TAG, "onRenderedFirstFrame — native surface is showing video")
             }
             override fun onPlayerError(error: PlaybackException) {
                 Log.e(TAG, "onPlayerError: ${error.errorCodeName} — ${error.message}", error)
-                android.widget.Toast.makeText(
-                    this@TvPlayerActivity,
-                    "Playback error: ${error.errorCodeName}",
-                    android.widget.Toast.LENGTH_LONG,
-                ).show()
-                try {
-                    MainActivity.tvBridge?.invokeMethod(
-                        "playbackError",
-                        mapOf(
-                            "errorCode" to (error.errorCodeName ?: ""),
-                            "message" to (error.message ?: ""),
-                            "index" to currentIndex,
-                        ),
-                    )
-                } catch (_: Exception) {}
-                // The stream is dead — stop the frozen player and hand the
-                // result back so Dart can offer Try Next Source / Select Source.
-                if (!switching) {
-                    reportAndFinish(true)
-                }
+                handler.removeCallbacks(startupTimeout)
+                if (!switching) recoverPlaybackError(error.errorCodeName, error.message)
             }
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 syncKeepScreenOn()
@@ -440,6 +432,7 @@ class TvPlayerActivity : Activity() {
                     !exo.currentTracks.containsType(C.TRACK_TYPE_VIDEO) &&
                     exo.currentTracks.containsType(C.TRACK_TYPE_AUDIO)
                 ) {
+                    handler.removeCallbacks(startupTimeout)
                     dismissStartupArtwork()
                 }
                 if (!switching) {
@@ -469,18 +462,20 @@ class TvPlayerActivity : Activity() {
             }
         }
 
-        // First episode: stream data comes straight from the intent (Dart resolved
-        // it before launching). Later switches come from the bridge.
-        loadStream(
-            url,
-            headersFromIntent(),
-            subtitleConfigs(),
-            intent.getStringExtra(EXTRA_MIME),
-            intent.getLongExtra(EXTRA_POSITION, 0L),
-            intent.getStringExtra(EXTRA_DRM_KID),
-            intent.getStringExtra(EXTRA_DRM_KEY),
-        )
-        fetchSources() // populate the Server picker for the current episode
+        if (url.isNullOrEmpty()) {
+            loadEpisode(currentIndex, opening = true)
+        } else {
+            loadStream(
+                url,
+                headersFromIntent(),
+                subtitleConfigs(),
+                intent.getStringExtra(EXTRA_MIME),
+                intent.getLongExtra(EXTRA_POSITION, 0L),
+                intent.getStringExtra(EXTRA_DRM_KID),
+                intent.getStringExtra(EXTRA_DRM_KEY),
+            )
+            fetchSources()
+        }
 
         handler.post(ticker)
         bumpControls()
@@ -571,6 +566,8 @@ class TvPlayerActivity : Activity() {
                 .build(LocalMediaDrmCallback(json.toByteArray(Charsets.UTF_8)))
             sourceFactory.setDrmSessionManagerProvider { drmManager }
         }
+        handler.removeCallbacks(startupTimeout)
+        handler.postDelayed(startupTimeout, 30_000L)
         p.setMediaSource(sourceFactory.createMediaSource(builder.build()))
         if (positionMs > 0) p.seekTo(positionMs)
         p.prepare()
@@ -578,9 +575,12 @@ class TvPlayerActivity : Activity() {
     }
 
     // ── Episode switching (via the native→Dart bridge) ───────────────────────
-    private fun loadEpisode(index: Int) {
+    private fun loadEpisode(index: Int, opening: Boolean = false) {
         if (index < 0 || index >= episodeCount || switching) return
-        val bridge = MainActivity.tvBridge ?: return
+        val bridge = MainActivity.tvBridge ?: run {
+            if (opening) reportAndFinish(sourceLookupFailed = true)
+            return
+        }
         // Persist the outgoing episode before leaving it.
         val p = player
         if (p != null && p.duration > 0) {
@@ -595,22 +595,73 @@ class TvPlayerActivity : Activity() {
         }
         p?.pause() // don't keep the old episode running under the spinner
         switching = true
-        loading.visibility = View.VISIBLE
+        if (opening) {
+            startupArtwork.findViewById<TextView>(R.id.loading_status)
+                .setText(R.string.phone_player_status_finding)
+        } else {
+            loading.visibility = View.VISIBLE
+        }
+
+        handler.removeCallbacks(startupTimeout)
+        requestEpisode(index, category, opening)
+    }
+
+    private fun requestEpisode(index: Int, requestedCategory: String, opening: Boolean = false) {
+        fun fail(timedOut: Boolean) {
+            switching = false
+            loading.visibility = View.GONE
+            when {
+                opening -> reportAndFinish(sourceLookupFailed = true)
+                timedOut -> android.widget.Toast.makeText(
+                    this, R.string.phone_player_error_timeout, android.widget.Toast.LENGTH_SHORT,
+                ).show()
+                else -> toastFail()
+            }
+        }
+
+        val bridge = MainActivity.tvBridge ?: run {
+            fail(false)
+            return
+        }
+        var completed = false
+        val timeout = Runnable {
+            completed = true
+            if (!isFinishing && !isDestroyed) fail(true)
+        }
+
+        fun complete(): Boolean {
+            if (completed || isFinishing || isDestroyed) return false
+            completed = true
+            handler.removeCallbacks(timeout)
+            return true
+        }
+
+        handler.postDelayed(timeout, 30_000L)
         bridge.invokeMethod(
             "resolveEpisode",
-            mapOf("index" to index, "category" to category),
+            mapOf("index" to index, "category" to requestedCategory, "opening" to opening),
             object : MethodChannel.Result {
                 override fun success(result: Any?) {
+                    if (!complete()) return
                     @Suppress("UNCHECKED_CAST")
-                    val m = result as? Map<String, Any?>
-                    if (m == null) { switching = false; loading.visibility = View.GONE; toastFail() }
-                    else applyResolved(index, m)
+                    val resolved = result as? Map<String, Any?>
+                    if (resolved == null || (resolved["url"] as? String).isNullOrEmpty()) {
+                        fail(false)
+                        return
+                    }
+                    if (opening) {
+                        startupArtwork.findViewById<TextView>(R.id.loading_status)
+                            .setText(R.string.phone_player_status_starting)
+                    }
+                    applyResolved(index, resolved)
                 }
+
                 override fun error(code: String, msg: String?, details: Any?) {
-                    switching = false; loading.visibility = View.GONE; toastFail()
+                    if (complete()) fail(false)
                 }
+
                 override fun notImplemented() {
-                    switching = false; loading.visibility = View.GONE; toastFail()
+                    if (complete()) fail(false)
                 }
             },
         )
@@ -650,6 +701,8 @@ class TvPlayerActivity : Activity() {
         val mime = m["mimeType"] as? String
         val positionMs = (m["positionMs"] as? Number)?.toLong() ?: 0L
         currentIndex = index
+        failedMirrors.clear()
+        episodeSources = emptyList()
         skipIntervals = emptyList()
         skipsFetchedFor = -1
         timingReportedFor = -1
@@ -756,12 +809,15 @@ class TvPlayerActivity : Activity() {
     /** Cache the current episode's mirror list for the Server picker. */
     private fun fetchSources(onReady: (() -> Unit)? = null) {
         val bridge = MainActivity.tvBridge ?: run { onReady?.invoke(); return }
+        val index = currentIndex
+        val requestedCategory = category
         bridge.invokeMethod(
             "sourcesFor",
-            mapOf("index" to currentIndex, "category" to category),
+            mapOf("index" to index, "category" to requestedCategory),
             object : MethodChannel.Result {
                 override fun success(result: Any?) {
                     @Suppress("UNCHECKED_CAST")
+                    if (isFinishing || isDestroyed || currentIndex != index || category != requestedCategory) return
                     episodeSources = (result as? List<Map<String, Any?>>) ?: emptyList()
                     onReady?.invoke()
                 }
@@ -870,6 +926,42 @@ class TvPlayerActivity : Activity() {
         return u.startsWith("magnet:") || u.endsWith(".torrent") || u.contains(".torrent?")
     }
 
+    private fun recoverPlaybackError(code: String, message: String?) {
+        val failedUrl = currentUrl ?: return finishPlaybackError(code, message)
+        failedMirrors.add(failedUrl)
+        if (failedMirrors.size >= 4) {
+            finishPlaybackError(code, message)
+            return
+        }
+        switching = true
+        loading.visibility = View.VISIBLE
+        var completed = false
+        val timeout = Runnable {
+            completed = true
+            if (!isFinishing && !isDestroyed) finishPlaybackError(code, message)
+        }
+        handler.postDelayed(timeout, 30_000L)
+        fetchSources {
+            if (completed || isFinishing || isDestroyed) return@fetchSources
+            completed = true
+            handler.removeCallbacks(timeout)
+            switching = false
+            val next = episodeSources.indexOfFirst { source ->
+                val url = source["url"] as? String
+                url != null && url.isNotBlank() && url !in failedMirrors && !isTorrentUrl(url)
+            }
+            if (next >= 0) loadSource(next) else finishPlaybackError(code, message)
+        }
+    }
+
+    private fun finishPlaybackError(code: String, message: String?) {
+        MainActivity.tvBridge?.invokeMethod(
+            "playbackError",
+            mapOf("errorCode" to code, "message" to message, "index" to currentIndex),
+        )
+        reportAndFinish(playbackError = true)
+    }
+
     /** Switch to a different mirror for the current episode, keeping position. A
      *  magnet/.torrent is streamed via Dart (TorrentService → local URL) first. */
     private fun loadSource(i: Int) {
@@ -915,6 +1007,7 @@ class TvPlayerActivity : Activity() {
             )
         }
         p?.pause()
+        handler.removeCallbacks(startupTimeout)
         switching = true
         loading.visibility = View.VISIBLE
         category = cat
@@ -938,30 +1031,7 @@ class TvPlayerActivity : Activity() {
     }
 
     private fun resolveAfterCategory(cat: String) {
-        val bridge = MainActivity.tvBridge ?: run {
-            switching = false
-            loading.visibility = View.GONE
-            toastFail()
-            return
-        }
-        bridge.invokeMethod(
-            "resolveEpisode",
-            mapOf("index" to currentIndex, "category" to cat),
-            object : MethodChannel.Result {
-                override fun success(result: Any?) {
-                    @Suppress("UNCHECKED_CAST")
-                    val m = result as? Map<String, Any?>
-                    if (m == null) { switching = false; loading.visibility = View.GONE; toastFail() }
-                    else applyResolved(currentIndex, m)
-                }
-                override fun error(code: String, msg: String?, details: Any?) {
-                    switching = false; loading.visibility = View.GONE; toastFail()
-                }
-                override fun notImplemented() {
-                    switching = false; loading.visibility = View.GONE; toastFail()
-                }
-            },
-        )
+        if (!isFinishing && !isDestroyed) requestEpisode(currentIndex, cat)
     }
 
     // ── Options menu (Quality / Audio / Subtitles / Speed / Volume) ───────────
@@ -2644,6 +2714,7 @@ class TvPlayerActivity : Activity() {
                 .setEnableDecoderFallback(true)
 
             else -> DefaultRenderersFactory(this)
+                .setEnableDecoderFallback(true)
         }
 
     private fun fmt(ms: Long): String {
@@ -2669,7 +2740,7 @@ class TvPlayerActivity : Activity() {
     }
 
     /** Hand the final position back so Flutter saves resume + Continue Watching. */
-    private fun reportAndFinish(playbackError: Boolean = false) {
+    private fun reportAndFinish(playbackError: Boolean = false, sourceLookupFailed: Boolean = false) {
         if (!reported) {
             reported = true
             val p = player
@@ -2678,6 +2749,7 @@ class TvPlayerActivity : Activity() {
                 .putExtra(RESULT_DURATION, (p?.duration ?: 0L).coerceAtLeast(0L))
                 .putExtra(RESULT_EP_INDEX, currentIndex)
                 .putExtra(RESULT_PLAYBACK_ERROR, playbackError)
+                .putExtra(RESULT_SOURCE_LOOKUP_FAILED, sourceLookupFailed)
             setResult(RESULT_OK, data)
         }
         finish()
@@ -2700,6 +2772,7 @@ class TvPlayerActivity : Activity() {
     // close an open menu, else hide the controls, else exit the player.
     private fun handleBack() {
         when {
+            switching && currentUrl == null -> reportAndFinish()
             menuPanel.visibility == View.VISIBLE && avMenuActive && avStack.isNotEmpty() -> popAvOrClose()
             menuPanel.visibility == View.VISIBLE -> closeMenu()
             controls.visibility == View.VISIBLE -> {

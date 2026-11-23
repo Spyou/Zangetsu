@@ -21,8 +21,9 @@ part of 'detail_screen.dart';
 // ─────────────────────────────────────────────────────────────────────────────
 
 class DetailScreenTv extends StatefulWidget {
-  const DetailScreenTv({super.key, required this.item});
+  const DetailScreenTv({super.key, required this.item, this.onPrefetchEpisode});
   final MediaItem item;
+  final ValueChanged<String>? onPrefetchEpisode;
 
   @override
   State<DetailScreenTv> createState() => _DetailScreenTvState();
@@ -354,6 +355,11 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
       startIndex: index,
       resume: sl<ResumeStore>(),
       resolveSources: resolveSources,
+      pollSources: (url) async =>
+          (await sl<CatalogueRepository>().polledSources(
+            url,
+            sourceId: widget.item.sourceId,
+          )).sources,
       showUrl: widget.item.url,
       showTitle: detail.title,
       cover: detail.cover ?? widget.item.cover,
@@ -692,6 +698,11 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
     // Resume / play label (mirrors _DetailViewState._buildBody).
     final resume = _resumeTarget(eps);
     final resumeIdx = resume.index;
+    if (eps.isNotEmpty &&
+        detail.type != ProviderType.manga &&
+        detail.type != ProviderType.novel) {
+      widget.onPrefetchEpisode?.call(eps[resumeIdx].url);
+    }
     final hasAnyMark = eps.any(
       (e) => store.get(item.sourceId, item.url, e.id) != null,
     );
@@ -1102,8 +1113,7 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
                                   _openPlayer(eps, i, detail, category),
                               onDownload: (ep) =>
                                   _pickSourceAndDownload(ep, detail, category),
-                              hasScheduledVideos:
-                                  detail.hasScheduledVideos,
+                              hasScheduledVideos: detail.hasScheduledVideos,
                             ),
                             // ── Cast ─────────────────────────────────────────
                             _CastTab(

@@ -51,6 +51,7 @@ import '../../core/ui/subtitle_language_picker.dart';
 import '../../l10n/l10n.dart';
 import '../detail/episode_filter.dart';
 import 'tv_exo_controller.dart';
+import 'tv_progressive_sources.dart';
 import 'tv_track_menu.dart';
 
 /// TV ExoPlayer player (SP1a core: play/pause, D-pad seek, resume, next/prev).
@@ -62,6 +63,7 @@ class TvExoPlayerScreen extends StatefulWidget {
     required this.sourceId,
     required this.resume,
     required this.resolveSources,
+    this.pollSources,
     this.episodes = const [],
     this.startIndex = 0,
     this.showUrl,
@@ -80,6 +82,7 @@ class TvExoPlayerScreen extends StatefulWidget {
   final String sourceId;
   final ResumeStore resume;
   final Future<List<VideoSource>> Function(String episodeUrl) resolveSources;
+  final Future<List<VideoSource>> Function(String episodeUrl)? pollSources;
   final List<Episode> episodes;
   final int startIndex;
   final String? showUrl;
@@ -119,6 +122,10 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
 
   final _dio = Dio();
   late String _category;
+  late final _sourceLookup = TvProgressiveSources(
+    (url, _) => Stream.fromFuture(widget.resolveSources(url)),
+    poll: (url, _) => widget.pollSources!(url),
+  );
   List<VideoSource> _sources = const [];
   VideoSource? _activeSource;
   List<HlsVariant> _qualities = const [];
@@ -395,9 +402,8 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
     }
     _lastSavedMs = 0;
     try {
-      final sources = await widget.resolveSources(
-        tvEpisodeUrl(ep.url, _category),
-      );
+      final url = tvEpisodeUrl(ep.url, _category);
+      final sources = await _firstSources(url, _category);
       final prefer = _category == 'dub' ? AudioKind.dub : AudioKind.sub;
       final src = pickDefault(sources, prefer: prefer);
       if (src == null) {
@@ -416,6 +422,7 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
       _sources = sources;
       final mark = widget.resume.get(widget.sourceId, _resumeShowId, ep.id);
       await _open(src, seekToMs: mark?.position.inMilliseconds ?? 0);
+      if (mounted && _ep == ep) unawaited(_refreshMirrors());
     } on NoSourceMatch catch (e) {
       await _onEpisodeLoadFailed(
         classifyPlaybackError(e, mode: playbackContentMode(showUrl: widget.showUrl)),
@@ -889,7 +896,7 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
             epUrl = other[newIndex].url;
           }
         }
-        final sources = await widget.resolveSources(epUrl);
+        final sources = await _firstSources(epUrl, cat);
         final prefer = cat == 'dub' ? AudioKind.dub : AudioKind.sub;
         final src = pickDefault(sources, prefer: prefer);
         if (src == null) {
@@ -967,8 +974,35 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
     };
   }
 
+  Future<List<VideoSource>> _firstSources(String url, String category) =>
+      widget.pollSources == null
+      ? widget.resolveSources(url)
+      : _sourceLookup.first(url, category);
+
+  Future<void> _refreshMirrors() async {
+    final episode = _ep;
+    final category = _category;
+    if (episode == null || widget.pollSources == null || _resolvingEpisode)
+      return;
+    try {
+      final sources = await _sourceLookup.latest(
+        tvEpisodeUrl(episode.url, category),
+        category,
+      );
+      if (!mounted ||
+          _ep != episode ||
+          _category != category ||
+          sources.isEmpty)
+        return;
+      setState(() => _sources = sources);
+    } catch (_) {
+      // Keep the current source list if discovery fails.
+    }
+  }
+
   void _pushMenu(_TvSettingsPage page) {
     setState(() => _menuStack.add(page));
+    if (page == _TvSettingsPage.servers) unawaited(_refreshMirrors());
     _bumpMenuHide();
   }
 
@@ -1675,6 +1709,16 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
     final pos = c.position.value;
     if ((pos - _lastSavedMs).abs() < 5000) return; // throttle: every 5s
     _lastSavedMs = pos;
+    if (widget.pollSources != null &&
+        pos >= c.duration.value * .85 &&
+        _index + 1 < _episodes.length) {
+      unawaited(
+        _sourceLookup.prefetch(
+          tvEpisodeUrl(_episodes[_index + 1].url, _category),
+          _category,
+        ),
+      );
+    }
     widget.resume.save(
       widget.sourceId,
       _resumeShowId,
@@ -1910,6 +1954,7 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
 
   @override
   void dispose() {
+    if (widget.pollSources != null) unawaited(_sourceLookup.dispose());
     // Android pauses (and often disposes) this screen when the Exo surface
     // attaches — that is not leaving the player. A delayed clear here races
     // duration and wipes the Discord progress bar.

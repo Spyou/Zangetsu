@@ -10,6 +10,7 @@ class TvProgressiveSources {
   final Stream<List<VideoSource>> Function(String url, String category)
   _resolve;
   final Future<List<VideoSource>> Function(String url, String category)? poll;
+  final _prefetched = <(String, String)>{};
   final _lookups = <(String, String), _SourceLookup>{};
 
   _SourceLookup _for(String url, String category) => _lookups.putIfAbsent((
@@ -33,9 +34,25 @@ class TvProgressiveSources {
     return lookup.latest;
   }
 
+  Future<void> prefetch(String url, String category) async {
+    final key = (url, category);
+    if (!_prefetched.add(key)) return;
+    final lookup = _for(url, category);
+    try {
+      if ((await lookup.first).isNotEmpty) return;
+    } catch (_) {
+      // A speculative lookup must never prevent an explicit retry.
+    }
+    if (identical(_lookups[key], lookup)) {
+      _lookups.remove(key);
+      await lookup.dispose();
+    }
+  }
+
   Future<void> dispose() async {
     await Future.wait(_lookups.values.map((lookup) => lookup.dispose()));
     _lookups.clear();
+    _prefetched.clear();
   }
 }
 

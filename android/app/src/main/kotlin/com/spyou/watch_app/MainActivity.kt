@@ -1767,8 +1767,13 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
     private fun launchTvPlayer(call: MethodCall, result: MethodChannel.Result) {
         try {
             val url = call.argument<String>("url")
-            if (url.isNullOrEmpty()) { result.success(mapOf("launched" to false)); return }
+            val resolveOnOpen = call.argument<Boolean>("resolveOnOpen") == true
+            if (url.isNullOrEmpty() && !resolveOnOpen) {
+                result.success(mapOf("launched" to false))
+                return
+            }
             val intent = Intent(this, TvPlayerActivity::class.java)
+            intent.putExtra(TvPlayerActivity.EXTRA_RESOLVE_ON_OPEN, resolveOnOpen)
             intent.putExtra(TvPlayerActivity.EXTRA_URL, url)
             for (key in listOf("loadingArtwork", "loadingLogo")) {
                 call.argument<String>(key)?.let { intent.putExtra(key, it) }
@@ -1963,6 +1968,8 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
                             "durationMs" to (if (dur > 0) dur else 0L),
                             "episodeIndex" to epIndex,
                             "playbackError" to playbackError,
+                            "sourceLookupFailed" to
+                                (data?.getBooleanExtra(TvPlayerActivity.RESULT_SOURCE_LOOKUP_FAILED, false) == true),
                         ),
                     )
                 } catch (_: Exception) {}

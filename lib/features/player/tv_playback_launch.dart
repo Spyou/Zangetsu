@@ -82,6 +82,7 @@ Future<void> launchTvPlayback({
   required int startIndex,
   required ResumeStore resume,
   required Future<List<VideoSource>> Function(String episodeUrl) resolveSources,
+  Future<List<VideoSource>> Function(String episodeUrl)? pollSources,
   String? showUrl,
   String? showTitle,
   String? cover,
@@ -187,7 +188,7 @@ Future<void> launchTvPlayback({
                 : null))
       : null;
   VoidCallback? dismissLoading;
-  if (!skipOverlay && kind != TvPlayerKind.exoView && context.mounted) {
+  if (!skipOverlay && kind == TvPlayerKind.avPlayerSystem && context.mounted) {
     dismissLoading = showTvPlaybackLoadingOverlay(
       context,
       child: PlaybackLoadingTitle(
@@ -249,13 +250,13 @@ Future<void> launchTvPlayback({
         startIndex: startIndex,
         resume: resume,
         resolveSources: trackedResolve,
+        pollSources: pollSources,
         showUrl: showUrl,
         showTitle: showTitle,
         cover: cover,
         coverHeaders: coverHeaders,
         loadingArtwork: loadingArtwork ?? listItem?.banner,
         loadingLogo: startupLogo,
-        onOpeningPlayer: dismissLoading,
         category: category,
         availableCategories: availableCategories,
         malId: malId,
@@ -305,6 +306,7 @@ Future<void> launchTvPlayback({
             startIndex: startIndex,
             resume: resume,
             resolveSources: resolveSources,
+            pollSources: pollSources,
             showUrl: showUrl,
             showTitle: showTitle,
             cover: cover,
@@ -344,6 +346,7 @@ Future<void> launchTvPlayback({
               startIndex: startIndex,
               resume: resume,
               resolveSources: resolveSources,
+              pollSources: pollSources,
               showUrl: showUrl,
               showTitle: showTitle,
               cover: cover,
@@ -374,6 +377,7 @@ Future<void> launchTvPlayback({
           startIndex: startIndex,
           resume: resume,
           resolveSources: trackedResolve,
+          pollSources: pollSources,
           showUrl: showUrl,
           showTitle: showTitle,
           cover: cover,

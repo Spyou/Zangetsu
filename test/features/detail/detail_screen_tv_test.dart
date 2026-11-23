@@ -353,15 +353,21 @@ void main() {
   testWidgets(
     'DetailScreenTv renders the Play button and episode tiles as TvFocusables',
     (tester) async {
+      final prefetches = <String>[];
       await tester.pumpWidget(
         BlocProvider<DetailCubit>.value(
           value: cubit,
           child: MaterialApp(
-            home: DetailScreenTv(item: _testItem),
+            home: DetailScreenTv(
+              item: _testItem,
+              onPrefetchEpisode: prefetches.add,
+            ),
           ),
         ),
       );
       await tester.pump(); // let BlocBuilder resolve
+      expect(prefetches, isNotEmpty);
+      expect(prefetches, everyElement('/e1'));
 
       // The title should appear in the left info pane.
       expect(find.text('Test Anime'), findsWidgets);

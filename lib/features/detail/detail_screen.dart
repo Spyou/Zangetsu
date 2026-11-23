@@ -2239,7 +2239,14 @@ class _DetailViewState extends State<_DetailView>
 
   @override
   Widget build(BuildContext context) {
-    if (sl<AppMode>().isTv) return DetailScreenTv(item: widget.item);
+    if (sl<AppMode>().isTv) {
+      return DetailScreenTv(
+        item: widget.item,
+        onPrefetchEpisode: Platform.isAndroid
+            ? (episodeUrl) => _maybePrefetch(episodeUrl, widget.item.sourceId)
+            : null,
+      );
+    }
     if (!_hasEntered) {
       return _DetailOpeningPreview(
         item: widget.item,

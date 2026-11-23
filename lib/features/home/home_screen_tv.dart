@@ -400,6 +400,11 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
       startIndex: 0,
       resume: sl<ResumeStore>(),
       resolveSources: resolveSources,
+      pollSources: (url) async =>
+          (await sl<CatalogueRepository>().polledSources(
+            url,
+            sourceId: item.sourceId,
+          )).sources,
       showUrl: item.url,
       showTitle: item.title,
       cover: item.cover,
@@ -495,6 +500,11 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
       startIndex: idx,
       resume: sl<ResumeStore>(),
       resolveSources: resolveSources,
+      pollSources: (url) async =>
+          (await sl<CatalogueRepository>().polledSources(
+            url,
+            sourceId: e.sourceId,
+          )).sources,
       showUrl: e.showUrl,
       showTitle: e.showTitle,
       cover: e.cover,
