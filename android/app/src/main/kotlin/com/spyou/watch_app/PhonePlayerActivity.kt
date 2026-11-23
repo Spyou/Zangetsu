@@ -178,6 +178,9 @@ class PhonePlayerActivity : Activity() {
                 lastPresenceAt = now
                 if (player?.isPlaying == true) sendDiscordPresence()
             }
+            if (!scrubbing && ::seekPreview.isInitialized) {
+                player?.let { seekPreview.warm(it.currentPosition, it.duration) }
+            }
             handler.postDelayed(this, 250L)
         }
     }

@@ -2,11 +2,15 @@ package com.spyou.watch_app
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.RectF
 import android.graphics.drawable.GradientDrawable
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
+import android.util.Log
 import android.view.Gravity
 import android.view.View
 import android.widget.FrameLayout
@@ -24,18 +28,55 @@ internal class PhoneSeekPreview(
     private data class Source(val url: String, val headers: Map<String, String>, val online: Boolean)
 
     private val worker = Executors.newSingleThreadExecutor()
+    private val uiHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val giveUpRunnable = Runnable {
+        imageBox.visibility = View.GONE
+        spinnerAnim.cancel()
+    }
     private val cache = LinkedHashMap<Long, Bitmap>(48, .75f, true)
     private var source: Source? = null
     private var busy = false
     private var closed = false
     private var target: Long? = null
     private var pending: Long? = null
+    private var lastSample: Long? = null
+    private val warmQueue = ArrayDeque<Long>()
+    private var lastWarmBucket: Long? = null
 
     private val image = ImageView(root.context).apply {
-        background = rounded(Color.BLACK, 8)
-        clipToOutline = true
         scaleType = ImageView.ScaleType.CENTER_CROP
         visibility = View.GONE
+    }
+    // Platform ProgressBar drawables on this device/ROM turned out to be a
+    // closed, rotationally-symmetric ring — spinning it (or its own broken
+    // indeterminate animation) produces no visible change at all. Drawing a
+    // partial arc ourselves guarantees the rotation is actually visible.
+    private class Spinner(context: android.content.Context) : View(context) {
+        private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeCap = Paint.Cap.ROUND
+            color = Color.WHITE
+        }
+        override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+            paint.strokeWidth = w / 8f
+        }
+        override fun onDraw(canvas: Canvas) {
+            val inset = paint.strokeWidth / 2 + 1f
+            val rect = RectF(inset, inset, width - inset, height - inset)
+            canvas.drawArc(rect, 0f, 270f, false, paint)
+        }
+    }
+    private val spinner = Spinner(root.context)
+    private val spinnerAnim = android.animation.ObjectAnimator.ofFloat(spinner, View.ROTATION, 0f, 360f).apply {
+        duration = 800
+        repeatCount = android.animation.ValueAnimator.INFINITE
+        interpolator = android.view.animation.LinearInterpolator()
+    }
+    private val imageBox = FrameLayout(root.context).apply {
+        background = rounded(Color.BLACK, 8)
+        clipToOutline = true
+        addView(image, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+        addView(spinner, FrameLayout.LayoutParams(dp(24), dp(24), Gravity.CENTER))
     }
     private val timestamp = TextView(root.context).apply {
         background = rounded(0xCC000000.toInt(), 6)
@@ -48,7 +89,7 @@ internal class PhoneSeekPreview(
         gravity = Gravity.CENTER_HORIZONTAL
         importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
         visibility = View.INVISIBLE
-        addView(image, LinearLayout.LayoutParams(dp(168), dp(94)).apply { bottomMargin = dp(4) })
+        addView(imageBox, LinearLayout.LayoutParams(dp(168), dp(94)).apply { bottomMargin = dp(4) })
         addView(timestamp, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.WRAP_CONTENT,
             LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -72,8 +113,26 @@ internal class PhoneSeekPreview(
         }
         if (next == source) return
         cache.clear()
+        warmQueue.clear()
+        lastWarmBucket = null
         if (source?.online == true) releaseOnlineSession()
         source = next
+    }
+
+    /** Pre-decode the frame near the current playback position (and its
+     * neighbours) while playing, so the first scrub touch already has a hit
+     * instead of paying the network round-trip live. */
+    fun warm(position: Long, duration: Long) {
+        val current = source ?: return
+        if (!current.online || duration <= 0) return
+        val center = position / 2000 * 2000
+        if (center == lastWarmBucket) return
+        lastWarmBucket = center
+        warmQueue.clear()
+        for (t in longArrayOf(center, center + 2000, center - 2000)) {
+            if (t in 0 until duration && !cache.containsKey(t)) warmQueue.addLast(t)
+        }
+        requestNext()
     }
 
     fun show(position: Long, label: String) {
@@ -81,11 +140,19 @@ internal class PhoneSeekPreview(
         timestamp.text = label
         bubble.bringToFront()
         bubble.visibility = View.VISIBLE
+        // positionBubble() must track every pixel of the drag for a smooth
+        // feel, but the cache lookup / decode-request work below only needs
+        // to run once per 2s bucket — without this a fast drag floods the
+        // main thread with redundant work every touch-move tick (far more
+        // often than the display refreshes), which was starving the spinner
+        // animation of its own frame callbacks.
+        positionBubble()
         val sample = position / 2000 * 2000
+        if (sample == lastSample) return
+        lastSample = sample
         target = sample
         val closest = cache.keys.minByOrNull { kotlin.math.abs(it - sample) }
         showBitmap(closest?.let { cache[it] })
-        positionBubble()
         pending = if (closest == sample) null else sample
         requestNext()
     }
@@ -93,14 +160,21 @@ internal class PhoneSeekPreview(
     fun hide() {
         target = null
         pending = null
+        lastSample = null
         bubble.visibility = View.INVISIBLE
-        showBitmap(null)
+        uiHandler.removeCallbacks(giveUpRunnable)
+        spinnerAnim.cancel()
+        image.setImageBitmap(null)
+        image.visibility = View.GONE
+        spinner.visibility = View.GONE
+        imageBox.visibility = View.VISIBLE
     }
 
     fun close() {
         closed = true
         hide()
         cache.clear()
+        warmQueue.clear()
         if (source?.online == true) releaseOnlineSession()
         worker.shutdown()
     }
@@ -112,11 +186,13 @@ internal class PhoneSeekPreview(
     private fun requestNext() {
         if (busy || closed) return
         val current = source ?: return
-        val position = pending ?: return
+        val position = pending ?: warmQueue.removeFirstOrNull() ?: return
         pending = null
         busy = true
         worker.execute {
-            val bitmap = runCatching { decode(current, position) }.getOrNull()
+            val bitmap = runCatching { decode(current, position) }
+                .onFailure { Log.e("PhoneSeekPreview", "thumbnail decode failed for $position", it) }
+                .getOrNull()
             root.post {
                 busy = false
                 if (closed) return@post
@@ -161,8 +237,19 @@ internal class PhoneSeekPreview(
     }
 
     private fun showBitmap(bitmap: Bitmap?) {
+        uiHandler.removeCallbacks(giveUpRunnable)
+        imageBox.visibility = View.VISIBLE
         image.setImageBitmap(bitmap)
         image.visibility = if (bitmap == null) View.GONE else View.VISIBLE
+        spinner.visibility = if (bitmap == null) View.VISIBLE else View.GONE
+        if (bitmap == null) {
+            if (!spinnerAnim.isStarted) spinnerAnim.start()
+            // A persistently failing/slow source shouldn't spin forever —
+            // give up and fall back to a plain time bubble, same as mpv.
+            uiHandler.postDelayed(giveUpRunnable, GIVE_UP_MS)
+        } else {
+            spinnerAnim.cancel()
+        }
     }
 
     private fun positionBubble() {
@@ -183,5 +270,9 @@ internal class PhoneSeekPreview(
     private fun rounded(color: Int, radius: Int) = GradientDrawable().apply {
         setColor(color)
         cornerRadius = dp(radius).toFloat()
+    }
+
+    private companion object {
+        const val GIVE_UP_MS = 5_000L
     }
 }

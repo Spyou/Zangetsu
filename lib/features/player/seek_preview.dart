@@ -19,8 +19,6 @@ import 'package:flutter/services.dart';
 /// "Latest target wins": rapid [request] calls during a drag collapse to the
 /// newest position; only one extraction runs at a time.
 class SeekPreview {
-  SeekPreview({required this.uri, this.headers, required this.local});
-
   final String uri;
   final Map<String, String>? headers;
 
@@ -35,6 +33,19 @@ class SeekPreview {
 
   /// The most recent decoded frame (JPEG bytes), or null until the first lands.
   final ValueNotifier<Uint8List?> frame = ValueNotifier<Uint8List?>(null);
+
+  /// True once the current target has gone unanswered long enough that the
+  /// UI should stop showing a spinner and fall back to a plain time bubble
+  /// (a persistently failing/slow source would otherwise spin forever).
+  final ValueNotifier<bool> timedOut = ValueNotifier<bool>(false);
+  Timer? _giveUpTimer;
+  static const _giveUpDelay = Duration(seconds: 5);
+
+  SeekPreview({required this.uri, this.headers, required this.local}) {
+    frame.addListener(() {
+      if (frame.value != null) timedOut.value = false;
+    });
+  }
 
   bool _disposed = false;
   bool _busy = false;
@@ -96,6 +107,8 @@ class SeekPreview {
     if (_disposed) return;
     _prefetch?.cancel();
     _warmTargets.clear();
+    _giveUpTimer?.cancel();
+    timedOut.value = false;
     final target = local ? pos : _samplePosition(pos);
     if (!local) _latestOnlineTarget = target;
     final cached = _onlineFrames.remove(target);
@@ -107,6 +120,13 @@ class SeekPreview {
     }
     if (!local) _showNearest(target);
     _pending = target;
+    if (!local) {
+      _giveUpTimer = Timer(_giveUpDelay, () {
+        if (!_disposed && _latestOnlineTarget == target && frame.value == null) {
+          timedOut.value = true;
+        }
+      });
+    }
     unawaited(_drain());
   }
 
@@ -193,6 +213,7 @@ class SeekPreview {
   Future<void> dispose() async {
     _disposed = true;
     _prefetch?.cancel();
+    _giveUpTimer?.cancel();
     _pending = null;
     _warmTargets.clear();
     _onlineFrames.clear();

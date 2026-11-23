@@ -421,9 +421,11 @@ class _BufferedSliderTrackShape extends SliderTrackShape
 }
 
 /// Floating thumbnail shown above the seek-bar thumb while scrubbing. Shows the
-/// preview frame once one is available (never a loading spinner) with the
-/// target time beneath it. Until a frame lands — or on sources that can't be
-/// previewed — it's just a plain time bubble.
+/// preview frame once one is available, with a spinner in the box while it's
+/// still loading, and the target time beneath it. On sources that can't be
+/// previewed at all — or that fail to answer for a few seconds — it falls
+/// back to a plain time bubble (no box, no spinner) instead of spinning
+/// forever.
 class _PreviewBubble extends StatelessWidget {
   const _PreviewBubble({required this.preview, required this.time});
 
@@ -437,25 +439,41 @@ class _PreviewBubble extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         if (p != null)
-          ValueListenableBuilder<Uint8List?>(
-            valueListenable: p.frame,
-            builder: (context, bytes, _) {
-              if (bytes == null) return const SizedBox.shrink();
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 4),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: Container(
-                    width: 168,
-                    height: 94,
-                    color: Colors.black,
-                    child: Image.memory(
-                      bytes,
-                      fit: BoxFit.cover,
-                      gaplessPlayback: true,
+          ValueListenableBuilder<bool>(
+            valueListenable: p.timedOut,
+            builder: (context, timedOut, _) {
+              if (timedOut) return const SizedBox.shrink();
+              return ValueListenableBuilder<Uint8List?>(
+                valueListenable: p.frame,
+                builder: (context, bytes, _) {
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Container(
+                        width: 168,
+                        height: 94,
+                        color: Colors.black,
+                        child: bytes == null
+                            ? const Center(
+                                child: SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              )
+                            : Image.memory(
+                                bytes,
+                                fit: BoxFit.cover,
+                                gaplessPlayback: true,
+                              ),
+                      ),
                     ),
-                  ),
-                ),
+                  );
+                },
               );
             },
           ),
