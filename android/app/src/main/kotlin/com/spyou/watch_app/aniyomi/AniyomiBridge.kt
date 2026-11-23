@@ -111,10 +111,36 @@ class AniyomiBridge(
                         return@setMethodCallHandler
                     }
                     scope.launch(Dispatchers.IO) {
-                        File(dir).listFiles { f -> f.extension == "apk" }?.forEach { apkFile ->
-                            AniyomiExtensionLoader.load(context, apkFile)
-                                .getOrNull()
-                                ?.let(AniyomiSourceManager::register)
+                        // Crash-loop guard for #196: a device idling on power (any
+                        // Android TV box) runs background dexopt, which can recompile
+                        // an extension's secondary dex with a profile-guided filter
+                        // that inlines a stdlib method from the extension's own
+                        // bundled copy. At runtime DexClassLoader resolves that class
+                        // to the app's copy instead, and ART aborts the whole process
+                        // (SIGABRT, uncatchable) while constructing the source. The
+                        // bad .odex/.vdex survive force-close and cache-clear, so
+                        // every relaunch hit the same abort. If the flag below is
+                        // still set, the previous launch died here — drop the oat dir
+                        // so ART recompiles fresh with the non-inlining "quicken"
+                        // filter instead of crash-looping until the user clears data.
+                        val bootPrefs = context.getSharedPreferences("aniyomi_boot", Context.MODE_PRIVATE)
+                        if (bootPrefs.getBoolean("loading", false)) {
+                            android.util.Log.w(
+                                "AniyomiLoad",
+                                "previous extension load did not finish; dropping compiled dex",
+                            )
+                            File(dir, "oat").deleteRecursively()
+                        }
+                        // commit(), not apply(): must hit disk before a possible abort below.
+                        bootPrefs.edit().putBoolean("loading", true).commit()
+                        try {
+                            File(dir).listFiles { f -> f.extension == "apk" }?.forEach { apkFile ->
+                                AniyomiExtensionLoader.load(context, apkFile)
+                                    .getOrNull()
+                                    ?.let(AniyomiSourceManager::register)
+                            }
+                        } finally {
+                            bootPrefs.edit().putBoolean("loading", false).apply()
                         }
                         withContext(Dispatchers.Main) { result.success(true) }
                     }
