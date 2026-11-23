@@ -154,7 +154,16 @@ object MihonExtensionLoader {
         val pm = context.packageManager
         val flags = PackageManager.GET_META_DATA or PackageManager.GET_CONFIGURATIONS
         val pkgInfo = pm.getPackageArchiveInfo(apkFile.absolutePath, flags)
-            ?: error("Not an APK or could not parse manifest: ${apkFile.name}")
+            ?: if (Build.VERSION.SDK_INT < 26) {
+                // PackageManager itself refuses to parse a manifest whose
+                // minSdkVersion exceeds the device's SDK (modern Mihon
+                // extensions require 26+), returning null here instead of
+                // throwing. Below API 26 that's the only reason this can be
+                // null, so say so instead of "corrupted download".
+                error("This extension requires Android 8.0 or higher.")
+            } else {
+                error("Not an APK or could not parse manifest: ${apkFile.name}")
+            }
 
         // Verify the uses-feature flag that identifies a Mihon manga extension.
         val hasFeature = pkgInfo.reqFeatures?.any { it.name == FEATURE } == true
