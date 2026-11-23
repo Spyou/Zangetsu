@@ -638,15 +638,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
   // home screen.
   String? _loadError;
 
-  // Picture-in-Picture (Android only; iOS has no PiP path with media_kit).
+  // Android uses its activity window. iOS uses the mpv video texture.
   // `floating` powers the manual button + the status poll; auto-PiP-on-leave is
   // done natively (MainActivity) because the plugin's OnLeavePiP only works on
   // Android 12+ and silently no-ops on older devices.
   final Floating _floating = Floating();
   static const MethodChannel _pipChannel = MethodChannel('zangetsu/pip');
+  static const _iosPipChannel = MethodChannel('zangetsu/ios_pip');
   bool _pipSupported = false; // device supports PiP + we're on Android
   bool _inPip = false; // currently rendering inside the PiP window
   StreamSubscription<PiPStatus>? _pipSub;
+  StreamSubscription<bool>? _iosPipPlaying;
   // Playing / video-size listeners that keep the PiP window's buttons and
   // aspect ratio current. PiP-only — they don't feed anything else.
   final List<StreamSubscription<dynamic>> _pipStateSubs = [];
@@ -1183,6 +1185,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
   /// track the PiP status so the UI can collapse to video-only inside the
   /// floating window. Best-effort — any failure just leaves PiP disabled.
   Future<void> _setupPip() async {
+    if (Platform.isIOS && !sl<AppMode>().isTv) {
+      try {
+        final supported = await _iosPipChannel.invokeMethod<bool>('supported');
+        if (mounted && supported == true) setState(() => _pipSupported = true);
+      } on PlatformException {
+        // PiP is optional on this device.
+      } on MissingPluginException {
+        // This host has no iOS PiP bridge.
+      }
+      return;
+    }
     if (!Platform.isAndroid) return;
     try {
       final available = await _floating.isPipAvailable;
@@ -1274,6 +1287,42 @@ class _PlayerScreenState extends State<PlayerScreen> {
   /// Enter PiP immediately (the player's PiP button).
   Future<void> _enterPip() async {
     if (!_pipSupported) return;
+    if (Platform.isIOS) {
+      if (!_ready) return;
+      final id = _c.videoController.id.value;
+      if (id == null) return;
+      _iosPipChannel.setMethodCallHandler((call) async {
+        if (!mounted) return;
+        if (call.method == 'setPlaying' && call.arguments is bool) {
+          if (_c.player.state.playing != call.arguments) _c.togglePlay();
+        } else if (call.method == 'skip') {
+          final seconds = call.arguments;
+          if (seconds is num && seconds.isFinite) {
+            _c.seekBy(Duration(milliseconds: (seconds * 1000).round()));
+          }
+        } else if (call.method == 'stopped') {
+          await _iosPipPlaying?.cancel();
+          _iosPipPlaying = null;
+        }
+      });
+      try {
+        final started = await _iosPipChannel.invokeMethod<bool>('start', {
+          'textureId': id,
+          'playing': _c.player.state.playing,
+        });
+        if (mounted && started == true) {
+          await _iosPipPlaying?.cancel();
+          _iosPipPlaying = _c.player.stream.playing.listen((playing) {
+            _iosPipChannel
+                .invokeMethod<void>('playing', playing)
+                .catchError((_) {});
+          });
+        }
+      } on PlatformException {
+        // Playback can continue in the watch page.
+      }
+      return;
+    }
     try {
       await _floating.enable(
         const ImmediatePiP(aspectRatio: Rational.landscape()),
@@ -1316,7 +1365,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
         entranceReady: _c.videoController.waitUntilFirstFrameRendered,
         playing: _c.player.state.playing,
         playingChanges: _c.player.stream.playing,
-        systemPipChanges: _pipSupported
+        systemPipChanges: Platform.isAndroid && _pipSupported
             ? _floating.pipStatusStream.map(
                 (status) => status == PiPStatus.enabled,
               )
@@ -1994,7 +2043,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
     sl<CastController>().removeListener(_onCastStateChanged);
     // Disarm auto-PiP so leaving the closed player can't trigger it, and drop
     // the handler so a stray window button can't reach a dead controller.
-    if (_pipSupported) {
+    if (_pipSupported && Platform.isIOS) {
+      _iosPipPlaying?.cancel();
+      _iosPipChannel.setMethodCallHandler(null);
+      _iosPipChannel.invokeMethod<void>('stop').catchError((_) {});
+    } else if (_pipSupported) {
       _pipChannel.setMethodCallHandler(null);
       _pipChannel.invokeMethod('setAutoPip', false);
     }

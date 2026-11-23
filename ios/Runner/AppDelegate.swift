@@ -5,6 +5,7 @@ import UIKit
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
   private var mangayomiCloudflareBridge: MangayomiCloudflareBridge?
   private var phoneVoiceSearchBridge: PhoneVoiceSearchBridge?
+  private var mpvPictureInPicture: AnyObject?
   private var discordPresenceBridge: DiscordPresenceBridge?
 
   override func application(
@@ -15,7 +16,15 @@ import UIKit
   }
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
-    GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
+    if #available(iOS 16.0, *) {
+      let textures = MpvTextureRegistry(registry: engineBridge.pluginRegistry)
+      GeneratedPluginRegistrant.register(with: textures)
+      if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "MpvPictureInPicture") {
+        mpvPictureInPicture = MpvPictureInPicture(messenger: registrar.messenger(), textures: textures)
+      }
+    } else {
+      GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
+    }
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "DiscordPresenceBridge") {
       discordPresenceBridge?.dispose()
       discordPresenceBridge = DiscordPresenceBridge(messenger: registrar.messenger())

@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		FA22B0BB0000000000000002 = {isa = PBXBuildFile; fileRef = FA22B0AA0000000000000002; };
+		FA22B0BB0000000000000001 = {isa = PBXBuildFile; fileRef = FA22B0AA0000000000000001; };
 		1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */ = {isa = PBXBuildFile; fileRef = 1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */; };
 		331C808B294A63AB00263BE5 /* RunnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 331C807B294A618700263BE5 /* RunnerTests.swift */; };
 		3B3967161E833CAA004F5970 /* AppFrameworkInfo.plist in Resources */ = {isa = PBXBuildFile; fileRef = 3B3967151E833CAA004F5970 /* AppFrameworkInfo.plist */; };
@@ -52,6 +54,8 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		FA22B0AA0000000000000002 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MpvPictureInPicture.swift; sourceTree = "<group>"; };
+		FA22B0AA0000000000000001 = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = MpvTextureRegistry.m; sourceTree = "<group>"; };
 		13541DC85E9EC0ADF1E2E08E /* Pods-Runner.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.debug.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.debug.xcconfig"; sourceTree = "<group>"; };
 		1498D2321E8E86230040F4C2 /* GeneratedPluginRegistrant.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = GeneratedPluginRegistrant.h; sourceTree = "<group>"; };
 		1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = GeneratedPluginRegistrant.m; sourceTree = "<group>"; };
@@ -186,6 +190,8 @@
 				A91E7D39F31B4EED9A0D67B0 /* MangaTranslationBridge.swift */,
 				B8F1170E2A2D410100000002 /* MangayomiCloudflareBridge.swift */,
 				D9F1340E2A2D410100000002 /* PhoneVoiceSearchBridge.swift */,
+				FA22B0AA0000000000000001,
+				FA22B0AA0000000000000002,
 				74858FAE1ED2DC5600515810 /* AppDelegate.swift */,
 				7884E8672EC3CC0400C636F2 /* SceneDelegate.swift */,
 				74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */,
@@ -433,6 +439,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				FA22B0BB0000000000000001,
+				FA22B0BB0000000000000002,
 				74858FAF1ED2DC5600515810 /* AppDelegate.swift in Sources */,
 				A91E7D39F31B4EED9A0D67B1 /* MangaTranslationBridge.swift in Sources */,
 				B8F1170E2A2D410100000001 /* MangayomiCloudflareBridge.swift in Sources */,
