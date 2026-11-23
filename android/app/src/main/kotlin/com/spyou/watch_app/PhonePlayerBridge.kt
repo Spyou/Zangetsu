@@ -2,21 +2,28 @@ package com.spyou.watch_app
 
 import android.app.Activity
 import android.app.Dialog
+import android.content.Context
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.drawable.ColorDrawable
 import android.util.Log
+import android.view.LayoutInflater
+import android.view.View
 import android.view.ViewGroup
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.ui.PlayerView
 import io.flutter.embedding.android.FlutterTextureView
 import io.flutter.embedding.android.FlutterView
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
+import io.flutter.plugin.common.StandardMessageCodec
+import io.flutter.plugin.platform.PlatformView
+import io.flutter.plugin.platform.PlatformViewFactory
 
 /**
  * Owns the `zangetsu/phone_player` channel and starts [PhonePlayerActivity].
@@ -39,6 +46,8 @@ object PhonePlayerBridge {
     private var watchData: Pair<Long, Map<String, Any?>>? = null
     private var flutterHost: Pair<Activity, FlutterEngine>? = null
 
+    internal fun dockHost(): MainActivity? = flutterHost?.first as? MainActivity
+
     internal fun watchDataFor(session: Long): Map<String, Any?> =
         watchData?.takeIf { it.first == session }?.second.orEmpty()
 
@@ -48,10 +57,31 @@ object PhonePlayerBridge {
 
     fun register(engine: FlutterEngine, activity: Activity) {
         flutterHost = activity to engine
+        engine.platformViewsController.registry.registerViewFactory(
+            "zangetsu/phone_player_dock",
+            object : PlatformViewFactory(StandardMessageCodec.INSTANCE) {
+                override fun create(context: Context, viewId: Int, args: Any?): PlatformView {
+                    val session = (args as? Number)?.toLong()
+                    val view = LayoutInflater.from(context)
+                        .inflate(R.layout.phone_player_dock, null) as PlayerView
+                    val owner = PhonePlayerActivity.active?.takeIf { it.sessionId == session }
+                    owner?.attachDockView(view)
+                    return object : PlatformView {
+                        override fun getView(): View = view
+                        override fun dispose() { owner?.detachDockView(view) }
+                    }
+                }
+            },
+        )
         val ch = MethodChannel(engine.dartExecutor.binaryMessenger, CHANNEL)
         ch.setMethodCallHandler { call, result ->
             when (call.method) {
                 "launch" -> launch(activity, call, result)
+                "toggleDockPlayback", "closeDock", "restoreDock" -> {
+                    val session = call.argument<Number>("sessionId")?.toLong()
+                    val owner = PhonePlayerActivity.active?.takeIf { it.sessionId == session }
+                    result.success(owner?.dockCommand(call.method) == true)
+                }
                 "cacheInfo", "clearPlaybackCache" -> Thread({
                     try {
                         val prepared = runCatching {
@@ -112,6 +142,7 @@ object PhonePlayerBridge {
 
     fun dispose() {
         watchData = null
+        PhonePlayerActivity.active?.takeIf { it.docked }?.finish()
         flutterHost = null
         channel?.setMethodCallHandler(null)
         channel = null
@@ -267,6 +298,10 @@ object PhonePlayerBridge {
             i.putExtra(
                 PhonePlayerIntent.EXTRA_AUTO_PIP,
                 call.argument<Boolean>("autoPip") ?: false,
+            )
+            i.putExtra(
+                PhonePlayerIntent.EXTRA_IN_APP_MINI_PLAYER,
+                call.argument<Boolean>("inAppMiniPlayer") ?: true,
             )
             i.putExtra(
                 PhonePlayerIntent.EXTRA_KEEP_SCREEN_ON,

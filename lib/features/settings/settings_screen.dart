@@ -23,6 +23,7 @@ import '../../core/tracker/mal_service.dart';
 import '../../core/tracker/mangabaka_service.dart';
 import '../../core/tracker/simkl_service.dart';
 import '../../core/tracker/tracker.dart';
+import '../player/in_app_mini_player.dart';
 import '../player/player_screen.dart' show openSubtitleStyleSheet;
 import '../player/shader_presets.dart';
 import '../player/tv_exo_spike_screen.dart';

@@ -26,6 +26,7 @@ import '../../core/ui/states.dart';
 import '../../core/ui/poster_card.dart' show posterGridColumns;
 import '../../l10n/l10n.dart';
 import '../settings/download_location_screen.dart';
+import '../player/episode_player_route.dart';
 import '../player/player_screen.dart';
 import '../player/tv_playback_launch.dart';
 import 'downloaded_episode_playback.dart';
@@ -989,7 +990,7 @@ Future<void> launchDownloadedEpisode(
   }
 
   await Navigator.of(context).push(
-    MaterialPageRoute(
+    episodePlayerRoute(
       builder: (_) => PlayerScreen(
         sourceId: record.sourceId,
         episodes: queue.episodes,

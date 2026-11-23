@@ -1491,6 +1491,13 @@ class AppLocalizationsPt extends AppLocalizations {
       'Miniaturas ao arrastar a reprodução — gasta mais dados';
 
   @override
+  String get inAppMiniPlayer => 'In-app mini-player';
+
+  @override
+  String get inAppMiniPlayerSubtitle =>
+      'Keep watching while browsing Zangetsu. Pinch to resize.';
+
+  @override
   String get autoPictureInPicture => 'Picture-in-picture automático';
 
   @override

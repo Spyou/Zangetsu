@@ -557,6 +557,8 @@
 	"softwareAudioDolbyDTS": "Software audio (Dolby/DTS)",
 	"seekPreviewOnline": "Seek preview (online)",
 	"thumbnailsWhileScrubbingStreamsCostsExtraData": "Thumbnails while scrubbing streams — costs extra data",
+	"inAppMiniPlayer": "In-app mini-player",
+	"inAppMiniPlayerSubtitle": "Keep watching while browsing Zangetsu. Pinch to resize.",
 	"autoPictureInPicture": "Auto picture-in-picture",
 	"shrinkToAFloatingWindowWhenYouLeaveTheApp": "Shrink to a floating window when you leave the app",
 	"showQualityLabel": "Show quality label",

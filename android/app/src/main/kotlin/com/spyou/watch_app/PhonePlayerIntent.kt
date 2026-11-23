@@ -47,6 +47,7 @@ object PhonePlayerIntent {
     const val EXTRA_SUB_FONT = "subtitleFontPath"
     const val EXTRA_AUTO_RESUME = "autoResume"
     const val EXTRA_AUTO_PIP = "autoPip"
+    const val EXTRA_IN_APP_MINI_PLAYER = "inAppMiniPlayer"
     const val EXTRA_KEEP_SCREEN_ON = "keepScreenOn"
     const val EXTRA_AUTOPLAY_NEXT = "autoplayNext"
     const val EXTRA_MEGA_SKIP = "megaSkip"

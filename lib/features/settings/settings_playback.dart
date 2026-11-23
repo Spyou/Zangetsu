@@ -1121,6 +1121,18 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                   ),
                   onTap: _pickTvDecoderMode,
                 ),
+              if ((Platform.isAndroid || Platform.isIOS) && !sl<AppMode>().isTv)
+                _toggleRow(
+                  icon: Icons.close_fullscreen_rounded,
+                  title: context.l10n.inAppMiniPlayer,
+                  subtitle: context.l10n.inAppMiniPlayerSubtitle,
+                  value: _prefs.inAppMiniPlayer,
+                  onChanged: (value) async {
+                    await _prefs.setInAppMiniPlayer(value);
+                    if (!value) dockedPlayer.value?.onClose();
+                    if (mounted) setState(() {});
+                  },
+                ),
               if (Platform.isAndroid && !sl<AppMode>().isTv)
                 _toggleRow(
                   icon: Icons.picture_in_picture_alt_outlined,

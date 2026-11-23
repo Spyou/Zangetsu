@@ -2835,6 +2835,18 @@ abstract class AppLocalizations {
   /// **'Thumbnails while scrubbing streams — costs extra data'**
   String get thumbnailsWhileScrubbingStreamsCostsExtraData;
 
+  /// No description provided for @inAppMiniPlayer.
+  ///
+  /// In en, this message translates to:
+  /// **'In-app mini-player'**
+  String get inAppMiniPlayer;
+
+  /// No description provided for @inAppMiniPlayerSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep watching while browsing Zangetsu. Pinch to resize.'**
+  String get inAppMiniPlayerSubtitle;
+
   /// No description provided for @autoPictureInPicture.
   ///
   /// In en, this message translates to:

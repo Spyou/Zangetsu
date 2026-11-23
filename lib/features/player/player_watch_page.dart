@@ -60,6 +60,7 @@ class PlayerWatchPage extends StatefulWidget {
     required this.onPrevious,
     required this.onNext,
     required this.onFullscreen,
+    this.onMinimize,
     required this.onBack,
     required this.onServer,
     required this.onAudio,
@@ -139,6 +140,7 @@ class PlayerWatchPage extends StatefulWidget {
   final VoidCallback onPrevious;
   final VoidCallback onNext;
   final VoidCallback onFullscreen;
+  final VoidCallback? onMinimize;
   final VoidCallback onBack;
   final VoidCallback onServer;
   final VoidCallback onAudio;
@@ -672,19 +674,27 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
     },
     onVerticalDragUpdate: (details) {
       final movement = _videoSwipeStart - details.globalPosition;
-      _rotationPull.value = movement.dy > movement.dx.abs() ? -movement.dy : 0;
+      final vertical = movement.dy.abs() > movement.dx.abs();
+      final supported = movement.dy > 0 || widget.onMinimize != null;
+      _rotationPull.value = vertical && supported ? -movement.dy : 0;
     },
     onVerticalDragCancel: () => _rotationPull.value = 0,
     onVerticalDragEnd: (details) {
       final movement = _videoSwipeStart - details.globalPosition;
       _rotationPull.value = 0;
-      if (movement.dy >= watchPageRotationSwipeDistance &&
-          movement.dy > movement.dx.abs()) {
+      if (movement.dy.abs() < watchPageRotationSwipeDistance ||
+          movement.dy.abs() <= movement.dx.abs()) {
+        return;
+      }
+      if (movement.dy > 0) {
         widget.onFullscreen();
+      } else {
+        widget.onMinimize?.call();
       }
     },
     child: WatchPageRotationPreview(
       pull: _rotationPull,
+      minimizeOnDown: widget.onMinimize != null,
       child: _videoCard(h, sideInset),
     ),
   );

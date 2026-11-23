@@ -31,6 +31,7 @@ class _ControlsOverlay extends StatelessWidget {
     required this.megaSkipSeconds,
     required this.onMegaSkip,
     this.onPip,
+    this.onMinimize,
     this.onSwitchPlayer,
     required this.ambientActive,
     required this.onAmbientToggle,
@@ -77,6 +78,7 @@ class _ControlsOverlay extends StatelessWidget {
   final bool megaSkipEnabled; // MegaSkip pill above the seek bar
   final int megaSkipSeconds;
   final VoidCallback onMegaSkip;
+  final VoidCallback? onMinimize;
   final VoidCallback? onPip; // null = PiP unsupported (hide the button)
   final VoidCallback? onSwitchPlayer; // null = no other engine to switch to
   final bool
@@ -108,6 +110,7 @@ class _ControlsOverlay extends StatelessWidget {
       sleepActive: sleepActive,
       onSleep: onSleep,
       onPip: onPip,
+      onMinimize: onMinimize,
       onSwitchPlayer: onSwitchPlayer,
       ambientActive: ambientActive,
       onAmbientToggle: onAmbientToggle,
@@ -129,6 +132,7 @@ class _ControlsOverlay extends StatelessWidget {
     required bool sleepActive,
     required VoidCallback onSleep,
     required VoidCallback? onPip,
+    VoidCallback? onMinimize,
     required VoidCallback? onSwitchPlayer,
     required bool ambientActive,
     required VoidCallback onAmbientToggle,
@@ -238,6 +242,15 @@ class _ControlsOverlay extends StatelessWidget {
                           onSleep();
                         },
                       ),
+                      if (onMinimize != null)
+                        _MoreRow(
+                          icon: Icons.close_fullscreen_rounded,
+                          label: 'Minimize player',
+                          onTap: () {
+                            Navigator.pop(ctx);
+                            onMinimize();
+                          },
+                        ),
                       if (onPip != null)
                         _MoreRow(
                           icon: Icons.picture_in_picture_alt_rounded,

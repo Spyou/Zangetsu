@@ -1,6 +1,7 @@
 package com.spyou.watch_app
 
 import android.app.PictureInPictureParams
+import android.content.pm.ActivityInfo
 import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -295,6 +296,11 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
         super.onPause()
     }
 
+    override fun onStop() {
+        super.onStop()
+        if (!isInPictureInPictureMode) PhonePlayerActivity.active?.pauseDock()
+    }
+
     // ── Volume-key paging (manga reader) ──────────────────────────────────
     // Android handles the volume keys at the window level, above the Flutter
     // view, so a Dart-side key handler never sees them — it has to be caught
@@ -363,6 +369,23 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
 
     // Window actions, aspect ratio and enter animation — see PipController.
     private val pip by lazy { PipController(this) }
+
+    private var phoneDockAutoPip = false
+    private var phoneDockActive = false
+
+    internal fun updatePhoneDockPip(auto: Boolean, playing: Boolean, width: Int, height: Int) {
+        if (!phoneDockActive) requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        phoneDockActive = true
+        phoneDockAutoPip = auto
+        pip.setState(playing, width, height)
+        pip.autoEnter = auto
+    }
+
+    internal fun clearPhoneDockPip(restoring: Boolean = false) {
+        phoneDockActive = false
+        phoneDockAutoPip = false
+        pip.autoEnter = !restoring && autoPipEnabled
+    }
 
     // Set in configureFlutterEngine; used by onNewIntent to hand a tapped
     // "new episode" notification to Dart while the app is already running.
@@ -729,14 +752,18 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
             MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "zangetsu/pip")
         // Same channel both ways now: Dart arms auto-PiP and pushes playback
         // state down it, and a tapped window button comes back up it.
-        pip.onControl = { control -> pipChannel.invokeMethod(control, null) }
+        pip.onControl = { control ->
+            val dock = PhonePlayerActivity.active?.takeIf { it.docked }
+            if (dock == null) pipChannel.invokeMethod(control, null)
+            else dock.onDockPipControl(control)
+        }
         pip.register()
         pipChannel.setMethodCallHandler { call, result ->
             when (call.method) {
                 "setAutoPip" -> {
                     autoPipEnabled = (call.arguments as? Boolean) ?: false
                     // Android 12+ only; below that onUserLeaveHint covers it.
-                    pip.autoEnter = autoPipEnabled
+                    pip.autoEnter = if (phoneDockActive) phoneDockAutoPip else autoPipEnabled
                     result.success(true)
                 }
                 // Playback state + video size, so the window can show the right
@@ -1502,7 +1529,8 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
         flutterFragment.onUserLeaveHint()
-        if (autoPipEnabled &&
+        val autoEnter = if (phoneDockActive) phoneDockAutoPip else autoPipEnabled
+        if (autoEnter &&
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
             Build.VERSION.SDK_INT < Build.VERSION_CODES.S &&
             !isInPictureInPictureMode
@@ -1518,7 +1546,11 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
         newConfig: android.content.res.Configuration,
     ) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
-        if (isInPictureInPictureMode) pip.applyParams()
+        if (isInPictureInPictureMode) {
+            pip.applyParams()
+        } else if (phoneDockActive) {
+            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        }
     }
 
     // Known external video players (package -> display label).

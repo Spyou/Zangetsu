@@ -1484,6 +1484,13 @@ class AppLocalizationsAr extends AppLocalizations {
       'صور مصغّرة أثناء التصفّح في البث — تستهلك بيانات إضافية';
 
   @override
+  String get inAppMiniPlayer => 'In-app mini-player';
+
+  @override
+  String get inAppMiniPlayerSubtitle =>
+      'Keep watching while browsing Zangetsu. Pinch to resize.';
+
+  @override
   String get autoPictureInPicture => 'صورة داخل صورة تلقائيًا';
 
   @override

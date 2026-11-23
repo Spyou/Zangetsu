@@ -206,6 +206,11 @@ final settingsLeaves = <SettingsLeaf>[
   ),
   SettingsLeaf(
     LeafParent.playback,
+    (l) => l.inAppMiniPlayer,
+    keywords: 'minimize dock pinch resize',
+  ),
+  SettingsLeaf(
+    LeafParent.playback,
     (l) => l.autoPictureInPicture,
     keywords: 'pip floating window',
   ),

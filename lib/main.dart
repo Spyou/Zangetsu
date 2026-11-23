@@ -4,7 +4,7 @@ import 'dart:io' show Platform;
 import 'dart:ui' show PlatformDispatcher;
 
 import 'package:firebase_core/firebase_core.dart';
-import 'package:flutter/foundation.dart' show ValueListenable;
+import 'package:flutter/foundation.dart' show ValueListenable, ValueNotifier;
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
@@ -58,6 +58,7 @@ import 'core/theme/app_font_prefs.dart';
 import 'core/theme/theme_controller.dart';
 import 'core/tv/tv_route_pop_guard.dart';
 import 'core/tv/tv_viewport.dart';
+import 'features/player/in_app_mini_player.dart';
 import 'l10n/app_localizations.dart';
 import 'core/ui/global_messenger.dart';
 import 'core/theme/theme_repaint_observer.dart';
@@ -969,7 +970,14 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
           return PosterCardScope(
             child: AuthConnectionOverlay(
               phase: _authConnectionPhase,
-              child: isTv ? TvViewport(child: content) : content,
+              child: isTv
+                  ? TvViewport(child: content)
+                  : (Platform.isAndroid || Platform.isIOS) && shellFeatures
+                  ? InAppMiniPlayerHost(
+                      dockedPlayer: dockedPlayer,
+                      child: content,
+                    )
+                  : content,
             ),
           );
         },

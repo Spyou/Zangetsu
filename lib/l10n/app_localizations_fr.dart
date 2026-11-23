@@ -1482,6 +1482,13 @@ class AppLocalizationsFr extends AppLocalizations {
       'Miniatures en scrubant les streams — consomme plus de data';
 
   @override
+  String get inAppMiniPlayer => 'In-app mini-player';
+
+  @override
+  String get inAppMiniPlayerSubtitle =>
+      'Keep watching while browsing Zangetsu. Pinch to resize.';
+
+  @override
   String get autoPictureInPicture => 'PiP automatique';
 
   @override

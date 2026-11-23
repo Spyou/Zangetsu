@@ -56,6 +56,7 @@ import '../aniyomi/aniyomi_filter_sheet.dart';
 import '../mihon/mihon_filter_sheet.dart';
 import '../auth/auth_screens.dart';
 import '../detail/detail_screen.dart';
+import '../player/episode_player_route.dart';
 import '../player/player_screen.dart';
 import '../sources/zangetsu_sources_screen.dart';
 import 'search_screen_tv.dart';
@@ -685,7 +686,7 @@ class _SearchViewState extends State<_SearchView>
         sl<PlaybackPrefs>().defaultCategory;
     await Navigator.push(
       context,
-      MaterialPageRoute(
+      episodePlayerRoute(
         builder: (_) => PlayerScreen(
           sourceId: item.sourceId,
           episodesResolver: () =>

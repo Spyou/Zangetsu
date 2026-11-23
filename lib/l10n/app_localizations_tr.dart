@@ -1483,6 +1483,13 @@ class AppLocalizationsTr extends AppLocalizations {
       'Akışlarda kaydırırken küçük görseller — ek veri harcar';
 
   @override
+  String get inAppMiniPlayer => 'In-app mini-player';
+
+  @override
+  String get inAppMiniPlayerSubtitle =>
+      'Keep watching while browsing Zangetsu. Pinch to resize.';
+
+  @override
   String get autoPictureInPicture => 'Otomatik resim içinde resim';
 
   @override

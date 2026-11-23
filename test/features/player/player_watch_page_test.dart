@@ -27,6 +27,7 @@ PlayerWatchPage _page({
   VoidCallback? onPrevious,
   VoidCallback? onNext,
   VoidCallback? onFullscreen,
+  VoidCallback? onMinimize,
   ValueChanged<Duration>? onSeek,
   ValueChanged<Duration>? onSeekBy,
   ValueChanged<bool>? onHoldSpeedChanged,
@@ -77,6 +78,7 @@ PlayerWatchPage _page({
     onPrevious: onPrevious ?? () {},
     onNext: onNext ?? () {},
     onFullscreen: onFullscreen ?? () {},
+    onMinimize: onMinimize,
     onBack: onBack ?? () {},
     onServer: onServer ?? () {},
     onAudio: () {},
@@ -152,34 +154,71 @@ void main() {
     expect(entered, 1);
   });
 
-  testWidgets('rotation pull previews progress and snaps back below the limit', (
+  testWidgets('downward pull shows an arrow over the stationary video', (
     tester,
   ) async {
-    var entered = 0;
-    await _pump(tester, _page(onFullscreen: () => entered++));
-    final finder = find.byKey(const ValueKey('watch-video'));
-    final original = tester.getRect(finder);
-    final gesture = await tester.startGesture(original.center);
-    await gesture.moveBy(const Offset(0, -45));
+    var minimized = 0;
+    await _pump(tester, _page(onMinimize: () => minimized++));
+    final video = find.byKey(const ValueKey('watch-video'));
+    final original = tester.getRect(video);
+    final short = await tester.startGesture(original.center);
+    await short.moveBy(const Offset(0, 42));
     await tester.pump();
-    expect(tester.getRect(finder).top, lessThan(original.top));
-    final progress = find.byKey(const ValueKey('watch-rotation-pull-progress'));
-    expect(tester.widget<LinearProgressIndicator>(progress).value, lessThan(1));
-    expect(entered, 0);
-    await gesture.up();
+    expect(tester.getRect(video), original);
+    expect(
+      find.ancestor(
+        of: video,
+        matching: find.byWidgetPredicate(
+          (widget) => widget is Opacity && widget.opacity == 0,
+        ),
+      ),
+      findsNothing,
+    );
+    expect(find.byIcon(Icons.arrow_downward), findsOneWidget);
+    expect(find.byType(LinearProgressIndicator), findsNothing);
+    await short.up();
     await tester.pumpAndSettle();
-    expect(tester.getRect(finder), original);
-    expect(progress, findsNothing);
-    expect(entered, 0);
-
-    final longPull = await tester.startGesture(original.center);
-    await longPull.moveBy(const Offset(0, -75));
-    await tester.pump();
-    expect(tester.widget<LinearProgressIndicator>(progress).value, 1);
-    expect(entered, 0);
-    await longPull.up();
-    expect(entered, 1);
+    expect(tester.getRect(video), original);
+    expect(find.byIcon(Icons.arrow_downward), findsNothing);
+    expect(minimized, 0);
+    await tester.dragFrom(original.center, const Offset(0, 100));
+    expect(minimized, 1);
   });
+
+  testWidgets(
+    'rotation pull previews progress and snaps back below the limit',
+    (tester) async {
+      var entered = 0;
+      await _pump(tester, _page(onFullscreen: () => entered++));
+      final finder = find.byKey(const ValueKey('watch-video'));
+      final original = tester.getRect(finder);
+      final gesture = await tester.startGesture(original.center);
+      await gesture.moveBy(const Offset(0, -45));
+      await tester.pump();
+      expect(tester.getRect(finder).top, lessThan(original.top));
+      final progress = find.byKey(
+        const ValueKey('watch-rotation-pull-progress'),
+      );
+      expect(
+        tester.widget<LinearProgressIndicator>(progress).value,
+        lessThan(1),
+      );
+      expect(entered, 0);
+      await gesture.up();
+      await tester.pumpAndSettle();
+      expect(tester.getRect(finder), original);
+      expect(progress, findsNothing);
+      expect(entered, 0);
+
+      final longPull = await tester.startGesture(original.center);
+      await longPull.moveBy(const Offset(0, -75));
+      await tester.pump();
+      expect(tester.widget<LinearProgressIndicator>(progress).value, 1);
+      expect(entered, 0);
+      await longPull.up();
+      expect(entered, 1);
+    },
+  );
 
   testWidgets('video double taps seek left and right by the saved step', (
     tester,

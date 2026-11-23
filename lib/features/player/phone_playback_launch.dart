@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:floating/floating.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -39,9 +40,12 @@ import '../../core/ui/global_messenger.dart';
 import 'subtitle_font_service.dart';
 import 'player_controls_config.dart';
 import 'player_engine_fallback.dart';
+import 'player_lifecycle.dart';
 import 'player_screen.dart' show openSubtitleStyleSheet;
 import 'subtitle_style.dart';
 import 'watch_page_info.dart';
+import 'in_app_mini_player.dart';
+import '../../l10n/l10n.dart';
 import '../detail/cubit/detail_cubit.dart' show seasonOf;
 
 /// Rejects stale sessions and malformed writes before touching saved controls.
@@ -246,6 +250,7 @@ Map<String, dynamic> phonePlayerArgs({
   bool diskCacheEnabled = false,
   int diskCacheGb = 2,
   bool autoPip = false,
+  bool inAppMiniPlayer = true,
   required double defaultSpeed,
   bool holdSpeed = true,
   required Map<String, dynamic> bufferParams,
@@ -313,6 +318,7 @@ Map<String, dynamic> phonePlayerArgs({
     'autoResume': autoResume,
     'keepScreenOn': keepScreenOn,
     'autoPip': autoPip,
+    'inAppMiniPlayer': inAppMiniPlayer,
     'autoplayNext': autoplayNext,
     'seekSeconds': seekSeconds,
     'megaSkip': megaSkip,
@@ -443,6 +449,7 @@ Future<bool> launchPhonePlayback({
   PlayerEngineFallback? engineFallback,
   void Function(PhonePlaybackFailure)? onEngineFallback,
   bool forceInitialResume = false,
+  ({Widget content, VoidCallback restore})? Function()? onDocked,
 }) async {
   return PhoneNativePlayer.play(
     sourceId: sourceId,
@@ -475,6 +482,7 @@ Future<bool> launchPhonePlayback({
     engineFallback: engineFallback,
     onEngineFallback: onEngineFallback,
     forceInitialResume: forceInitialResume,
+    onDocked: onDocked,
   );
 }
 
@@ -484,6 +492,41 @@ Future<bool> launchPhonePlayback({
 /// Only one player is on screen at a time, so plain statics hold the session.
 class PhoneNativePlayer {
   static const _ch = MethodChannel('zangetsu/phone_player');
+  static ({Widget content, VoidCallback restore})? Function()? _onDocked;
+  static VoidCallback? _restoreDockRoute;
+  static int? _dockedSession;
+  static Completer<void>? _dockFrame;
+  static final _dockPlaying = StreamController<bool>.broadcast();
+
+  static Future<void> _dockCommand(String method, int session) async {
+    await _ch.invokeMethod<bool>(method, {'sessionId': session});
+  }
+
+  static Future<void> closeDockedPlayback() async {
+    final session = _dockedSession;
+    if (session == null) return;
+    final closed = _closed;
+    final closing = await _ch.invokeMethod<bool>('closeDock', {
+      'sessionId': session,
+    });
+    if (closing == true) {
+      await closed?.future;
+    } else {
+      _hideDock(session);
+    }
+  }
+
+  static void _hideDock(int session, {bool restoreRoute = false}) {
+    if (_dockedSession != session) return;
+    _dockedSession = null;
+    _dockFrame = null;
+    if (restoreRoute) _restoreDockRoute?.call();
+    _restoreDockRoute = null;
+    if (dockedPlayer.value?.key == ValueKey(session)) {
+      dockedPlayer.value = null;
+    }
+  }
+
   static bool _handlerBound = false;
 
   /// Completes when the Activity reports it closed, carrying the final
@@ -608,8 +651,17 @@ class PhoneNativePlayer {
     PlayerEngineFallback? engineFallback,
     void Function(PhonePlaybackFailure)? onEngineFallback,
     bool forceInitialResume = false,
+    ({Widget content, VoidCallback restore})? Function()? onDocked,
   }) async {
     if (startIndex < 0 || startIndex >= episodes.length) return false;
+    await closeDockedPlayback();
+    final dock = dockedPlayer.value;
+    if (dock != null) {
+      dock.onClose();
+      await WidgetsBinding.instance.endOfFrame;
+      await playerRouteTeardownBarrier.waitUntilIdle();
+    }
+    _onDocked = onDocked;
     _engineFallback = engineFallback;
     _onEngineFallback = onEngineFallback;
     _forceInitialResume = forceInitialResume;
@@ -681,6 +733,7 @@ class PhoneNativePlayer {
       diskCacheEnabled: prefs.phoneDiskCacheEnabled,
       diskCacheGb: prefs.phoneDiskCacheGb,
       autoPip: prefs.autoPip,
+      inAppMiniPlayer: prefs.inAppMiniPlayer,
       defaultSpeed: prefs.defaultSpeed,
       holdSpeed: prefs.holdSpeed,
       bufferParams: prefs.exoBufferParams,
@@ -855,6 +908,55 @@ class PhoneNativePlayer {
 
   static Future<dynamic> _onNativeCall(MethodCall call) async {
     switch (call.method) {
+      case 'playerDocked':
+        final args = _callArgs(call);
+        if (args?['sessionId'] != _sessionId || _closed?.isCompleted != false) {
+          return null;
+        }
+        final context = rootNavigatorKey.currentContext;
+        if (context == null) return null;
+        final labels = context.l10n;
+        final session = _sessionId;
+        final playing = args?['playing'] == true;
+        _dockedSession = session;
+        final frame = _dockFrame = Completer<void>();
+        final handoff = _onDocked?.call();
+        _restoreDockRoute = handoff?.restore;
+        dockedPlayer.value = InAppMiniPlayer(
+          key: ValueKey(session),
+          retainedRoute: handoff?.content,
+          entranceReady: frame.future,
+          video: AndroidView(
+            viewType: 'zangetsu/phone_player_dock',
+            creationParams: session,
+            creationParamsCodec: const StandardMessageCodec(),
+          ),
+          playing: playing,
+          playingChanges: _dockPlaying.stream,
+          systemPipChanges: Floating().pipStatusStream.map(
+            (status) => status == PiPStatus.enabled,
+          ),
+          playPauseLabel: playing ? labels.pause : labels.play,
+          playLabel: labels.play,
+          pauseLabel: labels.pause,
+          closeLabel: labels.close,
+          restoreLabel: labels.openingLayoutFullscreen,
+          onTogglePlayback: () =>
+              unawaited(_dockCommand('toggleDockPlayback', session)),
+          onClose: () => unawaited(closeDockedPlayback()),
+          onRestore: () => unawaited(_dockCommand('restoreDock', session)),
+        );
+        return null;
+      case 'dockPlayingChanged':
+        final args = _callArgs(call);
+        if (_dockedSession != null && args?['sessionId'] == _dockedSession) {
+          _dockPlaying.add(args?['playing'] == true);
+        }
+        return null;
+      case 'playerUndocked':
+        final session = (_callArgs(call)?['sessionId'] as num?)?.toInt();
+        if (session != null) _hideDock(session, restoreRoute: true);
+        return null;
       case 'rememberStremioLink':
       case 'addonSubtitles':
         final args = _callArgs(call);
@@ -1002,6 +1104,13 @@ class PhoneNativePlayer {
         return _resolveEpisode(index);
       case 'playbackStarted':
         final args = _callArgs(call);
+        final frame = _dockFrame;
+        if (frame != null &&
+            !frame.isCompleted &&
+            args?['docked'] == true &&
+            args?['sessionId'] == _dockedSession) {
+          frame.complete();
+        }
         final index = (args?['index'] as num?)?.toInt() ?? -1;
         if (args?['sessionId'] == _sessionId &&
             _closed?.isCompleted == false &&
@@ -1462,7 +1571,18 @@ class PhoneNativePlayer {
         return null;
       case 'playerClosed':
         final closingArgs = _callArgs(call);
-        if (closingArgs?['sessionId'] == _sessionId) {
+        final closingGeneration = _sessionId;
+        final closingSession = closingArgs?['sessionId'];
+        if (closingSession != null && closingSession != _sessionId) return null;
+        final restoreForFallback =
+            closingArgs?['engineFallback'] == true &&
+            _pendingEngineFailure != null &&
+            _restoreDockRoute != null;
+        _hideDock(_sessionId, restoreRoute: restoreForFallback);
+        if (restoreForFallback) await WidgetsBinding.instance.endOfFrame;
+        if (closingGeneration != _sessionId) return null;
+        _onDocked = null;
+        if (closingSession == _sessionId) {
           _syncSimkl({
             ...?closingArgs,
             'index': closingArgs?['episodeIndex'],
@@ -1476,8 +1596,9 @@ class PhoneNativePlayer {
             sl.isRegistered<DiscordRpc>()) {
           sl<DiscordRpc>().clear(delay: DiscordRpc.playerExitClearDelay);
         }
-        final args = _callArgs(call);
+        final args = closingArgs;
         await _saveProgress(args, flush: true);
+        if (closingGeneration != _sessionId) return null;
         final failure = _pendingEngineFailure;
         if (args?['sessionId'] == _sessionId &&
             args?['engineFallback'] == true &&

@@ -1480,6 +1480,13 @@ class AppLocalizationsId extends AppLocalizations {
       'Thumbnail saat menggeser streaming — memakai data lebih';
 
   @override
+  String get inAppMiniPlayer => 'In-app mini-player';
+
+  @override
+  String get inAppMiniPlayerSubtitle =>
+      'Keep watching while browsing Zangetsu. Pinch to resize.';
+
+  @override
   String get autoPictureInPicture => 'Gambar dalam gambar otomatis';
 
   @override

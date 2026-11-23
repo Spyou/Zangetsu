@@ -1433,6 +1433,13 @@ class AppLocalizationsZh extends AppLocalizations {
       '拖动进度时显示缩略图 — 会多用流量';
 
   @override
+  String get inAppMiniPlayer => 'In-app mini-player';
+
+  @override
+  String get inAppMiniPlayerSubtitle =>
+      'Keep watching while browsing Zangetsu. Pinch to resize.';
+
+  @override
   String get autoPictureInPicture => '自动画中画';
 
   @override

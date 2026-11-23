@@ -355,6 +355,11 @@ class PlaybackPrefs {
 
   /// Auto-enter Picture-in-Picture when leaving the app mid-playback (Android).
   /// The manual PiP button works regardless of this setting.
+  bool get inAppMiniPlayer =>
+      _box.get('inAppMiniPlayer', defaultValue: true) as bool;
+  Future<void> setInAppMiniPlayer(bool value) =>
+      _box.put('inAppMiniPlayer', value);
+
   bool get autoPip => _box.get('autoPip', defaultValue: true) as bool;
   Future<void> setAutoPip(bool value) => _box.put('autoPip', value);
 

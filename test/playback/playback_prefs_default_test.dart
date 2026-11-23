@@ -60,20 +60,28 @@ void main() {
     );
   });
 
-  test('init alone flips nothing; the injector owns the one-time stamp', () async {
-    final dir = await Directory.systemTemp.createTemp('exo_default_migrate');
-    Hive.init(dir.path);
-    try {
-      final box = await Hive.openBox<dynamic>(PlaybackPrefs.boxName);
-      expect(box.containsKey('externalPlayerPackage'), isFalse);
-      await PlaybackPrefs.init();
-      // Migration + flag live in the injector, not init(): nothing stamped,
-      // nothing flipped. Test host is not Android anyway.
-      expect(box.containsKey('playerEngineMigrated'), isFalse);
-      expect(box.containsKey('externalPlayerPackage'), isFalse);
-    } finally {
-      await Hive.close();
-      await dir.delete(recursive: true);
-    }
-  });
+  test(
+    'init alone flips nothing; the injector owns the one-time stamp',
+    () async {
+      final dir = await Directory.systemTemp.createTemp('exo_default_migrate');
+      Hive.init(dir.path);
+      try {
+        final box = await Hive.openBox<dynamic>(PlaybackPrefs.boxName);
+        expect(box.containsKey('externalPlayerPackage'), isFalse);
+        await PlaybackPrefs.init();
+        // Migration + flag live in the injector, not init(): nothing stamped,
+        // nothing flipped. Test host is not Android anyway.
+        final prefs = PlaybackPrefs();
+        expect(prefs.inAppMiniPlayer, isTrue);
+        await prefs.setInAppMiniPlayer(false);
+        expect(PlaybackPrefs().inAppMiniPlayer, isFalse);
+        expect(prefs.autoPip, isTrue);
+        expect(box.containsKey('playerEngineMigrated'), isFalse);
+        expect(box.containsKey('externalPlayerPackage'), isFalse);
+      } finally {
+        await Hive.close();
+        await dir.delete(recursive: true);
+      }
+    },
+  );
 }

@@ -4,6 +4,7 @@ import '../../../core/di/injector.dart';
 import '../../../core/playback/resume_store.dart';
 import '../../../core/playback/watch_history.dart';
 import '../../../core/repository/source_repository.dart';
+import '../../player/episode_player_route.dart';
 import '../../player/player_screen.dart';
 import '../model/room_state.dart';
 import '../watch_room_service.dart';
@@ -82,7 +83,7 @@ Future<void> joinWatchPartyByCode(BuildContext context, String code) async {
     return;
   }
   final repo = sl<SourceRepository>();
-  Navigator.of(context, rootNavigator: true).push(MaterialPageRoute(
+  Navigator.of(context, rootNavigator: true).push(episodePlayerRoute(
     builder: (_) => PlayerScreen(
       sourceId: room.sourceId,
       episodesResolver: () => repo.episodes(

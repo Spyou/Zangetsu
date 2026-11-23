@@ -1,19 +1,83 @@
 import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
 
+import 'in_app_mini_player.dart';
+
 /// Slides the watch page over detail while the player starts loading normally.
-class EpisodePlayerRoute extends MaterialPageRoute<void> {
-  EpisodePlayerRoute({required super.builder});
+class EpisodePlayerRoute extends PageRoute<void>
+    with MaterialRouteTransitionMixin<void> {
+  EpisodePlayerRoute({
+    required WidgetBuilder builder,
+    this.nativeHandoff = false,
+  }) : _contentKey = GlobalKey(),
+       _buildContent = builder;
+
+  EpisodePlayerRoute._(
+    this._contentKey,
+    this._buildContent,
+    this.nativeHandoff,
+  );
+
+  final bool nativeHandoff;
 
   @override
-  Duration get transitionDuration =>
-      defaultTargetPlatform == TargetPlatform.android
+  bool get opaque => !nativeHandoff;
+
+  @override
+  bool get maintainState => true;
+
+  final GlobalKey _contentKey;
+  final WidgetBuilder _buildContent;
+  Widget? _content;
+  bool _moved = false;
+
+  @override
+  Widget buildContent(BuildContext context) {
+    if (_moved) return const SizedBox.shrink();
+    return _content ??= KeyedSubtree(
+      key: _contentKey,
+      child: _buildContent(context),
+    );
+  }
+
+  ({Widget content, VoidCallback restore})? detachForDock() {
+    final nav = navigator;
+    final content = _content;
+    if (nav == null || content == null || !isCurrent) return null;
+    _moved = true;
+    nav.removeRoute(this);
+    return (
+      content: content,
+      restore: () {
+        if (!nav.mounted) return;
+        nav.push(
+          EpisodePlayerRoute._(_contentKey, _buildContent, nativeHandoff)
+            .._content = content,
+        );
+      },
+    );
+  }
+
+  void dock(InAppMiniPlayer Function(Widget, VoidCallback) buildDock) {
+    final handoff = detachForDock();
+    if (handoff == null) return;
+    dockedPlayer.value = buildDock(handoff.content, () {
+      handoff.restore();
+      dockedPlayer.value = null;
+    });
+  }
+
+  @override
+  Duration get transitionDuration => nativeHandoff
+      ? Duration.zero
+      : defaultTargetPlatform == TargetPlatform.android
       ? const Duration(milliseconds: 350)
       : super.transitionDuration;
 
   @override
-  Duration get reverseTransitionDuration =>
-      defaultTargetPlatform == TargetPlatform.android
+  Duration get reverseTransitionDuration => nativeHandoff
+      ? Duration.zero
+      : defaultTargetPlatform == TargetPlatform.android
       ? const Duration(milliseconds: 350)
       : super.reverseTransitionDuration;
 
@@ -24,6 +88,7 @@ class EpisodePlayerRoute extends MaterialPageRoute<void> {
     Animation<double> secondaryAnimation,
     Widget child,
   ) {
+    if (nativeHandoff) return child;
     if (Theme.of(context).platform != TargetPlatform.android) {
       return super.buildTransitions(
         context,
@@ -45,20 +110,7 @@ class EpisodePlayerRoute extends MaterialPageRoute<void> {
   }
 }
 
-/// The activity handles entry and exit; the Flutter handoff paints nothing.
-class NativePlayerHandoffRoute extends PageRouteBuilder<void> {
-  NativePlayerHandoffRoute({required WidgetBuilder builder})
-    : super(
-        opaque: false,
-        transitionDuration: Duration.zero,
-        reverseTransitionDuration: Duration.zero,
-        pageBuilder: (context, _, _) => builder(context),
-      );
-}
-
 PageRoute<void> episodePlayerRoute({
   required WidgetBuilder builder,
   bool nativeHandoff = false,
-}) => nativeHandoff
-    ? NativePlayerHandoffRoute(builder: builder)
-    : EpisodePlayerRoute(builder: builder);
+}) => EpisodePlayerRoute(builder: builder, nativeHandoff: nativeHandoff);

@@ -1442,6 +1442,13 @@ class AppLocalizationsJa extends AppLocalizations {
       'ストリーム操作中にサムネイル — 追加通信が発生';
 
   @override
+  String get inAppMiniPlayer => 'In-app mini-player';
+
+  @override
+  String get inAppMiniPlayerSubtitle =>
+      'Keep watching while browsing Zangetsu. Pinch to resize.';
+
+  @override
   String get autoPictureInPicture => '自動ピクチャーインピクチャー';
 
   @override

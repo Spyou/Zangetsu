@@ -46,13 +46,14 @@ class PipController(private val activity: Activity) {
     /** Forwards a tapped PiP window action ("rewind"/"play_pause"/"forward"). */
     var onControl: ((String) -> Unit)? = null
 
+    private val controlAction = "$ACTION.${activity.javaClass.name}"
     private var playing = true
     private var aspect = Rational(16, 9)
     private var receiverRegistered = false
 
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action != ACTION) return
+            if (intent?.action != controlAction || !activity.isInPictureInPictureMode) return
             val control = intent.getStringExtra(EXTRA) ?: return
             // Optimistic local flip so the icon swaps immediately rather than
             // waiting for Dart to come back — at PiP size a late icon reads as
@@ -68,7 +69,7 @@ class PipController(private val activity: Activity) {
 
     fun register() {
         if (receiverRegistered || Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-        val filter = IntentFilter(ACTION)
+        val filter = IntentFilter(controlAction)
         // API 33 made the exported flag mandatory. This receiver only ever
         // hears our own PendingIntents, so it stays unexported.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -182,7 +183,7 @@ class PipController(private val activity: Activity) {
         iconRes: Int,
         requestCode: Int,
     ): RemoteAction {
-        val intent = Intent(ACTION)
+        val intent = Intent(controlAction)
             .putExtra(EXTRA, control)
             // Explicit package: an implicit broadcast can't be delivered on
             // newer Android, and this keeps it to our own process regardless.

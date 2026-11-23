@@ -1,6 +1,7 @@
 package com.spyou.watch_app
 
 import android.app.Activity
+import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.res.ColorStateList
 import android.content.res.Configuration
@@ -245,6 +246,83 @@ class PhonePlayerActivity : Activity() {
     private var failoverInFlight = false
     private var engineFallbackRequested = false
     private val pip by lazy { PipController(this) }
+    internal var docked = false
+        private set
+    private var dockView: PlayerView? = null
+    private var restoringDock = false
+
+    private var inAppMiniPlayerEnabled = true
+
+    private fun canMinimize() =
+        inAppMiniPlayerEnabled && !docked && player?.currentMediaItem != null && !isInPictureInPictureMode
+
+    private fun minimizeToApp(): Boolean {
+        if (!canMinimize()) return false
+        docked = true
+        pip.autoEnter = false
+        updateDockPip()
+        PhonePlayerBridge.channel?.invokeMethod(
+            "playerDocked",
+            mapOf("sessionId" to sessionId, "playing" to (player?.isPlaying == true)),
+        )
+        startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT))
+        return true
+    }
+
+    private fun updateDockPip() {
+        if (!docked || restoringDock) return
+        val activePlayer = player ?: return
+        val size = activePlayer.videoSize
+        PhonePlayerBridge.dockHost()?.updatePhoneDockPip(
+            autoPipEnabled, activePlayer.isPlaying, size.width, size.height,
+        )
+    }
+
+    internal fun pauseDock() {
+        if (docked) player?.pause()
+    }
+
+    internal fun onDockPipControl(control: String) {
+        val activePlayer = player ?: return
+        when (control) {
+            PipController.PLAY_PAUSE -> togglePlay()
+            PipController.REWIND -> activePlayer.seekTo((activePlayer.currentPosition - 10_000L).coerceAtLeast(0L))
+            PipController.FORWARD -> activePlayer.seekTo(activePlayer.currentPosition + 10_000L)
+        }
+    }
+
+    internal fun attachDockView(view: PlayerView) {
+        if (!docked || isFinishing) return
+        val activePlayer = player ?: return
+        val previous = dockView ?: playerView
+        dockView = view
+        PlayerView.switchTargetView(activePlayer, previous, view)
+    }
+
+    internal fun detachDockView(view: PlayerView) {
+        if (dockView !== view) return
+        dockView = null
+        player?.let { PlayerView.switchTargetView(it, view, playerView) }
+    }
+
+    internal fun dockCommand(command: String): Boolean {
+        if (!docked || isFinishing) return false
+        when (command) {
+            "toggleDockPlayback" -> togglePlay()
+            "closeDock" -> finish()
+            "restoreDock" -> {
+                // Reordering also counts as leaving MainActivity on some devices.
+                restoringDock = true
+                PhonePlayerBridge.dockHost()?.clearPhoneDockPip(restoring = true)
+                startActivity(Intent(this, PhonePlayerActivity::class.java).addFlags(
+                    Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_NO_USER_ACTION,
+                ))
+            }
+            else -> return false
+        }
+        return true
+    }
+
     private var autoPipEnabled = false
     private var currentUrl = ""
     private val attemptedUrls = mutableSetOf<String>()
@@ -293,6 +371,7 @@ class PhonePlayerActivity : Activity() {
         megaSkipSeconds = intent.getIntExtra(PhonePlayerIntent.EXTRA_MEGA_SKIP_SECONDS, 85).coerceIn(5, 180)
         keepScreenOn = intent.getBooleanExtra(PhonePlayerIntent.EXTRA_KEEP_SCREEN_ON, true)
         autoPipEnabled = intent.getBooleanExtra(PhonePlayerIntent.EXTRA_AUTO_PIP, false)
+        inAppMiniPlayerEnabled = intent.getBooleanExtra(PhonePlayerIntent.EXTRA_IN_APP_MINI_PLAYER, true)
         pip.onControl = { control ->
             when (control) {
                 PipController.PLAY_PAUSE -> togglePlay()
@@ -446,7 +525,7 @@ class PhonePlayerActivity : Activity() {
         updateOrientationLayout()
 
         findViewById<View>(R.id.btn_back).setOnClickListener {
-            if (!showWatchPage()) finish()
+            if (!showWatchPage() && !minimizeToApp()) finish()
         }
         btnPlay.setOnClickListener { togglePlay() }
         findViewById<View>(R.id.btn_previous).setOnClickListener {
@@ -587,7 +666,11 @@ class PhonePlayerActivity : Activity() {
                 sendDiscordPresence()
                 PhonePlayerBridge.channel?.invokeMethod(
                     "playbackStarted",
-                    mapOf("index" to currentIndex, "sessionId" to sessionId),
+                    mapOf(
+                        "index" to currentIndex,
+                        "sessionId" to sessionId,
+                        "docked" to (docked && dockView != null),
+                    ),
                 )
                 hideLoading()
             }
@@ -656,11 +739,16 @@ class PhonePlayerActivity : Activity() {
                 sendDiscordPresence()
                 updateKeepScreenOn()
                 syncPlayIcon()
+                updateDockPip()
+                if (docked) PhonePlayerBridge.channel?.invokeMethod(
+                    "dockPlayingChanged", mapOf("sessionId" to sessionId, "playing" to isPlaying),
+                )
                 bumpControls()
                 pip.setState(isPlaying, player?.videoSize?.width ?: 0, player?.videoSize?.height ?: 0)
             }
 
             override fun onVideoSizeChanged(videoSize: VideoSize) {
+                updateDockPip()
                 pip.setState(player?.isPlaying == true, videoSize.width, videoSize.height)
             }
         })
@@ -2514,6 +2602,9 @@ class PhonePlayerActivity : Activity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             add(R.string.phone_player_menu_pip, R.drawable.ic_pip_play) { pip.enter(null) }
         }
+        if (canMinimize()) {
+            add(R.string.phone_player_menu_minimize, R.drawable.ic_pip_play) { minimizeToApp() }
+        }
         add(R.string.phone_player_menu_info, R.drawable.phone_player_info, "info") { showInfo() }
         val dialog = PhonePlayerSheet(this)
             .setItemIcons(items.map { it.second })
@@ -2830,17 +2921,21 @@ class PhonePlayerActivity : Activity() {
             taps.onTouchEvent(ev)
             val up = -rotationY
             val pullingUp = singleFingerRotation && !holding && up > rotationX
+            val pullingDown = isPortraitCard() && singleFingerRotation && !holding &&
+                rotationY > rotationX && canMinimize()
             if (action == MotionEvent.ACTION_MOVE && !holding) {
-                if (pullingUp && up >= dp(12)) updateRotationPull(v, rotationY)
+                if (pullingDown && rotationY >= dp(12)) updateRotationPull(v, rotationY, minimizing = true)
+                else if (pullingUp && up >= dp(12)) updateRotationPull(v, rotationY)
                 else resetRotationPull()
             }
             if (action == MotionEvent.ACTION_UP && !holding) {
-                val commit = pullingUp && up >= dp(ROTATION_PULL_DISTANCE_DP)
-                resetRotationPull(animate = !commit)
-                if (commit) {
-                    toggleRotation()
-                } else {
-                    v.performClick()
+                val fullscreen = pullingUp && up >= dp(ROTATION_PULL_DISTANCE_DP)
+                val minimize = pullingDown && rotationY >= dp(ROTATION_PULL_DISTANCE_DP)
+                resetRotationPull(animate = !fullscreen && !minimize)
+                when {
+                    fullscreen -> toggleRotation()
+                    minimize -> minimizeToApp()
+                    else -> v.performClick()
                 }
             }
             return
@@ -2932,12 +3027,15 @@ class PhonePlayerActivity : Activity() {
     private fun rotationMotionEnabled() = Build.VERSION.SDK_INT < Build.VERSION_CODES.O ||
         android.animation.ValueAnimator.areAnimatorsEnabled()
 
-    private fun updateRotationPull(video: View, distance: Float) {
+    private fun updateRotationPull(video: View, distance: Float, minimizing: Boolean = false) {
         val progress = (kotlin.math.abs(distance) * 100 / dp(ROTATION_PULL_DISTANCE_DP)).toInt().coerceAtMost(100)
         video.animate().cancel()
-        if (rotationMotionEnabled()) {
-            video.translationY = (distance * .5f).coerceIn(-dp(36).toFloat(), dp(36).toFloat())
-        }
+        val motion = rotationMotionEnabled()
+        video.translationY = if (motion && !minimizing)
+            (distance * .5f).coerceIn(-dp(36).toFloat(), dp(36).toFloat()) else 0f
+        rotationPullHint.translationY = if (motion && minimizing)
+            distance.coerceAtMost(dp(ROTATION_PULL_DISTANCE_DP).toFloat()) else 0f
+        rotationPullProgress.visibility = if (minimizing) View.GONE else View.VISIBLE
         rotationPullArrow.text = if (distance < 0) "↑" else "↓"
         rotationPullArrow.isSelected = progress == 100
         rotationPullProgress.isSelected = progress == 100
@@ -3482,9 +3580,9 @@ class PhonePlayerActivity : Activity() {
         super.onPause()
         sendProgress()
         // PiP is still "paused" as an Activity but must keep playing.
-        if (!isInPictureInPictureMode) player?.pause()
+        if (!isInPictureInPictureMode && !docked) player?.pause()
         updateKeepScreenOn()
-        handler.removeCallbacks(ticker)
+        if (!docked) handler.removeCallbacks(ticker)
         if (segmentTimer.isRunning) segmentTimer.pause()
     }
 
@@ -3493,9 +3591,19 @@ class PhonePlayerActivity : Activity() {
     // here rather than in onCreate.
     override fun onResume() {
         super.onResume()
+        if (docked) {
+            docked = false
+            restoringDock = false
+            PhonePlayerBridge.dockHost()?.clearPhoneDockPip()
+            dockView?.let(::detachDockView)
+            pip.autoEnter = autoPipEnabled
+            pip.applyParams()
+            PhonePlayerBridge.channel?.invokeMethod("playerUndocked", mapOf("sessionId" to sessionId))
+        }
         if (subtitleStyleDialog?.isShowing == true) PhonePlayerBridge.setSubtitleOverlayResumed(true)
         orientationObserver?.enable()
         updateKeepScreenOn()
+        handler.removeCallbacks(ticker)
         handler.post(ticker)
     }
 
@@ -3503,7 +3611,7 @@ class PhonePlayerActivity : Activity() {
     // setAutoEnterEnabled and would double-trigger.
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
-        if (autoPipEnabled &&
+        if (!docked && autoPipEnabled &&
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
             Build.VERSION.SDK_INT < Build.VERSION_CODES.S &&
             playbackStarted &&
@@ -3551,7 +3659,12 @@ class PhonePlayerActivity : Activity() {
         moreDialog?.setOnDismissListener(null)
         moreDialog?.dismiss()
         moreDialog = null
-        active = null
+        if (active === this) {
+            if (docked) PhonePlayerBridge.dockHost()?.clearPhoneDockPip()
+            active = null
+        }
+        dockView?.player = null
+        dockView = null
         castManager?.release()
         castManager = null
         player?.release()
@@ -3568,6 +3681,7 @@ class PhonePlayerActivity : Activity() {
     override fun onBackPressed() {
         if (controlsLocked) { setControlsLocked(false); return }
         if (loadingActions.visibility == View.VISIBLE) { finish(); return }
+        if (inAppMiniPlayerEnabled && (showWatchPage() || minimizeToApp())) return
         if (controls.visibility == View.VISIBLE) { hideControls(); return }
         if (showWatchPage()) return
         @Suppress("DEPRECATION")
