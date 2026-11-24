@@ -3905,6 +3905,11 @@ class PhonePlayerActivity : Activity() {
         newConfig: Configuration,
     ) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        // The app behind a PiP window is live and visible; it must not stay frozen.
+        PhonePlayerBridge.channel?.invokeMethod(
+            "playerPip",
+            mapOf("sessionId" to sessionId, "inPip" to isInPictureInPictureMode),
+        )
         if (isInPictureInPictureMode) {
             pip.onEntered()
             pip.applyParams()

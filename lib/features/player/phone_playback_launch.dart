@@ -983,6 +983,13 @@ class PhoneNativePlayer {
           _dockPlaying.add(args?['playing'] == true);
         }
         return null;
+      case 'playerPip':
+        final args = _callArgs(call);
+        if (args?['sessionId'] == _sessionId && _dockedSession != _sessionId) {
+          // In a PiP window the app behind is on screen and must animate.
+          phoneNativeInFront.value = args?['inPip'] != true;
+        }
+        return null;
       case 'playerUndocked':
         final session = (_callArgs(call)?['sessionId'] as num?)?.toInt();
         if (session != null) _hideDock(session, restoreRoute: true);
