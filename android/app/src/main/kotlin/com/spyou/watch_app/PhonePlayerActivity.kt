@@ -817,6 +817,7 @@ class PhonePlayerActivity : Activity() {
             }
 
             override fun onPlaybackStateChanged(state: Int) {
+                syncPlayIcon()
                 sendDiscordPresence()
                 updateKeepScreenOn()
                 setBuffering(
@@ -836,6 +837,7 @@ class PhonePlayerActivity : Activity() {
             }
 
             override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                syncPlayIcon()
                 sendDiscordPresence()
             }
 
@@ -2846,7 +2848,14 @@ class PhonePlayerActivity : Activity() {
 
     private fun togglePlay() {
         val p = player ?: return
-        if (p.isPlaying) p.pause() else p.play()
+        when {
+            p.playbackState == Player.STATE_ENDED -> {
+                p.seekToDefaultPosition()
+                p.play()
+            }
+            p.playWhenReady -> p.pause()
+            else -> p.play()
+        }
         syncPlayIcon()
         bumpControls()
     }
@@ -3574,7 +3583,7 @@ class PhonePlayerActivity : Activity() {
     private fun vHeight(): Float = findViewById<View>(R.id.player_root).height.toFloat()
 
     private fun syncPlayIcon() {
-        val playing = player?.isPlaying == true
+        val playing = player?.let { it.playWhenReady && it.playbackState != Player.STATE_ENDED } == true
         btnPlay.contentDescription = if (playing) getString(R.string.phone_player_state_pause) else getString(R.string.phone_player_state_play)
         val resource = if (playing) R.drawable.ic_pip_pause else R.drawable.ic_pip_play
         if (btnPlay.tag == resource) return

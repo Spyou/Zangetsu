@@ -25,6 +25,7 @@ void main() {
   late Directory dir;
   late Future<bool> playback;
   late List<String> resolved;
+  VideoSource? savedDownload;
   Map<String, dynamic>? launchArgs;
 
   Future<dynamic> send(String method, Map<String, dynamic> args) {
@@ -58,6 +59,7 @@ void main() {
     sl.registerSingleton<TitlePrefsStore>(TitlePrefsStore());
     await sl<PlaybackPrefs>().setDefaultQuality('1080p');
     resolved = [];
+    savedDownload = null;
     final launched = Completer<void>();
     messenger.setMockMethodCallHandler(channel, (call) async {
       if (call.method == 'launch') {
@@ -89,12 +91,17 @@ void main() {
           ),
         ];
       },
+      resolveDownloadedSources: (url) async =>
+          url == 'https://site/sub/1' && savedDownload != null
+          ? [savedDownload!]
+          : null,
       category: 'dub',
       availableCategories: ['sub', 'dub'],
       showUrl: 'https://show/title',
       showTitle: 'Title',
       showDescription: 'Synopsis',
       malId: 21,
+      imdbId: 'tt1234567',
     );
     await launched.future;
   });
@@ -244,6 +251,24 @@ void main() {
     final payload = await send('resolveEpisode', {'index': 0}) as Map;
     expect(payload['url'], 'https://low.test/video');
     expect(resolved, ['https://site/dub/1']);
+  });
+
+  test('native playback opens a saved download before online lookup', () async {
+    final prefs = sl<PlaybackPrefs>();
+    await prefs.setAutoDownloadSubtitles(true);
+    await prefs.setPreferredSubtitleLanguage('en');
+    savedDownload = const VideoSource(url: 'content://downloads/episode.mp4');
+    var networkAttempts = 0;
+    final payload = await HttpOverrides.runZoned(
+      () async => await send('resolveEpisode', {'index': 0}) as Map,
+      createHttpClient: (_) {
+        networkAttempts++;
+        throw const SocketException('Offline');
+      },
+    );
+    expect(payload['url'], savedDownload!.url);
+    expect(resolved, isEmpty);
+    expect(networkAttempts, 0);
   });
 
   test(

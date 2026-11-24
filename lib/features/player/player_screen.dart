@@ -1441,6 +1441,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
         startIndex: idx.clamp(0, eps.length - 1),
         resume: widget.resume,
         resolveSources: widget.resolveSources,
+        resolveDownloadedSources: widget.resolveDownloadedSources,
         pollSources: widget.pollSources,
         resumePosition: widget.resumePosition.inMilliseconds,
         peek: widget.peek,

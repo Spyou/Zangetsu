@@ -433,6 +433,8 @@ Future<bool> launchPhonePlayback({
   required int startIndex,
   required ResumeStore resume,
   required Future<List<VideoSource>> Function(String episodeUrl) resolveSources,
+  Future<List<VideoSource>?> Function(String episodeUrl)?
+  resolveDownloadedSources,
   PhoneSourcesPoll? pollSources,
   int resumePosition = 0,
   bool peek = false,
@@ -466,6 +468,7 @@ Future<bool> launchPhonePlayback({
     startIndex: startIndex,
     resume: resume,
     resolveSources: resolveSources,
+    resolveDownloadedSources: resolveDownloadedSources,
     pollSources: pollSources,
     resumePosition: resumePosition,
     peek: peek,
@@ -543,6 +546,8 @@ class PhoneNativePlayer {
   static Completer<Map<String, dynamic>?>? _closed;
 
   static Future<List<VideoSource>> Function(String episodeUrl)? _resolve;
+  static Future<List<VideoSource>?> Function(String episodeUrl)?
+  _resolveDownloaded;
   static PhoneSourcesPoll? _pollSources;
   static List<Episode> _episodes = const [];
   static String _sourceId = '';
@@ -635,6 +640,8 @@ class PhoneNativePlayer {
     required ResumeStore resume,
     required Future<List<VideoSource>> Function(String episodeUrl)
     resolveSources,
+    Future<List<VideoSource>?> Function(String episodeUrl)?
+    resolveDownloadedSources,
     PhoneSourcesPoll? pollSources,
     int resumePosition = 0,
     bool peek = false,
@@ -678,6 +685,7 @@ class PhoneNativePlayer {
     _engineSources.clear();
     _mirrorPollScope = null;
     _resolve = resolveSources;
+    _resolveDownloaded = resolveDownloadedSources;
     _pollSources = pollSources;
     _peek = peek;
     _episodes = episodes;
@@ -1778,7 +1786,10 @@ class PhoneNativePlayer {
     // Keyless auto-download for subtitle-less sources: the native player has
     // no fetch of its own, so mirror the built-in player's silent fallback
     // here at resolve time (URL-handed, like the TV player — no temp files).
-    if (src.subtitles.isEmpty && sl<PlaybackPrefs>().autoDownloadSubtitles) {
+    final scheme = Uri.tryParse(src.url)?.scheme;
+    if ((scheme == 'http' || scheme == 'https') &&
+        src.subtitles.isEmpty &&
+        sl<PlaybackPrefs>().autoDownloadSubtitles) {
       final prefLang = languageByPref(
         sl<PlaybackPrefs>().preferredSubtitleLanguage,
       );
@@ -1949,6 +1960,14 @@ class PhoneNativePlayer {
     bool preferPolled = false,
   }) async {
     final url = tvEpisodeUrl(ep.url, _category);
+    final resolveDownloaded = _resolveDownloaded;
+    if (resolveDownloaded != null) {
+      final session = _sessionId;
+      final category = _category;
+      final downloaded = await resolveDownloaded(ep.url);
+      if (session != _sessionId || category != _category) return const [];
+      if (downloaded != null && downloaded.isNotEmpty) return downloaded;
+    }
     if (preferPolled && _pollSources != null) {
       try {
         final deadline = DateTime.now().add(const Duration(seconds: 3));
