@@ -5,14 +5,17 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:get_it/get_it.dart';
 import 'package:hive/hive.dart';
 import 'package:watch_app/core/app_mode.dart';
+import 'package:watch_app/core/mode/content_mode.dart';
+import 'package:watch_app/features/onboarding/onboarding_pages.dart';
 import 'package:watch_app/core/state/active_source_cubit.dart';
 import 'package:watch_app/features/onboarding/onboarding_screen.dart';
 
 // Onboarding no longer downloads or installs anything — the app ships with
 // zero sources, and this screen's job is just to explain that and point the
-// user at Providers. It's now three swiped pages (brand → how sources work →
-// the hand-off); "Add sources now" and "I'll do it later" only render on the
-// last page, which the tests below jump to directly via the PageView's own
+// user at Providers. Pages: brand → (account, only when sign-in exists) →
+// look → interests → hand-off. With no AuthCubit registered here the account
+// page is skipped, so the hand-off is page 3; "Add sources now" and
+// "I'll do it later" only render on the last page, which the tests below jump to directly via the PageView's own
 // controller (no drag simulation needed — PageController is public API).
 //
 // "Add sources now" is never tapped here — it pushes ProvidersHubScreen,
@@ -36,9 +39,7 @@ void main() {
   });
 
   testWidgets('opens on the brand page, no old install copy', (tester) async {
-    await tester.pumpWidget(
-      MaterialApp(home: OnboardingScreen(onDone: () {})),
-    );
+    await tester.pumpWidget(MaterialApp(home: OnboardingScreen(onDone: () {})));
     await tester.pump();
 
     // First page is the brand/positioning page, not the hand-off buttons.
@@ -57,17 +58,55 @@ void main() {
   testWidgets("last page renders Add sources now + I'll do it later", (
     tester,
   ) async {
-    await tester.pumpWidget(
-      MaterialApp(home: OnboardingScreen(onDone: () {})),
-    );
+    await tester.pumpWidget(MaterialApp(home: OnboardingScreen(onDone: () {})));
     await tester.pump();
 
     final PageView pageView = tester.widget(find.byType(PageView));
-    pageView.controller!.jumpToPage(2);
-    await tester.pumpAndSettle();
+    pageView.controller!.jumpToPage(3);
+    await tester.pump(const Duration(seconds: 2));
 
     expect(find.text('Add sources now'), findsOneWidget);
     expect(find.text("I'll do it later"), findsOneWidget);
+  });
+
+  testWidgets('a failed save of the done flag never traps the user', (
+    tester,
+  ) async {
+    // No Hive box is open here, so saving the flag throws.
+    var done = false;
+    await tester.pumpWidget(
+      MaterialApp(home: OnboardingScreen(onDone: () => done = true)),
+    );
+    await tester.pump();
+    final PageView pageView = tester.widget(find.byType(PageView));
+    pageView.controller!.jumpToPage(3);
+    await tester.pump(const Duration(seconds: 2));
+
+    await tester.tap(find.text("I'll do it later"));
+    await tester.pump();
+    expect(done, isTrue);
+  });
+
+  testWidgets('interests page picks one kind', (tester) async {
+    var picked = ContentMode.anime;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: StatefulBuilder(
+          builder: (_, set) => Scaffold(
+            body: OnbInterestsPage(
+              active: true,
+              selected: picked,
+              onSelect: (m) => set(() => picked = m),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(seconds: 2));
+
+    await tester.tap(find.text('Manga'));
+    await tester.pump();
+    expect(picked, ContentMode.manga);
   });
 
   group('marks onboarded (Hive-backed)', () {
@@ -94,8 +133,8 @@ void main() {
       await tester.pump();
 
       final PageView pageView = tester.widget(find.byType(PageView));
-      pageView.controller!.jumpToPage(2);
-      await tester.pumpAndSettle();
+      pageView.controller!.jumpToPage(3);
+      await tester.pump(const Duration(seconds: 2));
 
       expect(isOnboarded(), isFalse);
       // runAsync, not a bare tap + pumps: `_later()` awaits a REAL Hive disk

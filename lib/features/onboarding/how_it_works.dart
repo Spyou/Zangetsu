@@ -4,6 +4,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/ui/settings_widgets.dart';
 import '../../l10n/l10n.dart';
+import 'onboarding_screen.dart';
 
 /// Beginner-friendly "how the app works" content — a few one-line tips plus a
 /// short FAQ. Reused by the onboarding "you're all set" step AND the
@@ -154,6 +155,27 @@ class HowItWorksScreen extends StatelessWidget {
   Widget build(BuildContext context) => Scaffold(
     backgroundColor: AppColors.bg,
     appBar: settingsAppBar(context.l10n.howItWorks),
-    body: const SafeArea(child: HowItWorksView()),
+    body: SafeArea(
+      child: Column(
+        children: [
+          const Expanded(child: HowItWorksView()),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+            child: OutlinedButton.icon(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (ctx) => OnboardingScreen(
+                    replay: true,
+                    onDone: () => Navigator.of(ctx).pop(),
+                  ),
+                ),
+              ),
+              icon: const Icon(Icons.replay_rounded),
+              label: const Text('Replay onboarding'),
+            ),
+          ),
+        ],
+      ),
+    ),
   );
 }
