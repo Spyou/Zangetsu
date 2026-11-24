@@ -211,6 +211,7 @@ class PhonePlayerActivity : Activity() {
     private lateinit var dblRight: TextView
 
     private var lastPresenceAt = 0L
+    private var lastProgressAt = 0L
     private val ticker = object : Runnable {
         override fun run() {
             syncProgress()
@@ -220,6 +221,12 @@ class PhonePlayerActivity : Activity() {
             if (now - lastPresenceAt >= 10_000L) {
                 lastPresenceAt = now
                 if (player?.isPlaying == true) sendDiscordPresence()
+            }
+            // Keeps Continue Watching and the finish-line check moving during
+            // playback, so a killed app loses seconds, not the whole episode.
+            if (now - lastProgressAt >= 5_000L) {
+                lastProgressAt = now
+                if (player?.isPlaying == true) sendProgress(periodic = true)
             }
             if (!scrubbing && ::seekPreview.isInitialized) {
                 player?.let { seekPreview.warm(it.currentPosition, it.duration) }
@@ -831,6 +838,9 @@ class PhonePlayerActivity : Activity() {
             }
 
             override fun onPlaybackStateChanged(state: Int) {
+                // Natural end: report it so the episode counts as watched even
+                // when the stream never told us its length.
+                if (state == Player.STATE_ENDED) sendProgress()
                 syncPlayIcon()
                 sendDiscordPresence()
                 updateKeepScreenOn()
@@ -2852,15 +2862,20 @@ class PhonePlayerActivity : Activity() {
         )
     }
 
-    private fun sendProgress() {
+    /** [periodic] saves are frequent, so Dart keeps them off the cloud. */
+    private fun sendProgress(periodic: Boolean = false) {
         val p = player ?: return
-        if (!playbackStarted || p.duration <= 0) return
+        // Not gated on duration: some streams never report one, and resume
+        // still has to work for them.
+        if (!playbackStarted) return
         PhonePlayerBridge.channel?.invokeMethod(
             "saveProgress",
             mapOf(
                 "index" to loadedEpisodeIndex,
                 "positionMs" to p.currentPosition.coerceAtLeast(0L),
                 "durationMs" to p.duration.coerceAtLeast(0L),
+                "ended" to (p.playbackState == Player.STATE_ENDED),
+                "periodic" to periodic,
             ),
         )
     }
@@ -3970,6 +3985,7 @@ class PhonePlayerActivity : Activity() {
                 PhonePlayerIntent.RESULT_POSITION to positionMs,
                 PhonePlayerIntent.RESULT_DURATION to durationMs,
                 "engineFallback" to engineFallbackRequested,
+                "ended" to (player?.playbackState == Player.STATE_ENDED),
                 "url" to currentUrl,
                 PhonePlayerIntent.RESULT_EP_INDEX to loadedEpisodeIndex,
                 PhonePlayerIntent.RESULT_PLAYBACK_ERROR to playbackError,

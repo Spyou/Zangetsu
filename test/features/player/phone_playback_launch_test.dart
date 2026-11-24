@@ -325,7 +325,10 @@ void main() {
 
     test('portrait video margins are opt-in for the native player', () {
       expect(args()['portraitVideoEdgeToEdge'], isFalse);
-      expect(args(portraitVideoEdgeToEdge: true)['portraitVideoEdgeToEdge'], isTrue);
+      expect(
+        args(portraitVideoEdgeToEdge: true)['portraitVideoEdgeToEdge'],
+        isTrue,
+      );
     });
 
     test('carries the subtitle position for the native player', () {
@@ -551,35 +554,42 @@ void main() {
     });
   });
 
-  group('phoneShouldScrobbleOnFirstFrame', () {
-    test('only scrobbles the active non-peek start episode once', () {
-      expect(
-        phoneShouldScrobbleOnFirstFrame(
-          playerOpen: true,
-          alreadyScrobbled: false,
-          peek: false,
-          episodeIndex: 2,
-          startIndex: 2,
-        ),
-        isTrue,
-      );
-      for (final values in <({bool open, bool done, bool peek, int index})>[
-        (open: false, done: false, peek: false, index: 2),
-        (open: true, done: true, peek: false, index: 2),
-        (open: true, done: false, peek: true, index: 2),
-        (open: true, done: false, peek: false, index: 3),
-      ]) {
-        expect(
-          phoneShouldScrobbleOnFirstFrame(
-            playerOpen: values.open,
-            alreadyScrobbled: values.done,
-            peek: values.peek,
-            episodeIndex: values.index,
-            startIndex: 2,
-          ),
-          isFalse,
-        );
-      }
+  group('phoneShouldScrobbleOnProgress', () {
+    bool should({
+      bool open = true,
+      bool peek = false,
+      bool done = false,
+      int pos = 0,
+      int dur = 1000,
+      bool ended = false,
+    }) => phoneShouldScrobbleOnProgress(
+      playerOpen: open,
+      peek: peek,
+      alreadyScrobbled: done,
+      positionMs: pos,
+      durationMs: dur,
+      ended: ended,
+    );
+
+    test('opening and closing straight away never counts', () {
+      expect(should(pos: 0), isFalse);
+      expect(should(pos: 5), isFalse);
+      expect(should(pos: 500), isFalse);
+    });
+
+    test('counts once past 92% or when the stream ends', () {
+      expect(should(pos: 919), isFalse);
+      expect(should(pos: 920), isTrue);
+      expect(should(pos: 300, ended: true), isTrue);
+      // No length reported: only a natural end counts.
+      expect(should(pos: 900, dur: 0), isFalse);
+      expect(should(pos: 900, dur: 0, ended: true), isTrue);
+    });
+
+    test('once per episode, and never while closed or peeking', () {
+      expect(should(pos: 990, done: true), isFalse);
+      expect(should(pos: 990, open: false), isFalse);
+      expect(should(pos: 990, peek: true), isFalse);
     });
   });
 
@@ -791,36 +801,38 @@ void main() {
       expect(called, isFalse);
     });
 
-    test('skipped when the preference is off or nothing identifies the title',
-        () async {
-      var called = false;
-      Future<List<({String lang, String url})>> noFetch() async {
-        called = true;
-        return [];
-      }
+    test(
+      'skipped when the preference is off or nothing identifies the title',
+      () async {
+        var called = false;
+        Future<List<({String lang, String url})>> noFetch() async {
+          called = true;
+          return [];
+        }
 
-      expect(
-        await autoDownloadedPhoneSubtitle(
-          existing: const [],
-          autoDownload: false,
-          hasIdentifiers: true,
-          iso2: 'eng',
-          fetch: noFetch,
-        ),
-        isNull,
-      );
-      expect(
-        await autoDownloadedPhoneSubtitle(
-          existing: const [],
-          autoDownload: true,
-          hasIdentifiers: false,
-          iso2: 'eng',
-          fetch: noFetch,
-        ),
-        isNull,
-      );
-      expect(called, isFalse);
-    });
+        expect(
+          await autoDownloadedPhoneSubtitle(
+            existing: const [],
+            autoDownload: false,
+            hasIdentifiers: true,
+            iso2: 'eng',
+            fetch: noFetch,
+          ),
+          isNull,
+        );
+        expect(
+          await autoDownloadedPhoneSubtitle(
+            existing: const [],
+            autoDownload: true,
+            hasIdentifiers: false,
+            iso2: 'eng',
+            fetch: noFetch,
+          ),
+          isNull,
+        );
+        expect(called, isFalse);
+      },
+    );
 
     test('maps the first result to a default track', () async {
       final got = await autoDownloadedPhoneSubtitle(

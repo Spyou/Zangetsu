@@ -34,6 +34,7 @@ import '../../core/playback/subtitle_encode_skew.dart';
 import '../../core/playback/subtitle_font_stage.dart';
 import '../../core/playback/tv_track_helpers.dart';
 import '../../core/playback/watch_history.dart';
+import '../../core/playback/tv_playback_helpers.dart' show shouldScrobble;
 import '../../core/theme/app_colors.dart';
 import '../../core/tracker/tracker_hub.dart';
 import '../../core/tracker/simkl_playback_session.dart';
@@ -401,13 +402,26 @@ Future<void> phoneScrobbleOnLaunch({
   );
 }
 
-bool phoneShouldScrobbleOnFirstFrame({
+/// Whether the episode now counts as watched on AniList / MAL: the same rule
+/// the MPV and TV players use. Past 92%, or the stream ended on its own (covers
+/// streams that never report a length). Once per episode, never while peeking.
+bool phoneShouldScrobbleOnProgress({
   required bool playerOpen,
-  required bool alreadyScrobbled,
   required bool peek,
-  required int episodeIndex,
-  required int startIndex,
-}) => playerOpen && !alreadyScrobbled && !peek && episodeIndex == startIndex;
+  required bool alreadyScrobbled,
+  required int positionMs,
+  required int durationMs,
+  required bool ended,
+}) =>
+    playerOpen &&
+    !peek &&
+    !alreadyScrobbled &&
+    (ended ||
+        shouldScrobble(
+          positionMs: positionMs,
+          durationMs: durationMs,
+          alreadyScrobbled: false,
+        ));
 
 typedef PhoneSourcesPoll =
     Future<({List<VideoSource> sources, bool done})> Function(
@@ -585,7 +599,8 @@ class PhoneNativePlayer {
   static int _startIndex = 0;
   static int _resumeOverride = 0;
   static bool _seedUsed = false;
-  static bool _scrobbled = false;
+  static final Set<int> _scrobbledEpisodes = {};
+  static bool _markedWatching = false;
   static SimklPlaybackSession? _simklPlayback;
   static int _simklIndex = -1;
   static bool _isMovie = false;
@@ -726,7 +741,8 @@ class PhoneNativePlayer {
     _startIndex = startIndex;
     _resumeOverride = resumePosition;
     _seedUsed = false;
-    _scrobbled = false;
+    _scrobbledEpisodes.clear();
+    _markedWatching = false;
     _simklPlayback?.stop();
     _simklPlayback = null;
     _simklIndex = -1;
@@ -1192,28 +1208,28 @@ class PhoneNativePlayer {
             unawaited(_pollLateMirrors(scope));
           }
         }
-        if (!phoneShouldScrobbleOnFirstFrame(
-          playerOpen: _closed?.isCompleted == false,
-          alreadyScrobbled: _scrobbled,
-          peek: _peek,
-          episodeIndex: index,
-          startIndex: _startIndex,
-        )) {
-          return null;
+        // Like the MPV player: starting only marks the title as "watching".
+        // The episode itself counts as watched later, past 92% (see
+        // _saveProgress), so opening and closing straight away changes nothing.
+        if (!_markedWatching &&
+            !_peek &&
+            _closed?.isCompleted == false &&
+            sl.isRegistered<TrackerHub>() &&
+            (_malId != null ||
+                (_scrobbleTitle?.isNotEmpty ?? false) ||
+                _tmdbId != null ||
+                (_imdbId?.isNotEmpty ?? false))) {
+          _markedWatching = true;
+          unawaited(
+            sl<TrackerHub>().markWatching(
+              malId: _malId,
+              title: _scrobbleTitle,
+              tmdbId: _tmdbId,
+              tmdbIsTv: _tmdbIsTv,
+              imdbId: _imdbId,
+            ),
+          );
         }
-        _scrobbled = true;
-        unawaited(
-          phoneScrobbleOnLaunch(
-            episode: _episodes[index],
-            episodes: _episodes,
-            malId: _malId,
-            scrobbleTitle: _scrobbleTitle,
-            tmdbId: _tmdbId,
-            tmdbIsTv: _tmdbIsTv,
-            imdbId: _imdbId,
-            simklLive: true,
-          ),
-        );
         return null;
       case 'watchDownloadOptions':
       case 'watchDownloadChoose':
@@ -1636,7 +1652,7 @@ class PhoneNativePlayer {
         return null;
       case 'saveProgress':
         final args = _callArgs(call);
-        await _saveProgress(args, flush: true);
+        await _saveProgress(args, flush: args?['periodic'] != true);
         _preheatNearEnd(args);
         return null;
       case 'playerClosed':
@@ -2060,6 +2076,30 @@ class PhoneNativePlayer {
       Duration(milliseconds: positionMs),
       Duration(milliseconds: durationMs),
     );
+    if (phoneShouldScrobbleOnProgress(
+      playerOpen: _closed?.isCompleted == false,
+      peek: _peek,
+      alreadyScrobbled: _scrobbledEpisodes.contains(i),
+      positionMs: positionMs,
+      durationMs: durationMs,
+      ended: args['ended'] == true,
+    )) {
+      _scrobbledEpisodes.add(i);
+      unawaited(
+        phoneScrobbleOnLaunch(
+          episode: ep,
+          episodes: _episodes,
+          malId: _malId,
+          scrobbleTitle: _scrobbleTitle,
+          tmdbId: _tmdbId,
+          tmdbIsTv: _tmdbIsTv,
+          imdbId: _imdbId,
+          // Simkl follows the live session already; a second write would
+          // count the episode twice.
+          simklLive: _simklPlayback != null && durationMs > 0,
+        ),
+      );
+    }
     final history = _history;
     if (history != null && _showTitle.isNotEmpty) {
       unawaited(
