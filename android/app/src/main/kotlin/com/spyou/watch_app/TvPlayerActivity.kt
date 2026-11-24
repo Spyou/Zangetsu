@@ -483,6 +483,35 @@ class TvPlayerActivity : Activity() {
 
     /** Loads a resolved stream into the current player and starts it. Reused for
      *  the first episode and every switch. */
+    // Live download speed on the startup loader: the app's received-bytes
+    // counter, sampled once a second (same approach as the phone player).
+    private var lastRxBytes = -1L
+    private var lastRxAt = 0L
+    private val speedTick = object : Runnable {
+        override fun run() {
+            val view = startupArtwork.findViewById<TextView>(R.id.loading_speed)
+            if (startupArtwork.visibility == View.VISIBLE) {
+                val rx = android.net.TrafficStats.getUidRxBytes(android.os.Process.myUid())
+                val now = android.os.SystemClock.elapsedRealtime()
+                if (rx != android.net.TrafficStats.UNSUPPORTED.toLong() && lastRxBytes >= 0 && now > lastRxAt) {
+                    val perSec = (rx - lastRxBytes) * 1000.0 / (now - lastRxAt)
+                    if (perSec >= 1024) {
+                        view.text = if (perSec >= 1024 * 1024) "%.1f MB/s".format(perSec / (1024 * 1024))
+                        else "${(perSec / 1024).toInt()} KB/s"
+                        view.visibility = View.VISIBLE
+                    } else {
+                        view.visibility = View.GONE
+                    }
+                }
+                lastRxBytes = rx
+                lastRxAt = now
+                handler.postDelayed(this, 1000)
+            } else {
+                view.visibility = View.GONE
+            }
+        }
+    }
+
     private fun dismissStartupArtwork() {
         if (startupArtwork.visibility != View.VISIBLE) return
         startupArtwork.visibility = View.GONE
@@ -501,8 +530,8 @@ class TvPlayerActivity : Activity() {
         root.addView(startupArtwork, root.indexOfChild(loading))
         val title = startupArtwork.findViewById<TextView>(R.id.loading_title)
         title.text = intent.getStringExtra(EXTRA_TITLE)
-        startupArtwork.findViewById<TextView>(R.id.loading_episode).text =
-            intent.getStringExtra(EXTRA_EP_LABEL)
+        // Logo / show name + status only; the episode line stays off the loader.
+        startupArtwork.findViewById<TextView>(R.id.loading_episode).visibility = View.GONE
         startupArtwork.findViewById<TextView>(R.id.loading_status)
             .setText(R.string.phone_player_status_starting)
         val headers = PhonePlayerIntent.headersFromArray(
@@ -514,6 +543,7 @@ class TvPlayerActivity : Activity() {
         val pulse = startupArtwork.findViewById<PlaybackTitlePulse>(R.id.loading_title_pulse)
         val loadingLogoUrl = intent.getStringExtra("loadingLogo")
         pulse.startPulse()
+        handler.postDelayed(speedTick, 1000)
         logo.loadPlaybackArtwork(loadingLogoUrl) {
             logo.contentDescription = title.text
             logo.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
