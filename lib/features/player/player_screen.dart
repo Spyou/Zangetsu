@@ -3392,6 +3392,19 @@ class _PlayerScreenState extends State<PlayerScreen> {
       ambientFrameStream: _ambientFrames.stream,
       ambientEnabled: sl<PlaybackPrefs>().ambientPlayer,
       positionStream: _c.player.stream.position,
+      previewSource: () {
+        final uri = _c.previewUri;
+        if (uri == null) return null;
+        if (_c.isLocalMedia) {
+          return (uri: uri, headers: _c.previewHeaders, local: true);
+        }
+        final online = Platform.isAndroid &&
+            !sl<AppMode>().isTv &&
+            (uri.startsWith('http'));
+        return online
+            ? (uri: uri, headers: _c.previewHeaders, local: false)
+            : null;
+      },
       durationStream: _c.player.stream.duration,
       playingStream: _c.player.stream.playing,
       initialPlaying: _c.player.state.playing,

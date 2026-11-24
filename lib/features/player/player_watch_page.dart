@@ -16,6 +16,7 @@ import '../detail/episode_filter.dart';
 import '../../l10n/l10n.dart';
 import 'episode_player_route.dart';
 import 'in_app_mini_player.dart';
+import 'seek_preview.dart';
 import 'watch_page_info.dart';
 import 'watch_page_motion.dart';
 
@@ -58,6 +59,7 @@ class PlayerWatchPage extends StatefulWidget {
     this.coverUrl,
     required this.onTogglePlay,
     required this.onSeek,
+    this.previewSource,
     this.onSeekBy,
     this.doubleTapSeconds = 10,
     this.onHoldSpeedChanged,
@@ -140,6 +142,11 @@ class PlayerWatchPage extends StatefulWidget {
 
   final VoidCallback onTogglePlay;
   final ValueChanged<Duration> onSeek;
+
+  /// Where scrub-preview frames come from; null when this source can't be
+  /// previewed (TV, iOS, no url).
+  final ({String uri, Map<String, String>? headers, bool local})? Function()?
+  previewSource;
   final ValueChanged<Duration>? onSeekBy;
   final int doubleTapSeconds;
   final ValueChanged<bool>? onHoldSpeedChanged;
@@ -204,6 +211,25 @@ class _PlayerWatchPageState extends State<PlayerWatchPage>
   late bool _playing = widget.initialPlaying;
   StreamSubscription<bool>? _playingSub;
   Timer? _hideTimer;
+
+  // Held locally while the finger is down, so the thumb follows it instead of
+  // snapping back to the 4Hz sampled position (that was the lag), and so we
+  // seek once on release rather than flooding mpv on every move.
+  double? _dragMs;
+  SeekPreview? _preview;
+
+  void _startPreview() {
+    final src = widget.previewSource?.call();
+    if (src == null) return;
+    if (_preview?.uri != src.uri) {
+      _preview?.dispose();
+      _preview = SeekPreview(
+        uri: src.uri,
+        headers: src.headers,
+        local: src.local,
+      );
+    }
+  }
 
   late final ScrollController _scroll;
   final ValueNotifier<double> _ambientOpacity = ValueNotifier(1);
@@ -297,6 +323,7 @@ class _PlayerWatchPageState extends State<PlayerWatchPage>
     _playingSub?.cancel();
     _frameSub?.cancel();
     _ambientSub?.cancel();
+    _preview?.dispose();
     _scroll.dispose();
     _ambientOpacity.dispose();
     _rotationPull.dispose();
@@ -1140,46 +1167,92 @@ class _PlayerWatchPageState extends State<PlayerWatchPage>
                   final maxMs = total.inMilliseconds > 0
                       ? total.inMilliseconds.toDouble()
                       : 1.0;
-                  final value = pos.inMilliseconds.toDouble().clamp(0.0, maxMs);
+                  final value = (_dragMs ?? pos.inMilliseconds.toDouble())
+                      .clamp(0.0, maxMs);
+                  final shown = Duration(milliseconds: value.round());
                   return Padding(
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        SizedBox(
-                          height: 24,
-                          child: SliderTheme(
-                            data: SliderTheme.of(context).copyWith(
-                              activeTrackColor: AppColors.accent,
-                              inactiveTrackColor: Colors.white.withValues(
-                                alpha: 0.35,
+                        Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            SizedBox(
+                              height: 24,
+                              child: SliderTheme(
+                                data: SliderTheme.of(context).copyWith(
+                                  activeTrackColor: AppColors.accent,
+                                  inactiveTrackColor: Colors.white.withValues(
+                                    alpha: 0.35,
+                                  ),
+                                  thumbColor: AppColors.accent,
+                                  thumbShape: const RoundSliderThumbShape(
+                                    enabledThumbRadius: 5,
+                                  ),
+                                  overlayShape: const RoundSliderOverlayShape(
+                                    overlayRadius: 10,
+                                  ),
+                                  trackHeight: 3,
+                                  trackShape:
+                                      const RectangularSliderTrackShape(),
+                                ),
+                                child: Slider(
+                                  padding: EdgeInsets.zero,
+                                  value: value,
+                                  max: maxMs,
+                                  onChangeStart: (v) {
+                                    _startPreview();
+                                    setState(() => _dragMs = v);
+                                    _preview?.request(
+                                      Duration(milliseconds: v.round()),
+                                    );
+                                  },
+                                  onChanged: (v) {
+                                    setState(() => _dragMs = v);
+                                    _preview?.request(
+                                      Duration(milliseconds: v.round()),
+                                    );
+                                  },
+                                  onChangeEnd: (v) {
+                                    widget.onSeek(
+                                      Duration(milliseconds: v.round()),
+                                    );
+                                    setState(() => _dragMs = null);
+                                  },
+                                ),
                               ),
-                              thumbColor: AppColors.accent,
-                              thumbShape: const RoundSliderThumbShape(
-                                enabledThumbRadius: 5,
-                              ),
-                              overlayShape: const RoundSliderOverlayShape(
-                                overlayRadius: 10,
-                              ),
-                              trackHeight: 3,
-                              trackShape: const RectangularSliderTrackShape(),
                             ),
-                            child: Slider(
-                              padding: EdgeInsets.zero,
-                              value: value,
-                              max: maxMs,
-                              onChanged: (v) => widget.onSeek(
-                                Duration(milliseconds: v.round()),
+                            if (_dragMs != null)
+                              Positioned(
+                                left:
+                                    ((value / maxMs) *
+                                                (MediaQuery.sizeOf(
+                                                      context,
+                                                    ).width -
+                                                    32) -
+                                            84)
+                                        .clamp(
+                                          0.0,
+                                          MediaQuery.sizeOf(context).width -
+                                              32 -
+                                              168,
+                                        ),
+                                bottom: 30,
+                                width: 168,
+                                child: _ScrubBubble(
+                                  preview: _preview,
+                                  time: formatWatchTime(shown),
+                                ),
                               ),
-                            ),
-                          ),
+                          ],
                         ),
                         SizedBox(
                           height: 32,
                           child: Row(
                             children: [
                               Text(
-                                '${formatWatchTime(pos)} / ${formatWatchTime(total)}',
+                                '${formatWatchTime(shown)} / ${formatWatchTime(total)}',
                                 style: AppText.caption.copyWith(
                                   color: Colors.white,
                                   fontSize: 13,
@@ -2131,6 +2204,61 @@ class WatchPlayerButton extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Thumbnail + time shown above the thumb while scrubbing in portrait.
+class _ScrubBubble extends StatelessWidget {
+  const _ScrubBubble({required this.preview, required this.time});
+  final SeekPreview? preview;
+  final String time;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = preview;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (p != null)
+          ValueListenableBuilder<Uint8List?>(
+            valueListenable: p.frame,
+            builder: (context, bytes, _) => Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  width: 168,
+                  height: 94,
+                  color: Colors.black,
+                  child: bytes == null
+                      ? const SizedBox.shrink()
+                      : Image.memory(
+                          bytes,
+                          fit: BoxFit.cover,
+                          gaplessPlayback: true,
+                        ),
+                ),
+              ),
+            ),
+          ),
+        DecoratedBox(
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.8),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            child: Text(
+              time,
+              style: AppText.caption.copyWith(
+                color: Colors.white,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
