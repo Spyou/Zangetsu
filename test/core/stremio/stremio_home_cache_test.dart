@@ -3,7 +3,6 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:crypto/crypto.dart';
-import 'package:hive/hive.dart';
 import 'package:watch_app/core/models/home_section.dart';
 import 'package:watch_app/core/models/media_item.dart';
 import 'package:watch_app/core/models/provider_info.dart';
@@ -58,25 +57,27 @@ void main() {
   late DateTime now;
   setUp(() async {
     directory = await Directory.systemTemp.createTemp('stremio-home-cache');
-    Hive.init(directory.path);
     secrets = _Secrets();
     now = DateTime(2026, 11, 17);
   });
   tearDown(() async {
-    await Hive.close();
     await directory.delete(recursive: true);
   });
-  StremioHomeCache cache() =>
-      StremioHomeCache(secrets: secrets, clock: () => now);
+  StremioHomeCache cache() => StremioHomeCache(
+    secrets: secrets,
+    clock: () => now,
+    directory: directory,
+  );
+  List<File> saved() => [
+    for (final e in directory.listSync())
+      if (e is File && e.path.endsWith('.bin')) e,
+  ];
 
   test(
     'restart restores artwork and paging without plaintext URLs on disk',
     () async {
       await cache().write('account/profile/config', [_row]);
-      await Hive.close();
-      final raw = await File(
-        '${directory.path}/${StremioHomeCache.boxName}.hive',
-      ).readAsBytes();
+      final raw = await saved().single.readAsBytes();
       expect(latin1.decode(raw), isNot(contains('private-token')));
       expect(latin1.decode(raw), isNot(contains('Private catalogue')));
       final rows = await cache().read('account/profile/config');
@@ -194,8 +195,7 @@ void main() {
       now = now.add(const Duration(days: 8));
       expect(await cache().read('scope'), isNull);
       now = now.subtract(const Duration(days: 8));
-      final box = Hive.box(StremioHomeCache.boxName);
-      await box.put(box.keys.single, {'data': 'corrupt'});
+      await saved().single.writeAsString('corrupt');
       expect(await cache().read('scope'), isNull);
       secrets.unavailable = true;
       expect(await cache().read('scope'), isNull);
@@ -209,16 +209,15 @@ void main() {
       final store = cache();
       await store.write('scope-a', [_row]);
       await store.write('scope-b', [_row]);
-      final box = Hive.box(StremioHomeCache.boxName);
       final a = sha256.convert(utf8.encode('scope-a')).toString();
       final b = sha256.convert(utf8.encode('scope-b')).toString();
-      await box.put(b, box.get(a));
+      await File('${directory.path}/$a.bin').copy('${directory.path}/$b.bin');
       expect(await store.read('scope-b'), isNull);
       for (var i = 0; i < 12; i++) {
         now = now.add(const Duration(seconds: 1));
         await store.write('scope-$i', [_row]);
       }
-      expect(box.length, lessThanOrEqualTo(8));
+      expect(saved().length, lessThanOrEqualTo(8));
     },
   );
 }

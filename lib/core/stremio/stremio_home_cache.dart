@@ -1,26 +1,42 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:isolate';
 
 import 'package:crypto/crypto.dart';
 import 'package:hive/hive.dart';
+import 'package:path_provider/path_provider.dart';
 
-import '../hive/safe_box.dart';
 import '../models/home_section.dart';
 import '../models/media_item.dart';
 import '../tracker/relay/tracker_relay_crypto.dart';
 import 'stremio_manager.dart';
 
 /// An encrypted last-good preview; fresh catalogue requests always run alongside it.
+///
+/// One small file per scope, read and written with async file IO. It used to
+/// be a Hive box, but Hive reads (and CRC-checks) a whole box on the UI thread
+/// when it opens, and stale overwritten copies pile up until it compacts — the
+/// file grew large enough that opening it froze the screen for over a second
+/// right after picking a profile.
 class StremioHomeCache {
-  StremioHomeCache({StremioSecretStore? secrets, DateTime Function()? clock})
-    : _secrets = secrets ?? const StremioSecureStore(),
-      _clock = clock ?? DateTime.now;
+  StremioHomeCache({
+    StremioSecretStore? secrets,
+    DateTime Function()? clock,
+    Directory? directory,
+  }) : _secrets = secrets ?? const StremioSecureStore(),
+       _clock = clock ?? DateTime.now,
+       _directory = directory;
 
+  /// Name of the old Hive box; only used to delete it.
   static const boxName = 'stremio_home_cache';
+  static const _keep = 8;
   static const _keyName = 'stremio:home-cache:key';
   static const _maxBytes = 2 * 1024 * 1024;
   final StremioSecretStore _secrets;
   final DateTime Function() _clock;
+  final Directory? _directory;
+  Future<void>? _legacy;
   Future<String>? _keyFuture;
   Future<void> _writes = Future.value();
 
@@ -52,16 +68,34 @@ class StremioHomeCache {
     });
   }
 
-  Future<Box> _box() async => Hive.isBoxOpen(boxName)
-      ? Hive.box(boxName)
-      : await openBoxSafely(boxName);
+  Future<Directory>? _folderFuture;
+
+  Future<Directory> _folder() => _folderFuture ??= () async {
+    final base = _directory;
+    if (base != null) return base;
+    final support = await getApplicationSupportDirectory();
+    return Directory('${support.path}/stremio_home_cache');
+  }();
+
+  Future<File> _file(String id) async =>
+      File('${(await _folder()).path}/$id.bin');
+
+  /// The old box is dead weight now; drop it once (a cache, so nothing to save).
+  Future<void> _dropLegacyBox() => _legacy ??= () async {
+    try {
+      if (!Hive.isBoxOpen(boxName)) await Hive.deleteBoxFromDisk(boxName);
+    } catch (_) {
+      // Hive not initialised (tests) or already gone.
+    }
+  }();
 
   Future<List<HomeSection>?> read(String scope) async {
     try {
+      unawaited(_dropLegacyBox());
       final id = _digest(scope);
-      final raw = (await _box()).get(id);
-      if (raw is! Map || raw['data'] is! String) return null;
-      final data = raw['data'] as String;
+      final file = await _file(id);
+      if (!await file.exists()) return null;
+      final data = await file.readAsString();
       if (data.length > _maxBytes * 2) return null;
       final key = await _key();
       final now = _clock().millisecondsSinceEpoch;
@@ -115,26 +149,40 @@ class StremioHomeCache {
 
   Future<void> _write(String scope, List<HomeSection> sections) async {
     try {
+      unawaited(_dropLegacyBox());
       final id = _digest(scope);
+      final file = await _file(id);
       if (sections.isEmpty) {
-        await (await _box()).delete(id);
+        if (await file.exists()) await file.delete();
         return;
       }
       final at = _clock().millisecondsSinceEpoch;
       final key = await _key();
       final data = await Isolate.run(() => _encode(sections, id, at, key));
       if (data == null) return;
-      final box = await _box();
-      await box.put(id, {'at': at, 'data': data});
-      final keys = box.keys.toList()
-        ..sort(
-          (a, b) => ((box.get(a)?['at'] as num?) ?? 0).compareTo(
-            (box.get(b)?['at'] as num?) ?? 0,
-          ),
-        );
-      if (keys.length > 8) await box.deleteAll(keys.take(keys.length - 8));
+      await (await _folder()).create(recursive: true);
+      // Write beside, then rename: a crash mid-write can't leave a torn file.
+      final tmp = File('${file.path}.tmp');
+      await tmp.writeAsString(data, flush: true);
+      await tmp.rename(file.path);
+      await _evictOldest();
     } catch (_) {
       // A cache write must never block browsing or change saved user data.
+    }
+  }
+
+  /// Keep only the newest [_keep] previews.
+  Future<void> _evictOldest() async {
+    final files = [
+      for (final entry in await (await _folder()).list().toList())
+        if (entry is File && entry.path.endsWith('.bin')) entry,
+    ];
+    if (files.length <= _keep) return;
+    final stamped = [
+      for (final f in files) (file: f, at: (await f.stat()).modified),
+    ]..sort((a, b) => a.at.compareTo(b.at));
+    for (final old in stamped.take(stamped.length - _keep)) {
+      await old.file.delete();
     }
   }
 
