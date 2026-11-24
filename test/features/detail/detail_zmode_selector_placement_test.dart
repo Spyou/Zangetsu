@@ -535,6 +535,50 @@ void main() {
     await tester.pump(); // MatchLine's own build-time resolve, if any
   }
 
+  testWidgets('compact Sub / Dub sits in the phone episode header', (
+    tester,
+  ) async {
+    await pumpDetail(
+      tester,
+      _plainItem,
+      _plainDetail.copyWith(
+        subCount: 51,
+        dubCount: 1,
+        episodes: [
+          for (var i = 1; i <= 51; i++)
+            Episode(id: 'e$i', title: '', url: '/e$i', number: i.toDouble()),
+        ],
+      ),
+    );
+    tester.view.physicalSize = const Size(320, 1200);
+    await tester.pump();
+
+    final header = find.text('Episodes').last;
+    final picker = find.byType(SegmentedButton<String>);
+    expect(
+      tester.getCenter(picker).dx,
+      greaterThan(tester.getRect(header).right),
+    );
+    expect(
+      tester.getCenter(picker).dy,
+      closeTo(tester.getCenter(header).dy, 1),
+    );
+    expect(
+      tester.widget<SegmentedButton<String>>(picker).showSelectedIcon,
+      isFalse,
+    );
+    final firstRange = find.ancestor(
+      of: find.text('1–50'),
+      matching: find.byType(Material),
+    ).first;
+    expect(
+      tester.widget<Material>(firstRange).borderRadius,
+      BorderRadius.circular(999),
+    );
+    expect(tester.getSize(firstRange).height, 32);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('movie detail keeps a list row without episode wording', (
     tester,
   ) async {

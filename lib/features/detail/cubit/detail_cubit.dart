@@ -368,6 +368,9 @@ class DetailCubit extends Cubit<DetailState> {
   /// skip it. A match change makes that mandatory — the episode list is new,
   /// so its per-episode metadata has to be fetched again.
   Future<void> refresh({bool dropCache = true}) async {
+    if (isClosed) return;
+    final revision = ++_categoryRevision;
+    bool stale() => isClosed || revision != _categoryRevision;
     final sw = Stopwatch()..start();
     _log('refresh start dropCache=$dropCache url=$_url');
     // Pull-to-refresh wants genuinely fresh data, so it drops the cache. A
@@ -375,6 +378,7 @@ class DetailCubit extends Cubit<DetailState> {
     // cache, and clearing it throws away every other source's responses too,
     // making the switch (and everything after it) slower for no gain.
     if (dropCache) await _repo.clearHttpCache();
+    if (stale()) return;
     final previous = state.detail;
     try {
       final fresh = await _fetchDetail(
@@ -383,7 +387,7 @@ class DetailCubit extends Cubit<DetailState> {
         // PREVIOUS source's episodes sit on screen, looking like this
         // source's, until the new list lands.
         onPartial: (partial) {
-          if (isClosed || state.status != DetailStatus.success) return;
+          if (stale() || state.status != DetailStatus.success) return;
           _log(
             'refresh partial title="${partial.title}" eps=${partial.episodes.length} '
             '${sw.elapsedMilliseconds}ms',
@@ -397,7 +401,7 @@ class DetailCubit extends Cubit<DetailState> {
           ));
         },
       );
-      if (isClosed) return;
+      if (stale()) return;
       // Same novel-latch fallback as load() — a swallowed fetch failure
       // surfaces as an empty detail, not an exception.
       final latched = fresh.title.isEmpty ? NovelCloudflare.pendingUrl : null;
@@ -429,7 +433,7 @@ class DetailCubit extends Cubit<DetailState> {
       );
       _enrich(merged, force: true);
     } on CloudflareRequiredException catch (e) {
-      if (isClosed) return;
+      if (stale()) return;
       _log('refresh cloudflare required ${e.url} ${sw.elapsedMilliseconds}ms', level: 'W');
       emit(state.copyWith(cloudflareUrl: e.url, episodesLoading: false));
     } catch (e, st) {
@@ -438,7 +442,7 @@ class DetailCubit extends Cubit<DetailState> {
       // Keep what's on screen — a failed pull shouldn't blank the page. The
       // skeleton must still come down though: onPartial may have armed it,
       // and nothing else would ever turn it off.
-      if (isClosed) return;
+      if (stale()) return;
       if (state.status != DetailStatus.error) {
         emit(state.copyWith(episodesLoading: false));
         return;
@@ -448,7 +452,7 @@ class DetailCubit extends Cubit<DetailState> {
       // may no longer be the reason.
       final limited = aniListRateLimitOf(e);
       final offline = limited == null && await isOfflineErrorConfirmed(e);
-      if (isClosed) return;
+      if (stale()) return;
       emit(state.copyWith(
         error: limited != null
             ? 'rate_limited:${limited.seconds}'
@@ -689,31 +693,35 @@ class DetailCubit extends Cubit<DetailState> {
     }
   }
 
-  /// Sub/Dub re-fetch. No-op when the category is unchanged. Otherwise
-  /// flips to loading for the new category and re-fetches, resetting the
-  /// selected season to 1 (the new audio track may have a different set
-  /// of seasons). Matches the original `onAudioChanged` behavior.
-  Future<void> setCategory(String cat) async {
-    if (cat == state.category) return;
-    emit(state.copyWith(category: cat, status: DetailStatus.loading));
+  bool _switchingCategory = false;
+  int _categoryRevision = 0;
+
+  /// Keep the current list usable until the other version is ready.
+  Future<bool> setCategory(String cat) async {
+    if (isClosed ||
+        _switchingCategory ||
+        state.status != DetailStatus.success ||
+        state.episodesLoading ||
+        cat == state.category) {
+      return true;
+    }
+    _switchingCategory = true;
+    final revision = ++_categoryRevision;
+    bool stale() => isClosed || revision != _categoryRevision;
     try {
       final detail = await _fetchDetail(category: cat);
-      emit(
-        state.copyWith(
-          status: DetailStatus.success,
-          detail: detail,
-          selectedSeason: 1,
-        ),
-      );
-      // Netflix-style: remember THIS title's Sub/Dub choice so reopening it
-      // restores the last-picked category. Only after a successful switch.
+      if (stale()) return true;
       await _prefs.setCategory(_prefsSourceId, _url, cat);
-    } catch (e) {
-      final offline = await isOfflineErrorConfirmed(e);
-      emit(state.copyWith(
-        status: DetailStatus.error,
-        error: offline ? 'offline' : 'load_failed',
-      ));
+      if (stale()) return true;
+      emit(state.copyWith(category: cat, detail: detail, selectedSeason: 1));
+      return true;
+    } catch (e, st) {
+      if (stale()) return true;
+      _log('episode version switch failed: $e', level: 'W');
+      AppLogger.instance.logError(e, st);
+      return false;
+    } finally {
+      _switchingCategory = false;
     }
   }
 
@@ -789,12 +797,8 @@ List<Episode> episodesInSeason(List<Episode> eps, int season) => [
     if ((seasonOf(e) ?? 1) == season) e,
 ];
 
-/// Whether to show the Sub/Dub toggle:
-/// - Only for anime (ProviderType.anime)
-/// - And at least one of subCount / dubCount is non-zero / non-null
-bool showSubDubFor(MediaDetail detail) {
-  if (detail.type != ProviderType.anime) return false;
-  final hasSub = (detail.subCount ?? 0) > 0;
-  final hasDub = (detail.dubCount ?? 0) > 0;
-  return hasSub || hasDub;
-}
+/// Whether this anime offers both episode versions.
+bool showSubDubFor(MediaDetail detail) =>
+    detail.type == ProviderType.anime &&
+    (detail.subCount ?? 0) > 0 &&
+    (detail.dubCount ?? 0) > 0;

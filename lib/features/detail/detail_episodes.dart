@@ -3,12 +3,13 @@ part of 'detail_screen.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Episodes tab — season selector (multi-season) + rich episode rows. PRESERVES
-// season filtering and _openPlayer. Sub/Dub selection now lives in the player.
+// season filtering and _openPlayer.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _EpisodesTab extends StatefulWidget {
   const _EpisodesTab({
     required this.loading,
+    this.versionPicker,
     required this.eps,
     required this.seasonEps,
     required this.fillerEps,
@@ -55,6 +56,7 @@ class _EpisodesTab extends StatefulWidget {
   /// rather than the "no episodes" empty state (see
   /// [DetailState.episodesLoading]).
   final bool loading;
+  final Widget? versionPicker;
 
   final List<Episode> eps;
   final List<Episode> seasonEps;
@@ -332,6 +334,7 @@ class _EpisodesTabState extends State<_EpisodesTab> {
         SliverToBoxAdapter(
           child: _EpisodesHeader(
             movieLabel: widget.filmMeta,
+            versionPicker: widget.versionPicker,
             hasMultipleSeasons:
                 widget.hasMultipleSeasons && widget.filmMeta == null,
             seasons: widget.seasonSet.toList()..sort(),
@@ -409,6 +412,7 @@ class _EpisodesTabState extends State<_EpisodesTab> {
           SliverToBoxAdapter(
             child: _RangeChips(
               count: _rangeCount,
+              episodeRanges: true,
               selected: rangeIndex,
               labelFor: (i) =>
                   episodeRangeLabel(displayEps, i, reversed: _reverseList),
@@ -741,13 +745,13 @@ class _EpisodesTabState extends State<_EpisodesTab> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Episodes header — Netflix-style season dropdown (multi-season) that opens a
-// dark bottom sheet to pick a season, or a plain "Episodes" label otherwise.
+// Episodes header with a season picker for multi-season titles.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _EpisodesHeader extends StatelessWidget {
   const _EpisodesHeader({
     this.movieLabel,
+    this.versionPicker,
     required this.hasMultipleSeasons,
     required this.seasons,
     required this.currentSeason,
@@ -763,6 +767,7 @@ class _EpisodesHeader extends StatelessWidget {
   });
 
   final String? movieLabel;
+  final Widget? versionPicker;
   final bool hasMultipleSeasons;
   final List<int> seasons;
   final int currentSeason;
@@ -842,9 +847,13 @@ class _EpisodesHeader extends StatelessWidget {
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Text(
-                                context.l10n.seasonNumber(currentSeason),
-                                style: AppText.headline,
+                              Flexible(
+                                child: Text(
+                                  context.l10n.seasonNumber(currentSeason),
+                                  style: AppText.headline,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                               ),
                               const SizedBox(width: 6),
                               const Icon(
@@ -866,7 +875,12 @@ class _EpisodesHeader extends StatelessWidget {
                     ),
             ),
           ),
-          // Right: jump-to-episode (long seasons) · list/grid toggle · ⓘ info.
+          if (versionPicker case final picker?) ...[
+            const SizedBox(width: 8),
+            picker,
+            const SizedBox(width: 8),
+          ],
+          // Right: episode actions.
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -1079,17 +1093,19 @@ class _RangeChips extends StatelessWidget {
     required this.selected,
     required this.labelFor,
     required this.onSelect,
+    this.episodeRanges = false,
   });
 
   final int count;
   final int selected;
   final String Function(int) labelFor;
   final ValueChanged<int> onSelect;
+  final bool episodeRanges;
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 42,
+      height: episodeRanges ? 40 : 42,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
@@ -1099,12 +1115,14 @@ class _RangeChips extends StatelessWidget {
           final sel = i == selected;
           return Material(
             color: sel ? AppColors.accent : AppColors.surface2,
-            borderRadius: BorderRadius.circular(9),
+            borderRadius: BorderRadius.circular(episodeRanges ? 999 : 9),
             clipBehavior: Clip.antiAlias,
             child: InkWell(
               onTap: () => onSelect(i),
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 14),
+                padding: EdgeInsets.symmetric(
+                  horizontal: episodeRanges ? 12 : 14,
+                ),
                 child: Center(
                   child: Text(
                     labelFor(i),

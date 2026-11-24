@@ -5,6 +5,8 @@
 // SourceRepository. DetailScreenTv is part of detail_screen.dart's library,
 // so we import detail_screen.dart to access it.
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -39,7 +41,8 @@ import 'package:watch_app/features/detail/wrong_title_sheet.dart';
 
 /// Stub [SourceRepository] that returns a pre-built [MediaDetail].
 class _StubSourceRepository implements SourceRepository {
-  _StubSourceRepository(this._detail);
+  _StubSourceRepository(this._detail, {this.loadDub});
+  final Future<MediaDetail> Function()? loadDub;
   final MediaDetail _detail;
 
   @override
@@ -59,8 +62,7 @@ class _StubSourceRepository implements SourceRepository {
     String? sourceId,
     void Function(MediaDetail partial)? onPartial,
     bool Function()? abandoned,
-  }) async =>
-      _detail;
+  }) async => category == 'dub' && loadDub != null ? loadDub!() : _detail;
 
   @override
   void prefetch(String url, {String? sourceId}) {}
@@ -348,6 +350,65 @@ void main() {
     );
     cubit.close();
     await sl.reset();
+  });
+
+  testWidgets('Sub / Dub switches the detail episode list', (tester) async {
+    await cubit.close();
+    final sub = _testDetail.copyWith(subCount: 3, dubCount: 1);
+    var dubRequest = Completer<MediaDetail>();
+    cubit = DetailCubit(
+      repo: _StubSourceRepository(sub, loadDub: () => dubRequest.future),
+      url: _testItem.url,
+      sourceId: _testItem.sourceId,
+      prefs: _FakeTitlePrefs(),
+    );
+    await cubit.load();
+    await tester.pumpWidget(
+      BlocProvider<DetailCubit>.value(
+        value: cubit,
+        child: const MaterialApp(home: DetailScreenTv(item: _testItem)),
+      ),
+    );
+
+    expect(find.byKey(const ValueKey('tv-ep-2')), findsOneWidget);
+    final episodesTab = find.byKey(const ValueKey('tv-detail-tab-0'));
+    final dubChip = find.byKey(const ValueKey('tv-version-1'));
+    expect(
+      tester.getCenter(dubChip).dx,
+      greaterThan(tester.getRect(episodesTab).right),
+    );
+    expect(
+      tester.getCenter(dubChip).dy,
+      closeTo(tester.getCenter(episodesTab).dy, 1),
+    );
+    final chipElement = tester.element(dubChip);
+    await tester.tap(dubChip);
+    await tester.pump();
+    expect(tester.element(dubChip), same(chipElement));
+    expect(find.byKey(const ValueKey('tv-ep-2')), findsOneWidget);
+
+    dubRequest.completeError(StateError('Dub request failed'));
+    await tester.pumpAndSettle();
+    expect(cubit.state.category, 'sub');
+    expect(find.byKey(const ValueKey('tv-ep-2')), findsOneWidget);
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pumpAndSettle();
+
+    dubRequest = Completer<MediaDetail>();
+    final retry = cubit.setCategory('dub');
+    dubRequest.complete(
+      sub.copyWith(
+        episodes: const [
+          Episode(id: 'd1', title: 'Dub Pilot', url: '/dub1', number: 1),
+        ],
+      ),
+    );
+    expect(await retry, isTrue);
+    await tester.pumpAndSettle();
+
+    expect(cubit.state.category, 'dub');
+    expect(find.text('1. Dub Pilot'), findsOneWidget);
+    expect(find.byKey(const ValueKey('tv-ep-2')), findsNothing);
   });
 
   testWidgets(

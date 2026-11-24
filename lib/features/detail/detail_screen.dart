@@ -150,6 +150,13 @@ part 'detail_skeleton.dart';
 
 part 'detail_screen_tv.dart';
 
+Future<void> _changeEpisodeVersion(BuildContext context, String category) async {
+  final switched = await context.read<DetailCubit>().setCategory(category);
+  if (!switched && context.mounted) {
+    showAppToast(context, context.l10n.somethingWentWrong);
+  }
+}
+
 /// Last-resort friendly name for a [sourceId] that's neither a loaded JS nor CS
 /// provider (e.g. its source was uninstalled): drop the `cs:` prefix and the
 /// `@version@tag` file-id suffix so the detail screen never shows "cs:X@31".
@@ -1646,22 +1653,19 @@ class _DetailViewState extends State<_DetailView>
       _listStatus.setStatus(widget.item, WatchStatus.watching);
     }
 
-    // Available sub/dub categories from the detail — lets the PLAYER offer the
-    // Sub/Dub switch (the Detail no longer does). Empty/single → treated as a
-    // single-category source by the player (no Version section).
+    // The player uses these counts to offer its own version switch.
     final available = <String>[
       if ((detail.subCount ?? 0) > 0) 'sub',
       if ((detail.dubCount ?? 0) > 0) 'dub',
     ];
     final availableCategories = available.isEmpty ? [category] : available;
 
-    // Fresh play: prefer a saved per-title sub/dub choice, else the global
-    // default category, else fall back to the incoming category. Constrain to
-    // what's actually offered so single-category titles are a harmless no-op.
+    // Titles with a picker launch the version shown in the episode list.
     final preferred =
         sl<TitlePrefsStore>().category(widget.item.sourceId, widget.item.url) ??
         sl<PlaybackPrefs>().defaultCategory;
-    final launchCategory = availableCategories.contains(preferred)
+    final launchCategory =
+        !showSubDubFor(detail) && availableCategories.contains(preferred)
         ? preferred
         : category;
 
@@ -3033,6 +3037,37 @@ class _DetailViewState extends State<_DetailView>
           // ── Episodes ──────────────────────────────────────────────────────
           _EpisodesTab(
             loading: state.episodesLoading,
+            versionPicker: showSubDubFor(detail)
+                ? SegmentedButton<String>(
+                    showSelectedIcon: false,
+                    style: SegmentedButton.styleFrom(
+                      backgroundColor: AppColors.surface2,
+                      foregroundColor: AppColors.textSecondary,
+                      selectedBackgroundColor: AppColors.accentSoft,
+                      selectedForegroundColor: AppColors.textPrimary,
+                      side: const BorderSide(color: AppColors.hairline),
+                      textStyle: AppText.caption.copyWith(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 7),
+                      minimumSize: const Size(36, 28),
+                    ),
+                    segments: [
+                      ButtonSegment(
+                        value: 'sub',
+                        label: Text(context.l10n.sub),
+                      ),
+                      ButtonSegment(
+                        value: 'dub',
+                        label: Text(context.l10n.dub),
+                      ),
+                    ],
+                    selected: {category},
+                    onSelectionChanged: (selection) =>
+                        _changeEpisodeVersion(context, selection.single),
+                  )
+                : null,
             eps: eps,
             seasonEps: seasonEps,
             fillerEps: _fillerEps,
