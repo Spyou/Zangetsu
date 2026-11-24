@@ -53,6 +53,10 @@ import '../detail/cubit/detail_cubit.dart' show seasonOf;
 /// would show through the player's see-through window while it is dragged.
 final phoneNativeStarted = ValueNotifier<bool>(false);
 
+/// True while the native player is the screen in front of the app (not docked,
+/// not closed). The app behind it can stop animating then.
+final phoneNativeInFront = ValueNotifier<bool>(false);
+
 /// Rejects stale sessions and malformed writes before touching saved controls.
 PlayerControlsConfig? phoneControlLayoutForSave(
   Map<String, dynamic>? args, {
@@ -811,6 +815,7 @@ class PhoneNativePlayer {
     );
 
     phoneNativeStarted.value = false;
+    phoneNativeInFront.value = false;
     _closed = Completer<Map<String, dynamic>?>();
     final launched = await _ch.invokeMethod<bool>('launch', args) ?? false;
     if (!launched) {
@@ -915,6 +920,7 @@ class PhoneNativePlayer {
   static Future<dynamic> _onNativeCall(MethodCall call) async {
     switch (call.method) {
       case 'playerDocked':
+        phoneNativeInFront.value = false;
         final args = _callArgs(call);
         if (args?['sessionId'] != _sessionId || _closed?.isCompleted != false) {
           return null;
@@ -980,6 +986,7 @@ class PhoneNativePlayer {
       case 'playerUndocked':
         final session = (_callArgs(call)?['sessionId'] as num?)?.toInt();
         if (session != null) _hideDock(session, restoreRoute: true);
+        phoneNativeInFront.value = true;
         return null;
       case 'rememberStremioLink':
       case 'addonSubtitles':
@@ -1128,7 +1135,11 @@ class PhoneNativePlayer {
         return _resolveEpisode(index);
       case 'playbackStarted':
         final args = _callArgs(call);
-        if (args?['sessionId'] == _sessionId) phoneNativeStarted.value = true;
+        if (args?['sessionId'] == _sessionId) {
+          phoneNativeStarted.value = true;
+          // A first frame on the dock's view means it is minimized, not in front.
+          phoneNativeInFront.value = args?['docked'] != true;
+        }
         final frame = _dockFrame;
         if (frame != null &&
             !frame.isCompleted &&
@@ -1639,6 +1650,7 @@ class PhoneNativePlayer {
         if (_closed?.isCompleted == false) _closed!.complete(args);
         _closed = null;
         phoneNativeStarted.value = false;
+        phoneNativeInFront.value = false;
         _prefetchedEpisodes.clear();
         _downloadChoice = null;
         _downloadToken++;

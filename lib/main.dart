@@ -59,6 +59,7 @@ import 'core/theme/theme_controller.dart';
 import 'core/tv/tv_route_pop_guard.dart';
 import 'core/tv/tv_viewport.dart';
 import 'features/player/in_app_mini_player.dart';
+import 'features/player/native_player_freeze.dart';
 import 'l10n/app_localizations.dart';
 import 'core/ui/global_messenger.dart';
 import 'core/theme/theme_repaint_observer.dart';
@@ -975,7 +976,7 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
                   : (Platform.isAndroid || Platform.isIOS) && shellFeatures
                   ? InAppMiniPlayerHost(
                       dockedPlayer: dockedPlayer,
-                      child: content,
+                      child: NativePlayerFreeze(child: content),
                     )
                   : content,
             ),
