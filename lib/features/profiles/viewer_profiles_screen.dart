@@ -8,7 +8,6 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:hive/hive.dart';
 
 import '../../core/app_mode.dart';
-import '../../core/cache/app_image_cache.dart';
 import '../../core/di/injector.dart';
 import '../../core/models/media_item.dart';
 import '../../core/profiles/viewer_profile.dart';
@@ -95,17 +94,16 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
   late final Animation<double> _footerOpacity;
   final _enableSelectionHero = ValueNotifier(false);
   static const _avatarArrivalMs = 210;
-  ImageStream? _zoomLinesStream;
-  ImageStreamListener? _zoomLinesListener;
-  ImageInfo? _zoomLines;
-  bool _playZoomLines = false;
   late final _avatarGlide = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 310),
   );
-  late final _centerLoop = AnimationController(
+  // Clock for the katana slash: runs from the tap until the picker closes, so
+  // the slash keeps repeating for as long as the profile takes to load.
+  static const _slashSpanMs = 300000.0;
+  late final _slash = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 800),
+    duration: const Duration(milliseconds: 300000),
   );
   ({ViewerProfile profile, Rect origin, double diameter})? _flyingAvatar;
   final _pickerBounds = GlobalKey();
@@ -180,10 +178,6 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
           _pickerEntrance.value = 1.0;
         } else {
           _pickerEntrance.forward();
-          if (widget.onSelected != null &&
-              !(sl.isRegistered<AppMode>() && sl<AppMode>().isTv)) {
-            _preloadZoomLines();
-          }
         }
       });
     }
@@ -203,23 +197,6 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
     } catch (_) {
       // The picker can show profiles while status is unavailable.
     }
-  }
-
-  void _preloadZoomLines() {
-    final stream = AppImageCache.imageProvider(
-      kProfileZoomLinesUrl,
-    ).resolve(createLocalImageConfiguration(context));
-    final listener = ImageStreamListener((info, _) {
-      if (info.image.width != 2400 || info.image.height != 1700) {
-        info.dispose();
-        return;
-      }
-      _zoomLines?.dispose();
-      _zoomLines = info;
-    }, onError: (error, stack) {});
-    _zoomLinesStream = stream;
-    _zoomLinesListener = listener;
-    stream.addListener(listener);
   }
 
   Future<void> _loadNextArtwork() async {
@@ -262,10 +239,7 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
     _enableSelectionHero.dispose();
     _pickerEntrance.dispose();
     _avatarGlide.dispose();
-    _centerLoop.dispose();
-    final listener = _zoomLinesListener;
-    if (listener != null) _zoomLinesStream?.removeListener(listener);
-    _zoomLines?.dispose();
+    _slash.dispose();
     super.dispose();
   }
 
@@ -297,9 +271,8 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
     if (_profiles.activeId != profile.id) locks?.approveSwitch(profile.id);
     try {
       if (glide) {
-        _playZoomLines = _zoomLines != null;
-        _avatarGlide.duration = Duration(
-          milliseconds: _avatarArrivalMs + (_playZoomLines ? 440 : 100),
+        _avatarGlide.duration = const Duration(
+          milliseconds: _avatarArrivalMs + 440,
         );
         setState(() {
           _flyingAvatar = (
@@ -309,7 +282,7 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
           );
         });
       }
-      if (glide) _centerLoop.repeat();
+      if (glide) _slash.forward(from: 0);
       await Future.wait<void>([
         if (glide) _avatarGlide.forward(from: 0).orCancel,
         _prepareProfile(owner, profile),
@@ -319,7 +292,7 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
         _resetAvatarGlide();
         return;
       }
-      if (glide) _centerLoop.stop();
+      if (glide) _slash.stop();
       final onSelected = widget.onSelected;
       if (mounted && onSelected != null) {
         _enableSelectionHero.value = true;
@@ -369,7 +342,7 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
   }
 
   void _resetAvatarGlide() {
-    _centerLoop.stop();
+    _slash.stop();
     _selecting = false;
     if (mounted) setState(() => _flyingAvatar = null);
   }
@@ -419,25 +392,23 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
     );
     return AnimatedBuilder(
       key: const ValueKey('profile-center-glide'),
-      animation: _playZoomLines
-          ? _avatarGlide
-          : Listenable.merge([_avatarGlide, _centerLoop]),
+      animation: Listenable.merge([_avatarGlide, _slash]),
       builder: (context, child) {
         final time = _avatarGlide.value;
         final arrival =
             _avatarArrivalMs / _avatarGlide.duration!.inMilliseconds;
+        final waited = _slash.value * _slashSpanMs - _avatarArrivalMs;
+        final pulse = waited <= 0
+            ? 1.0
+            : 1 + 0.04 * (0.5 - 0.5 * math.cos(math.pi * waited / 1000));
         return Positioned.fromRect(
           rect: Rect.lerp(
             flight.origin,
             center,
             Interval(0, arrival, curve: Curves.easeInOutCubic).transform(time),
           )!,
-          child: CustomPaint(
-            foregroundPainter: !_playZoomLines && time > arrival
-                ? _AvatarInkSweep(_centerLoop.value)
-                : null,
-            child: child!,
-          ),
+          // Slow 2s pulse while it waits on the profile, like a loading emblem.
+          child: Transform.scale(scale: pulse, child: child!),
         );
       },
       child: Hero(
@@ -479,26 +450,31 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
     );
   }
 
-  Widget _buildZoomLines() => Positioned.fill(
-    child: IgnorePointer(
-      child: RepaintBoundary(
-        child: AnimatedBuilder(
-          animation: Listenable.merge([_avatarGlide, _centerLoop]),
-          builder: (context, _) {
-            final elapsed =
-                _avatarGlide.value * _avatarGlide.duration!.inMilliseconds;
-            final fade = ((elapsed - _avatarArrivalMs) / 120).clamp(0.0, 1.0);
-            return CustomPaint(
-              key: const ValueKey('profile-zoom-lines'),
-              painter: fade > 0
-                  ? _AvatarZoomLines(_zoomLines!.image, _centerLoop.value, fade)
-                  : null,
-            );
-          },
+  Widget _buildSlash() {
+    final radius = _flyingAvatar!.diameter / 2;
+    return Positioned.fill(
+      child: IgnorePointer(
+        child: RepaintBoundary(
+          child: AnimatedBuilder(
+            animation: _slash,
+            builder: (context, _) {
+              final elapsed = _slash.value * _slashSpanMs - _avatarArrivalMs;
+              return CustomPaint(
+                key: const ValueKey('profile-katana-slash'),
+                painter: elapsed > 0
+                    ? _AvatarKatanaSlash(
+                        elapsedMs: elapsed,
+                        color: AppColors.accent,
+                        avatarRadius: radius,
+                      )
+                    : null,
+              );
+            },
+          ),
         ),
       ),
-    ),
-  );
+    );
+  }
 
   Future<void> _edit([ViewerProfile? profile, int initialAvatar = 0]) async {
     if (profile != null && !await ensureProfileUnlocked(context, profile)) {
@@ -655,7 +631,7 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
                   ),
                 ),
               ),
-              if (_flyingAvatar != null && _playZoomLines) _buildZoomLines(),
+              if (_flyingAvatar != null) _buildSlash(),
               if (_flyingAvatar != null) _buildAvatarGlide(constraints.biggest),
             ],
           ),
@@ -1649,68 +1625,137 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
   }
 }
 
-class _AvatarZoomLines extends CustomPainter {
-  const _AvatarZoomLines(this.sheet, this.progress, this.opacity);
+/// Katana slash behind the chosen avatar. Blade-shaped cuts sweep through, a
+/// flash lands where they cross, and a ring spreads out. A fresh slash (mirrored
+/// every other time, slightly different angle) repeats every [cycleMs] for as
+/// long as the profile takes to load. Drawn in code, so it is sharp on any
+/// screen and needs no download.
+class _AvatarKatanaSlash extends CustomPainter {
+  const _AvatarKatanaSlash({
+    required this.elapsedMs,
+    required this.color,
+    required this.avatarRadius,
+  });
 
-  final ui.Image sheet;
-  final double progress;
-  final double opacity;
+  final double elapsedMs;
+  final Color color;
+  final double avatarRadius;
 
-  @override
-  void paint(Canvas canvas, Size size) {
-    const frameWidth = 480.0;
-    const frameHeight = 340.0;
-    final frame = (progress * 24).floor().clamp(0, 23);
-    final source = Rect.fromLTWH(
-      frame % 5 * frameWidth,
-      frame ~/ 5 * frameHeight,
-      frameWidth,
-      frameHeight,
-    );
-    canvas.drawImageRect(
-      sheet,
-      source,
-      Offset.zero & size,
-      Paint()
-        ..filterQuality = FilterQuality.low
-        ..colorFilter = const ColorFilter.mode(Colors.white, BlendMode.srcIn)
-        ..color = Colors.white.withValues(alpha: opacity),
-    );
-  }
+  static const cycleMs = 760.0;
 
-  @override
-  bool shouldRepaint(_AvatarZoomLines oldDelegate) =>
-      sheet != oldDelegate.sheet ||
-      opacity != oldDelegate.opacity ||
-      (progress * 24).floor() != (oldDelegate.progress * 24).floor();
-}
+  // (angle, length, width, delay, sideways offset) in 360pt design units.
+  static const _cuts = <(double, double, double, double, double)>[
+    (-0.62, 440, 9, 0.00, 0),
+    (math.pi - 0.12, 440, 9, 0.10, 0),
+    (0.06, 400, 6, 0.20, 0),
+    (-0.95, 300, 3.2, 0.05, 34),
+    (-0.30, 320, 3.2, 0.15, -40),
+    (math.pi - 0.80, 300, 3, 0.22, 30),
+    (0.35, 260, 2.4, 0.28, -26),
+  ];
 
-class _AvatarInkSweep extends CustomPainter {
-  const _AvatarInkSweep(this.progress);
-
-  final double progress;
+  static double _ease(double x) => 1 - math.pow(1 - x, 3).toDouble();
 
   @override
   void paint(Canvas canvas, Size size) {
-    final opacity = math.sin(math.pi * progress);
-    final ring = (Offset.zero & size).inflate(3 + 4 * progress);
-    final start = -math.pi / 2 + math.pi * 2 * progress;
-    final sweep = math.pi * 1.35;
-    final ink = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round
-      ..strokeWidth = 5 - 2 * progress
-      ..color = Colors.black.withValues(alpha: opacity * 0.7);
-    canvas.drawArc(ring, start, sweep, false, ink);
-    ink
-      ..strokeWidth = 2
-      ..color = Colors.white.withValues(alpha: opacity);
-    canvas.drawArc(ring, start + 0.12, sweep - 0.15, false, ink);
+    final q = elapsedMs / cycleMs;
+    final cycle = q.floor();
+    final t = q - cycle;
+    final u = size.shortestSide / 360;
+    final center = size.center(Offset.zero);
+    final random = math.Random(cycle * 13 + 1);
+    final flip = cycle.isOdd;
+    final jitter = (random.nextDouble() - 0.5) * 0.35;
+    final fadeAll = 1 - ((t - 0.62) / 0.38).clamp(0.0, 1.0);
+
+    for (final c in _cuts) {
+      final angle = (flip ? math.pi - c.$1 : c.$1) + jitter;
+      final head = _ease(((t - c.$4) / 0.26).clamp(0.0, 1.0));
+      final tail = _ease(((t - c.$4 - 0.10) / 0.5).clamp(0.0, 1.0));
+      if (head <= 0) continue;
+      final length = c.$2 * u;
+      final width = c.$3 * u;
+      final dir = Offset(math.cos(angle), math.sin(angle));
+      final side = Offset(-dir.dy, dir.dx);
+      final origin = center + side * (c.$5 * u);
+      final from = -length / 2 + tail * length * 0.85;
+      final to = -length / 2 + head * length;
+      if (to <= from) continue;
+
+      // Thin at both ends, full in the middle, a little fatter at the head.
+      const steps = 28;
+      final top = <Offset>[];
+      final bottom = <Offset>[];
+      for (var i = 0; i <= steps; i++) {
+        final k = i / steps;
+        final p = origin + dir * (from + (to - from) * k);
+        final half =
+            width /
+            2 *
+            math.pow(math.sin(math.pi * k), 0.7) *
+            (0.55 + 0.45 * k);
+        top.add(p + side * half);
+        bottom.add(p - side * half);
+      }
+      final path = Path()..moveTo(top.first.dx, top.first.dy);
+      for (final p in top) {
+        path.lineTo(p.dx, p.dy);
+      }
+      for (final p in bottom.reversed) {
+        path.lineTo(p.dx, p.dy);
+      }
+      path.close();
+      // Soft glow underneath, bright white blade on top.
+      canvas.drawPath(
+        path,
+        Paint()
+          ..color = color.withValues(alpha: 0.9 * fadeAll)
+          ..maskFilter = MaskFilter.blur(BlurStyle.normal, 8 * u),
+      );
+      canvas.drawPath(
+        path,
+        Paint()..color = Colors.white.withValues(alpha: fadeAll),
+      );
+    }
+
+    // Flash where the cuts cross.
+    final flash = (1 - (t - 0.18).abs() / 0.16).clamp(0.0, 1.0);
+    if (flash > 0) {
+      final radius = 170 * u;
+      canvas.drawCircle(
+        center,
+        radius,
+        Paint()
+          ..shader = ui.Gradient.radial(
+            center,
+            radius,
+            [
+              Colors.white.withValues(alpha: 0.85 * flash),
+              color.withValues(alpha: 0.35 * flash),
+              color.withValues(alpha: 0),
+            ],
+            [0, 0.35, 1],
+          ),
+      );
+    }
+
+    // Shockwave ring.
+    final ringT = ((t - 0.12) / 0.6).clamp(0.0, 1.0);
+    if (ringT > 0) {
+      canvas.drawCircle(
+        center,
+        avatarRadius + 6 + _ease(ringT) * 170 * u,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = (1 - ringT) * 3.5 + 0.5
+          ..color = color.withValues(alpha: 0.8 * (1 - ringT)),
+      );
+    }
   }
 
   @override
-  bool shouldRepaint(_AvatarInkSweep oldDelegate) =>
-      progress != oldDelegate.progress;
+  bool shouldRepaint(_AvatarKatanaSlash oldDelegate) =>
+      elapsedMs != oldDelegate.elapsedMs || color != oldDelegate.color;
 }
 
 const _profileAvatarOutline = CircleBorder(
