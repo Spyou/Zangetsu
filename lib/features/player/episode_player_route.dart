@@ -10,18 +10,35 @@ class EpisodePlayerRoute extends PageRoute<void>
     required WidgetBuilder builder,
     this.nativeHandoff = false,
   }) : _contentKey = GlobalKey(),
-       _buildContent = builder;
+       _buildContent = builder,
+       restoredFromDock = false,
+       _seeThrough = false;
 
   EpisodePlayerRoute._(
     this._contentKey,
     this._buildContent,
-    this.nativeHandoff,
-  );
+    this.nativeHandoff, {
+    this.restoredFromDock = false,
+  }) : _seeThrough = restoredFromDock;
 
   final bool nativeHandoff;
 
+  /// Reopened from the mini player: the page animates out of the mini
+  /// player's spot itself, so the route adds no slide of its own.
+  final bool restoredFromDock;
+
+  bool _seeThrough;
+
   @override
-  bool get opaque => !nativeHandoff;
+  bool get opaque => !nativeHandoff && !_seeThrough;
+
+  /// While the watch page is dragged toward the mini player the screen
+  /// underneath has to show through, so the route stops being opaque.
+  void setSeeThrough(bool value) {
+    if (_seeThrough == value) return;
+    _seeThrough = value;
+    if (overlayEntries.isNotEmpty) overlayEntries.first.opaque = opaque;
+  }
 
   @override
   bool get maintainState => true;
@@ -51,8 +68,12 @@ class EpisodePlayerRoute extends PageRoute<void>
       restore: () {
         if (!nav.mounted) return;
         nav.push(
-          EpisodePlayerRoute._(_contentKey, _buildContent, nativeHandoff)
-            .._content = content,
+          EpisodePlayerRoute._(
+            _contentKey,
+            _buildContent,
+            nativeHandoff,
+            restoredFromDock: true,
+          ).._content = content,
         );
       },
     );
@@ -68,14 +89,14 @@ class EpisodePlayerRoute extends PageRoute<void>
   }
 
   @override
-  Duration get transitionDuration => nativeHandoff
+  Duration get transitionDuration => nativeHandoff || restoredFromDock
       ? Duration.zero
       : defaultTargetPlatform == TargetPlatform.android
       ? const Duration(milliseconds: 350)
       : super.transitionDuration;
 
   @override
-  Duration get reverseTransitionDuration => nativeHandoff
+  Duration get reverseTransitionDuration => nativeHandoff || restoredFromDock
       ? Duration.zero
       : defaultTargetPlatform == TargetPlatform.android
       ? const Duration(milliseconds: 350)
@@ -88,7 +109,7 @@ class EpisodePlayerRoute extends PageRoute<void>
     Animation<double> secondaryAnimation,
     Widget child,
   ) {
-    if (nativeHandoff) return child;
+    if (nativeHandoff || restoredFromDock) return child;
     if (Theme.of(context).platform != TargetPlatform.android) {
       return super.buildTransitions(
         context,

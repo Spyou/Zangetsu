@@ -144,7 +144,7 @@ void main() {
     expect(closes, 2);
   });
 
-  testWidgets('dock animates in, then grows and fades before expanding', (
+  testWidgets('dock animates in, then hands over where it sits when expanded', (
     tester,
   ) async {
     final ready = Completer<void>();
@@ -190,14 +190,48 @@ void main() {
     expect(mid.bottom, inExclusiveRange(waiting.bottom, dock.bottom));
     await tester.tapAt(dock.center);
     await tester.pump();
+    expect(restored, isFalse);
     await tester.tap(find.byIcon(Icons.open_in_full_rounded));
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 80));
-    expect(tester.getRect(finder).width, greaterThan(dock.width));
-    expect(restored, isFalse);
-    await tester.pumpAndSettle();
+    // The page itself animates out of the card, so the card hands over at once
+    // and remembers where it was.
     expect(restored, isTrue);
+    expect(lastDockedRect, isNotNull);
+    expect(lastDockedRect!.width, dock.width);
   });
+
+  testWidgets(
+    'a card that morphed in shows at once, without a second entrance',
+    (tester) async {
+      final ready = Completer<void>();
+      const video = ValueKey('morphed-video');
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: InAppMiniPlayer(
+              entranceReady: ready.future,
+              entranceAnimated: false,
+              video: const ColoredBox(key: video, color: Colors.black),
+              playing: true,
+              playPauseLabel: 'Pause',
+              closeLabel: 'Close',
+              restoreLabel: 'Restore player',
+              onTogglePlayback: () {},
+              onClose: () {},
+              onRestore: () {},
+            ),
+          ),
+        ),
+      );
+      ready.complete();
+      await tester.pump();
+      // The very first frame after the video is ready is already the final one.
+      final settled = tester.getRect(find.byKey(video));
+      await tester.pumpAndSettle();
+      expect(tester.getRect(find.byKey(video)), settled);
+      expect(settled.width, 216);
+    },
+  );
 
   testWidgets('two fingers resize the card without restoring playback', (
     tester,

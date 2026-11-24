@@ -1,6 +1,7 @@
 package com.spyou.watch_app
 
 import android.app.Activity
+import android.animation.ValueAnimator
 import android.app.ActivityManager
 import android.content.Intent
 import android.content.pm.ActivityInfo
@@ -18,7 +19,9 @@ import android.view.TextureView
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewStub
+import android.view.ViewOutlineProvider
 import android.view.WindowManager
+import android.view.animation.DecelerateInterpolator
 import android.widget.Button
 import android.widget.CheckBox
 import android.widget.FrameLayout
@@ -128,6 +131,10 @@ class PhonePlayerActivity : Activity() {
     private var singleFingerRotation = false
     private var rotationDownX = 0f
     private var rotationDownY = 0f
+    // Smoothed downward speed (px/s) of the single finger, for flick-to-minimize.
+    private var pullLastY = 0f
+    private var pullLastTime = 0L
+    private var pullVelocity = 0f
     private var speedBeforeHold: PlaybackParameters? = null
     private var downX = 0f
     private var downY = 0f
@@ -257,7 +264,7 @@ class PhonePlayerActivity : Activity() {
     private fun canMinimize() =
         inAppMiniPlayerEnabled && !docked && player?.currentMediaItem != null && !isInPictureInPictureMode
 
-    private fun minimizeToApp(): Boolean {
+    private fun minimizeToApp(morphed: Boolean = false): Boolean {
         if (!canMinimize()) return false
         val host = PhonePlayerBridge.dockHost()?.takeUnless { it.isFinishing || it.isDestroyed }
             ?: return false
@@ -274,14 +281,69 @@ class PhonePlayerActivity : Activity() {
         updateDockPip()
         PhonePlayerBridge.channel?.invokeMethod(
             "playerDocked",
-            mapOf("sessionId" to sessionId, "playing" to (player?.isPlaying == true)),
+            mapOf(
+                "sessionId" to sessionId,
+                "playing" to (player?.isPlaying == true),
+                // The card already sits in the dock's spot: no entrance replay.
+                "morphed" to morphed,
+            ),
         )
-        if (hostTask != null) {
-            hostTask.moveToFront()
+        val bringHostToFront = Runnable {
+            if (hostTask != null) {
+                hostTask.moveToFront()
+            } else {
+                startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT))
+            }
+            // The card is already where the mini player sits; no cross-fade.
+            @Suppress("DEPRECATION")
+            if (morphed) overridePendingTransition(0, 0)
+        }
+        if (morphed) {
+            // Leaving now would blank the card until Flutter's mini player has
+            // its first frame. Keep the card up, frozen on its last frame, and
+            // swap once the app says its mini player is on screen.
+            freezeVideoFrame()
+            pendingHostFront = bringHostToFront
+            handler.postDelayed(handoffRunnable, 1500)
         } else {
-            startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT))
+            bringHostToFront.run()
         }
         return true
+    }
+
+    private var pendingHostFront: Runnable? = null
+    private val handoffRunnable = Runnable { completeDockHandoff() }
+    private var dockFreeze: android.widget.ImageView? = null
+
+    /** Called when the app's mini player is visible (or after a short timeout). */
+    private fun cancelDockHandoff() {
+        handler.removeCallbacks(handoffRunnable)
+        pendingHostFront = null
+    }
+
+    internal fun completeDockHandoff() {
+        handler.removeCallbacks(handoffRunnable)
+        val front = pendingHostFront ?: return
+        pendingHostFront = null
+        if (!isFinishing && docked) front.run()
+    }
+
+    /** The player's video moves to the app's mini player, so the card keeps a still
+     * of the current frame until it leaves. */
+    private fun freezeVideoFrame() {
+        val surface = playerView.videoSurfaceView as? android.view.TextureView ?: return
+        if (surface.width <= 0 || surface.height <= 0) return
+        val bitmap = runCatching { surface.getBitmap(surface.width / 2, surface.height / 2) }.getOrNull()
+            ?: return
+        val still = android.widget.ImageView(this).apply {
+            setImageBitmap(bitmap)
+            scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+        }
+        playerView.overlayFrameLayout?.addView(
+            still,
+            FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT),
+        )
+        dockFreeze = still
     }
 
     private fun updateDockPip() {
@@ -338,14 +400,20 @@ class PhonePlayerActivity : Activity() {
         if (!docked || isFinishing) return false
         when (command) {
             "toggleDockPlayback" -> togglePlay()
-            "closeDock" -> finish()
+            "closeDock" -> { cancelDockHandoff(); finish() }
             "restoreDock" -> {
                 // Reordering also counts as leaving MainActivity on some devices.
                 restoringDock = true
+                cancelDockHandoff()
                 PhonePlayerBridge.dockHost()?.clearPhoneDockPip(restoring = true)
+                // Come back sitting in the mini player's spot, then open out.
+                val morphIn = canMorph()
+                if (morphIn) applyMinimize(1f)
                 startActivity(Intent(this, PhonePlayerActivity::class.java).addFlags(
                     Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_NO_USER_ACTION,
                 ))
+                @Suppress("DEPRECATION")
+                if (morphIn) overridePendingTransition(0, 0)
             }
             else -> return false
         }
@@ -554,7 +622,8 @@ class PhonePlayerActivity : Activity() {
         updateOrientationLayout()
 
         findViewById<View>(R.id.btn_back).setOnClickListener {
-            if (!showWatchPage() && !minimizeToApp()) finish()
+            if (pendingHostFront != null) return@setOnClickListener
+            if (!showWatchPage() && !minimizeWithMorph()) finish()
         }
         btnPlay.setOnClickListener { togglePlay() }
         findViewById<View>(R.id.btn_previous).setOnClickListener {
@@ -2632,7 +2701,7 @@ class PhonePlayerActivity : Activity() {
             add(R.string.phone_player_menu_pip, R.drawable.ic_pip_play) { pip.enter(null) }
         }
         if (canMinimize()) {
-            add(R.string.phone_player_menu_minimize, R.drawable.ic_pip_play) { minimizeToApp() }
+            add(R.string.phone_player_menu_minimize, R.drawable.ic_pip_play) { minimizeWithMorph() }
         }
         add(R.string.phone_player_menu_info, R.drawable.phone_player_info, "info") { showInfo() }
         val dialog = PhonePlayerSheet(this)
@@ -2923,6 +2992,8 @@ class PhonePlayerActivity : Activity() {
         ev: MotionEvent,
         taps: android.view.GestureDetector,
     ) {
+        // The card is on its way into the app's mini player; leave it alone.
+        if (pendingHostFront != null) return
         val action = ev.actionMasked
         val holding = speedBeforeHold != null
         when (action) {
@@ -2932,20 +3003,29 @@ class PhonePlayerActivity : Activity() {
                 downY = ev.y
                 rotationDownX = ev.rawX
                 rotationDownY = ev.rawY
+                pullLastY = ev.rawY
+                pullLastTime = ev.eventTime
+                pullVelocity = 0f
             }
             MotionEvent.ACTION_POINTER_DOWN -> {
                 singleFingerRotation = false
                 restoreSpeedAfterHold()
-                resetRotationPull()
+                if (minimizeP > 0f) settleMinimize(false) else resetRotationPull()
             }
             MotionEvent.ACTION_CANCEL -> {
                 restoreSpeedAfterHold()
-                resetRotationPull()
+                if (minimizeP > 0f) settleMinimize(false) else resetRotationPull()
             }
             MotionEvent.ACTION_UP -> restoreSpeedAfterHold()
         }
         val rotationY = ev.rawY - rotationDownY
         val rotationX = kotlin.math.abs(ev.rawX - rotationDownX)
+        if (action == MotionEvent.ACTION_MOVE && ev.eventTime > pullLastTime) {
+            val speed = (ev.rawY - pullLastY) * 1000f / (ev.eventTime - pullLastTime)
+            pullVelocity = pullVelocity * .5f + speed * .5f
+            pullLastY = ev.rawY
+            pullLastTime = ev.eventTime
+        }
         if (isPortraitCard() || (holding && action != MotionEvent.ACTION_POINTER_DOWN)) {
             taps.onTouchEvent(ev)
             val up = -rotationY
@@ -2953,17 +3033,28 @@ class PhonePlayerActivity : Activity() {
             val pullingDown = isPortraitCard() && singleFingerRotation && !holding &&
                 rotationY > rotationX && canMinimize()
             if (action == MotionEvent.ACTION_MOVE && !holding) {
-                if (pullingDown && rotationY >= dp(12)) updateRotationPull(v, rotationY, minimizing = true)
-                else if (pullingUp && up >= dp(12)) updateRotationPull(v, rotationY)
-                else resetRotationPull()
+                if (pullingDown && rotationY >= dp(12)) {
+                    // The whole page follows the finger toward the mini player.
+                    minimizeAnimator?.cancel()
+                    applyMinimize((rotationY / minimizeTravel()).coerceIn(0f, 1f))
+                } else {
+                    if (minimizeP > 0f) resetMinimize()
+                    if (pullingUp && up >= dp(12)) updateRotationPull(v, rotationY)
+                    else resetRotationPull()
+                }
             }
             if (action == MotionEvent.ACTION_UP && !holding) {
                 val fullscreen = pullingUp && up >= dp(ROTATION_PULL_DISTANCE_DP)
-                val minimize = pullingDown && rotationY >= dp(ROTATION_PULL_DISTANCE_DP)
-                resetRotationPull(animate = !fullscreen && !minimize)
+                val morphing = minimizeP > 0f
+                // Past a quarter of the way or flicked down finishes the move;
+                // flicking back up cancels even a long pull.
+                val flick = dp(800)
+                val commit = pullingDown && morphing &&
+                    (pullVelocity > flick || (pullVelocity > -flick && minimizeP >= .25f))
+                if (morphing) settleMinimize(commit) else resetRotationPull(animate = !fullscreen)
                 when {
                     fullscreen -> toggleRotation()
-                    minimize -> minimizeToApp()
+                    morphing -> Unit
                     else -> v.performClick()
                 }
             }
@@ -3056,15 +3147,11 @@ class PhonePlayerActivity : Activity() {
     private fun rotationMotionEnabled() = Build.VERSION.SDK_INT < Build.VERSION_CODES.O ||
         android.animation.ValueAnimator.areAnimatorsEnabled()
 
-    private fun updateRotationPull(video: View, distance: Float, minimizing: Boolean = false) {
+    private fun updateRotationPull(video: View, distance: Float) {
         val progress = (kotlin.math.abs(distance) * 100 / dp(ROTATION_PULL_DISTANCE_DP)).toInt().coerceAtMost(100)
         video.animate().cancel()
-        val motion = rotationMotionEnabled()
-        video.translationY = if (motion && !minimizing)
+        video.translationY = if (rotationMotionEnabled())
             (distance * .5f).coerceIn(-dp(36).toFloat(), dp(36).toFloat()) else 0f
-        rotationPullHint.translationY = if (motion && minimizing)
-            distance.coerceAtMost(dp(ROTATION_PULL_DISTANCE_DP).toFloat()) else 0f
-        rotationPullProgress.visibility = if (minimizing) View.GONE else View.VISIBLE
         rotationPullArrow.text = if (distance < 0) "↑" else "↓"
         rotationPullArrow.isSelected = progress == 100
         rotationPullProgress.isSelected = progress == 100
@@ -3083,6 +3170,165 @@ class PhonePlayerActivity : Activity() {
         } else {
             video.translationY = 0f
         }
+    }
+
+    // ── Drag the watch page into the mini player ─────────────────────────
+    // Same morph as the Flutter watch page: p is 0 (full page) → 1 (video in
+    // the mini player's spot). The video travels and shrinks, the info fades,
+    // and the page's black dissolves so the app behind shows through.
+
+    private var minimizeP = 0f
+    private var minimizeAnimator: ValueAnimator? = null
+    private var morphBackdrop: android.graphics.drawable.Drawable? = null
+    private var morphRadius = 0f
+
+    /** Mirrors defaultDockRect() in in_app_mini_player.dart. The mini player lives
+     * in the app's window, which can be shorter than the screen (it stops above
+     * the navigation bar), so its area is measured from that window. */
+    private fun dockRectPx(): android.graphics.RectF {
+        val decor = window.decorView
+        val d = resources.displayMetrics.density
+        val bars = androidx.core.view.ViewCompat.getRootWindowInsets(decor)
+            ?.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+        val hostView = PhonePlayerBridge.dockHost()?.findViewById<View>(android.R.id.content)
+            ?.takeIf { it.width > 0 && it.height > 0 }
+        val origin = IntArray(2)
+        hostView?.getLocationOnScreen(origin)
+        val winW = hostView?.width ?: decor.width
+        val winH = hostView?.height ?: decor.height
+        // Only the app window's own bars count; the player may hide the nav bar.
+        val barsLeft = if (hostView != null) 0 else bars?.left ?: 0
+        val barsRight = if (hostView != null) 0 else bars?.right ?: 0
+        val barsBottom = if (hostView != null) 0 else bars?.bottom ?: 0
+        val left = maxOf(barsLeft.toFloat(), 12 * d)
+        val top = 12 * d
+        val right = maxOf(barsRight.toFloat(), 12 * d)
+        val bottom = maxOf(barsBottom.toFloat(), 96 * d)
+        val areaW = winW - left - right
+        val areaH = winH - top - bottom
+        val width = minOf(216 * d, minOf(360 * d, minOf(areaW, areaH * 16 / 9)))
+        val rtl = decor.layoutDirection == View.LAYOUT_DIRECTION_RTL
+        val x = origin[0] + left + if (rtl) 0f else areaW - width
+        val y = origin[1] + top + areaH - width * 9 / 16
+        return android.graphics.RectF(x, y, x + width, y + width * 9 / 16)
+    }
+
+    /** Where the video's parent sits on screen; the dock rect is in screen coordinates. */
+    private fun parentOrigin(): IntArray {
+        val origin = IntArray(2)
+        (findViewById<View>(R.id.player_root).parent as? View)?.getLocationOnScreen(origin)
+        return origin
+    }
+
+    private fun minimizeTravel(): Float {
+        val video = findViewById<View>(R.id.player_root)
+        return maxOf(1f, dockRectPx().top - parentOrigin()[1] - video.top)
+    }
+
+    private fun applyMinimize(p: Float) {
+        if (p <= 0f) { resetMinimize(); return }
+        val video = findViewById<View>(R.id.player_root)
+        val page = findViewById<View>(R.id.watch_root)
+        if (morphBackdrop == null) {
+            morphBackdrop = page.background
+            // Only while moving does the app behind need to show through.
+            window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
+        }
+        minimizeP = p
+        val dock = dockRectPx()
+        val origin = parentOrigin()
+        dock.offset(-origin[0].toFloat(), -origin[1].toFloat())
+        val end = dock.width() / video.width
+        val scale = 1f + (end - 1f) * p
+        video.pivotX = 0f
+        video.pivotY = 0f
+        video.scaleX = scale
+        video.scaleY = scale
+        video.translationX = (video.left + (dock.left - video.left) * p) - video.left
+        video.translationY = (video.top + (dock.top - video.top) * p) - video.top
+        // Round to the mini player's 16dp corners, allowing for the scale.
+        morphRadius = p * 16 * resources.displayMetrics.density / end
+        if (video.outlineProvider === ViewOutlineProvider.BACKGROUND || !video.clipToOutline) {
+            video.outlineProvider = object : ViewOutlineProvider() {
+                override fun getOutline(view: View, outline: android.graphics.Outline) {
+                    outline.setRoundRect(0, 0, view.width, view.height, morphRadius)
+                }
+            }
+            video.clipToOutline = true
+        }
+        video.invalidateOutline()
+        page.setBackgroundColor(android.graphics.Color.argb(((1f - p) * 255).toInt(), 0, 0, 0))
+        watchInfo?.let {
+            it.alpha = (1f - p * 3f).coerceIn(0f, 1f)
+            it.translationY = p * dp(80)
+        }
+        // Captions don't shrink with the card, so they fade out early instead.
+        playerView.subtitleView?.alpha = (1f - p * 3f).coerceIn(0f, 1f)
+    }
+
+    private fun resetMinimize() {
+        minimizeAnimator?.cancel()
+        minimizeAnimator = null
+        minimizeP = 0f
+        val video = findViewById<View>(R.id.player_root) ?: return
+        video.translationX = 0f
+        video.translationY = 0f
+        video.scaleX = 1f
+        video.scaleY = 1f
+        video.clipToOutline = false
+        video.outlineProvider = ViewOutlineProvider.BACKGROUND
+        morphBackdrop?.let { findViewById<View>(R.id.watch_root)?.background = it }
+        if (morphBackdrop != null) {
+            window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.BLACK))
+        }
+        morphBackdrop = null
+        dockFreeze?.let { (it.parent as? ViewGroup)?.removeView(it) }
+        dockFreeze = null
+        watchInfo?.let { it.alpha = 1f; it.translationY = 0f }
+        playerView.subtitleView?.alpha = 1f
+    }
+
+    /** Finishes the move into the mini player ([commit]) or springs back. */
+    private fun settleMinimize(commit: Boolean) {
+        minimizeAnimator?.cancel()
+        val from = minimizeP
+        val to = if (commit) 1f else 0f
+        if (!rotationMotionEnabled()) {
+            if (commit) applyMinimize(1f)
+            finishMinimize(commit)
+            return
+        }
+        var cancelled = false
+        minimizeAnimator = ValueAnimator.ofFloat(from, to).apply {
+            duration = (120 + 260 * kotlin.math.abs(to - from)).toLong()
+            interpolator = DecelerateInterpolator(1.6f)
+            addUpdateListener { applyMinimize((it.animatedValue as Float).coerceAtLeast(0.0001f)) }
+            addListener(object : android.animation.AnimatorListenerAdapter() {
+                override fun onAnimationCancel(animation: android.animation.Animator) { cancelled = true }
+                override fun onAnimationEnd(animation: android.animation.Animator) {
+                    if (!cancelled) finishMinimize(commit)
+                }
+            })
+            start()
+        }
+    }
+
+    private fun finishMinimize(commit: Boolean) {
+        // The card stays in the dock's spot until the app takes over; if the
+        // hand-over is refused it returns to the full page.
+        if (!commit || !minimizeToApp(morphed = true)) resetMinimize()
+    }
+
+    /** The portrait watch page can morph; fullscreen and no-animation can't. */
+    private fun canMorph() = isPortraitCard() && rotationMotionEnabled()
+
+    /** Back chevron / back press: the same move, without a finger. */
+    private fun minimizeWithMorph(): Boolean {
+        if (!canMinimize()) return false
+        if (!canMorph() || minimizeP > 0f) return minimizeToApp()
+        applyMinimize(0.0001f)
+        settleMinimize(true)
+        return true
     }
 
     private fun restoreSpeedAfterHold() {
@@ -3623,8 +3869,10 @@ class PhonePlayerActivity : Activity() {
         pip.onResumed()
         pausedFromPip = false
         if (docked) {
+            val openOut = restoringDock && minimizeP > 0f
             docked = false
             restoringDock = false
+            if (openOut) window.decorView.post { settleMinimize(false) }
             PhonePlayerBridge.dockHost()?.clearPhoneDockPip()
             dockView?.let(::detachDockView)
             pip.autoEnter = autoPipEnabled
@@ -3670,6 +3918,8 @@ class PhonePlayerActivity : Activity() {
 
     override fun onStop() {
         super.onStop()
+        // Out of sight now; the next visit starts from the full page.
+        if (minimizeP > 0f) resetMinimize()
         if (pip.consumeDismissal()) {
             pausedFromPip = true
             player?.pause()
@@ -3678,6 +3928,7 @@ class PhonePlayerActivity : Activity() {
     }
 
     override fun onDestroy() {
+        cancelDockHandoff()
         if (::seekPreview.isInitialized) seekPreview.close()
         segmentTimer.cancel()
         episodePanel?.setOnDismissListener(null)
@@ -3720,9 +3971,10 @@ class PhonePlayerActivity : Activity() {
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
+        if (pendingHostFront != null) return // already minimizing
         if (controlsLocked) { setControlsLocked(false); return }
         if (loadingActions.visibility == View.VISIBLE) { finish(); return }
-        if (inAppMiniPlayerEnabled && (showWatchPage() || minimizeToApp())) return
+        if (inAppMiniPlayerEnabled && (showWatchPage() || minimizeWithMorph())) return
         if (controls.visibility == View.VISIBLE) { hideControls(); return }
         if (showWatchPage()) return
         @Suppress("DEPRECATION")

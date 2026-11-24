@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <bool name="phone_player_translucent">false</bool>
+    <color name="phone_player_window_bg">#FF000000</color>
+</resources>

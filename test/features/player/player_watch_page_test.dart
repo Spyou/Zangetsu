@@ -28,6 +28,8 @@ PlayerWatchPage _page({
   VoidCallback? onNext,
   VoidCallback? onFullscreen,
   VoidCallback? onMinimize,
+  bool startMinimized = false,
+  Listenable? minimizeRequests,
   ValueChanged<Duration>? onSeek,
   ValueChanged<Duration>? onSeekBy,
   ValueChanged<bool>? onHoldSpeedChanged,
@@ -79,6 +81,8 @@ PlayerWatchPage _page({
     onNext: onNext ?? () {},
     onFullscreen: onFullscreen ?? () {},
     onMinimize: onMinimize,
+    startMinimized: startMinimized,
+    minimizeRequests: minimizeRequests,
     onBack: onBack ?? () {},
     onServer: onServer ?? () {},
     onAudio: () {},
@@ -154,7 +158,7 @@ void main() {
     expect(entered, 1);
   });
 
-  testWidgets('downward pull shows an arrow over the stationary video', (
+  testWidgets('downward pull carries the video toward the mini player', (
     tester,
   ) async {
     var minimized = 0;
@@ -162,26 +166,83 @@ void main() {
     final video = find.byKey(const ValueKey('watch-video'));
     final original = tester.getRect(video);
     final short = await tester.startGesture(original.center);
-    await short.moveBy(const Offset(0, 42));
+    await short.moveBy(const Offset(0, 60));
     await tester.pump();
-    expect(tester.getRect(video), original);
-    expect(
-      find.ancestor(
-        of: video,
-        matching: find.byWidgetPredicate(
-          (widget) => widget is Opacity && widget.opacity == 0,
-        ),
-      ),
-      findsNothing,
-    );
-    expect(find.byIcon(Icons.arrow_downward), findsOneWidget);
-    expect(find.byType(LinearProgressIndicator), findsNothing);
+    final moved = tester.getRect(video);
+    // The card follows the finger, shrinking toward the dock corner.
+    expect(moved.top, greaterThan(original.top));
+    expect(moved.width, lessThan(original.width));
+    expect(moved.left, greaterThan(original.left));
+    expect(find.byIcon(Icons.arrow_downward), findsNothing);
+    // A short pull springs back and does not minimize.
     await short.up();
     await tester.pumpAndSettle();
     expect(tester.getRect(video), original);
-    expect(find.byIcon(Icons.arrow_downward), findsNothing);
     expect(minimized, 0);
-    await tester.dragFrom(original.center, const Offset(0, 100));
+
+    // A quick flick commits even when the pull is short.
+    await tester.timedDragFrom(
+      original.center,
+      const Offset(0, 40),
+      const Duration(milliseconds: 40),
+    );
+    await tester.pumpAndSettle();
+    expect(minimized, 1);
+  });
+
+  testWidgets('opening from the mini player grows out of the dock', (
+    tester,
+  ) async {
+    await _pump(tester, _page(onMinimize: () {}, startMinimized: true));
+    final video = find.byKey(const ValueKey('watch-video'));
+    // First frame: sitting in the dock's corner, small.
+    final start = tester.getRect(video);
+    final screen = tester.view.physicalSize / tester.view.devicePixelRatio;
+    expect(start.width, lessThan(screen.width / 2));
+    expect(start.top, greaterThan(screen.height / 2));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 80));
+    final mid = tester.getRect(video);
+    expect(mid.width, greaterThan(start.width));
+    await tester.pumpAndSettle();
+    final full = tester.getRect(video);
+    expect(full.width, greaterThan(screen.width * .8));
+    expect(full.top, lessThan(screen.height / 4));
+  });
+
+  testWidgets('a back request minimizes with the same morph', (tester) async {
+    var minimized = 0;
+    final requests = ValueNotifier(0);
+    addTearDown(requests.dispose);
+    await _pump(
+      tester,
+      _page(onMinimize: () => minimized++, minimizeRequests: requests),
+    );
+    final video = find.byKey(const ValueKey('watch-video'));
+    final original = tester.getRect(video);
+    requests.value++;
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 80));
+    // Mid-flight: already moving and shrinking, not yet handed over.
+    final mid = tester.getRect(video);
+    expect(mid.top, greaterThan(original.top));
+    expect(mid.width, lessThan(original.width));
+    expect(minimized, 0);
+    await tester.pumpAndSettle();
+    expect(minimized, 1);
+  });
+
+  testWidgets('a long slow pull minimizes once released', (tester) async {
+    var minimized = 0;
+    await _pump(tester, _page(onMinimize: () => minimized++));
+    final video = find.byKey(const ValueKey('watch-video'));
+    final original = tester.getRect(video);
+    final drag = await tester.startGesture(original.center);
+    await drag.moveBy(const Offset(0, 220));
+    await tester.pump();
+    expect(minimized, 0); // still following the finger
+    await drag.up();
+    await tester.pumpAndSettle();
     expect(minimized, 1);
   });
 
@@ -227,7 +288,7 @@ void main() {
     await _pump(tester, _page(onSeekBy: seeks.add, doubleTapSeconds: 15));
     for (final side in [.15, .85]) {
       await tester.tapAt(videoSide(tester, side));
-      await tester.pump(const Duration(milliseconds: 60));
+      await tester.pump(const Duration(milliseconds: 40));
       await tester.tapAt(videoSide(tester, side));
       await tester.pump(const Duration(milliseconds: 360));
     }
@@ -240,7 +301,7 @@ void main() {
     await _pump(tester, _page(onSeekBy: seeks.add));
     for (var i = 0; i < 3; i++) {
       await tester.tapAt(videoSide(tester, .85));
-      await tester.pump(const Duration(milliseconds: 60));
+      await tester.pump(const Duration(milliseconds: 40));
     }
     expect(seeks, isEmpty);
     await tester.pump(const Duration(milliseconds: 360));
@@ -296,7 +357,7 @@ void main() {
       );
       final play = find.byKey(const ValueKey('watch-play'));
       await tester.tap(play);
-      await tester.pump(const Duration(milliseconds: 60));
+      await tester.pump(const Duration(milliseconds: 40));
       await tester.tap(play);
       await tester.pump(const Duration(milliseconds: 360));
       expect(plays, 2);
@@ -319,7 +380,7 @@ void main() {
       _page(onSeekBy: seeks.add, onHoldSpeedChanged: holds.add),
     );
     await tester.tapAt(videoSide(tester, .15));
-    await tester.pump(const Duration(milliseconds: 60));
+    await tester.pump(const Duration(milliseconds: 40));
     await tester.tapAt(videoSide(tester, .15));
     await _pump(
       tester,
@@ -348,7 +409,7 @@ void main() {
       _page(loading: true, onSeekBy: seeks.add, onHoldSpeedChanged: holds.add),
     );
     await tester.tapAt(videoSide(tester, .85));
-    await tester.pump(const Duration(milliseconds: 60));
+    await tester.pump(const Duration(milliseconds: 40));
     await tester.tapAt(videoSide(tester, .85));
     await tester.pump(const Duration(milliseconds: 360));
     final gesture = await tester.startGesture(videoSide(tester, .85));
@@ -363,7 +424,7 @@ void main() {
     final seeks = <Duration>[];
     await _pump(tester, _page(onSeekBy: seeks.add));
     await tester.tapAt(videoSide(tester, .5));
-    await tester.pump(const Duration(milliseconds: 60));
+    await tester.pump(const Duration(milliseconds: 40));
     await tester.tapAt(videoSide(tester, .5));
     await tester.pump(const Duration(milliseconds: 360));
     expect(seeks, isEmpty);

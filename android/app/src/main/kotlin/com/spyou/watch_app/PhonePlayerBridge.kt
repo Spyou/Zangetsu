@@ -77,6 +77,12 @@ object PhonePlayerBridge {
         ch.setMethodCallHandler { call, result ->
             when (call.method) {
                 "launch" -> launch(activity, call, result)
+                "dockShown" -> {
+                    // The app's mini player is on screen: the native card can leave.
+                    val session = call.argument<Number>("sessionId")?.toLong()
+                    PhonePlayerActivity.active?.takeIf { it.sessionId == session }?.completeDockHandoff()
+                    result.success(true)
+                }
                 "toggleDockPlayback", "closeDock", "restoreDock" -> {
                     val session = call.argument<Number>("sessionId")?.toLong()
                     val owner = PhonePlayerActivity.active?.takeIf { it.sessionId == session }

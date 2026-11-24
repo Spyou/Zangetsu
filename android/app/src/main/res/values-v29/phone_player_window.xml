@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Android 10+: the player window is see-through so the app behind it
+         shows while the watch page is dragged into the mini player. The
+         window itself paints black and only turns clear during that move
+         (see PhonePlayerActivity.applyMinimize). -->
+    <bool name="phone_player_translucent">true</bool>
+</resources>

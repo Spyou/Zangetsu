@@ -48,6 +48,11 @@ import 'in_app_mini_player.dart';
 import '../../l10n/l10n.dart';
 import '../detail/cubit/detail_cubit.dart' show seasonOf;
 
+/// True once the native player has put its first frame on screen. The loading
+/// cover Flutter keeps underneath it is only needed until then; afterwards it
+/// would show through the player's see-through window while it is dragged.
+final phoneNativeStarted = ValueNotifier<bool>(false);
+
 /// Rejects stale sessions and malformed writes before touching saved controls.
 PlayerControlsConfig? phoneControlLayoutForSave(
   Map<String, dynamic>? args, {
@@ -805,6 +810,7 @@ class PhoneNativePlayer {
       sessionId: _sessionId,
     );
 
+    phoneNativeStarted.value = false;
     _closed = Completer<Map<String, dynamic>?>();
     final launched = await _ch.invokeMethod<bool>('launch', args) ?? false;
     if (!launched) {
@@ -926,6 +932,7 @@ class PhoneNativePlayer {
           key: ValueKey(session),
           retainedRoute: handoff?.content,
           entranceReady: frame.future,
+          entranceAnimated: args?['morphed'] != true,
           video: AndroidView(
             viewType: 'zangetsu/phone_player_dock',
             creationParams: session,
@@ -946,6 +953,23 @@ class PhoneNativePlayer {
           onClose: () => unawaited(closeDockedPlayback()),
           onRestore: () => unawaited(_dockCommand('restoreDock', session)),
         );
+        if (args?['morphed'] == true) {
+          // The native card stays up until this mini player is really on
+          // screen, so there is no gap where nothing shows.
+          unawaited(
+            frame.future
+                .timeout(const Duration(milliseconds: 450), onTimeout: () {})
+                .then((_) async {
+                  // The mini player's video surface stays black for a few
+                  // frames after it reports ready; let it fill in first.
+                  await Future<void>.delayed(const Duration(milliseconds: 300));
+                  await WidgetsBinding.instance.endOfFrame;
+                  if (_dockedSession == session) {
+                    await _ch.invokeMethod('dockShown', {'sessionId': session});
+                  }
+                }),
+          );
+        }
         return null;
       case 'dockPlayingChanged':
         final args = _callArgs(call);
@@ -1104,6 +1128,7 @@ class PhoneNativePlayer {
         return _resolveEpisode(index);
       case 'playbackStarted':
         final args = _callArgs(call);
+        if (args?['sessionId'] == _sessionId) phoneNativeStarted.value = true;
         final frame = _dockFrame;
         if (frame != null &&
             !frame.isCompleted &&
@@ -1613,6 +1638,7 @@ class PhoneNativePlayer {
         _engineFallback = null;
         if (_closed?.isCompleted == false) _closed!.complete(args);
         _closed = null;
+        phoneNativeStarted.value = false;
         _prefetchedEpisodes.clear();
         _downloadChoice = null;
         _downloadToken++;

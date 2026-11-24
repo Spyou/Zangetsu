@@ -10,12 +10,10 @@ class WatchPageRotationPreview extends StatelessWidget {
     super.key,
     required this.pull,
     required this.child,
-    this.minimizeOnDown = false,
   });
 
   final ValueListenable<double> pull;
   final Widget child;
-  final bool minimizeOnDown;
 
   @override
   Widget build(BuildContext context) {
@@ -24,7 +22,6 @@ class WatchPageRotationPreview extends StatelessWidget {
       valueListenable: pull,
       child: child,
       builder: (context, distance, child) {
-        final minimizing = minimizeOnDown && distance > 0;
         final progress = (distance.abs() / watchPageRotationSwipeDistance)
             .clamp(0.0, 1.0);
         final color = progress == 1
@@ -36,9 +33,7 @@ class WatchPageRotationPreview extends StatelessWidget {
             TweenAnimationBuilder<double>(
               tween: Tween(
                 begin: 0,
-                end: reduceMotion || minimizing
-                    ? 0
-                    : (distance * .5).clamp(-36.0, 36.0),
+                end: reduceMotion ? 0 : (distance * .5).clamp(-36.0, 36.0),
               ),
               duration: distance == 0 && !reduceMotion
                   ? const Duration(milliseconds: 160)
@@ -53,11 +48,7 @@ class WatchPageRotationPreview extends StatelessWidget {
             ),
             if (distance != 0)
               Positioned(
-                top:
-                    16 +
-                    (minimizing && !reduceMotion
-                        ? distance.clamp(0.0, watchPageRotationSwipeDistance)
-                        : 0),
+                top: 16,
                 left: 0,
                 right: 0,
                 child: IgnorePointer(
@@ -82,21 +73,19 @@ class WatchPageRotationPreview extends StatelessWidget {
                               size: 16,
                               color: color,
                             ),
-                            if (!minimizing) ...[
-                              const SizedBox(width: 6),
-                              SizedBox(
-                                width: 48,
-                                child: LinearProgressIndicator(
-                                  key: const ValueKey(
-                                    'watch-rotation-pull-progress',
-                                  ),
-                                  value: progress,
-                                  minHeight: 3,
-                                  color: color,
-                                  backgroundColor: Colors.white24,
+                            const SizedBox(width: 6),
+                            SizedBox(
+                              width: 48,
+                              child: LinearProgressIndicator(
+                                key: const ValueKey(
+                                  'watch-rotation-pull-progress',
                                 ),
+                                value: progress,
+                                minHeight: 3,
+                                color: color,
+                                backgroundColor: Colors.white24,
                               ),
-                            ],
+                            ),
                           ],
                         ),
                       ),

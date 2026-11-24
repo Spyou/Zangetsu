@@ -1324,6 +1324,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   bool _docked = false;
 
+  /// Set while the page reopens from the mini player so it can animate out
+  /// of the dock; cleared after that first frame.
+  bool _restoredFromDock = false;
+
+  /// Back asks the watch page to minimize with its own morph.
+  final _minimizeRequests = ValueNotifier<int>(0);
+
   bool get _supportsMinimize =>
       (Platform.isAndroid || Platform.isIOS) &&
       !sl<AppMode>().isTv &&
@@ -1335,7 +1342,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
       ? _minimize
       : null;
 
-  void _minimize() {
+  /// [morphed]: the watch page already carried the video to the dock's spot,
+  /// so the mini player appears there as-is instead of fading in.
+  void _minimize({bool morphed = false}) {
     final route = ModalRoute.of(context);
     if (route is! EpisodePlayerRoute ||
         !route.isCurrent ||
@@ -1354,7 +1363,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
       return InAppMiniPlayer(
         video: video,
-        entranceReady: _c.videoController.waitUntilFirstFrameRendered,
+        entranceReady: morphed
+            ? null
+            : _c.videoController.waitUntilFirstFrameRendered,
         playing: _c.player.state.playing,
         playingChanges: _c.player.stream.playing,
         systemPipChanges: Platform.isAndroid && _pipSupported
@@ -1371,7 +1382,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
         onClose: _leavePlayer,
         onRestore: () {
           _lastOrientation = MediaQuery.orientationOf(context);
-          setState(() => _docked = false);
+          setState(() {
+            _docked = false;
+            _restoredFromDock = true;
+          });
+          WidgetsBinding.instance.addPostFrameCallback(
+            (_) => _restoredFromDock = false,
+          );
           _orientationApplied = false;
           if (_presentation == PlayerPresentation.fullscreen) {
             _applyOrientationWhenCovered();
@@ -1999,6 +2016,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   @override
   void dispose() {
     _fullscreenRotationPull.dispose();
+    _minimizeRequests.dispose();
     _orientationTurns?.cancel();
     AppLogger.instance.log(
       '[player-route] dispose ready=$_ready '
@@ -3427,7 +3445,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
       onPrevious: () => _c.playPrevious(),
       onNext: () => _c.playNext(),
       onFullscreen: _enterFullscreen,
-      onMinimize: _minimizeAction,
+      onMinimize: _minimizeAction == null
+          ? null
+          // With animations off nothing carried the card to the dock, so the
+          // mini player keeps its first-frame wait.
+          : () => _minimize(morphed: !MediaQuery.disableAnimationsOf(context)),
+      startMinimized: _restoredFromDock,
+      minimizeRequests: _minimizeRequests,
       onBack: _minimizeAction ?? _handleCloseRequest,
       onServer: _openSourceSheet,
       onAudio: () => _openAudioSubsSheet(focus: AudioSubsFocus.audio),
@@ -3968,9 +3992,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (_chosenPlayer == PlaybackPrefs.androidPlayerId &&
         widget.episodesResolver != null &&
         !_ready) {
-      return Scaffold(
-        backgroundColor: Colors.black,
-        body: _loadingBackdropBody(context.l10n.loading),
+      // Gone once the native player shows its first frame: from then on the
+      // window above is see-through while dragged, and this must not show.
+      return ValueListenableBuilder<bool>(
+        valueListenable: phoneNativeStarted,
+        builder: (context, started, _) => started
+            ? const SizedBox.shrink()
+            : Scaffold(
+                backgroundColor: Colors.black,
+                body: _loadingBackdropBody(context.l10n.loading),
+              ),
       );
     }
     if (_chosenPlayer == PlaybackPrefs.androidPlayerId &&
@@ -4042,7 +4073,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
         margin: const EdgeInsets.symmetric(horizontal: 12),
       ),
       child: Scaffold(
-        backgroundColor: Colors.black,
+        // The watch page paints its own black and fades it while it is dragged
+        // into the mini player; a black Scaffold under it would hide the app
+        // that is meant to show through.
+        backgroundColor:
+            _presentation == PlayerPresentation.watchPage &&
+                _c.state.error == null
+            ? Colors.transparent
+            : Colors.black,
         body: BlocConsumer<PlayerCubit, PlayerState>(
           bloc: _c,
           // Nothing ever played: this episode is a dead end, so say so in a
@@ -4801,7 +4839,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
         }
         final minimize = _minimizeAction;
         if (minimize != null) {
-          minimize();
+          // On the watch page Back plays the same morph as dragging down.
+          if (_presentation == PlayerPresentation.watchPage) {
+            _minimizeRequests.value++;
+          } else {
+            minimize();
+          }
         } else {
           _handleCloseRequest();
         }

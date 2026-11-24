@@ -7,6 +7,41 @@ import '../../l10n/l10n.dart';
 
 final dockedPlayer = ValueNotifier<InAppMiniPlayer?>(null);
 
+const _defaultDockWidth = 216.0;
+
+/// Where the mini player was when it was last expanded, in screen
+/// coordinates; the watch page opens out of this rect.
+Rect? lastDockedRect;
+
+/// Where a freshly docked mini player lands, in the host's coordinates.
+///
+/// Mirrors the layout in [_InAppMiniPlayerState] so the watch page can morph
+/// into it while the finger is still down, and hand over without a jump.
+Rect defaultDockRect(
+  Size size,
+  EdgeInsets inset, {
+  bool rtl = false,
+  double keyboard = 0,
+}) {
+  final area = EdgeInsets.fromLTRB(
+    math.max(inset.left, 12),
+    math.max(inset.top, 12),
+    math.max(inset.right, 12),
+    math.max(inset.bottom, 96 + keyboard),
+  );
+  final areaWidth = size.width - area.horizontal;
+  final areaHeight = size.height - area.vertical;
+  final maxWidth = math.min(360.0, math.min(areaWidth, areaHeight * 16 / 9));
+  final width = math.min(_defaultDockWidth, maxWidth);
+  final height = width * 9 / 16;
+  return Rect.fromLTWH(
+    area.left + (rtl ? 0 : areaWidth - width),
+    area.top + areaHeight - height,
+    width,
+    height,
+  );
+}
+
 /// Displays the active dock over routes while allowing taps outside the card.
 class InAppMiniPlayerHost extends StatelessWidget {
   const InAppMiniPlayerHost({
@@ -36,6 +71,7 @@ class InAppMiniPlayer extends StatefulWidget {
     required this.video,
     this.retainedRoute,
     this.entranceReady,
+    this.entranceAnimated = true,
     required this.playing,
     this.playingChanges,
     this.systemPipChanges,
@@ -52,6 +88,11 @@ class InAppMiniPlayer extends StatefulWidget {
   final Widget video;
   final Widget? retainedRoute;
   final Future<void>? entranceReady;
+
+  /// False when the card already arrived here by itself (the native player
+  /// morphed into this spot): it still waits for the first frame, then shows
+  /// at once instead of fading and scaling in a second time.
+  final bool entranceAnimated;
   final bool playing;
   final Stream<bool>? playingChanges;
   final Stream<bool>? systemPipChanges;
@@ -73,8 +114,8 @@ class _InAppMiniPlayerState extends State<InAppMiniPlayer>
   bool _trailing = true;
   bool _bottom = true;
   Offset? _dragPosition;
-  double _preferredWidth = 216;
-  double _gestureWidth = 216;
+  double _preferredWidth = _defaultDockWidth;
+  double _gestureWidth = _defaultDockWidth;
   double? _pinchSurfaceWidth;
   bool _wasSystemPip = false;
   bool _showControls = false;
@@ -85,7 +126,6 @@ class _InAppMiniPlayerState extends State<InAppMiniPlayer>
   );
 
   bool _entranceStarted = false;
-  bool _expanding = false;
 
   @override
   void initState() {
@@ -128,20 +168,12 @@ class _InAppMiniPlayerState extends State<InAppMiniPlayer>
   }
 
   void _expand() {
-    if (_expanding) return;
-    if (_entranceReady == null || MediaQuery.disableAnimationsOf(context)) {
-      widget.onRestore();
-      return;
+    // The page morphs out of wherever the card is now, so remember it.
+    final box = _cardKey.currentContext?.findRenderObject();
+    if (box is RenderBox && box.hasSize) {
+      lastDockedRect = box.localToGlobal(Offset.zero) & box.size;
     }
-    setState(() {
-      _showControls = false;
-      _expanding = true;
-    });
-  }
-
-  void _finishExpand() {
     widget.onRestore();
-    if (mounted) setState(() => _expanding = false);
   }
 
   Widget _withEntrance({
@@ -154,32 +186,26 @@ class _InAppMiniPlayerState extends State<InAppMiniPlayer>
       future: _entranceReady,
       builder: (context, snapshot) {
         final lifecycle = WidgetsBinding.instance.lifecycleState;
+        // A card that morphed in sits under the native player, which is still
+        // in front (so the app is not "resumed" yet): show as soon as it is
+        // ready rather than after the hand-over.
         if (!animate ||
             (snapshot.connectionState == ConnectionState.done &&
-                (lifecycle == null ||
+                (!widget.entranceAnimated ||
+                    lifecycle == null ||
                     lifecycle == AppLifecycleState.resumed))) {
           _entranceStarted = true;
         }
-        final expanding = _expanding;
         return TweenAnimationBuilder<double>(
-          tween: Tween(
-            begin: 0,
-            end: expanding
-                ? 2
-                : _entranceStarted
-                ? 1
-                : 0,
-          ),
-          duration: !animate
+          tween: Tween(begin: 0, end: _entranceStarted ? 1 : 0),
+          duration: !animate || !widget.entranceAnimated
               ? Duration.zero
-              : Duration(milliseconds: expanding ? 200 : 240),
+              : const Duration(milliseconds: 240),
           curve: Curves.easeOutCubic,
-          onEnd: expanding ? _finishExpand : null,
           builder: (context, progress, child) {
-            final exit = math.max(0.0, progress - 1);
-            final opacity = math.min(progress, 1.0) * (1 - exit);
+            final opacity = progress;
             return IgnorePointer(
-              ignoring: !_entranceStarted || expanding,
+              ignoring: !_entranceStarted,
               child: Opacity(
                 // Paint the native view while its first frame is pending.
                 opacity: .01 + .99 * opacity,
