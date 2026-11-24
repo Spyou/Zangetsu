@@ -888,6 +888,12 @@ class PlaybackPrefs {
   bool get skipIntro => _box.get('skipIntro', defaultValue: true) as bool;
   Future<void> setSkipIntro(bool value) => _box.put('skipIntro', value);
 
+  /// Short content-warnings card (Violence · Moderate …) when playback starts.
+  /// On by default; turning it off also stops the lookup that feeds it.
+  bool get parentalGuide =>
+      _box.get('parentalGuide', defaultValue: true) as bool;
+  Future<void> setParentalGuide(bool value) => _box.put('parentalGuide', value);
+
   /// Jump past the opening / ending on their own, no tap, when AniSkip has real
   /// timings for the episode. Independent of [skipIntro] (that one only governs
   /// the manual button). Off by default — auto-seeking is the kind of thing you

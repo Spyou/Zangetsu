@@ -52,6 +52,7 @@ import '../../core/stremio/stremio_ref.dart';
 import '../../core/stremio/stremio_stream_mapping.dart';
 import '../detail/stremio_episode_links_sheet.dart';
 import '../../core/ui/app_toast.dart';
+import '../../core/playback/parental_guide_service.dart';
 import '../../core/playback/skip_service.dart';
 import '../../core/playback/source_selection.dart';
 import '../../core/playback/subtitle_language.dart';
@@ -79,6 +80,7 @@ import 'watch_page_motion.dart';
 import 'watch_page_info.dart';
 import 'player_controls_config.dart';
 import 'player_tv_controls.dart';
+import 'parental_guide_card.dart';
 import 'seek_preview.dart';
 import 'color_profiles.dart';
 import 'shader_presets.dart';
@@ -1752,6 +1754,35 @@ class _PlayerScreenState extends State<PlayerScreen> {
   // is released on pause, so a paused-and-forgotten player lets the screen time
   // out instead of burning battery at full brightness. Mirrors CloudStream.
   StreamSubscription<bool>? _playingSub;
+
+  // Content-warnings card: asked for once per episode, when its first frame is up.
+  StreamSubscription<int?>? _guideSub;
+  List<ParentalWarning> _guide = const [];
+  int _guideKey = 0;
+  int _guideForIndex = -1;
+
+  Future<void> _maybeShowGuide() async {
+    final index = _c.state.currentIndex;
+    if (_guideForIndex == index) return;
+    _guideForIndex = index;
+    // Anime has no IMDb entry; skip the lookup rather than guess.
+    if (widget.malId != null ||
+        widget.scrobbleTitle != null ||
+        !sl<PlaybackPrefs>().parentalGuide) {
+      return;
+    }
+    final found = await sl<ParentalGuideService>().warnings(
+      imdbId: widget.imdbId,
+      tmdbId: widget.tmdbId,
+      isTv: !widget.isMovie,
+    );
+    if (!mounted || found.isEmpty || index != _c.state.currentIndex) return;
+    setState(() {
+      _guide = found;
+      _guideKey++;
+    });
+  }
+
   StreamSubscription<bool>? _bufferingSub;
   bool _wakelockOn = false;
 
@@ -1827,6 +1858,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
     // playing/buffering, released on pause. Set up here (not _initInApp) because
     // _c isn't built until this point.
     _playingSub = _c.player.stream.playing.listen((_) => _syncWakelock());
+    _guideSub = _c.player.stream.width.listen((w) {
+      if ((w ?? 0) > 0) _maybeShowGuide();
+    });
     _bufferingSub = _c.player.stream.buffering.listen((_) => _syncWakelock());
     _syncWakelock();
 
@@ -2043,6 +2077,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _sleepTimer?.cancel();
     _completedSub?.cancel();
     _playingSub?.cancel();
+    _guideSub?.cancel();
     _stopAmbientSampler();
     _ambientFrames.close();
     _bufferingSub?.cancel();
@@ -2841,6 +2876,27 @@ class _PlayerScreenState extends State<PlayerScreen> {
             },
           ),
         ),
+        if (_guide.isNotEmpty)
+          // Lines up with the back arrow (32 margin + 12 icon padding). Sits
+          // under the title block while the controls are up, and floats to the
+          // corner once they hide.
+          AnimatedPositioned(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic,
+            top:
+                MediaQuery.paddingOf(context).top +
+                (_controlsVisible ? 68 : 24),
+            left: 44,
+            child: IgnorePointer(
+              child: ParentalGuideCard(
+                key: ValueKey(_guideKey),
+                warnings: _guide,
+                onDone: () {
+                  if (mounted) setState(() => _guide = const []);
+                },
+              ),
+            ),
+          ),
       ],
     );
   }

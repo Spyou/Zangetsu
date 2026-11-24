@@ -47,6 +47,7 @@ import '../profiles/profile_avatar_uploader.dart';
 import '../search/title_suggestion_service.dart';
 import '../ui/animation_prefs.dart';
 import '../ui/detail_prefs.dart';
+import '../playback/parental_guide_service.dart';
 import '../playback/skip_service.dart';
 import '../playback/resume_store.dart';
 import '../reading/read_history.dart';
@@ -608,6 +609,8 @@ Future<void> initDependencies({bool Function()? isOffline}) async {
 
   // Accurate OP/ED skip times for anime (AniList → MAL id → AniSkip).
   sl.registerSingleton<SkipService>(SkipService(dio));
+  // Content-warnings card shown when playback starts (IMDb parents guide).
+  sl.registerSingleton<ParentalGuideService>(ParentalGuideService(dio));
 
   // AniList account sync (auto-scrobble watched episodes + list import). The
   // box holds the OAuth token; the service listens for the OAuth redirect.

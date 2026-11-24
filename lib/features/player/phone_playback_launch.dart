@@ -26,6 +26,7 @@ import '../../core/playback/playback_prefs.dart';
 import '../../core/playback/title_prefs.dart';
 import '../../core/playback/resume_store.dart';
 import '../../core/playback/source_selection.dart';
+import '../../core/playback/parental_guide_service.dart';
 import '../../core/playback/skip_service.dart';
 import '../../core/playback/subtitle_download_service.dart';
 import '../../core/playback/subtitle_language.dart';
@@ -1143,6 +1144,24 @@ class PhoneNativePlayer {
               },
           ],
         };
+      case 'parentalGuideFor':
+        final gArgs = _callArgs(call);
+        final gIndex = (gArgs?['index'] as num?)?.toInt() ?? -1;
+        if (_closed?.isCompleted != false ||
+            gArgs?['sessionId'] != _sessionId ||
+            gIndex < 0 ||
+            gIndex >= _episodes.length ||
+            !sl<PlaybackPrefs>().parentalGuide) {
+          return null;
+        }
+        // Anime has no IMDb entry; skip the lookup rather than guess.
+        if (_malId != null || _scrobbleTitle != null) return null;
+        final warnings = await sl<ParentalGuideService>().warnings(
+          imdbId: _imdbId,
+          tmdbId: _tmdbId,
+          isTv: !_isMovie,
+        );
+        return [for (final w in warnings) w.toJson()];
       case 'resolveEpisode':
         final rArgs = _callArgs(call);
         final index = (rArgs?['index'] as num?)?.toInt() ?? -1;

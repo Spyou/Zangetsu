@@ -69,6 +69,9 @@ import java.util.Locale
 class PhonePlayerActivity : Activity() {
 
     companion object {
+        /** Resting top margin of the content-warnings card (controls hidden). */
+        private const val GUIDE_TOP_DP = 24
+
         private const val TAG = "PhonePlayer"
         private const val ROTATION_PULL_DISTANCE_DP = 64
 
@@ -228,6 +231,9 @@ class PhonePlayerActivity : Activity() {
     private data class SkipSegment(val start: Long, val end: Long, val label: Int, val auto: Boolean)
 
     private lateinit var segmentButton: FrameLayout
+    private lateinit var parentalGuide: ParentalGuideOverlay
+    private var guideShownFor = -1
+    private var guideShift: android.animation.ObjectAnimator? = null
     private lateinit var segmentLabel: TextView
     private lateinit var segmentFill: TextView
     private var segmentProgress = 0
@@ -579,6 +585,13 @@ class PhonePlayerActivity : Activity() {
             }
         }
         val stage = findViewById<FrameLayout>(R.id.player_root)
+        parentalGuide = ParentalGuideOverlay(this)
+        stage.addView(parentalGuide, stage.indexOfChild(findViewById<View>(R.id.loading)), FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+        })
+        applyGuideMargins()
         stage.addView(segmentButton, stage.indexOfChild(findViewById<View>(R.id.loading)), FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
             Gravity.BOTTOM or Gravity.END,
@@ -807,6 +820,7 @@ class PhonePlayerActivity : Activity() {
                     ),
                 )
                 hideLoading()
+                showParentalGuide()
             }
 
             // Force cues onto the user's vertical Position (0=top … 100=bottom).
@@ -1481,6 +1495,10 @@ class PhonePlayerActivity : Activity() {
             timeText.setTextColor(android.graphics.Color.WHITE)
             timeText.text = fmt(player?.currentPosition ?: 0L).padStart(5, '0') + " / " + fmt((player?.duration ?: 0L).coerceAtLeast(0L)).padStart(5, '0')
         }
+        if (::parentalGuide.isInitialized) {
+            applyGuideMargins()
+            syncGuidePlacement(animate = false)
+        }
     }
 
     /** Late enrichment from Dart; session-checked in [PhonePlayerBridge]. */
@@ -1845,6 +1863,7 @@ class PhonePlayerActivity : Activity() {
         p.pause()
         if (loadedEpisodeIndex != currentIndex) autoSkipped.clear()
         skipsRequested = false
+        parentalGuide.hideNow()
         skipSegments = emptyList()
         updateSegmentButton(null)
         playbackStarted = false
@@ -3657,6 +3676,71 @@ class PhonePlayerActivity : Activity() {
         }
     }
 
+    /**
+     * Keeps the content-warnings card clear of the top bar: while the controls
+     * are up it sits just under the title block; once they hide it floats up to
+     * the corner. Called wherever the controls show or hide.
+     */
+    private fun applyGuideMargins() {
+        val params = parentalGuide.layoutParams as FrameLayout.LayoutParams
+        // Lines up with the back arrow's glyph (bar margin + 12dp icon padding).
+        params.marginStart = dp(if (isPortraitCard()) 40 else 44)
+        params.topMargin = dp(GUIDE_TOP_DP)
+        parentalGuide.layoutParams = params
+    }
+
+    private fun syncGuidePlacement(animate: Boolean = true) {
+        if (!::parentalGuide.isInitialized) return
+        val bar = findViewById<View>(R.id.top_bar)
+        val controlsUp = controls.visibility == View.VISIBLE && !controlsHiding
+        val target = if (controlsUp && bar != null && bar.height > 0) {
+            (bar.bottom + dp(8) - dp(GUIDE_TOP_DP)).coerceAtLeast(0).toFloat()
+        } else 0f
+        guideShift?.cancel()
+        if (!animate) {
+            parentalGuide.translationY = target
+            return
+        }
+        guideShift = android.animation.ObjectAnimator
+            .ofFloat(parentalGuide, View.TRANSLATION_Y, target)
+            .setDuration(220)
+            .apply { start() }
+    }
+
+    /** Asks Dart for the content-warnings card once per episode and plays it. */
+    private fun showParentalGuide() {
+        val index = currentIndex
+        if (guideShownFor == index) return
+        // Never over the docked mini player.
+        if (docked && dockView != null) return
+        guideShownFor = index
+        val generation = mediaGeneration
+        PhonePlayerBridge.channel?.invokeMethod(
+            "parentalGuideFor",
+            mapOf("sessionId" to sessionId, "index" to index),
+            object : io.flutter.plugin.common.MethodChannel.Result {
+                override fun success(result: Any?) {
+                    if (!uiAlive() || index != currentIndex) return
+                    if (generation != mediaGeneration || isInPictureInPictureMode) {
+                        // Dropped (a subtitle/source switch, or PiP): ask again on the next first frame.
+                        if (guideShownFor == index) guideShownFor = -1
+                        return
+                    }
+                    val warnings = (result as? List<*>).orEmpty().mapNotNull {
+                        val row = it as? Map<*, *> ?: return@mapNotNull null
+                        val label = row["label"] as? String ?: return@mapNotNull null
+                        val severity = row["severity"] as? String ?: return@mapNotNull null
+                        label to severity
+                    }
+                    syncGuidePlacement(animate = false)
+                    parentalGuide.show(warnings)
+                }
+                override fun error(code: String, message: String?, details: Any?) {}
+                override fun notImplemented() {}
+            },
+        )
+    }
+
     private fun syncSkipSegments(p: ExoPlayer, position: Long, duration: Long) {
         if (!playbackStarted || switching || p.playbackState != Player.STATE_READY ||
             loadedEpisodeIndex != currentIndex || loadingOverlay.visibility == View.VISIBLE
@@ -3746,6 +3830,7 @@ class PhonePlayerActivity : Activity() {
         controls.alpha = 0f
         controls.scaleX = 0.96f
         controls.scaleY = 0.96f
+        syncGuidePlacement()
         controls.animate()
             .alpha(1f)
             .scaleX(1f)
@@ -3771,6 +3856,7 @@ class PhonePlayerActivity : Activity() {
             controls.pivotX = controls.width / 2f
             controls.pivotY = controls.height / 2f
         }
+        syncGuidePlacement()
         controls.animate()
             .alpha(0f)
             .scaleX(0.96f)
@@ -3961,6 +4047,7 @@ class PhonePlayerActivity : Activity() {
             pip.applyParams()
             // Only the system window chrome should be visible in PiP.
             updateSegmentButton(null)
+            parentalGuide.hideNow()
             controls.visibility = View.GONE
         } else {
             bumpControls()
@@ -3979,6 +4066,7 @@ class PhonePlayerActivity : Activity() {
     }
 
     override fun onDestroy() {
+        guideShift?.cancel()
         handler.removeCallbacks(speedTick)
         cancelDockHandoff()
         if (::seekPreview.isInitialized) seekPreview.close()

@@ -986,6 +986,17 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                 },
               ),
               _toggleRow(
+                icon: Icons.shield_outlined,
+                title: 'Content warnings',
+                subtitle:
+                    'A short card (violence, profanity…) when a movie or show starts. Asks a free community site, using only the title’s IMDb id',
+                value: _prefs.parentalGuide,
+                onChanged: (v) async {
+                  await _prefs.setParentalGuide(v);
+                  if (mounted) setState(() {});
+                },
+              ),
+              _toggleRow(
                 icon: Icons.fast_forward_rounded,
                 title: context.l10n.autoSkipOpening,
                 subtitle: context.l10n.jumpPastTheOPOnItsOwnNoTap,
