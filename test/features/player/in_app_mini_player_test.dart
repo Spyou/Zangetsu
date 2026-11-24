@@ -77,6 +77,73 @@ void main() {
     expect(restores, 1);
   });
 
+  testWidgets('dragging past the bottom edge dismisses the mini-player', (
+    tester,
+  ) async {
+    var closes = 0;
+    const video = ValueKey('dismiss-video');
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: InAppMiniPlayer(
+            video: const ColoredBox(key: video, color: Colors.black),
+            playing: true,
+            playPauseLabel: 'Pause',
+            closeLabel: 'Close',
+            restoreLabel: 'Restore player',
+            onTogglePlayback: () {},
+            onClose: () => closes++,
+            onRestore: () => fail('Dragging must not restore playback'),
+          ),
+        ),
+      ),
+    );
+
+    final finder = find.byKey(video);
+    final initial = tester.getCenter(finder);
+    Future<TestGesture> dragDown(double distance) async {
+      final gesture = await tester.startGesture(initial);
+      await gesture.moveBy(const Offset(0, 20));
+      await gesture.moveBy(Offset(0, distance));
+      await tester.pump();
+      return gesture;
+    }
+
+    final shortDrag = await dragDown(20);
+    expect(find.byType(BackdropFilter), findsNothing); // solid, not frosted
+    final hint = find.text('Drag down to dismiss');
+    expect(hint, findsOneWidget);
+    expect(tester.getRect(hint).top, greaterThan(initial.dy));
+    await shortDrag.up();
+    await tester.pumpAndSettle();
+    expect(tester.getCenter(finder), initial);
+    expect(find.text('Drag down to dismiss'), findsNothing);
+    expect(closes, 0);
+
+    final longDrag = await dragDown(80);
+    expect(find.text('Release to dismiss'), findsOneWidget);
+    expect(tester.getCenter(finder).dy, greaterThan(initial.dy));
+    expect(closes, 0);
+    await longDrag.up();
+    await tester.pump();
+    expect(closes, 1);
+
+    // A short, fast downward flick dismisses too.
+    await tester.pumpAndSettle();
+    // A barely-past-the-dock flick must not close it.
+    await tester.fling(
+      finder,
+      const Offset(0, 24),
+      1500,
+      warnIfMissed: false, // the video sits under the gesture layer
+    );
+    await tester.pumpAndSettle();
+    expect(closes, 1);
+    await tester.fling(finder, const Offset(0, 60), 1500, warnIfMissed: false);
+    await tester.pumpAndSettle();
+    expect(closes, 2);
+  });
+
   testWidgets('dock animates in, then grows and fades before expanding', (
     tester,
   ) async {

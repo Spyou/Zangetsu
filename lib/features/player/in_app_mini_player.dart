@@ -3,6 +3,8 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/physics.dart';
 
+import '../../l10n/l10n.dart';
+
 final dockedPlayer = ValueNotifier<InAppMiniPlayer?>(null);
 
 /// Displays the active dock over routes while allowing taps outside the card.
@@ -216,6 +218,12 @@ class _InAppMiniPlayerState extends State<InAppMiniPlayer>
       _pinchSurfaceWidth = null;
     }
     final reduceMotion = MediaQuery.disableAnimationsOf(context);
+    final bottomInset = MediaQuery.paddingOf(context).bottom;
+    final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
+    final bottomClearance = 96 + keyboardInset;
+    final dropClearance =
+        math.max(bottomInset, bottomClearance) -
+        math.max(bottomInset, keyboardInset);
     return SafeArea(
       left: !systemPip,
       top: !systemPip,
@@ -225,12 +233,7 @@ class _InAppMiniPlayerState extends State<InAppMiniPlayer>
           ? EdgeInsets.zero
           // shortcut: fixed clearance for the phone navigation bar, measure the
           // shell's dock if it starts covering taller navigation layouts.
-          : EdgeInsets.fromLTRB(
-              12,
-              12,
-              12,
-              96 + MediaQuery.viewInsetsOf(context).bottom,
-            ),
+          : EdgeInsets.fromLTRB(12, 12, 12, bottomClearance),
       child: LayoutBuilder(
         builder: (context, constraints) {
           final maxWidth = math.min(
@@ -251,19 +254,44 @@ class _InAppMiniPlayerState extends State<InAppMiniPlayer>
             _trailing != rtl ? right : 0,
             _bottom ? bottom : 0,
           );
-          Offset clamp(Offset offset, double cardWidth) => Offset(
+          // One limit for how far below the dock the card may go, shared by
+          // the drag, the drawn position and the dismiss threshold.
+          final maxDrop = math.max(0.0, dropClearance - 38);
+          final dismissDistance = math.max(
+            1.0,
+            math.min((height / 2).clamp(48.0, 72.0), maxDrop * .85),
+          );
+          double dragPastBottom() => _pinchSurfaceWidth == null
+              ? (_dragPosition?.dy ?? bottom) - bottom
+              : 0;
+          final showDismissHint = !systemPip && dragPastBottom() > 0;
+          bool canDismiss() =>
+              maxDrop > 0 && dragPastBottom() >= dismissDistance;
+          // Card fades and shrinks as it's pulled toward dismissal.
+          final pull = (dragPastBottom() / dismissDistance).clamp(0.0, 1.0);
+          Offset clamp(
+            Offset offset,
+            double cardWidth, {
+            double extraBottom = 0,
+          }) => Offset(
             offset.dx.clamp(
               0.0,
               math.max(0.0, constraints.maxWidth - cardWidth),
             ),
             offset.dy.clamp(
               0.0,
-              math.max(0.0, constraints.maxHeight - cardWidth * 9 / 16),
+              math.max(0.0, constraints.maxHeight - cardWidth * 9 / 16) +
+                  extraBottom,
             ),
           );
           final position = systemPip
               ? Offset.zero
-              : clamp(_dragPosition ?? corner, width);
+              : clamp(
+                  _dragPosition ?? corner,
+                  width,
+                  // Leave room for the hint below the moving video.
+                  extraBottom: maxDrop,
+                );
 
           void snap() {
             final currentWidth = math.min(_preferredWidth, maxWidth);
@@ -281,7 +309,64 @@ class _InAppMiniPlayerState extends State<InAppMiniPlayer>
           }
 
           return Stack(
+            clipBehavior: Clip.none,
             children: [
+              if (showDismissHint)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 8 - dropClearance,
+                  height: 40,
+                  child: IgnorePointer(
+                    child: Center(
+                      child: Builder(
+                        builder: (context) {
+                          final scheme = Theme.of(context).colorScheme;
+                          final ready = canDismiss();
+                          return AnimatedContainer(
+                            duration: const Duration(milliseconds: 120),
+                            decoration: BoxDecoration(
+                              color: ready
+                                  ? scheme.errorContainer
+                                  : scheme.surfaceContainerHighest,
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 8,
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  ready
+                                      ? Icons.close_rounded
+                                      : Icons.keyboard_arrow_down_rounded,
+                                  size: 18,
+                                  color: ready
+                                      ? scheme.onErrorContainer
+                                      : scheme.onSurface,
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  ready
+                                      ? context.l10n.releaseToDismiss
+                                      : context.l10n.dragDownToDismiss,
+                                  style: Theme.of(context).textTheme.labelMedium
+                                      ?.copyWith(
+                                        color: ready
+                                            ? scheme.onErrorContainer
+                                            : scheme.onSurface,
+                                      ),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                ),
               AnimatedPositioned(
                 duration:
                     !reduceMotion &&
@@ -293,142 +378,165 @@ class _InAppMiniPlayerState extends State<InAppMiniPlayer>
                 curve: const _DockSpringCurve(),
                 left: position.dx,
                 top: position.dy,
-                child: _withEntrance(
-                  animate: !systemPip && !reduceMotion,
-                  alignment: Alignment(
-                    _trailing != rtl ? 1 : -1,
-                    _bottom ? 1 : -1,
-                  ),
-                  child: Transform.scale(
-                    alignment: Alignment.topLeft,
-                    scale: surfaceWidth > 0 ? width / surfaceWidth : 1,
-                    child: SizedBox(
-                      width: surfaceWidth,
-                      height: surfaceHeight,
-                      child: Material(
-                        key: _cardKey,
-                        color: Colors.black,
-                        elevation: 6,
-                        borderRadius: BorderRadius.circular(systemPip ? 0 : 16),
-                        clipBehavior: Clip.antiAlias,
-                        child: Stack(
-                          fit: StackFit.expand,
-                          children: [
-                            IgnorePointer(child: widget.video),
-                            if (widget.retainedRoute case final route?)
-                              Offstage(child: route),
-                            if (!systemPip)
-                              Semantics(
-                                button: true,
-                                label: MaterialLocalizations.of(
-                                  context,
-                                ).moreButtonTooltip,
-                                child: GestureDetector(
-                                  behavior: HitTestBehavior.opaque,
-                                  onTap: width < 144
-                                      ? _expand
-                                      : () => setState(
-                                          () => _showControls = !_showControls,
-                                        ),
-                                  onScaleStart: (_) {
-                                    final card = _cardKey.currentContext
-                                        ?.findRenderObject();
-                                    final bounds = context.findRenderObject();
-                                    final visiblePosition =
-                                        card is RenderBox && bounds is RenderBox
-                                        ? card.localToGlobal(
-                                            Offset.zero,
-                                            ancestor: bounds,
-                                          )
-                                        : position;
-                                    setState(() {
-                                      _showControls = false;
-                                      _gestureWidth = width;
-                                      _dragPosition = visiblePosition;
-                                    });
-                                  },
-                                  onScaleUpdate: (details) => setState(() {
-                                    final currentWidth = math.min(
-                                      _preferredWidth,
-                                      maxWidth,
-                                    );
-                                    final origin = clamp(
-                                      _dragPosition ?? corner,
-                                      currentWidth,
-                                    );
-                                    if (details.pointerCount < 2) {
-                                      _dragPosition = clamp(
-                                        origin + details.focalPointDelta,
-                                        currentWidth,
-                                      );
-                                      return;
-                                    }
-
-                                    _pinchSurfaceWidth ??= currentWidth;
-                                    final nextWidth =
-                                        (_gestureWidth * details.scale).clamp(
-                                          minWidth,
-                                          maxWidth,
-                                        );
-                                    final change = currentWidth - nextWidth;
-                                    _preferredWidth = nextWidth;
-                                    _dragPosition = clamp(
-                                      origin +
-                                          Offset(
-                                            _trailing != rtl ? change : 0,
-                                            _bottom ? change * 9 / 16 : 0,
+                child: Transform.scale(
+                  scale: 1 - .1 * pull,
+                  child: _withEntrance(
+                    animate: !systemPip && !reduceMotion,
+                    alignment: Alignment(
+                      _trailing != rtl ? 1 : -1,
+                      _bottom ? 1 : -1,
+                    ),
+                    child: Transform.scale(
+                      alignment: Alignment.topLeft,
+                      scale: surfaceWidth > 0 ? width / surfaceWidth : 1,
+                      child: SizedBox(
+                        width: surfaceWidth,
+                        height: surfaceHeight,
+                        child: Material(
+                          key: _cardKey,
+                          color: Colors.black,
+                          elevation: 6,
+                          borderRadius: BorderRadius.circular(
+                            systemPip ? 0 : 16,
+                          ),
+                          clipBehavior: Clip.antiAlias,
+                          child: Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              IgnorePointer(child: widget.video),
+                              if (widget.retainedRoute case final route?)
+                                Offstage(child: route),
+                              if (!systemPip)
+                                Semantics(
+                                  button: true,
+                                  label: MaterialLocalizations.of(
+                                    context,
+                                  ).moreButtonTooltip,
+                                  child: GestureDetector(
+                                    behavior: HitTestBehavior.opaque,
+                                    onTap: width < 144
+                                        ? _expand
+                                        : () => setState(
+                                            () =>
+                                                _showControls = !_showControls,
                                           ),
-                                      nextWidth,
-                                    );
-                                  }),
-                                  onScaleEnd: (_) => snap(),
+                                    onScaleStart: (_) {
+                                      final card = _cardKey.currentContext
+                                          ?.findRenderObject();
+                                      final bounds = context.findRenderObject();
+                                      final visiblePosition =
+                                          card is RenderBox &&
+                                              bounds is RenderBox
+                                          ? card.localToGlobal(
+                                              Offset.zero,
+                                              ancestor: bounds,
+                                            )
+                                          : position;
+                                      setState(() {
+                                        _showControls = false;
+                                        _gestureWidth = width;
+                                        _dragPosition = visiblePosition;
+                                      });
+                                    },
+                                    onScaleUpdate: (details) => setState(() {
+                                      final currentWidth = math.min(
+                                        _preferredWidth,
+                                        maxWidth,
+                                      );
+                                      final origin = _dragPosition ?? corner;
+                                      if (details.pointerCount < 2) {
+                                        _dragPosition = clamp(
+                                          origin + details.focalPointDelta,
+                                          currentWidth,
+                                          extraBottom:
+                                              _pinchSurfaceWidth == null
+                                              ? maxDrop
+                                              : 0,
+                                        );
+                                        return;
+                                      }
+
+                                      _pinchSurfaceWidth ??= currentWidth;
+                                      final nextWidth =
+                                          (_gestureWidth * details.scale).clamp(
+                                            minWidth,
+                                            maxWidth,
+                                          );
+                                      final change = currentWidth - nextWidth;
+                                      _preferredWidth = nextWidth;
+                                      _dragPosition = clamp(
+                                        origin +
+                                            Offset(
+                                              _trailing != rtl ? change : 0,
+                                              _bottom ? change * 9 / 16 : 0,
+                                            ),
+                                        nextWidth,
+                                      );
+                                    }),
+                                    onScaleEnd: (details) {
+                                      // A quick downward flick dismisses too,
+                                      // once the card is pulled below its dock.
+                                      final dismiss =
+                                          details.pointerCount == 0 &&
+                                          (canDismiss() ||
+                                              (dragPastBottom() >
+                                                      dismissDistance / 2 &&
+                                                  details
+                                                          .velocity
+                                                          .pixelsPerSecond
+                                                          .dy >
+                                                      700));
+                                      snap();
+                                      if (dismiss) widget.onClose();
+                                    },
+                                  ),
                                 ),
-                              ),
-                            if (!systemPip &&
-                                _showControls &&
-                                width >= 144) ...[
-                              const IgnorePointer(
-                                child: ColoredBox(color: Colors.black38),
-                              ),
-                              Align(
-                                alignment: Alignment.topRight,
-                                child: _control(
-                                  widget.restoreLabel,
-                                  Icons.open_in_full_rounded,
-                                  _expand,
+                              if (!systemPip &&
+                                  _showControls &&
+                                  width >= 144) ...[
+                                const IgnorePointer(
+                                  child: ColoredBox(color: Colors.black38),
                                 ),
-                              ),
-                              Align(
-                                alignment: Alignment.topLeft,
-                                child: _control(
-                                  widget.closeLabel,
-                                  Icons.close_rounded,
-                                  widget.onClose,
+                                Align(
+                                  alignment: Alignment.topRight,
+                                  child: _control(
+                                    widget.restoreLabel,
+                                    Icons.open_in_full_rounded,
+                                    _expand,
+                                  ),
                                 ),
-                              ),
-                              Center(
-                                child: StreamBuilder<bool>(
-                                  stream: widget.playingChanges,
-                                  initialData: widget.playing,
-                                  builder: (context, snapshot) {
-                                    final playing =
-                                        snapshot.data ?? widget.playing;
-                                    return _control(
-                                      (playing
-                                              ? widget.pauseLabel
-                                              : widget.playLabel) ??
-                                          widget.playPauseLabel,
-                                      playing
-                                          ? Icons.pause_rounded
-                                          : Icons.play_arrow_rounded,
-                                      widget.onTogglePlayback,
-                                      size: 32,
-                                    );
-                                  },
+                                Align(
+                                  alignment: Alignment.topLeft,
+                                  child: _control(
+                                    widget.closeLabel,
+                                    Icons.close_rounded,
+                                    widget.onClose,
+                                  ),
                                 ),
-                              ),
+                                Center(
+                                  child: StreamBuilder<bool>(
+                                    stream: widget.playingChanges,
+                                    initialData: widget.playing,
+                                    builder: (context, snapshot) {
+                                      final playing =
+                                          snapshot.data ?? widget.playing;
+                                      return _control(
+                                        (playing
+                                                ? widget.pauseLabel
+                                                : widget.playLabel) ??
+                                            widget.playPauseLabel,
+                                        playing
+                                            ? Icons.pause_rounded
+                                            : Icons.play_arrow_rounded,
+                                        widget.onTogglePlayback,
+                                        size: 32,
+                                      );
+                                    },
+                                  ),
+                                ),
+                              ],
                             ],
-                          ],
+                          ),
                         ),
                       ),
                     ),

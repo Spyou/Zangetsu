@@ -132,6 +132,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get dismiss => '忽略';
 
   @override
+  String get dragDownToDismiss => 'Drag down to dismiss';
+
+  @override
+  String get releaseToDismiss => 'Release to dismiss';
+
+  @override
   String get refresh => '刷新';
 
   @override

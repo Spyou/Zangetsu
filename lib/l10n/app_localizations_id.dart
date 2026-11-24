@@ -132,6 +132,12 @@ class AppLocalizationsId extends AppLocalizations {
   String get dismiss => 'Abaikan';
 
   @override
+  String get dragDownToDismiss => 'Drag down to dismiss';
+
+  @override
+  String get releaseToDismiss => 'Release to dismiss';
+
+  @override
   String get refresh => 'Muat ulang';
 
   @override

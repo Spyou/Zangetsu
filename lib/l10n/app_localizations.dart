@@ -363,6 +363,18 @@ abstract class AppLocalizations {
   /// **'Dismiss'**
   String get dismiss;
 
+  /// No description provided for @dragDownToDismiss.
+  ///
+  /// In en, this message translates to:
+  /// **'Drag down to dismiss'**
+  String get dragDownToDismiss;
+
+  /// No description provided for @releaseToDismiss.
+  ///
+  /// In en, this message translates to:
+  /// **'Release to dismiss'**
+  String get releaseToDismiss;
+
   /// No description provided for @refresh.
   ///
   /// In en, this message translates to:

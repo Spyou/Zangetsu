@@ -41,6 +41,8 @@
 	"skip": "Skip",
 	"later": "Later",
 	"dismiss": "Dismiss",
+	"dragDownToDismiss": "Drag down to dismiss",
+	"releaseToDismiss": "Release to dismiss",
 	"refresh": "Refresh",
 	"more": "More",
 	"info": "Info",

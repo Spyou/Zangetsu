@@ -1,5 +1,7 @@
 {
   "ar": [
+    "dragDownToDismiss",
+    "releaseToDismiss",
     "customRange",
     "discordActivityStatus",
     "discordOnlineStatus",
@@ -159,6 +161,8 @@
   ],
 
   "de": [
+    "dragDownToDismiss",
+    "releaseToDismiss",
     "customRange",
     "searchOk",
     "discordActivityStatus",
@@ -432,6 +436,8 @@
   ],
 
   "es": [
+    "dragDownToDismiss",
+    "releaseToDismiss",
     "customRange",
     "searchOk",
     "discordActivityStatus",
@@ -705,6 +711,8 @@
   ],
 
   "fr": [
+    "dragDownToDismiss",
+    "releaseToDismiss",
     "customRange",
     "searchOk",
     "discordActivityStatus",
@@ -978,6 +986,8 @@
   ],
 
   "id": [
+    "dragDownToDismiss",
+    "releaseToDismiss",
     "customRange",
     "discordActivityStatus",
     "discordOnlineStatus",
@@ -1137,6 +1147,8 @@
   ],
 
   "it": [
+    "dragDownToDismiss",
+    "releaseToDismiss",
     "customRange",
     "searchOk",
     "discordActivityStatus",
@@ -1410,6 +1422,8 @@
   ],
 
   "ja": [
+    "dragDownToDismiss",
+    "releaseToDismiss",
     "customRange",
     "searchOk",
     "discordActivityStatus",
@@ -1683,6 +1697,8 @@
   ],
 
   "pt": [
+    "dragDownToDismiss",
+    "releaseToDismiss",
     "customRange",
     "discordActivityStatus",
     "discordOnlineStatus",
@@ -1842,6 +1858,8 @@
   ],
 
   "tr": [
+    "dragDownToDismiss",
+    "releaseToDismiss",
     "customRange",
     "discordActivityStatus",
     "discordOnlineStatus",
@@ -2001,6 +2019,8 @@
   ],
 
   "zh": [
+    "dragDownToDismiss",
+    "releaseToDismiss",
     "customRange",
     "searchOk",
     "discordActivityStatus",
@@ -2274,6 +2294,8 @@
   ],
 
   "zh_TW": [
+    "dragDownToDismiss",
+    "releaseToDismiss",
     "customRange",
     "searchOk",
     "discordActivityStatus",

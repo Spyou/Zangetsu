@@ -132,6 +132,12 @@ class AppLocalizationsJa extends AppLocalizations {
   String get dismiss => '閉じる';
 
   @override
+  String get dragDownToDismiss => 'Drag down to dismiss';
+
+  @override
+  String get releaseToDismiss => 'Release to dismiss';
+
+  @override
   String get refresh => '更新';
 
   @override

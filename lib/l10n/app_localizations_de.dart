@@ -132,6 +132,12 @@ class AppLocalizationsDe extends AppLocalizations {
   String get dismiss => 'Verwerfen';
 
   @override
+  String get dragDownToDismiss => 'Drag down to dismiss';
+
+  @override
+  String get releaseToDismiss => 'Release to dismiss';
+
+  @override
   String get refresh => 'Aktualisieren';
 
   @override

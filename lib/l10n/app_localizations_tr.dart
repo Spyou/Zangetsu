@@ -132,6 +132,12 @@ class AppLocalizationsTr extends AppLocalizations {
   String get dismiss => 'Yok say';
 
   @override
+  String get dragDownToDismiss => 'Drag down to dismiss';
+
+  @override
+  String get releaseToDismiss => 'Release to dismiss';
+
+  @override
   String get refresh => 'Yenile';
 
   @override
