@@ -48,7 +48,18 @@ void main() {
   Widget app() =>
       const MaterialApp(home: ProfileLaunchGate(child: Text('Main screen')));
 
+  testWidgets('a single profile goes straight in without asking', (
+    tester,
+  ) async {
+    await tester.pumpWidget(app());
+    await tester.pumpAndSettle();
+
+    expect(find.text("Who's watching?"), findsNothing);
+    expect(find.text('Main screen'), findsOneWidget);
+  });
+
   testWidgets('asks for a profile before showing the app', (tester) async {
+    await tester.runAsync(() => profiles.create('Second'));
     await tester.pumpWidget(app());
     await tester.pumpAndSettle();
 
@@ -99,6 +110,8 @@ void main() {
   testWidgets('profile tap finishes the picker transition within 900ms', (
     tester,
   ) async {
+    // With one profile the gate skips the picker, so add a second.
+    await tester.runAsync(() => profiles.create('Second'));
     await tester.pumpWidget(app());
     await tester.pumpAndSettle();
 
@@ -115,6 +128,8 @@ void main() {
   testWidgets('defers shell content until a profile is selected', (
     tester,
   ) async {
+    // With one profile the gate skips the picker, so add a second.
+    await tester.runAsync(() => profiles.create('Second'));
     final deferredStates = <bool>[];
     await tester.pumpWidget(
       MaterialApp(
@@ -676,6 +691,8 @@ void main() {
   testWidgets('unreadable lock with asking on still shows the picker first', (
     tester,
   ) async {
+    // With one profile the gate skips the picker, so add a second.
+    await tester.runAsync(() => profiles.create('Second'));
     GetIt.instance.registerSingleton<ProfileLockStore>(_ThrowingLockStore());
 
     await tester.pumpWidget(app());
@@ -720,6 +737,8 @@ void main() {
   testWidgets('gate prepares the shell while the avatar is still gliding', (
     tester,
   ) async {
+    // With one profile the gate skips the picker, so add a second.
+    await tester.runAsync(() => profiles.create('Second'));
     final deferredStates = <bool>[];
     final tabStates = <bool>[];
     await tester.pumpWidget(
@@ -749,6 +768,8 @@ void main() {
   testWidgets('launch selection flies a full-size avatar to the dock', (
     tester,
   ) async {
+    // With one profile the gate skips the picker, so add a second.
+    await tester.runAsync(() => profiles.create('Second'));
     await tester.pumpWidget(
       MaterialApp(
         home: ProfileLaunchGate(
@@ -809,6 +830,8 @@ void main() {
   testWidgets(
     'katana slash keeps repeating while a profile switch is pending',
     (tester) async {
+      // With one profile the gate skips the picker, so add a second.
+      await tester.runAsync(() => profiles.create('Second'));
       final delayed = _DelayedProfileStore();
       await tester.runAsync(delayed.loadForUser);
       await GetIt.instance.unregister<ViewerProfileStore>();

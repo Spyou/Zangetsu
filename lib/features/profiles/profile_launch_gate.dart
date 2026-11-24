@@ -104,7 +104,12 @@ class _ProfileLaunchGateState extends State<ProfileLaunchGate> {
       _deferContent = true;
     });
     final store = sl<ViewerProfileStore>();
-    if (checkLaunchPreference && store.askOnLaunch) {
+    // One profile has nothing to choose between, so go straight in. A locked
+    // profile still reaches the picker below, so its lock is enforced. Only
+    // trust the count once this account's profiles have loaded: right after
+    // a first sign-in the list can still be the phone's single local one.
+    final onlyOne = store.isLoadedForCurrentUser && store.profiles.length == 1;
+    if (checkLaunchPreference && store.askOnLaunch && !onlyOne) {
       _pickerShown = true;
       if (mounted) _showPicker();
       return;
