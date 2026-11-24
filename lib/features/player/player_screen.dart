@@ -3392,6 +3392,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
       ambientFrameStream: _ambientFrames.stream,
       ambientEnabled: sl<PlaybackPrefs>().ambientPlayer,
       positionStream: _c.player.stream.position,
+      loadingOverlay: _loadingBackdropBody(
+        state.torrentPhase ??
+            (state.loadingSources ? 'Finding streams…' : 'Starting playback…'),
+        thumb: _c.currentEpisode.thumbnail,
+      ),
       previewSource: () {
         final uri = _c.previewUri;
         if (uri == null) return null;
@@ -3847,6 +3852,28 @@ class _PlayerScreenState extends State<PlayerScreen> {
     return item == null ? null : sl<TitleLogoService>().cachedLogoFor(item);
   }
 
+  double? _lastCacheBytes;
+  DateTime? _lastCacheAt;
+
+  /// Bytes/s for the startup loader. `cache-speed` is 0 for HLS (ffmpeg does
+  /// the fetching, not mpv's stream layer), so fall back to how fast the
+  /// demuxer cache is growing between two polls.
+  Future<String?> _loadingSpeed() async {
+    final direct = double.tryParse(await _c.mpvStat('cache-speed') ?? '') ?? 0;
+    if (direct > 0) return '$direct';
+    final fw = double.tryParse(
+      await _c.mpvStat('demuxer-cache-state/fw-bytes') ?? '',
+    );
+    final now = DateTime.now();
+    final prev = _lastCacheBytes;
+    final at = _lastCacheAt;
+    _lastCacheBytes = fw;
+    _lastCacheAt = now;
+    if (fw == null || prev == null || at == null || fw < prev) return null;
+    final secs = now.difference(at).inMilliseconds / 1000;
+    return secs <= 0 ? null : '${(fw - prev) / secs}';
+  }
+
   Widget _loadingBackdropBody(String label, {String? thumb}) {
     final backdrop = (widget.loadingBackdrop ?? '').trim();
     final cover = (widget.cover ?? '').trim();
@@ -3858,31 +3885,43 @@ class _PlayerScreenState extends State<PlayerScreen> {
         imageUrl: url,
         httpHeaders: playbackArtworkHeaders(url, cover, widget.coverHeaders),
         fit: BoxFit.cover,
+        alignment: Alignment.topCenter,
         memCacheWidth: 1080,
         errorWidget: (_, _, _) => fallback,
       );
     }
 
     const background = ColoredBox(color: Colors.black);
-    final fallback = artwork(
-      backdrop == thumbnail ? '' : backdrop,
+    // Show backdrop first, then the episode frame, then the cover.
+    final art = artwork(
+      backdrop,
       fallback: artwork(
-        cover == backdrop || cover == thumbnail ? '' : cover,
-        fallback: background,
+        thumbnail == backdrop ? '' : thumbnail,
+        fallback: artwork(
+          cover == backdrop || cover == thumbnail ? '' : cover,
+          fallback: background,
+        ),
       ),
     );
     return Stack(
       fit: StackFit.expand,
       children: [
         background,
-        artwork(thumbnail, fallback: fallback),
-        // Keep the moving title and status legible over the artwork.
+        art,
+        // Light at the top, heavy at the bottom, so the logo and status stay
+        // legible while the artwork still reads.
         const DecoratedBox(
           decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
-              colors: [Color(0x99000000), Color(0xCC000000)],
+              stops: [0, 0.35, 0.7, 1],
+              colors: [
+                Color(0x4D000000),
+                Color(0x99000000),
+                Color(0xCC000000),
+                Color(0xE6000000),
+              ],
             ),
           ),
         ),
@@ -3890,13 +3929,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
           title: widget.showTitle ?? '',
           logo: _loadingLogo,
           status: label,
+          speed: _ready ? _loadingSpeed : null,
         ),
       ],
     );
   }
 
   Widget _watchPageLoadingShell() {
-    final title = (widget.showTitle ?? '').trim();
     final episodes = widget.episodes;
     final initialThumb = episodes.isEmpty
         ? null
@@ -3940,17 +3979,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-              child: title.isEmpty
-                  ? const _ShellBar(width: 220, height: 18)
-                  : Text(
-                      title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppText.headline.copyWith(
-                        color: Colors.white,
-                        fontSize: 20,
-                      ),
-                    ),
+              // Placeholder bar, never the title: the loader above carries the
+              // logo / show name, and a second copy here was the stray title.
+              child: const _ShellBar(width: 220, height: 18),
             ),
             const Padding(
               padding: EdgeInsets.fromLTRB(16, 6, 16, 0),

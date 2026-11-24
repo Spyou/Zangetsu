@@ -72,12 +72,16 @@ class PlaybackTitlePulse @JvmOverloads constructor(
     fun startPulse() {
         stopPulse()
         if (android.os.Build.VERSION.SDK_INT >= 26 && !ValueAnimator.areAnimatorsEnabled()) return
+        // Soft fade-in after a short beat so the logo doesn't pop on screen.
+        alpha = 0f
+        animate().alpha(1f).setStartDelay(400).setDuration(700).start()
         pulse = ObjectAnimator.ofPropertyValuesHolder(
             this,
-            PropertyValuesHolder.ofFloat(SCALE_X, 1f, 1.035f),
-            PropertyValuesHolder.ofFloat(SCALE_Y, 1f, 1.035f),
+            PropertyValuesHolder.ofFloat(SCALE_X, 1f, 1.04f),
+            PropertyValuesHolder.ofFloat(SCALE_Y, 1f, 1.04f),
         ).apply {
-            duration = 1_400
+            duration = 2_000
+            interpolator = android.view.animation.LinearInterpolator()
             repeatMode = ValueAnimator.REVERSE
             repeatCount = ValueAnimator.INFINITE
             start()
@@ -87,6 +91,8 @@ class PlaybackTitlePulse @JvmOverloads constructor(
     fun stopPulse() {
         pulse?.cancel()
         pulse = null
+        animate().cancel()
+        alpha = 1f
         scaleX = 1f
         scaleY = 1f
     }

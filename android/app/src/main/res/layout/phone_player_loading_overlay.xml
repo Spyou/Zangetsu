@@ -14,7 +14,6 @@
         android:id="@+id/loading_backdrop"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:alpha="0.55"
         android:importantForAccessibility="no"
         android:scaleType="centerCrop" />
 
@@ -39,8 +38,8 @@
 
             <ImageView
                 android:id="@+id/loading_logo"
-                android:layout_width="220dp"
-                android:layout_height="52dp"
+                android:layout_width="match_parent"
+                android:layout_height="150dp"
                 android:layout_gravity="center"
                 android:importantForAccessibility="no"
                 android:scaleType="fitCenter"
@@ -55,7 +54,7 @@
                 android:gravity="center"
                 android:maxLines="2"
                 android:textColor="@color/phone_player_on_surface"
-                android:textSize="20sp"
+                android:textSize="30sp"
                 android:textStyle="bold" />
         </com.spyou.watch_app.PlaybackTitlePulse>
 
@@ -77,6 +76,17 @@
             android:gravity="center"
             android:textColor="@color/phone_player_on_surface_variant"
             android:textSize="13sp" />
+
+        <TextView
+            android:id="@+id/loading_speed"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:alpha="0.6"
+            android:gravity="center"
+            android:textColor="@color/phone_player_on_surface_variant"
+            android:textSize="11sp"
+            android:visibility="gone" />
 
         <LinearLayout
             android:id="@+id/loading_actions"

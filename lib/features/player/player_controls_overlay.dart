@@ -590,56 +590,61 @@ class _ControlsOverlay extends StatelessWidget {
                   // zones below and toggle the controls like anywhere else.
                   Expanded(
                     child: IgnorePointer(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Row(
-                            children: [
-                              Flexible(
+                      child: _ShowAfterFirstFrame(
+                        // Show / episode names stay hidden behind the startup
+                        // loader, then fade in.
+                        controller: c,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Row(
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    primaryTitle,
+                                    style: AppText.headline.copyWith(
+                                      color: Colors.white,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                // Filler comes from the Jikan lookup, not the
+                                // source — Episode.filler is always false here.
+                                // Listened to because that lookup lands long
+                                // after this is first built.
+                                ValueListenableBuilder<Set<int>>(
+                                  valueListenable: c.fillerEpisodes,
+                                  builder: (context, _, _) =>
+                                      c.isFillerAt(state.currentIndex)
+                                      ? const Padding(
+                                          padding: EdgeInsetsDirectional.only(
+                                            start: 8,
+                                          ),
+                                          // No colour passed: TagBadge falls back
+                                          // to the app accent, so the badge
+                                          // follows the user's theme colour.
+                                          child: TagBadge(text: 'FILLER'),
+                                        )
+                                      : const SizedBox.shrink(),
+                                ),
+                              ],
+                            ),
+                            if (secondaryLine != null)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 1),
                                 child: Text(
-                                  primaryTitle,
-                                  style: AppText.headline.copyWith(
-                                    color: Colors.white,
+                                  secondaryLine,
+                                  style: AppText.caption.copyWith(
+                                    color: Colors.white70,
                                   ),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               ),
-                              // Filler comes from the Jikan lookup, not the
-                              // source — Episode.filler is always false here.
-                              // Listened to because that lookup lands long
-                              // after this is first built.
-                              ValueListenableBuilder<Set<int>>(
-                                valueListenable: c.fillerEpisodes,
-                                builder: (context, _, _) =>
-                                    c.isFillerAt(state.currentIndex)
-                                    ? const Padding(
-                                        padding: EdgeInsetsDirectional.only(
-                                          start: 8,
-                                        ),
-                                        // No colour passed: TagBadge falls back
-                                        // to the app accent, so the badge
-                                        // follows the user's theme colour.
-                                        child: TagBadge(text: 'FILLER'),
-                                      )
-                                    : const SizedBox.shrink(),
-                              ),
-                            ],
-                          ),
-                          if (secondaryLine != null)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 1),
-                              child: Text(
-                                secondaryLine,
-                                style: AppText.caption.copyWith(
-                                  color: Colors.white70,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -896,3 +901,54 @@ class _ControlsOverlay extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 // Seek row — current time + slider (stream-bound) + total time.
 // ─────────────────────────────────────────────────────────────────────────────
+
+/// Fades its child in once the first video frame is up — or playback has
+/// started, so audio-only media (no frame, ever) isn't left without a title.
+/// Latches: a later source switch resetting the width doesn't hide it again.
+class _ShowAfterFirstFrame extends StatefulWidget {
+  const _ShowAfterFirstFrame({required this.controller, required this.child});
+
+  final PlayerCubit controller;
+  final Widget child;
+
+  @override
+  State<_ShowAfterFirstFrame> createState() => _ShowAfterFirstFrameState();
+}
+
+class _ShowAfterFirstFrameState extends State<_ShowAfterFirstFrame> {
+  late bool _shown = _ready();
+  final _subs = <StreamSubscription<Object?>>[];
+
+  bool _ready() {
+    final p = widget.controller.player.state;
+    return (p.width ?? 0) > 0 || p.playing;
+  }
+
+  void _check() {
+    if (!_shown && mounted && _ready()) setState(() => _shown = true);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    final s = widget.controller.player.stream;
+    _subs
+      ..add(s.width.listen((_) => _check()))
+      ..add(s.playing.listen((_) => _check()));
+  }
+
+  @override
+  void dispose() {
+    for (final sub in _subs) {
+      sub.cancel();
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AnimatedOpacity(
+    opacity: _shown ? 1 : 0,
+    duration: const Duration(milliseconds: 250),
+    child: widget.child,
+  );
+}

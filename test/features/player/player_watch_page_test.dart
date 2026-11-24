@@ -1177,7 +1177,11 @@ void main() {
     await tester.tap(find.byIcon(Icons.skip_previous_rounded));
     await tester.tap(find.byIcon(Icons.skip_next_rounded));
     await tester.tap(find.byIcon(Icons.fullscreen_rounded));
-    tester.widget<Slider>(find.byType(Slider)).onChanged!(5000);
+    final slider = tester.widget<Slider>(find.byType(Slider));
+    slider.onChanged!(5000);
+    // Dragging only moves the thumb; the seek lands once, on release.
+    expect(seek, isNull);
+    slider.onChangeEnd!(5000);
     expect([back, play, previous, next, fullscreen], [1, 1, 1, 1, 1]);
     expect(seek, const Duration(seconds: 5));
   });

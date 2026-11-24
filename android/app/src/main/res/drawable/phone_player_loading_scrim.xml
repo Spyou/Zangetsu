@@ -1,10 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
+    <!-- Light at the top, heavy at the bottom: the backdrop stays readable and
+         the logo / status stay legible. No dark band through the middle. -->
     <gradient
         android:angle="270"
-        android:startColor="#8C0B0B0F"
-        android:centerColor="#F20B0B0F"
-        android:endColor="#8C0B0B0F"
+        android:startColor="#4D000000"
+        android:centerColor="#B3000000"
+        android:endColor="#E6000000"
         android:type="linear" />
 </shape>

@@ -59,6 +59,7 @@ class PlayerWatchPage extends StatefulWidget {
     this.coverUrl,
     required this.onTogglePlay,
     required this.onSeek,
+    this.loadingOverlay,
     this.previewSource,
     this.onSeekBy,
     this.doubleTapSeconds = 10,
@@ -142,6 +143,10 @@ class PlayerWatchPage extends StatefulWidget {
 
   final VoidCallback onTogglePlay;
   final ValueChanged<Duration> onSeek;
+
+  /// Startup loader (backdrop, logo, status) drawn over the video until its
+  /// first frame lands.
+  final Widget? loadingOverlay;
 
   /// Where scrub-preview frames come from; null when this source can't be
   /// previewed (TV, iOS, no url).
@@ -933,6 +938,8 @@ class _PlayerWatchPageState extends State<PlayerWatchPage>
             fit: StackFit.expand,
             children: [
               widget.video,
+              if (!_frameUp && widget.loadingOverlay != null)
+                Positioned.fill(child: widget.loadingOverlay!),
               const Positioned(
                 top: 0,
                 left: 0,
@@ -1292,6 +1299,8 @@ class _PlayerWatchPageState extends State<PlayerWatchPage>
 
   // ── Info ─────────────────────────────────────────────────────────────────
 
+  bool get _titleShown => _frameUp || widget.loadingOverlay == null;
+
   Widget _info() {
     final l10n = context.l10n;
     // CustomScrollView + SliverList: a 1000-episode title only builds the
@@ -1312,31 +1321,41 @@ class _PlayerWatchPageState extends State<PlayerWatchPage>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: WatchPageChange(
-                          value: widget.header.title,
-                          child: Text(
-                            widget.header.title,
-                            style: AppText.headline.copyWith(
-                              color: Colors.white,
-                              fontSize: 20,
+                      AnimatedOpacity(
+                        // Episode name stays hidden behind the startup loader
+                        // (space is kept so nothing jumps when it appears).
+                        opacity: _titleShown ? 1 : 0,
+                        duration: const Duration(milliseconds: 250),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: WatchPageChange(
+                            value: widget.header.title,
+                            child: Text(
+                              widget.header.title,
+                              style: AppText.headline.copyWith(
+                                color: Colors.white,
+                                fontSize: 20,
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
                             ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                       ),
                       if (widget.header.subtitle.isNotEmpty) ...[
                         const SizedBox(height: 4),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: WatchPageChange(
-                            value: widget.header.subtitle,
-                            child: Text(
-                              widget.header.subtitle,
-                              style: AppText.caption.copyWith(
-                                color: AppColors.textSecondary,
+                        AnimatedOpacity(
+                          opacity: _titleShown ? 1 : 0,
+                          duration: const Duration(milliseconds: 250),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            child: WatchPageChange(
+                              value: widget.header.subtitle,
+                              child: Text(
+                                widget.header.subtitle,
+                                style: AppText.caption.copyWith(
+                                  color: AppColors.textSecondary,
+                                ),
                               ),
                             ),
                           ),

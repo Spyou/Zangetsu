@@ -93,6 +93,37 @@ class PhonePlayerActivity : Activity() {
     private lateinit var loadingTitle: android.widget.TextView
     private lateinit var loadingEpisode: android.widget.TextView
     private lateinit var loadingStatus: android.widget.TextView
+    private var loadingSpeed: android.widget.TextView? = null
+
+    // Live download speed on the startup loader: the app's own received-bytes
+    // counter, sampled once a second. (ExoPlayer's per-request samples were
+    // tiny and bursty — 11 KB/s next to 5 MB/s — so they made a poor monitor.)
+    private var lastRxBytes = -1L
+    private var lastRxAt = 0L
+    private val speedTick = object : Runnable {
+        override fun run() {
+            val view = loadingSpeed
+            if (view != null && loadingOverlay.visibility == View.VISIBLE) {
+                val rx = android.net.TrafficStats.getUidRxBytes(android.os.Process.myUid())
+                val now = android.os.SystemClock.elapsedRealtime()
+                if (rx != android.net.TrafficStats.UNSUPPORTED.toLong() && lastRxBytes >= 0 && now > lastRxAt) {
+                    val perSec = (rx - lastRxBytes) * 1000.0 / (now - lastRxAt)
+                    if (perSec >= 1024) {
+                        view.text = if (perSec >= 1024 * 1024) "%.1f MB/s".format(perSec / (1024 * 1024))
+                        else "${(perSec / 1024).toInt()} KB/s"
+                        view.visibility = View.VISIBLE
+                    } else {
+                        view.visibility = View.GONE
+                    }
+                }
+                lastRxBytes = rx
+                lastRxAt = now
+            } else {
+                lastRxBytes = -1L
+            }
+            handler.postDelayed(this, 1000)
+        }
+    }
     private lateinit var loadingActions: View
     private lateinit var loadingTitlePulse: PlaybackTitlePulse
 
@@ -560,7 +591,11 @@ class PhonePlayerActivity : Activity() {
         loadingBackdrop = findViewById(R.id.loading_backdrop)
         loadingTitle = findViewById(R.id.loading_title)
         loadingEpisode = findViewById(R.id.loading_episode)
+        // The loader carries only the logo / show name + status; the episode line
+        // ("Episode 1 · S1 · E1") stays off it. Text is still set, just never shown.
+        loadingEpisode.visibility = View.GONE
         loadingStatus = findViewById(R.id.loading_status)
+        loadingSpeed = findViewById(R.id.loading_speed)
         loadingActions = findViewById(R.id.loading_actions)
         findViewById<View>(R.id.btn_loading_retry).setOnClickListener {
             switching = false
@@ -749,6 +784,7 @@ class PhonePlayerActivity : Activity() {
             )
             .build()
         player = exo
+        handler.postDelayed(speedTick, 1000)
         playerView.player = exo
         playerView.subtitleView?.apply {
             setApplyEmbeddedStyles(false)
@@ -903,6 +939,7 @@ class PhonePlayerActivity : Activity() {
         handler.removeCallbacks(resolveTimeout)
         handler.removeCallbacks(startTimeout)
         loadingOverlay.visibility = View.GONE
+        loadingSpeed?.visibility = View.GONE
         loadingTitlePulse.stopPulse()
         setBuffering(false)
         everPlayed = true
@@ -3933,6 +3970,7 @@ class PhonePlayerActivity : Activity() {
     }
 
     override fun onDestroy() {
+        handler.removeCallbacks(speedTick)
         cancelDockHandoff()
         if (::seekPreview.isInitialized) seekPreview.close()
         segmentTimer.cancel()
