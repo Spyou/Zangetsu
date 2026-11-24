@@ -1338,7 +1338,8 @@ class PhonePlayerActivity : Activity() {
             }
             if (edgeToEdge) video.setBackgroundColor(android.graphics.Color.BLACK)
             else video.background = getDrawable(R.drawable.phone_player_video_card)
-            video.clipToOutline = !edgeToEdge
+            cardRadiusPx = if (edgeToEdge) 0f else dp(18).toFloat()
+            restoreCardClip(video)
             val info = ensureWatchInfo()
             info?.visibility = View.VISIBLE
             if (ambientEnabled) startAmbient()
@@ -1351,7 +1352,8 @@ class PhonePlayerActivity : Activity() {
             }
             video.layoutParams = lp
             video.background = null
-            video.clipToOutline = false
+            cardRadiusPx = 0f
+            restoreCardClip(video)
             watchInfo?.visibility = View.GONE
             stopAmbient()
         }
@@ -3262,6 +3264,32 @@ class PhonePlayerActivity : Activity() {
     private var morphBackdrop: android.graphics.drawable.Drawable? = null
     private var morphRadius = 0f
 
+    /** Corner radius the portrait card has at rest; the drag starts from it. */
+    private var cardRadiusPx = 0f
+    private var morphClipInstalled = false
+
+    /**
+     * The video's resting clip: rounded at [cardRadiusPx] on the portrait card,
+     * none otherwise. Set explicitly (not left to the background drawable) and
+     * put back after every drag, so the card keeps its corners at rest.
+     */
+    private fun restoreCardClip(video: View) {
+        morphClipInstalled = false
+        val radius = cardRadiusPx
+        if (radius > 0f) {
+            video.outlineProvider = object : ViewOutlineProvider() {
+                override fun getOutline(view: View, outline: android.graphics.Outline) {
+                    outline.setRoundRect(0, 0, view.width, view.height, radius)
+                }
+            }
+            video.clipToOutline = true
+        } else {
+            video.outlineProvider = ViewOutlineProvider.BACKGROUND
+            video.clipToOutline = false
+        }
+        video.invalidateOutline()
+    }
+
     /** Mirrors defaultDockRect() in in_app_mini_player.dart. The mini player lives
      * in the app's window, which can be shorter than the screen (it stops above
      * the navigation bar), so its area is measured from that window. */
@@ -3326,9 +3354,13 @@ class PhonePlayerActivity : Activity() {
         video.scaleY = scale
         video.translationX = (video.left + (dock.left - video.left) * p) - video.left
         video.translationY = (video.top + (dock.top - video.top) * p) - video.top
-        // Round to the mini player's 16dp corners, allowing for the scale.
-        morphRadius = p * 16 * resources.displayMetrics.density / end
-        if (video.outlineProvider === ViewOutlineProvider.BACKGROUND || !video.clipToOutline) {
+        // Corners ease from the card's own radius to the mini player's 16dp.
+        // Counted in on-screen size, then divided by the scale the view is
+        // drawn at, so the first touch doesn't snap them square.
+        val screenRadius = cardRadiusPx + (16 * resources.displayMetrics.density - cardRadiusPx) * p
+        morphRadius = screenRadius / scale
+        if (!morphClipInstalled) {
+            morphClipInstalled = true
             video.outlineProvider = object : ViewOutlineProvider() {
                 override fun getOutline(view: View, outline: android.graphics.Outline) {
                     outline.setRoundRect(0, 0, view.width, view.height, morphRadius)
@@ -3355,8 +3387,7 @@ class PhonePlayerActivity : Activity() {
         video.translationY = 0f
         video.scaleX = 1f
         video.scaleY = 1f
-        video.clipToOutline = false
-        video.outlineProvider = ViewOutlineProvider.BACKGROUND
+        restoreCardClip(video)
         morphBackdrop?.let { findViewById<View>(R.id.watch_root)?.background = it }
         if (morphBackdrop != null) {
             window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.BLACK))
