@@ -33,6 +33,7 @@ import '../../core/playback/subtitle_language.dart';
 import '../../core/playback/subtitle_encode_skew.dart';
 import '../../core/playback/subtitle_font_stage.dart';
 import '../../core/playback/tv_track_helpers.dart';
+import '../../core/ui/subtitle_language_picker.dart';
 import '../../core/playback/watch_history.dart';
 import '../../core/playback/tv_playback_helpers.dart' show shouldScrobble;
 import '../../core/theme/app_colors.dart';
@@ -268,7 +269,8 @@ Map<String, dynamic> phonePlayerArgs({
   required double subtitleScale,
   required int subtitleFgColor,
   required int subtitleBgColor,
-  required int subtitleEdgeType,
+  String subtitleOutlineType = 'soft',
+  double subtitleOutlineWidth = 2.0,
   required int subtitleEdgeColor,
   required String subtitlePreference,
   int subtitlePosition = 95,
@@ -340,7 +342,8 @@ Map<String, dynamic> phonePlayerArgs({
     'subtitleScale': subtitleScale,
     'subtitleFgColor': subtitleFgColor,
     'subtitleBgColor': subtitleBgColor,
-    'subtitleEdgeType': subtitleEdgeType,
+    'subtitleOutlineType': subtitleOutlineType,
+    'subtitleOutlineWidth': subtitleOutlineWidth,
     'subtitleEdgeColor': subtitleEdgeColor,
     'subtitlePreference': subtitlePreference,
     'subtitlePosition': subtitlePosition.clamp(0, 100),
@@ -780,7 +783,8 @@ class PhoneNativePlayer {
         '#000000',
         opacity: prefs.subtitleBgOpacity,
       ).toARGB32(),
-      subtitleEdgeType: tvEdgeTypeFromOutlinePref(prefs.subtitleOutlineType),
+      subtitleOutlineType: prefs.subtitleOutlineType,
+      subtitleOutlineWidth: prefs.subtitleOutlineWidth,
       subtitleEdgeColor: parseSubtitleHex(
         prefs.subtitleOutlineColorHex,
       ).toARGB32(),
@@ -926,7 +930,8 @@ class PhoneNativePlayer {
               '#000000',
               opacity: prefs.subtitleBgOpacity,
             ).toARGB32(),
-            'edgeType': tvEdgeTypeFromOutlinePref(prefs.subtitleOutlineType),
+            'outlineType': prefs.subtitleOutlineType,
+            'outlineWidth': prefs.subtitleOutlineWidth,
             'edgeColor': parseSubtitleHex(
               prefs.subtitleOutlineColorHex,
             ).toARGB32(),
@@ -935,6 +940,38 @@ class PhoneNativePlayer {
         },
       );
       await _subtitleStyleRoute?.completed;
+    } finally {
+      _subtitleStyleRoute = null;
+      _subtitleStyleOpen = false;
+      if (navigator.mounted && cover.isActive) navigator.removeRoute(cover);
+    }
+  }
+
+  /// Same Flutter picker the MPV sheet uses, shown over the native player.
+  static Future<void> _pickSubtitleLanguage(int sessionId) async {
+    final navigator = rootNavigatorKey.currentState;
+    if (navigator == null || _subtitleStyleOpen) return;
+    _subtitleStyleOpen = true;
+    final cover = PageRouteBuilder<void>(
+      transitionDuration: Duration.zero,
+      reverseTransitionDuration: Duration.zero,
+      pageBuilder: (_, _, _) => const SizedBox.expand(),
+    );
+    unawaited(navigator.push(cover));
+    try {
+      final prefs = sl<PlaybackPrefs>();
+      final picked = await showSubtitleLanguagePicker(
+        navigator.context,
+        prefs.subtitlePreference,
+        onRoute: (route) => _subtitleStyleRoute = route,
+      );
+      if (picked != null && sessionId == _sessionId) {
+        await prefs.setSubtitlePreference(picked);
+        await _ch.invokeMethod('setSubtitlePreference', {
+          'sessionId': sessionId,
+          'value': picked,
+        });
+      }
     } finally {
       _subtitleStyleRoute = null;
       _subtitleStyleOpen = false;
@@ -1071,6 +1108,13 @@ class PhoneNativePlayer {
           return null;
         }
         await _showSubtitleStyle(_sessionId);
+        return null;
+      case 'openSubtitleLanguage':
+        final args = _callArgs(call);
+        if (_closed?.isCompleted != false || args?['sessionId'] != _sessionId) {
+          return null;
+        }
+        await _pickSubtitleLanguage(_sessionId);
         return null;
       case 'closeSubtitleStyle':
         final route = _subtitleStyleRoute;

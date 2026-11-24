@@ -36,6 +36,14 @@ internal class PhonePlayerSheet(context: Context) : AlertDialog.Builder(context,
     private val surface = 0xFF16161C.toInt()
     private val secondary = 0xFFA7A7B2.toInt()
 
+    /** The tallest a sheet may be: [share] of what the bars leave on screen. */
+    private fun capPx(share: Float = 0.6f): Int {
+        val insets = ViewCompat.getRootWindowInsets(activity.window.decorView)
+            ?.getInsets(WindowInsetsCompat.Type.systemBars())
+        val bottom = (insets?.bottom ?: 0) + dp(12)
+        return ((context.resources.displayMetrics.heightPixels - (insets?.top ?: 0) - bottom) * share).toInt()
+    }
+
     private fun dp(value: Int) = (value * context.resources.displayMetrics.density + 0.5f).toInt()
     private fun shape(color: Int, radius: Int = 10) = GradientDrawable().apply {
         setColor(color)
@@ -142,34 +150,120 @@ internal class PhonePlayerSheet(context: Context) : AlertDialog.Builder(context,
         scroll(grid)
     }
 
-    fun setTrackItems(labels: Array<String>, audioStart: Int, subtitleStart: Int,
-                      selected: Set<Int>, listener: DialogInterface.OnClickListener): PhonePlayerSheet = apply {
-        val content = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-        fun addRows(parent: LinearLayout, range: IntRange) {
-            for (index in range) {
-                parent.addView(label(labels[index].substringAfter(": ").removeSuffix(" ✓"), index in selected).apply {
-                    foreground = ripple()
-                    setOnClickListener { dialog?.let { listener.onClick(it, index); it.dismiss() } }
-                }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(3); bottomMargin = dp(3) })
-            }
+    /** One line in the Audio & subtitles sheet. */
+    internal class SheetRow(
+        val label: String,
+        val detail: String? = null,
+        val selected: Boolean = false,
+        val icon: Int? = null,
+        val onClick: () -> Unit,
+    )
+
+    /** A scroll area that never grows past [maxPx]. */
+    private class CappedScroll(context: Context, private val maxPx: Int) : ScrollView(context) {
+        init {
+            // Rows are tapped, never focused; focus would scroll the list on open.
+            isFocusable = false
+            isFocusableInTouchMode = false
+            descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
         }
-        addRows(content, 0 until audioStart)
+
+        override fun onMeasure(widthSpec: Int, heightSpec: Int) = super.onMeasure(
+            widthSpec, View.MeasureSpec.makeMeasureSpec(maxPx, View.MeasureSpec.AT_MOST),
+        )
+    }
+
+    private fun sheetRow(row: SheetRow, close: () -> Unit): View {
+        val line = LinearLayout(context).apply {
+            gravity = Gravity.CENTER_VERTICAL
+            minimumHeight = dp(48)
+            setPadding(dp(12), dp(8), dp(12), dp(8))
+            background = shape(if (row.selected) (accent and 0x00FFFFFF) or 0x26000000 else Color.TRANSPARENT)
+            foreground = ripple()
+            setOnClickListener { close(); row.onClick() }
+        }
+        row.icon?.let {
+            line.addView(ImageView(context).apply {
+                setImageResource(it)
+                setColorFilter(secondary)
+            }, LinearLayout.LayoutParams(dp(20), dp(20)).apply { marginEnd = dp(12) })
+        }
+        val text = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+        text.addView(TextView(context).apply {
+            textSize = 14f
+            this.text = row.label
+            setTextColor(if (row.selected) accent else Color.WHITE)
+            setTypeface(typeface, if (row.selected) Typeface.BOLD else Typeface.NORMAL)
+        })
+        row.detail?.let { detail ->
+            text.addView(TextView(context).apply {
+                textSize = 12f
+                this.text = detail
+                setTextColor(secondary)
+            })
+        }
+        line.addView(text, LinearLayout.LayoutParams(0, -2, 1f))
+        if (row.selected) {
+            line.addView(ImageView(context).apply {
+                setImageDrawable(context.getDrawable(R.drawable.phone_player_check)!!.mutate().also { it.setTint(accent) })
+            }, LinearLayout.LayoutParams(dp(20), dp(20)).apply { marginStart = dp(8) })
+        }
+        return line
+    }
+
+    /**
+     * The Audio & subtitles sheet, laid out like the MPV player's: Audio and
+     * Subtitles side by side (each scrolls on its own), then a divider and the
+     * settings rows underneath.
+     */
+    fun setAudioSubtitleSheet(audio: List<SheetRow>, subtitles: List<SheetRow>, footer: List<SheetRow>): PhonePlayerSheet = apply {
+        val content = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+        fun close() { dialog?.dismiss() }
+        // The columns take whatever the sheet has left after its footer, so the
+        // sheet as a whole fits without a second, competing scroll.
+        val footerPx = if (footer.isEmpty()) 0 else footer.size * dp(52) + dp(20)
+        val cap = (capPx(0.85f) - footerPx - dp(110)).coerceAtLeast(dp(96))
         val columns = LinearLayout(context)
-        for ((title, range) in listOf(
-            R.string.phone_player_watch_audio to (audioStart until subtitleStart),
-            R.string.phone_player_title_subtitles to (subtitleStart until labels.size),
-        )) {
+        val sections = listOf(
+            context.getText(R.string.phone_player_watch_audio) to audio,
+            context.getText(R.string.phone_player_title_subtitles) to subtitles,
+        )
+        for ((index, section) in sections.withIndex()) {
+            val (title, rows) = section
             val column = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-            column.addView(label(context.getText(title)).apply {
+            column.addView(label(title).apply {
                 textSize = 13f
                 setTextColor(secondary)
                 setTypeface(typeface, Typeface.BOLD)
             })
-            addRows(column, range)
+            val list = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+            var current: View? = null
+            for (row in rows) {
+                val view = sheetRow(row, ::close)
+                if (row.selected && current == null) current = view
+                list.addView(view, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(2); bottomMargin = dp(2) })
+            }
+            column.addView(CappedScroll(context, cap).apply {
+                addView(list)
+                // Open at the top, or at the playing track when it sits far down.
+                post { scrollTo(0, ((current?.top ?: 0) - dp(56)).coerceAtLeast(0)) }
+            })
+            if (index == 1) columns.addView(View(context).apply { setBackgroundColor(0x14FFFFFF) },
+                LinearLayout.LayoutParams(dp(1), -1).apply { setMargins(dp(4), dp(8), dp(4), dp(8)) })
             columns.addView(column, LinearLayout.LayoutParams(0, -2, 1f))
         }
         content.addView(columns)
-        scroll(content)
+        if (footer.isNotEmpty()) {
+            content.addView(View(context).apply { setBackgroundColor(0x14FFFFFF) },
+                LinearLayout.LayoutParams(-1, dp(1)).apply { setMargins(dp(4), dp(10), dp(4), dp(6)) })
+            for (row in footer) {
+                content.addView(sheetRow(row, ::close), LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(2); bottomMargin = dp(2) })
+            }
+        }
+        // No outer scroll view: the two lists scroll on their own, and a second
+        // scroller around them would fight for the same swipe.
+        content.setPadding(dp(12), 0, dp(12), dp(12))
+        setView(content)
     }
 
     override fun create(): AlertDialog {
@@ -203,7 +297,7 @@ internal class PhonePlayerSheet(context: Context) : AlertDialog.Builder(context,
             ?.getInsets(WindowInsetsCompat.Type.systemBars())
         val bottom = (insets?.bottom ?: 0) + dp(12)
         val width = minOf(metrics.widthPixels, dp(580))
-        val cap = ((metrics.heightPixels - (insets?.top ?: 0) - bottom) * 0.6f).toInt()
+        val cap = capPx()
         window.setBackgroundDrawable(InsetDrawable(shape(surface, 24).apply { setStroke(dp(1), 0x14FFFFFF) },
             dp(10), 0, dp(10), bottom))
         window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)

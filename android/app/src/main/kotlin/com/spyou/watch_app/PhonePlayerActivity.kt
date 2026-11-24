@@ -479,7 +479,8 @@ class PhonePlayerActivity : Activity() {
     private var subtitlePosition = 95
     private var subtitleBackground = android.graphics.Color.TRANSPARENT
     private var subtitleForeground = android.graphics.Color.WHITE
-    private var subtitleEdgeType = CaptionStyleCompat.EDGE_TYPE_OUTLINE
+    private var subtitleOutlineType = "soft"
+    private var subtitleOutlineWidth = 2f
     private var subtitleEdgeColor = android.graphics.Color.BLACK
     private var subtitleFontPath: String? = null
     private var subtitleTypeface: android.graphics.Typeface? = null
@@ -647,6 +648,11 @@ class PhonePlayerActivity : Activity() {
         btnPlay = findViewById(R.id.btn_play)
         seek = findViewById(R.id.seek)
         timeText = findViewById(R.id.time_chip)
+        timeText.setOnClickListener {
+            showRemaining = !showRemaining
+            player?.let { p -> if (p.duration > 0) timeText.text = timeLabel(p.currentPosition, p.duration) }
+            bumpControls()
+        }
         titleText = findViewById(R.id.title)
         episodeText = findViewById(R.id.episode_label)
         isMovie = intent.getBooleanExtra(PhonePlayerIntent.EXTRA_IS_MOVIE, false)
@@ -669,7 +675,8 @@ class PhonePlayerActivity : Activity() {
             PhonePlayerIntent.EXTRA_SUB_BG_COLOR, android.graphics.Color.TRANSPARENT,
         )
         subtitleForeground = intent.getIntExtra(PhonePlayerIntent.EXTRA_SUB_FG, android.graphics.Color.WHITE)
-        subtitleEdgeType = intent.getIntExtra(PhonePlayerIntent.EXTRA_SUB_EDGE_TYPE, CaptionStyleCompat.EDGE_TYPE_OUTLINE)
+        subtitleOutlineType = intent.getStringExtra(PhonePlayerIntent.EXTRA_SUB_OUTLINE_TYPE) ?: "soft"
+        subtitleOutlineWidth = intent.getFloatExtra(PhonePlayerIntent.EXTRA_SUB_OUTLINE_WIDTH, 2f)
         subtitleEdgeColor = intent.getIntExtra(PhonePlayerIntent.EXTRA_SUB_EDGE_COLOR, android.graphics.Color.BLACK)
         updateSubtitleFont(intent.getStringExtra(PhonePlayerIntent.EXTRA_SUB_FONT))
 
@@ -709,7 +716,7 @@ class PhonePlayerActivity : Activity() {
                 val d = player?.duration ?: 0L
                 if (d > 0) {
                     val pos = d * value / 1000
-                    timeText.text = if (isPortraitCard()) fmt(pos).padStart(5, '0') + " / " + fmt(d).padStart(5, '0') else fmt(pos) + " / " + fmt(d)
+                    timeText.text = timeLabel(pos, d)
                     sb.contentDescription = getString(R.string.phone_player_desc_seek) + ", " + fmt(pos) + " of " + fmt(d)
                     if (scrubbing) seekPreview.show(pos, fmt(pos))
                 }
@@ -807,7 +814,9 @@ class PhonePlayerActivity : Activity() {
         handler.postDelayed(speedTick, 1000)
         playerView.player = exo
         playerView.subtitleView?.apply {
-            setApplyEmbeddedStyles(false)
+            // Styles stay on so the outline spans survive; our cues carry only
+            // plain text plus those spans, so nothing from the file leaks in.
+            setApplyEmbeddedStyles(true)
             setApplyEmbeddedFontSizes(false)
         }
         applySubtitleStyle()
@@ -1505,7 +1514,7 @@ class PhonePlayerActivity : Activity() {
         bottomBar.layoutParams = bottomBarParams
         if (mini) {
             timeText.setTextColor(android.graphics.Color.WHITE)
-            timeText.text = fmt(player?.currentPosition ?: 0L).padStart(5, '0') + " / " + fmt((player?.duration ?: 0L).coerceAtLeast(0L)).padStart(5, '0')
+            timeText.text = timeLabel(player?.currentPosition ?: 0L, (player?.duration ?: 0L).coerceAtLeast(0L))
         }
         if (::parentalGuide.isInitialized) {
             applyGuideMargins()
@@ -2295,9 +2304,9 @@ class PhonePlayerActivity : Activity() {
         }
     }
 
-    private fun languageMatches(language: String?): Boolean {
+    private fun languageMatches(language: String?, preference: String = subtitlePreference): Boolean {
         val candidate = language?.replace('_', '-')?.lowercase() ?: return false
-        val wanted = subtitlePreference.replace('_', '-').lowercase()
+        val wanted = preference.replace('_', '-').lowercase()
         if (candidate == wanted || candidate.startsWith("$wanted-")) return true
         val wantedName = Locale.forLanguageTag(wanted)
             .getDisplayLanguage(Locale.getDefault())
@@ -2392,8 +2401,13 @@ class PhonePlayerActivity : Activity() {
     }
 
     private fun renderSubtitleCues(cues: List<Cue>) {
+        val positioned = SubtitleCuePositioning.position(cues, subtitlePosition, 0.0533f * subtitleScale)
         playerView.subtitleView?.setCues(
-            SubtitleCuePositioning.position(cues, subtitlePosition, 0.0533f * subtitleScale),
+            SubtitleOutline.apply(
+                positioned,
+                SubtitleOutline.look(subtitleOutlineType, subtitleOutlineWidth),
+                subtitleEdgeColor,
+            ),
         )
     }
 
@@ -2403,7 +2417,8 @@ class PhonePlayerActivity : Activity() {
                 subtitleForeground,
                 subtitleBackground,
                 android.graphics.Color.TRANSPARENT,
-                subtitleEdgeType,
+                // The outline is drawn per word by SubtitleOutline instead.
+                CaptionStyleCompat.EDGE_TYPE_NONE,
                 subtitleEdgeColor,
                 subtitleTypeface,
             ))
@@ -2422,13 +2437,14 @@ class PhonePlayerActivity : Activity() {
 
     internal fun updateSubtitleStyle(
         scale: Float, position: Int, foreground: Int, background: Int,
-        edgeType: Int, edgeColor: Int, fontPath: String?,
+        outlineType: String, outlineWidth: Float, edgeColor: Int, fontPath: String?,
     ) {
         subtitleScale = scale.coerceIn(0.25f, 5f)
         subtitlePosition = position.coerceIn(0, 100)
         subtitleForeground = foreground
         subtitleBackground = background
-        subtitleEdgeType = edgeType
+        subtitleOutlineType = outlineType
+        subtitleOutlineWidth = outlineWidth
         subtitleEdgeColor = edgeColor
         updateSubtitleFont(fontPath)
         applySubtitleStyle()
@@ -2436,96 +2452,121 @@ class PhonePlayerActivity : Activity() {
 
     private fun showSubtitleStyle() {
         if (subtitleStyleDialog?.isShowing != true) {
-            subtitleStyleDialog = PhonePlayerBridge.openSubtitleStyle(this)
+            subtitleStyleDialog = PhonePlayerBridge.openFlutterSheet(this, "openSubtitleStyle")
         }
+    }
+
+    /** "Arabic" for "ar"; the raw code only when the phone has no name for it. */
+    private fun languageName(code: String?): String? {
+        if (code.isNullOrBlank() || code == "und") return null
+        val name = Locale.forLanguageTag(code.replace('_', '-')).getDisplayLanguage(Locale.getDefault())
+        return name.takeIf { it.isNotBlank() && !it.equals(code, ignoreCase = true) }?.replaceFirstChar { it.titlecase() } ?: code
+    }
+
+    private fun trackLabel(f: androidx.media3.common.Format, fallback: String): String =
+        f.label?.takeIf { it.isNotBlank() } ?: languageName(f.language) ?: fallback
+
+    /** "5.1 · EAC3" the way the MPV sheet shows an audio track's detail. */
+    private fun audioDetail(f: androidx.media3.common.Format): String? {
+        val channels = when (f.channelCount) {
+            androidx.media3.common.Format.NO_VALUE, 0 -> null
+            1 -> "Mono"
+            2 -> "Stereo"
+            6 -> "5.1"
+            8 -> "7.1"
+            else -> "${f.channelCount} ch"
+        }
+        val codec = f.sampleMimeType?.substringAfterLast('/')?.removePrefix("vnd.")
+            ?.substringBefore('.')?.uppercase()?.takeIf { it.isNotBlank() }
+        return listOfNotNull(channels, codec).joinToString(" · ").ifEmpty { null }
+    }
+
+    private fun preferredLanguageLabel(): String {
+        val name = when (subtitlePreference) {
+            "" -> "Auto"
+            "off" -> "Off"
+            else -> languageName(subtitlePreference) ?: subtitlePreference.uppercase()
+        }
+        return "Preferred language: $name"
     }
 
     private fun showTracksMenu() {
         val p = player ?: return
         handler.removeCallbacks(hideRunnable)
         val tracks = p.currentTracks
-        val audio = tracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }
-        val text = tracks.groups.filter { it.type == C.TRACK_TYPE_TEXT }
-        val audioTracks = audio.flatMap { g -> (0 until g.length).map { g to it } }
-        val textTracks = text.flatMap { g -> (0 until g.length).map { g to it } }
-        val labels = mutableListOf<String>()
-        val versionFor = mutableListOf<String?>()
-        // Live Sub/Dub switch, routed back through Dart's catalogue
-        // resolution (same episode, position retained). Only when the title
-        // actually offers more than one version.
+        val audioTracks = tracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }
+            .flatMap { g -> (0 until g.length).map { g to it } }
+        val textTracks = tracks.groups.filter { it.type == C.TRACK_TYPE_TEXT }
+            .flatMap { g -> (0 until g.length).map { g to it } }
+        val audioRows = mutableListOf<PhonePlayerSheet.SheetRow>()
+        val subtitleRows = mutableListOf<PhonePlayerSheet.SheetRow>()
+
+        // Sub / Dub: the same title in another version, routed back through
+        // Dart's catalogue resolution (same episode, position kept).
         if (categories.size > 1) {
             for (cat in categories) {
                 val name = when (cat.lowercase()) {
                     "dub" -> getString(R.string.phone_player_version_dub)
                     else -> getString(R.string.phone_player_version_sub)
                 }
-                val mark = if (cat == currentCategory) " ✓" else ""
-                labels += "Version: $name$mark"
-                versionFor += cat
+                audioRows += PhonePlayerSheet.SheetRow(name.uppercase(), selected = cat == currentCategory) {
+                    if (cat != currentCategory) switchCategory(cat) else bumpControls()
+                }
             }
         }
-        labels += "Audio: Auto"
-        versionFor += null
-        // audioPicks[0] ("Auto") sits at this label index; tracks follow.
-        val audioBase = labels.size - 1
-        val addonSubtitles = intent.getBooleanExtra(PhonePlayerIntent.EXTRA_STREMIO_SUBTITLES, false)
-        val audioPicks = mutableListOf<TrackSelectionOverride?>(null)
-        for ((g, i) in audioTracks) {
-            val f = g.getTrackFormat(i)
-            labels += "Audio: ${f.label ?: f.language ?: "Track ${labels.size}"}"
-            versionFor += null
-            audioPicks += TrackSelectionOverride(g.mediaTrackGroup, i)
-        }
-        val textBase = labels.size
-        labels += "Subtitles: Off"
-        versionFor += null
-        val textPicks = mutableListOf<TrackSelectionOverride?>(null)
-        for ((g, i) in textTracks) {
-            val f = g.getTrackFormat(i)
-            labels += "Subtitles: ${f.label ?: f.language ?: "Track ${labels.size}"}"
-            versionFor += null
-            textPicks += TrackSelectionOverride(g.mediaTrackGroup, i)
-        }
-        val addonRow = if (addonSubtitles) labels.size else -1
-        if (addonSubtitles) {
-            labels += "Addon subtitles…"
-            versionFor += null
-        }
-        val styleRow = labels.size
-        labels += getString(R.string.phone_player_subtitle_style)
-        versionFor += null
-        val selectedRows = mutableSetOf<Int>()
-        if (categories.size > 1) categories.indexOf(currentCategory).takeIf { it >= 0 }?.let { selectedRows += it }
-        val audioIndex = audioTracks.indexOfFirst { (group, index) ->
+        val audioOverride = audioTracks.indexOfFirst { (group, index) ->
             group.isTrackSelected(index) && p.trackSelectionParameters.overrides.containsKey(group.mediaTrackGroup)
         }
-        selectedRows += audioBase + audioIndex + 1
-        val textIndex = if (p.trackSelectionParameters.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT)) -1
-            else textTracks.indexOfFirst { (group, index) -> group.isTrackSelected(index) }
-        selectedRows += textBase + textIndex + 1
-        PhonePlayerSheet(this)
-            .setTitle(getString(R.string.phone_player_title_tracks))
-            .setTrackItems(labels.toTypedArray(), audioBase, textBase, selectedRows) { _, which ->
-                if (which == styleRow) {
-                    showSubtitleStyle()
-                    return@setTrackItems
-                }
-                if (which == addonRow) {
-                    showAddonSubtitles()
-                    return@setTrackItems
-                }
-                val version = versionFor[which]
-                if (version != null) {
-                    if (version != currentCategory) switchCategory(version)
-                    else bumpControls()
-                } else if (which < textBase) {
-                    selectAudioTrack(audioPicks[which - audioBase])
-                } else {
-                    selectTextTrack(textPicks[which - textBase])
-                }
+        audioRows += PhonePlayerSheet.SheetRow("Auto", selected = audioOverride < 0) { selectAudioTrack(null) }
+        audioTracks.forEachIndexed { i, (g, idx) ->
+            val f = g.getTrackFormat(idx)
+            audioRows += PhonePlayerSheet.SheetRow(
+                trackLabel(f, "Audio ${i + 1}"), detail = audioDetail(f), selected = audioOverride == i,
+            ) { selectAudioTrack(TrackSelectionOverride(g.mediaTrackGroup, idx)) }
+        }
+
+        val textOff = p.trackSelectionParameters.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT)
+        val textIndex = if (textOff) -1 else textTracks.indexOfFirst { (group, index) -> group.isTrackSelected(index) }
+        subtitleRows += PhonePlayerSheet.SheetRow(
+            preferredLanguageLabel(), icon = R.drawable.phone_player_tracks,
+        ) { requestSubtitleLanguage() }
+        subtitleRows += PhonePlayerSheet.SheetRow("Off", selected = textOff || textIndex < 0) { selectTextTrack(null) }
+        if (intent.getBooleanExtra(PhonePlayerIntent.EXTRA_STREMIO_SUBTITLES, false)) {
+            subtitleRows += PhonePlayerSheet.SheetRow("Addon subtitles…", icon = R.drawable.phone_player_sources) {
+                showAddonSubtitles()
             }
+        }
+        textTracks.forEachIndexed { i, (g, idx) ->
+            val f = g.getTrackFormat(idx)
+            subtitleRows += PhonePlayerSheet.SheetRow(trackLabel(f, "Track ${i + 1}"), selected = textIndex == i) {
+                selectTextTrack(TrackSelectionOverride(g.mediaTrackGroup, idx))
+            }
+        }
+
+        val footer = listOf(
+            PhonePlayerSheet.SheetRow(getString(R.string.phone_player_subtitle_style), icon = R.drawable.phone_player_captions) {
+                showSubtitleStyle()
+            },
+        )
+        PhonePlayerSheet(this)
+            .setAudioSubtitleSheet(audioRows, subtitleRows, footer)
             .setOnDismissListener { bumpControls() }
             .showForPlayer()
+    }
+
+    /** The saved language pick, from the same Flutter picker the MPV sheet uses. */
+    private fun requestSubtitleLanguage() {
+        if (subtitleStyleDialog?.isShowing != true) {
+            subtitleStyleDialog = PhonePlayerBridge.openFlutterSheet(this, "openSubtitleLanguage")
+        }
+    }
+
+    /** Dart saved a new preferred subtitle language; apply it to this stream. */
+    internal fun updateSubtitlePreference(value: String) {
+        subtitlePreference = value
+        subtitlePreferenceApplied = false
+        if (value.isEmpty()) return
+        player?.currentTracks?.let(::applySubtitlePreference)
     }
 
     private fun showAddonSubtitles() {
@@ -3849,7 +3890,7 @@ class PhonePlayerActivity : Activity() {
             if (!scrubbing) {
                 // Keep the drawable at the current position when rotation replaces the track.
                 seek.progress = (pos * 1000 / d).toInt().coerceIn(0, 1000)
-                timeText.text = if (isPortraitCard()) fmt(pos).padStart(5, '0') + " / " + fmt(d).padStart(5, '0') else fmt(pos) + " / " + fmt(d)
+                timeText.text = timeLabel(pos, d)
                 seek.contentDescription = getString(R.string.phone_player_desc_seek) + ", " + fmt(pos) + " of " + fmt(d)
             }
         }
@@ -3930,6 +3971,15 @@ class PhonePlayerActivity : Activity() {
         if (controlsHiding) restoreControls()
         handler.removeCallbacks(hideRunnable)
         if (player?.isPlaying == true) handler.postDelayed(hideRunnable, 4_000L)
+    }
+
+    /** Tap the time chip to flip the total into a "-remaining" countdown, like the MPV player. */
+    private var showRemaining = false
+
+    private fun timeLabel(pos: Long, d: Long): String {
+        val total = if (showRemaining) "-" + fmt((d - pos).coerceAtLeast(0L)) else fmt(d)
+        return if (isPortraitCard()) fmt(pos).padStart(5, '0') + " / " + total.padStart(5, '0')
+        else fmt(pos) + " / " + total
     }
 
     private fun fmt(ms: Long): String {

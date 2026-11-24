@@ -9,15 +9,19 @@ import '../theme/app_text.dart';
 /// in-player Audio & Subs panel.
 Future<String?> showSubtitleLanguagePicker(
   BuildContext context,
-  String current,
-) {
+  String current, {
+  ValueChanged<ModalRoute<dynamic>?>? onRoute,
+}) {
   Widget row(String label, String value) => ListTile(
-        onTap: () => Navigator.pop(context, value),
-        title: Text(label, style: AppText.body.copyWith(color: AppColors.textPrimary)),
-        trailing: current == value
-            ? Icon(Icons.check, color: AppColors.accent)
-            : null,
-      );
+    onTap: () => Navigator.pop(context, value),
+    title: Text(
+      label,
+      style: AppText.body.copyWith(color: AppColors.textPrimary),
+    ),
+    trailing: current == value
+        ? Icon(Icons.check, color: AppColors.accent)
+        : null,
+  );
   return showModalBottomSheet<String>(
     context: context,
     backgroundColor: AppColors.surface,
@@ -28,41 +32,45 @@ Future<String?> showSubtitleLanguagePicker(
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
     ),
-    builder: (ctx) => SafeArea(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            margin: const EdgeInsets.only(top: 12, bottom: 8),
-            width: 36,
-            height: 4,
-            decoration: BoxDecoration(
-              color: AppColors.textTertiary.withValues(alpha: 0.5),
-              borderRadius: BorderRadius.circular(2),
+    builder: (ctx) {
+      onRoute?.call(ModalRoute.of(ctx));
+      return SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              margin: const EdgeInsets.only(top: 12, bottom: 8),
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.textTertiary.withValues(alpha: 0.5),
+                borderRadius: BorderRadius.circular(2),
+              ),
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
-            child: Align(
-              alignment: AlignmentDirectional.centerStart,
-              child: Text('Subtitle language', style: AppText.headline),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+              child: Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: Text('Subtitle language', style: AppText.headline),
+              ),
             ),
-          ),
-          const Divider(color: AppColors.hairline, height: 1),
-          Flexible(
-            child: ListView(
-              shrinkWrap: true,
-              padding: EdgeInsets.zero,
-              children: [
-                row('Auto', ''),
-                row('Off', 'off'),
-                for (final lang in kSubtitleLanguages) row(lang.name, lang.iso1),
-              ],
+            const Divider(color: AppColors.hairline, height: 1),
+            Flexible(
+              child: ListView(
+                shrinkWrap: true,
+                padding: EdgeInsets.zero,
+                children: [
+                  row('Auto', ''),
+                  row('Off', 'off'),
+                  for (final lang in kSubtitleLanguages)
+                    row(lang.name, lang.iso1),
+                ],
+              ),
             ),
-          ),
-          const SizedBox(height: 8),
-        ],
-      ),
-    ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      );
+    },
   );
 }

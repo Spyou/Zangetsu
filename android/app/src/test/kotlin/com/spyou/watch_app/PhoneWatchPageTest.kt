@@ -208,7 +208,7 @@ class PhoneWatchPageTest {
             val styleRows = arrayListOf<View>()
             tracks.window!!.decorView.findViewsWithText(styleRows, "Subtitle style", View.FIND_VIEWS_WITH_TEXT)
             assertEquals(1, styleRows.size)
-            activity.updateSubtitleStyle(1.5f, 75, -1, 0x80000000.toInt(), 1, 0, null)
+            activity.updateSubtitleStyle(1.5f, 75, -1, 0x80000000.toInt(), "outline", 3f, 0, null)
             val subtitleScale = PhonePlayerActivity::class.java.getDeclaredField("subtitleScale").apply { isAccessible = true }
             assertEquals(1.5f, subtitleScale.getFloat(activity), 0.001f)
         } finally { controller.pause().stop().destroy() }
