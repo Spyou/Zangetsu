@@ -3460,7 +3460,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
         if (_c.isLocalMedia) {
           return (uri: uri, headers: _c.previewHeaders, local: true);
         }
-        final online = Platform.isAndroid &&
+        final online =
+            Platform.isAndroid &&
             !sl<AppMode>().isTv &&
             (uri.startsWith('http'));
         return online
@@ -3748,33 +3749,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final initialQuery = (widget.showTitle?.trim().isNotEmpty ?? false)
         ? widget.showTitle!.trim()
         : (widget.scrobbleTitle?.trim() ?? '');
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (_) => _SheetSurface(
-        blur: true,
-        opacity: 0.82,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-        child: SafeArea(
-          top: false,
-          child: _OnlineSubtitleSheet(
-            initialQuery: initialQuery,
-            // Default the manual search to the preferred language, falling back
-            // to English (the prior default) when no preference is set.
-            initialLanguage:
-                sl<PlaybackPrefs>().preferredSubtitleLanguage.isEmpty
-                ? 'en'
-                : sl<PlaybackPrefs>().preferredSubtitleLanguage,
-            imdbId: widget.imdbId,
-            tmdbId: widget.tmdbId,
-            onApply: (path) async {
-              await _c.setSubtitleFromFile(path);
-              _bumpControls();
-            },
-          ),
-        ),
-      ),
+    showOnlineSubtitleSheet(
+      context,
+      initialQuery: initialQuery,
+      imdbId: widget.imdbId,
+      tmdbId: widget.tmdbId,
+      onApply: (path) async {
+        await _c.setSubtitleFromFile(path);
+        _bumpControls();
+      },
     );
   }
 

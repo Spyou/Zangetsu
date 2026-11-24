@@ -74,19 +74,24 @@ class TrackerHub {
     bool tmdbIsTv = false,
     String? imdbId,
     MediaKind kind = MediaKind.anime,
+    bool simklLive = false,
   }) async {
     // Only ever called on playback start, so there's no manual path to spare.
     if (!_autoTrackOn) return;
     if (IncognitoMode.on) return; // incognito: pause auto-tracking
     await _fan(
-      (t) => t.markWatching(
-        malId: malId,
-        title: title,
-        tmdbId: tmdbId,
-        tmdbIsTv: tmdbIsTv,
-        imdbId: imdbId,
-        kind: kind,
-      ),
+      // [simklLive]: Simkl's own live session already marks it as watching once
+      // playback really runs, so a list write at the first frame is skipped.
+      (t) => simklLive && t is SimklService
+          ? Future<void>.value()
+          : t.markWatching(
+              malId: malId,
+              title: title,
+              tmdbId: tmdbId,
+              tmdbIsTv: tmdbIsTv,
+              imdbId: imdbId,
+              kind: kind,
+            ),
     );
   }
 
@@ -303,7 +308,9 @@ class TrackerHub {
       connected.map((t) async {
         try {
           await op(t);
-        } catch (_) {/* one tracker failing must not block the rest */}
+        } catch (_) {
+          /* one tracker failing must not block the rest */
+        }
       }),
     );
   }

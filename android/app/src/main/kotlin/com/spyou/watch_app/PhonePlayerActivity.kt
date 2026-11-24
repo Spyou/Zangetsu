@@ -73,6 +73,7 @@ class PhonePlayerActivity : Activity() {
         private const val GUIDE_TOP_DP = 24
 
         private const val TAG = "PhonePlayer"
+        private const val REQUEST_SUBTITLE_FILE = 7311
         private const val ROTATION_PULL_DISTANCE_DP = 64
 
         internal fun megaSkipTarget(position: Long, duration: Long, seconds: Int): Long? {
@@ -2543,7 +2544,14 @@ class PhonePlayerActivity : Activity() {
             }
         }
 
+        // Always in reach: pinned under the two lists, not buried in them.
         val footer = listOf(
+            PhonePlayerSheet.SheetRow("Search online", icon = R.drawable.phone_player_search) {
+                if (subtitleStyleDialog?.isShowing != true) {
+                    subtitleStyleDialog = PhonePlayerBridge.openFlutterSheet(this, "openOnlineSubtitles")
+                }
+            },
+            PhonePlayerSheet.SheetRow("Load from file", icon = R.drawable.phone_player_file) { pickSubtitleFile() },
             PhonePlayerSheet.SheetRow(getString(R.string.phone_player_subtitle_style), icon = R.drawable.phone_player_captions) {
                 showSubtitleStyle()
             },
@@ -2567,6 +2575,85 @@ class PhonePlayerActivity : Activity() {
         subtitlePreferenceApplied = false
         if (value.isEmpty()) return
         player?.currentTracks?.let(::applySubtitlePreference)
+    }
+
+    /**
+     * Adds [track] to what is playing and switches to it, keeping the position.
+     * The source is rebuilt because Media3 only reads subtitle files when the
+     * media item is prepared.
+     */
+    private fun attachSubtitle(track: MediaItem.SubtitleConfiguration) {
+        val p = player ?: return
+        val item = p.currentMediaItem ?: return
+        val factory = currentSourceFactory ?: return
+        val selected = track.buildUpon()
+            .setId(track.uri.toString())
+            .setSelectionFlags(C.SELECTION_FLAG_DEFAULT).build()
+        val remaining = item.localConfiguration?.subtitleConfigurations.orEmpty()
+            .filter { it.uri != selected.uri }
+            .map { it.buildUpon().setSelectionFlags(0).build() }
+        val position = p.currentPosition
+        val playing = p.playWhenReady
+        p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
+            .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+            .setPreferredTextLanguage(selected.language)
+            .build()
+        subtitlePreferenceApplied = true
+        pendingAddonSubtitleId = selected.id
+        val choice = selected.language
+        if (!choice.isNullOrEmpty()) {
+            PhonePlayerBridge.channel?.invokeMethod(
+                "rememberSubtitle",
+                mapOf("sessionId" to sessionId, "choice" to choice),
+            )
+        }
+        val updated = item.buildUpon().setSubtitleConfigurations(remaining + selected).build()
+        p.setMediaSource(factory.createMediaSource(updated), position)
+        p.prepare()
+        p.playWhenReady = playing
+    }
+
+    /** A subtitle file Dart downloaded (online search): attach it and show it. */
+    internal fun addLocalSubtitle(path: String, label: String, language: String?) {
+        val file = java.io.File(path)
+        if (!file.isFile) return
+        attachSubtitle(
+            MediaItem.SubtitleConfiguration.Builder(android.net.Uri.fromFile(file))
+                .setMimeType(subtitleMime("", file.name))
+                .setLanguage(language?.takeIf { it.isNotBlank() })
+                .setLabel(label)
+                .build(),
+        )
+    }
+
+    /** "Load from file": the system picker, then the chosen file plays as a track. */
+    private fun pickSubtitleFile() {
+        val open = android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(android.content.Intent.CATEGORY_OPENABLE)
+            type = "*/*"
+        }
+        try {
+            @Suppress("DEPRECATION")
+            startActivityForResult(open, REQUEST_SUBTITLE_FILE)
+        } catch (_: android.content.ActivityNotFoundException) {
+            toast("No file picker found on this phone")
+        }
+    }
+
+    @Deprecated("The Activity Result API needs a ComponentActivity; this screen is a plain Activity")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: android.content.Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != REQUEST_SUBTITLE_FILE || resultCode != RESULT_OK) return
+        val uri = data?.data ?: return
+        val name = contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)
+            ?.use { if (it.moveToFirst()) it.getString(0) else null } ?: uri.lastPathSegment.orEmpty()
+        attachSubtitle(
+            MediaItem.SubtitleConfiguration.Builder(uri)
+                .setMimeType(subtitleMime("", name))
+                .setLabel(name.substringBeforeLast('.').ifBlank { "Subtitle" })
+                .build(),
+        )
     }
 
     private fun showAddonSubtitles() {
@@ -2595,35 +2682,7 @@ class PhonePlayerActivity : Activity() {
                     .setTitle(getString(R.string.phone_player_title_subtitles))
                     .setItems(tracks.map { it.label ?: it.language ?: "Subtitle" }.toTypedArray()) { _, which ->
                         if (!uiAlive() || generation != mediaGeneration || currentUrl != url) return@setItems
-                        val p = player ?: return@setItems
-                        val item = p.currentMediaItem ?: return@setItems
-                        val factory = currentSourceFactory ?: return@setItems
-                        val selected = tracks[which].buildUpon()
-                            .setId(tracks[which].uri.toString())
-                            .setSelectionFlags(C.SELECTION_FLAG_DEFAULT).build()
-                        val remaining = item.localConfiguration?.subtitleConfigurations.orEmpty()
-                            .filter { it.uri != selected.uri }
-                            .map { it.buildUpon().setSelectionFlags(0).build() }
-                        val position = p.currentPosition
-                        val playing = p.playWhenReady
-                        p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
-                            .clearOverridesOfType(C.TRACK_TYPE_TEXT)
-                            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
-                            .setPreferredTextLanguage(selected.language)
-                            .build()
-                        subtitlePreferenceApplied = true
-                        pendingAddonSubtitleId = selected.id
-                        val addonChoice = selected.language
-                        if (!addonChoice.isNullOrEmpty()) {
-                            PhonePlayerBridge.channel?.invokeMethod(
-                                "rememberSubtitle",
-                                mapOf("sessionId" to sessionId, "choice" to addonChoice),
-                            )
-                        }
-                        val updated = item.buildUpon().setSubtitleConfigurations(remaining + selected).build()
-                        p.setMediaSource(factory.createMediaSource(updated), position)
-                        p.prepare()
-                        p.playWhenReady = playing
+                        attachSubtitle(tracks[which])
                     }
                     .setOnDismissListener { bumpControls() }
                     .showForPlayer()

@@ -221,7 +221,7 @@ internal class PhonePlayerSheet(context: Context) : AlertDialog.Builder(context,
         fun close() { dialog?.dismiss() }
         // The columns take whatever the sheet has left after its footer, so the
         // sheet as a whole fits without a second, competing scroll.
-        val footerPx = if (footer.isEmpty()) 0 else footer.size * dp(52) + dp(20)
+        val footerPx = if (footer.isEmpty()) 0 else dp(92)
         val cap = (capPx(0.85f) - footerPx - dp(110)).coerceAtLeast(dp(96))
         val columns = LinearLayout(context)
         val sections = listOf(
@@ -256,9 +256,33 @@ internal class PhonePlayerSheet(context: Context) : AlertDialog.Builder(context,
         if (footer.isNotEmpty()) {
             content.addView(View(context).apply { setBackgroundColor(0x14FFFFFF) },
                 LinearLayout.LayoutParams(-1, dp(1)).apply { setMargins(dp(4), dp(10), dp(4), dp(6)) })
+            // Actions in one row, icon over label, so three fit side by side.
+            val actions = LinearLayout(context)
             for (row in footer) {
-                content.addView(sheetRow(row, ::close), LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(2); bottomMargin = dp(2) })
+                val action = LinearLayout(context).apply {
+                    orientation = LinearLayout.VERTICAL
+                    gravity = Gravity.CENTER
+                    minimumHeight = dp(64)
+                    setPadding(dp(4), dp(8), dp(4), dp(8))
+                    background = shape(Color.TRANSPARENT)
+                    foreground = ripple()
+                    setOnClickListener { close(); row.onClick() }
+                }
+                row.icon?.let {
+                    action.addView(ImageView(context).apply {
+                        setImageResource(it)
+                        setColorFilter(secondary)
+                    }, LinearLayout.LayoutParams(dp(22), dp(22)))
+                }
+                action.addView(TextView(context).apply {
+                    textSize = 12f
+                    gravity = Gravity.CENTER
+                    text = row.label
+                    setTextColor(Color.WHITE)
+                }, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(4) })
+                actions.addView(action, LinearLayout.LayoutParams(0, -2, 1f))
             }
+            content.addView(actions, LinearLayout.LayoutParams(-1, -2))
         }
         // No outer scroll view: the two lists scroll on their own, and a second
         // scroller around them would fight for the same swipe.

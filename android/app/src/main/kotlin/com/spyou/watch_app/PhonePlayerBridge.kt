@@ -120,6 +120,21 @@ object PhonePlayerBridge {
                         result.success(false)
                     }
                 }
+                "addLocalSubtitle" -> {
+                    val target = PhonePlayerActivity.active
+                    val session = call.argument<Number>("sessionId")?.toLong()
+                    val path = call.argument<String>("path")
+                    if (target != null && target.sessionId == session && !path.isNullOrBlank()) {
+                        target.addLocalSubtitle(
+                            path,
+                            call.argument<String>("label").orEmpty().ifBlank { "Subtitle" },
+                            call.argument<String>("language"),
+                        )
+                        result.success(true)
+                    } else {
+                        result.success(false)
+                    }
+                }
                 "setSubtitlePreference" -> {
                     val target = PhonePlayerActivity.active
                     val session = call.argument<Number>("sessionId")?.toLong()

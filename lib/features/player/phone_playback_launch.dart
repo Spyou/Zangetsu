@@ -44,7 +44,8 @@ import 'subtitle_font_service.dart';
 import 'player_controls_config.dart';
 import 'player_engine_fallback.dart';
 import 'player_lifecycle.dart';
-import 'player_screen.dart' show openSubtitleStyleSheet;
+import 'player_screen.dart'
+    show openSubtitleStyleSheet, showOnlineSubtitleSheet;
 import 'subtitle_style.dart';
 import 'watch_page_info.dart';
 import 'in_app_mini_player.dart';
@@ -979,6 +980,46 @@ class PhoneNativePlayer {
     }
   }
 
+  /// Online subtitle search over the native player; the chosen file is handed
+  /// back to the player as a new track.
+  static Future<void> _searchSubtitlesOnline(int sessionId) async {
+    final navigator = rootNavigatorKey.currentState;
+    if (navigator == null || _subtitleStyleOpen) return;
+    _subtitleStyleOpen = true;
+    final cover = PageRouteBuilder<void>(
+      transitionDuration: Duration.zero,
+      reverseTransitionDuration: Duration.zero,
+      pageBuilder: (_, _, _) => const SizedBox.expand(),
+    );
+    unawaited(navigator.push(cover));
+    try {
+      final title = _showTitle.trim().isNotEmpty
+          ? _showTitle.trim()
+          : (_scrobbleTitle?.trim() ?? '');
+      await showOnlineSubtitleSheet(
+        navigator.context,
+        initialQuery: title,
+        imdbId: _imdbId,
+        tmdbId: _tmdbId,
+        onRoute: (route) => _subtitleStyleRoute = route,
+        onApply: (path) async {
+          if (sessionId != _sessionId) return;
+          final name = path.split(RegExp(r'[\\/]')).last;
+          final dot = name.lastIndexOf('.');
+          await _ch.invokeMethod('addLocalSubtitle', {
+            'sessionId': sessionId,
+            'path': path,
+            'label': dot > 0 ? name.substring(0, dot) : name,
+          });
+        },
+      );
+    } finally {
+      _subtitleStyleRoute = null;
+      _subtitleStyleOpen = false;
+      if (navigator.mounted && cover.isActive) navigator.removeRoute(cover);
+    }
+  }
+
   static Future<dynamic> _onNativeCall(MethodCall call) async {
     switch (call.method) {
       case 'playerDocked':
@@ -1108,6 +1149,14 @@ class PhoneNativePlayer {
           return null;
         }
         await _showSubtitleStyle(_sessionId);
+        return null;
+      case 'openOnlineSubtitles':
+        final onlineArgs = _callArgs(call);
+        if (_closed?.isCompleted != false ||
+            onlineArgs?['sessionId'] != _sessionId) {
+          return null;
+        }
+        await _searchSubtitlesOnline(_sessionId);
         return null;
       case 'openSubtitleLanguage':
         final args = _callArgs(call);
@@ -1271,6 +1320,7 @@ class PhoneNativePlayer {
               tmdbId: _tmdbId,
               tmdbIsTv: _tmdbIsTv,
               imdbId: _imdbId,
+              simklLive: true,
             ),
           );
         }
