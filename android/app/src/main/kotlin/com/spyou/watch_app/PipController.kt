@@ -33,6 +33,7 @@ class PipController(private val activity: Activity) {
         const val REWIND = "rewind"
         const val PLAY_PAUSE = "play_pause"
         const val FORWARD = "forward"
+        const val DISMISSED = "dismissed"
 
         /**
          * Android rejects a PiP aspect outside roughly 1:2.39 .. 2.39:1 by
@@ -50,6 +51,23 @@ class PipController(private val activity: Activity) {
     private var playing = true
     private var aspect = Rational(16, 9)
     private var receiverRegistered = false
+    private var enteredSinceResume = false
+
+    fun onEntered() {
+        enteredSinceResume = true
+    }
+
+    fun onResumed() {
+        enteredSinceResume = false
+    }
+
+    // The mode-change callback also fires when PiP expands. Only stopping
+    // after entry, without a fullscreen resume, ends the PiP session.
+    fun consumeDismissal(): Boolean {
+        val dismissed = enteredSinceResume
+        enteredSinceResume = false
+        return dismissed
+    }
 
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {

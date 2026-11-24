@@ -1205,16 +1205,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
         if (!mounted) return;
         final inPip = status == PiPStatus.enabled;
         if (inPip != _inPip) {
-          // Log-only, and the reason is the absence of it: a report about
-          // closing the app while watching in picture-in-picture could not be
-          // read at all, because nothing anywhere recorded that PiP had been
-          // entered. The sole trace was Discord logging `paused` then
-          // `foreground` twice inside 15ms, which is not evidence.
-          //
-          // Read from the Dart-side status stream rather than the Activity
-          // callback on purpose: MainActivity.kt cannot currently be edited
-          // without breaking the Android build (any change to it fails on
-          // CfWebViewSolver), and a log line is not worth that.
           debugPrint(
             '[pip] ${inPip ? 'entered' : 'left'} · '
             'ep=${_c.state.currentIndex} '
@@ -1251,6 +1241,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
             _c.seekBy(const Duration(seconds: -10));
           case 'forward':
             _c.seekBy(const Duration(seconds: 10));
+          case 'dismissed':
+            if (_ready) await _c.player.pause();
         }
         return null;
       });

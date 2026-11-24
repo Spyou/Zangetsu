@@ -273,8 +273,11 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
         flutterFragment.onTrimMemory(level)
     }
 
+    private var openingExplicitDestination = false
+
     override fun onResume() {
         super.onResume()
+        pip.onResumed()
         playerOrientationObserver?.enable()
         current = java.lang.ref.WeakReference(this)
         // CloudStream plugins that store their own settings grab a per-plugin
@@ -284,6 +287,8 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
         // returns a real Activity instead of null; otherwise those prefs are never
         // read back and the selection reverts on restart.
         com.lagradost.cloudstream3.CommonActivity.setActivityInstance(this)
+        if (!openingExplicitDestination) PhonePlayerActivity.active?.reopenPausedPip()
+        openingExplicitDestination = false
     }
 
     override fun onPause() {
@@ -298,7 +303,11 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
 
     override fun onStop() {
         super.onStop()
-        if (!isInPictureInPictureMode) PhonePlayerActivity.active?.pauseDock()
+        if (pip.consumeDismissal()) {
+            pip.onControl?.invoke(PipController.DISMISSED)
+        } else if (!isInPictureInPictureMode) {
+            PhonePlayerActivity.active?.pauseDock()
+        }
     }
 
     // ── Volume-key paging (manga reader) ──────────────────────────────────
@@ -336,6 +345,8 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
     // A "new episode" notification tapped while the app is already running:
     // forward its payload to Dart so it opens that show's Detail.
     override fun onNewIntent(intent: Intent) {
+        openingExplicitDestination =
+            intent.action == Intent.ACTION_VIEW || intent.hasExtra("notif_payload")
         super.onNewIntent(intent)
         flutterFragment.onNewIntent(intent)
         setIntent(intent)
@@ -1547,6 +1558,7 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
     ) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
         if (isInPictureInPictureMode) {
+            pip.onEntered()
             pip.applyParams()
         } else if (phoneDockActive) {
             requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT

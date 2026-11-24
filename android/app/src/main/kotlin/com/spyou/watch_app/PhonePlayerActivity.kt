@@ -1,6 +1,7 @@
 package com.spyou.watch_app
 
 import android.app.Activity
+import android.app.ActivityManager
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.res.ColorStateList
@@ -258,6 +259,16 @@ class PhonePlayerActivity : Activity() {
 
     private fun minimizeToApp(): Boolean {
         if (!canMinimize()) return false
+        val host = PhonePlayerBridge.dockHost()?.takeUnless { it.isFinishing || it.isDestroyed }
+            ?: return false
+        // Android can put a player restored from PiP in a separate task.
+        val hostTask = if (host.taskId != taskId) {
+            @Suppress("DEPRECATION")
+            getSystemService(ActivityManager::class.java)?.appTasks
+                ?.firstOrNull { it.taskInfo.id == host.taskId } ?: return false
+        } else {
+            null
+        }
         docked = true
         pip.autoEnter = false
         updateDockPip()
@@ -265,7 +276,11 @@ class PhonePlayerActivity : Activity() {
             "playerDocked",
             mapOf("sessionId" to sessionId, "playing" to (player?.isPlaying == true)),
         )
-        startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT))
+        if (hostTask != null) {
+            hostTask.moveToFront()
+        } else {
+            startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT))
+        }
         return true
     }
 
@@ -278,6 +293,16 @@ class PhonePlayerActivity : Activity() {
         )
     }
 
+    private var pausedFromPip = false
+
+    internal fun reopenPausedPip() {
+        if (!pausedFromPip || isFinishing || isDestroyed || isInPictureInPictureMode) return
+        pausedFromPip = false
+        startActivity(Intent(this, PhonePlayerActivity::class.java).addFlags(
+            Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_NO_USER_ACTION,
+        ))
+    }
+
     internal fun pauseDock() {
         if (docked) player?.pause()
     }
@@ -285,6 +310,10 @@ class PhonePlayerActivity : Activity() {
     internal fun onDockPipControl(control: String) {
         val activePlayer = player ?: return
         when (control) {
+            PipController.DISMISSED -> {
+                activePlayer.pause()
+                sendProgress()
+            }
             PipController.PLAY_PAUSE -> togglePlay()
             PipController.REWIND -> activePlayer.seekTo((activePlayer.currentPosition - 10_000L).coerceAtLeast(0L))
             PipController.FORWARD -> activePlayer.seekTo(activePlayer.currentPosition + 10_000L)
@@ -3591,6 +3620,8 @@ class PhonePlayerActivity : Activity() {
     // here rather than in onCreate.
     override fun onResume() {
         super.onResume()
+        pip.onResumed()
+        pausedFromPip = false
         if (docked) {
             docked = false
             restoringDock = false
@@ -3627,12 +3658,22 @@ class PhonePlayerActivity : Activity() {
     ) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
         if (isInPictureInPictureMode) {
+            pip.onEntered()
             pip.applyParams()
             // Only the system window chrome should be visible in PiP.
             updateSegmentButton(null)
             controls.visibility = View.GONE
         } else {
             bumpControls()
+        }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        if (pip.consumeDismissal()) {
+            pausedFromPip = true
+            player?.pause()
+            sendProgress()
         }
     }
 
