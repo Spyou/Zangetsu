@@ -11,6 +11,7 @@ import '../../../core/logging/app_logger.dart';
 import '../../../core/lnreader/novel_cloudflare.dart';
 import '../../../core/metadata/episode_metadata_service.dart';
 import '../../../core/metadata/metadata_enrichment.dart';
+import '../../../core/metadata/title_badges.dart';
 import '../../../core/models/episode.dart';
 import '../../../core/models/episode_title.dart';
 import '../../../core/models/media_detail.dart';
@@ -51,7 +52,12 @@ class DetailState extends Equatable {
     this.cloudflareUrl,
     this.episodesLoading = false,
     this.extrasLoading = false,
+    this.badges,
   });
+
+  /// The age tag and IMDb score for the Overview's top row. Null until found,
+  /// and for titles that have neither.
+  final TitleBadges? badges;
 
   final DetailStatus status;
   final MediaDetail? detail;
@@ -99,6 +105,7 @@ class DetailState extends Equatable {
     bool clearCloudflareUrl = false,
     bool? episodesLoading,
     bool? extrasLoading,
+    TitleBadges? badges,
   }) => DetailState(
     status: status ?? this.status,
     detail: detail ?? this.detail,
@@ -114,6 +121,7 @@ class DetailState extends Equatable {
         : (cloudflareUrl ?? this.cloudflareUrl),
     episodesLoading: episodesLoading ?? this.episodesLoading,
     extrasLoading: extrasLoading ?? this.extrasLoading,
+    badges: badges ?? this.badges,
   );
 
   @override
@@ -129,6 +137,7 @@ class DetailState extends Equatable {
     relations,
     seasons,
     cloudflareUrl,
+    badges,
   ];
 }
 
@@ -637,6 +646,13 @@ class DetailCubit extends Cubit<DetailState> {
         d.type == ProviderType.manga ||
         d.type == ProviderType.novel;
     final Future<bool>? extrasRun = wantsExtras ? _fetchExtras(d) : null;
+    // The age tag and IMDb score: ids only, no episode data, so they start now
+    // too. Movies and series only; reading titles have neither.
+    if (d.type != ProviderType.manga &&
+        d.type != ProviderType.novel &&
+        (d.tmdbId != null || d.imdbId != null)) {
+      unawaited(_fetchBadges(d));
+    }
 
     // Fill in per-episode descriptions (AniZip for anime, TMDB season for a
     // movie-source TV series). Best-effort — a miss leaves the row on its date.
@@ -700,6 +716,17 @@ class DetailCubit extends Cubit<DetailState> {
       return true;
     } catch (_) {
       return false;
+    }
+  }
+
+  /// Looks up the age tag and IMDb score and shows them when they arrive.
+  Future<void> _fetchBadges(MediaDetail d) async {
+    try {
+      final found = await sl<MetadataEnrichment>().badges(d);
+      if (isClosed || found.isEmpty) return;
+      emit(state.copyWith(badges: found));
+    } catch (_) {
+      // Nothing to show is fine.
     }
   }
 

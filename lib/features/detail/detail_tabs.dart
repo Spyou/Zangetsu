@@ -870,8 +870,20 @@ class _OverviewTab extends StatelessWidget {
     required this.synopsis,
     required this.genres,
     this.onGenre,
+    this.year,
+    this.runtimeMins,
+    this.badges,
+    this.score,
     this.loading = false,
   });
+
+  /// The facts for the top row: release year, run time, and — when found — the
+  /// age tag and IMDb score. [score] (out of 100, from the anime trackers) stands
+  /// in when there is no IMDb score.
+  final String? year;
+  final int? runtimeMins;
+  final TitleBadges? badges;
+  final int? score;
 
   final List<String> genres;
 
@@ -1025,6 +1037,14 @@ class _OverviewTab extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          _OverviewMeta(
+            year: year,
+            runtime: formatRuntime(runtimeMins),
+            ageRating: badges?.ageRating,
+            imdbRating: badges?.imdbRating,
+            score: score,
+            animate: loading,
+          ),
           if (synopsis.isNotEmpty)
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 18, 16, 0),
@@ -1262,4 +1282,98 @@ class _AppSpinnerState extends State<_AppSpinner> {
       ),
     ),
   );
+}
+
+
+/// The top row of Overview: year, run time, the age tag, and a score — the IMDb
+/// one when it was found, otherwise the tracker score. Shows only what exists,
+/// and is not drawn at all when there is nothing.
+class _OverviewMeta extends StatelessWidget {
+  const _OverviewMeta({
+    required this.year,
+    required this.runtime,
+    required this.ageRating,
+    required this.imdbRating,
+    required this.score,
+    required this.animate,
+  });
+
+  final String? year;
+  final String? runtime;
+  final String? ageRating;
+  final String? imdbRating;
+
+  /// Out of 100.
+  final int? score;
+
+  /// The age tag and IMDb score arrive after the page opens; they fade in then,
+  /// but not on a page that comes back with them already there.
+  final bool animate;
+
+  /// The yellow people know IMDb by, kept for the score and its label only.
+  static const Color _imdb = Color(0xFFF5C518);
+
+  @override
+  Widget build(BuildContext context) {
+    final strong = AppText.headline.copyWith(
+      fontSize: 16,
+      fontWeight: FontWeight.w700,
+    );
+    final items = <Widget>[
+      if ((year ?? '').isNotEmpty) Text(year!, style: strong),
+      if (runtime != null) Text(runtime!, style: strong),
+      if (ageRating != null)
+        _Reveal(
+          key: const ValueKey('ov-age'),
+          animate: animate,
+          child: _MetaBadge(ageRating!),
+        ),
+      if (imdbRating != null)
+        _Reveal(
+          key: const ValueKey('ov-imdb'),
+          animate: animate,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Text(
+                'IMDb',
+                style: AppText.caption.copyWith(
+                  color: _imdb,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(width: 5),
+              Text(imdbRating!, style: strong.copyWith(color: _imdb)),
+            ],
+          ),
+        )
+      else if (score != null && score! > 0)
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.star_rounded, size: 17, color: AppColors.accent),
+            const SizedBox(width: 3),
+            Text((score! / 10).toStringAsFixed(1), style: strong),
+          ],
+        ),
+    ];
+    if (items.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 18, 16, 0),
+      child: AnimatedSize(
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOut,
+        alignment: Alignment.topLeft,
+        child: Wrap(
+          spacing: 14,
+          runSpacing: 6,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: items,
+        ),
+      ),
+    );
+  }
 }

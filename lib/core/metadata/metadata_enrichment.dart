@@ -11,6 +11,7 @@ import '../models/provider_info.dart';
 import '../zmode/metadata_provider_prefs.dart';
 import '../di/injector.dart';
 import 'episode_metadata_service.dart';
+import 'title_badges.dart';
 import '../zmode/season_chain.dart';
 
 /// Fetches Cast + Relations for a title from a metadata API — AniList for anime
@@ -475,6 +476,70 @@ class MetadataEnrichment {
   /// Lowercase, strip non-alphanumerics — for tolerant title comparison.
   String _norm(String s) =>
       s.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), ' ').trim();
+
+  /// The age tag and the IMDb score for [d], when they can be found.
+  ///
+  /// The age tag comes from TMDB (needs a TMDB id: movies and series). The IMDb
+  /// score comes from the public Cinemeta service, keyed by the title's IMDb id
+  /// — taken from [d] when it has one, otherwise from TMDB in the same request
+  /// as the age tag. Anime with no such ids simply get neither. Best-effort:
+  /// any failure just leaves that part out. Answers are kept for the session.
+  Future<TitleBadges> badges(MediaDetail d) {
+    final key = '${d.tmdbId}|${d.imdbId}|${d.tmdbIsTv}';
+    final hit = _badgesCache.remove(key);
+    if (hit != null) {
+      _badgesCache[key] = hit;
+      return hit;
+    }
+    final run = _badgesUncached(d);
+    _badgesCache[key] = run;
+    if (_badgesCache.length > 60) _badgesCache.remove(_badgesCache.keys.first);
+    unawaited(
+      run.then((b) {
+        if (b.isEmpty) _badgesCache.remove(key);
+      }, onError: (_) => _badgesCache.remove(key)),
+    );
+    return run;
+  }
+
+  final Map<String, Future<TitleBadges>> _badgesCache = {};
+
+  Future<TitleBadges> _badgesUncached(MediaDetail d) async {
+    var isTv = d.tmdbIsTv;
+    int? tmdbId = d.tmdbId;
+    String? age;
+    String? imdbId = (d.imdbId ?? '').startsWith('tt') ? d.imdbId : null;
+    // Only an IMDb id (what many sources give): TMDB can find the title from it.
+    if (tmdbId == null && imdbId != null) {
+      final found = tmdbFromFind(
+        await _get('$_tmdbBase/find/$imdbId', {'external_source': 'imdb_id'}),
+      );
+      if (found != null) {
+        tmdbId = found.id;
+        isTv = found.isTv;
+      }
+    }
+    if (tmdbId != null) {
+      final kind = isTv ? 'tv' : 'movie';
+      final tmdb = await _get('$_tmdbBase/$kind/$tmdbId', {
+        'append_to_response': isTv
+            ? 'content_ratings,external_ids'
+            : 'release_dates,external_ids',
+      });
+      if (tmdb != null) {
+        age = certificationFrom(tmdb, isTv: isTv);
+        imdbId ??= imdbIdFrom(tmdb);
+      }
+    }
+    String? imdb;
+    if (imdbId != null) {
+      final meta = await _get(
+        'https://v3-cinemeta.strem.io/meta/${isTv ? 'series' : 'movie'}/$imdbId.json',
+      );
+      imdb = imdbRatingFrom(meta);
+    }
+    return TitleBadges(ageRating: age, imdbRating: imdb);
+  }
 
   Future<Map<String, dynamic>?> _get(
     String url, [
