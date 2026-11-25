@@ -1886,6 +1886,7 @@ class PhonePlayerActivity : Activity() {
         if (loadedEpisodeIndex != currentIndex) autoSkipped.clear()
         skipsRequested = false
         parentalGuide.hideNow()
+        resetSubtitleDelay()
         skipSegments = emptyList()
         updateSegmentButton(null)
         playbackStarted = false
@@ -2532,11 +2533,11 @@ class PhonePlayerActivity : Activity() {
         val textOff = p.trackSelectionParameters.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT)
         val textIndex = if (textOff) -1 else textTracks.indexOfFirst { (group, index) -> group.isTrackSelected(index) }
         subtitleRows += PhonePlayerSheet.SheetRow(
-            preferredLanguageLabel(), icon = R.drawable.phone_player_tracks,
+            preferredLanguageLabel(), icon = R.drawable.sheet_ic_language,
         ) { requestSubtitleLanguage() }
         subtitleRows += PhonePlayerSheet.SheetRow("Off", selected = textOff || textIndex < 0) { selectTextTrack(null) }
         if (intent.getBooleanExtra(PhonePlayerIntent.EXTRA_STREMIO_SUBTITLES, false)) {
-            subtitleRows += PhonePlayerSheet.SheetRow("Addon subtitles…", icon = R.drawable.phone_player_sources) {
+            subtitleRows += PhonePlayerSheet.SheetRow("Addon subtitles…", icon = R.drawable.sheet_ic_addon) {
                 showAddonSubtitles()
             }
         }
@@ -2549,15 +2550,15 @@ class PhonePlayerActivity : Activity() {
 
         // Always in reach: pinned under the two lists, not buried in them.
         val footer = listOf(
-            PhonePlayerSheet.SheetRow("Search online", icon = R.drawable.phone_player_search) {
+            PhonePlayerSheet.SheetRow("Search online", icon = R.drawable.sheet_ic_search) {
                 if (subtitleStyleDialog?.isShowing != true) {
                     subtitleStyleDialog = PhonePlayerBridge.openFlutterSheet(this, "openOnlineSubtitles")
                 }
             },
-            PhonePlayerSheet.SheetRow("Load from file", icon = R.drawable.phone_player_file) { pickSubtitleFile() },
-            PhonePlayerSheet.SheetRow("Translate", icon = R.drawable.phone_player_translate) { translateSubtitle() },
-            PhonePlayerSheet.SheetRow("Subtitle delay", icon = R.drawable.phone_player_delay) { showSubtitleDelay() },
-            PhonePlayerSheet.SheetRow(getString(R.string.phone_player_subtitle_style), icon = R.drawable.phone_player_captions) {
+            PhonePlayerSheet.SheetRow("Load from file", icon = R.drawable.sheet_ic_file) { pickSubtitleFile() },
+            PhonePlayerSheet.SheetRow("Translate", icon = R.drawable.sheet_ic_translate) { translateSubtitle() },
+            PhonePlayerSheet.SheetRow("Subtitle delay", icon = R.drawable.sheet_ic_delay) { showSubtitleDelay() },
+            PhonePlayerSheet.SheetRow(getString(R.string.phone_player_subtitle_style), icon = R.drawable.sheet_ic_captions) {
                 showSubtitleStyle()
             },
         )
@@ -2594,8 +2595,9 @@ class PhonePlayerActivity : Activity() {
         val selected = track.buildUpon()
             .setId(track.uri.toString())
             .setSelectionFlags(C.SELECTION_FLAG_DEFAULT).build()
+        // An earlier re-timed copy of the same subtitle is replaced, not stacked.
         val remaining = item.localConfiguration?.subtitleConfigurations.orEmpty()
-            .filter { it.uri != selected.uri }
+            .filter { it.uri != selected.uri && it.uri !in shiftedUris }
             .map { it.buildUpon().setSelectionFlags(0).build() }
         val position = p.currentPosition
         val playing = p.playWhenReady
@@ -2621,10 +2623,11 @@ class PhonePlayerActivity : Activity() {
 
     /**
      * The external subtitle that is playing, or the first one there is (the MPV
-     * player does the same). Subtitles built into the video aren't separate
-     * files, so they can't be translated.
+     * player does the same). Translate and delay both work on it; subtitles
+     * built into the video aren't separate files, so they can't be moved or
+     * translated.
      */
-    private fun externalSubtitleToTranslate(): MediaItem.SubtitleConfiguration? {
+    private fun activeExternalSubtitle(): MediaItem.SubtitleConfiguration? {
         val p = player ?: return null
         val configs = p.currentMediaItem?.localConfiguration?.subtitleConfigurations.orEmpty()
         if (configs.isEmpty()) return null
@@ -2636,45 +2639,80 @@ class PhonePlayerActivity : Activity() {
             ?: configs.first()
     }
 
+    // Subtitle delay. The original external track is remembered so every change is
+    // measured from it: the new copy replaces the last one, and Reset brings the
+    // original back. All of it is dropped when the episode changes.
+    private var delaySource: MediaItem.SubtitleConfiguration? = null
+    private var delayMs = 0
+    private val shiftedUris = mutableSetOf<android.net.Uri>()
+
+    private fun resetSubtitleDelay() {
+        delaySource = null
+        delayMs = 0
+        shiftedUris.clear()
+    }
+
     /**
-     * Shifts the external subtitle that is playing. Dart re-times a copy of the
-     * file and it comes back as a new track; subtitles built into the video are
-     * not separate files and can't be moved this way.
+     * Moves the external subtitle that is playing, like the MPV sheet's delay row.
+     * Dart re-times a copy of the file and it replaces the previous copy; subtitles
+     * built into the video are not separate files and can't be moved this way.
      */
     private fun showSubtitleDelay() {
-        val target = externalSubtitleToTranslate()
-        if (target == null) {
+        val current = activeExternalSubtitle()
+        val source = delaySource ?: current?.takeIf { it.uri !in shiftedUris }
+        if (source == null) {
             toast("Delay works on external subtitles. Load one or pick an addon subtitle")
             return
         }
+        delaySource = source
         PhonePlayerSheet(this)
             .setTitle("Subtitle delay")
-            .setDelayPicker { deltaMs ->
-                val ch = PhonePlayerBridge.channel ?: return@setDelayPicker
-                val sign = if (deltaMs > 0) "+" else "-"
-                val shown = "$sign${kotlin.math.abs(deltaMs) / 1000}.${(kotlin.math.abs(deltaMs) % 1000) / 100} s"
-                ch.invokeMethod("shiftSubtitle", mapOf(
-                    "sessionId" to sessionId, "url" to target.uri.toString(), "deltaMs" to deltaMs,
-                ), object : io.flutter.plugin.common.MethodChannel.Result {
-                    override fun success(result: Any?) {
-                        val path = result as? String
-                        if (path.isNullOrBlank() || !uiAlive()) {
-                            if (uiAlive()) toast("Couldn't move that subtitle")
-                            return
-                        }
-                        val base = target.label ?: "Subtitle"
-                        addLocalSubtitle(path, "$base ($shown)", target.language)
-                    }
-                    override fun error(code: String, message: String?, details: Any?) = toast("Couldn't move that subtitle")
-                    override fun notImplemented() = Unit
-                })
-            }
+            .setDelayControl(delayMs) { total -> applySubtitleDelay(total) }
             .setOnDismissListener { bumpControls() }
             .showForPlayer()
     }
 
+    private fun applySubtitleDelay(total: Int) {
+        val source = delaySource ?: return
+        if (total == delayMs) return
+        if (total == 0) {
+            delayMs = 0
+            attachSubtitle(source)
+            return
+        }
+        val ch = PhonePlayerBridge.channel ?: return
+        val generation = mediaGeneration
+        ch.invokeMethod("shiftSubtitle", mapOf(
+            "sessionId" to sessionId, "url" to source.uri.toString(), "deltaMs" to total,
+        ), object : io.flutter.plugin.common.MethodChannel.Result {
+            override fun success(result: Any?) {
+                val path = result as? String
+                if (!uiAlive() || generation != mediaGeneration) return
+                if (path.isNullOrBlank()) {
+                    toast("Couldn't move that subtitle")
+                    return
+                }
+                val uri = android.net.Uri.fromFile(java.io.File(path))
+                shiftedUris += uri
+                delayMs = total
+                val secs = String.format(java.util.Locale.US, "%+.2f", total / 1000f)
+                attachSubtitle(
+                    MediaItem.SubtitleConfiguration.Builder(uri)
+                        .setMimeType(source.mimeType)
+                        .setLanguage(source.language)
+                        .setLabel("${source.label ?: "Subtitle"} (${secs}s)")
+                        .build(),
+                )
+            }
+            override fun error(code: String, message: String?, details: Any?) {
+                if (uiAlive()) toast("Couldn't move that subtitle")
+            }
+            override fun notImplemented() = Unit
+        })
+    }
+
     private fun translateSubtitle() {
-        val target = externalSubtitleToTranslate()
+        val target = activeExternalSubtitle()
         if (target == null) {
             toast("No external subtitle to translate")
             return

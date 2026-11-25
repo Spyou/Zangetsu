@@ -97,30 +97,31 @@ class PhonePlayerSheetTest {
     }
 
     @Test @Config(qualifiers = "port")
-    fun `delay picker adds up the steps and only applies on Apply`() {
+    fun `delay control steps in quarter seconds, reports once, and flushes on close`() {
         val controller = Robolectric.buildActivity(Activity::class.java).setup()
         try {
-            // The running total reads like a step button, so only buttons count.
-            fun tap(root: android.view.View, text: String) =
-                texts(root).single { it.text == text && it.hasOnClickListeners() }.performClick()
-            var applied = Int.MIN_VALUE
+            val reported = mutableListOf<Int>()
             val dialog = PhonePlayerSheet(controller.get())
-                .setDelayPicker { applied = it }.setTitle("Subtitle delay").show()
+                .setDelayControl(0) { reported += it }.setTitle("Subtitle delay").show()
             val root = dialog.window!!.decorView
-            tap(root, "+0.5 s"); tap(root, "+0.5 s"); tap(root, "-0.1 s")
-            assertEquals(Int.MIN_VALUE, applied) // nothing until Apply
-            assertTrue(texts(root).any { it.text == "+0.9 s" })
-            tap(root, "Apply")
-            assertEquals(900, applied)
-            assertFalse(dialog.isShowing)
-
-            // Reset puts it back to zero, and a zero shift is not worth reloading for.
-            applied = Int.MIN_VALUE
-            val again = PhonePlayerSheet(controller.get())
-                .setDelayPicker { applied = it }.setTitle("Subtitle delay").show()
-            val second = again.window!!.decorView
-            tap(second, "+1 s"); tap(second, "Reset"); tap(second, "Apply")
-            assertEquals(Int.MIN_VALUE, applied)
+            fun buttons(): List<android.widget.ImageView> {
+                val found = mutableListOf<android.widget.ImageView>()
+                fun walk(v: android.view.View) {
+                    if (v is android.widget.ImageView && v.contentDescription != null) found += v
+                    if (v is android.view.ViewGroup) for (i in 0 until v.childCount) walk(v.getChildAt(i))
+                }
+                walk(root)
+                return found
+            }
+            val later = buttons().single { it.contentDescription == "Later" }
+            repeat(3) { later.performClick() }
+            // Three quick taps are one change, and nothing is sent yet.
+            assertTrue(reported.isEmpty())
+            assertTrue(texts(root).any { it.text == "+0.75s" })
+            // Closing the sheet sends the pending total instead of dropping it.
+            dialog.dismiss()
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+            assertEquals(listOf(750), reported)
         } finally { controller.pause().stop().destroy() }
     }
 

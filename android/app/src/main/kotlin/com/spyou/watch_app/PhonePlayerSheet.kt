@@ -54,6 +54,16 @@ internal class PhonePlayerSheet(context: Context) : AlertDialog.Builder(context,
         ColorStateList.valueOf(0x1AFFFFFF), null, shape(Color.WHITE, radius),
     )
 
+    private var flush: (() -> Unit)? = null
+
+    /** Also runs [flush] first, so a sheet with a pending change never loses it on close. */
+    override fun setOnDismissListener(listener: DialogInterface.OnDismissListener?): PhonePlayerSheet = apply {
+        super.setOnDismissListener { d ->
+            flush?.invoke()
+            listener?.onDismiss(d)
+        }
+    }
+
     override fun setTitle(title: CharSequence?): PhonePlayerSheet = apply { heading = title }
     override fun setTitle(titleId: Int): PhonePlayerSheet = setTitle(context.getText(titleId))
 
@@ -224,7 +234,7 @@ internal class PhonePlayerSheet(context: Context) : AlertDialog.Builder(context,
         val widthDp = context.resources.displayMetrics.run { widthPixels / density }.coerceAtMost(560f)
         val footerColumns = if (widthDp >= 480) 5 else 3
         val footerRows = (footer.size + footerColumns - 1) / footerColumns
-        val footerPx = if (footer.isEmpty()) 0 else footerRows * dp(76) + dp(20)
+        val footerPx = if (footer.isEmpty()) 0 else footerRows * dp(84) + dp(20)
         val cap = (capPx(0.85f) - footerPx - dp(110)).coerceAtLeast(dp(96))
         val columns = LinearLayout(context)
         val sections = listOf(
@@ -265,17 +275,17 @@ internal class PhonePlayerSheet(context: Context) : AlertDialog.Builder(context,
                 val action = LinearLayout(context).apply {
                     orientation = LinearLayout.VERTICAL
                     gravity = Gravity.CENTER
-                    minimumHeight = dp(64)
-                    setPadding(dp(4), dp(8), dp(4), dp(8))
-                    background = shape(Color.TRANSPARENT)
-                    foreground = ripple()
+                    minimumHeight = dp(68)
+                    setPadding(dp(4), dp(10), dp(4), dp(10))
+                    background = shape(0xFF20212A.toInt(), 16)
+                    foreground = ripple(16)
                     setOnClickListener { close(); row.onClick() }
                 }
                 row.icon?.let {
                     action.addView(ImageView(context).apply {
                         setImageResource(it)
-                        setColorFilter(secondary)
-                    }, LinearLayout.LayoutParams(dp(22), dp(22)))
+                        setColorFilter(Color.WHITE)
+                    }, LinearLayout.LayoutParams(dp(24), dp(24)))
                 }
                 action.addView(TextView(context).apply {
                     textSize = 12f
@@ -286,6 +296,7 @@ internal class PhonePlayerSheet(context: Context) : AlertDialog.Builder(context,
                 actions.addView(action, GridLayout.LayoutParams().apply {
                     width = 0
                     columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f)
+                    setMargins(dp(4), dp(4), dp(4), dp(4))
                 })
             }
             content.addView(actions, LinearLayout.LayoutParams(-1, -2))
@@ -297,60 +308,70 @@ internal class PhonePlayerSheet(context: Context) : AlertDialog.Builder(context,
     }
 
     /**
-     * Pick how far to move the subtitles. Steps change a running total; nothing
-     * happens until Apply, because applying reloads the stream.
+     * The delay control, laid out like the MPV sheet's: a label, then − value +
+     * and a reset, in 0.25 s steps. [onChange] gets the new total after the
+     * viewer pauses for a moment, so a run of taps moves the subtitles once.
      */
-    fun setDelayPicker(onApply: (deltaMs: Int) -> Unit): PhonePlayerSheet = apply {
-        var total = 0
+    fun setDelayControl(initialMs: Int, onChange: (totalMs: Int) -> Unit): PhonePlayerSheet = apply {
+        var total = initialMs
+        val handler = android.os.Handler(android.os.Looper.getMainLooper())
+        var pending = false
+        val send = Runnable { pending = false; onChange(total) }
         val content = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
         val value = TextView(context).apply {
-            textSize = 30f
+            textSize = 15f
             gravity = Gravity.CENTER
-            setTextColor(Color.WHITE)
             setTypeface(typeface, Typeface.BOLD)
         }
+        val reset = ImageView(context).apply {
+            setImageResource(R.drawable.sheet_ic_reset)
+            setColorFilter(secondary)
+            setPadding(dp(8), dp(8), dp(8), dp(8))
+            foreground = ripple(20)
+        }
         fun show() {
-            val sign = if (total > 0) "+" else if (total < 0) "-" else ""
-            value.text = "$sign${kotlin.math.abs(total) / 1000}.${(kotlin.math.abs(total) % 1000) / 100} s"
+            val secs = String.format(java.util.Locale.US, "%.2f", total / 1000f)
+            value.text = if (total > 0) "+${secs}s" else "${secs}s"
+            value.setTextColor(if (total == 0) secondary else accent)
+            reset.alpha = if (total == 0) 0.35f else 1f
         }
-        show()
-        content.addView(value, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(4); bottomMargin = dp(12) })
-        content.addView(TextView(context).apply {
-            textSize = 13f
-            gravity = Gravity.CENTER
-            setTextColor(secondary)
-            text = "Later (+) if the words come too early, earlier (-) if too late"
-        }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(12) })
-        val steps = listOf("-1 s" to -1000, "-0.5 s" to -500, "-0.1 s" to -100, "+0.1 s" to 100, "+0.5 s" to 500, "+1 s" to 1000)
-        val grid = GridLayout(context).apply { columnCount = 3 }
-        for ((text, delta) in steps) {
-            grid.addView(label(text).apply {
-                gravity = Gravity.CENTER
-                background = shape(0xFF20212A.toInt(), 32).apply { setStroke(dp(1), 0x29FFFFFF) }
-                foreground = ripple(32)
-                setOnClickListener { total = (total + delta).coerceIn(-60000, 60000); show() }
-            }, GridLayout.LayoutParams().apply {
-                width = 0
-                columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f)
-                setMargins(dp(4), dp(4), dp(4), dp(4))
-            })
+        fun bump(delta: Int) {
+            total = (total + delta).coerceIn(-30000, 30000)
+            show()
+            pending = true
+            handler.removeCallbacks(send)
+            handler.postDelayed(send, 700)
         }
-        content.addView(grid)
-        val buttons = LinearLayout(context)
-        buttons.addView(label("Reset").apply {
-            gravity = Gravity.CENTER
-            setTextColor(secondary)
-            foreground = ripple(32)
-            setOnClickListener { total = 0; show() }
-        }, LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(dp(4), dp(10), dp(4), 0) })
-        buttons.addView(label("Apply").apply {
-            gravity = Gravity.CENTER
+        fun stepButton(icon: Int, description: String, delta: Int) = ImageView(context).apply {
+            setImageResource(icon)
+            setColorFilter(Color.WHITE)
+            setPadding(dp(10), dp(10), dp(10), dp(10))
+            background = shape(0xFF20212A.toInt(), 20)
+            foreground = ripple(20)
+            contentDescription = description
+            setOnClickListener { bump(delta) }
+        }
+        reset.setOnClickListener { if (total != 0) bump(-total) }
+        val row = LinearLayout(context).apply { gravity = Gravity.CENTER_VERTICAL }
+        row.addView(TextView(context).apply {
+            textSize = 14f
+            text = "Delay"
             setTextColor(Color.WHITE)
-            background = shape(accent, 32)
-            foreground = ripple(32)
-            setOnClickListener { dialog?.dismiss(); if (total != 0) onApply(total) }
-        }, LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(dp(4), dp(10), dp(4), 0) })
-        content.addView(buttons)
+        }, LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = dp(8) })
+        row.addView(stepButton(R.drawable.sheet_ic_minus, "Earlier", -250), LinearLayout.LayoutParams(dp(40), dp(40)))
+        row.addView(value, LinearLayout.LayoutParams(dp(76), -2))
+        row.addView(stepButton(R.drawable.sheet_ic_plus, "Later", 250), LinearLayout.LayoutParams(dp(40), dp(40)))
+        row.addView(reset, LinearLayout.LayoutParams(dp(40), dp(40)).apply { marginStart = dp(4) })
+        content.addView(row, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
+        content.addView(TextView(context).apply {
+            textSize = 12f
+            setTextColor(secondary)
+            text = "Later (+) if the words come too early, earlier (-) if they come too late."
+        }, LinearLayout.LayoutParams(-1, -2).apply { setMargins(dp(8), dp(12), dp(8), dp(4)) })
+        show()
+        // Anything still waiting goes through, so closing the sheet never drops a change.
+        flush = { if (pending) { handler.removeCallbacks(send); send.run() } }
+        setOnDismissListener(null)
         scroll(content)
     }
 
