@@ -8,6 +8,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../l10n/l10n.dart';
 import '../../core/ui/settings_widgets.dart';
+import '../../core/ui/settings_search_target.dart';
 
 /// A clear, human folder name derived from a SAF directory tree URI — the
 /// SAME uri downloads are written into — so the label can never misname the
@@ -61,7 +62,7 @@ class _DownloadLocationScreenState extends State<DownloadLocationScreen> {
     return Scaffold(
       backgroundColor: AppColors.bg,
       appBar: settingsAppBar(context.l10n.downloadLocation),
-      body: ListView(
+      body: SettingsSearchList(
         padding: const EdgeInsets.only(top: 4, bottom: 28),
         children: [
           SettingsSectionLabel(context.l10n.currentLocation),
@@ -109,12 +110,16 @@ class _DownloadLocationScreenState extends State<DownloadLocationScreen> {
                         ? Icons.sd_storage_rounded
                         : Icons.smartphone_rounded,
                     title: v.label,
-                    subtitle:
-                        v.removable ? context.l10n.removableDrive : context.l10n.onThisDevice,
+                    subtitle: v.removable
+                        ? context.l10n.removableDrive
+                        : context.l10n.onThisDevice,
                     iconAccent: current == v.path,
                     trailing: current == v.path
-                        ? Icon(Icons.check_rounded,
-                            color: AppColors.accent, size: 20)
+                        ? Icon(
+                            Icons.check_rounded,
+                            color: AppColors.accent,
+                            size: 20,
+                          )
                         : null,
                     onTap: () async {
                       await sl<DownloadPrefs>().setLocation(v.path, v.label);

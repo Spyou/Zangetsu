@@ -1,7 +1,6 @@
 // Storage settings: cache and space used by the app.
 part of 'settings_screen.dart';
 
-
 // ---------------------------------------------------------------------------
 // Storage
 // ---------------------------------------------------------------------------
@@ -37,7 +36,7 @@ class StorageSettingsScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: AppColors.bg,
       appBar: settingsAppBar(context.l10n.storage),
-      body: ListView(
+      body: SettingsSearchList(
         clipBehavior: sl<AppMode>().isTv ? Clip.none : Clip.hardEdge,
         padding: const EdgeInsets.only(top: 8),
         children: [

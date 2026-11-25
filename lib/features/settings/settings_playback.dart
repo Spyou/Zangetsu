@@ -647,7 +647,7 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
   /// persists on release.
   Widget _megaSkipDurationRow() {
     double val = _prefs.megaSkipSeconds.toDouble();
-    return StatefulBuilder(
+    final slider = StatefulBuilder(
       builder: (context, setLocal) => Padding(
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
         child: Column(
@@ -716,6 +716,11 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
         ),
       ),
     );
+    return SettingsSearchTarget.reveal(
+      context,
+      context.l10n.megaSkipDuration,
+      (_) => slider,
+    );
   }
 
   @override
@@ -723,7 +728,7 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
     return Scaffold(
       backgroundColor: AppColors.bg,
       appBar: settingsAppBar(context.l10n.playback),
-      body: ListView(
+      body: SettingsSearchList(
         // TV focus chrome paints outside the row, so it must not be clipped.
         // Phone has no focus ring — keep the normal clip so rows don't bleed
         // past the list edge while scrolling.

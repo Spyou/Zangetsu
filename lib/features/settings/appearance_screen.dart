@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import '../../core/ui/settings_widgets.dart';
+import '../../core/ui/settings_search_target.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 
 import '../../core/theme/app_colors.dart';
@@ -404,7 +405,7 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
       backgroundColor: AppColors.bg,
       // Matches the row that opens it in Interface → Look.
       appBar: settingsAppBar('Theme & colour'),
-      body: ListView(
+      body: SettingsSearchList(
         padding: const EdgeInsets.only(top: 4, bottom: 32),
         children: [
           // ── Accent colour ─────────────────────────────────────────────────
@@ -417,39 +418,41 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
             opacity: ThemeController.materialYou ? 0.4 : 1,
             child: SizedBox(
               height: 100,
-              child: ListView.separated(
+              child: SettingsSearchList(
                 scrollDirection: Axis.horizontal,
-                // Align with SettingsCard's margin so the strip lines up with
-                // the cards below it.
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 clipBehavior: Clip.none,
-                itemCount: presets.length + 1,
-                separatorBuilder: (_, _) => const SizedBox(width: 10),
-                itemBuilder: (_, i) {
-                  if (i == presets.length) {
-                    return _CustomCard(
+                children: [
+                  for (final (name, color) in presets) ...[
+                    _AccentCard(
+                      name: name,
+                      color: color,
+                      selected:
+                          !_accentIsCustom &&
+                          AppColors.accent.toARGB32() == color.toARGB32(),
+                      isDefault: ThemeController.isDefault(color),
+                      onTap: () async {
+                        if (_blockedByMaterialYou()) return;
+                        await _updateProfileTheme(
+                          accentColor: color.toARGB32(),
+                        );
+                      },
+                    ),
+                    const SizedBox(width: 10),
+                  ],
+                  SettingsSearchTarget.reveal(
+                    context,
+                    context.l10n.customColour,
+                    (_) => _CustomCard(
                       selected: _accentIsCustom,
                       currentColor: AppColors.accent,
                       onTap: () {
                         if (_blockedByMaterialYou()) return;
                         _pickCustom();
                       },
-                    );
-                  }
-                  final (name, color) = presets[i];
-                  return _AccentCard(
-                    name: name,
-                    color: color,
-                    selected:
-                        !_accentIsCustom &&
-                        AppColors.accent.toARGB32() == color.toARGB32(),
-                    isDefault: ThemeController.isDefault(color),
-                    onTap: () async {
-                      if (_blockedByMaterialYou()) return;
-                      await _updateProfileTheme(accentColor: color.toARGB32());
-                    },
-                  );
-                },
+                    ),
+                  ),
+                ],
               ),
             ),
           ),

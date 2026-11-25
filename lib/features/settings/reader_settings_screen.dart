@@ -12,6 +12,7 @@ import '../../core/theme/app_text.dart';
 import '../../core/ui/app_toast.dart';
 import '../../l10n/l10n.dart';
 import '../../core/ui/settings_widgets.dart';
+import '../../core/ui/settings_search_target.dart';
 import '../reader/manga_page_translation_settings_sheet.dart';
 import '../reader/manga_translation_appearance_sheet.dart';
 import 'tap_zones_screen.dart';
@@ -292,7 +293,7 @@ class _ReaderSettingsScreenState extends State<ReaderSettingsScreen> {
     required Future<void> Function(double) onChangeEnd,
   }) {
     double val = value.clamp(min, max);
-    return StatefulBuilder(
+    final slider = StatefulBuilder(
       builder: (context, setLocal) => Padding(
         padding: const EdgeInsets.fromLTRB(15, 10, 15, 6),
         child: Column(
@@ -344,6 +345,7 @@ class _ReaderSettingsScreenState extends State<ReaderSettingsScreen> {
         ),
       ),
     );
+    return SettingsSearchTarget.reveal(context, title, (_) => slider);
   }
 
   @override
@@ -352,7 +354,7 @@ class _ReaderSettingsScreenState extends State<ReaderSettingsScreen> {
     return Scaffold(
       backgroundColor: AppColors.bg,
       appBar: settingsAppBar(context.l10n.reader),
-      body: ListView(
+      body: SettingsSearchList(
         padding: const EdgeInsets.only(top: 4, bottom: 28),
         children: [
           SettingsSectionLabel(context.l10n.modeManga, first: true),

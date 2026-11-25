@@ -46,8 +46,12 @@ class SettingsLeaf {
   /// English search, while the localized [title] carries every other language.
   final String keywords;
 
-  bool matches(String q, AppLocalizations l10n) =>
-      '${title(l10n)} $keywords'.toLowerCase().contains(q);
+  static final _spacing = RegExp(r'[\s-]+');
+
+  bool matches(String q, AppLocalizations l10n) => '${title(l10n)} $keywords'
+      .toLowerCase()
+      .replaceAll(_spacing, ' ')
+      .contains(q.replaceAll(_spacing, ' '));
 }
 
 /// Every setting reachable one level below the category rows.
@@ -446,13 +450,6 @@ final settingsLeaves = <SettingsLeaf>[
     LeafParent.appearance,
     (l) => l.animationStyle,
     keywords: 'transition motion',
-  ),
-  SettingsLeaf(
-    LeafParent.appearance,
-    (l) => l.homeRows,
-    keywords:
-        'home screen rows reorder hide customize arrangement sections '
-        'discover tracker continue watching',
   ),
 
   // Advanced → PrivacySettingsScreen

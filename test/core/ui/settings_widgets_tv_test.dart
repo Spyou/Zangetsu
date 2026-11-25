@@ -5,6 +5,7 @@ import 'package:watch_app/core/app_mode.dart';
 import 'package:watch_app/core/tv/tv_back_button.dart';
 import 'package:watch_app/core/tv/tv_list_focusable.dart';
 import 'package:watch_app/core/ui/settings_widgets.dart';
+import 'package:watch_app/core/ui/settings_search_target.dart';
 
 void main() {
   tearDown(() async {
@@ -46,6 +47,44 @@ void main() {
       expect(find.byType(TvListFocusable), findsOneWidget);
     },
   );
+
+  testWidgets('a search target gets TV focus even below the fold', (
+    tester,
+  ) async {
+    GetIt.instance.registerSingleton<AppMode>(const AppMode(isTv: true));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SettingsSearchTarget(
+          title: 'Target',
+          child: Scaffold(
+            body: SettingsSearchList(
+              children: [
+                SettingsTile(
+                  icon: Icons.settings,
+                  title: 'First',
+                  autofocus: true,
+                  onTap: () {},
+                ),
+                const SizedBox(height: 900),
+                SettingsTile(
+                  icon: Icons.settings,
+                  title: 'Target',
+                  onTap: () {},
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final row = tester.widget<TvListFocusable>(
+      find.widgetWithText(TvListFocusable, 'Target'),
+    );
+    expect(row.focusNode?.hasPrimaryFocus, isTrue);
+    expect(tester.getRect(find.text('Target')).bottom, lessThanOrEqualTo(600));
+  });
 
   testWidgets('settingsAppBar on TV puts a D-pad Back control in the title', (
     tester,

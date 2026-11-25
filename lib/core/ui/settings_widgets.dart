@@ -6,6 +6,7 @@ import '../theme/app_colors.dart';
 import '../theme/app_text.dart';
 import '../tv/tv_back_button.dart';
 import '../tv/tv_list_focusable.dart';
+import 'settings_search_target.dart';
 
 /// Compact, flat app bar for pushed settings screens — an 18px title with a
 /// bottom hairline, matching the in-tab section header so drilling deeper keeps
@@ -116,23 +117,18 @@ class SettingsTile extends StatelessWidget {
     final isTv = _isTvDevice();
     final tap = onTap;
 
-    if (isTv && tap != null) {
-      return TvListFocusable(
-        autofocus: autofocus,
-        semanticLabel: semanticLabel ?? title,
-        onTap: tap,
-        child: ExcludeSemantics(
-          child: _row(
-            // Row activation owns the tap; disable InkWell under the focusable.
-            onTap: null,
-            // Switch / chevron must not steal D-pad traversal.
-            wrapTrailing: true,
-          ),
-        ),
-      );
-    }
-
-    return _row(onTap: tap, wrapTrailing: false);
+    return SettingsSearchTarget.reveal(context, title, (focusNode) {
+      if (isTv && tap != null) {
+        return TvListFocusable(
+          autofocus: autofocus,
+          focusNode: focusNode,
+          semanticLabel: semanticLabel ?? title,
+          onTap: tap,
+          child: ExcludeSemantics(child: _row(onTap: null, wrapTrailing: true)),
+        );
+      }
+      return _row(onTap: tap, wrapTrailing: false);
+    }, focus: isTv && tap != null);
   }
 
   Widget _row({required VoidCallback? onTap, required bool wrapTrailing}) {

@@ -61,6 +61,8 @@ import '../../core/update/update_service.dart';
 import '../update/update_dialog.dart';
 import '../../core/ui/app_dialog.dart';
 import '../../core/ui/settings_widgets.dart';
+import '../../core/ui/settings_search_target.dart';
+import 'download_location_screen.dart';
 import '../../core/tv/tv_list_focusable.dart';
 
 import '../../core/ui/dock_visibility.dart';
@@ -1501,10 +1503,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return out;
   }
 
-  /// A search hit for a setting one level down. Reads as the setting itself
-  /// with its category beneath, and opens the page that owns it — we can't
-  /// scroll a sub-page to a specific row, so landing on the right page is the
-  /// useful part.
   Widget _leafTile(
     SettingsLeaf leaf,
     _SettingsEntry parent,
@@ -1514,9 +1512,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
     icon: parent.icon,
     title: leaf.title(l10n),
     subtitle: parent.title,
-    onTap: parent.onTap,
+    onTap: () => _openLeaf(leaf, parent, l10n),
     iconAccent: iconAccent,
   );
+
+  Future<void> _openLeaf(
+    SettingsLeaf leaf,
+    _SettingsEntry parent,
+    AppLocalizations l10n,
+  ) async {
+    final title = leaf.title(l10n);
+    final Widget? page = switch (leaf.parentId) {
+      LeafParent.playback => const PlaybackSettingsScreen(),
+      LeafParent.reader => const ReaderSettingsScreen(),
+      LeafParent.appearance => const AppearanceScreen(),
+      LeafParent.privacy => const PrivacySettingsScreen(),
+      LeafParent.storage => const StorageSettingsScreen(),
+      LeafParent.downloads when !_isTv => const DownloadLocationScreen(),
+      _ => null,
+    };
+    if (page == null) {
+      parent.onTap?.call();
+      return;
+    }
+    FocusScope.of(context).unfocus();
+    await _push(SettingsSearchTarget(title: title, child: page));
+    if (mounted) setState(() {});
+  }
 
   /// One tappable row per section (browse view). Each drills into the section's
   /// sub-page. Built from the same [entries], so counts/conditionals stay in

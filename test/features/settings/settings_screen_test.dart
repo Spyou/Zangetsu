@@ -467,6 +467,40 @@ void main() {
     );
   });
 
+  testWidgets('a leaf opens, scrolls to the match, and highlights it', (
+    tester,
+  ) async {
+    await _pumpSettings(tester);
+    await tester.binding.setSurfaceSize(const Size(390, 740));
+    await tester.pumpAndSettle();
+    final prefs = GetIt.instance<PlaybackPrefs>();
+    final original = prefs.autoSkipEd;
+
+    await tester.enterText(find.byType(TextField), 'auto skip ending');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Auto-skip ending'));
+    await tester.pumpAndSettle();
+
+    final target = find.byKey(const ValueKey('settings-search-highlight'));
+    expect(target, findsOneWidget);
+    expect(tester.getRect(target).bottom, lessThanOrEqualTo(740));
+    expect(tester.getRect(target).top, greaterThan(56));
+    final decoration =
+        tester.widget<AnimatedContainer>(target).foregroundDecoration
+            as BoxDecoration;
+    expect(decoration.color, isNot(Colors.transparent));
+    expect(prefs.autoSkipEd, original);
+
+    await tester.pump(const Duration(seconds: 2));
+    await tester.pumpAndSettle();
+    expect(
+      (tester.widget<AnimatedContainer>(target).foregroundDecoration
+              as BoxDecoration)
+          .color,
+      Colors.transparent,
+    );
+  });
+
   testWidgets('search cuts across every section (flat filtered list)', (
     tester,
   ) async {

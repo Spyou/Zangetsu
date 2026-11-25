@@ -122,7 +122,7 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
     return Scaffold(
       backgroundColor: AppColors.bg,
       appBar: settingsAppBar(context.l10n.privacy),
-      body: ListView(
+      body: SettingsSearchList(
         padding: const EdgeInsets.only(top: 8, bottom: 24),
         children: [
           SettingsCard(
