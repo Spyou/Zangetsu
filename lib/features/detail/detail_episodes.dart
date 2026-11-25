@@ -680,7 +680,7 @@ class _EpisodesTabState extends State<_EpisodesTab> {
             epNum: epNum,
             isMovie: singleMovie,
             displayTitle: displayTitle,
-            filler: widget.fillerEps.contains(epNum),
+            filler: isFillerEpisode(ep, widget.fillerEps, fallbackNumber: epNum),
             coverUrl: widget.coverUrl,
             coverHeaders: widget.coverHeaders,
             isWatched: st.watched,

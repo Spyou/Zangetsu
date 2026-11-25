@@ -43,15 +43,21 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
   // leanback keyboard, applies on Done/submit, and hands focus back cleanly.
   String _epQuery = '';
 
-  // Filler episode numbers (from Jikan by MAL id), for the "FILLER" badge —
+  // Filler episode numbers (from Tenrai by MAL id), for the "FILLER" badge —
   // mirrors phone [_DetailViewState._fillerEps].
   Set<int> _fillerEps = const {};
   int? _fillerForMal;
   void _ensureFiller(int? malId) {
-    if (malId == null || malId == _fillerForMal) return;
+    if (malId == _fillerForMal) return;
     _fillerForMal = malId;
+    _fillerEps = malId == null
+        ? const {}
+        : FillerService.instance.peekCache(malId) ?? const {};
+    if (malId == null) return;
     FillerService.instance.fillerEpisodes(malId).then((s) {
-      if (mounted && s.isNotEmpty) setState(() => _fillerEps = s);
+      if (mounted && _fillerForMal == malId && s.isNotEmpty) {
+        setState(() => _fillerEps = s);
+      }
     });
   }
 
@@ -1399,7 +1405,7 @@ class _TvEpisodeListState extends State<_TvEpisodeList> {
                   ep: ep,
                   epNum: epNum,
                   displayTitle: displayTitle,
-                  filler: widget.fillerEps.contains(epNum),
+                  filler: isFillerEpisode(ep, widget.fillerEps, fallbackNumber: epNum),
                   coverUrl: widget.coverUrl,
                   coverHeaders: widget.coverHeaders,
                   isWatched: watched,

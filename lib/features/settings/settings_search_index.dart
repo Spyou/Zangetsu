@@ -151,7 +151,7 @@ final settingsLeaves = <SettingsLeaf>[
   SettingsLeaf(
     LeafParent.playback,
     (l) => l.autoSkipFillerEpisodes,
-    keywords: 'filler jikan',
+    keywords: 'filler tenrai',
   ),
   SettingsLeaf(
     LeafParent.playback,

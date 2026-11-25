@@ -32,10 +32,7 @@ class _EpisodesPanel extends StatefulWidget {
   final String? cover;
   final Map<String, String>? coverHeaders;
 
-  /// Filler episode NUMBERS from the Jikan lookup. Sources don't carry filler
-  /// info, so [Episode.filler] is false here and this set is what the badge
-  /// goes by. Snapshotted when the panel opens — by then the lookup, kicked
-  /// off when playback started, has long since landed.
+  /// Filler episode numbers from Tenrai, snapshotted when the panel opens.
   final Set<int> fillerEps;
 
   final void Function(int) onSelect;
@@ -459,8 +456,7 @@ class _EpisodesPanelState extends State<_EpisodesPanel> {
         ? e.thumbnail!
         : (widget.cover ?? '');
 
-    // From the Jikan lookup, not the source — see [_EpisodesPanel.fillerEps].
-    final isFiller = widget.fillerEps.contains(n);
+    final isFiller = isFillerEpisode(e, widget.fillerEps, fallbackNumber: n);
 
     // Runtime · air date, whichever the source actually gave us.
     final bits = <String>[

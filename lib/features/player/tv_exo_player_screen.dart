@@ -188,7 +188,7 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
   int? _scrubMs;
   bool _holdingSpeed = false; // D-pad RIGHT held → temporary 2× (YouTube-style)
 
-  /// Filler episode NUMBERS from Jikan (same as phone player). Empty until
+  /// Filler episode NUMBERS from Tenrai (same as phone player). Empty until
   /// fetched / for non-anime. Drives auto-skip and FILLER badges.
   final ValueNotifier<Set<int>> _fillerEps = ValueNotifier(const {});
 
@@ -2390,8 +2390,8 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
                         ValueListenableBuilder<Set<int>>(
                           valueListenable: _fillerEps,
                           builder: (context, fillers, _) {
-                            final n = ep?.number?.toInt();
-                            final isFiller = n != null && fillers.contains(n);
+                            final isFiller =
+                                ep != null && isFillerEpisode(ep, fillers);
                             return Row(
                               children: [
                                 Text(
@@ -2727,7 +2727,7 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
                               final title = episodeDisplayTitle(ep, number: n) ??
                                   'Episode $n';
                               final current = i == _index;
-                              final isFiller = fillers.contains(n);
+                              final isFiller = isFillerEpisode(ep, fillers, fallbackNumber: n);
                               return Padding(
                                 padding: const EdgeInsets.only(bottom: 8),
                                 child: Focus(

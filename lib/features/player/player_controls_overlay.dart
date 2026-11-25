@@ -610,10 +610,7 @@ class _ControlsOverlay extends StatelessWidget {
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
-                                // Filler comes from the Jikan lookup, not the
-                                // source — Episode.filler is always false here.
-                                // Listened to because that lookup lands long
-                                // after this is first built.
+                                // Refresh when Tenrai metadata arrives.
                                 ValueListenableBuilder<Set<int>>(
                                   valueListenable: c.fillerEpisodes,
                                   builder: (context, _, _) =>

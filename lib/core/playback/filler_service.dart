@@ -5,8 +5,15 @@ import 'package:flutter/foundation.dart';
 
 import '../models/episode.dart';
 
+/// A provider flag stays usable when the metadata lookup is unavailable.
+bool isFillerEpisode(
+  Episode episode,
+  Set<int> fillerEps, {
+  int? fallbackNumber,
+}) => episode.filler || fillerEps.contains(episode.number ?? fallbackNumber);
+
 /// Next episode index when advancing. When [autoSkipFiller] is on and
-/// [fillerEps] is non-empty, jumps past consecutive filler episodes — but
+/// the source or metadata marks an episode as filler, skips consecutive fillers, but
 /// never strands the user (if everything left is filler, returns [currentIndex]
 /// + 1). Returns null when there is no next episode.
 ///
@@ -25,10 +32,10 @@ int? nextAutoplayIndex({
   // that can only fail, and autoplay would roll into a dead end at the end of
   // every season currently airing. See [Episode.unavailable].
   if (!episodes[immediate].available) return null;
-  if (!autoSkipFiller || fillerEps.isEmpty) return immediate;
+  if (!autoSkipFiller) return immediate;
   var target = immediate;
   while (target < episodes.length &&
-      fillerEps.contains(episodes[target].number?.toInt())) {
+      isFillerEpisode(episodes[target], fillerEps)) {
     target++;
   }
   // Skipping filler must not skip INTO something unplayable either.
@@ -38,28 +45,28 @@ int? nextAutoplayIndex({
   return target;
 }
 
-/// Fetches the set of FILLER episode numbers for an anime from Jikan (the MAL
-/// API): `api.jikan.moe/v4/anime/{malId}/episodes` returns a `filler` boolean
-/// per episode, keyed by MAL id — the same data the wider ecosystem uses. Keyed
-/// by MAL id (which we already have for AniList anime), so no title-scraping.
-///
-/// Best-effort + cached per session: a network failure or an unlisted show just
-/// yields an empty set (no badges, no skips) — never an error to the caller.
+/// Fetches filler episode numbers by MyAnimeList ID from Tenrai.
 class FillerService {
-  FillerService._();
-  static final FillerService instance = FillerService._();
+  FillerService._(this._dio);
 
-  final Dio _dio = Dio(
-    BaseOptions(
-      connectTimeout: const Duration(seconds: 10),
-      receiveTimeout: const Duration(seconds: 10),
+  @visibleForTesting
+  FillerService.withClient(this._dio);
+
+  static final FillerService instance = FillerService._(
+    Dio(
+      BaseOptions(
+        connectTimeout: const Duration(seconds: 10),
+        receiveTimeout: const Duration(seconds: 10),
+      ),
     ),
   );
+
+  final Dio _dio;
 
   final Map<int, Set<int>> _cache = {};
   final Map<int, Future<Set<int>>> _inflight = {};
 
-  /// Filler episode NUMBERS for [malId] (cached). Empty on failure/unlisted.
+  /// Returns known filler episode numbers. Only complete responses are cached.
   Future<Set<int>> fillerEpisodes(int malId) {
     final cached = _cache[malId];
     if (cached != null) return Future.value(cached);
@@ -91,32 +98,34 @@ class FillerService {
       while (page <= 20) {
         // hard cap: 20 pages (2000 eps) so a bad id can't loop
         final resp = await _dio.get<dynamic>(
-          'https://api.jikan.moe/v4/anime/$malId/episodes',
-          queryParameters: {'page': page},
+          'https://api.tenrai.org/v1/anime/$malId/episodes',
+          queryParameters: {'page': page, 'filler': true},
         );
         // Dio may hand back a parsed Map OR a raw JSON String — handle both.
         final raw = resp.data;
         final body = raw is Map
             ? raw
             : (raw is String ? jsonDecode(raw) as Map : const {});
-        final data = (body['data'] as List?) ?? const [];
+        final data = body['data'];
+        final pagination = body['pagination'];
+        final last = pagination is Map ? pagination['last_visible_page'] : null;
+        if (data is! List || last is! int || last < 0) break;
         for (final e in data) {
           if (e is Map && e['filler'] == true) {
             final n = (e['mal_id'] as num?)?.toInt();
             if (n != null) fillers.add(n);
           }
         }
-        final last =
-            (body['pagination']?['last_visible_page'] as num?)?.toInt() ?? page;
-        if (page >= last) break;
+        if (page >= last) {
+          return _cache[malId] = Set.unmodifiable(fillers);
+        }
         page++;
-        // Respect Jikan's rate limit (~3 req/s) on multi-page shows.
-        await Future.delayed(const Duration(milliseconds: 400));
+        // Space pages to stay within Tenrai's public per-minute limit.
+        await Future<void>.delayed(const Duration(milliseconds: 550));
       }
     } catch (_) {
-      // keep whatever we collected (possibly empty)
+      // Partial results help this view without hiding the failure in cache.
     }
-    _cache[malId] = fillers;
     return fillers;
   }
 }

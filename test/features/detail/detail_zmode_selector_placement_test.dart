@@ -374,7 +374,7 @@ const _zmDetail = MediaDetail(
   url: 'zm://anime/mal:5114',
   type: ProviderType.anime,
   sourceId: 'test',
-  // No malId — a non-null one drives _ensureFiller into a real Jikan
+  // No malId — a non-null one drives _ensureFiller into a real Tenrai
   // network call (FillerService.instance is a hardcoded singleton, not
   // injectable here), which never resolves inside a widget test's pump.
   description: 'A synopsis long enough to render its own section.',

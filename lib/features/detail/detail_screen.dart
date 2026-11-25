@@ -532,15 +532,21 @@ class _DetailViewState extends State<_DetailView>
 
   Timer? _prefetchTimer;
 
-  // Filler episode numbers (from Jikan by MAL id), for the "Filler" badge in the
+  // Filler episode numbers (from Tenrai by MAL id), for the "Filler" badge in the
   // episode list. Fetched once per malId; empty for non-anime / unlisted shows.
   Set<int> _fillerEps = const {};
   int? _fillerForMal;
   void _ensureFiller(int? malId) {
-    if (malId == null || malId == _fillerForMal) return;
+    if (malId == _fillerForMal) return;
     _fillerForMal = malId;
+    _fillerEps = malId == null
+        ? const {}
+        : FillerService.instance.peekCache(malId) ?? const {};
+    if (malId == null) return;
     FillerService.instance.fillerEpisodes(malId).then((s) {
-      if (mounted && s.isNotEmpty) setState(() => _fillerEps = s);
+      if (mounted && _fillerForMal == malId && s.isNotEmpty) {
+        setState(() => _fillerEps = s);
+      }
     });
   }
 

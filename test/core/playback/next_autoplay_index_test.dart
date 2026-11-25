@@ -3,19 +3,20 @@ import 'package:watch_app/core/models/episode.dart';
 import 'package:watch_app/core/playback/filler_service.dart';
 
 Episode _unaired(int n) => Episode(
-      id: 'e$n',
-      title: 'Episode $n',
-      number: n.toDouble(),
-      url: 'https://example.com/$n',
-      unavailable: 'Not out yet',
-    );
+  id: 'e$n',
+  title: 'Episode $n',
+  number: n.toDouble(),
+  url: 'https://example.com/$n',
+  unavailable: 'Not out yet',
+);
 
-Episode _ep(int n) => Episode(
-      id: 'e$n',
-      title: 'Episode $n',
-      number: n.toDouble(),
-      url: 'https://example.com/$n',
-    );
+Episode _ep(int n, {bool filler = false}) => Episode(
+  filler: filler,
+  id: 'e$n',
+  title: 'Episode $n',
+  number: n.toDouble(),
+  url: 'https://example.com/$n',
+);
 
 void main() {
   final eps = [_ep(1), _ep(2), _ep(3), _ep(4), _ep(5)];
@@ -66,6 +67,18 @@ void main() {
           autoSkipFiller: true,
         ),
         3, // index of ep 4
+      );
+    });
+
+    test('skips a source-marked filler without remote metadata', () {
+      expect(
+        nextAutoplayIndex(
+          currentIndex: 0,
+          episodes: [eps[0], _ep(2, filler: true), eps[2]],
+          fillerEps: const {},
+          autoSkipFiller: true,
+        ),
+        2,
       );
     });
 

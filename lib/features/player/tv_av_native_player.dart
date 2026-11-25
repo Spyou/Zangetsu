@@ -788,10 +788,8 @@ class TvAvNativePlayer {
 
   static String _episodeLabel(Episode ep) => episodePresenceDetails(ep) ?? '';
 
-  static List<bool> _fillerFlags(List<Episode> episodes, Set<int> fillers) {
-    if (fillers.isEmpty) return List<bool>.filled(episodes.length, false);
-    return [for (final e in episodes) fillers.contains(e.number?.toInt())];
-  }
+  static List<bool> _fillerFlags(List<Episode> episodes, Set<int> fillers) =>
+      [for (final episode in episodes) isFillerEpisode(episode, fillers)];
 
   static const Duration _metaWait = Duration(seconds: 2);
 

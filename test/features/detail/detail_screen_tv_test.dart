@@ -889,7 +889,7 @@ void main() {
   );
 
   testWidgets(
-    'DetailScreenTv shows FILLER badge for Jikan-marked episode numbers',
+    'DetailScreenTv shows FILLER badges from Tenrai and the source',
     (tester) async {
       FillerService.instance.debugSeedCache(21, {2});
       addTearDown(FillerService.instance.debugClearCache);
@@ -902,7 +902,7 @@ void main() {
         sourceId: 'test',
         malId: 21,
         episodes: [
-          Episode(id: 'e1', title: 'Canon', url: '/e1', number: 1),
+          Episode(id: 'e1', title: 'Source filler', url: '/e1', number: 1, filler: true),
           Episode(id: 'e2', title: 'Filler Ep', url: '/e2', number: 2),
           Episode(id: 'e3', title: 'Canon Again', url: '/e3', number: 3),
         ],
@@ -934,7 +934,7 @@ void main() {
       await tester.pump();
       await tester.pump(); // let _ensureFiller setState land
 
-      expect(find.text('FILLER'), findsOneWidget);
+      expect(find.text('FILLER'), findsNWidgets(2));
     },
   );
 

@@ -3688,14 +3688,7 @@ class PlayerCubit extends Cubit<PlayerState> {
     }
   }
 
-  /// Filler episode NUMBERS for this show (from Jikan by malId); empty until
-  /// fetched / for non-anime. Drives auto-skip and the FILLER badges.
-  ///
-  /// A notifier rather than a plain field because it lands from a network call
-  /// well after the player is built: the badges have to be told, or they'd only
-  /// appear if something else happened to rebuild them. Sources don't carry
-  /// filler info, so [Episode.filler] is false here — this set is the only
-  /// thing that knows, the same way the detail screen does it.
+  /// Filler episode numbers from Tenrai. Source flags are available immediately.
   final ValueNotifier<Set<int>> fillerEpisodes = ValueNotifier(const {});
   Set<int> get _fillerEps => fillerEpisodes.value;
 
@@ -3710,8 +3703,7 @@ class PlayerCubit extends Cubit<PlayerState> {
   /// Whether the episode at [index] is filler, by its episode number.
   bool isFillerAt(int index) {
     if (index < 0 || index >= episodes.length) return false;
-    final n = episodes[index].number?.toInt();
-    return n != null && _fillerEps.contains(n);
+    return isFillerEpisode(episodes[index], _fillerEps);
   }
 
   /// Advance to the next episode. When "Auto-skip filler" is on, jumps past
