@@ -3637,7 +3637,17 @@ class PhonePlayerActivity : Activity() {
         if (morphBackdrop == null) {
             morphBackdrop = page.background
             // Only while moving does the app behind need to show through.
-            window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
+            // A plain transparent colour draws nothing, so some phones (OnePlus) keep
+            // every old frame of the shrinking card as a trail. CLEAR wipes it.
+            window.setBackgroundDrawable(object : android.graphics.drawable.Drawable() {
+                override fun draw(canvas: android.graphics.Canvas) {
+                    canvas.drawColor(android.graphics.Color.TRANSPARENT, android.graphics.PorterDuff.Mode.CLEAR)
+                }
+                override fun setAlpha(alpha: Int) {}
+                override fun setColorFilter(cf: android.graphics.ColorFilter?) {}
+                @Deprecated("Deprecated in Java")
+                override fun getOpacity() = android.graphics.PixelFormat.TRANSPARENT
+            })
         }
         minimizeP = p
         val dock = dockRectPx()
