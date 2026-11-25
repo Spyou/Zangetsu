@@ -616,6 +616,28 @@ class DetailCubit extends Cubit<DetailState> {
       } catch (_) {/* stays a movie */}
     }
 
+    // Cast and Relations need none of the episode data below, so they start
+    // NOW and run beside it instead of waiting for it. Each result is shown
+    // the moment it lands (see _fetchExtras).
+    //
+    // Cast the source already carries (CloudStream actors/recommendations)
+    // is painted straight away; the richer AniList/TMDB answer replaces it
+    // when it arrives.
+    if (!force &&
+        state.cast.isEmpty &&
+        state.relations.isEmpty &&
+        (detail.castMembers.isNotEmpty || detail.relations.isNotEmpty)) {
+      emit(
+        state.copyWith(cast: detail.castMembers, relations: detail.relations),
+      );
+    }
+    final wantsExtras = d.malId != null ||
+        d.tmdbId != null ||
+        d.type == ProviderType.anime ||
+        d.type == ProviderType.manga ||
+        d.type == ProviderType.novel;
+    final Future<bool>? extrasRun = wantsExtras ? _fetchExtras(d) : null;
+
     // Fill in per-episode descriptions (AniZip for anime, TMDB season for a
     // movie-source TV series). Best-effort — a miss leaves the row on its date.
     if (d.episodes.isNotEmpty) {
@@ -648,23 +670,9 @@ class DetailCubit extends Cubit<DetailState> {
     // all above (the TMDB step is movie-only, the MAL step anime-only), so
     // without them named here the gate was false three ways and Cast/Relations
     // never loaded for a reading title.
-    if (d.malId != null ||
-        d.tmdbId != null ||
-        d.type == ProviderType.anime ||
-        d.type == ProviderType.manga ||
-        d.type == ProviderType.novel) {
-      try {
-        final extras = await sl<MetadataEnrichment>().fetch(d);
-        if (isClosed) return;
-        if (extras.cast.isNotEmpty || extras.relations.isNotEmpty) {
-          emit(state.copyWith(cast: extras.cast, relations: extras.relations));
-          // After the tab has something to show, not before: the walk costs a
-          // request per hop and nobody is waiting on it.
-          unawaited(_loadSeasons(d));
-          return;
-        }
-      } catch (_) {/* fall through to source-supplied extras */}
-    }
+    //
+    // Started earlier (extrasRun), so this only has to wait for what is left.
+    if (extrasRun != null && await extrasRun) return;
     // Fall back to Cast/Relations the source supplied directly (e.g.
     // CloudStream's actors/recommendations) — so the tabs fill even without ids.
     if (isClosed) return;
@@ -674,6 +682,25 @@ class DetailCubit extends Cubit<DetailState> {
       );
     }
     _log('enrich done ${sw.elapsedMilliseconds}ms');
+  }
+
+  /// Fetches Cast + Relations and shows them as soon as they arrive.
+  ///
+  /// Returns true when it had something to show, so the caller knows not to
+  /// fall back to source-supplied extras. Never throws.
+  Future<bool> _fetchExtras(MediaDetail d) async {
+    try {
+      final extras = await sl<MetadataEnrichment>().fetch(d);
+      if (isClosed) return false;
+      if (extras.cast.isEmpty && extras.relations.isEmpty) return false;
+      emit(state.copyWith(cast: extras.cast, relations: extras.relations));
+      // After the tab has something to show, not before: the walk costs a
+      // request per hop and nobody is waiting on it.
+      unawaited(_loadSeasons(d));
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   /// Walks the franchise so the Relations tab can show its seasons in order.

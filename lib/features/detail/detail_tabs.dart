@@ -425,7 +425,11 @@ class _DetailsTab extends StatelessWidget {
     required this.description,
     this.reading = false,
     this.isMovie = false,
+    this.embedded = false,
   });
+
+  /// Sits inside the Overview page's own scroll view instead of scrolling itself.
+  final bool embedded;
 
   final String sourceName;
   final String statusStr;
@@ -446,8 +450,62 @@ class _DetailsTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final desc = description ?? '';
+    if (embedded) {
+      final tags = _tagChips(context);
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            DecoratedBox(
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 6),
+                child: Column(
+                  children: [
+                    if (sourceName.isNotEmpty)
+                      _DetailRow(
+                        label: context.l10n.playerInfoSource,
+                        value: sourceName,
+                      ),
+                    if (statusStr.isNotEmpty)
+                      _DetailRow(label: context.l10n.status, value: statusStr),
+                    if ((year ?? '').isNotEmpty)
+                      _DetailRow(label: context.l10n.year, value: year!),
+                    if (!isMovie)
+                      _DetailRow(
+                        label: reading
+                            ? context.l10n.chapters
+                            : context.l10n.episodes,
+                        value: '$episodeCount',
+                      ),
+                    if (studios.isNotEmpty)
+                      _DetailRow(
+                        label: context.l10n.studio,
+                        value: studios.join(', '),
+                      ),
+                    ..._providerRows(context),
+                  ],
+                ),
+              ),
+            ),
+            if (tags.isNotEmpty) ...[const SizedBox(height: 14), ...tags],
+          ],
+        ),
+      );
+    }
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 20, 16, 40),
+      shrinkWrap: embedded,
+      physics: embedded ? const NeverScrollableScrollPhysics() : null,
+      padding: EdgeInsets.fromLTRB(
+        16,
+        embedded ? 8 : 20,
+        16,
+        embedded ? 24 : 40,
+      ),
       children: [
         if (sourceName.isNotEmpty)
           _DetailRow(label: context.l10n.playerInfoSource, value: sourceName),
@@ -498,7 +556,7 @@ class _DetailsTab extends StatelessWidget {
           ),
         ],
         ..._tagChips(context),
-        if (desc.isNotEmpty) ...[
+        if (desc.isNotEmpty && !embedded) ...[
           const SizedBox(height: 20),
           Text(
             context.l10n.synopsis,
@@ -793,4 +851,426 @@ class _CardGridSkeleton extends StatelessWidget {
       ),
     );
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Overview tab — Cast, Seasons/Relations and Details as one scrolling page of
+// rows, in place of the separate Cast / Relations / Details tabs.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _OverviewTab extends StatelessWidget {
+  const _OverviewTab({
+    required this.cast,
+    required this.relations,
+    required this.seasons,
+    required this.onOpenRelation,
+    required this.onOpenPerson,
+    required this.details,
+    required this.castLabel,
+    required this.synopsis,
+    required this.genres,
+    this.onGenre,
+    this.loading = false,
+  });
+
+  final List<String> genres;
+
+  /// Null leaves the genre chips as plain information.
+  final void Function(String)? onGenre;
+
+  final String synopsis;
+  final List<CastMember> cast;
+  final List<MediaRelation> relations;
+  final List<SeasonEntry> seasons;
+  final void Function(MediaRelation) onOpenRelation;
+  final void Function(PersonRef) onOpenPerson;
+  final Widget details;
+  final String castLabel;
+
+  /// Cast and relations arrive on their own request after the detail does.
+  final bool loading;
+
+  Widget _header(BuildContext context, String text) => Padding(
+    padding: const EdgeInsets.fromLTRB(16, 26, 16, 12),
+    child: Text(
+      text.toUpperCase(),
+      style: AppText.caption.copyWith(
+        color: AppColors.textSecondary,
+        fontSize: 11,
+        fontWeight: FontWeight.w700,
+        letterSpacing: 0.6,
+      ),
+    ),
+  );
+
+  /// Avatar size by screen width, the way a phone and a tablet each want it.
+  static double _avatarFor(double width) => width >= 600
+      ? 100
+      : width >= 420
+      ? 88
+      : 80;
+
+  /// "AB" for "Ada Byron", "Ma" for "Madonna" — what shows when there is no photo.
+  static String _initials(String name) {
+    final parts = name.trim().split(RegExp(r'\s+')).where((p) => p.isNotEmpty);
+    final list = parts.toList();
+    if (list.isEmpty) return '';
+    if (list.length == 1) {
+      final w = list.first;
+      return w.length <= 2 ? w.toUpperCase() : w.substring(0, 2);
+    }
+    return '${list.first[0]}${list.last[0]}'.toUpperCase();
+  }
+
+  Widget _castCard(CastMember m, double avatar) {
+    final card = SizedBox(
+      width: avatar + 12,
+      child: Column(
+        children: [
+          Container(
+            width: avatar,
+            height: avatar,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: AppColors.surface2,
+              border: Border.all(color: AppColors.hairline),
+            ),
+            child: ClipOval(
+              child: (m.photo != null && m.photo!.isNotEmpty)
+                  ? CachedNetworkImage(
+                      imageUrl: m.photo!,
+                      fit: BoxFit.cover,
+                      memCacheWidth: 240,
+                      placeholder: (_, _) =>
+                          Container(color: AppColors.surface2),
+                      errorWidget: (_, _, _) =>
+                          _InitialsAvatar(_initials(m.name)),
+                    )
+                  : _InitialsAvatar(_initials(m.name)),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            m.name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: AppText.caption.copyWith(
+              color: AppColors.textPrimary,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          if (m.role != null && m.role!.isNotEmpty)
+            Text(
+              m.role!,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: AppText.caption.copyWith(
+                color: AppColors.textSecondary,
+                fontSize: 11,
+              ),
+            ),
+        ],
+      ),
+    );
+    final ref = m.person;
+    return ref == null
+        ? card
+        : _PressableCard(onTap: () => onOpenPerson(ref), child: card);
+  }
+
+  Widget _row(double height, int count, Widget Function(int) item) => SizedBox(
+    height: height,
+    child: ListView.separated(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      itemCount: count,
+      separatorBuilder: (_, _) => const SizedBox(width: 12),
+      itemBuilder: (_, i) => item(i),
+    ),
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    // A season is a relation card with its own title, same as the Relations tab.
+    final rel = _RelationsTab(
+      relations: relations,
+      seasons: seasons,
+      onOpen: onOpenRelation,
+    );
+    final seasonCards = [
+      for (final s in seasons) _RelationsTab._asRelation(context, s),
+    ];
+    final rest = rel._rest;
+    // On a manga the cast holds characters AND the people who made it; keep
+    // them as two labelled rows, same split the old Cast tab made.
+    final staff = [
+      for (final m in cast)
+        if (m.person?.source == PersonSource.anilistStaff) m,
+    ];
+    final people = staff.isEmpty || staff.length == cast.length
+        ? cast
+        : [
+            for (final m in cast)
+              if (!staff.contains(m)) m,
+          ];
+    final crew = staff.isEmpty || staff.length == cast.length
+        ? const <CastMember>[]
+        : staff;
+    final avatar = _avatarFor(MediaQuery.sizeOf(context).width);
+    final castRowHeight = avatar + 62;
+    return SingleChildScrollView(
+      padding: const EdgeInsets.only(bottom: 40),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (synopsis.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 18, 16, 0),
+              child: _OverviewSynopsis(text: synopsis),
+            ),
+          if (genres.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+              child: Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (final g in genres)
+                    _FilterChip(
+                      text: g,
+                      onTap: onGenre == null ? null : () => onGenre!(g),
+                    ),
+                ],
+              ),
+            ),
+          if (people.isNotEmpty)
+            _Reveal(
+              key: const ValueKey('ov-cast'),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _header(context, castLabel),
+                  _row(
+                    castRowHeight,
+                    people.length,
+                    (i) => _castCard(people[i], avatar),
+                  ),
+                ],
+              ),
+            )
+          else if (loading) ...[
+            _header(context, castLabel),
+            const _OverviewBones(round: true),
+          ],
+          if (crew.isNotEmpty)
+            _Reveal(
+              key: const ValueKey('ov-crew'),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _header(context, context.l10n.creators),
+                  _row(
+                    castRowHeight,
+                    crew.length,
+                    (i) => _castCard(crew[i], avatar),
+                  ),
+                ],
+              ),
+            ),
+          if (seasonCards.isNotEmpty)
+            _Reveal(
+              key: const ValueKey('ov-seasons'),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _header(context, context.l10n.seasons),
+                  _row(
+                    236,
+                    seasonCards.length,
+                    (i) => SizedBox(
+                      width: 112,
+                      child: rel._card(context, seasonCards[i], i),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          if (rest.isNotEmpty)
+            _Reveal(
+              key: const ValueKey('ov-relations'),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _header(context, context.l10n.relations),
+                  _row(
+                    236,
+                    rest.length,
+                    (i) => SizedBox(
+                      width: 112,
+                      child: rel._card(
+                        context,
+                        rest[i],
+                        seasonCards.length + i,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else if (loading && seasonCards.isEmpty) ...[
+            _header(context, context.l10n.relations),
+            const _OverviewBones(),
+          ],
+          _header(context, context.l10n.details),
+          details,
+        ],
+      ),
+    );
+  }
+}
+
+/// The synopsis at the top of Overview: three lines, "Read more" opens it in place.
+class _OverviewSynopsis extends StatefulWidget {
+  const _OverviewSynopsis({required this.text});
+  final String text;
+
+  @override
+  State<_OverviewSynopsis> createState() => _OverviewSynopsisState();
+}
+
+class _OverviewSynopsisState extends State<_OverviewSynopsis> {
+  bool _open = false;
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+    onTap: () => setState(() => _open = !_open),
+    behavior: HitTestBehavior.opaque,
+    child: AnimatedSize(
+      duration: const Duration(milliseconds: 200),
+      curve: Curves.easeOut,
+      alignment: Alignment.topCenter,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            widget.text,
+            style: AppText.body,
+            maxLines: _open ? null : 4,
+            overflow: _open ? TextOverflow.visible : TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 6),
+          Text(
+            _open ? context.l10n.watchSeeLess : context.l10n.readMore,
+            style: AppText.caption.copyWith(
+              color: AppColors.accent,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+/// Fades its child in the first time it appears (350ms, long soft ease) so a
+/// section that arrives after the page opened eases in instead of popping.
+class _Reveal extends StatelessWidget {
+  const _Reveal({super.key, required this.child});
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => TweenAnimationBuilder<double>(
+    tween: Tween(begin: 0, end: 1),
+    duration: const Duration(milliseconds: 350),
+    curve: const Cubic(0.5, 0, 0.14, 1),
+    builder: (context, v, child) => Opacity(opacity: v, child: child),
+    child: child,
+  );
+}
+
+/// Pulsing placeholders for a row that is still on its way: round avatars for
+/// the cast, tall posters for seasons and relations.
+class _OverviewBones extends StatefulWidget {
+  const _OverviewBones({this.round = false});
+  final bool round;
+
+  @override
+  State<_OverviewBones> createState() => _OverviewBonesState();
+}
+
+class _OverviewBonesState extends State<_OverviewBones>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _pulse = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _pulse.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final round = widget.round;
+    return FadeTransition(
+      opacity: Tween(begin: 0.45, end: 1.0).animate(_pulse),
+      child: SizedBox(
+        height: round ? 112 : 218,
+        child: ListView.separated(
+          physics: const NeverScrollableScrollPhysics(),
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          itemCount: 5,
+          separatorBuilder: (_, _) => SizedBox(width: round ? 14 : 12),
+          itemBuilder: (_, _) => Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: round ? 84 : 112,
+                height: round ? 84 : 168,
+                decoration: BoxDecoration(
+                  color: AppColors.surface2,
+                  shape: round ? BoxShape.circle : BoxShape.rectangle,
+                  borderRadius: round ? null : BorderRadius.circular(10),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Container(
+                width: round ? 60 : 84,
+                height: 10,
+                decoration: BoxDecoration(
+                  color: AppColors.surface2,
+                  borderRadius: BorderRadius.circular(5),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The letters in a coloured circle, for a cast member with no photo.
+class _InitialsAvatar extends StatelessWidget {
+  const _InitialsAvatar(this.text);
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    color: AppColors.surface2,
+    alignment: Alignment.center,
+    child: Text(
+      text,
+      style: AppText.headline.copyWith(
+        color: AppColors.textSecondary,
+        fontSize: 20,
+        fontWeight: FontWeight.w700,
+      ),
+    ),
+  );
 }

@@ -6010,6 +6010,12 @@ abstract class AppLocalizations {
   /// **'Relations'**
   String get relations;
 
+  /// No description provided for @overview.
+  ///
+  /// In en, this message translates to:
+  /// **'Overview'**
+  String get overview;
+
   /// No description provided for @characters.
   ///
   /// In en, this message translates to:

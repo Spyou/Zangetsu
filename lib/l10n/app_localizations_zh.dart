@@ -3099,6 +3099,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get relations => '关系';
 
   @override
+  String get overview => 'Overview';
+
+  @override
   String get characters => '人物';
 
   @override

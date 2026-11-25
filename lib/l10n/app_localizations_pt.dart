@@ -3220,6 +3220,9 @@ class AppLocalizationsPt extends AppLocalizations {
   String get relations => 'Relacionados';
 
   @override
+  String get overview => 'Overview';
+
+  @override
   String get characters => 'Personagens';
 
   @override

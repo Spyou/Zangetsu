@@ -3206,6 +3206,9 @@ class AppLocalizationsAr extends AppLocalizations {
   String get relations => 'العلاقات';
 
   @override
+  String get overview => 'Overview';
+
+  @override
   String get characters => 'الشخصيات';
 
   @override

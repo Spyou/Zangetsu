@@ -1,105 +1,5 @@
-// Credits line, description block, icon actions and the tab-bar header.
+// Icon actions and the tab-bar header.
 part of 'detail_screen.dart';
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Muted credit line: "Starring: a, b, c… more" / "Creators: …" / "Genres: …".
-// The label is slightly dimmer than the value, matching Netflix's hierarchy.
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _CreditLine extends StatelessWidget {
-  const _CreditLine({
-    required this.label,
-    required this.value,
-    this.more = false,
-    this.onMore,
-  });
-
-  final String label;
-  final String value;
-
-  /// When true, append a "… more" affordance. When [onMore] is also set, the
-  /// whole line is tappable and jumps to the relevant tab (Cast).
-  final bool more;
-
-  /// Tapping the line (or its "… more") jumps to the related tab. Null = inert.
-  final VoidCallback? onMore;
-
-  @override
-  Widget build(BuildContext context) {
-    final base = AppText.caption.copyWith(color: AppColors.textSecondary);
-    final line = Padding(
-      padding: const EdgeInsets.only(bottom: 2),
-      child: Text.rich(
-        TextSpan(
-          children: [
-            TextSpan(
-              text: '$label: ',
-              style: base.copyWith(color: AppColors.textTertiary),
-            ),
-            TextSpan(text: value, style: base),
-            if (more)
-              TextSpan(
-                text: '… more',
-                style: base.copyWith(
-                  color: AppColors.accent,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-          ],
-        ),
-        maxLines: 2,
-        overflow: TextOverflow.ellipsis,
-      ),
-    );
-    if (onMore == null) return line;
-    return GestureDetector(
-      onTap: onMore,
-      behavior: HitTestBehavior.opaque,
-      child: line,
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Description: synopsis clamped to 3 lines + a red "Read more" that opens the
-// Details tab (which shows the full synopsis). No inline expand.
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _Description extends StatelessWidget {
-  const _Description({required this.text, required this.onReadMore});
-
-  final String text;
-
-  /// Jumps to the Details tab (full synopsis) — no inline expansion.
-  final VoidCallback onReadMore;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onReadMore,
-      behavior: HitTestBehavior.opaque,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            text,
-            style: AppText.body,
-            maxLines: 3,
-            overflow: TextOverflow.ellipsis,
-          ),
-          const SizedBox(height: 6),
-          Text(
-            context.l10n.readMore,
-            style: AppText.caption.copyWith(
-              color: AppColors.accent,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // One of the 5 outlined icon actions.
@@ -159,13 +59,14 @@ class _IconAction extends StatelessWidget {
 
 class _TabBarDelegate extends SliverPersistentHeaderDelegate {
   _TabBarDelegate(this.tabBar, {this.tint});
-  final TabBar tabBar;
+  final Widget tabBar;
+  static const double height = 56;
   final ValueListenable<Color?>? tint;
 
   @override
-  double get minExtent => tabBar.preferredSize.height;
+  double get minExtent => height;
   @override
-  double get maxExtent => tabBar.preferredSize.height;
+  double get maxExtent => height;
 
   @override
   Widget build(
@@ -188,4 +89,223 @@ class _TabBarDelegate extends SliverPersistentHeaderDelegate {
   @override
   bool shouldRebuild(covariant _TabBarDelegate oldDelegate) =>
       tabBar != oldDelegate.tabBar || tint != oldDelegate.tint;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Chip tabs: Overview / Episodes on the left, Comments pushed to the right.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _ChipTabs extends StatelessWidget {
+  const _ChipTabs({
+    required this.controller,
+    required this.labels,
+    required this.trailingLabel,
+    required this.trailingIcon,
+  });
+
+  final TabController controller;
+
+  /// The leading chips, in tab order.
+  final List<String> labels;
+
+  /// The last tab, shown on the right edge.
+  final String trailingLabel;
+  final IconData trailingIcon;
+
+  @override
+  Widget build(BuildContext context) {
+    // The controller's index changes the instant a tap starts, and again when
+    // a swipe passes halfway — so the highlight never waits on the page slide.
+    return AnimatedBuilder(
+      animation: controller,
+      builder: (context, _) {
+        final current = controller.index;
+        return LayoutBuilder(
+          builder: (context, box) => SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            physics: const ClampingScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+            // Comments sits on the right edge when there is room. On a very
+            // narrow screen the row scrolls sideways instead of overflowing.
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minWidth: box.maxWidth - 32),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      for (var i = 0; i < labels.length; i++) ...[
+                        if (i > 0) const SizedBox(width: 8),
+                        _TabChip(
+                          label: labels[i],
+                          selected: current == i,
+                          onTap: () => controller.animateTo(i),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(width: 8),
+                  _TabChip(
+                    label: trailingLabel,
+                    icon: trailingIcon,
+                    selected: current == labels.length,
+                    onTap: () => controller.animateTo(labels.length),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// One chip: switches colour at once and squeezes slightly while pressed, so a
+/// tap is felt before the page below has finished sliding.
+class _TabChip extends StatefulWidget {
+  const _TabChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+    this.icon,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+  final IconData? icon;
+
+  @override
+  State<_TabChip> createState() => _TabChipState();
+}
+
+class _TabChipState extends State<_TabChip> {
+  bool _down = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final on = widget.selected;
+    final fg = on ? AppColors.accent : AppColors.textSecondary;
+    return Semantics(
+      button: true,
+      selected: on,
+      label: widget.label,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTapDown: (_) => setState(() => _down = true),
+        onTapUp: (_) => setState(() => _down = false),
+        onTapCancel: () => setState(() => _down = false),
+        onTap: widget.onTap,
+        child: AnimatedScale(
+          scale: _down ? 0.94 : 1.0,
+          duration: const Duration(milliseconds: 90),
+          curve: Curves.easeOut,
+          child: Container(
+            height: 36,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            decoration: BoxDecoration(
+              color: on ? AppColors.accentSoft : AppColors.surface2,
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (widget.icon != null) ...[
+                  Icon(widget.icon, size: 16, color: fg),
+                  const SizedBox(width: 6),
+                ],
+                Text(
+                  widget.label,
+                  style: AppText.caption.copyWith(
+                    color: fg,
+                    fontSize: 13.5,
+                    fontWeight: on ? FontWeight.w700 : FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The page under the chips: the old page fades out as the new one fades in
+// (200ms), instead of sliding sideways like a pager.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _FadePages extends StatefulWidget {
+  const _FadePages({required this.controller, required this.children});
+
+  final TabController controller;
+  final List<Widget> children;
+
+  @override
+  State<_FadePages> createState() => _FadePagesState();
+}
+
+class _FadePagesState extends State<_FadePages> {
+  /// Pages that have been shown. They stay built (scroll position, loaded
+  /// lists) and only fade out, instead of being thrown away and rebuilt.
+  final Set<int> _built = {};
+
+  /// A flick this fast, sideways, moves to the neighbouring page.
+  static const double _flick = 350;
+
+  void _go(int delta) {
+    final c = widget.controller;
+    final next = (c.index + delta).clamp(0, c.length - 1);
+    if (next != c.index) c.animateTo(next);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: widget.controller,
+      builder: (context, _) {
+        final current = widget.controller.index;
+        _built.add(current);
+        return GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          // Left flick = next page, right flick = previous. A row that scrolls
+          // sideways on its own (cast, relations) keeps its own drag.
+          onHorizontalDragEnd: (d) {
+            final v = d.primaryVelocity ?? 0;
+            if (v <= -_flick) _go(1);
+            if (v >= _flick) _go(-1);
+          },
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              for (var i = 0; i < widget.children.length; i++)
+                if (_built.contains(i))
+                  IgnorePointer(
+                    ignoring: i != current,
+                    child: ExcludeSemantics(
+                      excluding: i != current,
+                      child: TickerMode(
+                        enabled: i == current,
+                        child: AnimatedOpacity(
+                          opacity: i == current ? 1 : 0,
+                          duration: const Duration(milliseconds: 200),
+                          curve: i == current ? Curves.easeOut : Curves.easeIn,
+                          child: KeyedSubtree(
+                            key: ValueKey('page-$i'),
+                            child: widget.children[i],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+            ],
+          ),
+        );
+      },
+    );
+  }
 }

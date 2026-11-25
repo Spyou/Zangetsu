@@ -492,6 +492,7 @@ void main() {
     MediaDetail detail, {
     _StubSourceRepository? source,
     bool entering = false,
+    int initialTab = 1,
   }) async {
     final stub = source ?? _StubSourceRepository(detail);
     sl.registerSingleton<SourceRepository>(stub);
@@ -518,13 +519,14 @@ void main() {
                   onPressed: () => Navigator.of(context).push(
                     PageRouteBuilder<void>(
                       transitionDuration: const Duration(seconds: 1),
-                      pageBuilder: (_, _, _) => DetailScreen(item: item),
+                      pageBuilder: (_, _, _) =>
+                          DetailScreen(item: item, initialTab: initialTab),
                     ),
                   ),
                   child: const Text('Open detail'),
                 ),
               )
-            : DetailScreen(item: item),
+            : DetailScreen(item: item, initialTab: initialTab),
       ),
     );
     if (entering) {
@@ -567,10 +569,9 @@ void main() {
       tester.widget<SegmentedButton<String>>(picker).showSelectedIcon,
       isFalse,
     );
-    final firstRange = find.ancestor(
-      of: find.text('1–50'),
-      matching: find.byType(Material),
-    ).first;
+    final firstRange = find
+        .ancestor(of: find.text('1–50'), matching: find.byType(Material))
+        .first;
     expect(
       tester.widget<Material>(firstRange).borderRadius,
       BorderRadius.circular(999),
@@ -850,7 +851,8 @@ void main() {
   testWidgets(
     'a zm:// item shows the selector under the action buttons, above the synopsis',
     (tester) async {
-      await pumpDetail(tester, _zmItem, _zmDetail);
+      // The synopsis lives on the Overview page now, below the header.
+      await pumpDetail(tester, _zmItem, _zmDetail, initialTab: 0);
 
       expect(find.byType(MatchLine), findsOneWidget);
 
@@ -862,9 +864,8 @@ void main() {
           .getTopLeft(find.textContaining('A synopsis long enough'))
           .dy;
 
-      // Sits right after the buttons (below Download) and before the synopsis
-      // section that follows it — the old placement (section 4.5) was AFTER
-      // the synopsis instead.
+      // Sits right after the buttons (below Download) and above everything on
+      // the Overview page, synopsis included.
       expect(matchY, greaterThan(downloadY));
       expect(matchY, lessThan(synopsisY));
     },

@@ -3203,6 +3203,9 @@ class AppLocalizationsId extends AppLocalizations {
   String get relations => 'Relasi';
 
   @override
+  String get overview => 'Overview';
+
+  @override
   String get characters => 'Karakter';
 
   @override

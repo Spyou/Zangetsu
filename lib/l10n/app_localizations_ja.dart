@@ -3117,6 +3117,9 @@ class AppLocalizationsJa extends AppLocalizations {
   String get relations => '関係';
 
   @override
+  String get overview => 'Overview';
+
+  @override
   String get characters => 'キャラクター';
 
   @override

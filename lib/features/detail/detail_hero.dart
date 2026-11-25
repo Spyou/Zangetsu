@@ -626,9 +626,13 @@ class _PlayButton extends StatelessWidget {
     this.onPressed,
     this.icon = Icons.play_arrow_rounded,
     this.loading = false,
+    this.pill = false,
   });
   final String label;
   final VoidCallback? onPressed;
+
+  /// Fully rounded ends (phone). TV keeps the 8px corners it has always had.
+  final bool pill;
 
   /// The episode list hasn't arrived yet. The button can't act, but dimming
   /// it would say "there is nothing to play" — which isn't known yet — so it
@@ -645,9 +649,9 @@ class _PlayButton extends StatelessWidget {
       opacity: enabled || loading ? 1.0 : 0.4,
       child: Material(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(pill ? 26 : 8),
         child: InkWell(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(pill ? 26 : 8),
           onTap: onPressed,
           child: SizedBox(
             height: 52,
@@ -680,8 +684,13 @@ class _DownloadButton extends StatelessWidget {
     required this.label,
     required this.onPressed,
     this.loading = false,
+    this.iconOnly = false,
   });
   final String label;
+
+  /// A round, icon-only button for the phone's Play row. The label becomes the
+  /// tooltip / screen-reader name. TV keeps the full-width labelled button.
+  final bool iconOnly;
 
   /// Null disables the button, dimmed the same way [_PlayButton] dims — the
   /// two sit stacked, so they have to read as disabled the same way.
@@ -692,6 +701,32 @@ class _DownloadButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (iconOnly) {
+      return Opacity(
+        opacity: onPressed != null || loading ? 1.0 : 0.4,
+        child: Tooltip(
+          message: label,
+          child: Material(
+            color: AppColors.surface2,
+            shape: const CircleBorder(),
+            child: InkWell(
+              customBorder: const CircleBorder(),
+              onTap: onPressed,
+              child: SizedBox(
+                width: 52,
+                height: 52,
+                child: Icon(
+                  Icons.file_download_outlined,
+                  color: Colors.white,
+                  size: 24,
+                  semanticLabel: label,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
     return Opacity(
       opacity: onPressed != null || loading ? 1.0 : 0.4,
       child: Material(

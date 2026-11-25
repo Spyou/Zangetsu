@@ -233,7 +233,7 @@ class _MatchLineState extends State<MatchLine> {
                 padding: const EdgeInsetsDirectional.only(start: 14, end: 4),
                 decoration: BoxDecoration(
                   color: AppColors.surface2,
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(26),
                 ),
                 child: canStop
                     ? Row(
@@ -417,7 +417,7 @@ class _MatchLineState extends State<MatchLine> {
                 else
                   Material(
                     color: AppColors.surface2,
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(26),
                     clipBehavior: Clip.antiAlias,
                     child: SizedBox(
                       height: 52,
@@ -436,7 +436,7 @@ class _MatchLineState extends State<MatchLine> {
                                 height: 52,
                                 child: Padding(
                                   padding: const EdgeInsetsDirectional.only(
-                                    start: 14,
+                                    start: 18,
                                   ),
                                   child: labelRow,
                                 ),
@@ -445,58 +445,68 @@ class _MatchLineState extends State<MatchLine> {
                           ),
                           if (selectedId != null)
                             _rowActions(context, selectedId),
-                          const SizedBox(width: 4),
+                          const SizedBox(width: 10),
                         ],
                       ),
                     ),
                   ),
                 if (selectedId != null)
-                  Row(
-                    children: [
-                      // What the source actually matched, beside the button
-                      // that corrects it. Naming only the SOURCE hid the case
-                      // this whole control exists for: a confident match on
-                      // the wrong show looks identical to a right one — same
-                      // source name, a full episode list — until you play it
-                      // and get someone else's episodes. Showing the title
-                      // makes a bad match visible without opening anything.
-                      //
-                      // Silent while still resolving: the screen paints before
-                      // the match lands, and an unguarded line would claim
-                      // "nothing here" for every title during that window.
-                      Expanded(
-                        child: state.loading
-                            ? const SizedBox.shrink()
-                            : Text(
-                                state.match?.showTitle.isNotEmpty == true
-                                    ? state.match!.showTitle
-                                    : l10n.noEpisodesAvailableFromThisSource,
-                                style: AppText.caption.copyWith(
-                                  color: AppColors.textSecondary,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                      ),
-                      _tappable(
-                        key: const ValueKey('tv-match-wrong-title'),
-                        onTap: () => _fix(selectedId),
-                        semanticLabel: l10n.wrongTitle,
-                        borderRadius: 6,
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 4,
-                            vertical: 8,
+                  Padding(
+                    // Lined up with the pill's text, clear of its rounded ends.
+                    padding: _isTv
+                        ? EdgeInsets.zero
+                        : const EdgeInsetsDirectional.only(
+                            start: 18,
+                            end: 8,
+                            top: 4,
                           ),
-                          child: Text(
-                            l10n.wrongTitle,
-                            style: AppText.caption.copyWith(
-                              color: AppColors.accent,
+                    child: Row(
+                      children: [
+                        // What the source actually matched, beside the button
+                        // that corrects it. Naming only the SOURCE hid the case
+                        // this whole control exists for: a confident match on
+                        // the wrong show looks identical to a right one — same
+                        // source name, a full episode list — until you play it
+                        // and get someone else's episodes. Showing the title
+                        // makes a bad match visible without opening anything.
+                        //
+                        // Silent while still resolving: the screen paints before
+                        // the match lands, and an unguarded line would claim
+                        // "nothing here" for every title during that window.
+                        Expanded(
+                          child: state.loading
+                              ? const SizedBox.shrink()
+                              : Text(
+                                  state.match?.showTitle.isNotEmpty == true
+                                      ? state.match!.showTitle
+                                      : l10n.noEpisodesAvailableFromThisSource,
+                                  style: AppText.caption.copyWith(
+                                    color: AppColors.textSecondary,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                        ),
+                        _tappable(
+                          key: const ValueKey('tv-match-wrong-title'),
+                          onTap: () => _fix(selectedId),
+                          semanticLabel: l10n.wrongTitle,
+                          borderRadius: 14,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 8,
+                            ),
+                            child: Text(
+                              l10n.wrongTitle,
+                              style: AppText.caption.copyWith(
+                                color: AppColors.accent,
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
               ],
             ),

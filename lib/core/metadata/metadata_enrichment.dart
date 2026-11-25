@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:dio/dio.dart';
 
 import '../anilist/anilist_api.dart';
@@ -157,7 +158,37 @@ class MetadataEnrichment {
   /// user's provider where that provider has them — see [_providerRelations].
   Future<({List<CastMember> cast, List<MediaRelation> relations})> fetch(
     MediaDetail d,
-  ) async {
+  ) {
+    // A title opened again — or opened twice at once — reuses the answer.
+    // Only a non-empty answer is kept, so a failed or empty fetch is retried.
+    final key =
+        '${d.type.name}|${d.malId}|${d.tmdbId}|${d.tmdbIsTv}|${d.title.toLowerCase()}';
+    final hit = _extrasCache.remove(key);
+    if (hit != null) {
+      _extrasCache[key] = hit; // most recently used goes last
+      return hit;
+    }
+    final run = _fetchUncached(d);
+    _extrasCache[key] = run;
+    if (_extrasCache.length > _extrasCacheMax) {
+      _extrasCache.remove(_extrasCache.keys.first);
+    }
+    unawaited(
+      run.then((r) {
+        if (r.cast.isEmpty && r.relations.isEmpty) _extrasCache.remove(key);
+      }, onError: (_) => _extrasCache.remove(key)),
+    );
+    return run;
+  }
+
+  /// Insertion-ordered, so the first key is the least recently used.
+  final Map<String,
+          Future<({List<CastMember> cast, List<MediaRelation> relations})>>
+      _extrasCache = {};
+  static const _extrasCacheMax = 40;
+
+  Future<({List<CastMember> cast, List<MediaRelation> relations})>
+      _fetchUncached(MediaDetail d) async {
     // Both in flight at once: the overlay is a second network round trip and
     // there is no reason to pay for it in series.
     final baseCall = _base(d);

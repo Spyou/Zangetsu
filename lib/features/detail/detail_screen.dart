@@ -150,7 +150,10 @@ part 'detail_skeleton.dart';
 
 part 'detail_screen_tv.dart';
 
-Future<void> _changeEpisodeVersion(BuildContext context, String category) async {
+Future<void> _changeEpisodeVersion(
+  BuildContext context,
+  String category,
+) async {
   final switched = await context.read<DetailCubit>().setCategory(category);
   if (!switched && context.mounted) {
     showAppToast(context, context.l10n.somethingWentWrong);
@@ -389,8 +392,16 @@ SearchScreen detailTitleSearchScreen({
 );
 
 class DetailScreen extends StatelessWidget {
-  const DetailScreen({super.key, required this.item, this.prefer});
+  const DetailScreen({
+    super.key,
+    required this.item,
+    this.prefer,
+    this.initialTab = 0,
+  });
   final MediaItem item;
+
+  /// Which page opens first: 0 Overview, 1 Episodes (or Chapters), 2 Comments.
+  final int initialTab;
 
   /// Read this title from a specific metadata catalogue. Set when it was
   /// opened from a tracker that has one, so an AniList library entry shows
@@ -418,7 +429,7 @@ class DetailScreen extends StatelessWidget {
         // label agree instead of one naming AniList over MAL's data.
         prefer: prefer ?? _preferFromName(item.savedFrom),
       )..load(),
-      child: _DetailView(item: item, prefer: prefer),
+      child: _DetailView(item: item, prefer: prefer, initialTab: initialTab),
     );
   }
 }
@@ -427,22 +438,24 @@ class _CueDetailRoute extends PageRouteBuilder<void>
     with CueModalRouteMixin<void> {
   _CueDetailRoute({required super.pageBuilder})
     : super(
-        transitionDuration: const Duration(milliseconds: 340),
-        reverseTransitionDuration: const Duration(milliseconds: 260),
-        transitionsBuilder: (_, animation, _, child) => SlideTransition(
-          position: Tween(
-            begin: const Offset(1, 0),
-            end: Offset.zero,
-          ).animate(animation),
-          child: child,
-        ),
+        transitionDuration: const Duration(milliseconds: 350),
+        reverseTransitionDuration: const Duration(milliseconds: 220),
+        // A fade, not a slide: the page eases in over 350ms on a long soft
+        // curve and leaves in 220ms. The curve is applied by the motion below,
+        // so the animation value is already shaped when it reaches here.
+        transitionsBuilder: (_, animation, _, child) =>
+            FadeTransition(opacity: animation, child: child),
       );
 
   @override
-  CueMotion get motion => const Spring.smooth();
+  CueMotion get motion => const CueMotion.curved(
+    Duration(milliseconds: 350),
+    curve: Cubic(0.5, 0, 0.14, 1),
+  );
 
   @override
-  CueMotion? get reverseMotion => const Spring.snappy();
+  CueMotion? get reverseMotion =>
+      const CueMotion.easeIn(Duration(milliseconds: 220));
 
   @override
   AnimationStatusListener? get onAnimationStatusChanged => null;
@@ -460,8 +473,9 @@ class _CueDetailRoute extends PageRouteBuilder<void>
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _DetailView extends StatefulWidget {
-  const _DetailView({required this.item, this.prefer});
+  const _DetailView({required this.item, this.prefer, this.initialTab = 0});
   final MediaItem item;
+  final int initialTab;
 
   /// The catalogue this title was opened from, so the name matches the data.
   final PreferredProvider? prefer;
@@ -532,7 +546,9 @@ class _DetailViewState extends State<_DetailView>
     ..addListener(_onScroll);
 
   late final TabController _tabController = TabController(
-    length: 4,
+    animationDuration: Duration.zero,
+    initialIndex: widget.initialTab.clamp(0, 2),
+    length: 3,
     vsync: this,
   );
 
@@ -779,24 +795,6 @@ class _DetailViewState extends State<_DetailView>
         _scrollController.offset > (_expandedHeight - kToolbarHeight - 24);
     if (shouldShow != _showAppBarTitle) {
       setState(() => _showAppBarTitle = shouldShow);
-    }
-  }
-
-  /// Switch to [index] AND collapse the header so the tab's content is actually
-  /// in view — otherwise tapping "… more"/"Read more" silently changes a tab
-  /// that's still below the fold (feels like nothing happened). Animates both
-  /// for a smooth transition into the Cast / Details tab.
-  void _revealTab(int index) {
-    _tabController.animateTo(index);
-    if (_scrollController.hasClients) {
-      final target = _scrollController.position.maxScrollExtent;
-      if (_scrollController.offset < target - 1) {
-        _scrollController.animateTo(
-          target,
-          duration: const Duration(milliseconds: 380),
-          curve: Curves.easeOutCubic,
-        );
-      }
     }
   }
 
@@ -2568,22 +2566,6 @@ class _DetailViewState extends State<_DetailView>
             currentSeason,
           );
 
-    // ── Starring / Creators (Genres fallback) muted lines ───────────────────
-    // Prefer enriched cast (AniList/TMDB) when available, else the provider's.
-    final castNames = state.cast.isNotEmpty
-        ? state.cast.map((c) => c.name).toList()
-        : detail.cast;
-    final starring = castNames.isNotEmpty ? castNames.take(3).join(', ') : null;
-    final starringMore = castNames.length > 3;
-    final creators = detail.studios.isNotEmpty
-        ? detail.studios.join(', ')
-        : null;
-    // For anime (or anything without cast) surface Genres instead of an empty
-    // Starring line — never show an empty label.
-    final genresLine = (starring == null && detail.genres.isNotEmpty)
-        ? detail.genres.take(4).join(', ')
-        : null;
-
     // Friendly provider name + its origin repo, so the user can tell which repo
     // a source came from. JS providers live in the registry; CloudStream sources
     // live in the CS manager — without the CS lookup this fell back to the raw
@@ -2772,37 +2754,46 @@ class _DetailViewState extends State<_DetailView>
             children: [
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 18, 16, 0),
-                child: _PlayButton(
-                  loading: state.episodesLoading,
-                  label: buttonLabel,
-                  icon: isReading
-                      ? Icons.menu_book_rounded
-                      : Icons.play_arrow_rounded,
-                  onPressed: eps.isNotEmpty
-                      ? () => _openPlayer(eps, resumeIdx, detail, category)
-                      : null,
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: _PlayButton(
+                        pill: true,
+                        loading: state.episodesLoading,
+                        label: buttonLabel,
+                        icon: isReading
+                            ? Icons.menu_book_rounded
+                            : Icons.play_arrow_rounded,
+                        onPressed: eps.isNotEmpty
+                            ? () =>
+                                  _openPlayer(eps, resumeIdx, detail, category)
+                            : null,
+                      ),
+                    ),
+                    // Reading downloads are out of scope for this plan.
+                    if (!isReading) ...[
+                      const SizedBox(width: 10),
+                      _DownloadButton(
+                        iconOnly: true,
+                        // Gated exactly like Play: with no episodes there is
+                        // nothing to download, and leaving it live on a title
+                        // no source matched just moves the dead end one tap
+                        // later.
+                        loading: state.episodesLoading,
+                        label: downloadLabel,
+                        onPressed: eps.isEmpty
+                            ? null
+                            : () => _openDownloadSheet(
+                                detail: detail,
+                                category: category,
+                                episodesBySeason: episodesBySeason,
+                                initialSeason: currentSeason,
+                              ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
-              // Reading downloads are out of scope for this plan.
-              if (!isReading)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-                  child: _DownloadButton(
-                    // Gated exactly like Play above: with no episodes there is
-                    // nothing to download, and leaving it live on a title no
-                    // source matched just moves the dead end one tap later.
-                    loading: state.episodesLoading,
-                    label: downloadLabel,
-                    onPressed: eps.isEmpty
-                        ? null
-                        : () => _openDownloadSheet(
-                            detail: detail,
-                            category: category,
-                            episodesBySeason: episodesBySeason,
-                            initialSeason: currentSeason,
-                          ),
-                  ),
-                ),
               // Z Mode: matched source + "Wrong title?", kept with the
               // actions it controls instead of under the synopsis.
               // The first frame may be built from the tapped catalogue card,
@@ -2830,63 +2821,6 @@ class _DetailViewState extends State<_DetailView>
                     : const SizedBox.shrink(),
               ),
             ],
-          ),
-        ),
-
-        // ── 4. Synopsis (clamped) + "Read more" → Details tab ───────────────
-        SliverToBoxAdapter(
-          child: AnimatedSize(
-            duration: const Duration(milliseconds: 250),
-            curve: Curves.easeOut,
-            alignment: Alignment.topCenter,
-            child: (cleanSynopsis(detail.description) ?? '').isNotEmpty
-                ? Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 18, 16, 0),
-                    child: _Description(
-                      text: cleanSynopsis(detail.description) ?? '',
-                      // "Read more" reveals the Details tab (full synopsis) rather
-                      // than expanding inline; the header stays clamped to 3 lines.
-                      onReadMore: () => _revealTab(3),
-                    ),
-                  )
-                : const SizedBox.shrink(),
-          ),
-        ),
-
-        // ── 5. Starring / Creators / Genres muted lines ─────────────────────
-        SliverToBoxAdapter(
-          child: AnimatedSize(
-            duration: const Duration(milliseconds: 250),
-            curve: Curves.easeOut,
-            alignment: Alignment.topCenter,
-            child: starring != null || creators != null || genresLine != null
-                ? Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (starring != null)
-                          _CreditLine(
-                            label: context.l10n.starring,
-                            value: starring,
-                            more: starringMore,
-                            // Tapping the line (or its "… more") reveals the Cast tab.
-                            onMore: starringMore ? () => _revealTab(1) : null,
-                          ),
-                        if (genresLine != null)
-                          _CreditLine(
-                            label: context.l10n.genres,
-                            value: genresLine,
-                          ),
-                        if (creators != null)
-                          _CreditLine(
-                            label: context.l10n.creators,
-                            value: creators,
-                          ),
-                      ],
-                    ),
-                  )
-                : const SizedBox.shrink(),
           ),
         ),
 
@@ -2980,60 +2914,61 @@ class _DetailViewState extends State<_DetailView>
         SliverPersistentHeader(
           pinned: true,
           delegate: _TabBarDelegate(
-            TabBar(
+            _ChipTabs(
               controller: _tabController,
-              isScrollable: true,
-              tabAlignment: TabAlignment.start,
-              // Hug the left edge: the first tab starts flush with the 16px
-              // content gutter (title/synopsis), and labelPadding(right: 24)
-              // spaces the tabs apart while keeping them left-anchored —
-              // never centered/spread (matches Sozo Read).
-              padding: const EdgeInsetsDirectional.only(start: 16),
-              labelPadding: const EdgeInsetsDirectional.only(end: 24),
-              labelColor: AppColors.accent,
-              unselectedLabelColor: AppColors.textSecondary,
-              indicatorSize: TabBarIndicatorSize.label,
-              indicator: UnderlineTabIndicator(
-                borderSide: BorderSide(color: AppColors.accent, width: 2.5),
-                // Bottom inset lifts the line toward the label. A Tab is 46
-                // high for 15px text, so the indicator otherwise draws at the
-                // bottom of that box with a visible gap under the word.
-                // Raising the line rather than shortening the tab keeps the
-                // tap target at its full height.
-                insets: EdgeInsetsDirectional.only(start: 2, end: 2, bottom: 8),
-              ),
-              // Remove the full-width underline divider under the bar.
-              dividerColor: Colors.transparent,
-              dividerHeight: 0,
-              splashFactory: NoSplash.splashFactory,
-              overlayColor: WidgetStateProperty.all(Colors.transparent),
-              labelStyle: AppText.headline.copyWith(fontSize: 15),
-              unselectedLabelStyle: AppText.headline.copyWith(
-                fontSize: 15,
-                fontWeight: FontWeight.w500,
-              ),
-              tabs: [
-                Tab(
-                  text: isReading
-                      ? context.l10n.chapters
-                      : (detail.isFilm
-                            ? context.l10n.movie
-                            : context.l10n.episodes),
-                ),
-                Tab(
-                  text: isReading ? context.l10n.characters : context.l10n.cast,
-                ),
-                Tab(text: context.l10n.relations),
-                Tab(text: context.l10n.details),
+              labels: [
+                context.l10n.overview,
+                isReading
+                    ? context.l10n.chapters
+                    : (detail.isFilm
+                          ? context.l10n.movie
+                          : context.l10n.episodes),
               ],
+              trailingLabel: context.l10n.watchComments,
+              trailingIcon: Icons.forum_outlined,
             ),
             tint: ThemeController.adaptiveColour ? _tint : null,
           ),
         ),
       ],
-      body: TabBarView(
+      body: _FadePages(
         controller: _tabController,
         children: [
+          // ── Overview: cast, seasons/relations and details as rows ───────────
+          _OverviewTab(
+            // Cast and relations arrive on their own request, after the page is
+            // already up — and before the source resolve has even started.
+            loading: state.extrasLoading || state.episodesLoading,
+            cast: state.cast.isNotEmpty
+                ? state.cast
+                : [for (final n in detail.cast) CastMember(name: n)],
+            onOpenPerson: (ref) => Navigator.of(
+              context,
+            ).push(PersonPage.route(ref, sourceId: widget.item.sourceId)),
+            relations: state.relations,
+            seasons: state.seasons,
+            onOpenRelation: _openRelation,
+            synopsis: cleanSynopsis(detail.description) ?? '',
+            genres: detail.genres,
+            // Tappable only on a metadata title, same rule the old Details tab used.
+            onGenre: detail.sourceId == ZmodeIds.sourceId
+                ? (g) => _browseBy(context, MetaFilters(genres: [g]))
+                : null,
+            castLabel: isReading ? context.l10n.characters : context.l10n.cast,
+            details: _DetailsTab(
+              sourceName: sourceName,
+              statusStr: statusStr,
+              reading: isReading,
+              genres: detail.genres,
+              studios: detail.studios,
+              episodeCount: eps.length,
+              isMovie: detail.isFilm,
+              year: detail.year,
+              description: cleanSynopsis(detail.description),
+              detail: detail,
+              embedded: true,
+            ),
+          ),
           // ── Episodes ──────────────────────────────────────────────────────
           _EpisodesTab(
             loading: state.episodesLoading,
@@ -3113,36 +3048,8 @@ class _DetailViewState extends State<_DetailView>
             filmTitle: detail.title,
             hasScheduledVideos: detail.hasScheduledVideos,
           ),
-          // ── Cast ────────────────────────────────────────────────────────────
-          _CastTab(
-            loading: state.extrasLoading,
-            cast: state.cast.isNotEmpty
-                ? state.cast
-                : [for (final n in detail.cast) CastMember(name: n)],
-            onOpenPerson: (ref) => Navigator.of(
-              context,
-            ).push(PersonPage.route(ref, sourceId: widget.item.sourceId)),
-          ),
-          // ── Relations ─────────────────────────────────────────────────────────
-          _RelationsTab(
-            loading: state.extrasLoading,
-            relations: state.relations,
-            seasons: state.seasons,
-            onOpen: _openRelation,
-          ),
-          // ── Details ──────────────────────────────────────────────────────────
-          _DetailsTab(
-            sourceName: sourceName,
-            statusStr: statusStr,
-            reading: isReading,
-            genres: detail.genres,
-            studios: detail.studios,
-            episodeCount: eps.length,
-            isMovie: detail.isFilm,
-            year: detail.year,
-            description: cleanSynopsis(detail.description),
-            detail: detail,
-          ),
+          // ── Comments: not built yet ─────────────────────────────────────────
+          _emptyTab(Icons.forum_outlined, context.l10n.watchComingSoon),
         ],
       ),
     );
