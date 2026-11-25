@@ -2771,7 +2771,7 @@ class _DetailViewState extends State<_DetailView>
                           child: Opacity(
                             opacity: ((open - 0.35) / 0.45).clamp(0.0, 1.0),
                             child: Padding(
-                              padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+                              padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
                               child: OverflowBox(
                                 alignment: Alignment.bottomCenter,
                                 minHeight: 0,
@@ -2799,7 +2799,7 @@ class _DetailViewState extends State<_DetailView>
                 child: Column(
                   children: [
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 18, 16, 0),
+                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
                       child: Row(
                         children: [
                           Expanded(
