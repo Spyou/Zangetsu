@@ -861,7 +861,10 @@ class PhonePlayerActivity : Activity() {
                 if (state == Player.STATE_READY) {
                     playbackError = false
                 }
-                if (state == Player.STATE_ENDED &&
+                // "End of episode" sleep timer stops here instead of moving on.
+                if (state == Player.STATE_ENDED && sleepEndOfEpisode) {
+                    fireSleepTimer()
+                } else if (state == Player.STATE_ENDED &&
                     autoplayNext &&
                     !switching &&
                     currentIndex + 1 < episodeCount
@@ -2950,6 +2953,74 @@ class PhonePlayerActivity : Activity() {
         bumpControls()
     }
 
+    // Sleep timer, same choices as the MPV player: a few lengths, the end of the
+    // episode, and an option to close the app instead of only pausing.
+    private var sleepRunnable: Runnable? = null
+    private var sleepActive = false
+    private var sleepEndOfEpisode = false
+    private var sleepCloseApp = false
+    private var sleepMinutes = 0
+
+    private fun setSleep(minutes: Int, endOfEpisode: Boolean = false) {
+        sleepRunnable?.let(handler::removeCallbacks)
+        sleepRunnable = null
+        sleepMinutes = minutes
+        sleepEndOfEpisode = endOfEpisode
+        sleepActive = endOfEpisode || minutes > 0
+        if (minutes > 0) {
+            val run = Runnable { fireSleepTimer() }
+            sleepRunnable = run
+            handler.postDelayed(run, minutes * 60_000L)
+        }
+        val closing = if (sleepCloseApp) " · closes the app" else ""
+        toast(when {
+            endOfEpisode -> "Sleep timer: end of this episode$closing"
+            minutes > 0 -> "Sleep timer set for $minutes min$closing"
+            else -> "Sleep timer off"
+        })
+    }
+
+    private fun fireSleepTimer() {
+        sleepRunnable?.let(handler::removeCallbacks)
+        sleepRunnable = null
+        sleepActive = false
+        sleepEndOfEpisode = false
+        sleepMinutes = 0
+        player?.pause()
+        if (sleepCloseApp) finishAndRemoveTask()
+    }
+
+    private fun showSleepMenu() {
+        handler.removeCallbacks(hideRunnable)
+        val lengths = listOf(5, 15, 30, 45, 60)
+        val labels = mutableListOf("Off")
+        lengths.forEach { labels += "$it min" }
+        labels += "End of episode"
+        labels += if (sleepCloseApp) "Close the app when it ends: on" else "Close the app when it ends: off"
+        val checked = when {
+            !sleepActive -> 0
+            sleepEndOfEpisode -> lengths.size + 1
+            else -> lengths.indexOf(sleepMinutes).let { if (it >= 0) it + 1 else 0 }
+        }
+        PhonePlayerSheet(this)
+            .setTitle("Sleep timer")
+            .setSingleChoiceItems(labels.toTypedArray(), checked) { dialog, which ->
+                dialog.dismiss()
+                when {
+                    which == 0 -> setSleep(0)
+                    which <= lengths.size -> setSleep(lengths[which - 1])
+                    which == lengths.size + 1 -> setSleep(0, endOfEpisode = true)
+                    else -> {
+                        sleepCloseApp = !sleepCloseApp
+                        toast(if (sleepCloseApp) "The app will close when the timer ends" else "The app will stay open")
+                        showSleepMenu()
+                    }
+                }
+            }
+            .setOnDismissListener { bumpControls() }
+            .showForPlayer()
+    }
+
     private fun showMoreMenu() {
         handler.removeCallbacks(hideRunnable)
         val portrait = isPortraitCard()
@@ -2985,6 +3056,10 @@ class PhonePlayerActivity : Activity() {
                 showControlArrangement()
             }
         }
+        items += Triple(
+            if (sleepActive) "Sleep timer: on" else "Sleep timer",
+            R.drawable.sheet_ic_sleep,
+        ) { showSleepMenu() }
         add(R.string.phone_player_menu_switch_player, R.drawable.phone_player_sources) { requestManualSwitch() }
         val ambientLabel = if (ambientEnabled) R.string.phone_player_menu_ambient_on
             else R.string.phone_player_menu_ambient_off
@@ -4344,6 +4419,7 @@ class PhonePlayerActivity : Activity() {
     }
 
     override fun onDestroy() {
+        sleepRunnable?.let(handler::removeCallbacks)
         guideShift?.cancel()
         handler.removeCallbacks(speedTick)
         cancelDockHandoff()
