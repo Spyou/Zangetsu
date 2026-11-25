@@ -486,7 +486,11 @@ class _DetailView extends StatefulWidget {
 
 class _DetailViewState extends State<_DetailView>
     with TickerProviderStateMixin {
-  static const double _expandedHeight = 320;
+  /// Banner height: tall, scaling with the screen width (about 490px on a
+  /// typical phone). Set from the screen size each time the page builds.
+  double _heroHeight = 320;
+  static double _heroFor(BuildContext context) =>
+      (MediaQuery.sizeOf(context).width * 1.25).clamp(380.0, 560.0);
   bool _showAppBarTitle = false;
   bool _hasEntered = false;
   Animation<double>? _routeAnimation;
@@ -826,7 +830,7 @@ class _DetailViewState extends State<_DetailView>
   void _onScroll() {
     if (!_scrollController.hasClients) return;
     final shouldShow =
-        _scrollController.offset > (_expandedHeight - kToolbarHeight - 24);
+        _scrollController.offset > (_heroHeight - kToolbarHeight - 24);
     if (shouldShow != _showAppBarTitle) {
       setState(() => _showAppBarTitle = shouldShow);
     }
@@ -2283,14 +2287,12 @@ class _DetailViewState extends State<_DetailView>
             : null,
       );
     }
+    _heroHeight = _heroFor(context);
     if (!_hasEntered) {
       if (context.read<DetailCubit>().state.status == DetailStatus.loading) {
         return const _DetailLoading();
       }
-      return _DetailOpeningPreview(
-        item: widget.item,
-        heroHeight: _expandedHeight,
-      );
+      return _DetailOpeningPreview(item: widget.item, heroHeight: _heroHeight);
     }
     return Scaffold(
       backgroundColor: AppColors.bg,
@@ -2552,38 +2554,8 @@ class _DetailViewState extends State<_DetailView>
       episodesBySeason[1] = eps;
     }
 
-    // ── Status label (used by the meta line and Details tab) ────────────────
+    // ── Status label (used by the Details tab) ────────────────
     final statusStr = statusLabel(detail.status);
-
-    // ── Netflix-style meta line: "2010 · 10 Seasons · Completed" ────────────
-    // Join only what we actually HAVE with " · " (no faked rating/HD/CC).
-    // Seasons when multi-season, else episode count.
-    //
-    // Three items, and that is the whole line. It is ONE line with an
-    // ellipsis, so a fourth does not add anything — it pushes the end off the
-    // edge and shows less than three did. Score, format and per-episode
-    // duration each got a turn here and each cost more than it paid; they
-    // live in the Details tab now, where there is room to read them.
-    final metaParts = <String>[];
-    if ((detail.year ?? '').isNotEmpty) metaParts.add(detail.year!);
-    // A film has no episode count to fill the middle slot, so its run time
-    // takes it — there it IS the thing worth knowing before pressing play.
-    if (!isReading &&
-        (detail.isFilm || eps.length <= 1) &&
-        (detail.durationMins ?? 0) > 0) {
-      metaParts.add('${detail.durationMins}m');
-    }
-    if (!detail.isFilm && hasMultipleSeasons) {
-      metaParts.add(context.l10n.seasonCount(seasonSet.length));
-    } else if (!detail.isFilm && eps.isNotEmpty) {
-      metaParts.add(
-        isReading
-            ? context.l10n.chapterCount(eps.length)
-            : context.l10n.episodeCount(eps.length),
-      );
-    }
-    if (statusStr.isNotEmpty) metaParts.add(statusStr);
-    final metaLine = metaParts.join('  ·  ');
 
     // ── Download button label: "Download S{season}:E{n}" when we can derive
     // the first episode of the current season, else a plain "Download". ──────
@@ -2607,6 +2579,81 @@ class _DetailViewState extends State<_DetailView>
       savedFrom: item.savedFrom,
     );
 
+    // The title (or logo) and up to three genres. Drawn ON the banner, over
+    // its fade, so the picture runs under the title.
+    final Widget titleBlock = Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        // Tapping the title opens the search popup (Cue pop-in):
+        // pre-filled query, "Search" or "Search all sources".
+        GestureDetector(
+          onTap: () => _onTitleTap(detail.title),
+          // Official title logo when the toggle resolved one —
+          // grows in smoothly instead of shoving Play down.
+          child: AnimatedSize(
+            duration: const Duration(milliseconds: 250),
+            curve: Curves.easeOut,
+            alignment: Alignment.topCenter,
+            child: _logoUrl != null
+                // Compact natural-size box (never full-width), centred.
+                ? ConstrainedBox(
+                    constraints: const BoxConstraints(
+                      maxHeight: 72,
+                      maxWidth: 260,
+                    ),
+                    child: CachedNetworkImage(
+                      imageUrl: logoUrl!,
+                      fit: BoxFit.contain,
+                      alignment: Alignment.center,
+                      fadeInDuration: const Duration(milliseconds: 250),
+                      errorWidget: (_, _, _) => _headerTitleText(detail.title),
+                      errorListener: widget.item.sourceId == stremioSourceId
+                          ? (_) => _loadLogo(failedUrl: logoUrl)
+                          : null,
+                    ),
+                  )
+                : _headerTitleText(detail.title),
+          ),
+        ),
+        // Up to three genres under the title, as one quiet line.
+        AnimatedSize(
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOut,
+          alignment: Alignment.topCenter,
+          child: detail.genres.isEmpty
+              ? const SizedBox.shrink()
+              : Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    detail.genres.take(3).join(' \u2022 '),
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppText.body.copyWith(
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ),
+        ),
+        // Quality / 18+ tags, when there are any. No year line.
+        if ((item.quality ?? '').trim().isNotEmpty || detail.isAdult)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if ((item.quality ?? '').trim().isNotEmpty)
+                  _MetaBadge(item.quality!.trim().toUpperCase()),
+                if ((item.quality ?? '').trim().isNotEmpty && detail.isAdult)
+                  const SizedBox(width: 8),
+                if (detail.isAdult) const _MetaBadge('18+'),
+              ],
+            ),
+          ),
+      ],
+    );
+
     return NotificationListener<ScrollNotification>(
       onNotification: _onScrollNotification,
       // The banner does the stretching, so the stock overscroll glow stays off.
@@ -2621,7 +2668,7 @@ class _DetailViewState extends State<_DetailView>
               SliverAppBar(
                 // Pulled down: the banner gets taller and everything under it is
                 // pushed down with it, so the whole page stretches.
-                expandedHeight: _expandedHeight + pull,
+                expandedHeight: _heroHeight + pull,
                 pinned: true,
                 // iOS-style chip with its own background (no top fade needed).
                 // Padded to sit 14px off the edge, mirroring the top-right
@@ -2640,8 +2687,11 @@ class _DetailViewState extends State<_DetailView>
                     : AppColors.bg,
                 surfaceTintColor: Colors.transparent,
                 shadowColor: Colors.transparent,
-                centerTitle: false,
+                centerTitle: true,
                 titleSpacing: 0,
+                // As wide as the back button, so the title sits in the middle of
+                // the whole screen and not just of the space after the button.
+                actions: const [SizedBox(width: 62)],
                 // PRESERVED EFFECT: title fades in once the hero scrolls past.
                 title: AnimatedOpacity(
                   opacity: _showAppBarTitle ? 1.0 : 0.0,
@@ -2651,12 +2701,12 @@ class _DetailViewState extends State<_DetailView>
                   // unless) one resolves.
                   child: _logoUrl != null
                       ? Align(
-                          alignment: Alignment.centerLeft,
+                          alignment: Alignment.center,
                           child: CachedNetworkImage(
                             imageUrl: logoUrl!,
                             height: 24,
                             fit: BoxFit.contain,
-                            alignment: Alignment.centerLeft,
+                            alignment: Alignment.center,
                             fadeInDuration: const Duration(milliseconds: 250),
                             errorWidget: (_, _, _) =>
                                 _barTitleText(detail.title),
@@ -2668,155 +2718,69 @@ class _DetailViewState extends State<_DetailView>
                         )
                       : _barTitleText(detail.title),
                 ),
-                flexibleSpace: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    FlexibleSpaceBar(
-                      collapseMode: CollapseMode.parallax,
-                      background: RepaintBoundary(
-                        child: _Hero(
-                          coverUrl: coverUrl,
-                          imageDecodeWidth: mobileHeroDecodeWidth(
-                            item.sourceId,
-                            800,
-                          ),
-                          coverHeaders: coverHeaders,
-                          hasCover: hasCover,
-                          tint: ThemeController.adaptiveColour ? _tint : null,
-                          trailer: _trailerFuture,
-                          // Pause the trailer once the hero has scrolled past (reuses
-                          // the same signal that fades in the app-bar title).
-                          collapsed: _showAppBarTitle,
-                          onTapFullscreen: _openTrailer,
-                          pull: _pull,
-                        ),
-                      ),
-                    ),
-                    // Over the CURRENT visible banner, so its bottom edge is
-                    // always faded into the page, even while it collapses.
-                    Positioned.fill(
-                      child: _HeroFade(
-                        tint: ThemeController.adaptiveColour ? _tint : null,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              // ── 2. Title + meta line (Netflix header) ──────────────────────────
-              SliverToBoxAdapter(
-                child: RepaintBoundary(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.center,
+                flexibleSpace: LayoutBuilder(
+                  builder: (context, box) {
+                    // 1 while the banner is fully open, 0 once it is the thin bar.
+                    final topPad = MediaQuery.paddingOf(context).top;
+                    final min = kToolbarHeight + topPad;
+                    final max = _heroHeight + topPad;
+                    final open = ((box.maxHeight - min) / (max - min)).clamp(
+                      0.0,
+                      1.0,
+                    );
+                    return Stack(
+                      fit: StackFit.expand,
+                      clipBehavior: Clip.none,
                       children: [
-                        // Tapping the title opens the search popup (Cue pop-in):
-                        // pre-filled query, "Search" or "Search all sources".
-                        GestureDetector(
-                          onTap: () => _onTitleTap(detail.title),
-                          // Official title logo when the toggle resolved one —
-                          // grows in smoothly instead of shoving Play down.
-                          child: AnimatedSize(
-                            duration: const Duration(milliseconds: 250),
-                            curve: Curves.easeOut,
-                            alignment: Alignment.topCenter,
-                            child: _logoUrl != null
-                                // Compact natural-size box (never full-width), centred.
-                                ? ConstrainedBox(
-                                    constraints: const BoxConstraints(
-                                      maxHeight: 72,
-                                      maxWidth: 260,
-                                    ),
-                                    child: CachedNetworkImage(
-                                      imageUrl: logoUrl!,
-                                      fit: BoxFit.contain,
-                                      alignment: Alignment.center,
-                                      fadeInDuration: const Duration(
-                                        milliseconds: 250,
-                                      ),
-                                      errorWidget: (_, _, _) =>
-                                          _headerTitleText(detail.title),
-                                      errorListener:
-                                          widget.item.sourceId ==
-                                              stremioSourceId
-                                          ? (_) => _loadLogo(failedUrl: logoUrl)
-                                          : null,
-                                    ),
-                                  )
-                                : _headerTitleText(detail.title),
+                        FlexibleSpaceBar(
+                          collapseMode: CollapseMode.parallax,
+                          background: RepaintBoundary(
+                            child: _Hero(
+                              coverUrl: coverUrl,
+                              imageDecodeWidth: mobileHeroDecodeWidth(
+                                item.sourceId,
+                                800,
+                              ),
+                              coverHeaders: coverHeaders,
+                              hasCover: hasCover,
+                              tint: ThemeController.adaptiveColour
+                                  ? _tint
+                                  : null,
+                              trailer: _trailerFuture,
+                              // Pause the trailer once the hero has scrolled past (reuses
+                              // the same signal that fades in the app-bar title).
+                              collapsed: _showAppBarTitle,
+                              onTapFullscreen: _openTrailer,
+                              pull: _pull,
+                            ),
                           ),
                         ),
-                        // Up to three genres under the title, as one quiet line.
-                        AnimatedSize(
-                          duration: const Duration(milliseconds: 250),
-                          curve: Curves.easeOut,
-                          alignment: Alignment.topCenter,
-                          child: detail.genres.isEmpty
-                              ? const SizedBox.shrink()
-                              : Padding(
-                                  padding: const EdgeInsets.only(top: 8),
-                                  child: Text(
-                                    detail.genres.take(3).join(' \u2022 '),
-                                    textAlign: TextAlign.center,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: AppText.body.copyWith(
-                                      color: AppColors.textSecondary,
-                                    ),
-                                  ),
-                                ),
+                        // Over the CURRENT visible banner, so its bottom edge is
+                        // always faded into the page, even while it collapses.
+                        Positioned.fill(
+                          child: _HeroFade(
+                            tint: ThemeController.adaptiveColour ? _tint : null,
+                          ),
                         ),
-                        // Late metadata grows this block instead of shoving Play
-                        // down a frame — that shove read as open-transition jitter.
-                        AnimatedSize(
-                          duration: const Duration(milliseconds: 250),
-                          curve: Curves.easeOut,
-                          alignment: Alignment.topCenter,
-                          child: metaLine.isNotEmpty
-                              ? Column(
-                                  crossAxisAlignment: CrossAxisAlignment.center,
-                                  children: [
-                                    const SizedBox(height: 8),
-                                    Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
-                                      children: [
-                                        Flexible(
-                                          child: Text(
-                                            metaLine,
-                                            textAlign: TextAlign.center,
-                                            style: AppText.body.copyWith(
-                                              color: AppColors.textSecondary,
-                                            ),
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                        ),
-                                        // What the source claims it serves — "4K", "HD",
-                                        // "CAM". Only CloudStream reports one, so it is
-                                        // usually absent.
-                                        if ((item.quality ?? '')
-                                            .trim()
-                                            .isNotEmpty) ...[
-                                          const SizedBox(width: 8),
-                                          _MetaBadge(
-                                            item.quality!.trim().toUpperCase(),
-                                          ),
-                                        ],
-                                        if (detail.isAdult) ...[
-                                          const SizedBox(width: 8),
-                                          const _MetaBadge('18+'),
-                                        ],
-                                      ],
-                                    ),
-                                  ],
-                                )
-                              : const SizedBox.shrink(),
+                        // Title and genres on the banner. They fade away as the
+                        // banner closes up into the top bar.
+                        Positioned.fill(
+                          child: Opacity(
+                            opacity: ((open - 0.35) / 0.45).clamp(0.0, 1.0),
+                            child: Padding(
+                              padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+                              child: OverflowBox(
+                                alignment: Alignment.bottomCenter,
+                                minHeight: 0,
+                                maxHeight: 400,
+                                child: titleBlock,
+                              ),
+                            ),
+                          ),
                         ),
                       ],
-                    ),
-                  ),
+                    );
+                  },
                 ),
               ),
 

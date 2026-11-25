@@ -789,15 +789,43 @@ class _HeroFade extends StatelessWidget {
     ],
   );
 
+  /// The fade, plus two solid rows of page colour at the very bottom. The
+  /// picture's last pixel row can otherwise peek through as a faint line.
+  static Widget _layer(Color page) => Stack(
+    fit: StackFit.expand,
+    clipBehavior: Clip.none,
+    children: [
+      DecoratedBox(decoration: BoxDecoration(gradient: _gradient(page))),
+      // A soft shade across the top, like a status-bar scrim. Many trailers
+      // carry their own black bars; this lets them melt into the top edge
+      // instead of showing as a hard band behind the buttons.
+      const DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            stops: [0.0, 0.3, 1.0],
+            colors: [Color(0x99000000), Color(0x00000000), Color(0x00000000)],
+          ),
+        ),
+      ),
+      // Two rows inside and two just past the banner's edge, so a row that is
+      // only half covered by the picture can never show.
+      Positioned(
+        left: 0,
+        right: 0,
+        bottom: -2,
+        height: 4,
+        child: ColoredBox(color: page),
+      ),
+    ],
+  );
+
   @override
   Widget build(BuildContext context) {
     final t = tint;
     if (t == null) {
-      return IgnorePointer(
-        child: DecoratedBox(
-          decoration: BoxDecoration(gradient: _gradient(AppColors.bg)),
-        ),
-      );
+      return IgnorePointer(child: _layer(AppColors.bg));
     }
     return IgnorePointer(
       child: ValueListenableBuilder<Color?>(
@@ -806,11 +834,7 @@ class _HeroFade extends StatelessWidget {
           tween: ColorTween(end: c ?? AppColors.bg),
           duration: detailAdaptiveColourDuration,
           curve: adaptiveColourCurve,
-          builder: (context, page, _) => DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: _gradient(page ?? AppColors.bg),
-            ),
-          ),
+          builder: (context, page, _) => _layer(page ?? AppColors.bg),
         ),
       ),
     );
