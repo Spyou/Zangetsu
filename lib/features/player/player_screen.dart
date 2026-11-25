@@ -2883,10 +2883,20 @@ class _PlayerScreenState extends State<PlayerScreen> {
           AnimatedPositioned(
             duration: const Duration(milliseconds: 220),
             curve: Curves.easeOutCubic,
+            // Portrait card: the surface already starts below the status bar and
+            // its back button is a 32px circle at 6 (arrow glyph at 13), so use
+            // card-relative offsets there.
             top:
-                MediaQuery.paddingOf(context).top +
-                (_controlsVisible ? 68 : 24),
-            left: 44,
+                _watchPageEnabled &&
+                    _presentation == PlayerPresentation.watchPage
+                ? (_controlsVisible ? 46 : 12)
+                : MediaQuery.paddingOf(context).top +
+                      (_controlsVisible ? 68 : 24),
+            left:
+                _watchPageEnabled &&
+                    _presentation == PlayerPresentation.watchPage
+                ? 13
+                : 44,
             child: IgnorePointer(
               child: ParentalGuideCard(
                 key: ValueKey(_guideKey),

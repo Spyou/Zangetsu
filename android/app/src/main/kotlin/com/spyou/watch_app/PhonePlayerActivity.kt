@@ -4026,8 +4026,9 @@ class PhonePlayerActivity : Activity() {
      */
     private fun applyGuideMargins() {
         val params = parentalGuide.layoutParams as FrameLayout.LayoutParams
-        // Lines up with the back arrow's glyph (bar margin + 12dp icon padding).
-        params.marginStart = dp(if (isPortraitCard()) 40 else 44)
+        // Lines up with the back arrow's glyph: fullscreen = 32dp bar margin + 12dp
+        // icon padding; portrait card = 6dp bar margin + 7dp padding on the mini back.
+        params.marginStart = dp(if (isPortraitCard()) 13 else 44)
         params.topMargin = dp(GUIDE_TOP_DP)
         parentalGuide.layoutParams = params
     }
