@@ -555,7 +555,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(ViewerProfileHomeScreen), findsOneWidget);
-    expect(find.byTooltip('Profile menu'), findsOneWidget);
+    expect(find.byTooltip('Settings'), findsOneWidget);
     expect(find.text('About'), findsNothing);
   });
 

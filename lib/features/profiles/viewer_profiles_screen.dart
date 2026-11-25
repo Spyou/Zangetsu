@@ -4,7 +4,6 @@ import 'dart:ui' as ui;
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:hive/hive.dart';
 
 import '../../core/app_mode.dart';
@@ -26,7 +25,6 @@ import '../../core/tv/tv_focusable.dart';
 import '../../core/tv/tv_list_focusable.dart';
 import '../../l10n/l10n.dart';
 import '../home/cubit/home_cubit.dart';
-import '../auth/auth_screens.dart' show ProfileAccountSection;
 import 'viewer_profile_editor_screen.dart';
 
 const Object kViewerProfileHeroTag = 'viewer-profile-selector';
@@ -47,6 +45,8 @@ String _pickerBackdropUrl(String url) {
       )
       .toString();
 }
+
+enum _RecoveryAction { dismiss, restore }
 
 class ProfilePickerRoute extends MaterialPageRoute<void> {
   ProfilePickerRoute({required super.builder, required this.reduceMotion});
@@ -75,11 +75,13 @@ class ViewerProfilesScreen extends StatefulWidget {
     this.selectionOnly = false,
     this.onSelected,
     this.onProfilePrepared,
+    this.onSwitchProfile,
   });
 
   final bool selectionOnly;
   final VoidCallback? onSelected;
   final VoidCallback? onProfilePrepared;
+  final VoidCallback? onSwitchProfile;
 
   @override
   State<ViewerProfilesScreen> createState() => _ViewerProfilesScreenState();
@@ -486,6 +488,12 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
       _profiles,
       profile: profile,
       initialAvatar: initialAvatar,
+      onDelete:
+          widget.onSwitchProfile != null &&
+              profile != null &&
+              !profile.isDefault
+          ? (editorContext) => _delete(profile, dialogContext: editorContext)
+          : null,
     );
     if (mounted && widget.selectionOnly) unawaited(_refreshLockBadges());
   }
@@ -523,13 +531,17 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
     await _profiles.setAskOnLaunch(false);
   }
 
-  Future<void> _delete(ViewerProfile profile) async {
+  Future<bool> _delete(
+    ViewerProfile profile, {
+    BuildContext? dialogContext,
+  }) async {
+    final target = dialogContext ?? context;
     // A lock that doesn't cover deletion is decoration: removing the profile
     // wipes the PIN with it.
-    if (!await ensureProfileUnlocked(context, profile)) return;
-    if (!mounted) return;
+    if (!await ensureProfileUnlocked(target, profile)) return false;
+    if (!target.mounted) return false;
     final confirmed = await showDialog<bool>(
-      context: context,
+      context: target,
       builder: (context) => AlertDialog(
         title: const Text('Delete profile?'),
         content: Text(
@@ -547,20 +559,22 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
         ],
       ),
     );
-    if (confirmed != true) return;
+    if (confirmed != true) return false;
     final deleted = await _profiles.delete(profile.id);
-    if (!deleted && mounted) {
+    if (!deleted && target.mounted) {
       ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(context.l10n.offlineBody)));
+        target,
+      ).showSnackBar(SnackBar(content: Text(target.l10n.offlineBody)));
     }
+    return deleted;
   }
 
   Future<void> _promptForRecovery() async {
     if (_recoveryPromptShown || _profiles.recoverableProfiles.isEmpty) return;
     _recoveryPromptShown = true;
     final profile = _profiles.recoverableProfiles.first;
-    final restore = await showDialog<bool>(
+    final owner = _profiles.ownerKey;
+    final action = await showDialog<_RecoveryAction>(
       context: context,
       builder: (context) => AlertDialog(
         title: Text('${profile.name} is on this phone only'),
@@ -569,17 +583,25 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context, false),
+            onPressed: () => Navigator.pop(context),
             child: const Text('Later'),
           ),
           TextButton(
-            onPressed: () => Navigator.pop(context, true),
+            onPressed: () => Navigator.pop(context, _RecoveryAction.dismiss),
+            child: const Text('Don’t ask again'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, _RecoveryAction.restore),
             child: const Text('Restore to cloud'),
           ),
         ],
       ),
     );
-    if (!mounted || restore != true) return;
+    if (!mounted || _profiles.ownerKey != owner || action == null) return;
+    if (action == _RecoveryAction.dismiss) {
+      await _profiles.dismissRecovery(profile.id, owner: owner);
+      return;
+    }
     if (!await _profiles.restoreRecoverable(profile.id) && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -599,6 +621,9 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
 
   @override
   Widget build(BuildContext context) {
+    if (widget.onSwitchProfile case final onSwitch?) {
+      return _buildSettingsManager(onSwitch);
+    }
     if (widget.selectionOnly && !_managingProfiles) {
       return ValueListenableBuilder<bool>(
         valueListenable: _enableSelectionHero,
@@ -650,17 +675,6 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
         builder: (context, _, _) => ListView(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 36),
           children: [
-            if (sl.isRegistered<AuthCubit>()) ...[
-              Padding(
-                padding: const EdgeInsets.fromLTRB(4, 4, 4, 0),
-                child: Text('Account', style: AppText.headline),
-              ),
-              BlocProvider.value(
-                value: sl<AuthCubit>(),
-                child: const ProfileAccountSection(),
-              ),
-              const Divider(height: 1),
-            ],
             Padding(
               padding: const EdgeInsets.fromLTRB(4, 4, 4, 12),
               child: Row(
@@ -733,6 +747,146 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
       ),
     );
   }
+
+  Widget _buildSettingsManager(VoidCallback onSwitch) => Scaffold(
+    backgroundColor: AppColors.bg,
+    appBar: settingsAppBar('Profiles'),
+    body: ValueListenableBuilder<int>(
+      valueListenable: _profiles.revision,
+      builder: (context, _, _) {
+        final active = _profiles.activeProfile;
+        final otherProfiles = _profiles.profiles.where(
+          (profile) => profile.id != active.id,
+        );
+        final count = _profiles.profiles.length;
+        final canAdd = count < ViewerProfileStore.maxProfiles;
+        return ListView(
+          padding: const EdgeInsets.only(top: 12, bottom: 36),
+          children: [
+            _settingsProfileHeader(active, onSwitch),
+            SettingsSectionLabel(
+              otherProfiles.isEmpty ? 'Manage profiles' : 'Other profiles',
+            ),
+            SettingsCard(
+              radius: 26,
+              children: [
+                for (final profile in otherProfiles)
+                  SettingsTile(
+                    icon: viewerProfileAvatarIcon(profile.avatar),
+                    leading: _settingsAvatar(profile, 34),
+                    title: profile.name,
+                    subtitle: profile.isKids ? 'Kids profile' : null,
+                    onTap: () => _edit(profile),
+                    trailing: Tooltip(
+                      message: 'Edit ${profile.name}',
+                      child: const Icon(
+                        Icons.edit_outlined,
+                        size: 20,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ),
+                SettingsTile(
+                  icon: Icons.person_add_alt_1_outlined,
+                  title: 'Add profile',
+                  subtitle: canAdd ? null : 'Maximum profiles reached',
+                  onTap: canAdd
+                      ? () => _edit(null, defaultAvatarForNewProfile(count))
+                      : null,
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: SettingsTile(
+                icon: Icons.power_settings_new_rounded,
+                title: 'Ask on launch',
+                subtitle: 'Show the profile picker when the app opens.',
+                subtitleMaxLines: 2,
+                trailing: Switch.adaptive(
+                  value: _profiles.askOnLaunch,
+                  onChanged: (_) => _toggleAskOnLaunch(),
+                ),
+                onTap: _toggleAskOnLaunch,
+              ),
+            ),
+          ],
+        );
+      },
+    ),
+  );
+
+  Widget _settingsProfileHeader(ViewerProfile profile, VoidCallback onSwitch) {
+    return Card.filled(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      color: AppColors.surface2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 20, 16, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                _settingsAvatar(profile, 56),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(profile.name, style: AppText.title),
+                      const SizedBox(height: 3),
+                      Text(
+                        profile.isKids
+                            ? 'Current profile · Kids profile'
+                            : 'Current profile',
+                        style: AppText.caption.copyWith(
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 2,
+              children: [
+                FilledButton.tonalIcon(
+                  autofocus: sl.isRegistered<AppMode>() && sl<AppMode>().isTv,
+                  onPressed: onSwitch,
+                  icon: const Icon(Icons.swap_horiz_rounded, size: 18),
+                  label: const Text('Switch profile'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: () => _edit(profile),
+                  icon: const Icon(Icons.edit_outlined, size: 17),
+                  label: const Text('Edit profile'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _settingsAvatar(ViewerProfile profile, double size) => CircleAvatar(
+    radius: size / 2,
+    backgroundColor: viewerProfileAvatarColor(profile.avatar),
+    child: ProfileAvatarFace(
+      profile: profile,
+      photoUrl: profilePhotoForFace(
+        profile: profile,
+        accountPhotoUrl: _accountPhoto(),
+      ),
+      iconSize: size * 0.55,
+      photoDiameter: size,
+    ),
+  );
 
   Widget _buildProfilePicker() {
     final isTv = sl.isRegistered<AppMode>() && sl<AppMode>().isTv;

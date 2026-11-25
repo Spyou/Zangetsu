@@ -79,7 +79,7 @@ void main() {
       findsOneWidget,
     );
     expect(find.byTooltip('Edit profile'), findsOneWidget);
-    expect(find.byTooltip('Profile menu'), findsOneWidget);
+    expect(find.byTooltip('Settings'), findsOneWidget);
   });
 
   testWidgets('profile avatar and content sit slightly higher together', (
@@ -109,19 +109,11 @@ void main() {
     expect(tester.getTopLeft(find.text('Home').last).dy, lessThan(223));
   });
 
-  testWidgets('profile menu holds settings and donate, not the page body', (
-    tester,
-  ) async {
+  testWidgets('settings is one direct icon, not a menu', (tester) async {
     await tester.pumpWidget(_app(auth));
-    expect(find.text('App settings'), findsNothing);
-    expect(find.text('Donate'), findsNothing);
-
-    await tester.tap(find.byTooltip('Profile menu'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('App settings'), findsOneWidget);
-    expect(find.text('Donate'), findsOneWidget);
-    expect(find.text('Pair a TV'), findsOneWidget);
+    expect(find.byTooltip('Profile menu'), findsNothing);
+    expect(find.byIcon(Icons.settings_outlined), findsOneWidget);
+    expect(find.text('Pair a TV'), findsNothing);
   });
 
   testWidgets('fits a narrow phone without overflow', (tester) async {

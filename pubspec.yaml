@@ -308,6 +308,8 @@ flutter:
     - assets/icon/providers/mal.png
     - assets/icon/providers/tmdb.png
     - assets/icon/providers/simkl.png
+    - assets/icon/providers/mangabaka.png
+    - assets/icon/providers/discord.png
     - assets/icon/providers/stremio.png
 
   fonts:

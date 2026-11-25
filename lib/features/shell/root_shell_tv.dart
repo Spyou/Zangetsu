@@ -553,7 +553,6 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
       ? Duration.zero
       : const Duration(milliseconds: 360);
   Future<void> _confirmProfileSwitch() async {
-    final auth = context.read<AuthCubit>();
     final action = await showDialog<_AvatarAction>(
       context: context,
       builder: (dialogContext) {
@@ -583,10 +582,7 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
     );
     if (!mounted || action == null) return;
     if (action == _AvatarAction.logOut) {
-      // Back the library up first (if we have a live session) so the
-      // logout-time clearLocal can't lose an un-synced library.
-      await backupLibraryIfPossible();
-      await auth.logout();
+      await safeLogout(context);
       return;
     }
     await Navigator.of(context).push(

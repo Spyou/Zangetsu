@@ -69,6 +69,7 @@ class SettingsTile extends StatelessWidget {
     required this.icon,
     required this.title,
     this.subtitle,
+    this.semanticLabel,
     this.trailing,
     this.onTap,
     this.destructive = false,
@@ -82,6 +83,9 @@ class SettingsTile extends StatelessWidget {
   final IconData icon;
   final String title;
   final String? subtitle;
+
+  /// Optional TV focus announcement that includes the row’s status.
+  final String? semanticLabel;
 
   /// Max description lines before ellipsis. Default 1 (compact tile); pass null
   /// to let a long description wrap fully (used by toggle rows).
@@ -115,7 +119,7 @@ class SettingsTile extends StatelessWidget {
     if (isTv && tap != null) {
       return TvListFocusable(
         autofocus: autofocus,
-        semanticLabel: title,
+        semanticLabel: semanticLabel ?? title,
         onTap: tap,
         child: ExcludeSemantics(
           child: _row(
@@ -219,8 +223,8 @@ class SettingsTile extends StatelessWidget {
 
     return InkWell(
       onTap: onTap,
-      splashColor: AppColors.accent.withValues(alpha: 0.08),
-      highlightColor: AppColors.accent.withValues(alpha: 0.04),
+      splashColor: AppColors.accent.withValues(alpha: 0.12),
+      highlightColor: AppColors.accent.withValues(alpha: 0.10),
       child: body,
     );
   }
@@ -234,10 +238,16 @@ class SettingsTile extends StatelessWidget {
 /// focus chrome is not cropped at the card edges (phone keeps antiAlias so
 /// Material ripples stay rounded).
 class SettingsCard extends StatelessWidget {
-  const SettingsCard({super.key, required this.children, this.margin});
+  const SettingsCard({
+    super.key,
+    required this.children,
+    this.margin,
+    this.radius = 16,
+  });
 
   final List<Widget> children;
   final EdgeInsetsGeometry? margin;
+  final double radius;
 
   @override
   Widget build(BuildContext context) {
@@ -255,22 +265,26 @@ class SettingsCard extends StatelessWidget {
       }
       rows.add(children[i]);
     }
-    return Container(
-      margin:
+    return Padding(
+      padding:
           margin ??
           (isTv
               ? const EdgeInsets.fromLTRB(28, 0, 20, 0)
               : const EdgeInsets.fromLTRB(16, 0, 16, 0)),
-      // TV focus pills/borders paint outside the row bounds — do not clip.
-      clipBehavior: isTv ? Clip.none : Clip.antiAlias,
-      decoration: BoxDecoration(
-        // Dark card fill; icon tiles use a light overlay to still read on it.
+      child: Material(
         color: AppColors.settingsCard,
-        borderRadius: BorderRadius.circular(16),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(radius),
+        ),
+        // Paint row ink on this surface and leave TV focus outlines unclipped.
+        clipBehavior: isTv ? Clip.none : Clip.antiAlias,
+        child: Padding(
+          padding: isTv
+              ? const EdgeInsets.symmetric(vertical: 4)
+              : EdgeInsets.zero,
+          child: Column(mainAxisSize: MainAxisSize.min, children: rows),
+        ),
       ),
-      // Tiny inset so first/last pill fills aren't flush against the card edge.
-      padding: isTv ? const EdgeInsets.symmetric(vertical: 4) : EdgeInsets.zero,
-      child: Column(mainAxisSize: MainAxisSize.min, children: rows),
     );
   }
 }

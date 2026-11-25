@@ -27,12 +27,14 @@ Future<void> openViewerProfileEditor(
   ViewerProfileStore profiles, {
   ViewerProfile? profile,
   int initialAvatar = 0,
+  Future<bool> Function(BuildContext)? onDelete,
 }) async {
   final result = await Navigator.of(context).push<ProfileEditorResult>(
     MaterialPageRoute<ProfileEditorResult>(
       builder: (_) => ViewerProfileEditorScreen(
         profile: profile,
         initialAvatar: initialAvatar,
+        onDelete: onDelete,
         klipyGifService: KlipyGifService.shared,
       ),
     ),
@@ -173,11 +175,13 @@ class ViewerProfileEditorScreen extends StatefulWidget {
     this.profile,
     this.initialAvatar = 0,
     this.klipyGifService,
+    this.onDelete,
   });
 
   final ViewerProfile? profile;
   final int initialAvatar;
   final KlipyGifService? klipyGifService;
+  final Future<bool> Function(BuildContext)? onDelete;
 
   @override
   State<ViewerProfileEditorScreen> createState() =>
@@ -196,6 +200,7 @@ class _ViewerProfileEditorScreenState extends State<ViewerProfileEditorScreen> {
   late String? _photoUrl = widget.profile?.photoUrl;
   late String? _coverUrl = widget.profile?.coverUrl;
   bool _uploading = false;
+  bool _deleting = false;
   bool _locked = false;
   String? _photoError;
   String? _coverError;
@@ -487,6 +492,18 @@ class _ViewerProfileEditorScreenState extends State<ViewerProfileEditorScreen> {
     );
   }
 
+  Future<void> _deleteProfile() async {
+    final onDelete = widget.onDelete;
+    if (onDelete == null || _uploading || _deleting) return;
+    setState(() => _deleting = true);
+    try {
+      final deleted = await onDelete(context);
+      if (mounted && deleted) Navigator.of(context).pop();
+    } finally {
+      if (mounted) setState(() => _deleting = false);
+    }
+  }
+
   Widget _editorCard(String keyName, Widget child) => Card(
     key: ValueKey(keyName),
     margin: EdgeInsets.zero,
@@ -545,7 +562,7 @@ class _ViewerProfileEditorScreenState extends State<ViewerProfileEditorScreen> {
           Padding(
             padding: const EdgeInsetsDirectional.only(end: 8),
             child: FilledButton.tonal(
-              onPressed: _canSave ? _save : null,
+              onPressed: _canSave && !_deleting ? _save : null,
               style: FilledButton.styleFrom(
                 minimumSize: const Size(64, 40),
                 padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -827,6 +844,18 @@ class _ViewerProfileEditorScreenState extends State<ViewerProfileEditorScreen> {
                   ),
                 ),
               ),
+              if (widget.onDelete != null)
+                Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: TextButton.icon(
+                    onPressed: _uploading || _deleting ? null : _deleteProfile,
+                    style: TextButton.styleFrom(
+                      foregroundColor: Theme.of(context).colorScheme.error,
+                    ),
+                    icon: const Icon(Icons.delete_outline_rounded),
+                    label: const Text('Delete profile'),
+                  ),
+                ),
             ],
           ),
         ),

@@ -100,6 +100,7 @@ void main() {
     await tester.pump();
 
     expect(find.text('Old Guest is on this phone only'), findsOneWidget);
+    expect(find.text('Don’t ask again'), findsOneWidget);
     expect(remote.rows.containsKey('old-guest'), isFalse);
     await tester.tap(find.text('Later'));
     await tester.pumpAndSettle();

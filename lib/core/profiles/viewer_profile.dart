@@ -172,8 +172,32 @@ class ViewerProfileStore {
   final ValueNotifier<int> contextRevision = ValueNotifier(0);
 
   List<ViewerProfile> get profiles => List.unmodifiable(_profiles);
-  List<ViewerProfile> get recoverableProfiles =>
-      List.unmodifiable(_readProfiles(_recoveryKey(_loadedOwner ?? _owner)));
+  List<ViewerProfile> get recoverableProfiles {
+    final owner = _loadedOwner ?? _owner;
+    final dismissed = _dismissedRecoveryIds(owner);
+    return List.unmodifiable(
+      _readProfiles(
+        _recoveryKey(owner),
+      ).where((profile) => !dismissed.contains(profile.id)),
+    );
+  }
+
+  String _dismissedRecoveryKey(String owner) => 'dismissed-recovery:$owner';
+
+  Set<String> _dismissedRecoveryIds(String owner) {
+    final saved = _box.get(_dismissedRecoveryKey(owner));
+    return saved is List ? saved.whereType<String>().toSet() : <String>{};
+  }
+
+  Future<void> dismissRecovery(String profileId, {required String owner}) {
+    if (owner != _owner || owner != (_loadedOwner ?? _owner)) {
+      return Future.value();
+    }
+    return _box.put(_dismissedRecoveryKey(owner), [
+      ..._dismissedRecoveryIds(owner)..add(profileId),
+    ]);
+  }
+
   ViewerProfile get activeProfile =>
       active.value ?? const ViewerProfile(id: kDefaultProfileId, name: 'Home');
   String get activeId => activeProfile.id;
@@ -585,7 +609,9 @@ class ViewerProfileStore {
   }
 
   Future<bool> delete(String profileId) async {
-    if (profileId == kDefaultProfileId ||
+    final owner = _loadedOwner ?? _owner;
+    if (owner != _owner ||
+        profileId == kDefaultProfileId ||
         _profiles.length <= 1 ||
         !_profiles.any((profile) => profile.id == profileId)) {
       return false;
@@ -606,13 +632,19 @@ class ViewerProfileStore {
         return false;
       }
     }
-    _profiles = _profiles.where((p) => p.id != profileId).toList();
+    if (owner != _owner || owner != (_loadedOwner ?? _owner)) return false;
+    // A cloud list fetched before deletion must not resurrect the profile.
+    _loadRequest++;
+    final remaining = _profiles.where((p) => p.id != profileId).toList();
+    _profiles = remaining;
+    final saved = _saveLocal(owner, remaining);
     revision.value++;
     if (activeId == profileId) await switchTo(kDefaultProfileId);
+    await saved;
+    await _setPending(owner, profileId, null);
+    await dismissRecovery(profileId, owner: owner);
     await _deleteLocalProfileData(profileId);
-    await _saveLocal(_loadedOwner ?? _owner);
-    await _setPending(_loadedOwner ?? _owner, profileId, null);
-    await onProfileDataDeleted?.call(_loadedOwner ?? _owner, profileId);
+    await onProfileDataDeleted?.call(owner, profileId);
     if (photoUrl != null && !photoIsShared) {
       try {
         await _deleteAvatar?.call(photoUrl);

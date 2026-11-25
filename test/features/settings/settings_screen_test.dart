@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:io';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -8,6 +10,7 @@ import 'package:get_it/get_it.dart';
 import 'package:hive/hive.dart';
 import 'package:watch_app/core/anilist/anilist_service.dart';
 import 'package:watch_app/core/app_mode.dart';
+import 'package:watch_app/core/discord/discord_rpc.dart';
 import 'package:watch_app/core/download/download_prefs.dart';
 import 'package:watch_app/core/playback/playback_prefs.dart';
 import 'package:watch_app/core/playback/search_prefs.dart';
@@ -195,13 +198,13 @@ void main() {
   }
 
   testWidgets(
-    'top level shows one combined profile row and one row per section',
+    'top level shows separate profile and account rows and one row per section',
     (tester) async {
       await _pumpSettings(tester);
 
       // Each section is now a single drill-down row.
       for (final section in const [
-        'Account & sync',
+        'Connected services',
         'Sources',
         'Playback',
         'Downloads',
@@ -215,9 +218,11 @@ void main() {
           reason: 'category: $section',
         );
       }
-      expect(find.text('Profiles & account'), findsOneWidget);
-      expect(find.text('Watching as Home · Not signed in'), findsOneWidget);
-      expect(find.text('Profiles'), findsNothing);
+      // Profile and login are two separate rows.
+      expect(find.text('Watching as Home'), findsOneWidget);
+      expect(find.text('Zangetsu account'), findsOneWidget);
+      expect(find.text('Sign in to sync'), findsOneWidget);
+      expect(find.text('Profiles'), findsOneWidget);
       // Notifications is Android-only (its sole entry), so its category is absent
       // on the non-Android test host.
       expect(find.text('Notifications'), findsNothing);
@@ -231,30 +236,103 @@ void main() {
   testWidgets('route-pushed Settings shows a visible back button', (
     tester,
   ) async {
+    GetIt.instance.registerSingleton<DiscordRpc>(DiscordRpc(Dio()));
     await _pumpSettings(tester, openFromProfile: true);
-    await tester.tap(find.byTooltip('Profile menu'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('App settings'));
+    await tester.tap(find.byTooltip('Settings'));
     await tester.pumpAndSettle();
 
     expect(find.byType(AppBar), findsOneWidget);
     expect(find.byIcon(Icons.arrow_back), findsOneWidget);
+    expect(find.text('Settings'), findsOneWidget);
+    expect(find.text('Settings.'), findsNothing);
+
+    await tester.tap(find.text('Connected services'));
+    await tester.pumpAndSettle();
+    expect(find.text('Settings'), findsNothing);
+    expect(find.text('Connected services'), findsOneWidget);
+    expect(find.text('WATCH TRACKING'), findsOneWidget);
+    expect(find.text('AniList'), findsOneWidget);
+    expect(find.text('Not connected'), findsNWidgets(3));
+    expect(find.text('ACTIVITY SHARING'), findsOneWidget);
+    expect(find.text('Discord'), findsOneWidget);
+    expect(find.text('Off'), findsOneWidget);
+    expect(find.text('Connections'), findsNothing);
+    expect(find.text('Backup & Restore'), findsNothing);
+    expect(find.text('Sync library to cloud'), findsNothing);
   });
 
   testWidgets(
-    'combined profile row opens viewer manager and keeps sign-in available',
+    'profile row opens the viewer manager, Account row keeps sign-in available',
     (tester) async {
       await _pumpSettings(tester);
 
-      await tester.tap(find.text('Profiles & account'));
+      await tester.tap(find.text('Profiles'));
       await tester.pumpAndSettle();
 
       expect(find.text('Profiles'), findsOneWidget);
-      expect(find.text('Ask who is watching on launch'), findsOneWidget);
+      expect(find.text('Ask on launch'), findsOneWidget);
+      expect(find.text('Current profile'), findsOneWidget);
+      expect(find.text('Edit profile'), findsOneWidget);
+      expect(find.text('Switch profile'), findsOneWidget);
+      // Login no longer lives on the Profiles screen.
+      expect(find.text('Sign in'), findsNothing);
+
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Zangetsu account'));
+      await tester.pumpAndSettle();
+
       expect(find.text('Not signed in'), findsOneWidget);
       expect(find.text('Sign in'), findsOneWidget);
+      expect(find.text('Backup & Restore'), findsOneWidget);
+      expect(find.text('Sync library to cloud'), findsNothing);
     },
   );
+
+  testWidgets('switching from Profiles reuses the viewer picker', (
+    tester,
+  ) async {
+    final profiles = GetIt.instance<ViewerProfileStore>();
+    final leo = await tester.runAsync(() async {
+      await profiles.loadForUser();
+      return profiles.create('Leo', isKids: true);
+    });
+    await _pumpSettings(tester);
+
+    await tester.tap(find.text('Profiles'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Switch profile'));
+    await tester.pumpAndSettle();
+
+    expect(find.text("Who's watching?"), findsOneWidget);
+    await tester.runAsync(() async {
+      final switched = Completer<void>();
+      void onRevision() => switched.complete();
+      profiles.revision.addListener(onRevision);
+      try {
+        await tester.tap(find.text('Leo').first);
+        await switched.future.timeout(const Duration(seconds: 3));
+      } finally {
+        profiles.revision.removeListener(onRevision);
+      }
+    });
+    await tester.pumpAndSettle();
+
+    expect(profiles.activeId, leo!.id);
+    expect(find.text('Current profile · Kids profile'), findsOneWidget);
+    expect(find.byTooltip('Edit Home'), findsOneWidget);
+    expect(find.byIcon(Icons.more_horiz_rounded), findsNothing);
+    expect(find.text('Switch profile'), findsOneWidget);
+    await tester.tap(find.text('Edit profile'));
+    await tester.pumpAndSettle();
+    expect(find.text('Delete profile'), findsOneWidget);
+    await tester.tap(find.text('Delete profile'));
+    await tester.pumpAndSettle();
+    expect(find.text('Delete profile?'), findsOneWidget);
+    await tester.tap(find.widgetWithText(TextButton, 'Cancel').last);
+    await tester.pumpAndSettle();
+    expect(profiles.activeId, leo.id);
+  });
 
   testWidgets('tapping a category drills into its settings', (tester) async {
     await _pumpSettings(tester);
@@ -272,14 +350,11 @@ void main() {
     expect(find.text('About'), findsNothing);
   });
 
-  test(
-    'Android Player is marked experimental in the player settings label',
-    () {
-      final l10n = lookupAppLocalizations(const Locale('en'));
+  test('Android Player uses its shipping label', () {
+    final l10n = lookupAppLocalizations(const Locale('en'));
 
-      expect(l10n.androidPlayer, 'Android Player (Experimental)');
-    },
-  );
+    expect(l10n.androidPlayer, 'Android Player');
+  });
 
   testWidgets('Reading section has a Reader entry that opens reader defaults', (
     tester,
@@ -400,10 +475,12 @@ void main() {
     await tester.enterText(find.byType(TextField), 'backup');
     await tester.pumpAndSettle();
 
-    // The matching tile surfaces regardless of its section…
-    expect(find.text('Backup & Restore'), findsOneWidget);
-    // …and non-matching tiles/categories are filtered out.
+    expect(find.text('Backup & Restore'), findsNothing);
     expect(find.text('Providers'), findsNothing);
     expect(find.text('Sources'), findsNothing);
+
+    await tester.tap(find.text('Zangetsu account'));
+    await tester.pumpAndSettle();
+    expect(find.text('Backup & Restore'), findsOneWidget);
   });
 }

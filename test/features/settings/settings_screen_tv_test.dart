@@ -29,11 +29,13 @@ import 'package:watch_app/core/profiles/viewer_profile.dart';
 import 'package:watch_app/core/provider/provider_registry.dart';
 import 'package:watch_app/core/reading/reader_prefs.dart';
 import 'package:watch_app/core/state/active_source_cubit.dart';
+import 'package:watch_app/core/supabase/auth_user.dart';
 import 'package:watch_app/core/supabase/supabase_service.dart';
 import 'package:watch_app/core/theme/theme_controller.dart';
 import 'package:watch_app/core/torrent/torrent_prefs.dart';
 import 'package:watch_app/core/tracker/mal_service.dart';
 import 'package:watch_app/core/tracker/simkl_service.dart';
+import 'package:watch_app/core/tv/tv_back_button.dart';
 import 'package:watch_app/core/tv/tv_focusable.dart';
 import 'package:watch_app/core/tv/tv_list_focusable.dart';
 import 'package:watch_app/features/auth/auth_cubit.dart';
@@ -41,6 +43,17 @@ import 'package:watch_app/features/settings/settings_screen.dart';
 import 'package:watch_app/l10n/app_localizations.dart';
 
 // ── Minimal stubs ─────────────────────────────────────────────────────────────
+
+class _SignedInAuthCubit extends AuthCubit {
+  _SignedInAuthCubit() : super(SupabaseService()) {
+    emit(
+      const AuthState(
+        status: AuthStatus.authenticated,
+        user: AuthUser(id: 'test', name: 'Maya', email: 'maya@example.com'),
+      ),
+    );
+  }
+}
 
 class _StubSearchPrefs extends SearchPrefs {
   @override
@@ -153,28 +166,27 @@ void main() {
     await hiveDir.delete(recursive: true);
   });
 
-  testWidgets(
-    'TV SettingsScreen keeps sign-in available inside Profiles & account',
-    (tester) async {
-      _mockPathProvider(tester);
-      final authCubit = AuthCubit(SupabaseService());
-      addTearDown(authCubit.close);
-      GetIt.instance.registerSingleton<AuthCubit>(authCubit);
+  testWidgets('TV SettingsScreen keeps sign-in available inside Account', (
+    tester,
+  ) async {
+    _mockPathProvider(tester);
+    final authCubit = AuthCubit(SupabaseService());
+    addTearDown(authCubit.close);
+    GetIt.instance.registerSingleton<AuthCubit>(authCubit);
 
-      await tester.pumpWidget(
-        _buildUnderTest(authCubit: authCubit, activeCubit: activeCubit),
-      );
-      await tester.pumpAndSettle();
+    await tester.pumpWidget(
+      _buildUnderTest(authCubit: authCubit, activeCubit: activeCubit),
+    );
+    await tester.pumpAndSettle();
 
-      expect(find.text('Profiles & account'), findsOneWidget);
-      expect(find.text('Sign in'), findsNothing);
+    expect(find.text('Zangetsu account'), findsOneWidget);
+    expect(find.text('Sign in'), findsNothing);
 
-      await tester.tap(find.text('Profiles & account'));
-      await tester.pumpAndSettle();
+    await tester.tap(find.text('Zangetsu account'));
+    await tester.pumpAndSettle();
 
-      expect(find.text('Sign in'), findsOneWidget);
-    },
-  );
+    expect(find.text('Sign in'), findsOneWidget);
+  });
 
   testWidgets('TV SettingsScreen shows section categories like mobile', (
     tester,
@@ -192,7 +204,7 @@ void main() {
     await tester.pumpAndSettle();
 
     for (final section in const [
-      'Account & sync',
+      'Connected services',
       'Sources',
       'Playback',
       'Downloads',
@@ -236,34 +248,49 @@ void main() {
     expect(Platform.isAndroid, isFalse, reason: 'Android-only tiles gated');
   });
 
-  testWidgets('TV SettingsScreen offers sync library inside Account & sync', (
-    tester,
-  ) async {
-    _mockPathProvider(tester);
-    await tester.binding.setSurfaceSize(const Size(1280, 2200));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+  testWidgets(
+    'TV SettingsScreen offers sync library only inside Zangetsu account',
+    (tester) async {
+      _mockPathProvider(tester);
+      await tester.binding.setSurfaceSize(const Size(1280, 2200));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
 
-    final authCubit = AuthCubit(SupabaseService());
-    addTearDown(authCubit.close);
+      final authCubit = _SignedInAuthCubit();
+      addTearDown(authCubit.close);
+      GetIt.instance.registerSingleton<AuthCubit>(authCubit);
 
-    await tester.pumpWidget(
-      _buildUnderTest(authCubit: authCubit, activeCubit: activeCubit),
-    );
-    await tester.pumpAndSettle();
+      await tester.pumpWidget(
+        _buildUnderTest(authCubit: authCubit, activeCubit: activeCubit),
+      );
+      await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Account & sync'));
-    await tester.pumpAndSettle();
+      expect(find.text('Signed in'), findsOneWidget);
+      expect(find.text('maya@example.com'), findsNothing);
 
-    expect(find.text('Sync library to cloud'), findsOneWidget);
-    expect(
-      find.ancestor(
-        of: find.text('Sync library to cloud'),
-        matching: find.byType(TvListFocusable),
-      ),
-      findsOneWidget,
-    );
-    expect(find.text('Backup & Restore'), findsOneWidget);
-  });
+      await tester.tap(find.text('Connected services'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Sync library to cloud'), findsNothing);
+      expect(find.text('Backup & Restore'), findsNothing);
+      await tester.tap(find.byType(TvBackButton));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Zangetsu account'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Sync library to cloud'), findsOneWidget);
+      expect(find.text('maya@example.com'), findsOneWidget);
+      expect(find.text('Maya'), findsOneWidget);
+      expect(find.text('Signed in'), findsOneWidget);
+      expect(
+        find.ancestor(
+          of: find.text('Sync library to cloud'),
+          matching: find.byType(TvListFocusable),
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Backup & Restore'), findsOneWidget);
+    },
+  );
 
   testWidgets(
     'TV SettingsScreen only the first TvFocusable has autofocus=true',

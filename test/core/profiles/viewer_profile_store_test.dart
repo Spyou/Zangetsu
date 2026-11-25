@@ -387,6 +387,26 @@ void main() {
     expect(cloudStore.profiles.any((item) => item.id == profile.id), isFalse);
   });
 
+  test('a cloud load in flight cannot resurrect a deleted profile', () async {
+    final remote = _DelayedListProfileRemote();
+    final cloudStore = ViewerProfileStore(
+      remote: remote,
+      currentUserId: () => 'test-user',
+    );
+    await cloudStore.loadForUser();
+    final profile = (await cloudStore.create('Guest'))!;
+
+    remote.delay = true;
+    final loading = cloudStore.loadForUser();
+    await remote.snapshotTaken.future;
+    expect(await cloudStore.delete(profile.id), isTrue);
+    remote.releaseSnapshot.complete();
+    await loading;
+
+    expect(cloudStore.profiles.map((item) => item.id), [kDefaultProfileId]);
+    expect(cloudStore.recoverableProfiles, isEmpty);
+  });
+
   test(
     'a cloud-deleted profile is not restored from the local cache',
     () async {
@@ -444,7 +464,12 @@ void main() {
     remote.offline = true;
     expect(await cloudStore.restoreRecoverable('offline-guest'), isFalse);
     expect(cloudStore.recoverableProfiles.single.id, 'offline-guest');
+    await cloudStore.dismissRecovery('offline-guest', owner: 'test-user');
     remote.offline = false;
+    await cloudStore.loadForUser();
+    expect(cloudStore.recoverableProfiles, isEmpty);
+    expect(remote.rows.containsKey('offline-guest'), isFalse);
+
     expect(await cloudStore.restoreRecoverable('offline-guest'), isTrue);
     expect(remote.rows['offline-guest']?.name, 'Offline Guest');
     expect(cloudStore.profiles.any((p) => p.id == 'offline-guest'), isTrue);
@@ -871,6 +896,22 @@ void main() {
       expect(offline.activeProfile.name, 'Account');
     },
   );
+}
+
+class _DelayedListProfileRemote extends _MemoryProfileRemote {
+  bool delay = false;
+  final snapshotTaken = Completer<void>();
+  final releaseSnapshot = Completer<void>();
+
+  @override
+  Future<List<Map<String, dynamic>>> listFor(String userId) async {
+    final snapshot = await super.listFor(userId);
+    if (delay) {
+      snapshotTaken.complete();
+      await releaseSnapshot.future;
+    }
+    return snapshot;
+  }
 }
 
 class _BlockingDeleteProfileRemote implements ViewerProfileRemote {

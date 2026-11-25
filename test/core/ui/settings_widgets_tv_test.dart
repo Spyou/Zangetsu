@@ -34,11 +34,11 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final card = tester.widget<Container>(
+      final card = tester.widget<Material>(
         find
             .descendant(
               of: find.byType(SettingsCard),
-              matching: find.byType(Container),
+              matching: find.byType(Material),
             )
             .first,
       );
@@ -88,14 +88,22 @@ void main() {
     expect(find.byType(TvListFocusable), findsNothing);
     expect(find.byType(InkWell), findsWidgets);
 
-    final card = tester.widget<Container>(
+    final card = tester.widget<Material>(
       find
           .descendant(
             of: find.byType(SettingsCard),
-            matching: find.byType(Container),
+            matching: find.byType(Material),
           )
           .first,
     );
     expect(card.clipBehavior, Clip.antiAlias);
+    final rowInk = find.descendant(
+      of: find.byType(SettingsTile),
+      matching: find.byType(InkWell),
+    );
+    expect(
+      tester.element(rowInk).findAncestorWidgetOfExactType<Material>(),
+      same(card),
+    );
   });
 }

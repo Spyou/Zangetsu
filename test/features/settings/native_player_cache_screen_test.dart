@@ -154,7 +154,7 @@ void main() {
             )
             .first;
         final surface = find
-            .descendant(of: memoryCard, matching: find.byType(DecoratedBox))
+            .descendant(of: memoryCard, matching: find.byType(Material))
             .first;
         expect(tester.getRect(surface).left, 16);
         expect(tester.getRect(surface).right, 344);

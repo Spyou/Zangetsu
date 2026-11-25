@@ -133,3 +133,8 @@ Local Authentication (Flutter)
   Used for optional device-local profile unlock with biometrics.
 
 Contains data from IntroDB (introdb.app), available under the ODbL.
+
+Connected services logos
+  MangaBaka site icon: https://mangabaka.org/images/maomao/96x96.png
+  Discord symbol: https://discord.com/branding
+  The marks belong to their respective owners and identify integrations.

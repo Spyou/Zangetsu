@@ -60,6 +60,7 @@ String sourceOutcomeLabel(AppLocalizations l10n, SourceOutcome outcome) =>
 /// Settings hub section ids (stable; not shown to the user).
 abstract final class SettingsSection {
   static const account = 'account';
+  static const watchParty = 'watchParty';
   static const sources = 'sources';
   static const playback = 'playback';
   static const reading = 'reading';
@@ -72,6 +73,7 @@ abstract final class SettingsSection {
 
   static const order = <String>[
     account,
+    watchParty,
     sources,
     playback,
     reading,
@@ -86,7 +88,8 @@ abstract final class SettingsSection {
 
 String settingsSectionTitle(AppLocalizations l10n, String section) =>
     switch (section) {
-      SettingsSection.account => l10n.settingsSectionAccount,
+      SettingsSection.account => 'Connected services',
+      SettingsSection.watchParty => l10n.watchParty,
       SettingsSection.sources => l10n.settingsSectionSources,
       SettingsSection.playback => l10n.settingsSectionPlayback,
       SettingsSection.reading => l10n.settingsSectionReading,
@@ -101,7 +104,8 @@ String settingsSectionTitle(AppLocalizations l10n, String section) =>
 
 String settingsSectionSummary(AppLocalizations l10n, String section) =>
     switch (section) {
-      SettingsSection.account => l10n.settingsSectionAccountSummary,
+      SettingsSection.account => l10n.connectionsTvSubtitle,
+      SettingsSection.watchParty => l10n.watchPartySubtitle,
       SettingsSection.sources => l10n.settingsSectionSourcesSummary,
       SettingsSection.playback => l10n.settingsSectionPlaybackSummary,
       SettingsSection.reading => l10n.settingsSectionReadingSummary,
@@ -115,7 +119,8 @@ String settingsSectionSummary(AppLocalizations l10n, String section) =>
     };
 
 IconData settingsSectionIcon(String section) => switch (section) {
-      SettingsSection.account => Icons.person_outline_rounded,
+      SettingsSection.account => Icons.sync_alt_rounded,
+      SettingsSection.watchParty => Icons.groups_2_outlined,
       SettingsSection.sources => Icons.dns_rounded,
       SettingsSection.playback => Icons.play_circle_outline_rounded,
       SettingsSection.reading => Icons.menu_book_outlined,
