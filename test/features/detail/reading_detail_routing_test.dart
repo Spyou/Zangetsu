@@ -790,6 +790,8 @@ void main() {
       );
       await tester.pump();
       await tester.pump();
+      // Loading fades into the page; a transparent page hides its semantics.
+      await tester.pump(const Duration(milliseconds: 400));
 
       await tester.tap(find.bySemanticsLabel('Download chapters'));
       await tester.pumpAndSettle();

@@ -7,8 +7,10 @@ class _NativeHeroTrailer extends StatefulWidget {
     required this.collapsed,
     required this.placeholder,
     this.onTapFullscreen,
+    this.pull,
   });
 
+  final ValueListenable<double>? pull;
   final String videoId;
   final bool collapsed;
   final Widget placeholder;
@@ -318,27 +320,30 @@ class _NativeHeroTrailerState extends State<_NativeHeroTrailer>
       fit: StackFit.expand,
       children: [
         // Cover image underneath as placeholder + permanent fallback.
-        widget.placeholder,
+        _Zoom(pull: widget.pull, child: widget.placeholder),
         // The native player, cover-fitted to fill the hero. Faded in once it's
         // actually playing; hidden entirely if extraction/playback errored.
         if (controller != null && !_errored)
           Positioned.fill(
-            child: IgnorePointer(
-              child: AnimatedOpacity(
-                opacity: _ready ? 1.0 : 0.0,
-                duration: const Duration(milliseconds: 350),
-                curve: Curves.easeOut,
-                child: controller.value.isInitialized
-                    ? FittedBox(
-                        fit: BoxFit.cover,
-                        clipBehavior: Clip.hardEdge,
-                        child: SizedBox(
-                          width: controller.value.size.width,
-                          height: controller.value.size.height,
-                          child: preview.VideoPlayer(controller),
-                        ),
-                      )
-                    : const SizedBox.expand(),
+            child: _Zoom(
+              pull: widget.pull,
+              child: IgnorePointer(
+                child: AnimatedOpacity(
+                  opacity: _ready ? 1.0 : 0.0,
+                  duration: const Duration(milliseconds: 350),
+                  curve: Curves.easeOut,
+                  child: controller.value.isInitialized
+                      ? FittedBox(
+                          fit: BoxFit.cover,
+                          clipBehavior: Clip.hardEdge,
+                          child: SizedBox(
+                            width: controller.value.size.width,
+                            height: controller.value.size.height,
+                            child: preview.VideoPlayer(controller),
+                          ),
+                        )
+                      : const SizedBox.expand(),
+                ),
               ),
             ),
           ),

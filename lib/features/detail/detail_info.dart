@@ -235,41 +235,33 @@ class _TabChipState extends State<_TabChip> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// The page under the chips: the old page fades out as the new one fades in
-// (200ms), instead of sliding sideways like a pager.
+// The page under the chips: the old page fades out, then the new one fades in.
+// Only one page is on screen at a time, so the two never overlap or fight over
+// the scroll position.
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _FadePages extends StatefulWidget {
+class _FadePages extends StatelessWidget {
   const _FadePages({required this.controller, required this.children});
 
   final TabController controller;
   final List<Widget> children;
 
-  @override
-  State<_FadePages> createState() => _FadePagesState();
-}
-
-class _FadePagesState extends State<_FadePages> {
-  /// Pages that have been shown. They stay built (scroll position, loaded
-  /// lists) and only fade out, instead of being thrown away and rebuilt.
-  final Set<int> _built = {};
-
   /// A flick this fast, sideways, moves to the neighbouring page.
   static const double _flick = 350;
 
+  static const Duration _duration = Duration(milliseconds: 240);
+
   void _go(int delta) {
-    final c = widget.controller;
-    final next = (c.index + delta).clamp(0, c.length - 1);
-    if (next != c.index) c.animateTo(next);
+    final next = (controller.index + delta).clamp(0, controller.length - 1);
+    if (next != controller.index) controller.animateTo(next);
   }
 
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
-      animation: widget.controller,
+      animation: controller,
       builder: (context, _) {
-        final current = widget.controller.index;
-        _built.add(current);
+        final i = controller.index;
         return GestureDetector(
           behavior: HitTestBehavior.translucent,
           // Left flick = next page, right flick = previous. A row that scrolls
@@ -279,30 +271,28 @@ class _FadePagesState extends State<_FadePages> {
             if (v <= -_flick) _go(1);
             if (v >= _flick) _go(-1);
           },
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              for (var i = 0; i < widget.children.length; i++)
-                if (_built.contains(i))
-                  IgnorePointer(
-                    ignoring: i != current,
-                    child: ExcludeSemantics(
-                      excluding: i != current,
-                      child: TickerMode(
-                        enabled: i == current,
-                        child: AnimatedOpacity(
-                          opacity: i == current ? 1 : 0,
-                          duration: const Duration(milliseconds: 200),
-                          curve: i == current ? Curves.easeOut : Curves.easeIn,
-                          child: KeyedSubtree(
-                            key: ValueKey('page-$i'),
-                            child: widget.children[i],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-            ],
+          child: AnimatedSwitcher(
+            duration: _duration,
+            reverseDuration: _duration,
+            // Both pages fill the area; the leaving one is already gone (see
+            // the intervals below) by the time the new one shows.
+            layoutBuilder: (current, previous) =>
+                Stack(fit: StackFit.expand, children: [...previous, ?current]),
+            transitionBuilder: (child, animation) => FadeTransition(
+              opacity: CurvedAnimation(
+                parent: animation,
+                // Arriving: waits for the first 40%, then fades in.
+                curve: const Interval(0.4, 1.0, curve: Curves.easeOut),
+                // Leaving: fades out in the first 40%, then is gone.
+                reverseCurve: const Interval(0.6, 1.0, curve: Curves.easeIn),
+              ),
+              child: child,
+            ),
+            // PageStorageKey: coming back to a page restores where you were.
+            child: KeyedSubtree(
+              key: PageStorageKey<int>(i),
+              child: children[i],
+            ),
           ),
         );
       },

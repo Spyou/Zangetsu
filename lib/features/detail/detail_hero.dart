@@ -16,7 +16,12 @@ class _Hero extends StatelessWidget {
     this.onTapFullscreen,
     this.tint,
     this.imageDecodeWidth = 800,
+    this.pull,
   });
+
+  /// How far the page is being pulled down past its top. The picture (and the
+  /// trailer) zoom with it; the buttons on top do not.
+  final ValueListenable<double>? pull;
 
   final String coverUrl;
   final Map<String, String>? coverHeaders;
@@ -79,7 +84,6 @@ class _Hero extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = tint;
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -90,7 +94,9 @@ class _Hero extends StatelessWidget {
           future: trailer,
           builder: (context, snapshot) {
             final id = snapshot.data;
-            if (id == null || id.isEmpty) return _coverBackdrop();
+            if (id == null || id.isEmpty) {
+              return _Zoom(pull: pull, child: _coverBackdrop());
+            }
             if (defaultTargetPlatform == TargetPlatform.android) {
               return _NativeHeroTrailer(
                 videoId: id,
@@ -99,6 +105,7 @@ class _Hero extends StatelessWidget {
                     ? null
                     : () => onTapFullscreen!(id),
                 placeholder: _coverBackdrop(),
+                pull: pull,
               );
             }
             return _HeroTrailer(
@@ -108,41 +115,10 @@ class _Hero extends StatelessWidget {
                   ? null
                   : () => onTapFullscreen!(id),
               placeholder: _coverBackdrop(),
+              pull: pull,
             );
           },
         ),
-        // Gradients render OVER the video for title readability. No top
-        // fade: the back chip below carries its own background.
-        if (t == null)
-          const IgnorePointer(
-            child: DecoratedBox(
-              decoration: BoxDecoration(gradient: AppColors.scrim),
-            ),
-          )
-        else
-          IgnorePointer(
-            child: ValueListenableBuilder<Color?>(
-              valueListenable: t,
-              builder: (context, c, _) => TweenAnimationBuilder<Color?>(
-                tween: ColorTween(end: c ?? AppColors.bg),
-                duration: detailAdaptiveColourDuration,
-                curve: adaptiveColourCurve,
-                builder: (context, page, _) {
-                  final bg = page ?? AppColors.bg;
-                  return DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.bottomCenter,
-                        end: Alignment.topCenter,
-                        colors: [bg, bg.withValues(alpha: 0)],
-                        stops: const [0.0, 0.65],
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-          ),
       ],
     );
   }
@@ -191,7 +167,10 @@ class _HeroTrailer extends StatefulWidget {
     required this.collapsed,
     required this.placeholder,
     this.onTapFullscreen,
+    this.pull,
   });
+
+  final ValueListenable<double>? pull;
 
   final String videoId;
   final bool collapsed;
@@ -508,21 +487,24 @@ class _HeroTrailerState extends State<_HeroTrailer> with RouteAware {
       fit: StackFit.expand,
       children: [
         // Cover image underneath as placeholder + permanent fallback.
-        widget.placeholder,
+        _Zoom(pull: widget.pull, child: widget.placeholder),
         // The native player, cover-fitted to fill the hero. Faded in once it's
         // actually playing; hidden entirely if extraction/playback errored.
         if (controller != null && !_errored)
           Positioned.fill(
-            child: IgnorePointer(
-              child: AnimatedOpacity(
-                opacity: _ready ? 1.0 : 0.0,
-                duration: const Duration(milliseconds: 350),
-                curve: Curves.easeOut,
-                child: Video(
-                  controller: controller,
-                  controls: NoVideoControls,
-                  fit: BoxFit.cover,
-                  fill: Colors.transparent,
+            child: _Zoom(
+              pull: widget.pull,
+              child: IgnorePointer(
+                child: AnimatedOpacity(
+                  opacity: _ready ? 1.0 : 0.0,
+                  duration: const Duration(milliseconds: 350),
+                  curve: Curves.easeOut,
+                  child: Video(
+                    controller: controller,
+                    controls: NoVideoControls,
+                    fit: BoxFit.cover,
+                    fill: Colors.transparent,
+                  ),
                 ),
               ),
             ),
@@ -752,6 +734,81 @@ class _DownloadButton extends StatelessWidget {
                   style: AppText.button.copyWith(color: Colors.white),
                 ),
               ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Zooms its child a little as the page is pulled down, from the middle.
+/// Only the picture and video use it; the buttons over them stay full size.
+class _Zoom extends StatelessWidget {
+  const _Zoom({required this.pull, required this.child});
+
+  final ValueListenable<double>? pull;
+  final Widget child;
+
+  /// Scale added per pixel pulled: a 160px pull zooms the picture 25%.
+  static const double _perPx = 0.25 / 160;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = pull;
+    if (p == null) return child;
+    return ValueListenableBuilder<double>(
+      valueListenable: p,
+      builder: (context, pull, child) =>
+          Transform.scale(scale: 1 + pull * _perPx, child: child),
+      child: child,
+    );
+  }
+}
+
+/// The soft bottom edge of the banner.
+///
+/// It is drawn over the banner's CURRENT visible area, not inside the part that
+/// scrolls away. While the banner shrinks the fade shrinks with it, so the
+/// bottom edge of the picture (or playing trailer) is never a hard line.
+/// Eight soft steps from clear to the page colour, fully solid before the very
+/// bottom so no edge of the picture can show through.
+class _HeroFade extends StatelessWidget {
+  const _HeroFade({this.tint});
+
+  /// The adaptive page colour, when that setting is on.
+  final ValueListenable<Color?>? tint;
+
+  static LinearGradient _gradient(Color page) => LinearGradient(
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+    stops: const [0.0, 0.14, 0.30, 0.46, 0.62, 0.78, 0.90, 1.0],
+    colors: [
+      for (final a in const [0.0, 0.04, 0.14, 0.34, 0.62, 0.86, 1.0, 1.0])
+        page.withValues(alpha: a),
+    ],
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final t = tint;
+    if (t == null) {
+      return IgnorePointer(
+        child: DecoratedBox(
+          decoration: BoxDecoration(gradient: _gradient(AppColors.bg)),
+        ),
+      );
+    }
+    return IgnorePointer(
+      child: ValueListenableBuilder<Color?>(
+        valueListenable: t,
+        builder: (context, c, _) => TweenAnimationBuilder<Color?>(
+          tween: ColorTween(end: c ?? AppColors.bg),
+          duration: detailAdaptiveColourDuration,
+          curve: adaptiveColourCurve,
+          builder: (context, page, _) => DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: _gradient(page ?? AppColors.bg),
             ),
           ),
         ),

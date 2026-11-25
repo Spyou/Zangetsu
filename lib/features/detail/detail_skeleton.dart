@@ -104,62 +104,6 @@ class _ShimmerState extends State<_Shimmer>
   }
 }
 
-class _DetailSkeleton extends StatelessWidget {
-  const _DetailSkeleton({required this.heroHeight});
-
-  final double heroHeight;
-
-  @override
-  Widget build(BuildContext context) {
-    final width = MediaQuery.of(context).size.width;
-    final base = AppColors.surface2;
-    const box = _bone;
-
-    // The skeleton shapes, painted in the flat base colour. A moving highlight
-    // is swept across them by the ShaderMask below.
-    final shapes = SingleChildScrollView(
-      physics: const NeverScrollableScrollPhysics(),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: double.infinity,
-            height: heroHeight,
-            child: ColoredBox(color: base),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                box(width * 0.66, 26), // title
-                const SizedBox(height: 12),
-                box(width * 0.42, 14), // meta line
-                const SizedBox(height: 20),
-                box(double.infinity, 50, 14), // Play
-                const SizedBox(height: 10),
-                box(double.infinity, 50, 14), // Download
-                const SizedBox(height: 22),
-                box(double.infinity, 12), // synopsis line 1
-                const SizedBox(height: 9),
-                box(double.infinity, 12), // synopsis line 2
-                const SizedBox(height: 9),
-                box(width * 0.55, 12), // synopsis line 3
-                const SizedBox(height: 22),
-                box(width * 0.5, 13), // starring
-                const SizedBox(height: 12),
-                box(width * 0.4, 13), // creators / genres
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-
-    return _Shimmer(child: shapes);
-  }
-}
-
 /// Lightweight first frame: artwork and title are known from the tapped row,
 /// so the screen feels immediate while the complete detail tree waits for the
 /// spring transition to settle.

@@ -1048,6 +1048,7 @@ class _OverviewTab extends StatelessWidget {
           if (people.isNotEmpty)
             _Reveal(
               key: const ValueKey('ov-cast'),
+              animate: loading,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -1060,13 +1061,16 @@ class _OverviewTab extends StatelessWidget {
                 ],
               ),
             )
-          else if (loading) ...[
-            _header(context, castLabel),
-            const _OverviewBones(round: true),
-          ],
+          else if (loading && relations.isEmpty && seasons.isEmpty)
+            // Nothing has arrived yet: one centred loader, not ghost rows.
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 36),
+              child: Center(child: _AppSpinner()),
+            ),
           if (crew.isNotEmpty)
             _Reveal(
               key: const ValueKey('ov-crew'),
+              animate: loading,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -1082,6 +1086,7 @@ class _OverviewTab extends StatelessWidget {
           if (seasonCards.isNotEmpty)
             _Reveal(
               key: const ValueKey('ov-seasons'),
+              animate: loading,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -1100,6 +1105,7 @@ class _OverviewTab extends StatelessWidget {
           if (rest.isNotEmpty)
             _Reveal(
               key: const ValueKey('ov-relations'),
+              animate: loading,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -1118,11 +1124,7 @@ class _OverviewTab extends StatelessWidget {
                   ),
                 ],
               ),
-            )
-          else if (loading && seasonCards.isEmpty) ...[
-            _header(context, context.l10n.relations),
-            const _OverviewBones(),
-          ],
+            ),
           _header(context, context.l10n.details),
           details,
         ],
@@ -1177,82 +1179,21 @@ class _OverviewSynopsisState extends State<_OverviewSynopsis> {
 /// Fades its child in the first time it appears (350ms, long soft ease) so a
 /// section that arrives after the page opened eases in instead of popping.
 class _Reveal extends StatelessWidget {
-  const _Reveal({super.key, required this.child});
+  const _Reveal({super.key, required this.child, required this.animate});
   final Widget child;
+
+  /// False when the page is coming back with everything already loaded — it
+  /// should simply be there, not fade in a second time.
+  final bool animate;
 
   @override
   Widget build(BuildContext context) => TweenAnimationBuilder<double>(
-    tween: Tween(begin: 0, end: 1),
+    tween: Tween(begin: animate ? 0 : 1, end: 1),
     duration: const Duration(milliseconds: 350),
     curve: const Cubic(0.5, 0, 0.14, 1),
     builder: (context, v, child) => Opacity(opacity: v, child: child),
     child: child,
   );
-}
-
-/// Pulsing placeholders for a row that is still on its way: round avatars for
-/// the cast, tall posters for seasons and relations.
-class _OverviewBones extends StatefulWidget {
-  const _OverviewBones({this.round = false});
-  final bool round;
-
-  @override
-  State<_OverviewBones> createState() => _OverviewBonesState();
-}
-
-class _OverviewBonesState extends State<_OverviewBones>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _pulse = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 900),
-  )..repeat(reverse: true);
-
-  @override
-  void dispose() {
-    _pulse.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final round = widget.round;
-    return FadeTransition(
-      opacity: Tween(begin: 0.45, end: 1.0).animate(_pulse),
-      child: SizedBox(
-        height: round ? 112 : 218,
-        child: ListView.separated(
-          physics: const NeverScrollableScrollPhysics(),
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          itemCount: 5,
-          separatorBuilder: (_, _) => SizedBox(width: round ? 14 : 12),
-          itemBuilder: (_, _) => Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: round ? 84 : 112,
-                height: round ? 84 : 168,
-                decoration: BoxDecoration(
-                  color: AppColors.surface2,
-                  shape: round ? BoxShape.circle : BoxShape.rectangle,
-                  borderRadius: round ? null : BorderRadius.circular(10),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Container(
-                width: round ? 60 : 84,
-                height: 10,
-                decoration: BoxDecoration(
-                  color: AppColors.surface2,
-                  borderRadius: BorderRadius.circular(5),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 /// The letters in a coloured circle, for a cast member with no photo.
@@ -1270,6 +1211,54 @@ class _InitialsAvatar extends StatelessWidget {
         color: AppColors.textSecondary,
         fontSize: 20,
         fontWeight: FontWeight.w700,
+      ),
+    ),
+  );
+}
+
+/// The app's own loader: a circle in the accent colour.
+///
+/// It stays invisible for the first moments and only fades in if the wait is
+/// real — a title that loads straight away never flashes a spinner.
+class _AppSpinner extends StatefulWidget {
+  const _AppSpinner();
+
+  @override
+  State<_AppSpinner> createState() => _AppSpinnerState();
+}
+
+class _AppSpinnerState extends State<_AppSpinner> {
+  /// How long a load may take before it is worth showing anything.
+  static const _grace = Duration(milliseconds: 400);
+
+  bool _show = false;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer(_grace, () {
+      if (mounted) setState(() => _show = true);
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AnimatedOpacity(
+    opacity: _show ? 1 : 0,
+    duration: const Duration(milliseconds: 250),
+    curve: Curves.easeOut,
+    child: SizedBox(
+      width: 40,
+      height: 40,
+      child: CircularProgressIndicator(
+        strokeWidth: 3.2,
+        color: AppColors.accent,
       ),
     ),
   );
