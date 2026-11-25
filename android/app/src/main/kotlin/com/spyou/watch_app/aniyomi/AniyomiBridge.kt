@@ -418,6 +418,12 @@ class AniyomiBridge(
                                 }
                                 val proxiedUrl = AniyomiVideoProxy.proxyUrl(sourceId, rawUrl, headersMap)
                                 val json = AniyomiJson.videoToJson(v) // direct url + headers
+                                // Audio that came as separate tracks (Re:ANIME): pair it with the
+                                // video in one master playlist so both players play the sound.
+                                com.spyou.watch_app.HlsAudioMaster.build(
+                                    rawUrl,
+                                    v.audioTracks.map { it.url to it.lang },
+                                )?.let { json.put("videoUrl", AniyomiVideoProxy.staticPlaylistUrl(it)) }
                                 json.put("proxyUrl", proxiedUrl)
                                 arr.put(json)
                             }

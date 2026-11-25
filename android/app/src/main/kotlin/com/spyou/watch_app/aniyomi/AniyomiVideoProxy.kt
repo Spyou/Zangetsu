@@ -59,6 +59,8 @@ object AniyomiVideoProxy {
         val url: String,
         /** OkHttp header names/values from the originating Video object. */
         val headers: Map<String, String>,
+        /** Set for a playlist we wrote ourselves: served as-is, never fetched. */
+        val staticBody: String? = null,
     )
 
     /** Token → session. Grows during a playback session; acceptable. */
@@ -130,17 +132,30 @@ object AniyomiVideoProxy {
         return "http://127.0.0.1:${server!!.listeningPort}/s/$token"
     }
 
+    /** Serves [body] (an HLS playlist we built) from a local URL ending in `.m3u8`. */
+    fun staticPlaylistUrl(body: String): String {
+        ensureStarted()
+        val token = UUID.randomUUID().toString().replace("-", "")
+        sessions[token] = ProxySession(-1L, "", emptyMap(), body)
+        return "http://127.0.0.1:${server!!.listeningPort}/s/$token.m3u8"
+    }
+
     // -------------------------------------------------------------------------
     // NanoHTTPD serve
     // -------------------------------------------------------------------------
 
     private fun serve(httpSession: NanoHTTPD.IHTTPSession): NanoHTTPD.Response {
         // URI is /s/<token>; strip prefix, drop any query string.
-        val token = httpSession.uri.removePrefix("/s/").substringBefore("?")
+        val token = httpSession.uri.removePrefix("/s/").substringBefore("?").removeSuffix(".m3u8")
         val ps = sessions[token]
             ?: return NanoHTTPD.newFixedLengthResponse(
                 NanoHTTPD.Response.Status.NOT_FOUND, "text/plain", "unknown token"
             )
+        ps.staticBody?.let {
+            return NanoHTTPD.newFixedLengthResponse(
+                NanoHTTPD.Response.Status.OK, "application/vnd.apple.mpegurl", it,
+            )
+        }
 
         val source = AniyomiSourceManager.get(ps.sourceId) as? AnimeHttpSource
             ?: return NanoHTTPD.newFixedLengthResponse(
