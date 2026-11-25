@@ -3,6 +3,7 @@ package com.spyou.watch_app
 import fi.iki.elonen.NanoHTTPD
 import okhttp3.Dispatcher
 import okhttp3.Headers
+import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.ByteArrayInputStream
@@ -32,7 +33,17 @@ import java.util.concurrent.TimeUnit
  */
 object ExternalStreamProxy {
 
-    private data class Session(val url: String, val headers: Map<String, String>)
+    private data class Session(
+        val url: String,
+        val headers: Map<String, String>,
+        // A plugin's own request hook (CloudStream getVideoInterceptor): decrypts
+        // scrambled segments, fixes key URLs. Null for every normal stream.
+        val interceptor: Interceptor? = null,
+    ) {
+        val http: OkHttpClient by lazy {
+            if (interceptor == null) client else client.newBuilder().addInterceptor(interceptor).build()
+        }
+    }
 
     private val sessions = ConcurrentHashMap<String, Session>()
     @Volatile private var server: NanoHTTPD? = null
@@ -77,18 +88,24 @@ object ExternalStreamProxy {
      *
      *  Advertises the phone's LAN IPv4 when one is available so a Cast
      *  receiver can fetch it; falls back to 127.0.0.1 for on-device players. */
-    fun proxyUrl(url: String, headers: Map<String, String>): String {
-        val loopback = register(url, headers)
+    fun proxyUrl(
+        url: String,
+        headers: Map<String, String>,
+        interceptor: Interceptor? = null,
+        onDevice: Boolean = false,
+    ): String {
+        val loopback = register(url, headers, interceptor)
+        if (onDevice) return loopback
         val ip = LanAddress.ipv4() ?: return loopback
         return loopback.replaceFirst("127.0.0.1", ip)
     }
 
     /** Canonical loopback form used inside rewritten playlists / the cache.
      *  [advertiseForRequest] swaps the host to match how the client reached us. */
-    private fun register(url: String, headers: Map<String, String>): String {
+    private fun register(url: String, headers: Map<String, String>, interceptor: Interceptor? = null): String {
         ensureStarted()
         val token = UUID.randomUUID().toString().replace("-", "")
-        sessions[token] = Session(url, headers)
+        sessions[token] = Session(url, headers, interceptor)
         val suffix = if (url.contains("m3u8", ignoreCase = true)) ".m3u8" else ""
         return "http://127.0.0.1:${server!!.listeningPort}/s/$token$suffix"
     }
@@ -141,7 +158,7 @@ object ExternalStreamProxy {
         val request = Request.Builder().url(ps.url).headers(headersBuilder.build()).build()
 
         val upstream = try {
-            client.newCall(request).execute()
+            ps.http.newCall(request).execute()
         } catch (e: Exception) {
             return NanoHTTPD.newFixedLengthResponse(
                 NanoHTTPD.Response.Status.INTERNAL_ERROR, "text/plain",
@@ -156,7 +173,7 @@ object ExternalStreamProxy {
 
         if (isHlsByUrl || isHlsByCt) {
             val text = upstream.body?.string() ?: ""
-            val rewritten = HlsRewriter.rewrite(text, ps.url) { abs -> register(abs, ps.headers) }
+            val rewritten = HlsRewriter.rewrite(text, ps.url) { abs -> register(abs, ps.headers, ps.interceptor) }
             upstream.close()
             playlistCache[ps.url] = rewritten
             return NanoHTTPD.newFixedLengthResponse(
@@ -175,7 +192,7 @@ object ExternalStreamProxy {
         if (n > 0 && String(peek, 0, n, Charsets.US_ASCII).startsWith("#EXTM3U")) {
             val rest = bodyStream.readBytes()
             val fullText = String(peek, 0, n, Charsets.UTF_8) + String(rest, Charsets.UTF_8)
-            val rewritten = HlsRewriter.rewrite(fullText, ps.url) { abs -> register(abs, ps.headers) }
+            val rewritten = HlsRewriter.rewrite(fullText, ps.url) { abs -> register(abs, ps.headers, ps.interceptor) }
             upstream.close()
             playlistCache[ps.url] = rewritten
             return NanoHTTPD.newFixedLengthResponse(

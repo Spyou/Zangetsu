@@ -854,6 +854,10 @@ class PluginHost(private val context: Context) {
         @Volatile
         var job: kotlinx.coroutines.Job? = null
 
+        /** Proxy URL per link, so every poll hands back the same one. */
+        val proxied: MutableMap<ExtractorLink, String> =
+            Collections.synchronizedMap(java.util.IdentityHashMap())
+
         /** The resolve stopped (finished, capped or cancelled) — no more links. */
         @Volatile
         var done = false
@@ -891,7 +895,7 @@ class PluginHost(private val context: Context) {
                 "subtitles" to emptyList<Any?>(),
                 "done" to true,
             )
-        return sessionResult(session, done = session.done)
+        return sessionResult(session, apiByName(apiName), done = session.done)
     }
 
     /** Stops a resolve the viewer walked away from (back during "Finding…").
@@ -952,12 +956,28 @@ class PluginHost(private val context: Context) {
                 job?.join() // wait for ALL servers (now bounded by the cap above)
             }
         }
-        return sessionResult(session, done = session.done)
+        return sessionResult(session, api, done = session.done)
+    }
+
+    /**
+     * A plugin can ship its own request hook (`getVideoInterceptor`) that CloudStream's
+     * player runs on every stream request — Re:ANIME uses it to unscramble segments that
+     * are disguised as .png/.webp. Our players fetch on their own and never ran it, so
+     * such streams had no usable audio/video. For those links only, play through the
+     * on-device proxy with the hook attached. Plugins without a hook are untouched.
+     */
+    private fun playbackUrl(session: LinkSession, api: MainAPI?, el: ExtractorLink, headers: Map<String, String>): String {
+        if (api == null) return el.url
+        session.proxied[el]?.let { return it }
+        val hook = runCatching { api.getVideoInterceptor(el) }.getOrNull() ?: return el.url
+        val url = com.spyou.watch_app.ExternalStreamProxy.proxyUrl(el.url, headers, hook, onDevice = true)
+        session.proxied[el] = url
+        return url
     }
 
     /** Serialises a session's links + subtitles for the Flutter bridge. Shared by
      *  [loadLinks] and [polledLinks] so the two can never drift apart. */
-    private fun sessionResult(session: LinkSession, done: Boolean): Map<String, Any?> =
+    private fun sessionResult(session: LinkSession, api: MainAPI?, done: Boolean): Map<String, Any?> =
         mapOf(
             "sources" to session.links.toList().map { el ->
                 // ClearKey-DRM sources (DrmExtractorLink — e.g. CNC/PlayzTV live
@@ -965,12 +985,13 @@ class PluginHost(private val context: Context) {
                 // decrypt DRM, so pass them through and let Dart route the source
                 // to the native ExoPlayer player (which does clearkey natively).
                 val drm = el as? com.lagradost.cloudstream3.utils.DrmExtractorLink
+                val hdrs = enrichLinkHeaders(el.url, el.referer, el.headers)
                 mapOf(
-                    "url" to el.url,
+                    "url" to playbackUrl(session, api, el, hdrs),
                     "name" to el.name,
                     "referer" to el.referer,
                     "quality" to el.quality,
-                    "headers" to enrichLinkHeaders(el.url, el.referer, el.headers),
+                    "headers" to hdrs,
                     "isM3u8" to el.isM3u8,
                     "drmKid" to drm?.kid,
                     "drmKey" to drm?.key,
