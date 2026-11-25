@@ -30,6 +30,17 @@ class _NativeHeroTrailerState extends State<_NativeHeroTrailer>
 
   // Keep the artwork visible until the first video frame is ready.
   bool _ready = false;
+
+  // ── Black-bar zoom ───────────────────────────────────────────────────────
+  // Some trailers carry black bars above and below the picture. For the first
+  // moments of playback a tiny copy of the frame is measured; once the answer
+  // is steady the video zooms just enough to push the bars out of view.
+  final GlobalKey _videoKey = GlobalKey();
+  double _barZoom = 1;
+  Timer? _barTimer;
+  bool _sampling = false;
+  LetterboxTracker _barTracker = LetterboxTracker();
+
   // Extraction or playback failed → stay on the static cover.
   bool _errored = false;
   // Mute state — default muted; preserved across pause/resume.
@@ -151,7 +162,10 @@ class _NativeHeroTrailerState extends State<_NativeHeroTrailer>
         if (!_errored) setState(() => _errored = true);
       } else if (value.position > Duration.zero && !value.isBuffering) {
         if (!progressed.isCompleted) progressed.complete();
-        if (!_ready) setState(() => _ready = true);
+        if (!_ready) {
+          setState(() => _ready = true);
+          _startBarWatch();
+        }
       }
     };
     player.addListener(_playerListener!);
@@ -221,6 +235,8 @@ class _NativeHeroTrailerState extends State<_NativeHeroTrailer>
       _resolvedUrlIsHd = false;
       unawaited(_disposePlayer());
       _ready = false;
+      _stopBarWatch();
+      _barZoom = 1;
       _errored = false;
       _resolveAndOpen();
     }
@@ -267,6 +283,8 @@ class _NativeHeroTrailerState extends State<_NativeHeroTrailer>
     _playerListener = null;
     _player = null;
     _ready = false;
+    _stopBarWatch();
+    _barZoom = 1;
     if (mounted && _routeLifecycle.canUpdateUi) setState(() {});
     AppLogger.instance.log('[detail-hero] retiring native trailer player');
 
@@ -292,6 +310,63 @@ class _NativeHeroTrailerState extends State<_NativeHeroTrailer>
     return _playerTeardown;
   }
 
+  void _startBarWatch() {
+    _barTimer?.cancel();
+    _barTracker = LetterboxTracker();
+    _barTimer = Timer.periodic(
+      const Duration(milliseconds: LetterboxDetector.sampleIntervalMs),
+      (_) => unawaited(_sampleBars()),
+    );
+  }
+
+  void _stopBarWatch() {
+    _barTimer?.cancel();
+    _barTimer = null;
+  }
+
+  Future<void> _sampleBars() async {
+    if (_sampling) return;
+    final player = _player;
+    if (!mounted || player == null || !player.value.isPlaying) return;
+    if (LetterboxDetector.isSampleWindowOver(
+      player.value.position.inMilliseconds,
+      player.value.duration.inMilliseconds,
+    )) {
+      _stopBarWatch();
+      return;
+    }
+    final box = _videoKey.currentContext?.findRenderObject();
+    if (box is! RenderRepaintBoundary || !box.hasSize || box.size.width <= 0) {
+      return;
+    }
+    _sampling = true;
+    try {
+      final image = await box.toImage(
+        pixelRatio: LetterboxDetector.sampleWidth / box.size.width,
+      );
+      final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+      final width = image.width;
+      final height = image.height;
+      image.dispose();
+      if (data == null || !mounted) return;
+      final bar = LetterboxDetector.detectBar(
+        data.buffer.asUint8List(),
+        width,
+        height,
+      );
+      if (bar == null) return;
+      final zoom = _barTracker.onSample(bar);
+      if (zoom != null) {
+        _stopBarWatch();
+        setState(() => _barZoom = zoom);
+      }
+    } catch (_) {
+      // A frame that can't be read is simply skipped.
+    } finally {
+      _sampling = false;
+    }
+  }
+
   void _restoreTrailer() {
     if (!_routeLifecycle.canCreatePlayer || widget.collapsed || _errored) {
       return;
@@ -305,6 +380,7 @@ class _NativeHeroTrailerState extends State<_NativeHeroTrailer>
 
   @override
   void dispose() {
+    _stopBarWatch();
     _routeAnimation?.removeStatusListener(_syncRouteStatus);
     appRouteObserver.unsubscribe(this);
     _routeLifecycle.beginDispose();
@@ -327,22 +403,36 @@ class _NativeHeroTrailerState extends State<_NativeHeroTrailer>
           Positioned.fill(
             child: _Zoom(
               pull: widget.pull,
-              child: IgnorePointer(
-                child: AnimatedOpacity(
-                  opacity: _ready ? 1.0 : 0.0,
-                  duration: const Duration(milliseconds: 350),
-                  curve: Curves.easeOut,
-                  child: controller.value.isInitialized
-                      ? FittedBox(
-                          fit: BoxFit.cover,
-                          clipBehavior: Clip.hardEdge,
-                          child: SizedBox(
-                            width: controller.value.size.width,
-                            height: controller.value.size.height,
-                            child: preview.VideoPlayer(controller),
-                          ),
-                        )
-                      : const SizedBox.expand(),
+              // Once the black bars are measured the video eases in to a zoom
+              // that pushes them off screen.
+              child: TweenAnimationBuilder<double>(
+                tween: Tween(end: _barZoom),
+                duration: const Duration(milliseconds: 600),
+                curve: Curves.easeOutCubic,
+                builder: (context, zoom, child) =>
+                    Transform.scale(scale: zoom, child: child),
+                child: IgnorePointer(
+                  child: AnimatedOpacity(
+                    opacity: _ready ? 1.0 : 0.0,
+                    duration: const Duration(milliseconds: 350),
+                    curve: Curves.easeOut,
+                    child: controller.value.isInitialized
+                        // The boundary is what gets measured: just the video,
+                        // before any zoom, never the fade around it.
+                        ? RepaintBoundary(
+                            key: _videoKey,
+                            child: FittedBox(
+                              fit: BoxFit.cover,
+                              clipBehavior: Clip.hardEdge,
+                              child: SizedBox(
+                                width: controller.value.size.width,
+                                height: controller.value.size.height,
+                                child: preview.VideoPlayer(controller),
+                              ),
+                            ),
+                          )
+                        : const SizedBox.expand(),
+                  ),
                 ),
               ),
             ),
