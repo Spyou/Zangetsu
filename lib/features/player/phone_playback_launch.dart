@@ -1,8 +1,11 @@
 import 'dart:async';
+import 'dart:io';
 
+import 'package:dio/dio.dart';
 import 'package:floating/floating.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:path_provider/path_provider.dart';
 
 import 'playback_loading_title.dart' show playbackArtworkHeaders;
 
@@ -30,6 +33,8 @@ import '../../core/playback/parental_guide_service.dart';
 import '../../core/playback/skip_service.dart';
 import '../../core/playback/subtitle_download_service.dart';
 import '../../core/playback/subtitle_language.dart';
+import '../../core/playback/subtitle_shift.dart';
+import '../../core/playback/subtitle_translate_service.dart';
 import '../../core/playback/subtitle_encode_skew.dart';
 import '../../core/playback/subtitle_font_stage.dart';
 import '../../core/playback/tv_track_helpers.dart';
@@ -45,7 +50,10 @@ import 'player_controls_config.dart';
 import 'player_engine_fallback.dart';
 import 'player_lifecycle.dart';
 import 'player_screen.dart'
-    show openSubtitleStyleSheet, showOnlineSubtitleSheet;
+    show
+        openSubtitleStyleSheet,
+        showOnlineSubtitleSheet,
+        showTranslateLanguageSheet;
 import 'subtitle_style.dart';
 import 'watch_page_info.dart';
 import 'in_app_mini_player.dart';
@@ -1020,6 +1028,133 @@ class PhoneNativePlayer {
     }
   }
 
+  static Future<void> _toastNative(int sessionId, String text) async {
+    if (sessionId != _sessionId) return;
+    try {
+      await _ch.invokeMethod('showToast', {
+        'sessionId': sessionId,
+        'text': text,
+      });
+    } catch (_) {}
+  }
+
+  /// Asks for a language over the native player, then translates [url] in the
+  /// background and hands the result back as a new track.
+  static Future<void> _translateSubtitle(int sessionId, String url) async {
+    final navigator = rootNavigatorKey.currentState;
+    if (navigator == null || _subtitleStyleOpen) return;
+    _subtitleStyleOpen = true;
+    final cover = PageRouteBuilder<void>(
+      transitionDuration: Duration.zero,
+      reverseTransitionDuration: Duration.zero,
+      pageBuilder: (_, _, _) => const SizedBox.expand(),
+    );
+    unawaited(navigator.push(cover));
+    String? iso;
+    try {
+      iso = await showTranslateLanguageSheet(
+        navigator.context,
+        current: sl<PlaybackPrefs>().translateSubtitleTo,
+        onRoute: (route) => _subtitleStyleRoute = route,
+      );
+    } finally {
+      _subtitleStyleRoute = null;
+      _subtitleStyleOpen = false;
+      if (navigator.mounted && cover.isActive) navigator.removeRoute(cover);
+    }
+    if (iso == null || sessionId != _sessionId) return;
+    unawaited(sl<PlaybackPrefs>().setTranslateSubtitleTo(iso));
+    unawaited(_runTranslation(sessionId, url, iso));
+  }
+
+  /// The text of a subtitle the native player is showing: a cached file, or a
+  /// web address.
+  static Future<String> _readSubtitleText(String url) async {
+    final uri = Uri.parse(url);
+    if (uri.scheme == 'file') return File(uri.toFilePath()).readAsString();
+    final response = await sl<Dio>().get<String>(
+      url,
+      options: Options(
+        responseType: ResponseType.plain,
+        validateStatus: (_) => true,
+      ),
+    );
+    return response.data ?? '';
+  }
+
+  /// A copy of the subtitle at [url] moved by [deltaMs], as a local file path
+  /// (null when it can't be read).
+  static Future<String?> _shiftedSubtitle(String url, int deltaMs) async {
+    try {
+      final shifted = shiftSubtitle(await _readSubtitleText(url), deltaMs);
+      if (shifted.trim().isEmpty) return null;
+      final dir = await getTemporaryDirectory();
+      final path = Uri.parse(url).path;
+      final dot = path.lastIndexOf('.');
+      final ext = dot > 0 && path.length - dot <= 5
+          ? path.substring(dot + 1)
+          : 'srt';
+      final out = File(
+        '${dir.path}/shifted_${DateTime.now().millisecondsSinceEpoch}.$ext',
+      );
+      await out.writeAsString(shifted, flush: true);
+      return out.path;
+    } catch (e) {
+      debugPrint('[subtitle-shift] failed: $e');
+      return null;
+    }
+  }
+
+  static Future<void> _runTranslation(
+    int sessionId,
+    String url,
+    String iso,
+  ) async {
+    final String content;
+    try {
+      content = await _readSubtitleText(url);
+    } catch (_) {
+      await _toastNative(sessionId, "Couldn't load the subtitle");
+      return;
+    }
+    if (content.trim().isEmpty) {
+      await _toastNative(sessionId, 'Subtitle is empty');
+      return;
+    }
+    await _toastNative(sessionId, 'Translating subtitles…');
+    try {
+      var lastTenth = -1;
+      final srt = await SubtitleTranslateService.instance.translate(
+        content,
+        iso,
+        onProgress: (p) {
+          final tenth = (p * 10).floor();
+          if (tenth != lastTenth && tenth > 0 && tenth < 10) {
+            lastTenth = tenth;
+            unawaited(_toastNative(sessionId, 'Translating… ${tenth * 10}%'));
+          }
+        },
+      );
+      if (sessionId != _sessionId) return;
+      final dir = await getTemporaryDirectory();
+      final out = File('${dir.path}/translated_${iso}_$sessionId.srt');
+      await out.writeAsString(srt, flush: true);
+      await _ch.invokeMethod('addLocalSubtitle', {
+        'sessionId': sessionId,
+        'path': out.path,
+        'label': 'Translated (${languageByPref(iso)?.name ?? iso})',
+        'language': iso,
+      });
+      await _toastNative(sessionId, 'Subtitles translated');
+    } catch (e) {
+      debugPrint(
+        '[subtitle-translate] failed: $e '
+        '(starts "${content.trimLeft().substring(0, content.trimLeft().length.clamp(0, 12))}")',
+      );
+      await _toastNative(sessionId, "Couldn't translate subtitles");
+    }
+  }
+
   static Future<dynamic> _onNativeCall(MethodCall call) async {
     switch (call.method) {
       case 'playerDocked':
@@ -1149,6 +1284,28 @@ class PhoneNativePlayer {
           return null;
         }
         await _showSubtitleStyle(_sessionId);
+        return null;
+      case 'shiftSubtitle':
+        final shiftArgs = _callArgs(call);
+        final shiftUrl = shiftArgs?['url'] as String?;
+        final deltaMs = (shiftArgs?['deltaMs'] as num?)?.toInt();
+        if (_closed?.isCompleted != false ||
+            shiftArgs?['sessionId'] != _sessionId ||
+            shiftUrl == null ||
+            deltaMs == null) {
+          return null;
+        }
+        return _shiftedSubtitle(shiftUrl, deltaMs);
+      case 'openTranslateSubtitles':
+        final translateArgs = _callArgs(call);
+        final subtitleUrl = translateArgs?['url'] as String?;
+        if (_closed?.isCompleted != false ||
+            translateArgs?['sessionId'] != _sessionId ||
+            subtitleUrl == null ||
+            subtitleUrl.isEmpty) {
+          return null;
+        }
+        await _translateSubtitle(_sessionId, subtitleUrl);
         return null;
       case 'openOnlineSubtitles':
         final onlineArgs = _callArgs(call);

@@ -2241,6 +2241,9 @@ class PhonePlayerActivity : Activity() {
 
     private fun uiAlive(): Boolean = !isFinishing && !isDestroyed
 
+    /** Dart reporting progress (translation) on the player's own screen. */
+    internal fun showToast(message: String) = runOnUiThread { toast(message) }
+
     private fun toast(message: String) {
         android.widget.Toast.makeText(this, message, android.widget.Toast.LENGTH_SHORT).show()
     }
@@ -2552,6 +2555,8 @@ class PhonePlayerActivity : Activity() {
                 }
             },
             PhonePlayerSheet.SheetRow("Load from file", icon = R.drawable.phone_player_file) { pickSubtitleFile() },
+            PhonePlayerSheet.SheetRow("Translate", icon = R.drawable.phone_player_translate) { translateSubtitle() },
+            PhonePlayerSheet.SheetRow("Subtitle delay", icon = R.drawable.phone_player_delay) { showSubtitleDelay() },
             PhonePlayerSheet.SheetRow(getString(R.string.phone_player_subtitle_style), icon = R.drawable.phone_player_captions) {
                 showSubtitleStyle()
             },
@@ -2614,6 +2619,73 @@ class PhonePlayerActivity : Activity() {
         p.playWhenReady = playing
     }
 
+    /**
+     * The external subtitle that is playing, or the first one there is (the MPV
+     * player does the same). Subtitles built into the video aren't separate
+     * files, so they can't be translated.
+     */
+    private fun externalSubtitleToTranslate(): MediaItem.SubtitleConfiguration? {
+        val p = player ?: return null
+        val configs = p.currentMediaItem?.localConfiguration?.subtitleConfigurations.orEmpty()
+        if (configs.isEmpty()) return null
+        val active = p.currentTracks.groups
+            .filter { it.type == C.TRACK_TYPE_TEXT }
+            .firstNotNullOfOrNull { g -> (0 until g.length).firstOrNull { g.isTrackSelected(it) }?.let { g.getTrackFormat(it) } }
+        return configs.firstOrNull { active != null && it.uri.toString() == active.id }
+            ?: configs.firstOrNull { active != null && it.label == active.label && it.language == active.language }
+            ?: configs.first()
+    }
+
+    /**
+     * Shifts the external subtitle that is playing. Dart re-times a copy of the
+     * file and it comes back as a new track; subtitles built into the video are
+     * not separate files and can't be moved this way.
+     */
+    private fun showSubtitleDelay() {
+        val target = externalSubtitleToTranslate()
+        if (target == null) {
+            toast("Delay works on external subtitles. Load one or pick an addon subtitle")
+            return
+        }
+        PhonePlayerSheet(this)
+            .setTitle("Subtitle delay")
+            .setDelayPicker { deltaMs ->
+                val ch = PhonePlayerBridge.channel ?: return@setDelayPicker
+                val sign = if (deltaMs > 0) "+" else "-"
+                val shown = "$sign${kotlin.math.abs(deltaMs) / 1000}.${(kotlin.math.abs(deltaMs) % 1000) / 100} s"
+                ch.invokeMethod("shiftSubtitle", mapOf(
+                    "sessionId" to sessionId, "url" to target.uri.toString(), "deltaMs" to deltaMs,
+                ), object : io.flutter.plugin.common.MethodChannel.Result {
+                    override fun success(result: Any?) {
+                        val path = result as? String
+                        if (path.isNullOrBlank() || !uiAlive()) {
+                            if (uiAlive()) toast("Couldn't move that subtitle")
+                            return
+                        }
+                        val base = target.label ?: "Subtitle"
+                        addLocalSubtitle(path, "$base ($shown)", target.language)
+                    }
+                    override fun error(code: String, message: String?, details: Any?) = toast("Couldn't move that subtitle")
+                    override fun notImplemented() = Unit
+                })
+            }
+            .setOnDismissListener { bumpControls() }
+            .showForPlayer()
+    }
+
+    private fun translateSubtitle() {
+        val target = externalSubtitleToTranslate()
+        if (target == null) {
+            toast("No external subtitle to translate")
+            return
+        }
+        if (subtitleStyleDialog?.isShowing != true) {
+            subtitleStyleDialog = PhonePlayerBridge.openFlutterSheet(
+                this, "openTranslateSubtitles", mapOf("url" to target.uri.toString()),
+            )
+        }
+    }
+
     /** A subtitle file Dart downloaded (online search): attach it and show it. */
     internal fun addLocalSubtitle(path: String, label: String, language: String?) {
         val file = java.io.File(path)
@@ -2648,8 +2720,20 @@ class PhonePlayerActivity : Activity() {
         val uri = data?.data ?: return
         val name = contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)
             ?.use { if (it.moveToFirst()) it.getString(0) else null } ?: uri.lastPathSegment.orEmpty()
+        // Copied into the app's cache: the picker's access ends with this screen,
+        // and Dart needs a plain file to translate.
+        val copy = try {
+            val ext = name.substringAfterLast('.', "srt").take(8).filter { it.isLetterOrDigit() }.ifEmpty { "srt" }
+            java.io.File(cacheDir, "loaded_subtitle_${System.currentTimeMillis()}.$ext").also { file ->
+                contentResolver.openInputStream(uri)?.use { input -> file.outputStream().use { input.copyTo(it) } }
+                    ?: throw java.io.IOException("no stream")
+            }
+        } catch (_: Exception) {
+            toast("Couldn't read that file")
+            return
+        }
         attachSubtitle(
-            MediaItem.SubtitleConfiguration.Builder(uri)
+            MediaItem.SubtitleConfiguration.Builder(android.net.Uri.fromFile(copy))
                 .setMimeType(subtitleMime("", name))
                 .setLabel(name.substringBeforeLast('.').ifBlank { "Subtitle" })
                 .build(),

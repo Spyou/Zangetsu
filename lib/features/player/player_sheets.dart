@@ -712,6 +712,39 @@ class _OnlineSubtitleSheetState extends State<_OnlineSubtitleSheet> {
   }
 }
 
+/// "Translate subtitles to…": the language list as a bottom sheet. Returns the
+/// ISO-639-1 code picked, or null when dismissed. Shared by both players.
+Future<String?> showTranslateLanguageSheet(
+  BuildContext context, {
+  required String current,
+  ValueChanged<ModalRoute<dynamic>?>? onRoute,
+}) {
+  return showModalBottomSheet<String>(
+    context: context,
+    backgroundColor: Colors.transparent,
+    isScrollControlled: true,
+    builder: (sheetContext) {
+      onRoute?.call(ModalRoute.of(sheetContext));
+      return _SheetSurface(
+        child: SafeArea(
+          top: false,
+          child: _SheetColumn(
+            header: sheetContext.l10n.translateSubtitlesTo,
+            children: [
+              for (final lang in kSubtitleLanguages)
+                _SheetRow(
+                  label: lang.name,
+                  active: lang.iso1 == current,
+                  onTap: () => Navigator.pop(sheetContext, lang.iso1),
+                ),
+            ],
+          ),
+        ),
+      );
+    },
+  );
+}
+
 /// Opens the online subtitle search (OpenSubtitles) as a bottom sheet. Shared
 /// by the MPV player and the native Android player; [onApply] gets the path of
 /// the downloaded subtitle file.

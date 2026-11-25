@@ -96,6 +96,34 @@ class PhonePlayerSheetTest {
         } finally { controller.pause().stop().destroy() }
     }
 
+    @Test @Config(qualifiers = "port")
+    fun `delay picker adds up the steps and only applies on Apply`() {
+        val controller = Robolectric.buildActivity(Activity::class.java).setup()
+        try {
+            // The running total reads like a step button, so only buttons count.
+            fun tap(root: android.view.View, text: String) =
+                texts(root).single { it.text == text && it.hasOnClickListeners() }.performClick()
+            var applied = Int.MIN_VALUE
+            val dialog = PhonePlayerSheet(controller.get())
+                .setDelayPicker { applied = it }.setTitle("Subtitle delay").show()
+            val root = dialog.window!!.decorView
+            tap(root, "+0.5 s"); tap(root, "+0.5 s"); tap(root, "-0.1 s")
+            assertEquals(Int.MIN_VALUE, applied) // nothing until Apply
+            assertTrue(texts(root).any { it.text == "+0.9 s" })
+            tap(root, "Apply")
+            assertEquals(900, applied)
+            assertFalse(dialog.isShowing)
+
+            // Reset puts it back to zero, and a zero shift is not worth reloading for.
+            applied = Int.MIN_VALUE
+            val again = PhonePlayerSheet(controller.get())
+                .setDelayPicker { applied = it }.setTitle("Subtitle delay").show()
+            val second = again.window!!.decorView
+            tap(second, "+1 s"); tap(second, "Reset"); tap(second, "Apply")
+            assertEquals(Int.MIN_VALUE, applied)
+        } finally { controller.pause().stop().destroy() }
+    }
+
     @Test @Config(qualifiers = "land")
     fun `long episode lists stay scrollable within the screen`() {
         val controller = Robolectric.buildActivity(Activity::class.java).setup()

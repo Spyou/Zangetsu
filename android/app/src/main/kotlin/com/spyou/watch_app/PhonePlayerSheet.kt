@@ -221,7 +221,10 @@ internal class PhonePlayerSheet(context: Context) : AlertDialog.Builder(context,
         fun close() { dialog?.dismiss() }
         // The columns take whatever the sheet has left after its footer, so the
         // sheet as a whole fits without a second, competing scroll.
-        val footerPx = if (footer.isEmpty()) 0 else dp(92)
+        val widthDp = context.resources.displayMetrics.run { widthPixels / density }.coerceAtMost(560f)
+        val footerColumns = if (widthDp >= 480) 5 else 3
+        val footerRows = (footer.size + footerColumns - 1) / footerColumns
+        val footerPx = if (footer.isEmpty()) 0 else footerRows * dp(76) + dp(20)
         val cap = (capPx(0.85f) - footerPx - dp(110)).coerceAtLeast(dp(96))
         val columns = LinearLayout(context)
         val sections = listOf(
@@ -256,8 +259,8 @@ internal class PhonePlayerSheet(context: Context) : AlertDialog.Builder(context,
         if (footer.isNotEmpty()) {
             content.addView(View(context).apply { setBackgroundColor(0x14FFFFFF) },
                 LinearLayout.LayoutParams(-1, dp(1)).apply { setMargins(dp(4), dp(10), dp(4), dp(6)) })
-            // Actions in one row, icon over label, so three fit side by side.
-            val actions = LinearLayout(context)
+            // Actions in a grid, icon over label, so several fit side by side.
+            val actions = GridLayout(context).apply { columnCount = footerColumns }
             for (row in footer) {
                 val action = LinearLayout(context).apply {
                     orientation = LinearLayout.VERTICAL
@@ -280,7 +283,10 @@ internal class PhonePlayerSheet(context: Context) : AlertDialog.Builder(context,
                     text = row.label
                     setTextColor(Color.WHITE)
                 }, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(4) })
-                actions.addView(action, LinearLayout.LayoutParams(0, -2, 1f))
+                actions.addView(action, GridLayout.LayoutParams().apply {
+                    width = 0
+                    columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f)
+                })
             }
             content.addView(actions, LinearLayout.LayoutParams(-1, -2))
         }
@@ -288,6 +294,64 @@ internal class PhonePlayerSheet(context: Context) : AlertDialog.Builder(context,
         // scroller around them would fight for the same swipe.
         content.setPadding(dp(12), 0, dp(12), dp(12))
         setView(content)
+    }
+
+    /**
+     * Pick how far to move the subtitles. Steps change a running total; nothing
+     * happens until Apply, because applying reloads the stream.
+     */
+    fun setDelayPicker(onApply: (deltaMs: Int) -> Unit): PhonePlayerSheet = apply {
+        var total = 0
+        val content = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+        val value = TextView(context).apply {
+            textSize = 30f
+            gravity = Gravity.CENTER
+            setTextColor(Color.WHITE)
+            setTypeface(typeface, Typeface.BOLD)
+        }
+        fun show() {
+            val sign = if (total > 0) "+" else if (total < 0) "-" else ""
+            value.text = "$sign${kotlin.math.abs(total) / 1000}.${(kotlin.math.abs(total) % 1000) / 100} s"
+        }
+        show()
+        content.addView(value, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(4); bottomMargin = dp(12) })
+        content.addView(TextView(context).apply {
+            textSize = 13f
+            gravity = Gravity.CENTER
+            setTextColor(secondary)
+            text = "Later (+) if the words come too early, earlier (-) if too late"
+        }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(12) })
+        val steps = listOf("-1 s" to -1000, "-0.5 s" to -500, "-0.1 s" to -100, "+0.1 s" to 100, "+0.5 s" to 500, "+1 s" to 1000)
+        val grid = GridLayout(context).apply { columnCount = 3 }
+        for ((text, delta) in steps) {
+            grid.addView(label(text).apply {
+                gravity = Gravity.CENTER
+                background = shape(0xFF20212A.toInt(), 32).apply { setStroke(dp(1), 0x29FFFFFF) }
+                foreground = ripple(32)
+                setOnClickListener { total = (total + delta).coerceIn(-60000, 60000); show() }
+            }, GridLayout.LayoutParams().apply {
+                width = 0
+                columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f)
+                setMargins(dp(4), dp(4), dp(4), dp(4))
+            })
+        }
+        content.addView(grid)
+        val buttons = LinearLayout(context)
+        buttons.addView(label("Reset").apply {
+            gravity = Gravity.CENTER
+            setTextColor(secondary)
+            foreground = ripple(32)
+            setOnClickListener { total = 0; show() }
+        }, LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(dp(4), dp(10), dp(4), 0) })
+        buttons.addView(label("Apply").apply {
+            gravity = Gravity.CENTER
+            setTextColor(Color.WHITE)
+            background = shape(accent, 32)
+            foreground = ripple(32)
+            setOnClickListener { dialog?.dismiss(); if (total != 0) onApply(total) }
+        }, LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(dp(4), dp(10), dp(4), 0) })
+        content.addView(buttons)
+        scroll(content)
     }
 
     override fun create(): AlertDialog {

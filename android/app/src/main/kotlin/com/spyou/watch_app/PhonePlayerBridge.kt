@@ -120,6 +120,17 @@ object PhonePlayerBridge {
                         result.success(false)
                     }
                 }
+                "showToast" -> {
+                    val target = PhonePlayerActivity.active
+                    val session = call.argument<Number>("sessionId")?.toLong()
+                    val text = call.argument<String>("text")
+                    if (target != null && target.sessionId == session && !text.isNullOrBlank()) {
+                        target.showToast(text)
+                        result.success(true)
+                    } else {
+                        result.success(false)
+                    }
+                }
                 "addLocalSubtitle" -> {
                     val target = PhonePlayerActivity.active
                     val session = call.argument<Number>("sessionId")?.toLong()
@@ -182,7 +193,11 @@ object PhonePlayerBridge {
     }
 
     /** Shows one of Dart's Flutter sheets over the player; [method] says which. */
-    internal fun openFlutterSheet(player: PhonePlayerActivity, method: String): Dialog? {
+    internal fun openFlutterSheet(
+        player: PhonePlayerActivity,
+        method: String,
+        extra: Map<String, Any?> = emptyMap(),
+    ): Dialog? {
         if (player.isFinishing || player.isDestroyed) return null
         val (host, engine) = flutterHost ?: return null
         val bridge = channel ?: return null
@@ -191,7 +206,7 @@ object PhonePlayerBridge {
         if (original.attachedFlutterEngine !== engine || host.isDestroyed) return null
         val texture = FlutterTextureView(player).apply { isOpaque = false }
         val overlay = FlutterView(player, texture)
-        val args = mapOf("sessionId" to player.sessionId)
+        val args = mapOf("sessionId" to player.sessionId) + extra
         var closedByFlutter = false
         val dialog = object : Dialog(player, android.R.style.Theme_DeviceDefault_NoActionBar) {
             @Deprecated("Flutter handles back navigation in the overlay")
