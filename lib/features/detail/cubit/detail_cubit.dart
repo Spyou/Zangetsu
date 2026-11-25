@@ -648,9 +648,7 @@ class DetailCubit extends Cubit<DetailState> {
     final Future<bool>? extrasRun = wantsExtras ? _fetchExtras(d) : null;
     // The age tag and IMDb score: ids only, no episode data, so they start now
     // too. Movies and series only; reading titles have neither.
-    if (d.type != ProviderType.manga &&
-        d.type != ProviderType.novel &&
-        (d.tmdbId != null || d.imdbId != null)) {
+    if (_wantsBadges(d)) {
       unawaited(_fetchBadges(d));
     }
 
@@ -719,15 +717,60 @@ class DetailCubit extends Cubit<DetailState> {
     }
   }
 
-  /// Looks up the age tag and IMDb score and shows them when they arrive.
-  Future<void> _fetchBadges(MediaDetail d) async {
+  bool _extrasRetried = false;
+
+  /// One more try at the cast and relations, for when the first one came back
+  /// empty (the services refuse or time out now and then). Asked for by the
+  /// Overview once it has finished loading with nothing to show; does nothing
+  /// if it has already tried again, or there is now something on screen.
+  Future<void> retryExtras() async {
+    final d = state.detail;
+    if (_extrasRetried ||
+        isClosed ||
+        d == null ||
+        state.cast.isNotEmpty ||
+        state.relations.isNotEmpty) {
+      return;
+    }
+    final wantsExtras =
+        d.malId != null ||
+        d.tmdbId != null ||
+        d.type == ProviderType.anime ||
+        d.type == ProviderType.manga ||
+        d.type == ProviderType.novel;
+    if (!wantsExtras) return;
+    _extrasRetried = true;
+    emit(state.copyWith(extrasLoading: true));
     try {
-      final found = await sl<MetadataEnrichment>().badges(d);
-      if (isClosed || found.isEmpty) return;
-      emit(state.copyWith(badges: found));
+      await _fetchExtras(d);
+    } finally {
+      if (!isClosed) emit(state.copyWith(extrasLoading: false));
+    }
+  }
+
+  /// Whether there is anything to look up for the year/tag/credits row: movies,
+  /// series and anime with an id to ask by. Reading titles have none of it.
+  bool _wantsBadges(MediaDetail d) =>
+      d.type != ProviderType.manga &&
+      d.type != ProviderType.novel &&
+      (d.tmdbId != null ||
+          d.imdbId != null ||
+          (d.type == ProviderType.anime && d.malId != null));
+
+  /// Looks up the age tag, IMDb score and credits and shows them when they
+  /// arrive. Capped at a few seconds so a slow service never holds the page.
+  Future<void> _fetchBadges(MediaDetail d) async {
+    TitleBadges? found;
+    try {
+      found = await sl<MetadataEnrichment>().badges(d).timeout(
+        const Duration(seconds: 3),
+      );
     } catch (_) {
       // Nothing to show is fine.
     }
+    if (isClosed) return;
+    if (found == null || found.isEmpty) return;
+    emit(state.copyWith(badges: found));
   }
 
   /// Walks the franchise so the Relations tab can show its seasons in order.

@@ -485,7 +485,7 @@ class MetadataEnrichment {
   /// as the age tag. Anime with no such ids simply get neither. Best-effort:
   /// any failure just leaves that part out. Answers are kept for the session.
   Future<TitleBadges> badges(MediaDetail d) {
-    final key = '${d.tmdbId}|${d.imdbId}|${d.tmdbIsTv}';
+    final key = '${d.tmdbId}|${d.imdbId}|${d.tmdbIsTv}|${d.malId}|${d.type.name}';
     final hit = _badgesCache.remove(key);
     if (hit != null) {
       _badgesCache[key] = hit;
@@ -508,7 +508,16 @@ class MetadataEnrichment {
     var isTv = d.tmdbIsTv;
     int? tmdbId = d.tmdbId;
     String? age;
+    var directors = <String>[];
+    var writers = <String>[];
+    var creators = <String>[];
     String? imdbId = (d.imdbId ?? '').startsWith('tt') ? d.imdbId : null;
+
+    // An anime's staff, asked beside everything else — it needs none of it.
+    final staffRun = (d.type == ProviderType.anime && d.malId != null)
+        ? _anilist.animeStaff(d.malId!).then(anilistStaffCredits)
+        : null;
+
     // Only an IMDb id (what many sources give): TMDB can find the title from it.
     if (tmdbId == null && imdbId != null) {
       final found = tmdbFromFind(
@@ -519,16 +528,25 @@ class MetadataEnrichment {
         isTv = found.isTv;
       }
     }
+    var tmdbDirectors = <String>[];
+    var tmdbWriters = <String>[];
     if (tmdbId != null) {
       final kind = isTv ? 'tv' : 'movie';
       final tmdb = await _get('$_tmdbBase/$kind/$tmdbId', {
         'append_to_response': isTv
             ? 'content_ratings,external_ids'
-            : 'release_dates,external_ids',
+            : 'release_dates,external_ids,credits',
       });
       if (tmdb != null) {
         age = certificationFrom(tmdb, isTv: isTv);
         imdbId ??= imdbIdFrom(tmdb);
+        if (isTv) {
+          creators = tmdbCreators(tmdb);
+        } else {
+          final crew = tmdbCrewCredits(tmdb);
+          tmdbDirectors = crew.directors;
+          tmdbWriters = crew.writers;
+        }
       }
     }
     String? imdb;
@@ -537,8 +555,27 @@ class MetadataEnrichment {
         'https://v3-cinemeta.strem.io/meta/${isTv ? 'series' : 'movie'}/$imdbId.json',
       );
       imdb = imdbRatingFrom(meta);
+      final c = cinemetaCredits(meta);
+      directors = c.directors;
+      writers = c.writers;
     }
-    return TitleBadges(ageRating: age, imdbRating: imdb);
+    // Cinemeta first, then TMDB's crew, then (anime) AniList's staff.
+    if (directors.isEmpty) directors = tmdbDirectors;
+    if (writers.isEmpty) writers = tmdbWriters;
+    if (staffRun != null && (directors.isEmpty || writers.isEmpty)) {
+      try {
+        final staff = await staffRun;
+        if (directors.isEmpty) directors = staff.directors;
+        if (writers.isEmpty) writers = staff.writers;
+      } catch (_) {}
+    }
+    return TitleBadges(
+      ageRating: age,
+      imdbRating: imdb,
+      directors: directors,
+      writers: writers,
+      creators: creators,
+    );
   }
 
   Future<Map<String, dynamic>?> _get(

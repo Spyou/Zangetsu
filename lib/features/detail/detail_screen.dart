@@ -3010,6 +3010,7 @@ class _DetailViewState extends State<_DetailView>
                   year: detail.year,
                   runtimeMins: detail.durationMins,
                   badges: state.badges,
+                  onRetryExtras: cubit.retryExtras,
                   score: detail.score,
                   // Tappable only on a metadata title, same rule the old Details tab used.
                   onGenre: detail.sourceId == ZmodeIds.sourceId

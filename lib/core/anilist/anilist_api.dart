@@ -421,6 +421,19 @@ class AniListApi {
     return _parseExtras(media);
   }
 
+  /// The people behind an anime, with their roles, by MAL id — raw, for the
+  /// caller to read (see `anilistStaffCredits`). Null when AniList has nothing.
+  Future<Map<String, dynamic>?> animeStaff(int idMal) async {
+    final d = await _gql(
+      'query(\$idMal:Int){ Media(idMal:\$idMal,type:ANIME){ '
+      'staff(sort:[RELEVANCE],perPage:25){ edges{ role node{ name{ full } } } } '
+      '} }',
+      {'idMal': idMal},
+    );
+    final media = d?['Media'];
+    return media is Map ? Map<String, dynamic>.from(media) : null;
+  }
+
   /// Cast + relations for a MANGA or NOVEL, by its MAL **manga** id.
   ///
   /// The anime twin ([mediaExtras]) pins `type:ANIME`, and MAL numbers its
