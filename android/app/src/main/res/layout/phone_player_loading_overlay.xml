@@ -69,6 +69,18 @@
             android:textSize="13sp" />
 
         <TextView
+            android:id="@+id/loading_error_title"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:accessibilityHeading="true"
+            android:gravity="center"
+            android:text="@string/phone_player_error_title"
+            android:textColor="@color/phone_player_on_surface"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
+
+        <TextView
             android:id="@+id/loading_status"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -92,7 +104,7 @@
             android:id="@+id/loading_actions"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
+            android:layout_marginTop="12dp"
             android:gravity="center"
             android:orientation="horizontal"
             android:visibility="gone">
@@ -100,9 +112,12 @@
             <Button
                 android:id="@+id/btn_loading_retry"
                 android:layout_width="wrap_content"
-                android:layout_height="48dp"
-                android:backgroundTint="@color/phone_player_accent"
-                android:minWidth="120dp"
+                android:layout_height="wrap_content"
+                android:minHeight="48dp"
+                android:background="@drawable/phone_player_primary_ripple"
+                android:minWidth="72dp"
+                android:paddingHorizontal="16dp"
+                android:stateListAnimator="@null"
                 android:text="@string/phone_player_action_retry"
                 android:textAllCaps="false"
                 android:textColor="@color/phone_player_on_primary" />
@@ -110,10 +125,13 @@
             <Button
                 android:id="@+id/btn_loading_back"
                 android:layout_width="wrap_content"
-                android:layout_height="48dp"
-                android:layout_marginStart="12dp"
-                android:backgroundTint="@color/phone_player_surface"
-                android:minWidth="120dp"
+                android:layout_height="wrap_content"
+                android:minHeight="48dp"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/phone_player_icon_ripple"
+                android:minWidth="72dp"
+                android:paddingHorizontal="16dp"
+                android:stateListAnimator="@null"
                 android:text="@string/phone_player_action_back"
                 android:textAllCaps="false"
                 android:textColor="@color/phone_player_on_surface" />

@@ -45,6 +45,7 @@
     <string name="phone_player_status_finding">Finding sources&#8230;</string>
     <string name="phone_player_status_starting">Starting stream&#8230;</string>
     <string name="phone_player_status_retrying">Trying another source&#8230;</string>
+    <string name="phone_player_error_title">Couldn\'t play this video</string>
     <string name="phone_player_error_load">Couldn\'t load this episode</string>
     <string name="phone_player_error_timeout">This is taking too long</string>
     <string name="phone_player_action_retry">Retry</string>
@@ -108,5 +109,5 @@
     <string name="phone_player_decoder_hardware_plus">Hardware+ (recommended)</string>
     <string name="phone_player_decoder_system">Hardware (faster)</string>
     <string name="phone_player_decoder_software">Prefer software</string>
-    <string name="phone_player_decoder_fallback">Decoder failed. Switched to Auto.</string>
+    <string name="phone_player_decoder_fallback">Decoder failed. Retrying with Software.</string>
 </resources>

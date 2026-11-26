@@ -928,16 +928,20 @@ class PhonePlayerActivity : Activity() {
 
             override fun onPlayerError(error: PlaybackException) {
                 if (player !== exo) return
-                if (decoderOverride != null && decoderOverride != "auto" &&
+                if (mode != "sw" &&
                     error.errorCode in PlaybackException.ERROR_CODE_DECODER_INIT_FAILED..
                         PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED &&
                     !switching && !failoverInFlight && !engineFallbackRequested
                 ) {
+                    val item = exo.currentMediaItem
                     handler.post {
                         if (player !== exo || !uiAlive()) return@post
-                        if (switchDecoder("auto")) {
+                        if (exo.currentMediaItem !== item) return@post
+                        if (switchDecoder("sw")) {
                             toast(getString(R.string.phone_player_decoder_fallback))
                         } else {
+                            playbackError = true
+                            setBuffering(false)
                             failover()
                         }
                     }
@@ -985,8 +989,12 @@ class PhonePlayerActivity : Activity() {
         controls.animate().cancel()
         controls.visibility = View.GONE
         loadingOverlay.visibility = View.VISIBLE
-        if (loadingActions.visibility == View.VISIBLE) loadingTitlePulse.startPulse()
+        if (loadingActions.visibility == View.VISIBLE) {
+            loadingTitlePulse.visibility = View.VISIBLE
+            loadingTitlePulse.startPulse()
+        }
         loadingActions.visibility = View.GONE
+        setLoadErrorHeading(false)
         loadingStatus.visibility = View.VISIBLE
         loadingEpisode.text = episodeLabel ?: episodeText.text
         setLoadingStatus(getString(R.string.phone_player_status_finding))
@@ -1018,9 +1026,20 @@ class PhonePlayerActivity : Activity() {
         loadingOverlay.visibility = View.VISIBLE
         loadingStatus.visibility = View.VISIBLE
         setLoadingStatus(message)
+        if (message == getString(R.string.phone_player_error_load)) loadingStatus.visibility = View.GONE
         loadingActions.visibility = View.VISIBLE
+        setLoadErrorHeading(true)
+        loadingSpeed?.visibility = View.GONE
         loadingTitlePulse.stopPulse()
+        loadingTitlePulse.visibility = View.GONE
         setBuffering(false)
+    }
+
+    private fun setLoadErrorHeading(visible: Boolean) {
+        findViewById<View>(R.id.loading_error_title).visibility = if (visible) View.VISIBLE else View.GONE
+        loadingStatus.layoutParams = (loadingStatus.layoutParams as ViewGroup.MarginLayoutParams).apply {
+            topMargin = dp(if (visible) 4 else 16)
+        }
     }
 
     private fun updateEpisodeNavigation() {
