@@ -219,6 +219,7 @@ class _RelationsTab extends StatelessWidget {
     required this.onOpen,
     this.seasons = const [],
     this.tvFocus = false,
+    this.forcePortraitPosters = false,
   });
   final List<MediaRelation> relations;
 
@@ -234,6 +235,7 @@ class _RelationsTab extends StatelessWidget {
   /// and select relation cards on TV.  Defaults to false — no phone caller
   /// passes this flag, so the phone render is byte-identical to the original.
   final bool tvFocus;
+  final bool forcePortraitPosters;
 
   /// A season drawn as a relation card. Reusing [MediaRelation] is the whole
   /// trick: the card, the accent label and the tap handler are then the ones
@@ -356,7 +358,9 @@ class _RelationsTab extends StatelessWidget {
           ClipRRect(
             borderRadius: BorderRadius.circular(10),
             child: AspectRatio(
-              aspectRatio: posterLayout(context) == PosterCardLayout.wide
+              aspectRatio:
+                  !forcePortraitPosters &&
+                      posterLayout(context) == PosterCardLayout.wide
                   ? 16 / 9
                   : 2 / 3,
               child: (r.cover != null && r.cover!.isNotEmpty)
@@ -1095,6 +1099,7 @@ class _OverviewTab extends StatelessWidget {
       relations: relations,
       seasons: seasons,
       onOpen: onOpenRelation,
+      forcePortraitPosters: true,
     );
     final seasonCards = [
       for (final s in seasons) _RelationsTab._asRelation(context, s),
