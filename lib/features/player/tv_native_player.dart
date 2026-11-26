@@ -16,11 +16,12 @@ import '../../core/playback/playback_prefs.dart';
 import '../../core/playback/title_prefs.dart';
 import '../../core/playback/resume_store.dart';
 import '../../core/playback/skip_service.dart';
-import '../../core/playback/source_health_store.dart';
 import '../../core/playback/source_selection.dart';
+import '../../core/playback/subtitle_encode_skew.dart';
 import '../../core/playback/subtitle_font_stage.dart';
 import '../../core/playback/subtitle_search_service.dart';
 import '../../core/repository/catalogue_repository.dart';
+import '../../core/stremio/stremio_ref.dart';
 import '../../core/tv/tv_playback_failure.dart';
 import '../../core/zmode/playback_resolver.dart';
 import '../../core/zmode/source_matcher.dart';
@@ -64,6 +65,19 @@ class TvNativePlayer {
   /// returns and offers Try Next Source / Select Source. Null when play
   /// succeeded or the user simply backed out.
   static String? lastPlaybackErrorCode;
+
+  /// The episode the native player was on when it reported [lastPlaybackErrorCode].
+  /// The viewer may have moved past the start episode, so an automatic source
+  /// hop must replay THIS one, not the one the session opened on.
+  static int? lastPlaybackErrorIndex;
+
+  /// How long a fresh (non-fast) re-resolve may take after the native player
+  /// reports an expired link (HTTP 403). Same budget as the phone player.
+  @visibleForTesting
+  static Duration refreshTimeout = const Duration(seconds: 15);
+
+  /// How long the picker waits on the running resolve's snapshot.
+  static const Duration pollSnapshotTimeout = Duration(seconds: 2);
 
   // Current session context — set on [play], read by the native→Dart handlers.
   // Only one native player is on screen at a time, so a plain static context is
@@ -118,6 +132,7 @@ class TvNativePlayer {
     if (startIndex < 0 || startIndex >= episodes.length) return false;
     lastFailure = null;
     lastPlaybackErrorCode = null;
+    lastPlaybackErrorIndex = null;
 
     final session = ++_session;
     _stopProgressiveSources();
@@ -316,8 +331,10 @@ class TvNativePlayer {
           return null;
         }
         final ep = _episodes[epIndex];
-        final src = await _resolveSource(ep, category: category);
-        if (_session != session || src == null) return null;
+        final picked = await _resolveSource(ep, category: category);
+        if (_session != session || picked == null) return null;
+        final src = await _withSkewedSubtitles(picked);
+        if (_session != session) return null;
         final playUrl = await _playableUrl(src.url);
         if (_session != session || playUrl == null) return null;
         _category = category;
@@ -502,20 +519,41 @@ class TvNativePlayer {
         final url = (call.arguments as Map)['url'] as String?;
         return url == null ? null : await _playableUrl(url);
       case 'sourcesFor':
-        // The full mirror list for the Server/Source picker.
+        // The full mirror list for the Server/Source picker, and the mirror
+        // walk the native player runs after a playback error. `refresh: true`
+        // (sent once, after an HTTP 403 with no untried mirror left) means the
+        // links have expired: fetch a FULL fresh set, the way the phone does.
         final args = (call.arguments as Map).cast<String, dynamic>();
         final index = (args['index'] as num?)?.toInt() ?? -1;
         final category = (args['category'] as String?) ?? _category;
+        final refresh = args['refresh'] == true;
         if (index < 0 || index >= _episodes.length) return const <Map>[];
+        final session = _session;
+        final requestCategory = _category;
+        bool stale() => _session != session || _category != requestCategory;
         try {
           final url = tvEpisodeUrl(_episodes[index].url, category);
           final progressive = _progressiveSources;
-          final sources = progressive != null
+          var sources = progressive != null
               ? await progressive.latest(url, category)
-              : await _resolve!(url);
+              : await _snapshotOrResolve(url);
+          if (stale()) return const <Map>[];
+          if (refresh) {
+            final fresh = await _freshSources(url);
+            if (stale()) return const <Map>[];
+            if (fresh.isNotEmpty) {
+              if (progressive != null &&
+                  identical(progressive, _progressiveSources)) {
+                progressive.addMirrors(url, category, fresh);
+              }
+              sources = mergeSourcesByUrl(sources, fresh);
+            }
+          }
+          final prepared = await _prepareSources(sources);
+          if (stale()) return const <Map>[];
           return [
-            for (var i = 0; i < sources.length; i++)
-              {..._srcMap(sources[i]), 'label': _srcLabel(sources[i], i)},
+            for (var i = 0; i < prepared.length; i++)
+              {..._srcMap(prepared[i]), 'label': _srcLabel(prepared[i], i)},
           ];
         } catch (_) {
           return const <Map>[];
@@ -571,6 +609,9 @@ class TvNativePlayer {
             '[TvNativePlayer] playbackError · code=$code msg=$msg index=$index',
           );
           lastPlaybackErrorCode = code.isEmpty ? 'PLAYBACK_FAILED' : code;
+          lastPlaybackErrorIndex = index >= 0 && index < _episodes.length
+              ? index
+              : null;
           unawaited(_handlePlaybackError(code, msg, index));
           return null;
         }
@@ -578,10 +619,12 @@ class TvNativePlayer {
     return null;
   }
 
-  /// Handles a playback error reported by the native ExoPlayer — marks the
-  /// source unhealthy so the resolver deprioritizes it, and invalidates the
-  /// winner cache so the next attempt re-sweeps instead of reusing the failed
-  /// source.
+  /// Handles a playback error reported by the native ExoPlayer — excludes the
+  /// source that served it for THIS episode so the next resolve sweeps past it.
+  ///
+  /// Nothing is written to the source health store: the phone player doesn't,
+  /// and a health strike hid the whole source from sweeps and search for 30
+  /// minutes after ONE bad mirror (4KHDHub then "only worked sometimes" on TV).
   static Future<void> _handlePlaybackError(
     String code,
     String message,
@@ -595,7 +638,8 @@ class TvNativePlayer {
       final epUrl = tvEpisodeUrl(_episodes[index].url, _category);
       if (sl.isRegistered<PlaybackResolver>()) {
         final resolver = sl<PlaybackResolver>();
-        failedSourceId = resolver.resolvedSourceId(epUrl) ?? _sourceId;
+        failedSourceId =
+            resolver.resolvedSourceId(epUrl, category: _category) ?? _sourceId;
         // Exclude THIS source for THIS episode, rather than forgetting
         // everything we know about the episode. invalidateWinner wipes the
         // _unplayable set as part of its job, so using it here would clear the
@@ -608,20 +652,83 @@ class TvNativePlayer {
         );
       }
     }
-    // Mark the source as unhealthy — it will be skipped (skippable) for the
-    // next 30 min, after which it auto-recovers (never permanent).
-    try {
-      if (sl.isRegistered<SourceHealthStore>()) {
-        await sl<SourceHealthStore>().record(
-          failedSourceId,
-          SourceOutcome.error,
-        );
-        debugPrint(
-          '[TvNativePlayer] playbackError · marked $failedSourceId unhealthy',
-        );
-      }
-    } catch (_) {}
+    debugPrint(
+      '[TvNativePlayer] playbackError · excluded $failedSourceId for this episode',
+    );
   }
+
+  /// Test hook for native→Dart calls (the channel handler is private).
+  @visibleForTesting
+  static Future<dynamic> debugHandleNativeCall(MethodCall call) =>
+      _onNativeCall(call);
+
+  /// [existing] in order, each replaced by its [fresh] twin (newer headers,
+  /// cookies and tokens), then the new [fresh] links. One entry per url.
+  @visibleForTesting
+  static List<VideoSource> mergeSourcesByUrl(
+    List<VideoSource> existing,
+    List<VideoSource> fresh,
+  ) {
+    final byUrl = <String, VideoSource>{
+      for (final source in existing) source.url: source,
+    };
+    for (final source in fresh) {
+      byUrl[source.url] = source;
+    }
+    return byUrl.values.toList();
+  }
+
+  /// A full (non-fast) resolve for expired links. Never throws: a timeout or
+  /// failure returns no links and the caller keeps what it already had.
+  static Future<List<VideoSource>> _freshSources(String url) async {
+    try {
+      if (sl.isRegistered<CatalogueRepository>()) {
+        return await sl<CatalogueRepository>()
+            .sources(url, sourceId: _sourceId, fast: false)
+            .timeout(refreshTimeout);
+      }
+      return await _resolve!(url).timeout(refreshTimeout);
+    } catch (e) {
+      debugPrint('[TvNativePlayer] refresh failed · $e');
+      return const [];
+    }
+  }
+
+  /// The running resolve's snapshot first, so the picker doesn't start a new
+  /// lookup (that replaces the plugin's link session and kills the mirrors
+  /// still arriving). Falls back to a resolve only when the snapshot is empty.
+  static Future<List<VideoSource>> _snapshotOrResolve(String url) async {
+    if (sl.isRegistered<CatalogueRepository>()) {
+      try {
+        final polled = await sl<CatalogueRepository>()
+            .polledSources(url, sourceId: _sourceId)
+            .timeout(pollSnapshotTimeout);
+        if (polled.sources.isNotEmpty) return polled.sources;
+      } catch (_) {
+        // Resolve below.
+      }
+    }
+    return _resolve!(url);
+  }
+
+  /// Bakes a provider's subtitle timing skew into local files, as the phone
+  /// player does. A failure keeps the raw source.
+  static Future<VideoSource> _withSkewedSubtitles(VideoSource src) async {
+    if ((src.subtitleSkewSeconds ?? 0).abs() < 0.05) return src;
+    try {
+      return await materializeSkewedSubtitles(src);
+    } catch (e) {
+      debugPrint('[TvNativePlayer] subtitle skew failed · $e');
+      return src;
+    }
+  }
+
+  static Future<List<VideoSource>> _prepareSources(
+    List<VideoSource> sources,
+  ) =>
+      // In parallel: the native mirror walk waits at most 30 s on this list,
+      // and each skewed mirror may download several subtitle files.
+      Future.wait([for (final source in sources) _withSkewedSubtitles(source)]);
 
   /// Human label for a mirror in the Server picker: the provider's own name,
   /// else the quality, else "Server N".
@@ -691,15 +798,26 @@ class TvNativePlayer {
           ? await progressive.first(url, cat)
           : await _resolve!(url);
       if (_session != session) return null;
-      final picked = pickDefault(
-        sources,
-        prefer: cat == 'dub' ? AudioKind.dub : AudioKind.sub,
-        preferQuality:
-            (_showUrl != null && sl.isRegistered<TitlePrefsStore>()
-                ? sl<TitlePrefsStore>().quality(_sourceId, _showUrl!)
-                : null) ??
-            sl<PlaybackPrefs>().defaultQuality,
-      );
+      // A Stremio title replays the link the viewer picked last time.
+      final saved =
+          _sourceId == stremioSourceId && sl.isRegistered<TitlePrefsStore>()
+          ? sl<TitlePrefsStore>().preferredStremioLink(
+              ep.url,
+              sources,
+              showUrl: _showUrl,
+            )
+          : null;
+      final picked =
+          saved ??
+          pickDefault(
+            sources,
+            prefer: cat == 'dub' ? AudioKind.dub : AudioKind.sub,
+            preferQuality:
+                (_showUrl != null && sl.isRegistered<TitlePrefsStore>()
+                    ? sl<TitlePrefsStore>().quality(_sourceId, _showUrl!)
+                    : null) ??
+                sl<PlaybackPrefs>().defaultQuality,
+          );
       if (picked == null && sources.isEmpty) {
         lastFailure ??= const TvPlaybackLoadFailure(
           TvPlaybackLoadFailureKind.episodeNotAvailable,
@@ -853,8 +971,9 @@ class TvNativePlayer {
   static String _episodeLabel(Episode ep) => episodePresenceDetails(ep) ?? '';
 
   /// Per-index filler flags for the native player (source flags and Tenrai episode numbers).
-  static List<bool> _fillerFlags(List<Episode> episodes, Set<int> fillers) =>
-      [for (final episode in episodes) isFillerEpisode(episode, fillers)];
+  static List<bool> _fillerFlags(List<Episode> episodes, Set<int> fillers) => [
+    for (final episode in episodes) isFillerEpisode(episode, fillers),
+  ];
 
   /// How long playback will wait on episode-name metadata before giving up.
   /// Warm cache returns instantly; this only bites on a cold, slow fetch.
