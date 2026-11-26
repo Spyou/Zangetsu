@@ -11,6 +11,7 @@ import '../../core/playback/my_list.dart';
 import '../../core/playback/category_store.dart';
 import '../../core/playback/series_groups.dart';
 import '../../core/playback/watch_history.dart';
+import '../../core/profiles/profile_shell_scope.dart';
 import '../../core/profiles/viewer_profile.dart';
 import '../../core/reading/read_history.dart';
 import '../../core/platform/apple_tv.dart';
@@ -446,10 +447,14 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
       );
   }
 
-  List<Widget> get _pages {
+  List<Widget> _buildPages({required bool deferStartupPrompts}) {
     final shared = buildShellPages(
       _searchFocusSignal,
       homeIsActive: _index == 0,
+      // Like the phone shell: no update / community / announcement prompt
+      // while the launch profile picker is still up (it would open on top of
+      // the picker and the picker's close could pop it instead).
+      deferHomeStartupPrompts: deferStartupPrompts,
     );
     final pages = <Widget>[
       ...shared.sublist(0, 3), // Home, Search, My List
@@ -691,11 +696,13 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
     final profiles = sl.isRegistered<ViewerProfileStore>()
         ? sl<ViewerProfileStore>()
         : null;
+    final deferStartupPrompts = ProfileShellScope.shouldDeferTabs(context);
     final pageContext =
-        '$_index:${profiles?.dataProfileId}:${profiles?.contextRevision.value}';
+        '$_index:${profiles?.dataProfileId}:${profiles?.contextRevision.value}'
+        ':$deferStartupPrompts';
     // Opening the dock must not rebuild every Home/Search/Settings page.
     if (_cachedPages == null || _cachedPageContext != pageContext) {
-      _cachedPages = _pages;
+      _cachedPages = _buildPages(deferStartupPrompts: deferStartupPrompts);
       _cachedPageContext = pageContext;
     }
     final pages = _cachedPages!;

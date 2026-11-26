@@ -408,7 +408,14 @@ class _TvFocusableState extends State<TvFocusable> {
         onLongPress: widget.onLongPress,
         child: Focus(
           focusNode: widget.focusNode,
-          autofocus: widget.autofocus,
+          // Only autofocus on the top route. Flutter's autofocus checks only
+          // that the scope has no focused child, never whether a dialog or
+          // sheet sits on top, so a late-mounting Home button used to take
+          // D-pad focus away from a start-up prompt. isCurrentOf rebuilds
+          // this when the route becomes current again; Focus then applies
+          // the (still unused) autofocus.
+          autofocus:
+              widget.autofocus && (ModalRoute.isCurrentOf(context) ?? true),
           onKeyEvent: _onKey,
           onFocusChange: (f) {
             setState(() => _focused = f);

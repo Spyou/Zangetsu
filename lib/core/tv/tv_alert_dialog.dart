@@ -195,6 +195,75 @@ Future<T?> showTvAlertDialog<T>(
   );
 }
 
+/// Keeps D-pad focus inside a TV popup (dialog or bottom sheet) that is not a
+/// [TvAlertDialog]: the same claim pattern. After the first frames it lands on
+/// the first mounted node in [targets], and whenever something underneath
+/// takes focus while this popup is still the top route, it takes it back.
+///
+/// [targets] are in priority order; a target that is not mounted (a button
+/// hidden in the current state) is skipped. Wrap only on TV.
+class TvFocusClaim extends StatefulWidget {
+  const TvFocusClaim({super.key, required this.targets, required this.child});
+
+  final List<FocusNode> targets;
+  final Widget child;
+
+  @override
+  State<TvFocusClaim> createState() => _TvFocusClaimState();
+}
+
+class _TvFocusClaimState extends State<TvFocusClaim> {
+  final FocusScopeNode _scope = FocusScopeNode(
+    debugLabel: 'tv-focus-claim',
+    traversalEdgeBehavior: TraversalEdgeBehavior.closedLoop,
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _claim());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _claim());
+    });
+  }
+
+  void _claim() {
+    // Not while closing, or while another popup sits on top of this one.
+    if (!mounted || !(ModalRoute.isCurrentOf(context) ?? true)) return;
+    if (_scope.hasFocus) return;
+    for (final node in widget.targets) {
+      // FocusNode.context survives detach, so check the element is still
+      // mounted: Skip / Later unmount while the update downloads, and a
+      // requestFocus on a detached node silently does nothing.
+      if ((node.context?.mounted ?? false) && node.canRequestFocus) {
+        node.requestFocus();
+        return;
+      }
+    }
+  }
+
+  void _onScopeFocus(bool has) {
+    if (!has && mounted) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _claim());
+    }
+  }
+
+  @override
+  void dispose() {
+    _scope.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FocusScope(
+      node: _scope,
+      onFocusChange: _onScopeFocus,
+      child: widget.child,
+    );
+  }
+}
+
 /// Shared by the button fill and the [TvFocusable] outline so the ring hugs
 /// the chrome instead of painting a tighter pill on top.
 const _kActionRadius = 24.0;

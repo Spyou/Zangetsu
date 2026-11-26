@@ -173,4 +173,82 @@ void main() {
       expect(taps, 0);
     },
   );
+
+  testWidgets(
+    'a background autofocus does not steal focus from an open dialog, '
+    'and takes it once the dialog closes',
+    (tester) async {
+      final showLate = ValueNotifier(false);
+      final lateNode = FocusNode(debugLabel: 'late');
+      final dialogNode = FocusNode(debugLabel: 'dialog');
+      addTearDown(() {
+        showLate.dispose();
+        lateNode.dispose();
+        dialogNode.dispose();
+      });
+      late BuildContext homeContext;
+      await tester.pumpWidget(MaterialApp(
+        home: Builder(
+          builder: (context) {
+            homeContext = context;
+            return ValueListenableBuilder<bool>(
+              valueListenable: showLate,
+              builder: (_, show, _) => show
+                  ? TvFocusable(
+                      focusNode: lateNode,
+                      autofocus: true,
+                      onTap: () {},
+                      child: const SizedBox(width: 100, height: 100),
+                    )
+                  : const SizedBox.shrink(),
+            );
+          },
+        ),
+      ));
+
+      showDialog<void>(
+        context: homeContext,
+        builder: (_) => Dialog(
+          child: TvFocusable(
+            focusNode: dialogNode,
+            autofocus: true,
+            onTap: () {},
+            child: const SizedBox(width: 80, height: 40),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(dialogNode.hasPrimaryFocus, isTrue);
+
+      // Home rows arrive late and mount an autofocused button underneath.
+      showLate.value = true;
+      await tester.pumpAndSettle();
+      expect(dialogNode.hasPrimaryFocus, isTrue);
+      expect(lateNode.hasFocus, isFalse);
+
+      Navigator.of(homeContext).pop();
+      await tester.pumpAndSettle();
+      expect(lateNode.hasPrimaryFocus, isTrue);
+    },
+  );
+
+  testWidgets('autofocus on the current route still works', (tester) async {
+    final node = FocusNode();
+    addTearDown(node.dispose);
+    final nav = GlobalKey<NavigatorState>();
+    await tester.pumpWidget(MaterialApp(
+      navigatorKey: nav,
+      home: const SizedBox.shrink(),
+    ));
+    nav.currentState!.push(MaterialPageRoute<void>(
+      builder: (_) => TvFocusable(
+        focusNode: node,
+        autofocus: true,
+        onTap: () {},
+        child: const SizedBox(width: 100, height: 100),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    expect(node.hasPrimaryFocus, isTrue);
+  });
 }
