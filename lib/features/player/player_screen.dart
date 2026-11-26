@@ -1477,6 +1477,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
           final route = ModalRoute.of(context);
           return route is EpisodePlayerRoute ? route.detachForDock() : null;
         },
+        onMinimizing: (reveal) {
+          if (!mounted) return;
+          final route = ModalRoute.of(context);
+          if (route is EpisodePlayerRoute) route.revealBehind(reveal);
+        },
       );
       final failure = _nativeEngineFailure;
       if (mounted && failure != null) {

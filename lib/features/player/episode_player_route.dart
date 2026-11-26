@@ -43,6 +43,31 @@ class EpisodePlayerRoute extends PageRoute<void>
   @override
   bool get maintainState => true;
 
+  /// Opening from the mini player has no animation of its own and the native
+  /// card grows over the page, so the page must not run its "covered"
+  /// transition: it would sit faded dark behind the growing card.
+  @override
+  bool canTransitionFrom(TransitionRoute<dynamic> previousRoute) =>
+      !restoredFromDock;
+
+  /// The card is shrinking into the mini player: show the page this one slid
+  /// over, and cover it again if the move is given up. The value is set
+  /// directly, not animated, because the app's tickers are paused while the
+  /// native player is in front. The usual slide in and out is untouched. Routes
+  /// that already hand off silently (Home, Detail) cover nothing, so they are
+  /// left alone.
+  void revealBehind(bool reveal) {
+    final c = controller;
+    if (nativeHandoff || restoredFromDock || !isActive || c == null) return;
+    if (reveal) {
+      setSeeThrough(true);
+      c.value = 0;
+    } else {
+      setSeeThrough(false);
+      c.value = 1;
+    }
+  }
+
   final GlobalKey _contentKey;
   final WidgetBuilder _buildContent;
   Widget? _content;

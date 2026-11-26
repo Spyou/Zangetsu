@@ -488,6 +488,7 @@ Future<bool> launchPhonePlayback({
   void Function(PhonePlaybackFailure)? onEngineFallback,
   bool forceInitialResume = false,
   ({Widget content, VoidCallback restore})? Function()? onDocked,
+  void Function(bool reveal)? onMinimizing,
 }) async {
   return PhoneNativePlayer.play(
     sourceId: sourceId,
@@ -522,6 +523,7 @@ Future<bool> launchPhonePlayback({
     onEngineFallback: onEngineFallback,
     forceInitialResume: forceInitialResume,
     onDocked: onDocked,
+    onMinimizing: onMinimizing,
   );
 }
 
@@ -532,6 +534,10 @@ Future<bool> launchPhonePlayback({
 class PhoneNativePlayer {
   static const _ch = MethodChannel('zangetsu/phone_player');
   static ({Widget content, VoidCallback restore})? Function()? _onDocked;
+
+  /// The player started (true) or gave up (false) shrinking into the mini
+  /// player, so the page behind it can be shown during the move.
+  static void Function(bool reveal)? _onMinimizing;
   static VoidCallback? _restoreDockRoute;
   static int? _dockedSession;
   static Completer<void>? _dockFrame;
@@ -696,6 +702,7 @@ class PhoneNativePlayer {
     void Function(PhonePlaybackFailure)? onEngineFallback,
     bool forceInitialResume = false,
     ({Widget content, VoidCallback restore})? Function()? onDocked,
+    void Function(bool reveal)? onMinimizing,
   }) async {
     if (startIndex < 0 || startIndex >= episodes.length) return false;
     await closeDockedPlayback();
@@ -706,6 +713,7 @@ class PhoneNativePlayer {
       await playerRouteTeardownBarrier.waitUntilIdle();
     }
     _onDocked = onDocked;
+    _onMinimizing = onMinimizing;
     _engineFallback = engineFallback;
     _onEngineFallback = onEngineFallback;
     _forceInitialResume = forceInitialResume;
@@ -1157,6 +1165,12 @@ class PhoneNativePlayer {
 
   static Future<dynamic> _onNativeCall(MethodCall call) async {
     switch (call.method) {
+      case 'minimizeStart':
+      case 'minimizeCancel':
+        if (_callArgs(call)?['sessionId'] == _sessionId) {
+          _onMinimizing?.call(call.method == 'minimizeStart');
+        }
+        return null;
       case 'playerDocked':
         phoneNativeInFront.value = false;
         final args = _callArgs(call);
@@ -1929,6 +1943,7 @@ class PhoneNativePlayer {
         if (restoreForFallback) await WidgetsBinding.instance.endOfFrame;
         if (closingGeneration != _sessionId) return null;
         _onDocked = null;
+        _onMinimizing = null;
         if (closingSession == _sessionId) {
           _syncSimkl({
             ...?closingArgs,

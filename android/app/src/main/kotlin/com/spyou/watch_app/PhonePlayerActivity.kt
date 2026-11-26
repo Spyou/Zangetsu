@@ -3747,6 +3747,10 @@ class PhonePlayerActivity : Activity() {
         if (p <= 0f) { resetMinimize(); return }
         val video = findViewById<View>(R.id.player_root)
         val page = findViewById<View>(R.id.watch_root)
+        if (!minimizeAnnounced) {
+            minimizeAnnounced = true
+            PhonePlayerBridge.channel?.invokeMethod("minimizeStart", mapOf("sessionId" to sessionId))
+        }
         if (morphBackdrop == null) {
             morphBackdrop = page.background
             // Only while moving does the app behind need to show through.
@@ -3798,7 +3802,16 @@ class PhonePlayerActivity : Activity() {
         playerView.subtitleView?.alpha = (1f - p * 3f).coerceIn(0f, 1f)
     }
 
+    private var minimizeAnnounced = false
+
     private fun resetMinimize() {
+        if (minimizeAnnounced) {
+            minimizeAnnounced = false
+            // Only a move that was given up; a finished one is announced by playerDocked.
+            if (!docked) {
+                PhonePlayerBridge.channel?.invokeMethod("minimizeCancel", mapOf("sessionId" to sessionId))
+            }
+        }
         minimizeAnimator?.cancel()
         minimizeAnimator = null
         minimizeP = 0f
