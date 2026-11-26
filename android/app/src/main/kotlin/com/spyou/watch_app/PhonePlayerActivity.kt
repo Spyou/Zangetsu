@@ -800,17 +800,8 @@ class PhonePlayerActivity : Activity() {
         playerView.useController = false
         active = this
 
-        val exo = ExoPlayer.Builder(this, renderersFactory())
-            .setLoadControl(
-                BufferPresets.loadControl(
-                    intent.getIntExtra(PhonePlayerIntent.EXTRA_BUF_MIN_MS, 0),
-                    intent.getIntExtra(PhonePlayerIntent.EXTRA_BUF_MAX_MS, 0),
-                    intent.getIntExtra(PhonePlayerIntent.EXTRA_BUF_BYTES, 0),
-                    intent.getIntExtra(PhonePlayerIntent.EXTRA_BUF_BACK_MS, 0),
-                    maxHeapBytes = Runtime.getRuntime().maxMemory(),
-                ),
-            )
-            .build()
+        defaultDecoderMode = initialDecoderMode()
+        val exo = createPlayer(defaultDecoderMode)
         player = exo
         handler.postDelayed(speedTick, 1000)
         playerView.player = exo
@@ -824,6 +815,36 @@ class PhonePlayerActivity : Activity() {
         exo.playbackParameters =
             PlaybackParameters(intent.getFloatExtra(PhonePlayerIntent.EXTRA_SPEED, 1f))
 
+        if (url.isEmpty()) {
+            // No pre-resolved stream: the loading screen is already up and the
+            // first resolve happens over the channel, like an episode switch.
+            loadEpisode(currentIndex)
+        } else {
+            setLoadingStatus(getString(R.string.phone_player_status_starting))
+            loadStream(
+                url = url,
+                headers = PhonePlayerIntent.headersFromArray(
+                    intent.getStringArrayExtra(PhonePlayerIntent.EXTRA_HEADERS),
+                ),
+                subs = subtitlesFromIntent(),
+                mime = intent.getStringExtra(PhonePlayerIntent.EXTRA_MIME),
+                positionMs = intent.getLongExtra(PhonePlayerIntent.EXTRA_POSITION, 0L),
+            )
+        }
+    }
+
+    private fun createPlayer(mode: String): ExoPlayer {
+        val exo = ExoPlayer.Builder(this, renderersFactory(mode))
+            .setLoadControl(
+                BufferPresets.loadControl(
+                    intent.getIntExtra(PhonePlayerIntent.EXTRA_BUF_MIN_MS, 0),
+                    intent.getIntExtra(PhonePlayerIntent.EXTRA_BUF_MAX_MS, 0),
+                    intent.getIntExtra(PhonePlayerIntent.EXTRA_BUF_BYTES, 0),
+                    intent.getIntExtra(PhonePlayerIntent.EXTRA_BUF_BACK_MS, 0),
+                    maxHeapBytes = Runtime.getRuntime().maxMemory(),
+                ),
+            )
+            .build()
         exo.addListener(object : Player.Listener {
             override fun onRenderedFirstFrame() {
                 playbackStarted = true
@@ -900,6 +921,22 @@ class PhonePlayerActivity : Activity() {
             }
 
             override fun onPlayerError(error: PlaybackException) {
+                if (player !== exo) return
+                if (decoderOverride != null && decoderOverride != "auto" &&
+                    error.errorCode in PlaybackException.ERROR_CODE_DECODER_INIT_FAILED..
+                        PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED &&
+                    !switching && !failoverInFlight && !engineFallbackRequested
+                ) {
+                    handler.post {
+                        if (player !== exo || !uiAlive()) return@post
+                        if (switchDecoder("auto")) {
+                            toast(getString(R.string.phone_player_decoder_fallback))
+                        } else {
+                            failover()
+                        }
+                    }
+                    return
+                }
                 playbackError = true
                 setBuffering(false)
                 val forbidden = generateSequence<Throwable>(error) { it.cause }
@@ -926,22 +963,7 @@ class PhonePlayerActivity : Activity() {
             }
         })
 
-        if (url.isEmpty()) {
-            // No pre-resolved stream: the loading screen is already up and the
-            // first resolve happens over the channel, like an episode switch.
-            loadEpisode(currentIndex)
-        } else {
-            setLoadingStatus(getString(R.string.phone_player_status_starting))
-            loadStream(
-                url = url,
-                headers = PhonePlayerIntent.headersFromArray(
-                    intent.getStringArrayExtra(PhonePlayerIntent.EXTRA_HEADERS),
-                ),
-                subs = subtitlesFromIntent(),
-                mime = intent.getStringExtra(PhonePlayerIntent.EXTRA_MIME),
-                positionMs = intent.getLongExtra(PhonePlayerIntent.EXTRA_POSITION, 0L),
-            )
-        }
+        return exo
     }
 
     private fun setLoadingStatus(text: String) {
@@ -1884,9 +1906,15 @@ class PhonePlayerActivity : Activity() {
         mime: String?,
         positionMs: Long,
     ) {
+        if (loadedEpisodeIndex != currentIndex) {
+            autoSkipped.clear()
+            if (decoderOverride != null) {
+                if (decoderOverride != defaultDecoderMode) replaceDecoderPlayer(defaultDecoderMode)
+                decoderOverride = null
+            }
+        }
         val p = player ?: return
         p.pause()
-        if (loadedEpisodeIndex != currentIndex) autoSkipped.clear()
         skipsRequested = false
         parentalGuide.hideNow()
         resetSubtitleDelay()
@@ -3060,6 +3088,9 @@ class PhonePlayerActivity : Activity() {
             if (sleepActive) "Sleep timer: on" else "Sleep timer",
             R.drawable.sheet_ic_sleep,
         ) { showSleepMenu() }
+        if (player?.currentMediaItem != null && !switching) {
+            add(R.string.phone_player_menu_decoder, R.drawable.phone_player_display) { showDecoderMenu() }
+        }
         add(R.string.phone_player_menu_switch_player, R.drawable.phone_player_sources) { requestManualSwitch() }
         val ambientLabel = if (ambientEnabled) R.string.phone_player_menu_ambient_on
             else R.string.phone_player_menu_ambient_off
@@ -3084,6 +3115,63 @@ class PhonePlayerActivity : Activity() {
             }
             .showForPlayer()
         moreDialog = dialog
+    }
+
+    private fun showDecoderMenu() {
+        val modes = arrayOf("copy", "direct", "sw", "auto")
+        val labels = arrayOf(
+            getString(R.string.phone_player_decoder_hardware_plus),
+            getString(R.string.phone_player_decoder_system),
+            getString(R.string.phone_player_decoder_software),
+            getString(R.string.phone_player_decoder_auto),
+        )
+        val mode = decoderOverride ?: defaultDecoderMode
+        val selected = modes.indexOf(mode)
+        PhonePlayerSheet(this)
+            .setTitle(getString(R.string.phone_player_menu_decoder))
+            .setSingleChoiceItems(labels, selected) { dialog, index ->
+                dialog.dismiss()
+                val choice = modes[index]
+                if (choice != defaultDecoderMode || index != selected) {
+                    if (index != selected && !switchDecoder(choice)) return@setSingleChoiceItems
+                    defaultDecoderMode = choice
+                    PhonePlayerBridge.channel?.invokeMethod(
+                        "setVideoDecoder", mapOf("sessionId" to sessionId, "mode" to choice),
+                    )
+                }
+            }
+            .setOnDismissListener { bumpControls() }
+            .showForPlayer()
+    }
+
+    private fun switchDecoder(mode: String): Boolean {
+        val previous = player ?: return false
+        val item = previous.currentMediaItem ?: return false
+        val factory = currentSourceFactory ?: return false
+        if (switching || failoverInFlight || engineFallbackRequested) return false
+        val position = previous.currentPosition
+        val playing = previous.playWhenReady
+        val source = factory.createMediaSource(item)
+        decoderOverride = mode
+        val replacement = replaceDecoderPlayer(mode)
+        replacement.setMediaSource(source, position)
+        replacement.playWhenReady = playing
+        replacement.prepare()
+        return true
+    }
+
+    private fun replaceDecoderPlayer(mode: String): ExoPlayer {
+        val previous = checkNotNull(player)
+        val target = dockView ?: playerView
+        val replacement = createPlayer(mode)
+        replacement.trackSelectionParameters = previous.trackSelectionParameters
+        replacement.playbackParameters = previous.playbackParameters
+        replacement.volume = previous.volume
+        target.player = null
+        previous.release()
+        player = replacement
+        target.player = replacement
+        return replacement
     }
 
     /** User-tapped Switch Player — bypasses the auto-fallback toggle. */
@@ -4305,9 +4393,15 @@ class PhonePlayerActivity : Activity() {
         }
     }
 
-    private fun renderersFactory(): RenderersFactory {
-        val mode = intent.getStringExtra(PhonePlayerIntent.EXTRA_DECODER_MODE)
+    private var defaultDecoderMode = "auto"
+
+    private fun initialDecoderMode(): String =
+        intent.getStringExtra(PhonePlayerIntent.EXTRA_DECODER_MODE)
             ?: if (intent.getBooleanExtra(PhonePlayerIntent.EXTRA_SW_DECODE, false)) "sw" else "auto"
+
+    private var decoderOverride: String? = null
+
+    private fun renderersFactory(mode: String): RenderersFactory {
         val factory = if (mode == "direct") {
             DefaultRenderersFactory(this)
         } else {

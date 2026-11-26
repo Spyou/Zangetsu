@@ -103,4 +103,10 @@
     <string name="phone_player_watch_download_cancel">Cancel download</string>
     <string name="phone_player_episode_panel_season">Choose season</string>
     <string name="phone_player_episode_panel_playing">Now playing</string>
+    <string name="phone_player_menu_decoder">Decoder</string>
+    <string name="phone_player_decoder_auto">Auto</string>
+    <string name="phone_player_decoder_hardware_plus">Hardware+ (recommended)</string>
+    <string name="phone_player_decoder_system">Hardware (faster)</string>
+    <string name="phone_player_decoder_software">Prefer software</string>
+    <string name="phone_player_decoder_fallback">Decoder failed. Switched to Auto.</string>
 </resources>

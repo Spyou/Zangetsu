@@ -1329,6 +1329,16 @@ class PhoneNativePlayer {
           route?.navigator?.removeRoute(route);
         }
         return null;
+      case 'setVideoDecoder':
+        final args = _callArgs(call);
+        final mode = args?['mode'];
+        if (_closed?.isCompleted == false &&
+            args?['sessionId'] == _sessionId &&
+            mode is String &&
+            const {'copy', 'direct', 'sw', 'auto'}.contains(mode)) {
+          await sl<PlaybackPrefs>().setVideoDecoder(mode);
+        }
+        return null;
       case 'rememberSubtitle':
         final args = _callArgs(call);
         if (_closed?.isCompleted != false ||
