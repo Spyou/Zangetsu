@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io' show Platform;
+import 'dart:io' show File, Platform;
 import 'dart:ui' show PlatformDispatcher;
 
 import 'package:firebase_core/firebase_core.dart';
@@ -159,6 +159,21 @@ Future<bool> _verifyLaunchAuthConnection() async {
   }
 }
 
+/// Image cache budget in MB: about 2% of the phone's RAM, kept between 80 and
+/// 200. Android only (reads /proc/meminfo); anywhere else it is the old 80.
+int _imageCacheBudgetMb() {
+  if (!Platform.isAndroid) return 80;
+  try {
+    final line = File(
+      '/proc/meminfo',
+    ).readAsLinesSync().firstWhere((l) => l.startsWith('MemTotal:'));
+    final kb = int.parse(RegExp(r'\d+').firstMatch(line)!.group(0)!);
+    return (kb / 1024 * 0.02).round().clamp(80, 200);
+  } catch (_) {
+    return 80;
+  }
+}
+
 Future<void> main() async {
   // Run inside a guarded zone so uncaught async errors land in the shareable
   // in-app log (binding + runApp must share this zone — hence both inside).
@@ -202,10 +217,16 @@ Future<void> main() async {
       // pile up and OOM-crash (default is 100 MB; libmpv adds a big native
       // baseline). On-screen images stay full quality; far-off-screen ones reload
       // from the disk cache.
-      PaintingBinding.instance.imageCache.maximumSizeBytes = 80 << 20; // 80 MB
+      // Scaled to the phone: a flat 80 MB let the Detail page's big images push
+      // Home's posters out, so they reloaded on the way back. Small-RAM phones
+      // keep the 80 MB floor.
+      final imageCacheMb = _imageCacheBudgetMb();
+      PaintingBinding.instance.imageCache.maximumSizeBytes = imageCacheMb << 20;
       // Cap the count too — the byte ceiling alone lets lots of small images
-      // (cast photos, credits) pile up. 300 is plenty for the visible screens.
-      PaintingBinding.instance.imageCache.maximumSize = 300;
+      // (cast photos, credits) pile up.
+      PaintingBinding.instance.imageCache.maximumSize = imageCacheMb >= 120
+          ? 600
+          : 300;
       // Fire the list-reveal animations promptly as items scroll in — the
       // detector defaults to a 500ms batch interval, which would blank-flash each
       // card before it reveals.
