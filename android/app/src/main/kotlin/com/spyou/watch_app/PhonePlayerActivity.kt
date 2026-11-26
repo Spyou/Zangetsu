@@ -645,6 +645,12 @@ class PhonePlayerActivity : Activity() {
             loadingTitle.visibility = View.GONE
         }
         controls = findViewById(R.id.controls)
+        androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(controls) { view, insets ->
+            val cutout = insets.displayCutout
+            // The video can fill the window while controls avoid the camera edge.
+            view.setPadding(cutout?.safeInsetLeft ?: 0, 0, cutout?.safeInsetRight ?: 0, 0)
+            insets
+        }
         quickActions = findViewById(R.id.quick_actions)
         btnPlay = findViewById(R.id.btn_play)
         seek = findViewById(R.id.seek)

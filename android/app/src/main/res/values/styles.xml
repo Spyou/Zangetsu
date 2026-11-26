@@ -65,6 +65,7 @@
              generic grey placeholder for the first frame instead of black. -->
         <item name="android:windowBackground">@color/phone_player_window_bg</item>
         <item name="android:windowIsTranslucent">@bool/phone_player_translucent</item>
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
         <item name="android:windowDisablePreview">true</item>
         <item name="android:windowAnimationStyle">@style/PhonePlayerWindowAnimation</item>
         <!-- The legacy Fullscreen ancestor theme doesn't reliably hand off
