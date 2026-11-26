@@ -113,7 +113,6 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
   Set<String> _lockedProfileIds = {};
   int _lockBadgeLoad = 0;
   bool _managingProfiles = false;
-  bool _recoveryPromptShown = false;
   String? _pickerArtworkUrl;
   ProfilePickerArtwork? _pickerArtwork;
   Timer? _artworkRotation;
@@ -138,9 +137,6 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) unawaited(_promptForRecovery());
-    });
     _pickerEntrance = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 700),
@@ -569,10 +565,7 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
     return deleted;
   }
 
-  Future<void> _promptForRecovery() async {
-    if (_recoveryPromptShown || _profiles.recoverableProfiles.isEmpty) return;
-    _recoveryPromptShown = true;
-    final profile = _profiles.recoverableProfiles.first;
+  Future<void> _promptForRecovery(ViewerProfile profile) async {
     final owner = _profiles.ownerKey;
     final action = await showDialog<_RecoveryAction>(
       context: context,
@@ -764,6 +757,13 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
           padding: const EdgeInsets.only(top: 12, bottom: 36),
           children: [
             _settingsProfileHeader(active, onSwitch),
+            for (final profile in _profiles.recoverableProfiles)
+              SettingsTile(
+                icon: Icons.restore,
+                title: 'Recover ${profile.name}',
+                subtitle: 'Available on this device only',
+                onTap: () => _promptForRecovery(profile),
+              ),
             SettingsSectionLabel(
               otherProfiles.isEmpty ? 'Manage profiles' : 'Other profiles',
             ),

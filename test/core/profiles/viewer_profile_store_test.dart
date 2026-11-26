@@ -417,7 +417,7 @@ void main() {
       );
       await first.loadForUser();
       final guest = (await first.create('Guest'))!;
-      remote.rows.remove(guest.id); // Deleted on another device.
+      await remote.delete('test-user', guest.id); // Deleted on another device.
 
       final reloaded = ViewerProfileStore(
         remote: remote,
@@ -427,10 +427,8 @@ void main() {
 
       expect(reloaded.profiles.any((p) => p.id == guest.id), isFalse);
       expect(remote.rows.containsKey(guest.id), isFalse);
-      expect(
-        Hive.box(ViewerProfileStore.boxName).get('recoverable:test-user'),
-        contains(predicate((value) => value is Map && value['id'] == guest.id)),
-      );
+      expect(reloaded.recoverableProfiles, isEmpty);
+      expect(await reloaded.restoreRecoverable(guest.id), isFalse);
     },
   );
 
@@ -933,10 +931,12 @@ class _BlockingDeleteProfileRemote implements ViewerProfileRemote {
 
 class _MemoryProfileRemote implements ViewerProfileRemote {
   final Map<String, ViewerProfile> rows = {};
+  final deletedIds = <String>{};
   bool offline = false;
 
   @override
   Future<List<Map<String, dynamic>>> listFor(String userId) async => [
+    for (final id in deletedIds) {'profile_id': id, 'deleted': true},
     for (final p in rows.values)
       {
         'profile_id': p.id,
@@ -961,7 +961,7 @@ class _MemoryProfileRemote implements ViewerProfileRemote {
   @override
   Future<void> delete(String userId, String profileId) async {
     if (offline) throw const SocketException('offline');
-    rows.remove(profileId);
+    if (rows.remove(profileId) != null) deletedIds.add(profileId);
   }
 }
 

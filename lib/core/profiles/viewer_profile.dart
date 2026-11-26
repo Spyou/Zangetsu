@@ -2,7 +2,8 @@ import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
-import 'package:supabase_flutter/supabase_flutter.dart' show PostgrestClient;
+import 'package:supabase_flutter/supabase_flutter.dart'
+    show PostgrestClient, PostgrestException;
 
 import '../hive/safe_box.dart';
 import '../supabase/cloud_postgrest.dart';
@@ -110,7 +111,19 @@ class ViewerProfileRemote {
         .select()
         .eq('user_key', userId)
         .order('created_at');
-    return (rows as List).cast<Map<String, dynamic>>();
+    try {
+      final deletions = await _cloud
+          .from('viewer_profile_deletions')
+          .select('profile_id')
+          .eq('user_key', userId);
+      return [
+        ...rows,
+        for (final row in deletions) {...row, 'deleted': true},
+      ];
+    } on PostgrestException catch (error) {
+      if (error.code != 'PGRST205' && error.code != '42P01') rethrow;
+      return rows;
+    }
   }
 
   Future<void> upsert(String userId, ViewerProfile profile) async {
@@ -193,9 +206,13 @@ class ViewerProfileStore {
     if (owner != _owner || owner != (_loadedOwner ?? _owner)) {
       return Future.value();
     }
-    return _box.put(_dismissedRecoveryKey(owner), [
-      ..._dismissedRecoveryIds(owner)..add(profileId),
-    ]);
+    return _box
+        .put(_dismissedRecoveryKey(owner), [
+          ..._dismissedRecoveryIds(owner)..add(profileId),
+        ])
+        .then((_) {
+          if (owner == _owner) revision.value++;
+        });
   }
 
   ViewerProfile get activeProfile =>
@@ -355,35 +372,50 @@ class ViewerProfileStore {
     try {
       final rows = await remote.listFor(userId);
       if (!isCurrentLoad()) return;
+      final deletedIds = {
+        for (final row in rows)
+          if (row['deleted'] == true &&
+              row['profile_id'] is String &&
+              row['profile_id'] != kDefaultProfileId)
+            row['profile_id'] as String,
+      };
       final cloud = [
         for (final row in rows)
-          if (_validRemoteProfile(row)) _fromRemote(row),
+          if (!deletedIds.contains(row['profile_id']) &&
+              _validRemoteProfile(row))
+            _fromRemote(row),
       ];
       final pending = _pending(owner);
       final cloudIds = cloud.map((profile) => profile.id).toSet();
       mergedRecoverable = {
         for (final profile in recoverable)
-          if (!cloudIds.contains(profile.id)) profile.id: profile,
+          if (!deletedIds.contains(profile.id) &&
+              !cloudIds.contains(profile.id))
+            profile.id: profile,
         for (final profile in local)
           if (profile.id != kDefaultProfileId &&
+              !deletedIds.contains(profile.id) &&
               !cloudIds.contains(profile.id) &&
               pending[profile.id] == null)
             profile.id: profile,
       }.values.toList();
       final unsynced = [
         for (final profile in local)
-          if (pending[profile.id] == _PendingProfileWrite.create ||
-              (pending[profile.id] == _PendingProfileWrite.update &&
-                  cloudIds.contains(profile.id)))
+          if (!deletedIds.contains(profile.id) &&
+              (pending[profile.id] == _PendingProfileWrite.create ||
+                  (pending[profile.id] == _PendingProfileWrite.update &&
+                      cloudIds.contains(profile.id))))
             profile,
       ];
-      final deletedWhileOffline = [
+      final deletedWhileOffline = {
+        for (final profile in [...local, ...recoverable])
+          if (deletedIds.contains(profile.id)) profile.id,
         for (final profile in local)
           if (profile.id != kDefaultProfileId &&
               pending[profile.id] == _PendingProfileWrite.update &&
               !cloudIds.contains(profile.id))
             profile.id,
-      ];
+      };
       var merged = {
         for (final profile in cloud) profile.id: profile,
         for (final profile in unsynced) profile.id: profile,
@@ -399,6 +431,7 @@ class ViewerProfileStore {
       for (final profileId in deletedWhileOffline) {
         await _deleteLocalProfileData(profileId);
         await _setPending(owner, profileId, null);
+        if (!isCurrentLoad()) return;
       }
       for (final profile in unsynced) {
         await remote.upsert(userId, profile);

@@ -71,7 +71,7 @@ void main() {
     expect(find.text('Main screen'), findsOneWidget);
   });
 
-  testWidgets('asks before uploading an old phone-only profile', (
+  testWidgets('offers recovery in settings without prompting on launch', (
     tester,
   ) async {
     final remote = _RecoveryProfileRemote();
@@ -99,6 +99,13 @@ void main() {
     );
     await tester.pump();
 
+    expect(find.text('Old Guest is on this phone only'), findsNothing);
+    await tester.pumpWidget(
+      MaterialApp(home: ViewerProfilesScreen(onSwitchProfile: () {})),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Recover Old Guest'));
+    await tester.pumpAndSettle();
     expect(find.text('Old Guest is on this phone only'), findsOneWidget);
     expect(find.text('Don’t ask again'), findsOneWidget);
     expect(remote.rows.containsKey('old-guest'), isFalse);
