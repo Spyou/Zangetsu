@@ -8,6 +8,7 @@ import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
+import '../../core/tv/tv_alert_dialog.dart' show TvFocusClaim;
 import '../../core/tv/tv_list_focusable.dart';
 
 const _telegramUrl = 'https://t.me/ZangetsuStream';
@@ -50,8 +51,21 @@ Future<void> showCommunitySheet(BuildContext context) {
   );
 }
 
-class _CommunitySheet extends StatelessWidget {
+class _CommunitySheet extends StatefulWidget {
   const _CommunitySheet();
+
+  @override
+  State<_CommunitySheet> createState() => _CommunitySheetState();
+}
+
+class _CommunitySheetState extends State<_CommunitySheet> {
+  final FocusNode _firstNode = FocusNode(debugLabel: 'community-telegram');
+
+  @override
+  void dispose() {
+    _firstNode.dispose();
+    super.dispose();
+  }
 
   Future<void> _open(String url) async {
     final uri = Uri.tryParse(url);
@@ -66,7 +80,7 @@ class _CommunitySheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isTv = sl<AppMode>().isTv;
-    return SafeArea(
+    final sheet = SafeArea(
       top: false,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(24, 16, 24, 20),
@@ -143,6 +157,10 @@ class _CommunitySheet extends StatelessWidget {
         ),
       ),
     );
+    if (!isTv) return sheet;
+    // Home behind the sheet can mount autofocused rows late; keep the D-pad
+    // here so "Maybe later" stays reachable.
+    return TvFocusClaim(targets: [_firstNode], child: sheet);
   }
 
   Widget _linkButton(
@@ -172,7 +190,13 @@ class _CommunitySheet extends StatelessWidget {
     );
     if (!isTv) return button;
     // On TV the D-pad drives focus; TvFocusable handles OK-key activation.
-    return TvListFocusable( autofocus: autofocus, onTap: go, child: button);
+    // ExcludeFocus: one D-pad stop per button, always the one with the ring.
+    return TvListFocusable(
+      autofocus: autofocus,
+      focusNode: autofocus ? _firstNode : null,
+      onTap: go,
+      child: ExcludeFocus(child: button),
+    );
   }
 
   Widget _laterButton(BuildContext context, {required bool isTv}) {
@@ -183,6 +207,6 @@ class _CommunitySheet extends StatelessWidget {
           style: AppText.body.copyWith(color: AppColors.textTertiary)),
     );
     if (!isTv) return button;
-    return TvListFocusable( onTap: dismiss, child: button);
+    return TvListFocusable(onTap: dismiss, child: ExcludeFocus(child: button));
   }
 }

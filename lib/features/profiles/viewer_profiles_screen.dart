@@ -21,6 +21,7 @@ import '../../core/theme/app_text.dart';
 import '../../core/ui/image_fade.dart';
 import '../../core/ui/native_cover_provider.dart';
 import '../../core/ui/settings_widgets.dart';
+import '../../core/tv/tv_alert_dialog.dart';
 import '../../core/tv/tv_focusable.dart';
 import '../../core/tv/tv_list_focusable.dart';
 import '../../l10n/l10n.dart';
@@ -567,13 +568,45 @@ class _ViewerProfilesScreenState extends State<ViewerProfilesScreen>
 
   Future<void> _promptForRecovery(ViewerProfile profile) async {
     final owner = _profiles.ownerKey;
-    final action = await showDialog<_RecoveryAction>(
+    final title = '${profile.name} is on this phone only';
+    const body =
+        'This profile is missing from cloud sync. It may have been created offline or deleted on another device. Restore it only if you want it on all your devices. Its local data is safe either way.';
+    final isTv = sl.isRegistered<AppMode>() && sl<AppMode>().isTv;
+    // TV: plain AlertDialog + TextButton has no visible D-pad focus; use the
+    // TV alert with Later focused, like the other TV confirms.
+    final action = isTv
+        ? await showTvAlertDialog<_RecoveryAction>(
+            context,
+            title: title,
+            body: const Text(body),
+            actions: [
+              TvAlertAction(
+                label: 'Later',
+                autofocus: true,
+                onTap: () => Navigator.of(context, rootNavigator: true).pop(),
+              ),
+              TvAlertAction(
+                label: 'Don’t ask again',
+                onTap: () => Navigator.of(
+                  context,
+                  rootNavigator: true,
+                ).pop(_RecoveryAction.dismiss),
+              ),
+              TvAlertAction(
+                label: 'Restore to cloud',
+                primary: true,
+                onTap: () => Navigator.of(
+                  context,
+                  rootNavigator: true,
+                ).pop(_RecoveryAction.restore),
+              ),
+            ],
+          )
+        : await showDialog<_RecoveryAction>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('${profile.name} is on this phone only'),
-        content: const Text(
-          'This profile is missing from cloud sync. It may have been created offline or deleted on another device. Restore it only if you want it on all your devices. Its local data is safe either way.',
-        ),
+        title: Text(title),
+        content: const Text(body),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),

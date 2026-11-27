@@ -7,6 +7,7 @@ import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
+import '../../core/tv/tv_alert_dialog.dart' show TvFocusClaim;
 import '../../core/tv/tv_list_focusable.dart';
 import '../../l10n/l10n.dart';
 
@@ -42,10 +43,25 @@ Future<void> showAnnouncementSheet(BuildContext context, Announcement a) {
   );
 }
 
-class _AnnouncementSheet extends StatelessWidget {
+class _AnnouncementSheet extends StatefulWidget {
   const _AnnouncementSheet({required this.a});
 
   final Announcement a;
+
+  @override
+  State<_AnnouncementSheet> createState() => _AnnouncementSheetState();
+}
+
+class _AnnouncementSheetState extends State<_AnnouncementSheet> {
+  final FocusNode _gotItNode = FocusNode(debugLabel: 'announcement-got-it');
+
+  Announcement get a => widget.a;
+
+  @override
+  void dispose() {
+    _gotItNode.dispose();
+    super.dispose();
+  }
 
   (IconData, Color) get _badge => switch (a.type) {
     'warning' => (Icons.warning_amber_rounded, const Color(0xFFF2B01E)),
@@ -65,7 +81,7 @@ class _AnnouncementSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     final (icon, tint) = _badge;
     final isTv = sl<AppMode>().isTv;
-    return SafeArea(
+    final sheet = SafeArea(
       top: false,
       child: ConstrainedBox(
         // Cap the height so a long message scrolls instead of overflowing —
@@ -179,6 +195,7 @@ class _AnnouncementSheet extends StatelessWidget {
                     filled: true,
                     // On TV give the primary button initial focus so OK dismisses.
                     autofocus: isTv,
+                    focusNode: _gotItNode,
                     isTv: isTv,
                     onTap: () => Navigator.of(context).pop(),
                   ),
@@ -189,6 +206,10 @@ class _AnnouncementSheet extends StatelessWidget {
         ),
       ),
     );
+    if (!isTv) return sheet;
+    // Home behind the sheet can mount autofocused rows late; keep the D-pad
+    // here so "Got it" stays reachable.
+    return TvFocusClaim(targets: [_gotItNode], child: sheet);
   }
 
   Widget _sheetButton(
@@ -198,6 +219,7 @@ class _AnnouncementSheet extends StatelessWidget {
     required bool autofocus,
     required bool isTv,
     required VoidCallback onTap,
+    FocusNode? focusNode,
   }) {
     final button = filled
         ? FilledButton(
@@ -218,6 +240,12 @@ class _AnnouncementSheet extends StatelessWidget {
           );
     if (!isTv) return button;
     // On TV the D-pad drives focus; TvFocusable handles OK-key activation.
-    return TvListFocusable( autofocus: autofocus, onTap: onTap, child: button);
+    // ExcludeFocus: one D-pad stop per button, always the one with the ring.
+    return TvListFocusable(
+      autofocus: autofocus,
+      focusNode: focusNode,
+      onTap: onTap,
+      child: ExcludeFocus(child: button),
+    );
   }
 }

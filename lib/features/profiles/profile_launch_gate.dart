@@ -174,7 +174,17 @@ class _ProfileLaunchGateState extends State<ProfileLaunchGate> {
   Future<void> _popPicker(BuildContext pickerContext) async {
     // Wait until the dock and the enabled source Hero both have a layout.
     await WidgetsBinding.instance.endOfFrame;
-    if (pickerContext.mounted) Navigator.of(pickerContext).pop();
+    if (!pickerContext.mounted) return;
+    final navigator = Navigator.of(pickerContext);
+    final route = ModalRoute.of(pickerContext);
+    // Close the picker itself. A blind pop() closes whatever is on top, and a
+    // prompt (update dialog, sheet) pushed during the avatar animation would
+    // be closed instead, leaving the picker up underneath it.
+    if (route == null || route.isCurrent) {
+      navigator.pop(); // normal path, keeps the fade + Hero
+    } else if (route.isActive) {
+      navigator.removeRoute(route);
+    }
   }
 
   @override

@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 
+import '../../core/app_mode.dart';
+import '../../core/di/injector.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
+import '../../core/tv/tv_alert_dialog.dart' show TvFocusClaim;
+import '../../core/tv/tv_focusable.dart';
 import '../../core/update/update_service.dart';
 import '../../l10n/l10n.dart';
 
@@ -31,8 +35,25 @@ Future<void> maybeShowUpdateDialog(
     }
     return;
   }
-  await showDialog<void>(
+  await showUpdateDialog(context, info: info, service: service);
+}
+
+bool get _isTv => sl.isRegistered<AppMode>() && sl<AppMode>().isTv;
+
+/// Shows the update dialog for a known [info]. On TV it opens on the root
+/// navigator with a closed focus loop (like `showTvAlertDialog`), so the
+/// D-pad cannot walk the screen underneath. The phone look is unchanged.
+Future<void> showUpdateDialog(
+  BuildContext context, {
+  required UpdateInfo info,
+  required UpdateService service,
+}) {
+  final tv = _isTv;
+  return showDialog<void>(
     context: context,
+    useRootNavigator: true,
+    requestFocus: tv ? true : null,
+    traversalEdgeBehavior: tv ? TraversalEdgeBehavior.closedLoop : null,
     builder: (_) => _UpdateDialog(info: info, service: service),
   );
 }
@@ -40,70 +61,157 @@ Future<void> maybeShowUpdateDialog(
 /// Confirmation shown when the user flips the "Beta updates" switch on, so it's
 /// never a silent opt-in. Returns true if they chose to join.
 Future<bool> confirmJoinBeta(BuildContext context) async {
+  final tv = _isTv;
   final joined = await showDialog<bool>(
     context: context,
-    builder: (ctx) => Dialog(
-      backgroundColor: AppColors.surface,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-      insetPadding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.science_outlined, color: AppColors.accent, size: 26),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(ctx.l10n.joinBetaUpdates, style: AppText.title),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Text(
-              ctx.l10n.joinBetaUpdatesBody,
-              style: AppText.body.copyWith(
-                color: AppColors.textSecondary,
-                height: 1.4,
-              ),
-            ),
-            const SizedBox(height: 16),
-            Align(
-              alignment: AlignmentDirectional.centerEnd,
-              child: Wrap(
-                spacing: 4,
-                crossAxisAlignment: WrapCrossAlignment.center,
+    useRootNavigator: true,
+    requestFocus: tv ? true : null,
+    traversalEdgeBehavior: tv ? TraversalEdgeBehavior.closedLoop : null,
+    builder: (ctx) => _TvDialogFocus(
+      enabled: tv,
+      builder: (nodes) => Dialog(
+        backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        insetPadding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
                 children: [
-                  TextButton(
-                    onPressed: () => Navigator.of(ctx).pop(false),
-                    child: Text(
-                      ctx.l10n.notNow,
-                      style: AppText.button.copyWith(
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                  ),
-                  FilledButton(
-                    style: FilledButton.styleFrom(
-                      backgroundColor: AppColors.accent,
-                    ),
-                    onPressed: () => Navigator.of(ctx).pop(true),
-                    child: Text(
-                      ctx.l10n.joinBeta,
-                      style: AppText.button.copyWith(color: Colors.white),
-                    ),
+                  Icon(Icons.science_outlined, color: AppColors.accent, size: 26),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(ctx.l10n.joinBetaUpdates, style: AppText.title),
                   ),
                 ],
               ),
-            ),
-          ],
+              const SizedBox(height: 12),
+              Text(
+                ctx.l10n.joinBetaUpdatesBody,
+                style: AppText.body.copyWith(
+                  color: AppColors.textSecondary,
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Align(
+                alignment: AlignmentDirectional.centerEnd,
+                child: Wrap(
+                  spacing: 4,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    _tvButton(
+                      tv: tv,
+                      node: nodes.secondary,
+                      autofocus: true,
+                      onTap: () => Navigator.of(ctx).pop(false),
+                      child: TextButton(
+                        onPressed: () => Navigator.of(ctx).pop(false),
+                        child: Text(
+                          ctx.l10n.notNow,
+                          style: AppText.button.copyWith(
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ),
+                    ),
+                    _tvButton(
+                      tv: tv,
+                      node: nodes.primary,
+                      onTap: () => Navigator.of(ctx).pop(true),
+                      child: FilledButton(
+                        style: FilledButton.styleFrom(
+                          backgroundColor: AppColors.accent,
+                        ),
+                        onPressed: () => Navigator.of(ctx).pop(true),
+                        child: Text(
+                          ctx.l10n.joinBeta,
+                          style: AppText.button.copyWith(color: Colors.white),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     ),
   );
   return joined ?? false;
+}
+
+/// On TV, wraps a dialog button in a [TvFocusable] with a white focus ring,
+/// so the D-pad can see and pick it. The Material button inside keeps its look
+/// but is kept out of focus, so each button is one D-pad stop. Phones get
+/// [child] unchanged.
+Widget _tvButton({
+  required bool tv,
+  required FocusNode node,
+  required VoidCallback onTap,
+  required Widget child,
+  bool autofocus = false,
+}) {
+  if (!tv) return child;
+  return TvFocusable(
+    focusNode: node,
+    autofocus: autofocus,
+    scale: 1.0,
+    borderRadius: 20,
+    onTap: onTap,
+    child: ExcludeFocus(child: child),
+  );
+}
+
+/// Focus nodes a TV dialog hands to its buttons. [secondary] is the default
+/// (the decline), [primary] the confirm, [tertiary] an extra decline.
+class _DialogNodes {
+  final FocusNode secondary = FocusNode(debugLabel: 'dialog-secondary');
+  final FocusNode primary = FocusNode(debugLabel: 'dialog-primary');
+  final FocusNode tertiary = FocusNode(debugLabel: 'dialog-tertiary');
+
+  void dispose() {
+    secondary.dispose();
+    primary.dispose();
+    tertiary.dispose();
+  }
+}
+
+/// Owns a dialog's button nodes and, on TV, keeps D-pad focus on them with
+/// [TvFocusClaim] (the default decline first; Skip / Later hide while a
+/// download runs, so the claim falls through to Update).
+class _TvDialogFocus extends StatefulWidget {
+  const _TvDialogFocus({required this.enabled, required this.builder});
+
+  final bool enabled;
+  final Widget Function(_DialogNodes nodes) builder;
+
+  @override
+  State<_TvDialogFocus> createState() => _TvDialogFocusState();
+}
+
+class _TvDialogFocusState extends State<_TvDialogFocus> {
+  final _DialogNodes _nodes = _DialogNodes();
+
+  @override
+  void dispose() {
+    _nodes.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final child = widget.builder(_nodes);
+    if (!widget.enabled) return child;
+    return TvFocusClaim(
+      targets: [_nodes.secondary, _nodes.primary, _nodes.tertiary],
+      child: child,
+    );
+  }
 }
 
 class _UpdateDialog extends StatefulWidget {
@@ -120,6 +228,13 @@ class _UpdateDialogState extends State<_UpdateDialog> {
   double? _progress; // null until the download starts
   bool _busy = false; // downloading or installing
   String? _error;
+
+  Future<void> _skip() async {
+    await widget.service.skipVersion(widget.info.version);
+    if (mounted) Navigator.of(context).pop();
+  }
+
+  void _later() => Navigator.of(context).pop();
 
   Future<void> _startUpdate() async {
     setState(() {
@@ -159,6 +274,14 @@ class _UpdateDialogState extends State<_UpdateDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final tv = _isTv;
+    return _TvDialogFocus(
+      enabled: tv,
+      builder: (nodes) => _buildDialog(context, tv, nodes),
+    );
+  }
+
+  Widget _buildDialog(BuildContext context, bool tv, _DialogNodes nodes) {
     final notes = widget.info.notes;
     return Dialog(
       backgroundColor: AppColors.surface,
@@ -238,36 +361,55 @@ class _UpdateDialogState extends State<_UpdateDialog> {
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
                   if (!_busy)
-                    TextButton(
-                      onPressed: () async {
-                        await widget.service.skipVersion(widget.info.version);
-                        if (context.mounted) Navigator.of(context).pop();
-                      },
-                      child: Text(
-                        context.l10n.skip,
-                        style: AppText.button.copyWith(
-                          color: AppColors.textTertiary,
+                    _tvButton(
+                      tv: tv,
+                      node: nodes.tertiary,
+                      onTap: _skip,
+                      child: TextButton(
+                        onPressed: _skip,
+                        child: Text(
+                          context.l10n.skip,
+                          style: AppText.button.copyWith(
+                            color: AppColors.textTertiary,
+                          ),
                         ),
                       ),
                     ),
                   if (!_busy)
-                    TextButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      child: Text(
-                        context.l10n.later,
-                        style: AppText.button.copyWith(
-                          color: AppColors.textSecondary,
+                    _tvButton(
+                      tv: tv,
+                      node: nodes.secondary,
+                      // Later is the safe default: OK on open never installs
+                      // and never skips a version for good.
+                      autofocus: true,
+                      onTap: _later,
+                      child: TextButton(
+                        onPressed: _later,
+                        child: Text(
+                          context.l10n.later,
+                          style: AppText.button.copyWith(
+                            color: AppColors.textSecondary,
+                          ),
                         ),
                       ),
                     ),
-                  FilledButton(
-                    style: FilledButton.styleFrom(
-                      backgroundColor: AppColors.accent,
-                    ),
-                    onPressed: _busy ? null : _startUpdate,
-                    child: Text(
-                      _error != null ? context.l10n.retry : context.l10n.update,
-                      style: AppText.button.copyWith(color: Colors.white),
+                  _tvButton(
+                    tv: tv,
+                    node: nodes.primary,
+                    onTap: () {
+                      if (!_busy) _startUpdate();
+                    },
+                    child: FilledButton(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: AppColors.accent,
+                      ),
+                      onPressed: _busy ? null : _startUpdate,
+                      child: Text(
+                        _error != null
+                            ? context.l10n.retry
+                            : context.l10n.update,
+                        style: AppText.button.copyWith(color: Colors.white),
+                      ),
                     ),
                   ),
                 ],
