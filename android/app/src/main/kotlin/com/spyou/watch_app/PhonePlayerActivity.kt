@@ -433,12 +433,14 @@ class PhonePlayerActivity : Activity() {
         val previous = dockView ?: playerView
         dockView = view
         PlayerView.switchTargetView(activePlayer, previous, view)
+        scheduleSoftwareSurfaceRefresh()
     }
 
     internal fun detachDockView(view: PlayerView) {
         if (dockView !== view) return
         dockView = null
         player?.let { PlayerView.switchTargetView(it, view, playerView) }
+        scheduleSoftwareSurfaceRefresh()
     }
 
     internal fun dockCommand(command: String): Boolean {
@@ -3185,6 +3187,23 @@ class PhonePlayerActivity : Activity() {
         return true
     }
 
+    /**
+     * The FFmpeg (software) video renderer remembers its output surface by a JNI
+     * handle. After the surface is swapped (mini player, PiP, restore) the new one
+     * can carry the same handle, so it keeps drawing into the dead surface and the
+     * picture stays black with no error. A fresh player forgets the old surface.
+     * Hardware decode isn't affected. Waits a moment so the swap has settled.
+     */
+    private val refreshSoftwareSurface = Runnable {
+        if (isFinishing || isDestroyed) return@Runnable
+        if ((decoderOverride ?: defaultDecoderMode) == "sw") switchDecoder("sw")
+    }
+
+    private fun scheduleSoftwareSurfaceRefresh() {
+        handler.removeCallbacks(refreshSoftwareSurface)
+        handler.postDelayed(refreshSoftwareSurface, 400L)
+    }
+
     private fun replaceDecoderPlayer(mode: String): ExoPlayer {
         val previous = checkNotNull(player)
         val target = dockView ?: playerView
@@ -4533,6 +4552,7 @@ class PhonePlayerActivity : Activity() {
         newConfig: Configuration,
     ) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        scheduleSoftwareSurfaceRefresh()
         // The app behind a PiP window is live and visible; it must not stay frozen.
         PhonePlayerBridge.channel?.invokeMethod(
             "playerPip",
