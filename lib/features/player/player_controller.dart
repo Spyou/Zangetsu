@@ -265,6 +265,7 @@ class PlayerCubit extends Cubit<PlayerState> {
     Future<List<VideoSource>?> Function(String episodeUrl)?
     resolveDownloadedSources,
     this.localOnly = false,
+    this.remoteResolve = false,
     Future<({List<VideoSource> sources, bool done})> Function(
       String episodeUrl,
     )?
@@ -310,6 +311,11 @@ class PlayerCubit extends Cubit<PlayerState> {
   /// True only for the Downloads screen, where a missing local file is an
   /// error rather than a request to find an online substitute.
   final bool localOnly;
+
+  /// Links come from another device (TV handoff). The phone may not have
+  /// [sourceId] installed, so every resolve, retry and next episode goes
+  /// through [_resolveSources] and provider-dependent work is skipped.
+  final bool remoteResolve;
 
   /// Reads the links that have arrived since [_resolveSources] returned.
   /// Optional — null keeps the previous behaviour exactly (one batch, no poll).
@@ -645,6 +651,7 @@ class PlayerCubit extends Cubit<PlayerState> {
   /// own id is just 'zm', so read the resolver's winner for the current
   /// episode and fall back to [sourceId] when nothing resolved yet.
   String get playingSourceId {
+    if (remoteResolve) return sourceId;
     try {
       if (sl.isRegistered<PlaybackResolver>()) {
         final winner = sl<PlaybackResolver>().resolvedSourceId(
@@ -1207,7 +1214,8 @@ class PlayerCubit extends Cubit<PlayerState> {
         // episode's stream in the background so advancing is instant. Fires at
         // most once per current episode (re-armed when the index changes).
         final idx = state.currentIndex;
-        if (_prefetchedNextForIndex != idx &&
+        if (!remoteResolve &&
+            _prefetchedNextForIndex != idx &&
             idx + 1 < episodes.length &&
             _lastDur > Duration.zero &&
             p >= _lastDur * 0.85) {
@@ -1765,7 +1773,8 @@ class PlayerCubit extends Cubit<PlayerState> {
   VideoSource? _stremioSubtitleSource;
 
   Future<void> loadAddonSubtitles({bool retry = false}) async {
-    if (sourceId != stremioSourceId ||
+    if (remoteResolve ||
+        sourceId != stremioSourceId ||
         localOnly ||
         isClosed ||
         !sl.isRegistered<StremioManager>() ||
@@ -2252,7 +2261,8 @@ class PlayerCubit extends Cubit<PlayerState> {
         active: () => null,
       ),
     );
-    if (resetSourceCooldowns &&
+    if (!remoteResolve &&
+        resetSourceCooldowns &&
         sl.isRegistered<PlaybackResolver>() &&
         (showUrl != null && ZmodeIds.isZ(showUrl!))) {
       sl<PlaybackResolver>().invalidateWinner(_episodeUrl(currentEpisode));
@@ -2357,7 +2367,9 @@ class PlayerCubit extends Cubit<PlayerState> {
   /// keeps the one-shot [_resolveNoted] path exactly as before —
   /// [PlaybackResolver.resolveProgressive] only answers metadata urls.
   bool _useProgressive(String epUrl) =>
-      sl.isRegistered<PlaybackResolver>() && ZmodeIds.isZ(epUrl);
+      !remoteResolve &&
+      sl.isRegistered<PlaybackResolver>() &&
+      ZmodeIds.isZ(epUrl);
 
   /// Drops the progressive subscription, if any. Late sweep events have no
   /// listener afterwards, so nothing can merge into a departed episode. (The
@@ -3401,6 +3413,9 @@ class PlayerCubit extends Cubit<PlayerState> {
       );
       return false;
     }
+    // A TV handoff plays what the TV resolved; the phone may not even have
+    // this source, so there is no "next source" to try here.
+    if (remoteResolve) return false;
     final url = showUrl;
     if (url == null ||
         !ZmodeIds.isZ(url) ||
@@ -3482,7 +3497,8 @@ class PlayerCubit extends Cubit<PlayerState> {
     final sw = Stopwatch()..start();
     try {
       final out =
-          sourceId == stremioSourceId &&
+          !remoteResolve &&
+              sourceId == stremioSourceId &&
               Platform.isAndroid &&
               sl.isRegistered<StremioProvider>()
           ? await sl<StremioProvider>().getVideoSources(
@@ -3508,6 +3524,8 @@ class PlayerCubit extends Cubit<PlayerState> {
   }
 
   void _notePlayback({required bool ok}) {
+    // TV handoff: the TV owns this source's health, not the phone.
+    if (remoteResolve) return;
     final url = showUrl;
     // Z-Mode resolves across many sources behind one pseudo id, so an outcome
     // there says nothing about any particular source — attributing it would
@@ -3529,7 +3547,11 @@ class PlayerCubit extends Cubit<PlayerState> {
   String _deadEndMessage() {
     final url = showUrl;
     final sources =
-        url != null && ZmodeIds.isZ(url) && sl.isRegistered<PlaybackResolver>()
+        // A TV handoff has one source (the TV's) and no phone-side resolver.
+        !remoteResolve &&
+            url != null &&
+            ZmodeIds.isZ(url) &&
+            sl.isRegistered<PlaybackResolver>()
         // The source playing now is not in the excluded set yet.
         ? sl<PlaybackResolver>().unplayableCount(
                 _episodeUrl(currentEpisode),
@@ -3606,10 +3628,13 @@ class PlayerCubit extends Cubit<PlayerState> {
       // Every mirror failed to start — the cached resolution is likely
       // dead/expired, so drop it so the user's "retry" re-scrapes fresh links
       // instead of replaying the same dead cache.
-      sl<SourceRepository>().invalidateSources(
-        _episodeUrl(currentEpisode),
-        sourceId: sourceId,
-      );
+      // A TV handoff has no phone-side cache to drop: the TV re-resolves.
+      if (!remoteResolve) {
+        sl<SourceRepository>().invalidateSources(
+          _episodeUrl(currentEpisode),
+          sourceId: sourceId,
+        );
+      }
       // A source whose every mirror stalls is as unplayable as one whose links
       // 404 — same fallthrough to the next source rather than ending here.
       if (!await _tryNextSource()) {

@@ -1,9 +1,11 @@
+import '../companion/apple_companion.dart';
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/di/injector.dart';
+import '../../core/cast/cast_proxy.dart';
 import '../../core/discord/discord_presence.dart';
 import '../../core/discord/discord_rpc.dart';
 import '../../core/metadata/episode_metadata_service.dart';
@@ -53,6 +55,241 @@ import 'tv_progressive_sources.dart';
 /// phone (media_kit) player.
 class TvNativePlayer {
   static const _ch = MethodChannel('zangetsu/tv_player');
+  /// Bumped on every [play] so a phone handoff started for an older title
+  /// is rejected (see [companionSessionMatches]).
+  static int _companionSession = 0;
+
+  /// LAN proxy that serves the TV-resolved links (with their headers) to the
+  /// paired phone; restricted to the targets it was asked to serve.
+  static final _companionProxy = CastProxyServer(restrictTargets: true);
+
+  /// A torrent the TV started only for the paired phone (no TV player on it).
+  static String? _companionTorrentId;
+
+  /// Magnet + file index and local stream of [_companionTorrentId], so a
+  /// repeat request for the same link reuses it.
+  static String? _companionTorrentKey;
+  static String? _companionTorrentLocalUrl;
+
+  /// The TV player's own torrent, adopted while the phone streams it, so
+  /// closing the TV player doesn't cut the phone off.
+  static String? _adoptedTorrentId;
+
+  /// Revokes stream proxy access when the receiver or paired-phone session ends,
+  /// and stops any torrent kept alive only for the phone.
+  static Future<void> stopCompanionSharing() {
+    final ids = {_companionTorrentId, _adoptedTorrentId}
+      ..remove(null)
+      ..remove(_torrentId); // still the TV player's: it stops it itself
+    _companionTorrentId = null;
+    _adoptedTorrentId = null;
+    if (sl.isRegistered<TorrentService>()) {
+      for (final id in ids) {
+        unawaited(sl<TorrentService>().stop(id!));
+      }
+    }
+    return _companionProxy.stop();
+  }
+
+  /// Returns stable episode identity and a session generation for phone handoff
+  /// ('Continue on phone'). Throws [StateError] when nothing is playing on TV.
+  static Map<String, dynamic> companionSnapshot() {
+    if (_episodes.isEmpty || _resolve == null)
+      throw StateError('Start an episode on TV first.');
+    return {
+      'session': _companionSession,
+      'sourceId': _sourceId,
+      'showUrl': _showUrl,
+      'title': _showTitle,
+      'cover': _cover,
+      'episodes': _episodes.map((e) => e.toJson()).toList(),
+    };
+  }
+
+  /// Validates the TV session and lists the episode's links for the phone,
+  /// each proxied with its own TV-owned headers, so the phone never needs the
+  /// source installed. The TV's live link leads when it is on [index] and
+  /// healthy; then the TV's own mirrors (the 'sourcesFor' list). [refresh]
+  /// fetches a full fresh set (expired links).
+  static Future<Map<String, dynamic>> companionSources(
+    int session,
+    int index, {
+    bool refresh = false,
+  }) async {
+    if (session != _companionSession ||
+        index < 0 ||
+        index >= _episodes.length ||
+        _resolve == null) {
+      throw StateError('The TV title changed. Open Continue on phone again.');
+    }
+    final live = await const CompanionChannel()
+        .invokeMapMethod<String, dynamic>('receiverStream');
+    final liveFailed =
+        live?['error'] != null ||
+        (lastPlaybackErrorCode != null && lastPlaybackErrorIndex == index);
+    final ep = _episodes[index];
+    final cat = _category;
+    final epUrl = tvEpisodeUrl(ep.url, cat);
+    var listed = const <VideoSource>[];
+    Object? listError;
+    try {
+      listed = refresh
+          ? await _freshSources(epUrl)
+          : (await _progressiveSources?.latest(epUrl, cat)) ??
+                await _snapshotOrResolve(epUrl);
+    } catch (e) {
+      listError = e;
+    }
+    if (session != _companionSession) throw StateError('The TV title changed.');
+    VideoSource? first;
+    if (!liveFailed && live?['index'] == index && live?['url'] is String) {
+      final liveUrl = live!['url'] as String;
+      // The listed twin keeps quality, audio kind and the raw subtitles + skew
+      // (the live subtitles may be skew files baked for the TV).
+      first =
+          listed.where((s) => s.url == liveUrl).firstOrNull ??
+          VideoSource(
+            url: liveUrl,
+            headers: (live['headers'] as Map?)?.cast<String, String>(),
+            subtitles: (live['subtitles'] as List? ?? [])
+                .map(
+                  (s) => Subtitle.fromJson(Map<String, dynamic>.from(s as Map)),
+                )
+                .toList(),
+            drmKid: live['drmKid'] as String?,
+            drmKey: live['drmKey'] as String?,
+          );
+      if (_torrentId != null && liveUrl == _torrentLocalUrl) {
+        _adoptedTorrentId = _torrentId;
+      }
+    }
+    first ??= listed.isEmpty ? null : _pickSource(ep, listed, cat);
+    final seen = <String>{};
+    final all = [?first, ...listed];
+    final sources = [
+      for (final s in all)
+        if (!s.isDrm && seen.add(s.url)) s,
+    ];
+    if (sources.isEmpty) {
+      if (all.isNotEmpty)
+        throw StateError(
+          'This protected stream cannot be transferred to the phone player.',
+        );
+      if (listError != null) throw listError;
+      throw StateError(
+        'The TV could not resolve this episode. Try another source.',
+      );
+    }
+    final out = <Map<String, dynamic>>[];
+    for (final s in sources) {
+      if (isTorrentUrl(s.url) && out.isNotEmpty) {
+        // One torrent streams at a time: later ones go to the phone as-is and
+        // its own torrent engine plays them (no provider needed).
+        out.add(
+          VideoSource(
+            url: s.url,
+            quality: s.quality,
+            label: s.label,
+            container: s.container,
+            kind: s.kind,
+            audioLang: s.audioLang,
+            torrentFileIndex: s.torrentFileIndex,
+            subtitleSkewSeconds: s.subtitleSkewSeconds,
+            subtitleSkewAfterSeconds: s.subtitleSkewAfterSeconds,
+          ).toJson(),
+        );
+        continue;
+      }
+      final playable = await _companionPlayableUrl(
+        s.url,
+        fileIndex: s.torrentFileIndex,
+      );
+      if (session != _companionSession)
+        throw StateError('The TV title changed.');
+      if (playable == null) continue;
+      final headers = s.headers ?? const <String, String>{};
+      final url = out.isEmpty
+          ? await _companionProxy.serve(playable, headers)
+          : _companionProxy.proxify(playable, headers: headers);
+      if (url == null)
+        throw StateError(
+          'Connect your phone and TV to the same Wi-Fi for video handoff.',
+        );
+      out.add(
+        VideoSource(
+          url: url,
+          quality: s.quality,
+          label: s.label,
+          container: s.container,
+          kind: s.kind,
+          audioLang: s.audioLang,
+          subtitleSkewSeconds: s.subtitleSkewSeconds,
+          subtitleSkewAfterSeconds: s.subtitleSkewAfterSeconds,
+          subtitles: s.subtitles
+              .map(
+                (t) => Subtitle(
+                  url:
+                      _companionProxy.proxify(t.url, headers: headers) ?? t.url,
+                  lang: t.lang,
+                  label: t.label,
+                  format: t.format,
+                  isDefault: t.isDefault,
+                ),
+              )
+              .toList(),
+        ).toJson(),
+      );
+    }
+    if (out.isEmpty) throw StateError('The TV stream is not available yet.');
+    return {'sources': out};
+  }
+
+  /// A URL the phone can play through the proxy: a magnet/.torrent is
+  /// streamed on the TV. Only the previous companion torrent is stopped here;
+  /// the engine runs one torrent at a time, so a TV player torrent it replaces
+  /// is forgotten rather than stopped again later.
+  static Future<String?> _companionPlayableUrl(
+    String url, {
+    int? fileIndex,
+  }) async {
+    if (!isTorrentUrl(url)) return url;
+    // The phone asks again for the same episode (the player re-resolves at
+    // start, retries): keep streaming the torrent it may already be playing
+    // instead of restarting it under a new id.
+    final key = '$url#${fileIndex ?? ''}';
+    final running = _companionTorrentLocalUrl;
+    if (_companionTorrentId != null &&
+        _companionTorrentKey == key &&
+        running != null) {
+      return running;
+    }
+    final previous = _companionTorrentId;
+    _companionTorrentId = null;
+    _companionTorrentKey = null;
+    _companionTorrentLocalUrl = null;
+    _adoptedTorrentId = null;
+    try {
+      final torrents = sl<TorrentService>();
+      if (previous != null) await torrents.stop(previous);
+      final t = await torrents.startStream(
+        url,
+        allowMobileData: sl<TorrentPrefs>().allowMobileData,
+        fileIndex: fileIndex,
+      );
+      _torrentId = null;
+      _torrentLocalUrl = null;
+      _companionTorrentId = t.id;
+      _companionTorrentKey = key;
+      _companionTorrentLocalUrl = t.localUrl;
+      return t.localUrl;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Rejects handoff selections made before the TV changed titles.
+  static bool companionSessionMatches(int session) =>
+      session == _companionSession;
   static bool _handlerBound = false;
 
   /// Set when [play] fails during source resolution — surfaced by
@@ -103,6 +340,7 @@ class TvNativePlayer {
   static String _category = 'sub';
   static ResumeStore? _resume;
   static String? _torrentId; // active torrent stream (stopped on switch/close)
+  static String? _torrentLocalUrl; // [_torrentId]'s local http stream
 
   /// Returns `false` when the episode could not be resolved or started (no
   /// sources, torrent blocked, etc.). Callers should surface that to the user;
@@ -130,6 +368,7 @@ class TvNativePlayer {
     String? imdbId,
   }) async {
     if (startIndex < 0 || startIndex >= episodes.length) return false;
+    _companionSession++;
     lastFailure = null;
     lastPlaybackErrorCode = null;
     lastPlaybackErrorIndex = null;
@@ -723,9 +962,8 @@ class TvNativePlayer {
     }
   }
 
-  static Future<List<VideoSource>> _prepareSources(
-    List<VideoSource> sources,
-  ) =>
+  /// Every mirror in [sources] with its subtitle skew baked in, order kept.
+  static Future<List<VideoSource>> _prepareSources(List<VideoSource> sources) =>
       // In parallel: the native mirror walk waits at most 30 s on this list,
       // and each skewed mirror may download several subtitle files.
       Future.wait([for (final source in sources) _withSkewedSubtitles(source)]);
@@ -798,26 +1036,7 @@ class TvNativePlayer {
           ? await progressive.first(url, cat)
           : await _resolve!(url);
       if (_session != session) return null;
-      // A Stremio title replays the link the viewer picked last time.
-      final saved =
-          _sourceId == stremioSourceId && sl.isRegistered<TitlePrefsStore>()
-          ? sl<TitlePrefsStore>().preferredStremioLink(
-              ep.url,
-              sources,
-              showUrl: _showUrl,
-            )
-          : null;
-      final picked =
-          saved ??
-          pickDefault(
-            sources,
-            prefer: cat == 'dub' ? AudioKind.dub : AudioKind.sub,
-            preferQuality:
-                (_showUrl != null && sl.isRegistered<TitlePrefsStore>()
-                    ? sl<TitlePrefsStore>().quality(_sourceId, _showUrl!)
-                    : null) ??
-                sl<PlaybackPrefs>().defaultQuality,
-          );
+      final picked = _pickSource(ep, sources, cat);
       if (picked == null && sources.isEmpty) {
         lastFailure ??= const TvPlaybackLoadFailure(
           TvPlaybackLoadFailureKind.episodeNotAvailable,
@@ -848,6 +1067,33 @@ class TvNativePlayer {
     }
   }
 
+  /// The link the TV plays first for [ep]: the viewer's saved Stremio link,
+  /// else [pickDefault] with the title's quality.
+  static VideoSource? _pickSource(
+    Episode ep,
+    List<VideoSource> sources,
+    String cat,
+  ) {
+    final saved =
+        _sourceId == stremioSourceId && sl.isRegistered<TitlePrefsStore>()
+        ? sl<TitlePrefsStore>().preferredStremioLink(
+            ep.url,
+            sources,
+            showUrl: _showUrl,
+          )
+        : null;
+    return saved ??
+        pickDefault(
+          sources,
+          prefer: cat == 'dub' ? AudioKind.dub : AudioKind.sub,
+          preferQuality:
+              (_showUrl != null && sl.isRegistered<TitlePrefsStore>()
+                  ? sl<TitlePrefsStore>().quality(_sourceId, _showUrl!)
+                  : null) ??
+              sl<PlaybackPrefs>().defaultQuality,
+        );
+  }
+
   static void _stopProgressiveSources() {
     final lookup = _progressiveSources;
     _progressiveSources = null;
@@ -872,7 +1118,11 @@ class TvNativePlayer {
         await torrents.stop(t.id);
         return null;
       }
+      // The engine runs one torrent at a time: the phone's one just ended.
+      _companionTorrentId = null;
+      _adoptedTorrentId = null;
       _torrentId = t.id;
+      _torrentLocalUrl = t.localUrl;
       return t.localUrl;
     } catch (_) {
       return null;
@@ -881,9 +1131,13 @@ class TvNativePlayer {
 
   static void _stopTorrent() {
     final id = _torrentId;
+    _torrentLocalUrl = null;
     if (id != null) {
-      sl<TorrentService>().stop(id);
       _torrentId = null;
+      // The paired phone still streams it (Continue on phone);
+      // stopCompanionSharing releases it.
+      if (id == _adoptedTorrentId && _companionProxy.isRunning) return;
+      sl<TorrentService>().stop(id);
     }
   }
 
