@@ -288,6 +288,8 @@ object PhonePlayerBridge {
                 ),
             )
             call.argument<String>("mimeType")?.let { i.putExtra(PhonePlayerIntent.EXTRA_MIME, it) }
+            call.argument<String>("drmKid")?.let { i.putExtra(PhonePlayerIntent.EXTRA_DRM_KID, it) }
+            call.argument<String>("drmKey")?.let { i.putExtra(PhonePlayerIntent.EXTRA_DRM_KEY, it) }
             i.putExtra(
                 PhonePlayerIntent.EXTRA_POSITION,
                 (call.argument<Number>("positionMs") ?: 0).toLong(),

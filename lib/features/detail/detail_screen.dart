@@ -1528,6 +1528,15 @@ class _DetailViewState extends State<_DetailView>
     /// adaptive default. One-shot — the cubit clears it after this episode.
     VideoSource? initialSource,
   }) async {
+    // Live channels always use the Android player: it decrypts DRM channels and
+    // has live controls, mpv has neither. iOS has no other player, so it stays
+    // on mpv. An explicit long-press choice still wins.
+    if (detail.isLive &&
+        playerOverride == null &&
+        Platform.isAndroid &&
+        !sl<AppMode>().isTv) {
+      playerOverride = (package: PlaybackPrefs.androidPlayerId, label: '');
+    }
     // A finished download of this exact episode plays from disk — no sweep,
     // no links, no waiting. Exact keys first, then the source episode URL,
     // then MAL id + number — so a file saved from a source page is still

@@ -149,6 +149,12 @@ class MediaDetail extends Equatable {
   /// Defaults off; only set by sources that actually report it.
   final bool hasScheduledVideos;
 
+  /// A live channel or event (CloudStream `LiveStreamLoadResponse`). Android
+  /// plays these in the native player whatever the player setting says. Runtime
+  /// only, like [castMembers]: it comes from the source on every load.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  final bool isLive;
+
   const MediaDetail({
     required this.id,
     required this.title,
@@ -190,6 +196,7 @@ class MediaDetail extends Equatable {
     this.synonyms = const [],
     this.isAdult = false,
     this.hasScheduledVideos = false,
+    this.isLive = false,
   });
 
   factory MediaDetail.fromJson(Map<String, dynamic> json) =>
@@ -237,6 +244,7 @@ class MediaDetail extends Equatable {
     List<String>? synonyms,
     bool? isAdult,
     bool? hasScheduledVideos,
+    bool? isLive,
   }) => MediaDetail(
     id: id ?? this.id,
     title: title ?? this.title,
@@ -278,6 +286,7 @@ class MediaDetail extends Equatable {
     synonyms: synonyms ?? this.synonyms,
     isAdult: isAdult ?? this.isAdult,
     hasScheduledVideos: hasScheduledVideos ?? this.hasScheduledVideos,
+    isLive: isLive ?? this.isLive,
   );
 
   @override
@@ -322,6 +331,7 @@ class MediaDetail extends Equatable {
     synonyms,
     isAdult,
     hasScheduledVideos,
+    isLive,
   ];
 }
 

@@ -346,6 +346,7 @@ class CloudStreamProvider implements BaseProvider {
       year: (m['year'] as num?)?.toInt().toString(),
       type: itemType(csType),
       sourceId: sourceId,
+      isLive: csType == 'Live' || m['live'] == true,
       // Sub/Dub episode counts → drive the app's Sub/Dub toggle (download +
       // player). Both are reported regardless of the requested category.
       subCount: (m['subCount'] as num?)?.toInt(),

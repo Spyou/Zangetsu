@@ -15,6 +15,8 @@ object PhonePlayerIntent {
     const val EXTRA_URL = "url"
     const val EXTRA_HEADERS = "headers"          // flat String[]: k,v,k,v
     const val EXTRA_MIME = "mimeType"
+    const val EXTRA_DRM_KID = "drmKid"           // clearkey id/key (base64url)
+    const val EXTRA_DRM_KEY = "drmKey"
     const val EXTRA_POSITION = "positionMs"      // start (resume) position
     const val EXTRA_TITLE = "title"
     const val EXTRA_EP_LABEL = "episodeLabel"

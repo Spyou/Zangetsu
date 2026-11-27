@@ -1146,6 +1146,8 @@ class PluginHost(private val context: Context) {
             "plot" to plot,
             "year" to year,
             "type" to type?.name,
+            // Live channels play in the native player (DRM + live controls).
+            "live" to (this is LiveStreamLoadResponse || type == com.lagradost.cloudstream3.TvType.Live),
             "apiName" to apiName,
             "episodes" to episodes,
             "subCount" to subCount,

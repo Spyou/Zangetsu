@@ -837,6 +837,8 @@ class PhonePlayerActivity : Activity() {
                 subs = subtitlesFromIntent(),
                 mime = intent.getStringExtra(PhonePlayerIntent.EXTRA_MIME),
                 positionMs = intent.getLongExtra(PhonePlayerIntent.EXTRA_POSITION, 0L),
+                drmKid = intent.getStringExtra(PhonePlayerIntent.EXTRA_DRM_KID),
+                drmKey = intent.getStringExtra(PhonePlayerIntent.EXTRA_DRM_KEY),
             )
         }
     }
@@ -1932,6 +1934,8 @@ class PhonePlayerActivity : Activity() {
         subs: List<MediaItem.SubtitleConfiguration>,
         mime: String?,
         positionMs: Long,
+        drmKid: String? = null,
+        drmKey: String? = null,
     ) {
         if (loadedEpisodeIndex != currentIndex) {
             autoSkipped.clear()
@@ -1979,6 +1983,17 @@ class PhonePlayerActivity : Activity() {
             dataSource = PhonePlaybackCache.factory(upstream, url, headers, playbackDiskCache, nativeMb * 1024 * 1024)
         }
         val sourceFactory = DefaultMediaSourceFactory(dataSource)
+        // ClearKey DRM (CENC/DASH live channels). Same setup the TV player uses;
+        // streams without keys skip this and play exactly as before.
+        if (!drmKid.isNullOrEmpty() && !drmKey.isNullOrEmpty()) {
+            val json = "{\"keys\":[{\"kty\":\"oct\",\"k\":\"$drmKey\",\"kid\":\"$drmKid\"}]," +
+                "\"type\":\"temporary\"}"
+            val drmManager = androidx.media3.exoplayer.drm.DefaultDrmSessionManager.Builder()
+                .setUuidAndExoMediaDrmProvider(C.CLEARKEY_UUID, androidx.media3.exoplayer.drm.FrameworkMediaDrm.DEFAULT_PROVIDER)
+                .setMultiSession(false)
+                .build(androidx.media3.exoplayer.drm.LocalMediaDrmCallback(json.toByteArray(Charsets.UTF_8)))
+            sourceFactory.setDrmSessionManagerProvider { drmManager }
+        }
         currentSourceFactory = sourceFactory
         p.setMediaSource(sourceFactory.createMediaSource(builder.build()))
         loadedEpisodeIndex = currentIndex
@@ -2108,6 +2123,8 @@ class PhonePlayerActivity : Activity() {
             ),
             mime = m["mimeType"] as? String,
             positionMs = (m["positionMs"] as? Number)?.toLong() ?: 0L,
+            drmKid = m["drmKid"] as? String,
+            drmKey = m["drmKey"] as? String,
         )
         switching = false // the new media's buffering drives the spinner now
         bumpControls()
@@ -2328,6 +2345,8 @@ class PhonePlayerActivity : Activity() {
             ),
             mime = m["mimeType"] as? String,
             positionMs = keep,
+            drmKid = m["drmKid"] as? String,
+            drmKey = m["drmKey"] as? String,
         )
         if (loadingOverlay.visibility == View.VISIBLE) {
             setLoadingStatus(getString(R.string.phone_player_status_starting))
@@ -3298,7 +3317,7 @@ class PhonePlayerActivity : Activity() {
         val p = player ?: return
         // Not gated on duration: some streams never report one, and resume
         // still has to work for them.
-        if (!playbackStarted) return
+        if (!playbackStarted || liveStream) return
         PhonePlayerBridge.channel?.invokeMethod(
             "saveProgress",
             mapOf(
@@ -3921,7 +3940,7 @@ class PhonePlayerActivity : Activity() {
     // ── Horizontal scrub: full width maps to the whole duration ────────────
     private fun startHSeek() {
         val p = player ?: return
-        if (p.duration <= 0) {
+        if (p.duration <= 0 || liveStream) {
             gestureMode = 0
             return
         }
@@ -4293,8 +4312,22 @@ class PhonePlayerActivity : Activity() {
         } else null)
     }
 
+    // A live stream has no timeline: show LIVE instead of a position and hide
+    // the seek bar. Also read when saving progress so a live channel never
+    // leaves a resume point (which would start it mid-window next time).
+    private var liveStream = false
+
     private fun syncProgress() {
         val p = player ?: return
+        val live = p.isCurrentMediaItemLive
+        if (live != liveStream) {
+            liveStream = live
+            seek.visibility = if (live) View.INVISIBLE else View.VISIBLE
+        }
+        if (live) {
+            if (!scrubbing) timeText.text = "● LIVE"
+            return
+        }
         val d = p.duration
         if (d > 0) {
             val pos = p.currentPosition
@@ -4481,7 +4514,7 @@ class PhonePlayerActivity : Activity() {
             "playerClosed",
             mapOf(
                 "sessionId" to sessionId,
-                PhonePlayerIntent.RESULT_POSITION to positionMs,
+                PhonePlayerIntent.RESULT_POSITION to if (liveStream) 0L else positionMs,
                 PhonePlayerIntent.RESULT_DURATION to durationMs,
                 "engineFallback" to engineFallbackRequested,
                 "ended" to (player?.playbackState == Player.STATE_ENDED),

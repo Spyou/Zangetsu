@@ -381,6 +381,8 @@ class StremioProvider implements BaseProvider {
       tmdbIsTv: !isStremioMovieType(mediaType),
       imdbId: meta.externalId('imdb'),
       hasScheduledVideos: meta.hasScheduledVideos,
+      // TV channels are live: the Android player handles them (see detail_screen).
+      isLive: isStremioChannelType(mediaType) || isStremioChannelType(ref.type),
     );
   }
 

@@ -247,6 +247,8 @@ Map<String, dynamic> phoneSourceMap(VideoSource source, int index) {
     'quality': source.quality ?? '',
     'kind': source.kind.name,
     'audioLang': source.audioLang ?? '',
+    // ClearKey: the native player has to be told the key to decrypt.
+    if (source.isDrm) ...{'drmKid': source.drmKid, 'drmKey': source.drmKey},
     ..._phoneSubtitlePayload(source),
   };
 }
@@ -318,6 +320,7 @@ Map<String, dynamic> phonePlayerArgs({
       'url': source.url,
       'headers': source.headers ?? const <String, String>{},
       'mimeType': ?mime,
+      if (source.isDrm) ...{'drmKid': source.drmKid, 'drmKey': source.drmKey},
       'positionMs': positionMs,
       ..._phoneSubtitlePayload(source),
     },
