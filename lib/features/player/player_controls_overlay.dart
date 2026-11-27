@@ -95,7 +95,7 @@ class _ControlsOverlay extends StatelessWidget {
   final VoidCallback onColorProfile; // opens the colour-profile picker
   final bool visible; // drives the bars' slide-in (top drops, bottom rises)
 
-  /// Overflow panel that slides in from the RIGHT (like the episodes panel) —
+  /// Overflow sheet that slides up from the bottom (like the Android player's) —
   /// holds the occasional actions so the control bars stay clean.
   void _showMore(BuildContext context) {
     showPlayerMorePanel(
@@ -138,10 +138,7 @@ class _ControlsOverlay extends StatelessWidget {
     required VoidCallback onAmbientToggle,
     bool animatePortraitEntrance = false,
   }) {
-    final portrait =
-        animatePortraitEntrance &&
-        MediaQuery.orientationOf(context) == Orientation.portrait;
-    final reduced = portrait && MediaQuery.disableAnimationsOf(context);
+    final reduced = MediaQuery.disableAnimationsOf(context);
     onInteract();
     showGeneralDialog<void>(
       context: context,
@@ -152,136 +149,148 @@ class _ControlsOverlay extends StatelessWidget {
           ? Duration.zero
           : const Duration(milliseconds: 240),
       pageBuilder: (ctx, _, _) {
-        // Same width and surface as the episodes panel — this slides in from
-        // the same edge with the same motion, so looking different was just
-        // two panels wearing two skins. 40% was wider than it needed to be
-        // for a short list of labels, too.
-        final w = (MediaQuery.of(ctx).size.width * 0.33).clamp(250.0, 360.0);
+        // A bottom sheet, like the Android player's More menu. Capped in width so
+        // it doesn't stretch across a landscape screen.
+        final size = MediaQuery.of(ctx).size;
+        final w = size.width < 520 ? size.width : 520.0;
         return Align(
-          alignment: AlignmentDirectional.centerEnd,
+          alignment: Alignment.bottomCenter,
           child: Material(
             color: Colors.transparent,
             child: FrostedSurface(
               blur: true,
               opacity: 0.88,
-              borderRadius: const BorderRadius.horizontal(
-                left: Radius.circular(20),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(20),
               ),
-              // Left inset dropped for the same reason as the episodes panel:
-              // this is pinned to the RIGHT edge, so padding it away from a
-              // cutout on the opposite side just eats its width.
               child: SafeArea(
-                left: false,
+                top: false,
                 child: SizedBox(
                   width: w,
-                  height: double.infinity,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 13, 8, 9),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Text(ctx.l10n.more, style: AppText.title),
-                            ),
-                            IconButton(
-                              icon: const Icon(
-                                Icons.close_rounded,
-                                color: AppColors.textSecondary,
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(maxHeight: size.height * 0.9),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 13, 8, 9),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  ctx.l10n.more,
+                                  style: AppText.title,
+                                ),
                               ),
-                              tooltip: ctx.l10n.close,
-                              onPressed: () => Navigator.of(ctx).pop(),
+                              IconButton(
+                                icon: const Icon(
+                                  Icons.close_rounded,
+                                  color: AppColors.textSecondary,
+                                ),
+                                tooltip: ctx.l10n.close,
+                                onPressed: () => Navigator.of(ctx).pop(),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const Divider(color: AppColors.hairline, height: 1),
+                        const SizedBox(height: 4),
+                        Flexible(
+                          child: SingleChildScrollView(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                _MoreRow(
+                                  icon: Icons.memory_rounded,
+                                  label: ctx.l10n.decoderColon(decoderLabel),
+                                  onTap: () {
+                                    Navigator.pop(ctx);
+                                    onDecoder();
+                                  },
+                                ),
+                                _MoreRow(
+                                  icon: enhanceActive
+                                      ? Icons.auto_awesome_rounded
+                                      : Icons.auto_awesome_outlined,
+                                  label: ctx.l10n.anime4kEnhancement,
+                                  onTap: () {
+                                    Navigator.pop(ctx);
+                                    onEnhance();
+                                  },
+                                ),
+                                _MoreRow(
+                                  icon: Icons.palette_outlined,
+                                  label: ctx.l10n.colour,
+                                  onTap: () {
+                                    Navigator.pop(ctx);
+                                    onColorProfile();
+                                  },
+                                ),
+                                _MoreRow(
+                                  icon: Icons.photo_camera_rounded,
+                                  label: ctx.l10n.snapshot,
+                                  onTap: () {
+                                    Navigator.pop(ctx);
+                                    onScreenshot();
+                                  },
+                                ),
+                                _MoreRow(
+                                  icon: sleepActive
+                                      ? Icons.bedtime_rounded
+                                      : Icons.bedtime_outlined,
+                                  label: ctx.l10n.sleepTimer,
+                                  onTap: () {
+                                    Navigator.pop(ctx);
+                                    onSleep();
+                                  },
+                                ),
+                                if (onMinimize != null)
+                                  _MoreRow(
+                                    icon: Icons.close_fullscreen_rounded,
+                                    label: 'Minimize player',
+                                    onTap: () {
+                                      Navigator.pop(ctx);
+                                      onMinimize();
+                                    },
+                                  ),
+                                if (onPip != null)
+                                  _MoreRow(
+                                    icon: Icons.picture_in_picture_alt_rounded,
+                                    label: ctx.l10n.pictureInPicture,
+                                    onTap: () {
+                                      Navigator.pop(ctx);
+                                      onPip();
+                                    },
+                                  ),
+                                if (onSwitchPlayer != null)
+                                  _MoreRow(
+                                    icon: Icons.swap_horiz_rounded,
+                                    label: ctx.l10n.switchPlayer,
+                                    onTap: () {
+                                      Navigator.pop(ctx);
+                                      onSwitchPlayer();
+                                    },
+                                  ),
+                                _MoreRow(
+                                  icon: ambientActive
+                                      ? Icons.gradient_rounded
+                                      : Icons.gradient_outlined,
+                                  label: ambientActive
+                                      ? ctx.l10n.ambientPlayer
+                                      : '${ctx.l10n.ambientPlayer} · ${ctx.l10n.off}',
+                                  onTap: () {
+                                    Navigator.pop(ctx);
+                                    onAmbientToggle();
+                                  },
+                                ),
+                              ],
                             ),
-                          ],
+                          ),
                         ),
-                      ),
-                      const Divider(color: AppColors.hairline, height: 1),
-                      const SizedBox(height: 4),
-                      _MoreRow(
-                        icon: Icons.memory_rounded,
-                        label: ctx.l10n.decoderColon(decoderLabel),
-                        onTap: () {
-                          Navigator.pop(ctx);
-                          onDecoder();
-                        },
-                      ),
-                      _MoreRow(
-                        icon: enhanceActive
-                            ? Icons.auto_awesome_rounded
-                            : Icons.auto_awesome_outlined,
-                        label: ctx.l10n.anime4kEnhancement,
-                        onTap: () {
-                          Navigator.pop(ctx);
-                          onEnhance();
-                        },
-                      ),
-                      _MoreRow(
-                        icon: Icons.palette_outlined,
-                        label: ctx.l10n.colour,
-                        onTap: () {
-                          Navigator.pop(ctx);
-                          onColorProfile();
-                        },
-                      ),
-                      _MoreRow(
-                        icon: Icons.photo_camera_rounded,
-                        label: ctx.l10n.snapshot,
-                        onTap: () {
-                          Navigator.pop(ctx);
-                          onScreenshot();
-                        },
-                      ),
-                      _MoreRow(
-                        icon: sleepActive
-                            ? Icons.bedtime_rounded
-                            : Icons.bedtime_outlined,
-                        label: ctx.l10n.sleepTimer,
-                        onTap: () {
-                          Navigator.pop(ctx);
-                          onSleep();
-                        },
-                      ),
-                      if (onMinimize != null)
-                        _MoreRow(
-                          icon: Icons.close_fullscreen_rounded,
-                          label: 'Minimize player',
-                          onTap: () {
-                            Navigator.pop(ctx);
-                            onMinimize();
-                          },
-                        ),
-                      if (onPip != null)
-                        _MoreRow(
-                          icon: Icons.picture_in_picture_alt_rounded,
-                          label: ctx.l10n.pictureInPicture,
-                          onTap: () {
-                            Navigator.pop(ctx);
-                            onPip();
-                          },
-                        ),
-                      if (onSwitchPlayer != null)
-                        _MoreRow(
-                          icon: Icons.swap_horiz_rounded,
-                          label: ctx.l10n.switchPlayer,
-                          onTap: () {
-                            Navigator.pop(ctx);
-                            onSwitchPlayer();
-                          },
-                        ),
-                      _MoreRow(
-                        icon: ambientActive
-                            ? Icons.gradient_rounded
-                            : Icons.gradient_outlined,
-                        label: ambientActive
-                            ? ctx.l10n.ambientPlayer
-                            : '${ctx.l10n.ambientPlayer} · ${ctx.l10n.off}',
-                        onTap: () {
-                          Navigator.pop(ctx);
-                          onAmbientToggle();
-                        },
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -289,30 +298,10 @@ class _ControlsOverlay extends StatelessWidget {
           ),
         );
       },
-      transitionBuilder: (ctx, anim, _, child) => portrait
-          ? (reduced
-                ? child
-                : FadeTransition(
-                    opacity: CurvedAnimation(
-                      parent: anim,
-                      curve: Curves.easeOut,
-                    ),
-                    child: SlideTransition(
-                      position:
-                          Tween(
-                            begin: const Offset(0, .03),
-                            end: Offset.zero,
-                          ).animate(
-                            CurvedAnimation(
-                              parent: anim,
-                              curve: Curves.easeOutCubic,
-                            ),
-                          ),
-                      child: child,
-                    ),
-                  ))
+      transitionBuilder: (ctx, anim, _, child) => reduced
+          ? child
           : SlideTransition(
-              position: Tween(begin: const Offset(1, 0), end: Offset.zero)
+              position: Tween(begin: const Offset(0, 1), end: Offset.zero)
                   .animate(
                     CurvedAnimation(parent: anim, curve: Curves.easeOutCubic),
                   ),
