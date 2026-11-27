@@ -31,6 +31,7 @@ class CompanionSettingsScreen extends StatefulWidget {
     this.showBack = true,
     this.active = true,
   });
+
   /// What the phone is playing (sourceId, title, episodeNumber, positionMs)
   /// when opened from the player; enables "Continue on TV". Null otherwise.
   final Map<String, dynamic>? phonePlayback;
@@ -809,6 +810,10 @@ class _CompanionSettingsScreenState extends State<CompanionSettingsScreen>
                 _session.companion && state['appForeground'] == true,
             state: state,
             error: _error ?? _session.error,
+            // Reconnect only makes sense while the saved TV is not connected.
+            onRetry: _session.saved && !_session.connected
+                ? () => _run(_session.reconnect)
+                : null,
             onMode: (value) => _run(() => _session.setRemoteMode(value)),
             onManage: _manage,
             onScan: _scan,

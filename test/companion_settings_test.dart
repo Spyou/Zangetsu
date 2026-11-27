@@ -415,7 +415,7 @@ void _remoteErrorTests() {
     );
     expect(
       RemoteSession.userMessage(PlatformException(code: 'connection')),
-      'Connection lost',
+      'Lost connection to the TV.',
     );
   });
 

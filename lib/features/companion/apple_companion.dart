@@ -746,7 +746,7 @@ class AppleCompanion {
       : e is TimeoutException
       ? 'The TV did not answer in time.'
       : e is PlatformException
-      ? e.message ?? 'Connection lost'
+      ? e.message ?? 'Lost connection to the TV.'
       : e is SocketException
       ? _socketText(e)
       : e.toString();

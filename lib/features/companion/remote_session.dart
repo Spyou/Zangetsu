@@ -387,7 +387,7 @@ class RemoteSession extends ChangeNotifier with WidgetsBindingObserver {
   /// Extracts a user-facing platform failure without exposing a stack trace.
   static String userMessage(Object e) =>
       (e is PlatformException
-              ? e.message ?? 'Connection lost'
+              ? e.message ?? 'Lost connection to the TV.'
               : e is StateError
               ? e.message
               : e.toString())

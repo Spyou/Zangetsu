@@ -541,7 +541,7 @@ class RemoteCompanionBridge(activity: Activity) {
             recovering.decrementAndGet()
             if (!up || retried || gen != generation) {
                 controls.clearState()
-                result.error("connection", "Zangetsu companion unavailable. Bluetooth TV controls remain available when connected.", null)
+                result.error("connection", "Can't reach the TV. Check it's on the same Wi-Fi.", null)
             } else if (retry) sendCompanion(command, result, gen, true)
             else result.error("connection", "The TV did not confirm that. Try again.", null)
         }

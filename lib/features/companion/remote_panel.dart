@@ -30,6 +30,7 @@ class RemotePanel extends StatelessWidget {
     this.inRemoteTab = false,
     this.systemControls = true,
     this.onKeyboard,
+    this.onRetry,
     this.prefs,
   });
 
@@ -47,8 +48,11 @@ class RemotePanel extends StatelessWidget {
   /// shown on the pad while not browsing or playing.
   final String name, status;
 
-  /// Last transport error; shown as a tappable one-line banner when set.
+  /// Last transport error; shown as a tappable two-line banner when set.
   final String? error;
+
+  /// Retries the TV link from the error sheet; null hides the Reconnect button.
+  final VoidCallback? onRetry;
 
   /// Latest receiver snapshot (keys such as `active`, `playing`, `positionMs`,
   /// `durationMs`, `keyboardVersion`); read only, never mutated here.
@@ -159,22 +163,7 @@ class RemotePanel extends StatelessWidget {
 
     final errorBanner = error == null
         ? null
-        : TextButton(
-            onPressed: () => showDialog<void>(
-              context: context,
-              builder: (_) => AlertDialog(
-                title: const Text('Remote'),
-                content: Text(error!),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text('OK'),
-                  ),
-                ],
-              ),
-            ),
-            child: Text(error!, maxLines: 1, overflow: TextOverflow.ellipsis),
-          );
+        : _ErrorBanner(message: error!, onRetry: onRetry);
 
     final volumeOn = connected && state['volumeAvailable'] != false;
     Widget held(String action, IconData symbol, String label) => _HeldControl(
@@ -625,6 +614,113 @@ BoxDecoration _cardDecoration(double radius) => BoxDecoration(
   border: Border.all(color: AppColors.hairline),
 );
 
+/// Rounded error line under the TV pill: up to two lines, tap for the full text.
+class _ErrorBanner extends StatelessWidget {
+  const _ErrorBanner({required this.message, this.onRetry});
+
+  /// Full error text; the banner shows at most two lines of it.
+  final String message;
+
+  /// Offered as a Reconnect button in the sheet when not null.
+  final VoidCallback? onRetry;
+
+  /// Text scale is capped so two lines never squeeze the pad; the sheet shows all of it.
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(top: 4),
+    child: MediaQuery.withClampedTextScaling(
+      maxScaleFactor: 1.2,
+      child: _pill(context),
+    ),
+  );
+
+  /// The rounded, tappable surface holding the icon and the two-line message.
+  Widget _pill(BuildContext context) => Material(
+    color: AppColors.surface,
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(18),
+      side: const BorderSide(color: AppColors.hairline),
+    ),
+    clipBehavior: Clip.antiAlias,
+    child: InkWell(
+      key: const ValueKey('remote-error'),
+      onTap: () => _details(context),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 6, 10, 6),
+        child: Row(
+          children: [
+            Icon(Icons.info_outline_rounded, size: 18, color: AppColors.accent),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                message,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: AppText.caption.copyWith(color: AppColors.textPrimary),
+              ),
+            ),
+            const Icon(
+              Icons.chevron_right_rounded,
+              size: 18,
+              color: AppColors.textTertiary,
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+
+  /// Opens a small sheet with the whole message and, if offered, Reconnect.
+  void _details(BuildContext context) => showModalBottomSheet<void>(
+    context: context,
+    backgroundColor: AppColors.surface,
+    showDragHandle: true,
+    builder: (sheet) => SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('Connection', style: AppText.title.copyWith(fontSize: 17)),
+            const SizedBox(height: 8),
+            // A very long message scrolls instead of overflowing the sheet.
+            Flexible(
+              child: SingleChildScrollView(
+                child: Text(
+                  message,
+                  key: const ValueKey('remote-error-full'),
+                  style: AppText.body,
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: () => Navigator.pop(sheet),
+                  child: const Text('Close'),
+                ),
+                if (onRetry != null) ...[
+                  const SizedBox(width: 8),
+                  FilledButton(
+                    onPressed: () {
+                      Navigator.pop(sheet);
+                      onRetry!();
+                    },
+                    child: const Text('Reconnect'),
+                  ),
+                ],
+              ],
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
 /// Connection pill: status dot, TV name and a chevron that opens Manage connection.
 class _TvPill extends StatelessWidget {
   const _TvPill({
@@ -632,6 +728,7 @@ class _TvPill extends StatelessWidget {
     required this.connected,
     required this.onTap,
   });
+
   /// TV name shown in the pill.
   final String name;
 
@@ -928,6 +1025,7 @@ class _PlayingOverlay extends StatelessWidget {
     required this.compact,
     required this.command,
   });
+
   /// [paused]: show the play icon. [compact]: smaller centre button for short pads.
   final bool paused, compact;
 

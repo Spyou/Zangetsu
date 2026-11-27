@@ -425,7 +425,7 @@ void main() {
     );
     await tester.tap(find.text('The TV went to sleep.'));
     await tester.pumpAndSettle();
-    expect(find.byType(AlertDialog), findsOneWidget);
+    expect(find.byKey(const ValueKey('remote-error-full')), findsOneWidget);
   });
 
   for (final size in [const Size(800, 400), const Size(320, 640)]) {
