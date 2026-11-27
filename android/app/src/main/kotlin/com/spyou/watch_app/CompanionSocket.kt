@@ -31,7 +31,7 @@ class CompanionSocket(val socket: Closeable, input: InputStream, output: OutputS
         lastActivity = android.os.SystemClock.elapsedRealtime()
         val command = JSONObject(request.toString()).put("id", ++sequence)
         writer.write(command.toString()); writer.newLine(); writer.flush()
-        val response = CompanionReceiver.readFrame(reader)
+        val response = CompanionReceiver.readFrame(reader, CompanionReceiver.replyLimit)
         check(response.optLong("id") == sequence) { "Unexpected TV response" }
         return response
     }

@@ -391,7 +391,7 @@ void main() {
       await server.close();
     });
     final failure = expectLater(client.read(), throwsFormatException);
-    socket.add(List.filled(262145, 65));
+    socket.add(List.filled(companionReplyLimit + 1, 65));
     await failure;
     expect(client.alive, isFalse);
   });

@@ -339,15 +339,19 @@ object CompanionReceiver {
     fun pairingToken(shared: String, nonce: String, clientId: String): String =
         proof(shared, "zangetsu-token|$nonce|$clientId")
 
+    /** Largest reply the phone accepts from a paired TV: source lists with subtitles can pass 256 Ki. */
+    const val replyLimit = 8 * 1024 * 1024
+
     // A hard frame limit prevents a peer from allocating an unbounded readLine.
     /**
      * Reads one bounded JSON line, rejecting disconnects and oversized input.
      * Shared by both sides; blocks the calling thread. Throws EOFException on disconnect and
-     * IllegalArgumentException past 256 KiB.
+     * IllegalArgumentException past [limit] characters (256 Ki by default; the phone allows
+     * [replyLimit] for replies from an already paired TV).
      */
-    fun readFrame(reader: BufferedReader): JSONObject {
+    fun readFrame(reader: BufferedReader, limit: Int = 262144): JSONObject {
         val line = StringBuilder()
-        while (line.length < 262144) {
+        while (line.length < limit) {
             val c = reader.read()
             if (c == -1) throw java.io.EOFException()
             if (c == 10) return JSONObject(line.toString())

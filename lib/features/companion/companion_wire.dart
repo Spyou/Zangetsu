@@ -93,6 +93,10 @@ String companionPairingProof(
 String companionPairingToken(String shared, String nonce, String clientId) =>
     companionProof(shared, 'zangetsu-token|$nonce|$clientId');
 
+/// Largest reply the phone accepts from a paired TV, in bytes. Source lists
+/// with subtitles for Continue on phone can pass 256 KiB.
+const companionReplyLimit = 8 * 1024 * 1024;
+
 /// Ephemeral P-256 key used once per pairing, matching the Kotlin receiver's
 /// encoding: the public key is an uncompressed point in lowercase hex.
 class CompanionKey {
@@ -207,7 +211,7 @@ class CompanionWire {
             _buffer.clear();
           } else {
             _buffer.add(byte);
-            if (_buffer.length > 262144) {
+            if (_buffer.length > companionReplyLimit) {
               _frames.addError(
                 const FormatException('TV response is too large'),
               );
