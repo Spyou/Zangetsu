@@ -27,6 +27,11 @@ internal object PlaybackErrors {
      * Retry the same URL once with software decoders: only for a decoder
      * error, when not already in software mode, not mid-switch, and not
      * already retried for this URL.
+     *
+     * @param code the [PlaybackException.errorCode] that was raised.
+     * @param decoderMode the player's active `DECODER_MODE_*` value.
+     * @param retriedUrl the URL already given a software retry, if any.
+     * @param url the URL that just failed.
      */
     fun shouldRetryInSoftware(
         code: Int,
