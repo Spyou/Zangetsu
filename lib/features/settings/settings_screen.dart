@@ -717,7 +717,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   subtitle: 'Watching as ${profile.name}',
                 ),
                 _accountTile(auth),
-                services.single.toTile(),
+                // Build every account entry; .single would throw if the
+                // section ever holds more than one.
+                for (final entry in services) entry.toTile(),
               ],
             ),
           );
