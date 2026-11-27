@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
 import '../models/video_source.dart';
@@ -242,7 +243,10 @@ Future<PlayerChoice?> showEpisodePlayerSheet(
                 padding: const EdgeInsets.fromLTRB(20, 14, 20, 2),
                 child: Align(
                   alignment: AlignmentDirectional.centerStart,
-                  child: Text('Play this episode with', style: AppText.headline),
+                  child: Text(
+                    'Play this episode with',
+                    style: AppText.headline,
+                  ),
                 ),
               ),
               Padding(
@@ -263,20 +267,20 @@ Future<PlayerChoice?> showEpisodePlayerSheet(
                 icon: Icons.play_circle_outline_rounded,
                 label: 'Built-in player',
                 isDefault: defaultPackage.isEmpty,
-                onTap: () => Navigator.pop(
-                  sheetContext,
-                  (package: '', label: 'Built-in player'),
-                ),
+                onTap: () => Navigator.pop(sheetContext, (
+                  package: '',
+                  label: 'Built-in player',
+                )),
               ),
               for (final p in installed.where((p) => p.known))
                 _PlayerRow(
                   icon: Icons.open_in_new_rounded,
                   label: p.label,
                   isDefault: defaultPackage == p.package,
-                  onTap: () => Navigator.pop(
-                    sheetContext,
-                    (package: p.package, label: p.label),
-                  ),
+                  onTap: () => Navigator.pop(sheetContext, (
+                    package: p.package,
+                    label: p.label,
+                  )),
                 ),
               // Everything else on the device that answers a video intent. They
               // play — header-gated streams too, via the local proxy — but we
@@ -302,10 +306,10 @@ Future<PlayerChoice?> showEpisodePlayerSheet(
                     icon: Icons.open_in_new_rounded,
                     label: p.label,
                     isDefault: defaultPackage == p.package,
-                    onTap: () => Navigator.pop(
-                      sheetContext,
-                      (package: p.package, label: p.label),
-                    ),
+                    onTap: () => Navigator.pop(sheetContext, (
+                      package: p.package,
+                      label: p.label,
+                    )),
                   ),
               ],
               // Opening an empty sheet on long-press reads as a broken gesture,
@@ -332,86 +336,163 @@ Future<PlayerChoice?> showEpisodePlayerSheet(
 
 /// Pick one of an episode's resolved mirrors.
 ///
-/// Takes already-resolved sources rather than resolving itself: the caller
-/// shows its own progress while scraping, and a sheet that opens empty and
-/// fills in later is worse than one that opens with the answer.
+/// Opens with whatever is resolved already. [live] (optional) is a list that
+/// keeps growing while the sheet is open; rows are lazy and fixed-height so a
+/// long list and frequent additions stay cheap, and the scroll position
+/// survives each addition. [loadingMore] drives the thin progress line.
 Future<VideoSource?> showMirrorSheet(
   BuildContext context, {
   required String episodeLabel,
   required List<VideoSource> sources,
+  ValueListenable<List<VideoSource>>? live,
+  ValueListenable<bool>? loadingMore,
 }) {
-  final kinds = availableKinds(sources);
   return showModalBottomSheet<VideoSource>(
     context: context,
     backgroundColor: AppColors.surface,
     shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
     ),
     isScrollControlled: true,
-    builder: (sheetContext) => SafeArea(
+    builder: (sheetContext) => _MirrorSheet(
+      episodeLabel: episodeLabel,
+      initial: sources,
+      live: live,
+      loadingMore: loadingMore,
+    ),
+  );
+}
+
+class _MirrorSheet extends StatefulWidget {
+  const _MirrorSheet({
+    required this.episodeLabel,
+    required this.initial,
+    this.live,
+    this.loadingMore,
+  });
+
+  final String episodeLabel;
+  final List<VideoSource> initial;
+  final ValueListenable<List<VideoSource>>? live;
+  final ValueListenable<bool>? loadingMore;
+
+  @override
+  State<_MirrorSheet> createState() => _MirrorSheetState();
+}
+
+class _MirrorSheetState extends State<_MirrorSheet> {
+  // Sorted rows are rebuilt only when the list changes, not on every repaint.
+  List<VideoSource>? _forList;
+  List<({AudioKind kind, VideoSource source})> _rows = const [];
+
+  List<({AudioKind kind, VideoSource source})> _rowsFor(
+    List<VideoSource> list,
+  ) {
+    if (!identical(list, _forList)) {
+      _forList = list;
+      _rows = [
+        for (final k in availableKinds(list))
+          for (final s in sortByQuality(sourcesForKind(list, k)))
+            (kind: k, source: s),
+      ];
+    }
+    return _rows;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
       child: ConstrainedBox(
         constraints: BoxConstraints(
-          maxHeight: MediaQuery.sizeOf(sheetContext).height * 0.75,
+          maxHeight: MediaQuery.sizeOf(context).height * 0.75,
         ),
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const SizedBox(height: 10),
-              Container(
-                width: 36,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: AppColors.hairline,
-                  borderRadius: BorderRadius.circular(2),
+        child: ValueListenableBuilder<List<VideoSource>>(
+          valueListenable:
+              widget.live ?? ValueNotifier<List<VideoSource>>(widget.initial),
+          builder: (context, list, _) {
+            final rows = _rowsFor(list);
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const SizedBox(height: 10),
+                Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AppColors.hairline,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
                 ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 14, 20, 2),
-                child: Align(
-                  alignment: AlignmentDirectional.centerStart,
-                  child: Text('Play mirror', style: AppText.headline),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 14, 20, 2),
+                  child: Align(
+                    alignment: AlignmentDirectional.centerStart,
+                    child: Text('Play mirror', style: AppText.headline),
+                  ),
                 ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-                child: Align(
-                  alignment: AlignmentDirectional.centerStart,
-                  child: Text(
-                    episodeLabel,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppText.caption.copyWith(
-                      color: AppColors.textSecondary,
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                  child: Align(
+                    alignment: AlignmentDirectional.centerStart,
+                    child: Text(
+                      widget.episodeLabel,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppText.caption.copyWith(
+                        color: AppColors.textSecondary,
+                      ),
                     ),
                   ),
                 ),
-              ),
-              for (final k in kinds)
-                for (final s in sortByQuality(sourcesForKind(sources, k)))
-                  _PlayerRow(
-                    icon: Icons.play_arrow_rounded,
-                    // Same shape the player's own Sources sheet uses: the
-                    // provider's mirror name when it has one, otherwise the
-                    // audio kind — and never a stray "UNKNOWN •" for sources
-                    // that don't declare sub/dub.
-                    label: s.label?.trim().isNotEmpty == true
-                        ? s.label!.trim()
-                        : '${k != AudioKind.unknown ? '${k.name.toUpperCase()} • ' : ''}'
-                              '${s.quality ?? s.container.name.toUpperCase()}',
-                    subtitle: s.label?.trim().isNotEmpty == true
-                        ? s.quality
-                        : null,
-                    onTap: () => Navigator.pop(sheetContext, s),
-                    onLongPress: () => copyPlaybackLink(sheetContext, s.url),
+                // Fixed 2px slot: the line comes and goes without moving the
+                // list below it.
+                SizedBox(
+                  height: 2,
+                  child: widget.loadingMore == null
+                      ? null
+                      : ValueListenableBuilder<bool>(
+                          valueListenable: widget.loadingMore!,
+                          builder: (_, on, _) => on
+                              ? LinearProgressIndicator(
+                                  minHeight: 2,
+                                  color: AppColors.accent,
+                                  backgroundColor: AppColors.hairline,
+                                )
+                              : const SizedBox.shrink(),
+                        ),
+                ),
+                Flexible(
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    padding: const EdgeInsets.only(bottom: 8),
+                    itemCount: rows.length,
+                    itemBuilder: (context, i) {
+                      final k = rows[i].kind;
+                      final s = rows[i].source;
+                      final hasLabel = s.label?.trim().isNotEmpty == true;
+                      return _PlayerRow(
+                        icon: Icons.play_arrow_rounded,
+                        // Same shape the player's own Sources sheet uses: the
+                        // provider's mirror name when it has one, otherwise
+                        // the audio kind — never a stray "UNKNOWN •".
+                        label: hasLabel
+                            ? s.label!.trim()
+                            : '${k != AudioKind.unknown ? '${k.name.toUpperCase()} • ' : ''}'
+                                  '${s.quality ?? s.container.name.toUpperCase()}',
+                        subtitle: hasLabel ? s.quality : null,
+                        onTap: () => Navigator.pop(context, s),
+                        onLongPress: () => copyPlaybackLink(context, s.url),
+                      );
+                    },
                   ),
-              const SizedBox(height: 8),
-            ],
-          ),
+                ),
+              ],
+            );
+          },
         ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class _PlayerRow extends StatelessWidget {

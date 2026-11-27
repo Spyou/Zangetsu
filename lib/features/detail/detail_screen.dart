@@ -1139,7 +1139,10 @@ class _DetailViewState extends State<_DetailView>
   /// leaves the rest resolving in the background, so a chooser built from it
   /// often shows one server out of several — you'd be picking from a list that
   /// isn't finished. Waiting costs a few seconds and shows the real choice.
-  Future<List<VideoSource>> _resolveWithProgress(Episode ep) async {
+  Future<List<VideoSource>> _resolveWithProgress(
+    Episode ep, {
+    bool fast = false,
+  }) async {
     showDialog<void>(
       context: context,
       barrierDismissible: false,
@@ -1156,7 +1159,7 @@ class _DetailViewState extends State<_DetailView>
       return await sl<CatalogueRepository>().sources(
         ep.url,
         sourceId: widget.item.sourceId,
-        fast: false,
+        fast: fast,
       );
     } catch (_) {
       // A dead source shouldn't leave a spinner on screen; the caller reports
@@ -1164,6 +1167,35 @@ class _DetailViewState extends State<_DetailView>
       return const [];
     } finally {
       if (mounted) Navigator.of(context, rootNavigator: true).pop();
+    }
+  }
+
+  /// Feeds late mirrors into an open Play-mirror sheet. CloudStream keeps
+  /// resolving after the first link; everything else reports done at once, so
+  /// this ends on the first poll for them. Capped so it can never spin.
+  Future<void> _pollMoreMirrors(
+    Episode ep,
+    ValueNotifier<List<VideoSource>> live,
+    ValueNotifier<bool> loadingMore,
+    bool Function() closed,
+  ) async {
+    final repo = sl<CatalogueRepository>();
+    final deadline = DateTime.now().add(const Duration(seconds: 25));
+    try {
+      while (!closed() && DateTime.now().isBefore(deadline)) {
+        final r = await repo.polledSources(
+          ep.url,
+          sourceId: widget.item.sourceId,
+        );
+        if (closed()) return;
+        final seen = {for (final s in live.value) s.url};
+        final fresh = r.sources.where((s) => !seen.contains(s.url)).toList();
+        if (fresh.isNotEmpty) live.value = [...live.value, ...fresh];
+        if (r.done) return;
+        await Future<void>.delayed(const Duration(milliseconds: 900));
+      }
+    } finally {
+      if (!closed()) loadingMore.value = false;
     }
   }
 
@@ -1339,19 +1371,29 @@ class _DetailViewState extends State<_DetailView>
           await _openPlayer(episodes, index, detail, category);
           return;
         }
-        // Scraping takes seconds, unlike every other row here, so the wait is
-        // shown rather than left as a dead long-press.
-        final sources = await _resolveWithProgress(ep);
+        // Fast resolve: cached/prefetched links are instant, a cold one returns
+        // on the first usable link. The sheet opens with that and the rest of
+        // the mirrors are added as they land (see _pollMoreMirrors).
+        final sources = await _resolveWithProgress(ep, fast: true);
         if (!mounted) return;
         if (sources.isEmpty) {
           showAppToast(context, context.l10n.noSourcesFoundForThisEpisode);
           return;
         }
+        final live = ValueNotifier<List<VideoSource>>(sources);
+        final loadingMore = ValueNotifier<bool>(true);
+        var closed = false;
+        unawaited(_pollMoreMirrors(ep, live, loadingMore, () => closed));
         final picked = await showMirrorSheet(
           context,
           episodeLabel: label,
           sources: sources,
+          live: live,
+          loadingMore: loadingMore,
         );
+        closed = true;
+        live.dispose();
+        loadingMore.dispose();
         if (picked == null || !mounted) return;
         // The pick applies to this episode and nothing else — no label saved.
         // Remembering it meant re-finding the mirror by label on the next
