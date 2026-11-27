@@ -124,4 +124,25 @@ void main() {
     expect(await lookup.first('zm://anime/mal:1/ep/1', 'sub'), isEmpty);
     await lookup.dispose();
   });
+
+  test('addMirrors merges fresh links into latest by url', () async {
+    const refreshed = VideoSource(
+      url: 'https://example.com/later',
+      quality: '1080p',
+      label: 'fresh',
+    );
+    const extra = VideoSource(url: 'https://example.com/extra');
+    final lookup = TvProgressiveSources(
+      (url, category) => Stream.value(const [first, later]),
+    );
+    await lookup.first('ep', 'sub');
+
+    lookup.addMirrors('ep', 'sub', const [refreshed, extra]);
+
+    final latest = await lookup.latest('ep', 'sub');
+    expect(latest.map((s) => s.url), [first.url, later.url, extra.url]);
+    expect(latest[1].label, 'fresh');
+    expect(await lookup.latest('ep', 'dub'), const [first, later]);
+    await lookup.dispose();
+  });
 }

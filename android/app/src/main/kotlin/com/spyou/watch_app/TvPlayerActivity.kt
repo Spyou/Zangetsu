@@ -172,6 +172,14 @@ class TvPlayerActivity : Activity() {
     private var seekButtonsEnabled = true
     private var seekButtonDurationMs = 10_000L
     private val failedMirrors = mutableSetOf<String>()
+    // Fresh links after an HTTP 403 are asked for at most once per episode/cut;
+    // forbiddenSeen remembers a 403 on any mirror of this episode.
+    private var refreshedForbidden = false
+    private var forbiddenSeen = false
+    // Active decoder mode. Starts as the user's pick (EXTRA_DECODER_MODE) and
+    // switches to software once per URL after a decoder error, like the phone.
+    private var decoderMode = DECODER_MODE_HARDWARE_FIRST
+    private var swRetriedUrl: String? = null
     private var switching = false // guards against overlapping episode switches
 
     private data class Skip(val start: Long, val end: Long, val type: String)
@@ -390,70 +398,12 @@ class TvPlayerActivity : Activity() {
         // keepScreenOn is managed by syncKeepScreenOn() — on while playing or
         // buffering, released on pause — not pinned on for the whole session.
 
-        val exo = ExoPlayer.Builder(this, renderersFactory())
-            .setLoadControl(loadControl())
-            .build()
-        player = exo
-        playerView.player = exo
-
-        // Apply saved defaults: playback speed, volume boost, subtitle style.
+        // Apply saved defaults: playback speed, volume boost, subtitle style
+        // (createPlayer applies them to every player it builds).
         speed = intent.getFloatExtra(EXTRA_SPEED, 1f)
-        exo.playbackParameters = PlaybackParameters(speed)
-        applyVolume(intent.getIntExtra(EXTRA_VOLUME, 100))
-        applySubtitleStyleLive()
-
-        exo.addListener(object : Player.Listener {
-            override fun onVideoSizeChanged(videoSize: VideoSize) {
-                lastVideoRatio = (videoSize.width * videoSize.pixelWidthHeightRatio) / videoSize.height
-                updateAspectRatioButtonVisibility()
-            }
-
-            override fun onRenderedFirstFrame() {
-                handler.removeCallbacks(startupTimeout)
-                dismissStartupArtwork()
-                Log.i(TAG, "onRenderedFirstFrame — native surface is showing video")
-            }
-            override fun onPlayerError(error: PlaybackException) {
-                Log.e(TAG, "onPlayerError: ${error.errorCodeName} — ${error.message}", error)
-                handler.removeCallbacks(startupTimeout)
-                if (!switching) recoverPlaybackError(error.errorCodeName, error.message)
-            }
-            override fun onIsPlayingChanged(isPlaying: Boolean) {
-                syncKeepScreenOn()
-                updatePlayPauseIcon()
-                // Keep the controls (and the pause glyph) on screen while paused so
-                // it's obvious playback is stopped; resume re-arms the auto-hide.
-                if (isPlaying) bumpControls() else { showControls(); cancelAutoHide() }
-            }
-            override fun onPlaybackStateChanged(state: Int) {
-                syncKeepScreenOn()
-                updatePlayPauseIcon()
-                if (state == Player.STATE_READY &&
-                    !exo.currentTracks.containsType(C.TRACK_TYPE_VIDEO) &&
-                    exo.currentTracks.containsType(C.TRACK_TYPE_AUDIO)
-                ) {
-                    handler.removeCallbacks(startupTimeout)
-                    dismissStartupArtwork()
-                }
-                if (!switching) {
-                    loading.visibility =
-                        if (state == Player.STATE_BUFFERING && startupArtwork.visibility != View.VISIBLE) View.VISIBLE else View.GONE
-                }
-                // Duration is known once ready → fetch AniSkip for this episode.
-                if (state == Player.STATE_READY && skipsFetchedFor != currentIndex) fetchSkips()
-                if (state == Player.STATE_READY) reportTimingIfNeeded()
-                // Autoplay the next episode when this one finishes. Honour
-                // auto-skip filler the same way the Flutter player does.
-                if (state == Player.STATE_ENDED && !switching && currentIndex < episodeCount - 1) {
-                    loadEpisode(nextAutoplayIndex())
-                }
-            }
-            // PlayerView also writes cues; we register after it so this wins and
-            // can force vertical position (embedded cue lines ignore bottom pad).
-            override fun onCues(cueGroup: CueGroup) {
-                playerView.subtitleView?.setCues(repositionCues(cueGroup.cues))
-            }
-        })
+        volumePercent = intent.getIntExtra(EXTRA_VOLUME, 100)
+        decoderMode = startDecoderMode()
+        createPlayer(decoderMode)
 
         playerView.addOnLayoutChangeListener { _, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom ->
             if (right - left != oldRight - oldLeft || bottom - top != oldBottom - oldTop) {
@@ -479,6 +429,142 @@ class TvPlayerActivity : Activity() {
 
         handler.post(ticker)
         bumpControls()
+    }
+
+    private fun startDecoderMode(): Int =
+        intent.getIntExtra(EXTRA_DECODER_MODE, DECODER_MODE_HARDWARE_FIRST)
+
+    /**
+     * Builds a player for [mode], makes it the active one and attaches it to
+     * [playerView]. Every listener callback ignores events from a player that
+     * has since been replaced (software-decoder retry).
+     */
+    private fun createPlayer(mode: Int): ExoPlayer {
+        val exo = ExoPlayer.Builder(this, renderersFactory(mode))
+            .setLoadControl(loadControl())
+            .build()
+        player = exo
+        playerView.player = exo
+
+        exo.playbackParameters = PlaybackParameters(speed)
+        applyVolume(volumePercent)
+        applySubtitleStyleLive()
+
+        exo.addListener(object : Player.Listener {
+            override fun onVideoSizeChanged(videoSize: VideoSize) {
+                if (player !== exo) return
+                lastVideoRatio = (videoSize.width * videoSize.pixelWidthHeightRatio) / videoSize.height
+                updateAspectRatioButtonVisibility()
+            }
+
+            override fun onRenderedFirstFrame() {
+                if (player !== exo) return
+                handler.removeCallbacks(startupTimeout)
+                dismissStartupArtwork()
+                Log.i(TAG, "onRenderedFirstFrame — native surface is showing video")
+            }
+            override fun onPlayerError(error: PlaybackException) {
+                if (player !== exo) return
+                Log.e(TAG, "onPlayerError: ${error.errorCodeName} — ${error.message}", error)
+                handler.removeCallbacks(startupTimeout)
+                if (switching) return
+                val failedUrl = currentUrl
+                if (PlaybackErrors.shouldRetryInSoftware(
+                        error.errorCode, decoderMode, switching, swRetriedUrl, failedUrl,
+                    )
+                ) {
+                    swRetriedUrl = failedUrl
+                    handler.post {
+                        if (player !== exo || isFinishing || isDestroyed) return@post
+                        if (switching || currentUrl != failedUrl) return@post
+                        retryInSoftware()
+                    }
+                    return
+                }
+                recoverPlaybackError(
+                    error.errorCodeName, error.message, PlaybackErrors.isForbidden(error),
+                )
+            }
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                if (player !== exo) return
+                syncKeepScreenOn()
+                updatePlayPauseIcon()
+                // Keep the controls (and the pause glyph) on screen while paused so
+                // it's obvious playback is stopped; resume re-arms the auto-hide.
+                if (isPlaying) bumpControls() else { showControls(); cancelAutoHide() }
+            }
+            override fun onPlaybackStateChanged(state: Int) {
+                if (player !== exo) return
+                syncKeepScreenOn()
+                updatePlayPauseIcon()
+                if (state == Player.STATE_READY &&
+                    !exo.currentTracks.containsType(C.TRACK_TYPE_VIDEO) &&
+                    exo.currentTracks.containsType(C.TRACK_TYPE_AUDIO)
+                ) {
+                    handler.removeCallbacks(startupTimeout)
+                    dismissStartupArtwork()
+                }
+                if (!switching) {
+                    loading.visibility =
+                        if (state == Player.STATE_BUFFERING && startupArtwork.visibility != View.VISIBLE) View.VISIBLE else View.GONE
+                }
+                // Duration is known once ready → fetch AniSkip for this episode.
+                if (state == Player.STATE_READY && skipsFetchedFor != currentIndex) fetchSkips()
+                if (state == Player.STATE_READY) reportTimingIfNeeded()
+                // Autoplay the next episode when this one finishes. Honour
+                // auto-skip filler the same way the Flutter player does.
+                if (state == Player.STATE_ENDED && !switching && currentIndex < episodeCount - 1) {
+                    loadEpisode(nextAutoplayIndex())
+                }
+            }
+            // PlayerView also writes cues; we register after it so this wins and
+            // can force vertical position (embedded cue lines ignore bottom pad).
+            override fun onCues(cueGroup: CueGroup) {
+                if (player !== exo) return
+                playerView.subtitleView?.setCues(repositionCues(cueGroup.cues))
+            }
+        })
+        return exo
+    }
+
+    /**
+     * Swaps the active player for a fresh one built with [mode], carrying the
+     * track picks, speed and volume over. The old player and its loudness
+     * effect are released first so nothing is attached twice.
+     */
+    private fun rebuildPlayer(mode: Int): ExoPlayer? {
+        val previous = player ?: return null
+        val trackParams = previous.trackSelectionParameters
+        val volume = previous.volume
+        playerView.player = null
+        try { loudness?.release() } catch (_: Exception) {}
+        loudness = null
+        previous.release()
+        val replacement = createPlayer(mode)
+        replacement.trackSelectionParameters = trackParams
+        replacement.volume = volume
+        return replacement
+    }
+
+    /**
+     * Phone parity (d1cdf4ea): a decoder error on a hardware mode replays the
+     * SAME url at the same position with software decoders before any mirror
+     * hop. If the software player fails too, the normal recovery path runs.
+     */
+    private fun retryInSoftware() {
+        val p = player ?: return
+        val url = currentUrl ?: return
+        val position = p.currentPosition.coerceAtLeast(0L)
+        val headers = currentHeaders
+        val mime = currentMime
+        val kid = currentDrmKid
+        val key = currentDrmKey
+        // Copy: loadStream clears currentSubs before re-adding the list.
+        val subs = currentSubs.toList().ifEmpty { null }
+        decoderMode = DECODER_MODE_SOFTWARE_FIRST
+        rebuildPlayer(decoderMode) ?: return
+        loadStream(url, headers, subs, mime, position, kid, key) // re-arms startupTimeout
+        toast(getString(R.string.phone_player_decoder_fallback))
     }
 
     /** Loads a resolved stream into the current player and starts it. Reused for
@@ -734,6 +820,15 @@ class TvPlayerActivity : Activity() {
         val positionMs = (m["positionMs"] as? Number)?.toLong() ?: 0L
         currentIndex = index
         failedMirrors.clear()
+        refreshedForbidden = false
+        forbiddenSeen = false
+        // New episode / cut: back to the user's decoder pick (phone 1934-1939).
+        swRetriedUrl = null
+        val startMode = startDecoderMode()
+        if (decoderMode != startMode) {
+            decoderMode = startMode
+            rebuildPlayer(startMode)
+        }
         episodeSources = emptyList()
         skipIntervals = emptyList()
         skipsFetchedFor = -1
@@ -839,18 +934,24 @@ class TvPlayerActivity : Activity() {
     ).show()
 
     /** Cache the current episode's mirror list for the Server picker. */
-    private fun fetchSources(onReady: (() -> Unit)? = null) {
+    /** [refresh] asks Dart for a full fresh resolve (expired links after a 403). */
+    private fun fetchSources(refresh: Boolean = false, onReady: (() -> Unit)? = null) {
         val bridge = MainActivity.tvBridge ?: run { onReady?.invoke(); return }
         val index = currentIndex
         val requestedCategory = category
         bridge.invokeMethod(
             "sourcesFor",
-            mapOf("index" to index, "category" to requestedCategory),
+            mapOf("index" to index, "category" to requestedCategory, "refresh" to refresh),
             object : MethodChannel.Result {
                 override fun success(result: Any?) {
-                    @Suppress("UNCHECKED_CAST")
-                    if (isFinishing || isDestroyed || currentIndex != index || category != requestedCategory) return
-                    episodeSources = (result as? List<Map<String, Any?>>) ?: emptyList()
+                    if (isFinishing || isDestroyed) return
+                    // Stale reply (episode or cut changed): keep the current
+                    // list but still release the waiter instead of letting it
+                    // sit out its 30 s timeout.
+                    if (currentIndex == index && category == requestedCategory) {
+                        @Suppress("UNCHECKED_CAST")
+                        episodeSources = (result as? List<Map<String, Any?>>) ?: emptyList()
+                    }
                     onReady?.invoke()
                 }
                 override fun error(code: String, msg: String?, details: Any?) { onReady?.invoke() }
@@ -958,13 +1059,17 @@ class TvPlayerActivity : Activity() {
         return u.startsWith("magnet:") || u.endsWith(".torrent") || u.contains(".torrent?")
     }
 
-    private fun recoverPlaybackError(code: String, message: String?) {
+    /**
+     * Phone parity: walk EVERY untried mirror of this episode (no cap). When
+     * none is left and a mirror answered HTTP 403, ask Dart once for fresh
+     * links (`sourcesFor` with refresh:true) and try again. Ends only when no
+     * untried mirror remains or a 30 s wait for the list runs out.
+     */
+    private fun recoverPlaybackError(code: String, message: String?, forbidden: Boolean = false) {
         val failedUrl = currentUrl ?: return finishPlaybackError(code, message)
         failedMirrors.add(failedUrl)
-        if (failedMirrors.size >= 4) {
-            finishPlaybackError(code, message)
-            return
-        }
+        if (forbidden) forbiddenSeen = true
+        val index = currentIndex
         switching = true
         loading.visibility = View.VISIBLE
         var completed = false
@@ -973,16 +1078,47 @@ class TvPlayerActivity : Activity() {
             if (!isFinishing && !isDestroyed) finishPlaybackError(code, message)
         }
         handler.postDelayed(timeout, 30_000L)
-        fetchSources {
-            if (completed || isFinishing || isDestroyed) return@fetchSources
+
+        fun nextUntried(): Int = episodeSources.indexOfFirst { source ->
+            val url = source["url"] as? String
+            url != null && url.isNotBlank() && url !in failedMirrors && !isTorrentUrl(url)
+        }
+
+        /** Returns false when the wait is over or no longer ours. */
+        fun stillWaiting(): Boolean {
+            if (completed || isFinishing || isDestroyed) return false
+            if (currentIndex != index) {
+                // The episode moved on underneath us: just let go.
+                completed = true
+                handler.removeCallbacks(timeout)
+                switching = false
+                return false
+            }
+            return true
+        }
+
+        fun settle(next: Int) {
             completed = true
             handler.removeCallbacks(timeout)
             switching = false
-            val next = episodeSources.indexOfFirst { source ->
-                val url = source["url"] as? String
-                url != null && url.isNotBlank() && url !in failedMirrors && !isTorrentUrl(url)
-            }
             if (next >= 0) loadSource(next) else finishPlaybackError(code, message)
+        }
+
+        fetchSources {
+            if (!stillWaiting()) return@fetchSources
+            val next = nextUntried()
+            if (next < 0 && forbiddenSeen && !refreshedForbidden) {
+                refreshedForbidden = true
+                // Re-arm the 30 s wait for the slower full resolve.
+                handler.removeCallbacks(timeout)
+                handler.postDelayed(timeout, 30_000L)
+                fetchSources(refresh = true) {
+                    if (!stillWaiting()) return@fetchSources
+                    settle(nextUntried())
+                }
+                return@fetchSources
+            }
+            settle(next)
         }
     }
 
@@ -2735,8 +2871,12 @@ class TvPlayerActivity : Activity() {
     )
 
     /** Hardware-first by default; explicit TV decoder choices keep their priority. */
-    private fun renderersFactory(): RenderersFactory =
-        when (intent.getIntExtra(EXTRA_DECODER_MODE, DECODER_MODE_HARDWARE_FIRST)) {
+    // No-arg form kept for TvPlayerDecoderTest (reads the user's start mode).
+    @Suppress("unused")
+    private fun renderersFactory(): RenderersFactory = renderersFactory(startDecoderMode())
+
+    private fun renderersFactory(mode: Int): RenderersFactory =
+        when (mode) {
             DECODER_MODE_HARDWARE_FIRST -> NextRenderersFactory(this)
                 .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
                 .setEnableDecoderFallback(true)

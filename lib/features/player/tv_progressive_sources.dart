@@ -34,6 +34,11 @@ class TvProgressiveSources {
     return lookup.latest;
   }
 
+  /// Merges [sources] (e.g. a fresh resolve after expired links) into the
+  /// mirrors [latest] returns. A link with a known url replaces the old entry.
+  void addMirrors(String url, String category, List<VideoSource> sources) =>
+      _for(url, category).addMirrors(sources);
+
   Future<void> prefetch(String url, String category) async {
     final key = (url, category);
     if (!_prefetched.add(key)) return;

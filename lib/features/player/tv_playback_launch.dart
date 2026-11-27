@@ -288,6 +288,13 @@ Future<void> launchTvPlayback({
       if (errorCode != null) {
         dismissLoading?.call();
         final isZm = (showUrl != null && ZmodeIds.isZ(showUrl));
+        // Replay the episode that failed — the viewer may have moved on from
+        // the one this session opened on.
+        final reported = TvNativePlayer.lastPlaybackErrorIndex;
+        final failedIndex =
+            reported != null && reported >= 0 && reported < episodes.length
+            ? reported
+            : startIndex;
         // The dead source has just been excluded for this episode by
         // TvNativePlayer._handlePlaybackError, so a re-resolve lands on a
         // different one. Walk on silently, the way the phone player does,
@@ -303,7 +310,7 @@ Future<void> launchTvPlayback({
             context: context,
             sourceId: sourceId,
             episodes: episodes,
-            startIndex: startIndex,
+            startIndex: failedIndex,
             resume: resume,
             resolveSources: resolveSources,
             pollSources: pollSources,
@@ -343,7 +350,7 @@ Future<void> launchTvPlayback({
               context: context,
               sourceId: sourceId,
               episodes: episodes,
-              startIndex: startIndex,
+              startIndex: failedIndex,
               resume: resume,
               resolveSources: resolveSources,
               pollSources: pollSources,
@@ -362,6 +369,10 @@ Future<void> launchTvPlayback({
               imdbId: imdbId,
               listItem: listItem,
               skipOverlay: true,
+              // Still the same play: a fresh hop count would run
+              // invalidateWinner and forget the dead sources just excluded,
+              // so Try Next Source / Select Source got the same one back.
+              sourceHop: sourceHop + 1,
             ),
           );
         }
