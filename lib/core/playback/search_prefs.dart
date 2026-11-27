@@ -42,13 +42,12 @@ class SearchPrefs extends ChangeNotifier {
   Box get _box => Hive.box(boxName);
 
   /// Classic retains the original system keyboard; New uses the compact grid.
+  /// New is the default; Classic only when the user picked it.
   String get tvSearchStyle {
     final saved = _box.get('tvSearchStyle');
     if (saved != null) return saved == 'new' ? 'new' : 'classic';
-    // Preserve the choice from the earlier test build.
-    return _box.get('youtubeTvKeyboard', defaultValue: false) == true
-        ? 'new'
-        : 'classic';
+    // Preserve an explicit opt-out from the earlier test build's toggle.
+    return _box.get('youtubeTvKeyboard') == false ? 'classic' : 'new';
   }
 
   /// Persists the selected search experience and rebuilds listening screens.
