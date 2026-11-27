@@ -299,6 +299,166 @@ void main() {
   );
 
   group('iPhone phone remote', () {
+    /// Fake TV that accepts remembered reconnects for [token] and records
+    /// every command action in [seen]. The first [drops] links each drop
+    /// their first command without replying, as a failed transport would;
+    /// later links answer normally. Each opened link adds 'link' to [seen].
+    /// Returns the listening port.
+    Future<int> flakyTv(String token, List<String> seen, {int drops = 1}) async {
+      final server = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+      final wires = <CompanionWire>[];
+      var links = 0;
+      server.listen((socket) async {
+        final link = ++links;
+        if (drops > 1) seen.add('link');
+        final wire = CompanionWire(socket);
+        wires.add(wire);
+        final nonce = companionSecret();
+        final tvKey = CompanionKey.generate().publicHex;
+        wire.send({
+          'type': 'challenge',
+          'version': companionPairingVersion,
+          'deviceId': 'tv-1',
+          'nonce': nonce,
+          'key': tvKey,
+        });
+        try {
+          final hello = await wire.read();
+          wire.send({
+            'type': 'paired',
+            'name': 'Living room',
+            'proof': companionPairingProof(
+              token,
+              label: 'tv',
+              mode: 'remembered',
+              nonce: nonce,
+              tvKey: tvKey,
+              clientKey: '',
+              clientId: hello['clientId'] as String,
+            ),
+          });
+          while (wire.alive) {
+            final command = await wire.read();
+            seen.add(command['action'] as String);
+            if (link <= drops) {
+              wire.close();
+              return;
+            }
+            wire.send({'ok': true, 'id': command['id']});
+          }
+        } catch (_) {
+          /* Phone closed the link. */
+        }
+      });
+      addTearDown(() async {
+        for (final w in wires) {
+          w.close();
+        }
+        await server.close();
+      });
+      return server.port;
+    }
+
+    /// A phone whose Keychain already remembers the fake TV on [port].
+    Future<AppleCompanion> rememberedPhone(int port, String token) async {
+      messenger.setMockMethodCallHandler(AppleCompanion.native, (call) async {
+        if (call.method == 'readStore')
+          return jsonEncode({
+            'autoConnect': true,
+            'deviceId': 'tv-1',
+            'address': '127.0.0.1:$port',
+            'token': token,
+            'clientId': 'retry-test-client',
+          });
+        return null;
+      });
+      final phone = AppleCompanion(receiverDevice: () => false);
+      addTearDown(() => phone.invoke('disconnect', null).catchError((_) {}));
+      await phone.invoke('reconnect', null);
+      expect(
+        (await phone.invoke('connectionState', null) as Map)['connected'],
+        isTrue,
+      );
+      return phone;
+    }
+
+    test(
+      'a read-only request is sent once more after the link drops',
+      () async {
+        final token = companionSecret();
+        final seen = <String>[];
+        final phone = await rememberedPhone(await flakyTv(token, seen), token);
+        final reply =
+            jsonDecode(
+                  await phone.invoke(
+                        'command',
+                        jsonEncode({
+                          'action': 'handoffSources',
+                          'session': 1,
+                          'index': 0,
+                        }),
+                      )
+                      as String,
+                )
+                as Map;
+        expect(reply['ok'], isTrue);
+        expect(seen, ['handoffSources', 'handoffSources']);
+        expect(
+          (await phone.invoke('connectionState', null) as Map)['connected'],
+          isTrue,
+        );
+      },
+    );
+
+    test(
+      'a retry that fails too reports the link as lost without a second reconnect',
+      () async {
+        final token = companionSecret();
+        final seen = <String>[];
+        final port = await flakyTv(token, seen, drops: 2);
+        final phone = await rememberedPhone(port, token);
+        await expectLater(
+          phone.invoke('command', jsonEncode({'action': 'state'})),
+          throwsA(isA<PlatformException>()),
+        );
+        expect(seen, ['link', 'state', 'link', 'state']);
+        expect(
+          (await phone.invoke('connectionState', null) as Map)['connected'],
+          isFalse,
+        );
+      },
+    );
+
+    test('a key press is never sent twice after the link drops', () async {
+      final token = companionSecret();
+      final seen = <String>[];
+      final phone = await rememberedPhone(await flakyTv(token, seen), token);
+      await expectLater(
+        phone.invoke('command', jsonEncode({'action': 'key', 'value': 'ok'})),
+        throwsA(
+          isA<PlatformException>().having(
+            (e) => e.message,
+            'message',
+            'The TV did not confirm that. Try again.',
+          ),
+        ),
+      );
+      expect(seen, ['key']);
+      // The session reconnected quietly and stays usable.
+      expect(
+        (await phone.invoke('connectionState', null) as Map)['connected'],
+        isTrue,
+      );
+      final next =
+          jsonDecode(
+                await phone.invoke('command', jsonEncode({'action': 'state'}))
+                    as String,
+              )
+              as Map;
+      expect(next['ok'], isTrue);
+      expect(seen, ['key', 'state']);
+    });
+
     test('a failed Keychain read is retried on the next call', () async {
       var reads = 0;
       messenger.setMockMethodCallHandler(AppleCompanion.native, (call) async {

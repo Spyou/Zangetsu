@@ -108,6 +108,14 @@ class RemoteCompanionBridge(activity: Activity) {
     private val prefs = context.getSharedPreferences("companion_pairing", Activity.MODE_PRIVATE)
     /** True when at least one authenticated companion link is open. */
     private val paired get() = links.values.any { it.alive }
+    /**
+     * Requests waiting on a silent reconnect after a failed exchange. The worker counts one up before
+     * it drops the failed link, so requests queued behind it already see the reconnect; [recoverCompanion]
+     * counts it down on the main thread when it finishes.
+     */
+    private val recovering = java.util.concurrent.atomic.AtomicInteger()
+    /** True while a link is up or a silent reconnect is running, so the session still reads as connected. */
+    private val linked get() = paired || recovering.get() > 0
     /** Display name the TV reported when it paired. */
     private var name = "TV"
     /** The link companion requests prefer: Bluetooth when open, otherwise Wi-Fi. */
@@ -128,15 +136,22 @@ class RemoteCompanionBridge(activity: Activity) {
                     }
                     result.success(null)
                 }
-                "connectionState" -> result.success(mapOf("connected" to (paired || RemoteConnectionService.instance?.isConnected() == true), "companion" to paired, "hid" to (RemoteConnectionService.instance?.isConnected() == true), "bluetoothDetail" to (RemoteConnectionService.instance?.detail ?: "Link Bluetooth in Manage"), "wifi" to (links["Wi-Fi"]?.alive == true), "bluetoothCompanion" to (links["Bluetooth"]?.alive == true), "saved" to (prefs.getBoolean("autoConnect", false) || prefs.getBoolean("hidEnabled", false)),
+                "connectionState" -> result.success(mapOf("connected" to (linked || RemoteConnectionService.instance?.isConnected() == true), "companion" to linked, "hid" to (RemoteConnectionService.instance?.isConnected() == true), "bluetoothDetail" to (RemoteConnectionService.instance?.detail ?: "Link Bluetooth in Manage"), "wifi" to (links["Wi-Fi"]?.alive == true), "bluetoothCompanion" to (links["Bluetooth"]?.alive == true), "saved" to (prefs.getBoolean("autoConnect", false) || prefs.getBoolean("hidEnabled", false)),
                     "name" to (if(paired) name else prefs.getString("hidName", prefs.getString("name", "TV"))), "transport" to transport, "remoteMode" to prefs.getBoolean("remoteMode", false)))
                 "remoteMode" -> { prefs.edit().putBoolean("remoteMode", call.arguments == true).apply(); result.success(null) }
                 "reconnect" -> {
                     ensureBluetooth()
                     if (!prefs.getBoolean("autoConnect", false) && prefs.getBoolean("hidEnabled", false)) { result.success(null); return }
                     check(prefs.getBoolean("autoConnect", false)) { "Pair a TV first." }
+                    // A silent reconnect is already running; it finishes the job.
+                    if (recovering.get() > 0) { result.success(null); return }
                     connect(MethodCall("connect", mapOf("address" to prefs.getString("address", ""),
-                        "background" to true, "pin" to "")), result)
+                        "background" to true, "pin" to "")), object : MethodChannel.Result {
+                        override fun success(value: Any?) = result.success(value)
+                        // A reconnect of this link is already running, so this one is not an error.
+                        override fun error(code: String, message: String?, details: Any?) = if (code == "connecting") result.success(null) else result.error(code, message, details)
+                        override fun notImplemented() = result.notImplemented()
+                    })
                 }
                 "receiverForget" -> { CompanionReceiver.forgetPhones(); result.success(receiverState()) }
                 "receiverStream" -> result.success(TvPlayerActivity.active?.companionStream())
@@ -459,14 +474,31 @@ class RemoteCompanionBridge(activity: Activity) {
     /**
      * Selects one authenticated transport per request; failure never replays it on the fallback.
      * [command] is a JSON object with an `action`; the TV's JSON reply goes to [result] as a string
-     * on the main thread. A failed exchange closes that link and clears cached playback state.
+     * on the main thread. A failed exchange closes that link, quietly reopens the saved link, and
+     * retries the command once only when it is read-only (see [recoverCompanion]). If the retry
+     * fails too, no second reconnect runs: the link is reported as lost, the same as the iPhone's
+     * AppleCompanion._exchange. A request that finds no link while that reconnect runs was never
+     * sent, so it waits for the reconnect and is sent once.
      */
-    fun sendCompanion(command: JSONObject, result: MethodChannel.Result) {
-        val gen = generation
+    fun sendCompanion(command: JSONObject, result: MethodChannel.Result) = sendCompanion(command, result, generation, false)
+
+    /** Actions that only read from the TV, so sending them twice can never do something twice. */
+    private val retryableActions = setOf("state", "catalogues", "search", "detail", "handoffSnapshot", "handoffSources", "handoffValidate")
+
+    /**
+     * Runs one exchange on the preferred link. [gen] is the connection generation the request
+     * started under; [retried] is true for the single retry after a reconnect.
+     */
+    private fun sendCompanion(command: JSONObject, result: MethodChannel.Result, gen: Int, retried: Boolean) {
         worker.execute {
             // Select exactly once. Never retry a possibly delivered action on another link.
             val route = links["Bluetooth"]?.takeIf { it.alive } ?: links["Wi-Fi"]?.takeIf { it.alive }
-            if (route == null) { main.post { result.error("connection", "The TV companion is disconnected.", null) }; return@execute }
+            if (route == null) {
+                // Nothing went out yet, so even a key press is safe to send once on the new link.
+                if (!retried && recovering.get() > 0) { recovering.incrementAndGet(); main.post { recoverCompanion(command, result, gen, false, null, sent = false) } }
+                else main.post { result.error("connection", "The TV companion is disconnected.", null) }
+                return@execute
+            }
             val timeout = Runnable { route.close() }
             main.postDelayed(timeout, if (command.optString("action") == "state") 4000 else 90000)
             try {
@@ -480,12 +512,68 @@ class RemoteCompanionBridge(activity: Activity) {
                     result.success(response.toString())
                 }
             } catch (e: Exception) {
+                // The failed link is dead from here on; it is never reused mid-frame.
                 route.close()
+                recovering.incrementAndGet()
+                val kind = links.entries.firstOrNull { it.value === route }?.key
                 links.entries.removeIf { it.value === route }
                 android.util.Log.w("ZangetsuRemote", "Companion ${command.optString("action")} failed", e)
-                main.post { main.removeCallbacks(timeout); controls.clearState(); result.error("connection", "Zangetsu companion unavailable. Bluetooth TV controls remain available when connected.", null) }
+                main.post { main.removeCallbacks(timeout); recoverCompanion(command, result, gen, retried, kind, sent = true) }
             }
         }
+    }
+
+    /**
+     * Main thread, after a failed exchange on the [kind] link. Reopens that link with the remembered
+     * token (the same path the maintenance loop uses) so the session stays connected, then retries a
+     * read-only [command] once. Key presses, playback and keyboard commands are never sent again; they
+     * get an error asking to try again. [sent] is false for a request that never reached the TV;
+     * it is sent once on the new link whatever it is. A failed retry ([retried]) skips the
+     * reconnect and reports the companion as unavailable, as does a failed reconnect. The caller
+     * has already counted this request into [recovering]; it is counted out once, when it finishes.
+     */
+    private fun recoverCompanion(command: JSONObject, result: MethodChannel.Result, gen: Int, retried: Boolean, kind: String?, sent: Boolean) {
+        val retry = !retried && (!sent || command.optString("action") in retryableActions)
+        var done = false
+        val finish = finish@{ up: Boolean ->
+            if (done) return@finish
+            done = true
+            recovering.decrementAndGet()
+            if (!up || retried || gen != generation) {
+                controls.clearState()
+                result.error("connection", "Zangetsu companion unavailable. Bluetooth TV controls remain available when connected.", null)
+            } else if (retry) sendCompanion(command, result, gen, true)
+            else result.error("connection", "The TV did not confirm that. Try again.", null)
+        }
+        if (retried || gen != generation || !prefs.getBoolean("autoConnect", false)) { finish(false); return }
+        if (paired) { finish(true); return }
+        val id = prefs.getString("deviceId", "") ?: ""
+        // Without Nearby devices permission a Bluetooth reopen would prompt; use Wi-Fi then.
+        val mayUseBluetooth = Build.VERSION.SDK_INT < 31 || context.checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
+        val bluetooth = if (kind == "Bluetooth" && mayUseBluetooth) prefs.getString("hid.$id", null) else null
+        val address = prefs.getString("address", "") ?: ""
+        val args = when {
+            bluetooth != null && id.isNotEmpty() -> mapOf("bluetooth" to bluetooth, "expectedId" to id, "background" to true)
+            address.isNotEmpty() -> mapOf("address" to address, "background" to true)
+            else -> { finish(false); return }
+        }
+        val opened = if (args.containsKey("bluetooth")) "Bluetooth" else "Wi-Fi"
+        try {
+            connect(MethodCall("connect", args), object : MethodChannel.Result {
+                override fun success(value: Any?) { finish(paired) }
+                override fun error(code: String, message: String?, details: Any?) {
+                    // Another reconnect of this link is already running: wait for it instead.
+                    if (code == "connecting") awaitLink(opened, android.os.SystemClock.elapsedRealtime() + 12000, finish) else finish(false)
+                }
+                override fun notImplemented() { finish(false) }
+            })
+        } catch (_: Exception) { connecting = opening.isNotEmpty(); finish(false) }
+    }
+
+    /** Main thread: checks every 250 ms until [kind] stops opening or [deadline] passes, then reports whether a link is up. */
+    private fun awaitLink(kind: String, deadline: Long, done: (Boolean) -> Unit) {
+        if (paired || !opening.contains(kind) || android.os.SystemClock.elapsedRealtime() > deadline) { done(paired); return }
+        main.postDelayed({ awaitLink(kind, deadline, done) }, 250)
     }
     /** Probes idle fallback sockets with read-only state requests, never playback actions. */
     private fun keepStandbyAlive() {

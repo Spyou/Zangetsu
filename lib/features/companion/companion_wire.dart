@@ -97,6 +97,20 @@ String companionPairingToken(String shared, String nonce, String clientId) =>
 /// with subtitles for Continue on phone can pass 256 KiB.
 const companionReplyLimit = 8 * 1024 * 1024;
 
+/// Actions that only read from the TV, so the phone may send them once more
+/// after a dropped link without doing anything twice. Key presses, playback,
+/// volume and keyboard commands are never in this set. Matches
+/// RemoteCompanionBridge.retryableActions on Android.
+const companionRetryableActions = {
+  'state',
+  'catalogues',
+  'search',
+  'detail',
+  'handoffSnapshot',
+  'handoffSources',
+  'handoffValidate',
+};
+
 /// Ephemeral P-256 key used once per pairing, matching the Kotlin receiver's
 /// encoding: the public key is an uncompressed point in lowercase hex.
 class CompanionKey {

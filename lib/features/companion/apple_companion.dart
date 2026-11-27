@@ -183,9 +183,11 @@ class AppleCompanion {
     switch (method) {
       case 'connectionState':
         _dropIfIdle();
+        // A silent reconnect after one failed command still counts as
+        // connected, so a refresh in that window does not drop the session.
         return {
-          'connected': _client?.alive == true,
-          'companion': _client?.alive == true,
+          'connected': _client?.alive == true || _recovering > 0,
+          'companion': _client?.alive == true || _recovering > 0,
           'wifi': _client?.alive == true,
           'hid': false,
           'bluetoothCompanion': false,
@@ -200,6 +202,8 @@ class AppleCompanion {
         await _connect(Map<String, dynamic>.from(args as Map));
         return null;
       case 'reconnect':
+        // A silent reconnect is already running; it finishes the job.
+        if (_recovering > 0) return null;
         _dropIfIdle();
         if (_saved['autoConnect'] == true && _client?.alive != true)
           await _connect({}, background: true);
@@ -569,23 +573,94 @@ class AppleCompanion {
     return found.values.toList();
   }
 
-  /// Sends on the current authenticated link and clears stale activity state on failure.
-  Future<Map<String, dynamic>> _exchange(Map<String, dynamic> command) async {
-    final client = _client;
+  /// Sends on the current authenticated link. When the link fails it is
+  /// dropped for good, the saved TV is quietly reconnected (see [_revive]),
+  /// and a read-only command ([companionRetryableActions]) is sent once more.
+  /// Other commands are never sent twice: they fail with a "try again" error
+  /// while the session stays connected. Only a failed reconnect clears the
+  /// activity state and reports the link as lost. [retried] marks the retry:
+  /// a retry that fails too skips the reconnect and reports the link as lost,
+  /// the same as Android's sendCompanion. A command that arrives while that
+  /// reconnect runs was never sent, so it waits for it and is sent once.
+  Future<Map<String, dynamic>> _exchange(
+    Map<String, dynamic> command, {
+    bool retried = false,
+  }) async {
+    var client = _client;
+    if ((client == null || !client.alive) && _recovering > 0 && !retried) {
+      if (await _revive(_generation)) return _exchange(command, retried: true);
+      client = _client;
+    }
     if (client == null || !client.alive)
       throw PlatformException(
         code: 'connection',
         message: 'Reconnect to your TV.',
       );
+    final generation = _generation;
     try {
       final response = await client.exchange(command);
       _lastReply = DateTime.now();
       if (response.containsKey('active')) await _snapshot(response);
       return response;
     } catch (e) {
+      // The wire closed itself; it is never reused mid-frame.
+      client.close();
+      if (identical(_client, client)) _client = null;
+      bool revived = false;
+      if (!retried) {
+        _recovering++;
+        try {
+          revived = await _revive(generation);
+        } finally {
+          _recovering--;
+        }
+      }
+      if (revived) {
+        if (companionRetryableActions.contains(command['action']))
+          return _exchange(command, retried: true);
+        throw PlatformException(
+          code: 'connection',
+          message: 'The TV did not confirm that. Try again.',
+        );
+      }
       await _snapshot({});
       throw PlatformException(code: 'connection', message: _text(e));
     }
+  }
+
+  /// The one silent reconnect running after a failed exchange, shared by
+  /// every command that failed with it.
+  Future<void>? _reviving;
+
+  /// Commands currently waiting on a silent reconnect after a failed
+  /// exchange; while above zero the session still reports as connected.
+  int _recovering = 0;
+
+  /// Reopens the saved TV link with the remembered token, as the background
+  /// reconnect does. Returns true when a link is up again. Skipped when the
+  /// user disconnected, or connected elsewhere, since [generation] was read;
+  /// a command that failed with an earlier one waits for that reconnect.
+  /// When another reconnect is already running (an app resume, say), it
+  /// waits up to 12 s for that one instead, like Android's awaitLink.
+  Future<bool> _revive(int generation) async {
+    if (_reviving == null && _connecting > 0) {
+      final deadline = DateTime.now().add(const Duration(seconds: 12));
+      while (_connecting > 0 && DateTime.now().isBefore(deadline))
+        await Future<void>.delayed(const Duration(milliseconds: 250));
+      return _client?.alive == true;
+    }
+    if (_reviving == null &&
+        (_saved['autoConnect'] != true || generation != _generation))
+      return _client?.alive == true;
+    try {
+      await (_reviving ??= _connect(
+        {},
+        background: true,
+      ).whenComplete(() => _reviving = null));
+    } catch (_) {
+      return false;
+    }
+    return _client?.alive == true;
   }
 
   /// Cancels deliberate-hold repetition without sending a second navigation event.
