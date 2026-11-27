@@ -14,6 +14,7 @@ import '../../core/di/injector.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/ui/settings_widgets.dart';
 import 'companion_catalogue.dart';
+import 'handoff_sources_wire.dart';
 import '../../core/models/episode.dart';
 import '../../core/models/video_source.dart';
 import '../../core/playback/resume_store.dart';
@@ -432,6 +433,10 @@ class _CompanionSettingsScreenState extends State<CompanionSettingsScreen>
     // player's first open each ask once; any later ask is a retry after a
     // failure, so the TV is told to fetch fresh links instead of reusing them.
     final asks = <int, int>{};
+    // Where the TV's next page of links starts, per episode, while the TV
+    // holds more than it sent. A retry reads that page first and asks for a
+    // fresh set only once every page has been tried.
+    final nextPage = <int, int>{};
     String plain(String url) =>
         url.replaceAll('/dub/', '/x/').replaceAll('/sub/', '/x/');
     Future<List<VideoSource>> resolve(String url) async {
@@ -442,14 +447,25 @@ class _CompanionSettingsScreenState extends State<CompanionSettingsScreen>
           'This episode is not in the TV list. Open Continue on phone again.',
         );
       final asked = asks[i] = (asks[i] ?? 0) + 1;
+      final retry = asked > 2;
+      // Taken out before asking, so a failed page makes the next retry ask
+      // for a fresh set instead of the same page again.
+      final offset = retry ? nextPage.remove(i) : null;
       final result = await _session.command('handoffSources', {
         'session': snapshot['session'],
         'index': i,
-        if (asked > 2) 'refresh': true,
+        'format': handoffSourcesFormat,
+        if (offset != null) 'offset': offset else if (retry) 'refresh': true,
       });
-      final sources = (result['sources'] as List? ?? [])
-          .map((e) => VideoSource.fromJson(Map<String, dynamic>.from(e as Map)))
-          .toList();
+      // An older TV answers in the full format, which has no further pages.
+      final page = readHandoffSources(result);
+      final next = page.nextOffset;
+      if (next != null) {
+        nextPage[i] = next;
+      } else {
+        nextPage.remove(i);
+      }
+      final sources = page.sources;
       if (sources.isEmpty)
         throw StateError(
           'No phone-compatible stream is available for this episode.',

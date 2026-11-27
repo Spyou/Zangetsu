@@ -1,4 +1,5 @@
 import 'apple_companion.dart';
+import 'handoff_sources_wire.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/services.dart';
@@ -117,6 +118,11 @@ class CompanionCatalogue {
           request['session'] as int,
           request['index'] as int,
           refresh: request['refresh'] == true,
+          offset: (request['offset'] as num?)?.toInt() ?? 0,
+          // An older phone reads only the full format.
+          compact:
+              ((request['format'] as num?)?.toInt() ?? 0) >=
+              handoffSourcesFormat,
         );
       case 'handoffValidate':
         if (!TvNativePlayer.companionSessionMatches(
