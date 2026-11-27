@@ -121,6 +121,27 @@ without proper attribution or in violation of its license, please open an
 issue or contact Spyou directly (https://github.com/Spyou) so it can be
 corrected or removed.
 
+Phone remote additions
+
+ZXing Android Embedded
+  https://github.com/journeyapps/zxing-android-embedded
+  Dependency: com.journeyapps:zxing-android-embedded:4.3.0
+  License: Apache-2.0. Used for the phone remote QR pairing scanner.
+
+ZXing core
+  https://github.com/zxing/zxing
+  Dependency: com.google.zxing:core:3.5.3
+  License: Apache-2.0. Barcode decoding used by ZXing Android Embedded.
+
+AndroidX Test runner 1.6.2 and ext:junit 1.2.1
+  https://github.com/android/android-test
+  License: Apache-2.0. Used for Android instrumentation tests.
+
+Android Bluetooth HID keyboard
+  API reference: https://developer.android.com/reference/android/bluetooth/BluetoothHidDevice
+  RemoteConnectionService.java implements a Bluetooth HID keyboard using the public
+  android.bluetooth.BluetoothHidDevice API.
+
 Lucide dock icons
   https://lucide.dev
   Six dock icons are rendered from Lucide SVGs with a 1.8 stroke.

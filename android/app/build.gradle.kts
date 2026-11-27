@@ -61,6 +61,7 @@ android {
 
     defaultConfig {
         applicationId = "com.spyou.watch_app"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
@@ -218,6 +219,11 @@ configurations.configureEach {
 // Bundles the CloudStream runtime so .cs3 plugins can be DexClassLoaded against
 // it. GPL-3.0 — see docs/cloudstream-integration-spec.md §7.
 dependencies {
+    // Phone remote QR pairing scanner (Apache-2.0, see NOTICE.md).
+    implementation("com.journeyapps:zxing-android-embedded:4.3.0")
+    implementation("com.google.zxing:core:3.5.3")
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
     val discordSdk = rootProject.file("discord-sdk/discord_partner_sdk.aar")
     if (noDiscord) {
         logger.warn("ZANGETSU_NO_DISCORD: skipping proprietary Discord SDK.")
