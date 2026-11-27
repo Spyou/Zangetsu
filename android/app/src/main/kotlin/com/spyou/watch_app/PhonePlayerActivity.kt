@@ -2064,7 +2064,9 @@ class PhonePlayerActivity : Activity() {
             bumpControls()
             setBuffering(true)
         }
-        handler.postDelayed(resolveTimeout, 30_000L)
+        // Just past Dart's 60s wait for a source the viewer picked (a slow one like
+        // XD Movies needs ~30s); Dart answers sooner for everything else.
+        handler.postDelayed(resolveTimeout, 65_000L)
         ch.invokeMethod(
             "resolveEpisode",
             mapOf("index" to index),

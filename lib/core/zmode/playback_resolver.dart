@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../provider/link_patience.dart';
 import '../models/episode.dart';
 import '../models/video_source.dart';
 import '../playback/source_health_store.dart';
@@ -277,9 +278,9 @@ class PlaybackResolver {
   /// Only applied where provider JS runs off the UI isolate
   /// ([JsEngine.runsOffUiIsolate]). The 8s above was never about the source's
   /// patience — it bounded how long the UI could be frozen. Where that is
-  /// still true, a 25s wait would still be 25 frozen seconds, so the tight
+  /// still true, a 60s wait would still be 60 frozen seconds, so the tight
   /// budget stands.
-  static const Duration chosenSourceBudget = Duration(seconds: 25);
+  static const Duration chosenSourceBudget = Duration(seconds: 60);
   final Duration _chosenBudget;
 
   /// The budget for [sourceId] given the sources this viewer chose.
@@ -570,17 +571,20 @@ class PlaybackResolver {
       _Attempt? attempt;
       final budget = _budgetFor(sourceId, chosen);
       try {
-        final call = _tryCandidate(
-          p,
-          sourceId,
-          t,
-          // Playback needs the first usable link, not every mirror. CloudStream
-          // can return early while its native link session keeps resolving;
-          // the player picks up those later links through pollSources.
-          fast: true,
-          category: category,
-          onTitleMatch: () => hadTitleMatch = true,
-          onMiss: (reason) => note(sourceId, reason),
+        final call = runZoned(
+          () => _tryCandidate(
+            p,
+            sourceId,
+            t,
+            // Playback needs the first usable link, not every mirror. CloudStream
+            // can return early while its native link session keeps resolving;
+            // the player picks up those later links through pollSources.
+            fast: true,
+            category: category,
+            onTitleMatch: () => hadTitleMatch = true,
+            onMiss: (reason) => note(sourceId, reason),
+          ),
+          zoneValues: {patientLinksKey: chosen.contains(sourceId)},
         ).timeout(budget);
         // Stop WAITING when the viewer leaves; the answer underneath is
         // dropped, exactly as for an over-budget candidate.
@@ -682,7 +686,10 @@ class PlaybackResolver {
           note(sourceId, SweepReason.unhealthy);
           continue;
         }
-        if (_recentlyOverBudget(sourceId)) {
+        // A source pinned to this title by hand is never skipped for an earlier
+        // timeout: they asked for it, so it gets tried (and may fail) each time.
+        if (sourceId != _matcher.pinnedSource(p.show) &&
+            _recentlyOverBudget(sourceId)) {
           note(sourceId, SweepReason.cooldown);
           continue;
         }
@@ -840,14 +847,17 @@ class PlaybackResolver {
       _Attempt? attempt;
       final budget = _budgetFor(sourceId, chosen);
       try {
-        final call = _tryCandidate(
-          p,
-          sourceId,
-          t,
-          fast: fast,
-          category: category,
-          onTitleMatch: () => hadTitleMatch = true,
-          onMiss: (reason) => note(sourceId, reason),
+        final call = runZoned(
+          () => _tryCandidate(
+            p,
+            sourceId,
+            t,
+            fast: fast,
+            category: category,
+            onTitleMatch: () => hadTitleMatch = true,
+            onMiss: (reason) => note(sourceId, reason),
+          ),
+          zoneValues: {patientLinksKey: chosen.contains(sourceId)},
         ).timeout(budget);
         if (accept == null) {
           // Stop WAITING when the viewer leaves. The request underneath is not
@@ -940,7 +950,10 @@ class PlaybackResolver {
           note(sourceId, SweepReason.unhealthy);
           continue;
         }
-        if (_recentlyOverBudget(sourceId)) {
+        // A source pinned to this title by hand is never skipped for an earlier
+        // timeout: they asked for it, so it gets tried (and may fail) each time.
+        if (sourceId != _matcher.pinnedSource(p.show) &&
+            _recentlyOverBudget(sourceId)) {
           debugPrint(
             '[playback] _resolve · skip $sourceId (over budget recently)',
           );

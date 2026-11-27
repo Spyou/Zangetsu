@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:watch_app/core/hive/safe_box.dart';
 import 'dart:io';
@@ -16,6 +17,7 @@ import '../models/provider_info.dart';
 import '../models/video_source.dart';
 import 'base_provider.dart';
 import 'cf_solve_needed.dart';
+import 'link_patience.dart';
 import 'cs_repo_url.dart';
 
 /// Native MethodChannel bridging to the CloudStream plugin host. All methods
@@ -462,7 +464,22 @@ class CloudStreamProvider implements BaseProvider {
         'loadLinks',
         {'name': hostKey, 'data': episodeUrl, 'fast': fast},
       );
-      return _sourcesFromResult(raw);
+      final first = _sourcesFromResult(raw);
+      // A fast call stops waiting after a few seconds natively, but the resolve
+      // keeps running. A slow source (XD Movies needs ~30s: a session per link,
+      // with retries) then looked like "0 links" and was written off while its
+      // links were still on the way. Keep reading the running resolve until a
+      // link lands or it finishes. Only for a source the viewer picked (see
+      // [patientLinksKey]); the caller's own time budget bounds the wait.
+      final patient = Zone.current[patientLinksKey] == true;
+      if (fast && patient && first.isEmpty && _asMap(raw)['done'] == false) {
+        for (var i = 0; i < 150; i++) {
+          await Future<void>.delayed(const Duration(milliseconds: 400));
+          final polled = await pollVideoSources(episodeUrl);
+          if (polled.sources.isNotEmpty || polled.done) return polled.sources;
+        }
+      }
+      return first;
     } finally {
       _inFlightLinks.remove(key);
     }

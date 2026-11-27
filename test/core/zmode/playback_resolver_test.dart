@@ -409,6 +409,50 @@ void main() {
     expect(src.log, contains('sources:https://b/3:src-b'));
   });
 
+  test('a source pinned by hand is asked again after it timed out', () async {
+    // The viewer picked it, so a slow answer must not put it on the skip list:
+    // that turned their next tap into "no sources" without trying anything.
+    await store.pin(_show, const SourceMatch(
+      sourceId: 'src-a',
+      showUrl: 'https://a/show',
+      showId: 'a',
+      showTitle: 'FMA',
+      pinned: true,
+    ));
+    final src = _SweepSrc(
+      aEps: const [
+        Episode(id: '1', title: 'Ep 1', number: 1, url: 'https://a/1'),
+        Episode(id: '2', title: 'Ep 2', number: 2, url: 'https://a/2'),
+      ],
+      bEps: const [
+        Episode(id: '1', title: 'Ep 1', number: 1, url: 'https://b/1'),
+        Episode(id: '2', title: 'Ep 2', number: 2, url: 'https://b/2'),
+      ],
+      hangs: const {'src-a'},
+    );
+    final matcher = SourceMatcher(
+      sources: src, store: store, prefs: prefs,
+      candidates: (_) => src.loadedSources,
+    );
+    final r = resolver(
+      sources: src,
+      matcher: matcher,
+      budget: const Duration(milliseconds: 60),
+    );
+
+    await expectLater(r.resolveForPlayback(_ep2), throwsA(anything));
+    src.log.clear();
+    // Another episode, so the remembered "nothing has it" for ep 2 isn't what
+    // answers — only the over-budget skip is under test.
+    await expectLater(
+      r.resolveForPlayback('zm://anime/mal:100/ep/1'),
+      throwsA(anything),
+    );
+
+    expect(src.log.where((l) => l.endsWith(':src-a')), isNotEmpty,
+        reason: 'a pinned source is tried every time, not skipped');
+  });
+
   test('invalidateWinner clears over-budget so an episode tap retries', () async {
     // A tap / Retry is intentional: sources that timed out must be eligible
     // again. The cooldown only protects automatic follow-on sweeps.

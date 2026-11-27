@@ -666,7 +666,9 @@ class TvPlayerActivity : Activity() {
             return true
         }
 
-        handler.postDelayed(timeout, 30_000L)
+        // Just past Dart's 60s wait for a source the viewer picked; Dart answers
+        // sooner for everything else.
+        handler.postDelayed(timeout, 65_000L)
         bridge.invokeMethod(
             "resolveEpisode",
             mapOf("index" to index, "category" to requestedCategory, "opening" to opening),

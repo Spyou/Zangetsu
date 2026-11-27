@@ -854,6 +854,8 @@ class PluginHost(private val context: Context) {
         @Volatile
         var job: kotlinx.coroutines.Job? = null
 
+        val startedAt: Long = android.os.SystemClock.elapsedRealtime()
+
         /** Proxy URL per link, so every poll hands back the same one. */
         val proxied: MutableMap<ExtractorLink, String> =
             Collections.synchronizedMap(java.util.IdentityHashMap())
@@ -912,32 +914,47 @@ class PluginHost(private val context: Context) {
     fun loadLinks(apiName: String, data: String, fast: Boolean = false): Map<String, Any?> {
         val empty = mapOf("sources" to emptyList<Any?>(), "subtitles" to emptyList<Any?>())
         val api = apiByName(apiName) ?: return empty
-        // A fresh session per call; any previous one for this episode is replaced
-        // (and its job cancelled) so a re-open never reads half-stale links.
         val key = "$apiName|$data"
-        val session = LinkSession()
-        synchronized(linkSessions) {
-            linkSessions.put(key, session)?.job?.cancel()
+        // A second call for the same episode while the first is still resolving
+        // (a prefetch then the real play, or a quick retry) used to REPLACE it and
+        // cancel its job. That tore down requests mid-flight and started them all
+        // again, doubling the load on the source — which is how a rate-limited
+        // site (XD Movies: HTTP 429 on every session) never got to answer. Share
+        // the running resolve instead; only a finished, failed or old one is replaced.
+        //
+        // Check, replace and launch happen under ONE lock so two simultaneous
+        // callers can't both start a resolve, and no caller can see a session
+        // whose job hasn't been set yet.
+        //
+        // The job runs on [linkScope], NOT inside the runBlocking below:
+        // runBlocking waits for its own children, so the early return the fast
+        // path needs would force a cancel — throwing away mirrors that were
+        // seconds away. Here the resolve simply carries on filling the session
+        // afterwards. Capped so a call that never finishes (the normal case for
+        // these plugins) can't run forever.
+        val session = synchronized(linkSessions) {
+            val existing = linkSessions[key]
+            if (existing != null && !existing.done && existing.job?.isActive == true &&
+                android.os.SystemClock.elapsedRealtime() - existing.startedAt < LINK_SESSION_REUSE_MS
+            ) {
+                existing
+            } else {
+                val fresh = LinkSession()
+                linkSessions.put(key, fresh)?.job?.cancel()
+                fresh.job = linkScope.launch {
+                    withTimeoutOrNull(LINK_SESSION_CAP_MS) {
+                        runCatching {
+                            api.loadLinks(data, false, { sf -> fresh.subs.add(sf) }, { el -> fresh.links.add(el) })
+                        }.onFailure {
+                            android.util.Log.w("PluginHost", "loadLinks failed for $apiName: $it", it)
+                        }
+                    }
+                    fresh.done = true
+                }
+                fresh
+            }
         }
         val links = session.links
-        val subs = session.subs
-
-        // Started on [linkScope], NOT inside the runBlocking below: runBlocking
-        // waits for its own children, so the early return the fast path needs
-        // would force a cancel — throwing away mirrors that were seconds away.
-        // Here the resolve simply carries on filling the session afterwards.
-        // Capped so a call that never finishes (the normal case for these
-        // plugins) can't run forever.
-        session.job = linkScope.launch {
-            withTimeoutOrNull(LINK_SESSION_CAP_MS) {
-                runCatching {
-                    api.loadLinks(data, false, { sf -> subs.add(sf) }, { el -> links.add(el) })
-                }.onFailure {
-                    android.util.Log.w("PluginHost", "loadLinks failed for $apiName: $it", it)
-                }
-            }
-            session.done = true
-        }
 
         runBlocking {
             val job = session.job
@@ -1211,6 +1228,8 @@ class PluginHost(private val context: Context) {
          *  after 70s), so the cap is what stops one browsing session leaving work
          *  running indefinitely. */
         private const val LINK_SESSION_CAP_MS = 60_000L
+        /** A resolve younger than this is shared by a repeat call, not restarted. */
+        private const val LINK_SESSION_REUSE_MS = 30_000L
         private const val LINK_SESSIONS_MAX = 4
     }
 }
