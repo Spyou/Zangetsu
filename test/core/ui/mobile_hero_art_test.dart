@@ -63,4 +63,34 @@ void main() {
       'https://anime/banner.jpg',
     );
   });
+
+  group('homeHeroArt', () {
+    const poster = 'https://image.tmdb.org/t/p/w500/poster.jpg';
+    const backdrop = 'https://image.tmdb.org/t/p/w780/backdrop.jpg';
+
+    test('asks TMDB for the backdrop at full size', () {
+      expect(
+        homeHeroArt(poster, backdrop),
+        'https://image.tmdb.org/t/p/original/backdrop.jpg',
+      );
+    });
+
+    test('prefers the plain backdrop so no title is printed in the art', () {
+      expect(
+        homeHeroArt('https://a/cover.jpg', 'https://a/banner.jpg'),
+        'https://a/banner.jpg',
+      );
+    });
+
+    test('falls back to the poster, upgraded for the tall card', () {
+      expect(homeHeroArt(poster, null), contains('/original/poster.jpg'));
+      expect(homeHeroArt(poster, '  '), contains('/original/poster.jpg'));
+      expect(homeHeroArt('https://a/cover.jpg', null), 'https://a/cover.jpg');
+    });
+
+    test('nothing at all gives nothing', () {
+      expect(homeHeroArt(null, null), isNull);
+      expect(homeHeroArt('', ''), '');
+    });
+  });
 }

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'dart:io';
 
@@ -22,6 +23,8 @@ import '../../core/zmode/metadata_provider_prefs.dart';
 import '../../core/ui/poster_card.dart';
 import '../../core/metadata/title_badges.dart';
 import 'letterbox_detector.dart';
+import '../../core/ui/backdrop_focus.dart';
+import '../../core/ui/image_fade.dart';
 import '../../core/ui/detail_prefs.dart';
 import '../../core/ui/poster_palette.dart';
 import '../../core/ui/mobile_hero_art.dart';
@@ -2504,14 +2507,13 @@ class _DetailViewState extends State<_DetailView>
         ? (_tmdbBanners[widget.item.id] ?? detail.banner ?? item.banner)
         : (detail.banner ?? item.banner);
 
-    // Tall phone hero: prefer TMDB's portrait art; other sources stay as-is.
+    // The plain backdrop first, as on Home: the title is drawn over it, so a
+    // picture with the title printed in would show it twice. A poster only when
+    // there is no backdrop.
+    final heroBackdrop = banner ?? item.landscapePoster;
+    final heroIsBackdrop = heroBackdrop?.trim().isNotEmpty == true;
     final coverUrl =
-        mobileHeroArt(
-          detail.cover ?? item.cover,
-          banner ?? item.landscapePoster,
-          sourceId: detail.sourceId,
-        ) ??
-        '';
+        homeHeroArt(detail.cover ?? item.cover, heroBackdrop) ?? '';
     final coverHeaders = detail.coverHeaders ?? item.coverHeaders;
     final hasCover = coverUrl.isNotEmpty;
 
@@ -2747,10 +2749,12 @@ class _DetailViewState extends State<_DetailView>
                           background: RepaintBoundary(
                             child: _Hero(
                               coverUrl: coverUrl,
-                              imageDecodeWidth: mobileHeroDecodeWidth(
-                                item.sourceId,
-                                800,
-                              ),
+                              // A backdrop is wide and needs more pixels than a tall
+                              // poster to fill the hero. Capped at 2000 so a poster
+                              // fallback stays small.
+                              imageDecodeWidth: heroIsBackdrop
+                                  ? math.min(heroDecodeMaxWidth, 2000)
+                                  : mobileHeroDecodeWidth(item.sourceId, 800),
                               coverHeaders: coverHeaders,
                               hasCover: hasCover,
                               tint: ThemeController.adaptiveColour

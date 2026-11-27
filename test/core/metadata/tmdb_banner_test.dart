@@ -16,6 +16,7 @@ import 'package:watch_app/core/models/provider_info.dart';
 class _Adapter implements HttpClientAdapter {
   final requests = <Uri>[];
   int failImagesTimes = 0;
+  bool noBackdrops = false;
   int _imagesCalls = 0;
 
   @override
@@ -44,7 +45,13 @@ class _Adapter implements HttpClientAdapter {
         'posters': [
           {'file_path': isTv ? '/tv-poster.png' : '/movie-poster.png'},
         ],
-        'backdrops': [],
+        'backdrops': noBackdrops
+            ? []
+            : [
+                // Best-voted, but it has the title printed on it.
+                {'file_path': '/titled.jpg', 'iso_639_1': 'en'},
+                {'file_path': isTv ? '/tv-plain.jpg' : '/movie-plain.jpg'},
+              ],
       });
     }
     throw UnsupportedError('unexpected path $path');
@@ -79,7 +86,7 @@ void main() {
     temp = await Directory.systemTemp.createTemp('tmdb_banner');
     Hive.init(temp.path);
     await Hive.openBox<String>('logo_cache');
-    await Hive.openBox<String>('tmdb_banner_cache_v3');
+    await Hive.openBox<String>('tmdb_banner_cache_v4');
     adapter = _Adapter();
     service = TitleLogoService(Dio()..httpClientAdapter = adapter);
   });
@@ -93,9 +100,21 @@ void main() {
     'an anime banner prefers the tv match over a higher-ranked same-named movie',
     () async {
       final url = await service.bannerFor(_animeItem());
-      expect(url, 'https://image.tmdb.org/t/p/original/tv-poster.png');
+      expect(url, 'https://image.tmdb.org/t/p/original/tv-plain.jpg');
     },
   );
+
+  test('a plain backdrop beats a titled one and the poster', () async {
+    final url = await service.bannerFor(_animeItem());
+    expect(url, isNot(contains('titled')));
+    expect(url, isNot(contains('poster')));
+  });
+
+  test('with no backdrop at all it falls back to the poster', () async {
+    adapter.noBackdrops = true;
+    final url = await service.bannerFor(_animeItem());
+    expect(url, 'https://image.tmdb.org/t/p/original/tv-poster.png');
+  });
 
   test('a TMDB network error is not cached as a genuine miss', () async {
     adapter.failImagesTimes = 1;

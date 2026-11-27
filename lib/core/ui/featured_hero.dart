@@ -4,7 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
-import 'image_fade.dart';
+import 'backdrop_focus.dart';
 import 'mobile_hero_art.dart';
 import 'poster_palette.dart';
 
@@ -135,7 +135,7 @@ class _FeaturedHeroState extends State<FeaturedHero> {
   }
 
   /// Tall phone artwork uses TMDB's portrait poster when available.
-  String? _art(MediaItem item) => mobileHeroArt(item.cover, _bannerFor(item));
+  String? _art(MediaItem item) => homeHeroArt(item.cover, _bannerFor(item));
 
   String? _bannerFor(MediaItem item) => tmdbBannerFor(item, _tmdbBanners);
 
@@ -309,20 +309,18 @@ class _FeaturedHeroState extends State<FeaturedHero> {
                 fit: StackFit.expand,
                 children: [...previousChildren, ?currentChild],
               ),
-              child: Image(
+              child: FocusedHeroImage(
                 key: ValueKey(_art(widget.item)),
-                image: ResizeImage(
+                source: provider,
+                image: heroImage(
                   provider,
-                  width: mobileHeroDecodeWidth(widget.item.sourceId, memW),
+                  screenWidth: memW,
+                  cardHeight: heroCardDecodeHeight(
+                    MediaQuery.sizeOf(context).height,
+                    MediaQuery.devicePixelRatioOf(context),
+                  ),
                 ),
-                fit: BoxFit.cover,
-                frameBuilder: imageFadeIn,
-                // Crop from the top so the poster's own printed title block
-                // (and the thin rule above it) is pushed off the bottom and
-                // hidden by the gradient — also removes the duplicate
-                // "ghosted" title.
-                alignment: Alignment.topCenter,
-                gaplessPlayback: true,
+                focusKey: _art(widget.item) ?? '',
               ),
             )
           else

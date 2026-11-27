@@ -10,7 +10,7 @@ import '../theme/app_colors.dart';
 import 'banner_actions.dart';
 import 'featured_carousel.dart' show heroHeightFor;
 import 'featured_hero.dart' show HeroMeta;
-import 'image_fade.dart';
+import 'backdrop_focus.dart';
 import 'mobile_hero_art.dart';
 import 'native_cover_provider.dart';
 import 'poster_palette.dart';
@@ -200,7 +200,7 @@ class _FeaturedBannerEdgeState extends State<FeaturedBannerEdge>
     }
     final item = _pages[_index];
     final banner = _bannerFor(item);
-    final art = mobileHeroArt(item.cover, banner);
+    final art = homeHeroArt(item.cover, banner);
     if (art == null || art.isEmpty) {
       widget.onArtColor?.call(null);
       return;
@@ -237,16 +237,20 @@ class _FeaturedBannerEdgeState extends State<FeaturedBannerEdge>
         _pages,
         _index,
         artwork: (item) {
-          final url = mobileHeroArt(item.cover, _bannerFor(item));
-          return url == null || url.isEmpty
-              ? null
-              : ResizeImage(
-                  nativeCoverProvider(url, item.coverHeaders),
-                  width: mobileHeroDecodeWidth(
-                    item.sourceId,
-                    (mq.size.width * mq.devicePixelRatio).round(),
-                  ),
-                );
+          final url = homeHeroArt(item.cover, _bannerFor(item));
+          if (url == null || url.isEmpty) return null;
+          // The next pages' framing is worked out ahead too, so a page never
+          // waits for it when it comes round.
+          final base = nativeCoverProvider(url, item.coverHeaders);
+          unawaited(backdropFocusFor(base, key: url));
+          return heroImage(
+            base,
+            screenWidth: (mq.size.width * mq.devicePixelRatio).round(),
+            cardHeight: heroCardDecodeHeight(
+              mq.size.height,
+              mq.devicePixelRatio,
+            ),
+          );
         },
       );
     }
@@ -408,7 +412,7 @@ class _FeaturedBannerEdgeState extends State<FeaturedBannerEdge>
   }
 
   Widget _artwork(MediaItem item) {
-    final url = mobileHeroArt(item.cover, _bannerFor(item));
+    final url = homeHeroArt(item.cover, _bannerFor(item));
     final provider = url == null || url.isEmpty
         ? null
         : nativeCoverProvider(url, item.coverHeaders);
@@ -440,16 +444,18 @@ class _FeaturedBannerEdgeState extends State<FeaturedBannerEdge>
               fit: StackFit.expand,
               children: [...previousChildren, ?currentChild],
             ),
-            child: Image(
+            child: FocusedHeroImage(
               key: ValueKey(url),
-              image: ResizeImage(
+              source: provider,
+              image: heroImage(
                 provider,
-                width: mobileHeroDecodeWidth(item.sourceId, width),
+                screenWidth: width,
+                cardHeight: heroCardDecodeHeight(
+                  MediaQuery.sizeOf(context).height,
+                  MediaQuery.devicePixelRatioOf(context),
+                ),
               ),
-              fit: BoxFit.cover,
-              alignment: Alignment.topCenter,
-              frameBuilder: imageFadeIn,
-              errorBuilder: (_, _, _) => const SizedBox.shrink(),
+              focusKey: url!,
             ),
           ),
       ],

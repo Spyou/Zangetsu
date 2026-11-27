@@ -66,20 +66,7 @@ class _Hero extends StatelessWidget {
             ColoredBox(color: AppColors.surface2),
       );
     }
-    return CachedNetworkImage(
-      imageUrl: coverUrl,
-      httpHeaders: coverHeaders,
-      fit: BoxFit.cover,
-      memCacheWidth: imageDecodeWidth,
-      placeholder: (c, u) => ColoredBox(color: AppColors.surface2),
-      errorWidget: (c, u, e) => ColoredBox(color: AppColors.surface2),
-      // The TMDB backdrop upgrade swaps coverUrl in after the hero is already
-      // showing AniList's banner — keep that on screen and crossfade to the
-      // new one instead of dropping to the placeholder in between.
-      useOldImageOnUrlChange: true,
-      fadeOutDuration: const Duration(milliseconds: 300),
-      fadeInDuration: const Duration(milliseconds: 300),
-    );
+    return _FocusedCover(url: coverUrl, headers: coverHeaders);
   }
 
   @override
@@ -837,6 +824,108 @@ class _HeroFade extends StatelessWidget {
           builder: (context, page, _) => _layer(page ?? AppColors.bg),
         ),
       ),
+    );
+  }
+}
+
+/// The cover backdrop. A wide one in this tall hero is framed on where its
+/// subject is rather than always the middle. The picture is never held back for
+/// that (Detail opens over a preview showing the same picture, and a gap there
+/// reads as a blink): it shows at once, framed from the cache when the focus is
+/// known, and otherwise eases into its framing once that is worked out.
+class _FocusedCover extends StatefulWidget {
+  const _FocusedCover({required this.url, required this.headers});
+
+  final String url;
+  final Map<String, String>? headers;
+
+  @override
+  State<_FocusedCover> createState() => _FocusedCoverState();
+}
+
+class _FocusedCoverState extends State<_FocusedCover> {
+  BackdropFocus? _focus;
+
+  /// The hero's resting shape, kept from the first layout: the box grows and
+  /// shrinks with a pull or a scroll, and neither the framing nor the decode
+  /// size may follow that (a new size would decode the picture again).
+  double _boxAspect = 0;
+  int _decodeWidth = 0;
+  int _decodeHeight = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _load(widget.url);
+  }
+
+  @override
+  void didUpdateWidget(_FocusedCover old) {
+    super.didUpdateWidget(old);
+    if (old.url != widget.url) _load(widget.url);
+  }
+
+  void _load(String url) {
+    _focus = backdropFocusCached(url);
+    if (_focus != null) return;
+    backdropFocusFor(
+      CachedNetworkImageProvider(url, headers: widget.headers),
+      key: url,
+    ).then((focus) {
+      if (!mounted || widget.url != url || focus == null) return;
+      setState(() => _focus = focus);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, c) {
+        if (_boxAspect == 0 && c.maxHeight > 0) {
+          final dpr = MediaQuery.devicePixelRatioOf(context);
+          _boxAspect = c.maxWidth / c.maxHeight;
+          _decodeWidth = (c.maxWidth * dpr).round();
+          _decodeHeight = (c.maxHeight * dpr * 1.15).round();
+        }
+        final bias = _focus?.biasFor(_boxAspect) ?? 0.0;
+        // Decoded to fit the hero in both directions, so a tall picture cannot
+        // cost more than the hero itself needs.
+        final image = heroImage(
+          CachedNetworkImageProvider(widget.url, headers: widget.headers),
+          screenWidth: _decodeWidth,
+          cardHeight: _decodeHeight,
+        );
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            ColoredBox(color: AppColors.surface2),
+            // The TMDB backdrop upgrade swaps the url in after the hero is
+            // already showing AniList's banner — keep that on screen and
+            // crossfade to the new one instead of dropping to the placeholder.
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 300),
+              layoutBuilder: (current, previous) => Stack(
+                fit: StackFit.expand,
+                children: [...previous, ?current],
+              ),
+              child: TweenAnimationBuilder<double>(
+                key: ValueKey(widget.url),
+                tween: Tween<double>(end: bias),
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeOut,
+                builder: (context, x, _) => Image(
+                  image: image,
+                  fit: BoxFit.cover,
+                  alignment: Alignment(x, 0),
+                  frameBuilder: imageFadeIn,
+                  gaplessPlayback: true,
+                  errorBuilder: (_, _, _) => const SizedBox.shrink(),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }

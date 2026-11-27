@@ -115,13 +115,9 @@ class _DetailOpeningPreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // The same art as the real hero below it, so the swap does not change picture.
     final coverUrl =
-        mobileHeroArt(
-          item.cover,
-          item.banner ?? item.landscapePoster,
-          sourceId: item.sourceId,
-        ) ??
-        '';
+        homeHeroArt(item.cover, item.banner ?? item.landscapePoster) ?? '';
     final topInset = MediaQuery.paddingOf(context).top;
     final titleStyle = AppText.largeTitle.copyWith(fontSize: 28);
 

@@ -33,9 +33,10 @@ class TitleLogoService {
 
   static const String _boxName = 'logo_cache';
   // Bumped each time what gets cached here changes shape (v2: w780→original;
-  // v3: prefer poster over backdrop) — otherwise an already-cached (now
-  // stale) banner would be served forever instead of being re-resolved.
-  static const String _bannerBoxName = 'tmdb_banner_cache_v3';
+  // v3: prefer poster over backdrop; v4: plain backdrop first again) —
+  // otherwise an already-cached (now stale) banner would be served forever
+  // instead of being re-resolved.
+  static const String _bannerBoxName = 'tmdb_banner_cache_v4';
 
   final Map<String, String> _mem = {}; // '' = known "no logo"
   final Map<String, String> _bannerMem = {}; // '' = known "no backdrop"
@@ -333,21 +334,30 @@ class TitleLogoService {
       if (path != null && path.isNotEmpty) logo = '${Tmdb.img}/w500$path';
     }
 
-    // A movie/tv hero already looks sharp because mobileHeroArt swaps ITS
-    // poster in at full size for the phone hero — not the backdrop, which is
-    // usually just a duller screenshot. Give an AniList anime the same
-    // treatment: prefer its TMDB poster for the hero art too, and only fall
-    // back to the backdrop when TMDB has no poster for it.
-    String? lead(dynamic list) {
+    // The hero and Detail banner want a plain backdrop: the title is drawn on
+    // top as a logo or text, so a picture with the title printed into it shows
+    // it twice. Prefer a backdrop with no language (no text on it), then the
+    // best-voted one (TMDB already orders these by vote), and only fall back to
+    // a poster when TMDB has no backdrop at all.
+    String? lead(dynamic list, {bool textless = false}) {
       if (list is! List || list.isEmpty) return null;
-      final first = list.first; // TMDB already orders these by vote.
-      final path = first is Map ? first['file_path'] as String? : null;
+      Object? pick = list.first;
+      if (textless) {
+        for (final e in list) {
+          if (e is Map && e['iso_639_1'] == null) {
+            pick = e;
+            break;
+          }
+        }
+      }
+      final path = pick is Map ? pick['file_path'] as String? : null;
       return path != null && path.isNotEmpty
           ? '${Tmdb.img}/original$path'
           : null;
     }
 
-    final banner = lead(data['posters']) ?? lead(data['backdrops']);
+    final banner =
+        lead(data['backdrops'], textless: true) ?? lead(data['posters']);
 
     return _TmdbImages(logo: logo, banner: banner);
   }

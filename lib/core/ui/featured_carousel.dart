@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart'
 import 'package:flutter/material.dart';
 
 import '../models/media_item.dart';
+import 'backdrop_focus.dart';
 import 'banner_image_preloader.dart';
 import '../theme/app_colors.dart';
 import 'route_observer.dart';
@@ -285,7 +286,7 @@ class _FeaturedCarouselState extends State<FeaturedCarousel> with RouteAware {
     }
     final item = _pages[_realIndex];
     final banner = tmdbBannerFor(item, _tmdbBanners);
-    final art = mobileHeroArt(item.cover, banner);
+    final art = homeHeroArt(item.cover, banner);
     if (art == null || art.isEmpty) {
       widget.onArtColor?.call(null);
       return;
@@ -392,19 +393,23 @@ class _FeaturedCarouselState extends State<FeaturedCarousel> with RouteAware {
         _pages,
         _realIndex,
         artwork: (item) {
-          final url = mobileHeroArt(
+          final url = homeHeroArt(
             item.cover,
             tmdbBannerFor(item, _tmdbBanners),
           );
-          return url == null || url.isEmpty
-              ? null
-              : ResizeImage(
-                  nativeCoverProvider(url, item.coverHeaders),
-                  width: mobileHeroDecodeWidth(
-                    item.sourceId,
-                    (mq.size.width * mq.devicePixelRatio).round(),
-                  ),
-                );
+          if (url == null || url.isEmpty) return null;
+          // The next pages' framing is worked out ahead too, so a page never
+          // waits for it when it comes round.
+          final base = nativeCoverProvider(url, item.coverHeaders);
+          unawaited(backdropFocusFor(base, key: url));
+          return heroImage(
+            base,
+            screenWidth: (mq.size.width * mq.devicePixelRatio).round(),
+            cardHeight: heroCardDecodeHeight(
+              mq.size.height,
+              mq.devicePixelRatio,
+            ),
+          );
         },
       );
     }
