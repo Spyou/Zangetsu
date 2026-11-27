@@ -874,8 +874,12 @@ class PhonePlayerActivity : Activity() {
             // Force cues onto the user's vertical Position (0=top … 100=bottom).
             // Bottom padding alone can't do this: most VTT/SRT cues set their
             // own line and ignore it. Same helper the TV player uses.
-            override fun onCues(cueGroup: androidx.media3.common.text.CueGroup) {
-                renderSubtitleCues(cueGroup.cues)
+            override fun onEvents(source: Player, events: Player.Events) {
+                // PlayerView writes the raw cues in onCues, including after a
+                // seek. Apply styling after all individual callbacks finish.
+                if (player === source && events.contains(Player.EVENT_CUES)) {
+                    renderSubtitleCues(source.currentCues.cues)
+                }
             }
 
             override fun onPlaybackStateChanged(state: Int) {

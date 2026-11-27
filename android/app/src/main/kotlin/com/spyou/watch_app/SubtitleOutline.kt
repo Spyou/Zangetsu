@@ -4,8 +4,10 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.text.SpannableString
 import android.text.Spanned
+import android.text.TextDirectionHeuristics
 import android.text.style.ReplacementSpan
 import androidx.media3.common.text.Cue
+import kotlin.math.ceil
 
 /**
  * Draws subtitle text with a real, adjustable outline.
@@ -54,7 +56,7 @@ object SubtitleOutline {
             if (text[i].isWhitespace()) { i++; continue }
             var j = i
             while (j < text.length && !text[j].isWhitespace()) j++
-            out.setSpan(OutlinedWordSpan(look, color), i, j, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            out.setSpan(OutlinedWordSpan(look, color, TextDirectionHeuristics.FIRSTSTRONG_LTR.isRtl(text, i, j - i)), i, j, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             i = j
         }
         return out
@@ -63,13 +65,14 @@ object SubtitleOutline {
     private class OutlinedWordSpan(
         private val look: Look,
         private val color: Int,
+        private val rtl: Boolean,
     ) : ReplacementSpan() {
 
         override fun getSize(
             paint: Paint, text: CharSequence, start: Int, end: Int, fm: Paint.FontMetricsInt?,
         ): Int {
             fm?.let { paint.getFontMetricsInt(it) }
-            return paint.measureText(text, start, end).toInt()
+            return ceil(paint.getRunAdvance(text, start, end, start, end, rtl, end)).toInt()
         }
 
         override fun draw(
@@ -89,8 +92,10 @@ object SubtitleOutline {
             } else if (look.shadow > 0f) {
                 halo.setShadowLayer(1.5f * k, look.shadow * k, look.shadow * k, 0xB3000000.toInt())
             }
-            canvas.drawText(text, start, end, x, y.toFloat(), halo)
-            canvas.drawText(text, start, end, x, y.toFloat(), paint)
+            // Shape both passes in the same direction so Arabic letters join
+            // and their marks stay attached to the outlined glyphs.
+            canvas.drawTextRun(text, start, end, start, end, x, y.toFloat(), rtl, halo)
+            canvas.drawTextRun(text, start, end, start, end, x, y.toFloat(), rtl, paint)
         }
     }
 }
