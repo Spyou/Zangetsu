@@ -63,6 +63,21 @@ class _TabBarDelegate extends SliverPersistentHeaderDelegate {
   static const double height = 56;
   final ValueListenable<Color?>? tint;
 
+  /// Phone: the bar as is. Tablet: centred at a readable width, or on a wide
+  /// tablet left-aligned to the same edge as the title and buttons.
+  Widget _barFor(BuildContext context) {
+    if (isWideTabletLayout(context)) {
+      return Align(
+        alignment: Alignment.centerLeft,
+        child: Padding(
+          padding: EdgeInsets.only(left: wideSideInset(context) - 16),
+          child: tabBar,
+        ),
+      );
+    }
+    return tabletColumn(context, tabBar);
+  }
+
   @override
   double get minExtent => height;
   @override
@@ -77,12 +92,19 @@ class _TabBarDelegate extends SliverPersistentHeaderDelegate {
     // No divider line under the bar — just the left-aligned tabs (Sozo Read).
     final t = tint;
     if (t == null) {
-      return Material(color: AppColors.bg, elevation: 0, child: tabBar);
+      return Material(
+        color: AppColors.bg,
+        elevation: 0,
+        child: _barFor(context),
+      );
     }
     return ValueListenableBuilder<Color?>(
       valueListenable: t,
-      builder: (context, c, _) =>
-          Material(color: c ?? AppColors.bg, elevation: 0, child: tabBar),
+      builder: (context, c, _) => Material(
+        color: c ?? AppColors.bg,
+        elevation: 0,
+        child: _barFor(context),
+      ),
     );
   }
 

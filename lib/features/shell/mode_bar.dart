@@ -1,3 +1,4 @@
+import '../../core/ui/adaptive_layout.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/mode/content_mode.dart';
@@ -75,30 +76,36 @@ class ModeBar extends StatelessWidget {
         child: AnimatedOpacity(
           opacity: open ? 1 : 0,
           duration: const Duration(milliseconds: 200),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            // Match the bottom dock's glass while this selector is visible.
-            child: FakeFrost(
-              borderRadius: BorderRadius.circular(20),
-              opacity: 0.55,
-              blur: true,
-              blurSigma: 14,
-              padding: const EdgeInsets.all(6),
-              child: Row(
-                children: [
-                  for (final c in modeChoices)
-                    Expanded(
-                      child: _Choice(
-                        label: c.label(context),
-                        icon: c.icon,
-                        selected:
-                            c.mode == current.$1 &&
-                            (c.mode != ContentMode.anime ||
-                                c.kind == current.$2),
-                        onTap: () => onPicked(c.mode, c.kind),
+          // Same width as the dock on a tablet (520 + its 16 side padding);
+          // a phone gets the very same Padding as before.
+          child: tabletColumn(
+            context,
+            maxWidth: 552,
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              // Match the bottom dock's glass while this selector is visible.
+              child: FakeFrost(
+                borderRadius: BorderRadius.circular(20),
+                opacity: 0.55,
+                blur: true,
+                blurSigma: 14,
+                padding: const EdgeInsets.all(6),
+                child: Row(
+                  children: [
+                    for (final c in modeChoices)
+                      Expanded(
+                        child: _Choice(
+                          label: c.label(context),
+                          icon: c.icon,
+                          selected:
+                              c.mode == current.$1 &&
+                              (c.mode != ContentMode.anime ||
+                                  c.kind == current.$2),
+                          onTap: () => onPicked(c.mode, c.kind),
+                        ),
                       ),
-                    ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),

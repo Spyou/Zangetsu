@@ -9,6 +9,7 @@ import '../models/media_item.dart';
 import '../stremio/stremio_poster_shape.dart';
 import '../playback/playback_prefs.dart';
 
+import 'adaptive_layout.dart';
 import 'image_fade.dart';
 import '../aniyomi/aniyomi_image_provider.dart';
 import '../mihon/mihon_image_provider.dart';
@@ -159,10 +160,21 @@ int _responsiveColumns(
   return desired.clamp(1, widthLimit).toInt();
 }
 
-int posterGridColumns(BuildContext context) {
+/// [tabletFit] false keeps the phone count even on a wide screen, for grids
+/// that sit in a pane narrower than the screen (the TV detail tabs).
+int posterGridColumns(BuildContext context, {bool tabletFit = true}) {
   final wide = posterLayout(context) == PosterCardLayout.wide;
   final availableWidth = MediaQuery.sizeOf(context).width - 32;
   final base = wide ? 2 : 3;
+  if (tabletFit && isTabletLayout(context)) {
+    // A tablet keeps the phone's card size and fits more of them, instead of
+    // stretching 3 posters across the screen.
+    final fit = ((availableWidth + 12) / ((wide ? 200 : 128) + 12)).floor();
+    return _columnsForSize(
+      fit > base ? fit : base,
+      _posterSize(wide ? PosterCardLayout.wide : PosterCardLayout.portrait),
+    ).clamp(2, 9).toInt();
+  }
   return _responsiveColumns(
     _columnsForSize(
       base,

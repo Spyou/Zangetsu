@@ -30,6 +30,7 @@ import '../../core/zmode/zmode_prefs.dart';
 import '../../l10n/ui_strings.dart';
 import '../../l10n/l10n.dart';
 import '../../core/ui/nav_prefs.dart';
+import '../../core/ui/adaptive_layout.dart';
 import '../../core/ui/frosted_surface.dart';
 import '../downloads/downloads_screen.dart';
 import '../history/history_screen.dart';
@@ -723,14 +724,19 @@ class _LiquidNavDock extends StatelessWidget {
           semanticLabel: tab.localizedLabel(context),
         ),
     ];
+    // 12 on a phone, as before; on a tablet the dock keeps a phone-like width
+    // and sits centred instead of stretching across the screen.
+    final side = isTabletLayout(context)
+        ? math.max(12.0, (MediaQuery.sizeOf(context).width - 520) / 2)
+        : 12.0;
     return ConstrainedBox(
       constraints: BoxConstraints(minHeight: 96 + bottomInset),
       child: Align(
         alignment: Alignment.bottomCenter,
         child: Padding(
           padding: EdgeInsets.only(
-            left: 12,
-            right: 12,
+            left: side,
+            right: side,
             bottom: bottomInset + 12,
           ),
           child: Row(
@@ -976,6 +982,9 @@ class _FloatingDock extends StatelessWidget {
   /// can actually hit.
   static const double _tapMin = 48;
 
+  /// Widest the open dock gets on a tablet.
+  static const double _tabletDockMax = 520;
+
   /// iOS-ish: almost all of the travel happens early, then it eases into place
   /// instead of stopping. Slower than a Material fling on purpose — this is a
   /// shape settling, not a thing arriving.
@@ -1048,8 +1057,13 @@ class _FloatingDock extends StatelessWidget {
         12; // the pill's own horizontal padding
     // Never past the open inset — on a screen too narrow to shrink into, the
     // dock simply stays where it is rather than growing.
-    final shutSide = math.max(16.0, (width - shutWidth) / 2);
-    final side = 16 + (shutSide - 16) * t;
+    // On a tablet the open dock keeps a phone-sized width, centred, instead of
+    // stretching across the screen. 16 on a phone, exactly as before.
+    final openSide = isTabletLayout(context)
+        ? math.max(16.0, (width - _tabletDockMax) / 2)
+        : 16.0;
+    final shutSide = math.max(openSide, (width - shutWidth) / 2);
+    final side = openSide + (shutSide - openSide) * t;
     final labels = 1 - t;
     final fab = _fabOpen - (_fabOpen - _fabShut) * t;
     // 9 open, 4 closed — the room the taller tap box needs, given back.

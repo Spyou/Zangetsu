@@ -277,7 +277,7 @@ class _RelationsTab extends StatelessWidget {
 
   SliverGridDelegate _grid(BuildContext context) =>
       SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: posterGridColumns(context),
+        crossAxisCount: posterGridColumns(context, tabletFit: !tvFocus),
         mainAxisSpacing: 16,
         crossAxisSpacing: 12,
         childAspectRatio: posterLayout(context) == PosterCardLayout.wide

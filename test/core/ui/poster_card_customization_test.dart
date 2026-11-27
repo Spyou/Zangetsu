@@ -865,6 +865,11 @@ void main() {
   });
 
   testWidgets('grid geometry switches without a data reload', (tester) async {
+    // These assert phone geometry; Flutter's default 800x600 test surface
+    // would count as a tablet.
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
     await tester.pumpWidget(
       MaterialApp(
         home: PosterCardScope(
@@ -921,7 +926,18 @@ void main() {
             body: Builder(
               builder: (context) => Column(
                 children: [
-                  Text('grid:${posterGridColumns(context)}'),
+                  // Same width as before, but a short side under 600 so this
+                  // keeps measuring the phone grid (a 1080p surface now counts
+                  // as a wide screen).
+                  MediaQuery(
+                    data: MediaQuery.of(
+                      context,
+                    ).copyWith(size: const Size(1920, 400)),
+                    child: Builder(
+                      builder: (context) =>
+                          Text('grid:${posterGridColumns(context)}'),
+                    ),
+                  ),
                   Text('row:${posterRowWidth(context).toStringAsFixed(1)}'),
                   Text('tv:${tvPosterGridColumns(context)}'),
                 ],
