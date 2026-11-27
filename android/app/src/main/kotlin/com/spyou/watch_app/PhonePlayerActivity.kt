@@ -542,11 +542,17 @@ class PhonePlayerActivity : Activity() {
         requestedOrientation = when (playerOrientation) {
             "portrait" -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
             "system" -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-            else -> ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+            // Both landscape sides; plain LANDSCAPE pins one side only.
+            else -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         }
         if (playerOrientation == "system") {
+            // The observer only reports a turn once the phone is clearly upright
+            // or clearly on its side (dead zone between), so a small tilt never
+            // flips the player. Hold the settled posture until the next turn.
             orientationObserver = PhoneOrientationObserver(this) {
-                requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+                requestedOrientation = if (it == Configuration.ORIENTATION_LANDSCAPE)
+                    ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                else ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
             }
         }
         if (keepScreenOn) {
@@ -2982,7 +2988,7 @@ class PhonePlayerActivity : Activity() {
     private fun toggleRotation() {
         requestedOrientation = if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE)
             ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-        else ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        else ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         bumpControls()
     }
 

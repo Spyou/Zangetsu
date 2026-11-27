@@ -714,10 +714,20 @@ class _PlayerScreenState extends State<PlayerScreen> {
       _orientationTurns = const EventChannel('zangetsu/player_orientation')
           .receiveBroadcastStream()
           .listen(
-            (_) {
+            (turn) {
               if (!mounted || ModalRoute.of(context)?.isCurrent != true) return;
               _followSensor = true;
-              SystemChrome.setPreferredOrientations(DeviceOrientation.values);
+              // The observer only reports a settled posture (dead zone between),
+              // so hold it until the next turn; opening all four sides lets the
+              // system flip on a small tilt. 2 = Configuration.ORIENTATION_LANDSCAPE.
+              SystemChrome.setPreferredOrientations(
+                turn == 2
+                    ? const [
+                        DeviceOrientation.landscapeLeft,
+                        DeviceOrientation.landscapeRight,
+                      ]
+                    : const [DeviceOrientation.portraitUp],
+              );
             },
             onError: (Object error) {
               AppLogger.instance.log(
