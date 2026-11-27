@@ -18,6 +18,10 @@ void main() {
       Hive.init(dir.path);
       await SearchPrefs.init();
       final prefs = SearchPrefs();
+      // New is the default for a fresh install.
+      expect(prefs.tvSearchStyle, 'new');
+      // An explicit opt-out from the earlier test build stays Classic.
+      await Hive.box(SearchPrefs.boxName).put('youtubeTvKeyboard', false);
       expect(prefs.tvSearchStyle, 'classic');
       await Hive.box(SearchPrefs.boxName).put('youtubeTvKeyboard', true);
       expect(prefs.tvSearchStyle, 'new');
