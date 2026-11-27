@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/models/media_item.dart';
 import '../../core/tv/tv_focusable.dart';
+import '../../core/tv/tv_keyboard_bridge.dart';
 import '../../l10n/l10n.dart';
 
 /// App-owned keyboard for New search, with controls and live results.
@@ -67,7 +68,8 @@ class TvSearchInputScreen extends StatefulWidget {
 }
 
 /// Owns draft input, remote focus, and cancellable recommendation requests.
-class _TvSearchInputScreenState extends State<TvSearchInputScreen> {
+class _TvSearchInputScreenState extends State<TvSearchInputScreen>
+    implements TvKeyboardTarget {
   static const _rows = ['1234567890', 'qwertyuiop', 'asdfghjkl-', "zxcvbnm'.?"];
   late String _query = widget.initialQuery;
   bool _confirmBack = false;
@@ -166,9 +168,81 @@ class _TvSearchInputScreenState extends State<TvSearchInputScreen> {
     return values.take(4).toList();
   }
 
+  /// Non-focusable wrapper whose subtree focus marks the keyboard as selected.
+  final _rootFocus = FocusNode(
+    debugLabel: 'tv-search-root',
+    canRequestFocus: false,
+    skipTraversal: true,
+  );
+
+  // Phone keyboard target: the whole New search screen is one search box.
+  // The TvKeyboardBridge reads these to mirror the draft on a paired phone.
+
+  /// True while focus is anywhere on this screen, so the phone offers typing.
+  @override
+  bool get focused => _rootFocus.hasFocus;
+
+  /// True while the on-screen key grid itself has focus.
+  @override
+  bool get editing => _keyboardFocus.hasFocus;
+
+  @override
+  String get text => _query;
+
+  @override
+  String get hint => 'Search';
+
+  @override
+  bool get secure => false;
+
+  @override
+  TextInputAction? get inputAction => TextInputAction.search;
+
+  @override
+  TextInputType? get inputType => TextInputType.text;
+
+  @override
+  bool get multiline => false;
+
+  @override
+  int? get maxLength => 200;
+
+  /// Replaces the draft with text typed on the phone and refreshes results,
+  /// the same way an on-screen key press does. Ignored after dispose.
+  @override
+  void setText(String text) {
+    if (!mounted || text == _query) return;
+    setState(() {
+      _confirmBack = false;
+      _query = text;
+      _submitted = false;
+      _syncAutomaticCase();
+    });
+    widget.onQueryChanged?.call(_query);
+    _refreshRecommendations();
+    _bridgeChanged();
+  }
+
+  /// The phone pressed its search key: run the search as if Done was chosen.
+  @override
+  void submit() {
+    if (mounted) _finish();
+  }
+
+  @override
+  void dismiss() {
+    // The app-owned grid has no IME to hide.
+  }
+
+  /// Tells the bridge the draft or focus changed, so the phone resyncs.
+  void _bridgeChanged() => TvKeyboardBridge.instance.changed();
+
   @override
   void initState() {
     super.initState();
+    _rootFocus.addListener(_bridgeChanged);
+    _keyboardFocus.addListener(_bridgeChanged);
+    TvKeyboardBridge.instance.register(this);
     _refreshRecommendations();
   }
 
@@ -190,8 +264,12 @@ class _TvSearchInputScreenState extends State<TvSearchInputScreen> {
 
   @override
   void dispose() {
+    TvKeyboardBridge.instance.unregister(this);
+    _rootFocus.removeListener(_bridgeChanged);
+    _keyboardFocus.removeListener(_bridgeChanged);
     _recommendDebounce?.cancel();
     _recommendSeq++;
+    _rootFocus.dispose();
     _keyboardFocus.dispose();
     _firstKeyFocus.dispose();
     super.dispose();
@@ -237,6 +315,7 @@ class _TvSearchInputScreenState extends State<TvSearchInputScreen> {
     });
     widget.onQueryChanged?.call(_query);
     _refreshRecommendations();
+    _bridgeChanged();
   }
 
   /// Removes one grapheme cluster so composed characters stay intact.
@@ -249,6 +328,7 @@ class _TvSearchInputScreenState extends State<TvSearchInputScreen> {
     });
     widget.onQueryChanged?.call(_query);
     _refreshRecommendations();
+    _bridgeChanged();
   }
 
   /// Clears input and restores automatic initial-letter capitalization.
@@ -262,6 +342,7 @@ class _TvSearchInputScreenState extends State<TvSearchInputScreen> {
     });
     widget.onQueryChanged?.call(_query);
     _refreshRecommendations();
+    _bridgeChanged();
   }
 
   /// Capitalizes the first letter until the user explicitly chooses a case.
@@ -611,6 +692,32 @@ class _TvSearchInputScreenState extends State<TvSearchInputScreen> {
     ),
   );
 
+  /// Shows that the draft is being typed from a connected phone.
+  Widget _phoneTypingPill() => Container(
+    key: const ValueKey('tv-search-phone-typing'),
+    margin: const EdgeInsets.only(left: 12),
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+    decoration: BoxDecoration(
+      color: AppColors.accentSoft,
+      borderRadius: BorderRadius.circular(999),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(Icons.smartphone_rounded, color: AppColors.accent, size: 15),
+        const SizedBox(width: 6),
+        Text(
+          'Typing from phone',
+          style: TextStyle(
+            color: AppColors.accent,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    ),
+  );
+
   /// Fits the alphabet grid above filters beside history and predictions.
   Widget _compactBody(BuildContext context) {
     final rows = _symbols
@@ -744,6 +851,7 @@ class _TvSearchInputScreenState extends State<TvSearchInputScreen> {
                   _syncAutomaticCase();
                 });
                 widget.onQueryChanged?.call(_query);
+                _bridgeChanged();
                 _finish();
               },
               child: Padding(
@@ -817,6 +925,11 @@ class _TvSearchInputScreenState extends State<TvSearchInputScreen> {
                         ),
                       ),
                     ),
+                    ValueListenableBuilder<bool>(
+                      valueListenable: TvKeyboardBridge.instance.phoneTyping,
+                      builder: (context, typing, _) =>
+                          typing ? _phoneTypingPill() : const SizedBox.shrink(),
+                    ),
                   ],
                 ),
               ),
@@ -882,7 +995,7 @@ class _TvSearchInputScreenState extends State<TvSearchInputScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final page = Scaffold(
+    final scaffold = Scaffold(
       key: const ValueKey('tv-search-input-screen'),
       backgroundColor: AppColors.bg,
       body: SafeArea(
@@ -984,6 +1097,8 @@ class _TvSearchInputScreenState extends State<TvSearchInputScreen> {
         ),
       ),
     );
+    // Observed by the phone keyboard bridge; never takes focus itself.
+    final page = Focus(focusNode: _rootFocus, child: scaffold);
     // Inline New search is the destination itself. Back belongs to the shell,
     // which returns to Home; there is no classic search route underneath it.
     if (widget.inlineSearch) return page;

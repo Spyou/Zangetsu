@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../theme/app_colors.dart';
 import '../theme/app_text.dart';
+import 'tv_keyboard_bridge.dart';
 import 'tv_keys.dart';
 
 /// A [TextField] that stays D-pad navigable on Android TV.
@@ -72,7 +73,9 @@ class TvTextField extends StatefulWidget {
   State<TvTextField> createState() => _TvTextFieldState();
 }
 
-class _TvTextFieldState extends State<TvTextField> {
+/// Also a [TvKeyboardTarget]: registers with [TvKeyboardBridge] so a paired
+/// phone can see this field (hint, text, focus) and type into it.
+class _TvTextFieldState extends State<TvTextField> implements TvKeyboardTarget {
   /// Native backup when the framework's TextInput.show is cancelled on TV.
   static const _imeChannel = MethodChannel('zangetsu/ime');
 
@@ -80,9 +83,92 @@ class _TvTextFieldState extends State<TvTextField> {
   late final bool _ownsNav;
   late final FocusNode _editFocus;
 
+  /// Owned fallback so the phone keyboard can type without a caller controller.
+  TextEditingController? _ownController;
+  TextEditingController get _controller =>
+      widget.controller ?? (_ownController ??= TextEditingController());
+
   bool get _singleLine => (widget.maxLines ?? 1) == 1;
   bool get _chromeFocused => _navFocus.hasFocus || _editFocus.hasFocus;
   bool get _editing => _editFocus.hasFocus;
+
+  // Phone keyboard target: nav-only selection is manual, editing auto-opens.
+  /// True when either the nav or edit node has focus.
+  @override
+  bool get focused => _chromeFocused;
+
+  @override
+  bool get editing => _editing;
+
+  @override
+  String get text => _controller.text;
+
+  @override
+  String get hint =>
+      widget.decoration?.hintText ?? widget.decoration?.labelText ?? '';
+
+  @override
+  bool get secure => widget.obscureText;
+
+  @override
+  TextInputAction? get inputAction => widget.textInputAction;
+
+  @override
+  TextInputType? get inputType => widget.keyboardType;
+
+  /// Multi-line fields get a multi-line phone editor; secure ones never do.
+  @override
+  bool get multiline => (widget.maxLines ?? 1) != 1 && !widget.obscureText;
+
+  @override
+  int? get maxLength => widget.maxLength;
+
+  /// Replaces the text with what the phone sent, running the field's input
+  /// formatters and [TvTextField.maxLength] as typing would, then onChanged.
+  @override
+  void setText(String text) {
+    if (!mounted || !widget.enabled) return;
+    final old = _controller.value;
+    var value = TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: text.length),
+    );
+    for (final formatter in widget.inputFormatters ?? const []) {
+      value = formatter.formatEditUpdate(old, value);
+    }
+    final max = widget.maxLength;
+    if (max != null && max > 0 && value.text.characters.length > max) {
+      final clipped = value.text.characters.take(max).toString();
+      value = TextEditingValue(
+        text: clipped,
+        selection: TextSelection.collapsed(offset: clipped.length),
+      );
+    }
+    if (value.text == old.text) return;
+    _controller.value = value;
+    widget.onChanged?.call(value.text);
+  }
+
+  /// The phone pressed its action key: fires onSubmitted like the TV IME.
+  @override
+  void submit() {
+    if (!mounted || !widget.enabled) return;
+    widget.onSubmitted?.call(_controller.text);
+    // Leave the edit node so the TV IME closes, as after an IME submit; not
+    // when onSubmitted popped this route (focus belongs to the route below).
+    if (mounted && _editing && ModalRoute.isCurrentOf(context) != false) {
+      _navFocus.requestFocus();
+    }
+  }
+
+  /// The phone closed its keyboard: drop back to the nav node.
+  @override
+  void dismiss() {
+    if (mounted && _editing) _navFocus.requestFocus();
+  }
+
+  /// Tells the bridge the text changed so the phone mirror updates.
+  void _onText() => TvKeyboardBridge.instance.changed();
 
   @override
   void initState() {
@@ -107,10 +193,25 @@ class _TvTextFieldState extends State<TvTextField> {
     );
     _navFocus.addListener(_onAnyFocus);
     _editFocus.addListener(_onAnyFocus);
+    _controller.addListener(_onText);
+    TvKeyboardBridge.instance.register(this);
+  }
+
+  /// Moves the text listener when the caller swaps controllers.
+  @override
+  void didUpdateWidget(TvTextField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller == widget.controller) return;
+    (oldWidget.controller ?? _ownController)?.removeListener(_onText);
+    _controller.addListener(_onText);
+    TvKeyboardBridge.instance.changed();
   }
 
   @override
   void dispose() {
+    TvKeyboardBridge.instance.unregister(this);
+    _controller.removeListener(_onText);
+    _ownController?.dispose();
     _navFocus.removeListener(_onAnyFocus);
     _editFocus.removeListener(_onAnyFocus);
     if (_ownsNav) {
@@ -124,6 +225,7 @@ class _TvTextFieldState extends State<TvTextField> {
 
   void _onAnyFocus() {
     if (!mounted) return;
+    TvKeyboardBridge.instance.changed();
     setState(() {}); // refresh focused chrome + cursor
     if (_chromeFocused) {
       Scrollable.ensureVisible(
@@ -225,7 +327,7 @@ class _TvTextFieldState extends State<TvTextField> {
           focusNode: _navFocus,
           autofocus: widget.autofocus,
           child: TextField(
-            controller: widget.controller,
+            controller: _controller,
             focusNode: _editFocus,
             // Never autofocus the edit node — that would raise the IME on
             // tab entry. Nav focus handles landing.
