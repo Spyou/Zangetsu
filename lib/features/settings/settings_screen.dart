@@ -36,6 +36,7 @@ import '../../core/aniyomi/aniyomi_provider.dart';
 import '../../core/provider/cloudstream_provider.dart';
 import '../../core/provider/cs_dns.dart';
 import '../../core/provider/provider_manager.dart';
+import '../companion/companion_settings_screen.dart';
 import '../downloads/downloads_screen.dart';
 import '../history/history_screen.dart';
 import 'app_face_screen.dart';
@@ -98,6 +99,11 @@ class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key, this.showBackButton = false});
 
   final bool showBackButton;
+
+  /// Test hook: forces the Android/iOS-only "TV remote" entry on or off.
+  /// [Platform] cannot be faked in widget tests. Null uses the real platform.
+  @visibleForTesting
+  static bool? debugShowTvRemoteEntry;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -717,7 +723,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   subtitle: 'Watching as ${profile.name}',
                 ),
                 _accountTile(auth),
-                services.single.toTile(),
+                // Build every account entry; .single would throw if the
+                // section ever holds more than one.
+                for (final entry in services) entry.toTile(),
               ],
             ),
           );
@@ -831,6 +839,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
     required int enabledCount,
     required int connectedCount,
   }) => [
+    // Phone remote pairing: on TVs it lets a phone control this TV, on
+    // phones it connects to a TV. Only Android and iOS have the native side.
+    if (SettingsScreen.debugShowTvRemoteEntry ??
+        (Platform.isAndroid || Platform.isIOS))
+      _SettingsEntry(
+        section: SettingsSection.account,
+        icon: Icons.connected_tv_rounded,
+        title: 'TV remote',
+        subtitle: _isTv
+            ? 'Control this TV with your phone'
+            : 'Connect to your TV',
+        keywords: 'remote companion pairing bluetooth wifi tv',
+        onTap: () => _push(const CompanionSettingsScreen()),
+      ),
     _SettingsEntry(
       section: SettingsSection.account,
       icon: Icons.link_rounded,

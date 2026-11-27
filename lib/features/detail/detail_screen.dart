@@ -139,6 +139,7 @@ import '../../core/ui/badge.dart';
 import '../../core/ui/route_observer.dart';
 import '../../core/ui/states.dart';
 import '../player/player_screen.dart';
+import '../companion/remote_session.dart';
 import '../player/episode_player_route.dart';
 import '../player/tv_playback_launch.dart';
 import '../reader/manga_reader_screen.dart';
@@ -716,6 +717,16 @@ class _DetailViewState extends State<_DetailView>
     _loadTmdbBanner();
     _schedulePlayerWarmup();
     // Discord Rich Presence: "Looking at <title>" while this detail is open.
+    // Phone remote: tell the paired TV which title the phone is looking at,
+    // so it can show an "On your phone" banner. Best effort; errors ignored.
+    final remote = RemoteSession.instance;
+    if (remote.remoteMode && remote.connected) {
+      unawaited(
+        remote
+            .command('browseStatus', {'title': widget.item.title})
+            .catchError((_) => <String, dynamic>{}),
+      );
+    }
     if (sl.isRegistered<DiscordRpc>()) {
       sl<DiscordRpc>().setBrowsing(
         title: widget.item.title,
