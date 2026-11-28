@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Material 3 roles for the Continue Watching widget. These are the
+         fallbacks (app palette); values-v31 maps them to the wallpaper-based
+         system colours, values-night* to the dark tones. -->
+    <color name="w_surface">#F3EDF7</color>
+    <color name="w_on_surface">#1D1B20</color>
+    <color name="w_on_surface_variant">#49454F</color>
+    <color name="w_primary">#B3261E</color>
+    <color name="w_primary_container">#FFDAD6</color>
+    <color name="w_on_primary_container">#410002</color>
+    <color name="w_track">#1F000000</color>
+    <dimen name="w_radius">28dp</dimen>
+    <dimen name="w_inner_radius">16dp</dimen>
+</resources>

@@ -75,6 +75,7 @@ import 'features/watch_together/ui/party_bar.dart';
 import 'features/companion/companion_catalogue.dart';
 import 'features/companion/remote_session.dart';
 import 'features/watch_together/watch_together_controller.dart';
+import 'core/widget/continue_widget_service.dart';
 
 final _authConnectionPhase = ValueNotifier(AuthConnectionPhase.idle);
 bool _authConnectionVerified = false;
@@ -797,6 +798,7 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
     // a custom notification to all users from the Firebase Console. Independent
     // of onboarding + fire-and-forget so it never delays launch.
     unawaited(PushService.instance.init());
+    unawaited(ContinueWidgetService.instance.init());
     final elapsed = DateTime.now().difference(start);
     // The intro animation is 1600ms, so anything past that is just dead
     // waiting. Give it a hair over (1700) so the logo lands, then go — used

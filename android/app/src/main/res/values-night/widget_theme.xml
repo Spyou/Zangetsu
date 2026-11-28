@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="w_surface">#211F26</color>
+    <color name="w_on_surface">#E6E0E9</color>
+    <color name="w_on_surface_variant">#CAC4D0</color>
+    <color name="w_primary">#FFB4AB</color>
+    <color name="w_primary_container">#93000A</color>
+    <color name="w_on_primary_container">#FFDAD6</color>
+    <color name="w_track">#33FFFFFF</color>
+</resources>

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_continue_desc">Resume your last episode</string>
+    <string name="widget_label">Continue watching</string>
+    <string name="widget_empty_title">Nothing to continue</string>
+    <string name="widget_empty_sub">Tap to open Zangetsu</string>
+</resources>

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:app_links/app_links.dart';
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -191,6 +192,7 @@ class _HomeViewState extends State<_HomeView> {
   @override
   void initState() {
     super.initState();
+    _listenForWidgetResume();
     _sourceCatalogueSelection = HomeCataloguePrefs.sourceSelection;
     _sourceCatalogueSelection.addListener(_onSourceCatalogueSelectionChanged);
     HomeCataloguePrefs.revision.addListener(_onCatalogueRevision);
@@ -292,6 +294,7 @@ class _HomeViewState extends State<_HomeView> {
 
   @override
   void dispose() {
+    _widgetLinkSub?.cancel();
     _sourceCatalogueModeSubscription?.cancel();
     _sourceCatalogueSelection.removeListener(
       _onSourceCatalogueSelectionChanged,
@@ -773,6 +776,49 @@ class _HomeViewState extends State<_HomeView> {
       Platform.isAndroid &&
       sl<PlaybackPrefs>().externalPlayerPackage ==
           PlaybackPrefs.androidPlayerId;
+
+  // The Continue Watching widget opens zangetsu://resume?s=<source>&id=<show>.
+  // Handled here because this is where Home's own resume lives, so a widget
+  // tap runs the very same path as tapping the card.
+  static bool _widgetInitialHandled = false;
+  static String? _lastWidgetLink;
+  static DateTime _lastWidgetAt = DateTime.fromMillisecondsSinceEpoch(0);
+  StreamSubscription<Uri>? _widgetLinkSub;
+
+  void _listenForWidgetResume() {
+    if (!Platform.isAndroid) return;
+    final links = AppLinks();
+    _widgetLinkSub = links.uriLinkStream.listen(_onWidgetLink, onError: (_) {});
+    // The launch link is remembered by the plugin and would be handed to every
+    // Home that gets rebuilt later (profile or mode switch), resuming again.
+    if (_widgetInitialHandled) return;
+    _widgetInitialHandled = true;
+    links
+        .getInitialLink()
+        .then((u) {
+          if (u != null) _onWidgetLink(u);
+        })
+        .catchError((_) {});
+  }
+
+  void _onWidgetLink(Uri uri) {
+    if (uri.scheme != 'zangetsu' || uri.host != 'resume' || !mounted) return;
+    // The launch link can arrive on both the stream and getInitialLink.
+    final now = DateTime.now();
+    if (_lastWidgetLink == '$uri' &&
+        now.difference(_lastWidgetAt) < const Duration(seconds: 3)) {
+      return;
+    }
+    _lastWidgetLink = '$uri';
+    _lastWidgetAt = now;
+    final source = uri.queryParameters['s'];
+    final show = uri.queryParameters['id'];
+    final entry = sl<WatchHistory>()
+        .all()
+        .where((e) => e.sourceId == source && e.showId == show)
+        .firstOrNull;
+    if (entry != null) unawaited(_resume(entry));
+  }
 
   /// Resume from Continue Watching. Navigates to the player INSTANTLY; the
   /// player resolves the episode list behind its own branded loader (no blocking

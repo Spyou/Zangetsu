@@ -173,6 +173,25 @@
             </intent-filter>
         </activity>
 
+        <!-- Continue Watching home-screen widget (2x2 and 4x2). Refreshed only
+             when the app pushes an update; no periodic wake-ups. -->
+        <receiver android:name=".ContinueWidgetWide" android:exported="false"
+            android:label="Continue Watching (wide)">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider"
+                android:resource="@xml/widget_continue_wide_info" />
+        </receiver>
+        <receiver android:name=".ContinueWidgetSmall" android:exported="false"
+            android:label="Continue Watching">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider"
+                android:resource="@xml/widget_continue_small_info" />
+        </receiver>
+
         <!-- Home-screen icon choices. Each alias is the same MainActivity behind a
              different icon; exactly ONE is ever enabled, and AppIconService flips
              them via PackageManager.setComponentEnabledSetting.

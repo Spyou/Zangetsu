@@ -486,6 +486,7 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
                 }
             })
         discordPresence = DiscordPresenceBridge(this, flutterEngine.dartExecutor.binaryMessenger)
+        ContinueWidget.register(applicationContext, flutterEngine.dartExecutor.binaryMessenger)
 
         // Bridge mega-repo plugins → our repo list: when a plugin's load() calls
         // RepositoryManager.addRepository(...), forward each URL to Dart so it
