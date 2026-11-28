@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
 import '../../core/download/download_manager.dart';
 import '../../core/download/download_record.dart';
+import '../../core/download/download_size_estimate.dart';
 import '../../core/models/episode.dart';
 import '../../core/models/video_source.dart';
 import '../../core/theme/app_colors.dart';
@@ -93,6 +96,8 @@ class _EpisodeDownloadSourceSheetState
   late String _category;
   Episode? _episode;
   int _request = 0;
+  // Estimated size per link url. Absent = not measured yet, null = unknown.
+  final Map<String, SizeEstimate?> _sizes = {};
 
   @override
   void initState() {
@@ -107,6 +112,7 @@ class _EpisodeDownloadSourceSheetState
       _category = category;
       _episode = null;
       _sources = null;
+      _sizes.clear();
       _loading = true;
       _loadFailed = false;
     });
@@ -129,11 +135,32 @@ class _EpisodeDownloadSourceSheetState
           category,
         );
       });
+      unawaited(_probeSizes(_sources!, request));
     } catch (_) {
       if (mounted && request == _request) setState(() => _loadFailed = true);
     } finally {
       if (mounted && request == _request) setState(() => _loading = false);
     }
+  }
+
+  /// Fills in each link's size a few at a time, so a long list doesn't open
+  /// a dozen connections at once. A size that can't be worked out stays blank.
+  Future<void> _probeSizes(List<VideoSource> list, int request) async {
+    var next = 0;
+    Future<void> worker() async {
+      while (mounted && request == _request && next < list.length) {
+        final s = list[next++];
+        if (!s.url.startsWith('http')) continue; // torrents have no cheap size
+        final est = await estimateEpisodeBytes(
+          s,
+          runtimeMinutes: widget.episode.runtimeMinutes,
+        );
+        if (!mounted || request != _request) return;
+        setState(() => _sizes[s.url] = est);
+      }
+    }
+
+    await Future.wait([for (var i = 0; i < 3; i++) worker()]);
   }
 
   bool _isHls(VideoSource s) =>
@@ -243,9 +270,11 @@ class _EpisodeDownloadSourceSheetState
   Widget _row(VideoSource s, int i) {
     final hls = _isHls(s);
     final label = _sourceName(context.l10n, s, i);
+    final size = _sizes[s.url];
     final sub = [
       if (s.quality != null && s.quality!.trim().isNotEmpty) s.quality!.trim(),
       hls ? context.l10n.hls : context.l10n.direct,
+      if (size != null) formatApproxBytes(size.bytes),
     ].join(' · ');
     void onTap() {
       if (_loading || _episode == null) return;
