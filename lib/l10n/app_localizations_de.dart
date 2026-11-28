@@ -2901,6 +2901,13 @@ class AppLocalizationsDe extends AppLocalizations {
   String get playMirror => 'Spiegel abspielen';
 
   @override
+  String get chooseLinkFirst => 'Choose link before playing';
+
+  @override
+  String get chooseLinkFirstSubtitle =>
+      'Show the link list every time you play an episode';
+
+  @override
   String get chooseTheSourceBeforeItStarts => 'Quelle wählen, bevor es startet';
 
   @override

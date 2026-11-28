@@ -93,6 +93,12 @@ class TitlePrefsStore {
     return null;
   }
 
+  /// True when a link was played before for this episode, or a release group
+  /// for the show — enough for the player to re-pick it without asking.
+  bool hasStremioPreference(String episodeUrl, String showUrl) =>
+      _box.get(_key('stremio', episodeUrl))?['linkHash'] != null ||
+      stremioBingeGroup(showUrl) != null;
+
   Future<void> rememberStremioLink(
     String episodeUrl,
     VideoSource source,

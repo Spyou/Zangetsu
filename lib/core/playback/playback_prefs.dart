@@ -939,6 +939,12 @@ class PlaybackPrefs {
       _box.get('ambientPlayer', defaultValue: true) as bool;
   Future<void> setAmbientPlayer(bool value) => _box.put('ambientPlayer', value);
 
+  /// Show the link list before every episode plays, instead of auto-picking.
+  bool get chooseLinkFirst =>
+      _box.get('chooseLinkFirst', defaultValue: false) as bool;
+  Future<void> setChooseLinkFirst(bool value) =>
+      _box.put('chooseLinkFirst', value);
+
   /// Default player. Empty string = the built-in player; otherwise the package
   /// id of an external player (e.g. 'org.videolan.vlc') to hand streams to.
   /// [externalPlayerLabel] is the human name shown in settings.

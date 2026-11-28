@@ -2820,6 +2820,13 @@ class AppLocalizationsJa extends AppLocalizations {
   String get playMirror => 'ミラーで再生';
 
   @override
+  String get chooseLinkFirst => 'Choose link before playing';
+
+  @override
+  String get chooseLinkFirstSubtitle =>
+      'Show the link list every time you play an episode';
+
+  @override
   String get chooseTheSourceBeforeItStarts => '開始前にソースを選ぶ';
 
   @override

@@ -2916,6 +2916,13 @@ class AppLocalizationsPt extends AppLocalizations {
   String get playMirror => 'Reproduzir pelo espelho';
 
   @override
+  String get chooseLinkFirst => 'Choose link before playing';
+
+  @override
+  String get chooseLinkFirstSubtitle =>
+      'Show the link list every time you play an episode';
+
+  @override
   String get chooseTheSourceBeforeItStarts =>
       'Escolha a fonte antes de iniciar';
 
