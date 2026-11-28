@@ -6,7 +6,10 @@ import '../aniyomi/aniyomi_extension_service.dart';
 import '../di/injector.dart';
 import '../mihon/mihon_extension_service.dart';
 import '../mangayomi/mangayomi_manager.dart';
+import '../models/provider_setting_schema.dart';
 import '../provider/cloudstream_provider.dart';
+import '../provider/provider_manager.dart';
+import '../provider/provider_registry.dart';
 import '../zmode/zmode_ids.dart';
 import 'source_repository.dart';
 import '../../features/sources/source_settings_screen.dart';
@@ -40,7 +43,16 @@ Future<bool> hasSourceSettings(String id) {
         .timeout(const Duration(seconds: 3))
         .catchError((_) => false);
   }
-  return Future.value(false);
+  // Zangetsu (JS) sources: settings exist when the provider publishes a schema.
+  final provider = sl<ProviderManager>().get(id);
+  if (provider == null) return Future.value(false);
+  return provider
+      .getSettingsSchema()
+      .then(
+        (raw) => raw != null && ProviderSettingSchema.parseAll(raw).isNotEmpty,
+      )
+      .timeout(const Duration(seconds: 3))
+      .catchError((_) => false);
 }
 
 /// Opens [id]'s own settings screen. [name] pre-fills the CloudStream path's
@@ -96,6 +108,20 @@ Future<void> openSourceSettings(
           title: name,
           prefs: prefs,
           write: (key, value) => manager.setSourcePreference(id, key, value),
+        ),
+      ),
+    );
+    return;
+  }
+  // Zangetsu (JS) source: the same screen the Sources page opens, keyed by the
+  // repo it was installed from.
+  if (sl<ProviderManager>().get(id) != null && context.mounted) {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => SourceSettingsScreen(
+          sourceId: id,
+          repoUrl: sl<ProviderRegistry>().entryFor(id)?.originRepoUrl ?? '',
+          displayName: name,
         ),
       ),
     );
