@@ -637,14 +637,21 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
     // The visible page goes in at [PagePriority.current] so it always wins;
     // the rest queue behind it in reading order. Anything still waiting that
     // the reader has since scrolled away from is dropped.
-    final keep = <String>{for (final i in window) pages[i].url};
+    final prefs = sl<ReaderPrefs>();
+    final inspect =
+        prefs.cropBorders ||
+        const {'smart', 'height', 'original'}.contains(_effectiveFit(prefs));
+    String queueKey(PageImage page) =>
+        inspect ? 'inspect:${prefs.cropBorders}:$width:${page.url}' : page.url;
+    final keep = <String>{for (final i in window) queueKey(pages[i])};
     _pageQueue.keepOnly(keep);
     for (final i in window) {
       final p = pages[i];
       // add starts the worker synchronously, so its task must already exist.
-      _queueTasks[p.url] = () => _fetchPageBytes(p, i, width);
+      final key = queueKey(p);
+      _queueTasks[key] = () => _fetchPageBytes(p, i, width);
       _pageQueue.add(
-        p.url,
+        key,
         i == index ? PagePriority.current : PagePriority.adjacent,
       );
     }
@@ -781,7 +788,11 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
     // Trimming borders means looking at the pixels, which the header-only
     // path below deliberately never does. Opting in to the crop is opting in
     // to that decode.
-    if (_drawnLocally(p) || sl<ReaderPrefs>().cropBorders) {
+    if (_drawnLocally(p) ||
+        sl<ReaderPrefs>().cropBorders ||
+        _effectiveFit(sl<ReaderPrefs>()) == 'smart' ||
+        _effectiveFit(sl<ReaderPrefs>()) == 'height' ||
+        _effectiveFit(sl<ReaderPrefs>()) == 'original') {
       await _measureFromProvider(p, width);
       return;
     }
@@ -811,25 +822,26 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
   /// then drawing a cropped image would just move the flat band from inside
   /// the picture to underneath it.
   Future<void> _recordShape(String url, ui.Image image, int w, int h) async {
-    var aspect = h / w;
-    if (sl<ReaderPrefs>().cropBorders) {
+    if (sl<ReaderPrefs>().cropBorders && !_cropChecked.contains(url)) {
       try {
         final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
-        final bytes = data?.buffer.asUint8List();
-        if (bytes != null) {
-          final r = findContentRect(bytes, w, h);
+        if (!mounted || !sl<ReaderPrefs>().cropBorders) return;
+        if (data != null) {
+          final r = findContentRect(data.buffer.asUint8List(), w, h);
           final cw = r.right - r.left, ch = r.bottom - r.top;
           if (cw > 0 && ch > 0 && (cw != w || ch != h)) {
             _crop[url] = (x: r.left / w, y: r.top / h, w: cw / w, h: ch / h);
-            aspect = ch / cw;
           }
+          _cropChecked.add(url);
         }
       } catch (_) {
-        // Un-inspectable page: draw it whole, which is what used to happen.
+        // Keep displaying the full image if reading its pixels fails.
       }
     }
-    if (!mounted || _aspect.containsKey(url)) return;
-    _aspect[url] = aspect;
+    if (!mounted) return;
+    _decodedSize[url] = Size(w.toDouble(), h.toDouble());
+    final crop = sl<ReaderPrefs>().cropBorders ? _crop[url] : null;
+    _aspect[url] = crop == null ? h / w : (h * crop.h) / (w * crop.w);
     _flushAspects();
   }
 
@@ -841,18 +853,28 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
   /// anyway, and why [ReaderImageBudget] raises the image cache while a chapter
   /// is open.
   Future<void> _measureFromProvider(PageImage p, int width) async {
-    if (!mounted || _aspect.containsKey(p.url)) return;
+    if (!mounted ||
+        (_decodedSize.containsKey(p.url) &&
+            (!sl<ReaderPrefs>().cropBorders || _cropChecked.contains(p.url)))) {
+      return;
+    }
     final done = Completer<void>();
     final stream = _pageProvider(p, width).resolve(ImageConfiguration.empty);
     late final ImageStreamListener listener;
     listener = ImageStreamListener(
       (info, _) {
         final w = info.image.width, h = info.image.height;
-        if (mounted && w > 0 && h > 0 && !_aspect.containsKey(p.url)) {
-          unawaited(_recordShape(p.url, info.image, w, h));
-        }
         stream.removeListener(listener);
-        if (!done.isCompleted) done.complete();
+        unawaited(() async {
+          try {
+            if (mounted && w > 0 && h > 0) {
+              await _recordShape(p.url, info.image, w, h);
+            }
+          } finally {
+            info.dispose();
+            if (!done.isCompleted) done.complete();
+          }
+        }());
       },
       onError: (_, _) {
         stream.removeListener(listener);
@@ -1626,6 +1648,8 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
   /// True pixel size, for pages that may be tiled. [_aspect] keeps only the
   /// ratio, but a tile crop is addressed in the file's own pixels.
   final Map<String, Size> _pixelSize = {};
+  final Map<String, Size> _decodedSize = {};
+  final Set<String> _cropChecked = {};
 
   /// The on-disk file backing a page, once [PageFileCache] has one. Tiling
   /// needs a file descriptor; most pages do not start with one.
@@ -2561,31 +2585,29 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
     );
   }
 
-  /// Conservative border crop for the `cropBorders` pref. Overflow-scales the
-  /// page a few percent and clips back to its box, shaving the outer margin a
-  /// typical scan leaves without pixel analysis.
-  // ponytail: content-aware crop deferred (needs pixel analysis) — this is a
-  // fixed ~3%-per-edge inset, tuned to trim margins without eating art.
-  /// Trims a page's flat margins, when the reader is set to.
-  ///
-  /// This used to be `Transform.scale(1.06)` inside a `ClipRect` — a blind 3%
-  /// shave off every side, which took artwork off a page that had no margin
-  /// and left almost all of a wide one. The rect now comes from looking at the
-  /// page (see [findContentRect]), so a page with nothing to trim is left
-  /// exactly as it was.
-  Widget _cropIfEnabled(Widget image, String url) {
-    if (!sl<ReaderPrefs>().cropBorders) return image;
-    final r = _crop[url];
-    if (r == null) return image;
-    return ClipRect(
-      child: Align(
-        alignment: Alignment(
-          r.w >= 1 ? 0 : (r.x / (1 - r.w)) * 2 - 1,
-          r.h >= 1 ? 0 : (r.y / (1 - r.h)) * 2 - 1,
+  Widget _fitCroppedPage(Widget image, String url, BoxFit fit) {
+    final crop = sl<ReaderPrefs>().cropBorders ? _crop[url] : null;
+    final size = _decodedSize[url];
+    if (crop == null || size == null) return image;
+    return FittedBox(
+      fit: fit,
+      clipBehavior: Clip.hardEdge,
+      child: SizedBox(
+        width: size.width * crop.w,
+        height: size.height * crop.h,
+        child: ClipRect(
+          child: Stack(
+            children: [
+              Positioned(
+                left: -size.width * crop.x,
+                top: -size.height * crop.y,
+                width: size.width,
+                height: size.height,
+                child: image,
+              ),
+            ],
+          ),
         ),
-        widthFactor: r.w,
-        heightFactor: r.h,
-        child: image,
       ),
     );
   }
@@ -2853,7 +2875,6 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
       index,
       () => TransformationController(),
     );
-    final fit = _pageBoxFit(_effectiveFit(sl<ReaderPrefs>()));
     _evictFarZoomControllers(_pageIndex);
     // RepaintBoundary: a page's own raster is expensive (a decoded bitmap up
     // to readerDecodeWidth), and without this it can get swept into the same
@@ -2866,38 +2887,53 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
         builder: (context, constraints) {
           final width = _decodeWidth(context);
           final viewport = constraints.biggest;
-          final image = Center(
-            child: _cropIfEnabled(
-              _withPageTranslation(
-                ReaderPageImage(
-                  pageUrl: page.url,
-                  image: _pageProvider(page, width),
-                  fit: fit,
-                  onLoaded: () => _loaded.add(index),
-                  placeholderBuilder: (context, progress) => _drawnLocally(page)
-                      ? Center(
-                          child: _shimmerSlot(
-                            context,
-                            label: '${index + 1}',
-                            progress: progress,
-                          ),
-                        )
-                      : SizedBox.expand(
-                          child: ColoredBox(color: AppColors.surface2),
-                        ),
-                  errorBuilder: (_, _, _) => const Icon(
-                    Icons.broken_image_outlined,
-                    color: Colors.white38,
-                    size: 48,
-                  ),
-                ),
-                page: page,
-                index: index,
-                fit: fit,
-              ),
-              page.url,
-            ),
+          final size = _decodedSize[page.url] ?? _pixelSize[page.url];
+          final crop = sl<ReaderPrefs>().cropBorders ? _crop[page.url] : null;
+          final fit = _pageBoxFit(
+            _effectiveFit(sl<ReaderPrefs>()),
+            pageAspect: size == null
+                ? null
+                : size.aspectRatio * (crop == null ? 1 : crop.w / crop.h),
+            screenAspect: viewport.aspectRatio,
           );
+          final innerFit = crop == null ? fit : BoxFit.fill;
+          final fittedPage = _fitCroppedPage(
+            _withPageTranslation(
+              ReaderPageImage(
+                pageUrl: page.url,
+                image: _pageProvider(page, width),
+                fit: innerFit,
+                onLoaded: () => _loaded.add(index),
+                placeholderBuilder: (context, progress) => _drawnLocally(page)
+                    ? Center(
+                        child: _shimmerSlot(
+                          context,
+                          label: '${index + 1}',
+                          progress: progress,
+                        ),
+                      )
+                    : SizedBox.expand(
+                        child: ColoredBox(color: AppColors.surface2),
+                      ),
+                errorBuilder: (_, _, _) => const Icon(
+                  Icons.broken_image_outlined,
+                  color: Colors.white38,
+                  size: 48,
+                ),
+              ),
+              page: page,
+              index: index,
+              fit: innerFit,
+            ),
+            page.url,
+            fit,
+          );
+          // A loose Center lets the image shrink to its intrinsic aspect
+          // before BoxFit runs. Explicit width/height modes need the viewport
+          // as their fitting box, including when the page was cropped.
+          final image = fit == BoxFit.fitWidth || fit == BoxFit.fitHeight
+              ? SizedBox.expand(child: fittedPage)
+              : Center(child: fittedPage);
           return GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTapUp: (d) => _dispatchTap(d.globalPosition),
@@ -2954,22 +2990,54 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
   }
 
   Widget _verticalItem(BuildContext context, PageImage page, int index) {
-    final fit = _verticalBoxFit(_effectiveFit(sl<ReaderPrefs>()));
-    // See the comment on _pagedItem's RepaintBoundary — same reasoning here.
+    final fitMode = _effectiveFit(sl<ReaderPrefs>());
+    final fit = _verticalBoxFit(fitMode);
+    final cropped =
+        sl<ReaderPrefs>().cropBorders && _crop.containsKey(page.url);
+    final viewportFit = fitMode == 'height' || fitMode == 'original';
+    final image = _withPageTranslation(
+      cropped || viewportFit
+          ? _plainPageImage(
+              context,
+              page,
+              index,
+              fit: cropped ? BoxFit.fill : fit,
+            )
+          : _verticalPageImage(context, page, index),
+      page: page,
+      index: index,
+      fit: cropped ? BoxFit.fill : fit,
+    );
+    final fitted = _fitCroppedPage(image, page.url, fit);
+    final crop = cropped ? _crop[page.url] : null;
+    final size = _decodedSize[page.url] ?? _pixelSize[page.url];
+    final pageBody = size == null || (!viewportFit && crop == null)
+        ? fitted
+        : LayoutBuilder(
+            builder: (context, constraints) {
+              final pixels = Size(
+                size.width * (crop?.w ?? 1),
+                size.height * (crop?.h ?? 1),
+              );
+              final height = viewportFit
+                  ? applyBoxFit(
+                      fit,
+                      pixels,
+                      Size(
+                        constraints.maxWidth,
+                        MediaQuery.sizeOf(context).height,
+                      ),
+                    ).destination.height
+                  : constraints.maxWidth / pixels.aspectRatio;
+              return SizedBox(height: height, child: fitted);
+            },
+          );
     return RepaintBoundary(
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTapUp: (d) => _dispatchTap(d.globalPosition),
         onLongPress: () => _showPageActions(page),
-        child: _cropIfEnabled(
-          _withPageTranslation(
-            _verticalPageImage(context, page, index),
-            page: page,
-            index: index,
-            fit: fit,
-          ),
-          page.url,
-        ),
+        child: pageBody,
       ),
     );
   }
@@ -3025,6 +3093,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
     final pixels = _pixelSize[page.url];
     final file = _pageFile[page.url];
     final canTile =
+        !sl<ReaderPrefs>().cropBorders &&
         pixels != null &&
         file != null &&
         // Below about two screens there is nothing to win and the plain path
@@ -3046,13 +3115,18 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
 
   /// The old, untiled page draw — used directly when tiling is off or not
   /// possible for this page, and as [TiledPageImage]'s fallback.
-  Widget _plainPageImage(BuildContext context, PageImage page, int index) {
+  Widget _plainPageImage(
+    BuildContext context,
+    PageImage page,
+    int index, {
+    BoxFit? fit,
+  }) {
     final width = _webtoonDecodeWidth(context);
     return ReaderPageImage(
       pageUrl: page.url,
       image: _pageProvider(page, width),
       width: double.infinity,
-      fit: _verticalBoxFit(_effectiveFit(sl<ReaderPrefs>())),
+      fit: fit ?? _verticalBoxFit(_effectiveFit(sl<ReaderPrefs>())),
       onLoaded: () => _loaded.add(index),
       placeholderBuilder: (context, progress) =>
           _pagePlaceholder(context, index, progress),
@@ -4218,13 +4292,17 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                             child: ReaderSegmentedControl(
                               options: fitOptions,
                               selected: fitOverride ?? 'default',
-                              onSelect: (v) => apply(
-                                () => overrides?.setFitOverride(
+                              onSelect: (v) => apply(() {
+                                overrides?.setFitOverride(
                                   widget.sourceId,
                                   widget.showId,
                                   v == 'default' ? null : v,
-                                ),
-                              ),
+                                );
+                                final pages = _pages;
+                                if (pages != null) {
+                                  _preload(_pageIndex, pages);
+                                }
+                              }),
                             ),
                           ),
                           readerSheetRow(
@@ -4253,9 +4331,8 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                             trailing: Switch(
                               value: prefs.customColorFilter,
                               activeThumbColor: AppColors.accent,
-                              onChanged: (v) => apply(
-                                () => prefs.setCustomColorFilter(v),
-                              ),
+                              onChanged: (v) =>
+                                  apply(() => prefs.setCustomColorFilter(v)),
                             ),
                           ),
                           if (prefs.customColorFilter) ...[
@@ -4264,10 +4341,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                                 icon: Icons.circle,
                                 label: _channelLabel(ch),
                                 trailing: _channelPill(
-                                  _channelValue(
-                                    prefs.customFilterColor,
-                                    ch,
-                                  ),
+                                  _channelValue(prefs.customFilterColor, ch),
                                 ),
                                 child: Slider(
                                   value: _channelValue(
@@ -4302,9 +4376,8 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                                   (value: 'lighten', label: 'Lighten'),
                                 ],
                                 selected: prefs.customFilterBlend,
-                                onSelect: (v) => apply(
-                                  () => prefs.setCustomFilterBlend(v),
-                                ),
+                                onSelect: (v) =>
+                                    apply(() => prefs.setCustomFilterBlend(v)),
                               ),
                             ),
                           ],
@@ -4329,8 +4402,11 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                             trailing: Switch(
                               value: prefs.cropBorders,
                               activeThumbColor: AppColors.accent,
-                              onChanged: (v) =>
-                                  apply(() => prefs.setCropBorders(v)),
+                              onChanged: (v) => apply(() {
+                                unawaited(prefs.setCropBorders(v));
+                                final pages = _pages;
+                                if (pages != null) _preload(_pageIndex, pages);
+                              }),
                             ),
                           ),
                         ]),
@@ -4677,24 +4753,20 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
 /// Save-or-share choice from [_MangaReaderScreenState._showPageActions].
 enum _PageAction { save, share }
 
-/// Resolves `ReaderPrefs.fitMode` into the `BoxFit` used to render a paged
-/// page. `smart` needs a page's own decoded aspect ratio to pick between
-/// fit-width/fit-height (see `fitToBoxFit`'s smart branch, unit-tested on its
-/// own), which means waiting on that page's `ImageStream` — heavier than
-/// this phase needs, since a tall page (the common case smart-fit is for)
-/// already wants fit-width.
-// ponytail: smart-fit skips real aspect-ratio resolution here and renders as
-// fitWidth (the common tall-page outcome). Upgrade path: resolve each page's
-// decoded ImageInfo size via an ImageStream listener and call
-// fitToBoxFit(FitMode.smart, pageAspect: ..., screenAspect: ...) with the
-// real values.
-BoxFit _pageBoxFit(String fitModeKey) {
-  if (fitModeKey == 'smart') return BoxFit.fitWidth;
+BoxFit _pageBoxFit(
+  String fitModeKey, {
+  double? pageAspect,
+  double screenAspect = 1,
+}) {
   final mode = FitMode.values.firstWhere(
     (m) => m.name == fitModeKey,
     orElse: () => FitMode.contain,
   );
-  return fitToBoxFit(mode, pageAspect: 1, screenAspect: 1);
+  return fitToBoxFit(
+    mode,
+    pageAspect: pageAspect ?? 0,
+    screenAspect: screenAspect,
+  );
 }
 
 /// Same as [_pageBoxFit], but for the webtoon (vertical) strip: it's always
