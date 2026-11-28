@@ -334,18 +334,21 @@ Future<PlayerChoice?> showEpisodePlayerSheet(
   );
 }
 
-/// Pick one of an episode's resolved mirrors.
+/// Pick one of an episode's mirrors.
 ///
-/// Opens with whatever is resolved already. [live] (optional) is a list that
-/// keeps growing while the sheet is open; rows are lazy and fixed-height so a
-/// long list and frequent additions stay cheap, and the scroll position
-/// survives each addition. [loadingMore] drives the thin progress line.
+/// Opens at once, even with nothing resolved yet: an empty [sources] with
+/// [loadingMore] true shows placeholder rows, and links fill in as [live]
+/// grows. [loadingMore] drives the status line at the bottom; when it ends on
+/// an empty list the sheet offers [onRetry]. [lastUsedLabel] pins the server
+/// remembered for this title to the top.
 Future<VideoSource?> showMirrorSheet(
   BuildContext context, {
   required String episodeLabel,
-  required List<VideoSource> sources,
+  List<VideoSource> sources = const [],
   ValueListenable<List<VideoSource>>? live,
   ValueListenable<bool>? loadingMore,
+  String? lastUsedLabel,
+  VoidCallback? onRetry,
 }) {
   return showModalBottomSheet<VideoSource>(
     context: context,
@@ -359,6 +362,8 @@ Future<VideoSource?> showMirrorSheet(
       initial: sources,
       live: live,
       loadingMore: loadingMore,
+      lastUsedLabel: lastUsedLabel?.trim(),
+      onRetry: onRetry,
     ),
   );
 }
@@ -369,12 +374,16 @@ class _MirrorSheet extends StatefulWidget {
     required this.initial,
     this.live,
     this.loadingMore,
+    this.lastUsedLabel,
+    this.onRetry,
   });
 
   final String episodeLabel;
   final List<VideoSource> initial;
   final ValueListenable<List<VideoSource>>? live;
   final ValueListenable<bool>? loadingMore;
+  final String? lastUsedLabel;
+  final VoidCallback? onRetry;
 
   @override
   State<_MirrorSheet> createState() => _MirrorSheetState();
@@ -399,100 +408,298 @@ class _MirrorSheetState extends State<_MirrorSheet> {
     return _rows;
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.sizeOf(context).height * 0.75,
+  bool _isLastUsed(VideoSource s) =>
+      widget.lastUsedLabel != null &&
+      widget.lastUsedLabel!.isNotEmpty &&
+      (s.label ?? '').trim() == widget.lastUsedLabel;
+
+  Widget _header(String? count) => Padding(
+    padding: const EdgeInsets.fromLTRB(20, 14, 20, 6),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Choose a link', style: AppText.headline),
+              Text(
+                widget.episodeLabel,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppText.caption.copyWith(color: AppColors.textSecondary),
+              ),
+            ],
+          ),
         ),
-        child: ValueListenableBuilder<List<VideoSource>>(
-          valueListenable:
-              widget.live ?? ValueNotifier<List<VideoSource>>(widget.initial),
-          builder: (context, list, _) {
-            final rows = _rowsFor(list);
-            return Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const SizedBox(height: 10),
-                Container(
-                  width: 36,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: AppColors.hairline,
-                    borderRadius: BorderRadius.circular(2),
+        if (count != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 5),
+            child: Text(
+              count,
+              style: AppText.caption.copyWith(color: AppColors.textTertiary),
+            ),
+          ),
+      ],
+    ),
+  );
+
+  Widget _section(String text) => Padding(
+    padding: const EdgeInsets.fromLTRB(20, 10, 20, 2),
+    child: Text(
+      text.toUpperCase(),
+      style: AppText.caption.copyWith(
+        color: AppColors.textTertiary,
+        letterSpacing: 1.1,
+        fontSize: 11,
+      ),
+    ),
+  );
+
+  Widget _row(AudioKind k, VideoSource s) {
+    final hasLabel = s.label?.trim().isNotEmpty == true;
+    final container = s.container == SourceContainer.unknown
+        ? null
+        : s.container.name.toUpperCase();
+    final sub = [
+      ?container,
+      if (k != AudioKind.unknown) k.name.toUpperCase(),
+    ].join(' · ');
+    // No label: the quality (or container) is the name, so it isn't repeated
+    // on the right.
+    final quality = hasLabel ? s.quality : null;
+    return InkWell(
+      onTap: () => Navigator.pop(context, s),
+      onLongPress: () => copyPlaybackLink(context, s.url),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 13),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    hasLabel
+                        ? s.label!.trim()
+                        : (s.quality ?? s.container.name.toUpperCase()),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppText.body.copyWith(fontWeight: FontWeight.w600),
                   ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 14, 20, 2),
-                  child: Align(
-                    alignment: AlignmentDirectional.centerStart,
-                    child: Text('Play mirror', style: AppText.headline),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-                  child: Align(
-                    alignment: AlignmentDirectional.centerStart,
-                    child: Text(
-                      widget.episodeLabel,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                  if (sub.isNotEmpty)
+                    Text(
+                      sub,
                       style: AppText.caption.copyWith(
                         color: AppColors.textSecondary,
                       ),
                     ),
+                ],
+              ),
+            ),
+            if (quality != null)
+              Padding(
+                padding: const EdgeInsets.only(left: 14),
+                child: Text(
+                  quality,
+                  style: AppText.caption.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary,
                   ),
                 ),
-                // Fixed 2px slot: the line comes and goes without moving the
-                // list below it.
-                SizedBox(
-                  height: 2,
-                  child: widget.loadingMore == null
-                      ? null
-                      : ValueListenableBuilder<bool>(
-                          valueListenable: widget.loadingMore!,
-                          builder: (_, on, _) => on
-                              ? LinearProgressIndicator(
-                                  minHeight: 2,
-                                  color: AppColors.accent,
-                                  backgroundColor: AppColors.hairline,
-                                )
-                              : const SizedBox.shrink(),
-                        ),
-                ),
-                Flexible(
-                  child: ListView.builder(
-                    shrinkWrap: true,
-                    padding: const EdgeInsets.only(bottom: 8),
-                    itemCount: rows.length,
-                    itemBuilder: (context, i) {
-                      final k = rows[i].kind;
-                      final s = rows[i].source;
-                      final hasLabel = s.label?.trim().isNotEmpty == true;
-                      return _PlayerRow(
-                        icon: Icons.play_arrow_rounded,
-                        // Same shape the player's own Sources sheet uses: the
-                        // provider's mirror name when it has one, otherwise
-                        // the audio kind — never a stray "UNKNOWN •".
-                        label: hasLabel
-                            ? s.label!.trim()
-                            : '${k != AudioKind.unknown ? '${k.name.toUpperCase()} • ' : ''}'
-                                  '${s.quality ?? s.container.name.toUpperCase()}',
-                        subtitle: hasLabel ? s.quality : null,
-                        onTap: () => Navigator.pop(context, s),
-                        onLongPress: () => copyPlaybackLink(context, s.url),
-                      );
-                    },
-                  ),
-                ),
-              ],
-            );
-          },
+              ),
+          ],
         ),
       ),
     );
   }
+
+  Widget _divider() =>
+      Divider(height: 1, thickness: 1, color: AppColors.hairline);
+
+  Widget _status() => Padding(
+    padding: const EdgeInsets.fromLTRB(20, 10, 20, 16),
+    child: Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        SizedBox(
+          width: 12,
+          height: 12,
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            color: AppColors.textSecondary,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          _rows.isEmpty ? 'Finding links…' : 'Finding more links…',
+          style: AppText.caption.copyWith(color: AppColors.textTertiary),
+        ),
+      ],
+    ),
+  );
+
+  Widget _empty() => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 36),
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(Icons.cloud_off_rounded, size: 30, color: AppColors.textSecondary),
+        const SizedBox(height: 8),
+        Text(
+          'No links for this episode',
+          style: AppText.body.copyWith(color: AppColors.textSecondary),
+        ),
+        if (widget.onRetry != null) ...[
+          const SizedBox(height: 12),
+          TextButton(onPressed: widget.onRetry, child: const Text('Retry')),
+        ],
+      ],
+    ),
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final height = MediaQuery.sizeOf(context).height;
+    final loadingListenable = widget.loadingMore ?? ValueNotifier<bool>(false);
+    return SafeArea(
+      child: ConstrainedBox(
+        // A floor so the sheet doesn't jump taller as links arrive.
+        constraints: BoxConstraints(
+          minHeight: height * 0.45,
+          maxHeight: height * 0.75,
+        ),
+        child: ValueListenableBuilder<List<VideoSource>>(
+          valueListenable:
+              widget.live ?? ValueNotifier<List<VideoSource>>(widget.initial),
+          builder: (context, list, _) => ValueListenableBuilder<bool>(
+            valueListenable: loadingListenable,
+            builder: (context, loading, _) {
+              final rows = _rowsFor(list);
+              final last = [
+                for (final r in rows)
+                  if (_isLastUsed(r.source)) r,
+              ];
+              final rest = [
+                for (final r in rows)
+                  if (!_isLastUsed(r.source)) r,
+              ];
+              Iterable<Widget> rowsOf(
+                List<({AudioKind kind, VideoSource source})> items,
+              ) sync* {
+                for (var i = 0; i < items.length; i++) {
+                  if (i > 0) yield _divider();
+                  yield _row(items[i].kind, items[i].source);
+                }
+              }
+
+              final children = <Widget>[
+                if (last.isNotEmpty) ...[
+                  _section('Last used'),
+                  ...rowsOf(last),
+                  if (rest.isNotEmpty) _section('More links'),
+                ],
+                ...rowsOf(rest),
+                if (loading) ...[
+                  for (var i = 0; i < (rows.isEmpty ? 3 : 1); i++)
+                    const _SkeletonRow(),
+                ],
+              ];
+              // Count top right once it's final; while loading the bottom
+              // line carries the state instead.
+              final count = !loading && rows.isNotEmpty
+                  ? '${rows.length} ${rows.length == 1 ? 'link' : 'links'}'
+                  : null;
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const SizedBox(height: 10),
+                  Container(
+                    width: 36,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: AppColors.hairline,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  _header(count),
+                  Flexible(
+                    child: rows.isEmpty && !loading
+                        ? _empty()
+                        : ListView(
+                            shrinkWrap: true,
+                            padding: const EdgeInsets.only(bottom: 4),
+                            children: children,
+                          ),
+                  ),
+                  if (loading) _status(),
+                ],
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A row-shaped placeholder: two text bars and a small quality box, with a
+/// light sweep across them.
+class _SkeletonRow extends StatefulWidget {
+  const _SkeletonRow();
+
+  @override
+  State<_SkeletonRow> createState() => _SkeletonRowState();
+}
+
+class _SkeletonRowState extends State<_SkeletonRow>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1300),
+  )..repeat();
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  Widget _bar(double w, double h) => AnimatedBuilder(
+    animation: _c,
+    builder: (_, _) => Container(
+      width: w,
+      height: h,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(6),
+        gradient: LinearGradient(
+          begin: Alignment(-1.5 + _c.value * 3, 0),
+          end: Alignment(-0.5 + _c.value * 3, 0),
+          colors: [
+            AppColors.surface2,
+            AppColors.surface2.withValues(alpha: 0.5),
+            AppColors.surface2,
+          ],
+        ),
+      ),
+    ),
+  );
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+    child: Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [_bar(140, 12), const SizedBox(height: 8), _bar(84, 9)],
+          ),
+        ),
+        _bar(38, 12),
+      ],
+    ),
+  );
 }
 
 class _PlayerRow extends StatelessWidget {
@@ -500,7 +707,6 @@ class _PlayerRow extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.onTap,
-    this.onLongPress,
     this.isDefault = false,
     this.subtitle,
     this.trailingText,
@@ -509,7 +715,6 @@ class _PlayerRow extends StatelessWidget {
   final IconData icon;
   final String label;
   final VoidCallback onTap;
-  final VoidCallback? onLongPress;
 
   /// Marks the row a plain tap would have used. Marked rather than sorted to
   /// the top, so the list doesn't reshuffle when the Settings default changes.
@@ -536,7 +741,6 @@ class _PlayerRow extends StatelessWidget {
               style: AppText.caption.copyWith(color: AppColors.textSecondary),
             ),
       onTap: onTap,
-      onLongPress: onLongPress,
     );
   }
 }

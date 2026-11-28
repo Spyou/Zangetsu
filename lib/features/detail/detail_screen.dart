@@ -1213,43 +1213,6 @@ class _DetailViewState extends State<_DetailView>
 
   // ── Cross-source player launch — PRESERVED EXACTLY ────────────────────────
 
-  /// Resolve every mirror for an episode, behind a blocking spinner.
-  ///
-  /// Deliberately not the fast path. Fast returns on the first usable link and
-  /// leaves the rest resolving in the background, so a chooser built from it
-  /// often shows one server out of several — you'd be picking from a list that
-  /// isn't finished. Waiting costs a few seconds and shows the real choice.
-  Future<List<VideoSource>> _resolveWithProgress(
-    Episode ep, {
-    bool fast = false,
-  }) async {
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const Center(child: CircularProgressIndicator()),
-    );
-    try {
-      // Through the router, like every other playback path on this screen.
-      // Asking SourceRepository directly worked on a source page and could
-      // never work on a metadata one: `zm` is a pseudo source with nothing to
-      // resolve, so Play mirror always reported "no sources" for a title that
-      // played perfectly from the same row. The router hands a zm:// url to
-      // MetadataRepository, which resolves it to the real source's episode
-      // first — exactly what Play already does.
-      return await sl<CatalogueRepository>().sources(
-        ep.url,
-        sourceId: widget.item.sourceId,
-        fast: fast,
-      );
-    } catch (_) {
-      // A dead source shouldn't leave a spinner on screen; the caller reports
-      // the empty result as "no sources found".
-      return const [];
-    } finally {
-      if (mounted) Navigator.of(context, rootNavigator: true).pop();
-    }
-  }
-
   /// Feeds late mirrors into an open Play-mirror sheet. CloudStream keeps
   /// resolving after the first link; everything else reports done at once, so
   /// this ends on the first poll for them. Capped so it can never spin.
@@ -1448,33 +1411,22 @@ class _DetailViewState extends State<_DetailView>
 
       case EpisodeAction.playMirror:
         if (usesStremioLinks(widget.item.sourceId)) {
-          await _openPlayer(episodes, index, detail, category);
+          // Always the sheet here, even when a link is remembered: this is
+          // how you choose again.
+          final stremioPick = await _pickStremioSource(episodes, index, detail);
+          if (!mounted || stremioPick == null) return;
+          await _openPlayer(
+            episodes,
+            index,
+            detail,
+            category,
+            initialSource: stremioPick,
+          );
           return;
         }
-        // Fast resolve: cached/prefetched links are instant, a cold one returns
-        // on the first usable link. The sheet opens with that and the rest of
-        // the mirrors are added as they land (see _pollMoreMirrors).
-        final sources = await _resolveWithProgress(ep, fast: true);
-        if (!mounted) return;
-        if (sources.isEmpty) {
-          showAppToast(context, context.l10n.noSourcesFoundForThisEpisode);
-          return;
-        }
-        final live = ValueNotifier<List<VideoSource>>(sources);
-        final loadingMore = ValueNotifier<bool>(true);
-        var closed = false;
-        unawaited(_pollMoreMirrors(ep, live, loadingMore, () => closed));
-        final picked = await showMirrorSheet(
-          context,
-          episodeLabel: label,
-          sources: sources,
-          live: live,
-          loadingMore: loadingMore,
-        );
-        closed = true;
-        live.dispose();
-        loadingMore.dispose();
+        final picked = await _pickMirror(ep, label);
         if (picked == null || !mounted) return;
+        _rememberPick(picked);
         // The pick applies to this episode and nothing else — no label saved.
         // Remembering it meant re-finding the mirror by label on the next
         // open, and when that list came back without it the language fallback
@@ -1636,6 +1588,76 @@ class _DetailViewState extends State<_DetailView>
     }
   }
 
+  /// With "choose link before playing" on, a pick is also this title's
+  /// remembered server, so the next play (and auto-next) re-picks it without
+  /// asking. Same store the player's Sources sheet writes. Stremio does this
+  /// itself in the player.
+  void _rememberPick(VideoSource picked) {
+    final label = picked.label?.trim();
+    if (!sl<PlaybackPrefs>().chooseLinkFirst ||
+        label == null ||
+        label.isEmpty ||
+        IncognitoMode.on) {
+      return;
+    }
+    unawaited(
+      sl<TitlePrefsStore>()
+          .setSourceLabel(widget.item.sourceId, widget.item.url, label)
+          .catchError((_) {}),
+    );
+  }
+
+  /// Resolves [ep]'s links and lets the viewer pick one. Null when there are
+  /// none, or the sheet was dismissed. Shared by Play mirror and the
+  /// "choose link before playing" setting.
+  Future<VideoSource?> _pickMirror(Episode ep, String label) async {
+    // The sheet opens at once and fills in: a fast resolve first (cached or
+    // prefetched links are instant), then the rest as they land (see
+    // _pollMoreMirrors). Retry restarts the same load without closing it.
+    final live = ValueNotifier<List<VideoSource>>(const []);
+    final loadingMore = ValueNotifier<bool>(true);
+    var closed = false;
+    var run = 0;
+    Future<void> load() async {
+      final mine = ++run;
+      bool stale() => closed || mine != run;
+      live.value = const [];
+      loadingMore.value = true;
+      try {
+        // Through the router, like every other playback path on this screen
+        // (a zm:// url only resolves there).
+        final first = await sl<CatalogueRepository>().sources(
+          ep.url,
+          sourceId: widget.item.sourceId,
+          fast: true,
+        );
+        if (stale()) return;
+        live.value = first;
+      } catch (_) {
+        // A dead source just leaves the list empty; the sheet says so.
+      }
+      if (stale()) return;
+      await _pollMoreMirrors(ep, live, loadingMore, stale);
+    }
+
+    unawaited(load());
+    final picked = await showMirrorSheet(
+      context,
+      episodeLabel: label,
+      live: live,
+      loadingMore: loadingMore,
+      lastUsedLabel: sl<TitlePrefsStore>().sourceLabel(
+        widget.item.sourceId,
+        widget.item.url,
+      ),
+      onRetry: () => unawaited(load()),
+    );
+    closed = true;
+    live.dispose();
+    loadingMore.dispose();
+    return mounted ? picked : null;
+  }
+
   Future<void> _openPlayer(
     List<Episode> episodes,
     int index,
@@ -1695,7 +1717,18 @@ class _DetailViewState extends State<_DetailView>
       }
     }
     if (!mounted) return;
-    if (usesStremioLinks(widget.item.sourceId, initialSource: initialSource)) {
+    // A Stremio link played before (this episode, or the show's release group)
+    // is re-picked by the player itself, so the sheet only opens when there's
+    // nothing remembered. Play mirror (long-press) is how you choose again.
+    final stremioRemembered =
+        index >= 0 &&
+        index < episodes.length &&
+        sl<TitlePrefsStore>().hasStremioPreference(
+          episodes[index].url,
+          widget.item.url,
+        );
+    if (!stremioRemembered &&
+        usesStremioLinks(widget.item.sourceId, initialSource: initialSource)) {
       final picked = await _pickStremioSource(episodes, index, detail);
       if (!mounted || picked == null) return;
       await _openPlayer(
@@ -1712,26 +1745,34 @@ class _DetailViewState extends State<_DetailView>
     // keep their automatic launch.
     final playerPackage =
         playerOverride?.package ?? sl<PlaybackPrefs>().externalPlayerPackage;
-    if (initialSource == null &&
+    // "Choose link before playing": same sheet, for the built-in players too.
+    // Live channels have no mirrors to choose between.
+    // Once a server is remembered for this title the sheet steps aside and the
+    // player re-picks it; Play mirror (long-press) is how you choose again.
+    final askFirst =
+        sl<PlaybackPrefs>().chooseLinkFirst &&
+        !detail.isLive &&
+        sl<TitlePrefsStore>().sourceLabel(
+              widget.item.sourceId,
+              widget.item.url,
+            ) ==
+            null;
+    // Stremio has its own links sheet (above); a remembered Stremio link falls
+    // through here, and must go straight to the player, not this sheet.
+    if (widget.item.sourceId != stremioSourceId &&
+        initialSource == null &&
         index >= 0 &&
         index < episodes.length &&
-        playerPackage.isNotEmpty &&
-        playerPackage != PlaybackPrefs.androidPlayerId) {
+        (askFirst ||
+            (playerPackage.isNotEmpty &&
+                playerPackage != PlaybackPrefs.androidPlayerId))) {
       final ep = episodes[index];
-      final sources = await _resolveWithProgress(ep);
-      if (!mounted) return;
-      if (sources.isEmpty) {
-        showAppToast(context, context.l10n.noSourcesFoundForThisEpisode);
-        return;
-      }
-      final picked = await showMirrorSheet(
-        context,
-        episodeLabel: ep.title.isEmpty
-            ? detail.title
-            : '${detail.title} · ${ep.title}',
-        sources: sources,
+      final picked = await _pickMirror(
+        ep,
+        ep.title.isEmpty ? detail.title : '${detail.title} · ${ep.title}',
       );
       if (picked == null || !mounted) return;
+      _rememberPick(picked);
       await _openPlayer(
         episodes,
         index,

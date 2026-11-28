@@ -2882,6 +2882,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get playMirror => 'Play mirror';
 
   @override
+  String get chooseLinkFirst => 'Choose link before playing';
+
+  @override
+  String get chooseLinkFirstSubtitle =>
+      'Show the link list every time you play an episode';
+
+  @override
   String get chooseTheSourceBeforeItStarts =>
       'Choose the source before it starts';
 

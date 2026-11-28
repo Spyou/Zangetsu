@@ -775,6 +775,8 @@
   "noDescriptionAvailable": "No description available.",
   "playWith": "Play with…",
   "playMirror": "Play mirror",
+  "chooseLinkFirst": "Choose link before playing",
+  "chooseLinkFirstSubtitle": "Show the link list every time you play an episode",
   "chooseTheSourceBeforeItStarts": "Choose the source before it starts",
   "reloadLinks": "Reload links",
   "fetchFreshStreamsIfPlaybackKeepsFailing": "Fetch fresh streams if playback keeps failing",

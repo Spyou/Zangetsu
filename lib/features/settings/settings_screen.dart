@@ -1227,6 +1227,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     _SettingsEntry(
       section: SettingsSection.advanced,
+      icon: Icons.list_alt_rounded,
+      title: l10n.chooseLinkFirst,
+      subtitle: l10n.chooseLinkFirstSubtitle,
+      keywords: 'link mirror server choose pick sheet before play source list',
+      trailing: Switch.adaptive(
+        value: sl<PlaybackPrefs>().chooseLinkFirst,
+        activeThumbColor: AppColors.accent,
+        onChanged: (v) async {
+          await sl<PlaybackPrefs>().setChooseLinkFirst(v);
+          if (mounted) setState(() {});
+        },
+      ),
+    ),
+    _SettingsEntry(
+      section: SettingsSection.advanced,
       id: LeafParent.privacy,
       icon: Icons.shield_outlined,
       title: l10n.privacy,

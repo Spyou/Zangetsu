@@ -2895,6 +2895,13 @@ class AppLocalizationsAr extends AppLocalizations {
   String get playMirror => 'تشغيل المرآة';
 
   @override
+  String get chooseLinkFirst => 'Choose link before playing';
+
+  @override
+  String get chooseLinkFirstSubtitle =>
+      'Show the link list every time you play an episode';
+
+  @override
   String get chooseTheSourceBeforeItStarts => 'اختر المصدر قبل بدء التشغيل';
 
   @override

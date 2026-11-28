@@ -3258,6 +3258,28 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (index < 0 || index >= _c.episodes.length || _c.isClosed) return;
     final ep = _c.episodes[index];
     final playingIndex = _c.state.currentIndex;
+    // Stremio titles keep their own links sheet.
+    if (widget.sourceId == stremioSourceId &&
+        StremioRef.isRef(ep.url) &&
+        sl.isRegistered<StremioManager>()) {
+      final manager = sl<StremioManager>();
+      final ref = StremioRef.parse(ep.url);
+      if (!manager.canOpen(ref)) return;
+      final stremioPick = await showStremioEpisodeLinksSheet(
+        context,
+        manager: manager,
+        ref: ref,
+        title: ep.title.isEmpty ? (widget.showTitle ?? '') : ep.title,
+      );
+      if (stremioPick == null ||
+          !mounted ||
+          _c.isClosed ||
+          _c.state.currentIndex != playingIndex) {
+        return;
+      }
+      await _applyMirrorPick(index, ep, stremioPick);
+      return;
+    }
     final url = _c.categories.length > 1
         ? tvEpisodeUrl(ep.url, _c.activeCategory)
         : ep.url;
@@ -3311,6 +3333,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
         _c.state.currentIndex != playingIndex) {
       return;
     }
+    await _applyMirrorPick(index, ep, picked);
+  }
+
+  Future<void> _applyMirrorPick(
+    int index,
+    Episode ep,
+    VideoSource picked,
+  ) async {
     if (index == _c.state.currentIndex) {
       await _c.switchSource(picked);
     } else {

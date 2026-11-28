@@ -5512,6 +5512,18 @@ abstract class AppLocalizations {
   /// **'Play mirror'**
   String get playMirror;
 
+  /// No description provided for @chooseLinkFirst.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose link before playing'**
+  String get chooseLinkFirst;
+
+  /// No description provided for @chooseLinkFirstSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Show the link list every time you play an episode'**
+  String get chooseLinkFirstSubtitle;
+
   /// No description provided for @chooseTheSourceBeforeItStarts.
   ///
   /// In en, this message translates to:
