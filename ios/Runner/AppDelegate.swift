@@ -25,6 +25,11 @@ import UIKit
     } else {
       GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
     }
+    // Phone-remote bridge (Keychain pairing, Bonjour discovery, QR scan, Live Activity).
+    // No player handler on iPhone: it is only the remote, never the receiver.
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "AppleCompanionServices") {
+      AppleCompanionServices.register(messenger: registrar.messenger(), presenter: nil)
+    }
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "DiscordPresenceBridge") {
       discordPresenceBridge?.dispose()
       discordPresenceBridge = DiscordPresenceBridge(messenger: registrar.messenger())

@@ -406,43 +406,55 @@ class _TvFocusableState extends State<TvFocusable> {
         focused: _focused,
         onTap: _activate,
         onLongPress: widget.onLongPress,
-        child: Focus(
-          focusNode: widget.focusNode,
-          // Only autofocus on the top route. Flutter's autofocus checks only
-          // that the scope has no focused child, never whether a dialog or
-          // sheet sits on top, so a late-mounting Home button used to take
-          // D-pad focus away from a start-up prompt. isCurrentOf rebuilds
-          // this when the route becomes current again; Focus then applies
-          // the (still unused) autofocus.
-          autofocus:
-              widget.autofocus && (ModalRoute.isCurrentOf(context) ?? true),
-          onKeyEvent: _onKey,
-          onFocusChange: (f) {
-            setState(() => _focused = f);
-            if (f) {
-              Scrollable.ensureVisible(
-                context,
-                alignment: widget.focusScrollAlignment,
-                duration: const Duration(milliseconds: 200),
-              );
-            } else {
-              _okHeld = false;
-              _cancelLongPressTimer();
-            }
+        // ActivateIntent lets non-key callers (the companion remote's select)
+        // trigger the same deduped [_activate] as a remote OK press.
+        child: Actions(
+          actions: {
+            ActivateIntent: CallbackAction<ActivateIntent>(
+              onInvoke: (_) {
+                _activate();
+                return null;
+              },
+            ),
           },
-          // Touch support: some Android TVs / TV boxes have a touchscreen. A
-          // physical tap fires the same single, deduped action as the remote's
-          // OK/Enter (via [_activate]). Remote-only TVs never emit touch events,
-          // so this is completely inert there — the D-pad path is untouched. A
-          // scroll drag beats the tap in the gesture arena, so lists still
-          // scroll. excludeFromSemantics: the outer Semantics already exposes
-          // the tap to TalkBack, so this must not add a second, unlabeled node.
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            excludeFromSemantics: true,
-            onTap: _activate,
-            onLongPress: widget.onLongPress,
-            child: box,
+          child: Focus(
+            focusNode: widget.focusNode,
+            // Only autofocus on the top route. Flutter's autofocus checks only
+            // that the scope has no focused child, never whether a dialog or
+            // sheet sits on top, so a late-mounting Home button used to take
+            // D-pad focus away from a start-up prompt. isCurrentOf rebuilds
+            // this when the route becomes current again; Focus then applies
+            // the (still unused) autofocus.
+            autofocus:
+                widget.autofocus && (ModalRoute.isCurrentOf(context) ?? true),
+            onKeyEvent: _onKey,
+            onFocusChange: (f) {
+              setState(() => _focused = f);
+              if (f) {
+                Scrollable.ensureVisible(
+                  context,
+                  alignment: widget.focusScrollAlignment,
+                  duration: const Duration(milliseconds: 200),
+                );
+              } else {
+                _okHeld = false;
+                _cancelLongPressTimer();
+              }
+            },
+            // Touch support: some Android TVs / TV boxes have a touchscreen. A
+            // physical tap fires the same single, deduped action as the remote's
+            // OK/Enter (via [_activate]). Remote-only TVs never emit touch events,
+            // so this is completely inert there — the D-pad path is untouched. A
+            // scroll drag beats the tap in the gesture arena, so lists still
+            // scroll. excludeFromSemantics: the outer Semantics already exposes
+            // the tap to TalkBack, so this must not add a second, unlabeled node.
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              excludeFromSemantics: true,
+              onTap: _activate,
+              onLongPress: widget.onLongPress,
+              child: box,
+            ),
           ),
         ),
       ),

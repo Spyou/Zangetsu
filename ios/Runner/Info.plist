@@ -6,6 +6,12 @@
 	<string>Unlock a locked profile with Face ID or fingerprint.</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Connect your phone and TV to control Zangetsu and continue playback.</string>
+	<key>NSBonjourServices</key>
+	<array><string>_zangetsu-remote._tcp</string></array>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
@@ -69,7 +75,7 @@
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
 	<key>NSCameraUsageDescription</key>
-	<string>Zangetsu uses the photo picker so you can set a profile picture. The picker may also offer the camera.</string>
+	<string>Zangetsu uses the camera to scan the pairing QR code on your TV, and when you take a profile picture.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Zangetsu does not use your location. A linked library references location APIs, so iOS requires this explanation.</string>
 	<key>NSMicrophoneUsageDescription</key>
@@ -101,6 +107,7 @@
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>zangetsu</string>
+				<string>zangetsu-remote</string>
 				<string>discord-1518610045422665748</string>
 			</array>
 		</dict>

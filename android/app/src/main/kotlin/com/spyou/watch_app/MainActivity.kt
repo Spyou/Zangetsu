@@ -55,6 +55,11 @@ import java.util.concurrent.Executors
 /// native players (CloudStream etc.) use for seek-bar thumbnails. No second
 /// player, no video surface: just URL + time -> JPEG bytes.
 class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
+    /**
+     * Phone-as-remote bridge (pairing, HID and LAN control of a TV). One
+     * app-wide instance; attaching just points it at this visible activity.
+     */
+    private val companionRemote by lazy { RemoteCompanionBridge.attach(this) }
 
     // Flutter runs in a fragment rather than us extending FlutterActivity,
     // because this activity has to BE an androidx AppCompatActivity.
@@ -215,6 +220,9 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
         // The manifest meta-data is unchanged; we just have to read it ourselves.
         switchLaunchThemeForNormalTheme()
         super.onCreate(savedInstanceState)
+        // Tracks which of our screens are resumed so the TV can tell a phone
+        // remote whether the app / player is on screen.
+        CompanionVisibility.install(application)
         reconcileIconAliases()
         setContentView(R.layout.activity_main)
         // Survives configuration changes / process death: re-attaching a second
@@ -292,6 +300,8 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
     }
 
     override fun onPause() {
+        // Stop sending remote input (held keys, volume) once the screen goes away.
+        RemoteCompanionBridge.shared?.releaseControl()
         playerOrientationObserver?.disable()
         phoneVoiceSearch?.cancelActive()
         if (current?.get() === this) current = null
@@ -320,6 +330,8 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
     private var volumeKeyChannel: MethodChannel? = null
 
     override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        // On the remote screen the phone's volume keys change the TV's volume.
+        if (RemoteCompanionBridge.shared?.hardwareVolume(event) == true) return true
         if (volumeKeyPaging) {
             val code = event.keyCode
             if (code == android.view.KeyEvent.KEYCODE_VOLUME_UP ||
@@ -447,6 +459,19 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
         // own, so without this line NO plugin (shared_preferences, path_provider,
         // media_kit …) would be attached and the app would come up dead.
         GeneratedPluginRegister.registerGeneratedPlugins(flutterEngine)
+        // "zangetsu/companion": Dart <-> native for the phone remote. On the TV,
+        // CompanionReceiver uses it to ask Dart for catalogue actions, and Dart
+        // reports catalogue `playbackError`s here; every other call goes to the
+        // phone-side RemoteCompanionBridge.
+        CompanionReceiver.activity = this
+        CompanionReceiver.channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "zangetsu/companion").also { channel ->
+            channel.setMethodCallHandler { call, result ->
+                if (call.method == "playbackError") {
+                    CompanionReceiver.catalogueError = call.arguments as? String
+                    result.success(null)
+                } else companionRemote.handle(call, result)
+            }
+        }
         EventChannel(flutterEngine.dartExecutor.binaryMessenger, "zangetsu/player_orientation")
             .setStreamHandler(object : EventChannel.StreamHandler {
                 override fun onListen(arguments: Any?, events: EventChannel.EventSink) {
@@ -2106,6 +2131,14 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
     }
 
     override fun onDestroy() {
+        companionRemote.detach(this)
+        // Only the activity that owns the receiver tears it down (a recreated
+        // activity may already have taken over).
+        if (CompanionReceiver.activity === this) {
+            CompanionReceiver.activity = null
+            CompanionReceiver.channel = null
+            CompanionReceiver.stop()
+        }
         playerOrientationObserver?.disable()
         playerOrientationObserver = null
         discordPresence?.dispose()

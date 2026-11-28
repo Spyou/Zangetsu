@@ -13,6 +13,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../auth/auth_cubit.dart';
 import '../auth/auth_screens.dart' show ProfileAccountSection;
+import '../companion/companion_settings_screen.dart';
 import '../settings/settings_screen.dart';
 import 'viewer_profile_editor_screen.dart';
 import 'viewer_profiles_screen.dart';
@@ -26,9 +27,6 @@ class ViewerProfileHomeScreen extends StatelessWidget {
 
   final VoidCallback? onProfileSelected;
   final VoidCallback? onPickerClosed;
-
-  static const _zoroGifUrl =
-      'https://custom-doodle.com/wp-content/uploads/doodle/auto-draft/one-piece-dancing-roronoa-zoro-doodle.gif';
 
   ViewerProfileStore get _profiles => sl<ViewerProfileStore>();
 
@@ -186,7 +184,7 @@ class ViewerProfileHomeScreen extends StatelessWidget {
                         const SizedBox(height: 30),
                         Divider(height: 1, color: AppColors.hairline),
                         const SizedBox(height: 22),
-                        _comingSoonCard(),
+                        _featureGrid(context),
                       ],
                     ),
                   ),
@@ -390,30 +388,124 @@ class ViewerProfileHomeScreen extends StatelessWidget {
     ],
   );
 
-  Widget _comingSoonCard() => Center(
-    key: const ValueKey('zoro-coming-soon-section'),
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        CachedNetworkImage(
-          key: const ValueKey('zoro-coming-soon-gif'),
-          imageUrl: _zoroGifUrl,
-          cacheManager: AppImageCache.cacheManagerOrDefault,
-          width: 148,
-          height: 148,
-          fit: BoxFit.contain,
-          fadeInDuration: const Duration(milliseconds: 240),
-          placeholder: (_, _) => const SizedBox(width: 148, height: 148),
-          errorWidget: (_, _, _) => const SizedBox.shrink(),
+  /// Opens the phone remote (moved here from the dock) as a pushed page with
+  /// a back button, so it polls the TV only while it is on screen.
+  void _openRemote(BuildContext context) => Navigator.of(context).push<void>(
+    MaterialPageRoute<void>(
+      builder: (_) => const CompanionSettingsScreen(showBack: true),
+    ),
+  );
+
+  /// The profile's feature tiles, in grid order. Add a feature by adding an
+  /// entry here; the grid lays it out.
+  List<_ProfileFeature> _features(BuildContext context) => [
+    _ProfileFeature(
+      key: const ValueKey('profile-remote-entry'),
+      icon: Icons.settings_remote_rounded,
+      label: 'Remote',
+      hint: 'Control your TV with this phone',
+      onTap: () => _openRemote(context),
+    ),
+  ];
+
+  /// Spacing between feature tiles, both across and between rows.
+  static const double _featureGap = 12;
+
+  /// Narrowest a tile may get before the grid drops a column.
+  static const double _featureMinTile = 84;
+
+  /// 3 columns on phones, 4 on tablets, 5 on wide layouts, 6 on very wide.
+  static int _featureColumns(double width) {
+    if (width < 600) return 3;
+    if (width < 900) return 4;
+    return width < 1280 ? 5 : 6;
+  }
+
+  /// A non-scrolling grid inside the page's ListView. Tiles are equal width
+  /// and at least square; they grow taller (never overflow) at large text.
+  Widget _featureGrid(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final features = _features(context);
+      // Never squeeze tiles below _featureMinTile (split screen, or a
+      // window narrower than the screen).
+      final fit =
+          ((constraints.maxWidth + _featureGap) /
+                  (_featureMinTile + _featureGap))
+              .floor()
+              .clamp(1, 99);
+      final byScreen = _featureColumns(MediaQuery.sizeOf(context).width);
+      final columns = byScreen < fit ? byScreen : fit;
+      final tileWidth =
+          ((constraints.maxWidth - _featureGap * (columns - 1)) / columns)
+              .floorToDouble();
+      return Wrap(
+        spacing: _featureGap,
+        runSpacing: _featureGap,
+        children: [
+          for (final feature in features)
+            SizedBox(width: tileWidth, child: _featureTile(feature, tileWidth)),
+        ],
+      );
+    },
+  );
+
+  /// One rounded tile: icon badge over a one-line label, read by screen
+  /// readers as a single button. [size] is the tile width and minimum height.
+  Widget _featureTile(_ProfileFeature feature, double size) => Semantics(
+    container: true,
+    button: true,
+    label: feature.label,
+    hint: feature.hint,
+    child: Material(
+      color: AppColors.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: BorderSide(color: AppColors.hairline),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        key: feature.key,
+        onTap: feature.onTap,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: size),
+          child: ExcludeSemantics(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(14),
+                      color: AppColors.accentSoft,
+                    ),
+                    child: Icon(
+                      feature.icon,
+                      size: 26,
+                      color: AppColors.accent,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  // Large text shrinks to fit the tile instead of clipping
+                  // the word.
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      feature.label,
+                      maxLines: 1,
+                      textAlign: TextAlign.center,
+                      style: AppText.button.copyWith(fontSize: 14),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ),
-        const SizedBox(height: 4),
-        Text(
-          'More features are on their way with Zoro… he just got lost again.',
-          textAlign: TextAlign.center,
-          style: AppText.body.copyWith(color: AppColors.textSecondary),
-        ),
-      ],
+      ),
     ),
   );
 
@@ -427,4 +519,26 @@ class ViewerProfileHomeScreen extends StatelessWidget {
       ],
     ),
   );
+}
+
+/// One tile in the profile feature grid: what it shows and what tapping does.
+class _ProfileFeature {
+  const _ProfileFeature({
+    required this.key,
+    required this.icon,
+    required this.label,
+    required this.hint,
+    required this.onTap,
+  });
+
+  /// Key on the tile's InkWell, used by widget tests to find and tap it.
+  final Key key;
+  final IconData icon;
+
+  /// Short title under the icon, also the semantics label.
+  final String label;
+
+  /// Screen-reader hint describing what the feature does.
+  final String hint;
+  final VoidCallback onTap;
 }

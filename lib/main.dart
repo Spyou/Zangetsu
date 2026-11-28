@@ -53,9 +53,11 @@ import 'core/locale/locale_controller.dart';
 import 'core/zmode/match_store.dart';
 import 'core/zmode/metadata_provider_prefs.dart';
 import 'core/zmode/zmode_prefs.dart';
+import 'core/theme/app_colors.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/app_font_prefs.dart';
 import 'core/theme/theme_controller.dart';
+import 'core/tv/tv_keyboard_bridge.dart';
 import 'core/tv/tv_route_pop_guard.dart';
 import 'core/tv/tv_viewport.dart';
 import 'features/player/in_app_mini_player.dart';
@@ -70,6 +72,8 @@ import 'features/onboarding/onboarding_screen.dart';
 import 'features/profiles/profile_launch_gate.dart';
 import 'features/shell/root_shell.dart';
 import 'features/watch_together/ui/party_bar.dart';
+import 'features/companion/companion_catalogue.dart';
+import 'features/companion/remote_session.dart';
 import 'features/watch_together/watch_together_controller.dart';
 
 final _authConnectionPhase = ValueNotifier(AuthConnectionPhase.idle);
@@ -720,6 +724,21 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
       isOffline: () =>
           widget.bootOffline && DateTime.now().isBefore(offlineUntil),
     );
+    // Phone remote wiring. The TV side answers phone requests and brings back
+    // its saved Wi-Fi/Bluetooth receiver; the phone side starts its session
+    // poller so the remote reconnects to the last TV on its own.
+    CompanionCatalogue.bind();
+    if (Platform.isAndroid || Platform.isIOS) {
+      if (sl<AppMode>().isTv) {
+        unawaited(
+          CompanionCatalogue.channel.invokeMethod<void>('restoreReceiver'),
+        );
+        // Serves the phone keyboard for TV text boxes (TV builds only).
+        TvKeyboardBridge.instance.start();
+      } else {
+        unawaited(RemoteSession.instance.start());
+      }
+    }
     if (mounted) {
       setState(() => _depsReady = true);
       if (_bootReady) {
@@ -973,6 +992,50 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
               ? Stack(
                   children: [
                     ?child,
+                    // TV only: "On your phone · <title>" banner while a paired
+                    // phone is browsing a title. Never takes taps or focus.
+                    if (sl.isRegistered<AppMode>() && sl<AppMode>().isTv)
+                      Positioned(
+                        bottom: 24,
+                        left: 48,
+                        right: 48,
+                        child: IgnorePointer(
+                          child: ValueListenableBuilder<String>(
+                            valueListenable: CompanionCatalogue.browsing,
+                            builder: (context, title, _) => title.isEmpty
+                                ? const SizedBox.shrink()
+                                : Center(
+                                    child: Material(
+                                      color: AppColors.surface,
+                                      borderRadius: BorderRadius.circular(18),
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 20,
+                                          vertical: 12,
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            const Icon(
+                                              Icons.phonelink_rounded,
+                                              size: 20,
+                                            ),
+                                            const SizedBox(width: 12),
+                                            Flexible(
+                                              child: Text(
+                                                'On your phone · $title',
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                          ),
+                        ),
+                      ),
                     if (WatchTogetherController.isEnabled)
                       const Positioned(
                         top: 0,
