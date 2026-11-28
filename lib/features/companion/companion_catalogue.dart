@@ -1,5 +1,4 @@
 import 'apple_companion.dart';
-import 'handoff_sources_wire.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/services.dart';
@@ -57,16 +56,6 @@ class CompanionCatalogue {
   /// get a JSON string back; each request times out after 75 seconds.
   static void bind() {
     AppleCompanion.instance.catalogue = _handle;
-    PlaybackPrefs.remoteSkipChanges.addListener(() {
-      final p = sl<PlaybackPrefs>();
-      unawaited(
-        channel.invokeMethod<void>('receiverSkipPrefs', {
-          'skipIntro': p.skipIntro,
-          'megaSkip': p.megaSkip,
-          'megaSkipSeconds': p.megaSkipSeconds,
-        }),
-      );
-    });
     channel.setMethodCallHandler((call) async {
       if (call.method != 'request') throw MissingPluginException();
       try {
@@ -90,12 +79,6 @@ class CompanionCatalogue {
   ) async {
     final repo = sl<SourceRepository>();
     switch (request['action']) {
-      case 'skipSettings':
-        final p = sl<PlaybackPrefs>();
-        await p.setSkipIntro(request['skipIntro'] == true);
-        await p.setMegaSkip(request['megaSkip'] == true);
-        await p.setMegaSkipSeconds((request['megaSkipSeconds'] as num).toInt());
-        return {'ok': true};
       case 'browseStatus':
         browsing.value = (request['title'] as String? ?? '').substring(
           0,
@@ -111,28 +94,6 @@ class CompanionCatalogue {
         } finally {
           _phoneOpening = false;
         }
-      case 'handoffSnapshot':
-        return TvNativePlayer.companionSnapshot();
-      case 'handoffSources':
-        return TvNativePlayer.companionSources(
-          request['session'] as int,
-          request['index'] as int,
-          refresh: request['refresh'] == true,
-          offset: (request['offset'] as num?)?.toInt() ?? 0,
-          // An older phone reads only the full format.
-          compact:
-              ((request['format'] as num?)?.toInt() ?? 0) >=
-              handoffSourcesFormat,
-        );
-      case 'handoffValidate':
-        if (!TvNativePlayer.companionSessionMatches(
-          request['session'] as int,
-        )) {
-          throw StateError(
-            'The TV title changed. Choose it again before continuing.',
-          );
-        }
-        return {'ok': true};
       case 'catalogues':
         return {
           'items': [

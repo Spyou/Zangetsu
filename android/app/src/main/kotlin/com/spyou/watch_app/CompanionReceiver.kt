@@ -486,7 +486,7 @@ object CompanionReceiver {
                 player?.finish()
                 done(JSONObject().put("ok", true))
             } else if (action == "state") {
-                done((player?.companionState() ?: JSONObject().put("active", false).put("title", "Choose something to watch on TV").put("playbackError", catalogueError ?: JSONObject.NULL))
+                done((JSONObject().put("active", false).put("title", "Choose something to watch on TV").put("playbackError", catalogueError ?: JSONObject.NULL))
                     .put("appForeground", CompanionVisibility.foreground).put("playerForeground", CompanionVisibility.playerForeground)
                     .put("keyboardVersion", 1).put("keyboard", keyboardSnapshot()))
             } else if (action in keyboardActions) {
@@ -515,8 +515,7 @@ object CompanionReceiver {
                 target.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, key))
                 target.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, key))
                 done(JSONObject().put("ok", true))
-            } else if (action in setOf("skipSettings", "catalogues", "search", "detail", "play", "handoffSnapshot", "handoffSources", "handoffValidate", "browseStatus", "openFromPhone")) {
-                check(action != "handoffSnapshot" || player != null) { "Start an episode on TV first." }
+            } else if (action in setOf("catalogues", "search", "detail", "play", "browseStatus", "openFromPhone")) {
                 check(action != "play" || player == null) { "Close the current TV video before opening another title. Episode switching is available in the controller." }
                 if (action == "play" || action == "openFromPhone") catalogueError = null
                 val bridge = channel ?: error("Catalogue is not ready")
@@ -526,9 +525,7 @@ object CompanionReceiver {
                     override fun notImplemented() { done(JSONObject().put("error", "Catalogue is not ready")) }
                 })
             } else {
-                check(player != null) { "Start a video on the TV first" }
-                player.companionCommand(command)
-                done(player.companionState().put("ok", true))
+                error("Unknown command")
             }
         } catch (e: Exception) { done(JSONObject().put("error", e.message ?: "Command failed")) }
     }

@@ -21,22 +21,14 @@ import Flutter
         registerTvPlayerChannel(with: messenger)
         // Register on the implicit engine's messenger so companion requests
         // reach the same player as upstream's scene-managed Flutter window.
-        // The handler forwards phone commands to the active AVKit player; with no
-        // player it still answers `state` (idle) and `skipSettings` so the remote stays usable.
+        // Playback itself is not remote-controlled: `state` answers idle so the
+        // remote stays usable for navigation and the keyboard.
         AppleCompanionServices.register(messenger: messenger, presenter: nil) { method, args, result in
-            if method == "stream" {
-                result(TvSystemPlayerViewController.active?.companionStream() ?? [:])
-                return
-            }
-            if let player = TvSystemPlayerViewController.active {
-                player.companionCommand(args, result: result)
-            } else if args["action"] as? String == "state" {
+            if args["action"] as? String == "state" {
                 result(["active": false, "appForeground": UIApplication.shared.applicationState == .active,
                         "playerForeground": false, "systemControls": false, "qualitySelection": false, "volumeAvailable": false])
-            } else if args["action"] as? String == "skipSettings" {
-                result(nil)
             } else {
-                result(FlutterError(code: "player", message: "Start playback on Apple TV first", details: nil))
+                result(FlutterError(code: "player", message: "Playback controls are not available on Apple TV", details: nil))
             }
         }
     }

@@ -14,7 +14,6 @@ import '../../core/di/injector.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/ui/settings_widgets.dart';
 import 'companion_catalogue.dart';
-import 'handoff_sources_wire.dart';
 import '../../core/models/episode.dart';
 import '../../core/models/video_source.dart';
 import '../../core/playback/resume_store.dart';
@@ -182,9 +181,6 @@ class _CompanionSettingsScreenState extends State<CompanionSettingsScreen>
   Future<void> _loadReceiver([String method = 'receiverState']) =>
       _run(() async {
         final data = await _channel.invokeMapMethod<String, dynamic>(method);
-        if (method == 'receiverStop' || method == 'receiverForget') {
-          await TvNativePlayer.stopCompanionSharing();
-        }
         if (mounted) setState(() => _receiver = data ?? {});
       });
 
@@ -417,125 +413,6 @@ class _CompanionSettingsScreenState extends State<CompanionSettingsScreen>
         'play',
         values: {'detailId': detail['detailId'], 'index': episode},
       );
-  }
-
-  /// Obtains the active TV stream and resume point before launching local playback.
-  Future<void> _continueOnPhone() async {
-    final snapshot = await _command('handoffSnapshot');
-    if (!mounted || snapshot['episodes'] == null) return;
-    final state = await _command('state');
-    if (!mounted || state['active'] != true) return;
-    final episodes = (snapshot['episodes'] as List)
-        .map((e) => Episode.fromJson(Map<String, dynamic>.from(e as Map)))
-        .toList();
-    final index = (state['episodeIndex'] as num?)?.toInt() ?? 0;
-    if (index < 0 || index >= episodes.length) return;
-    // How often each episode was asked for. The hand-off itself and the
-    // player's first open each ask once; any later ask is a retry after a
-    // failure, so the TV is told to fetch fresh links instead of reusing them.
-    final asks = <int, int>{};
-    // Where the TV's next page of links starts, per episode, while the TV
-    // holds more than it sent. A retry reads that page first and asks for a
-    // fresh set only once every page has been tried.
-    final nextPage = <int, int>{};
-    String plain(String url) =>
-        url.replaceAll('/dub/', '/x/').replaceAll('/sub/', '/x/');
-    Future<List<VideoSource>> resolve(String url) async {
-      var i = episodes.indexWhere((e) => e.url == url);
-      if (i < 0) i = episodes.indexWhere((e) => plain(e.url) == plain(url));
-      if (i < 0)
-        throw StateError(
-          'This episode is not in the TV list. Open Continue on phone again.',
-        );
-      final asked = asks[i] = (asks[i] ?? 0) + 1;
-      final retry = asked > 2;
-      // Taken out before asking, so a failed page makes the next retry ask
-      // for a fresh set instead of the same page again.
-      final offset = retry ? nextPage.remove(i) : null;
-      final result = await _session.command('handoffSources', {
-        'session': snapshot['session'],
-        'index': i,
-        'format': handoffSourcesFormat,
-        if (offset != null) 'offset': offset else if (retry) 'refresh': true,
-      });
-      // An older TV answers in the full format, which has no further pages.
-      final page = readHandoffSources(result);
-      final next = page.nextOffset;
-      if (next != null) {
-        nextPage[i] = next;
-      } else {
-        nextPage.remove(i);
-      }
-      final sources = page.sources;
-      if (sources.isEmpty)
-        throw StateError(
-          'No phone-compatible stream is available for this episode.',
-        );
-      return sources;
-    }
-
-    try {
-      // Resolve before pausing TV, so a failed transfer leaves playback alone.
-      final sources = await resolve(episodes[index].url);
-      final current = await _command('state');
-      if (!mounted || current['episodeIndex'] != index) return;
-      final paused = await _command('playing', values: {'value': false});
-      if (paused.isEmpty || !mounted) return;
-
-      await Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (_) => PlayerScreen(
-            sourceId: snapshot['sourceId'] as String,
-            resume: sl<ResumeStore>(),
-            resolveSources: resolve,
-            episodes: episodes,
-            startIndex: index,
-            initialSource: sources.first,
-            resumePosition: Duration(
-              milliseconds: (current['positionMs'] as num? ?? 0).toInt(),
-            ),
-            showTitle: snapshot['title'] as String?,
-            showUrl: snapshot['showUrl'] as String?,
-            cover: snapshot['cover'] as String?,
-            playerOverride: '',
-            // Every link comes from the TV, so the phone needs no source.
-            remoteResolve: true,
-            onContinueOnTv: (episode, position) async {
-              final valid = await _command(
-                'handoffValidate',
-                values: {'session': snapshot['session']},
-              );
-              if (valid['ok'] != true) return false;
-              final response = await _command(
-                'handoffResume',
-                values: {
-                  'index': episode,
-                  'positionMs': position.inMilliseconds,
-                },
-              );
-              if (response.isEmpty) return false;
-              for (var attempt = 0; attempt < 45; attempt++) {
-                await Future<void>.delayed(const Duration(seconds: 1));
-                final playing = await _command('state');
-                if (playing['episodeIndex'] == episode &&
-                    playing['playing'] == true &&
-                    playing['buffering'] != true &&
-                    ((playing['positionMs'] as num? ?? 0) -
-                                position.inMilliseconds)
-                            .abs() <
-                        6000)
-                  return true;
-                if (!_connected || playing['playbackError'] != null) break;
-              }
-              await _command('playing', values: {'value': false});
-              return false;
-            },
-          ),
-        ),
-      );
-    } catch (e) {
-      if (mounted) setState(() => _error = RemoteSession.userMessage(e));
-    }
   }
 
   /// Transfers the local episode and position to the TV, leaving local recovery to the caller.
@@ -1122,8 +999,6 @@ class _CompanionSettingsScreenState extends State<CompanionSettingsScreen>
   void _shortcut(String action) {
     final state = Map<String, dynamic>.of(_playback.value);
     switch (action) {
-      case 'phone':
-        _continueOnPhone();
       case 'episodes':
         _options('episodes', state);
       case 'sources':

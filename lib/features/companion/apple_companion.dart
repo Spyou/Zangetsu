@@ -84,20 +84,18 @@ class AppleCompanion {
 
   /// TV side: the last playback failure, reported to the phone in `state`.
   String? _playbackError;
+
   /// Commands that can take many seconds; presses are refused while one runs.
   // Catalogue requests can hold the wire for many seconds.
   static const _slowActions = {
-    'skipSettings',
     'catalogues',
     'search',
     'detail',
     'play',
-    'handoffSnapshot',
-    'handoffSources',
-    'handoffValidate',
     'browseStatus',
     'openFromPhone',
   };
+
   /// Last Live Activity snapshot sent and when, used to throttle [_snapshot].
   String _snapshotKey = '';
   DateTime _snapshotAt = DateTime(0);
@@ -297,15 +295,6 @@ class AppleCompanion {
         }
         await _persist();
         return _receiverState();
-      case 'receiverStream':
-        return native.invokeMethod('stream');
-      case 'receiverSkipPrefs':
-        if (_receiverDevice())
-          await native.invokeMethod('player', {
-            'action': 'skipSettings',
-            ...Map<String, dynamic>.from(args as Map),
-          });
-        return null;
       case 'playbackError':
         _playbackError = args as String?;
         return null;
@@ -946,10 +935,7 @@ class AppleCompanion {
   Future<Map<String, dynamic>> _dispatch(Map<String, dynamic> c) async {
     final action = c['action'];
     // A new play replaces any earlier failure, as on Android.
-    if (action == 'play' ||
-        action == 'openFromPhone' ||
-        action == 'handoffResume')
-      _playbackError = null;
+    if (action == 'play' || action == 'openFromPhone') _playbackError = null;
     if (action == 'state') {
       final player =
           await native.invokeMapMethod<String, dynamic>('player', c) ?? {};
@@ -1009,14 +995,10 @@ class AppleCompanion {
       return {'ok': true};
     }
     if ([
-      'skipSettings',
       'catalogues',
       'search',
       'detail',
       'play',
-      'handoffSnapshot',
-      'handoffSources',
-      'handoffValidate',
       'browseStatus',
       'openFromPhone',
     ].contains(action)) {

@@ -32,9 +32,6 @@ class RemoteSession extends ChangeNotifier with WidgetsBindingObserver {
   /// Human-readable Bluetooth status from native code, shown in settings.
   String bluetoothDetail = '';
 
-  /// Skip preferences waiting to be pushed to the TV on the next poll tick.
-  Map<String, dynamic>? _pendingSkip;
-
   /// Guards against overlapping poll ticks.
   bool _polling = false;
 
@@ -92,28 +89,34 @@ class RemoteSession extends ChangeNotifier with WidgetsBindingObserver {
     if (_started) return;
     _started = true;
     WidgetsBinding.instance.addObserver(this);
-    PlaybackPrefs.remoteSkipChanges.addListener(_skipChanged);
     RemoteKeyboardPrompter.start();
     await refreshConnection();
+    // Phones that never paired a TV pay nothing: the poller only runs while a
+    // TV is saved or connected, and [connect] starts it after pairing.
+    if (saved) _ensurePoller();
+    if (saved && !connected) unawaited(reconnect());
+  }
+
+  /// Starts the one-second poller if it is not already running.
+  void _ensurePoller() {
+    if (_timer != null) return;
     _timer = Timer.periodic(const Duration(seconds: 1), (_) async {
       if (_working || reconnecting || _polling) return;
       _polling = true;
       await refreshConnection();
       if (companion) {
         try {
-          if (_pendingSkip != null) {
-            final values = _pendingSkip!;
-            await command('skipSettings', values);
-            if (identical(values, _pendingSkip)) _pendingSkip = null;
-          }
           await command('state');
         } catch (_) {}
       } else if (saved && !connected && DateTime.now().isAfter(_retryAfter)) {
         await reconnect();
+      } else if (!saved && !connected) {
+        // Forgotten TV: stop polling until the next pairing.
+        _timer?.cancel();
+        _timer = null;
       }
       _polling = false;
     });
-    if (saved && !connected) unawaited(reconnect());
   }
 
   /// Refreshes receiver availability when the phone returns to the foreground.
@@ -163,6 +166,7 @@ class RemoteSession extends ChangeNotifier with WidgetsBindingObserver {
       await refreshConnection();
       connected = true;
       saved = true;
+      _ensurePoller();
     } catch (e) {
       connected = false;
       error = userMessage(e);
@@ -178,17 +182,6 @@ class RemoteSession extends ChangeNotifier with WidgetsBindingObserver {
       error = userMessage(e);
       notifyListeners();
     }
-  }
-
-  /// Forwards shared skip preferences; the remote does not maintain separate skip settings.
-  void _skipChanged() {
-    if (!sl.isRegistered<PlaybackPrefs>()) return;
-    final p = sl<PlaybackPrefs>();
-    _pendingSkip = {
-      'skipIntro': p.skipIntro,
-      'megaSkip': p.megaSkip,
-      'megaSkipSeconds': p.megaSkipSeconds,
-    };
   }
 
   /// Dispatches touch controls; releases bypass queued commands to avoid stuck held keys.
@@ -393,13 +386,11 @@ class RemoteSession extends ChangeNotifier with WidgetsBindingObserver {
               : e.toString())
           .replaceFirst('Bad state: ', '');
 
-
   /// Cancels polling and preference/lifecycle listeners owned by this session.
   @override
   void dispose() {
     _timer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
-    PlaybackPrefs.remoteSkipChanges.removeListener(_skipChanged);
     playback.dispose();
     keyboard.dispose();
     super.dispose();

@@ -180,27 +180,10 @@ String? castProxyEncodedPayload(List<String> segs, String? queryU) {
 // ponytail: proxying runs on the app isolate — fine for I/O-bound streaming;
 // move to a background isolate only if a 4K cast measurably janks the UI.
 class CastProxyServer {
-  /// Creates an idle proxy; call [serve] to start it.
-  ///
-  /// [restrictTargets] is for the phone-remote companion: only URLs that
-  /// [proxify] registered are served, plus local files among them.
-  CastProxyServer({this.restrictTargets = false});
-
-  /// When true, the proxy refuses any URL that [proxify] did not register, so
-  /// a LAN peer cannot use it as an open relay. Casting leaves it false.
-  final bool restrictTargets;
-
-  /// Raw upstream strings registered by [proxify]; the allow-list when
-  /// [restrictTargets] is on.
-  final Set<String> _targets = {};
   HttpServer? _server;
   String? _token;
   String? _basePrefix; // http://ip:port/p/<token>
   Map<String, String> _headers = const {};
-
-  /// Headers per proxied target, so several links (each with its own
-  /// Referer/cookies) can be live on one proxy. Falls back to [_headers].
-  final Map<String, Map<String, String>> _targetHeaders = {};
 
   final HttpClient _client = HttpClient()
     ..connectionTimeout = const Duration(seconds: 20)
@@ -227,7 +210,6 @@ class CastProxyServer {
     Map<String, String>? headers,
   ) async {
     _headers = headers ?? const {};
-    _targetHeaders[upstreamUrl] = _headers;
     lastHlsSegmentFormat = null;
     lastHlsVideoSegmentFormat = null;
     lastUpstreamUrl = upstreamUrl;
@@ -238,18 +220,14 @@ class CastProxyServer {
     if (ip == null) return null;
     _basePrefix = 'http://$ip:${server.port}/p/$_token';
     await _sniffFormats(upstreamUrl);
-    return proxify(lastUpstreamUrl ?? upstreamUrl, headers: _headers);
+    return proxify(lastUpstreamUrl ?? upstreamUrl);
   }
 
   /// Wrap any upstream URL (e.g. a subtitle track) in the running proxy so it
-  /// too is fetched with [headers] (default: the last [serve]'s headers). Null
-  /// if the proxy isn't running.
-  String? proxify(String upstreamUrl, {Map<String, String>? headers}) {
+  /// too is fetched with the session headers. Null if the proxy isn't running.
+  String? proxify(String upstreamUrl) {
     final prefix = _basePrefix;
     if (prefix == null) return null;
-    _targets.add(upstreamUrl);
-    _targetHeaders[upstreamUrl] =
-        headers ?? _targetHeaders[upstreamUrl] ?? _headers;
     final encoded = base64Url.encode(utf8.encode(upstreamUrl));
     // Path-only — CAF is unreliable following `?u=` on HLS playlists.
     // Caption URLs keep a `.vtt` suffix so the receiver treats them as text
@@ -271,10 +249,7 @@ class CastProxyServer {
     _server = server;
   }
 
-  /// Shuts the server down and forgets every registered target and header.
   Future<void> stop() async {
-    _targets.clear();
-    _targetHeaders.clear();
     _basePrefix = null;
     _token = null;
     final s = _server;
@@ -310,31 +285,10 @@ class CastProxyServer {
         await res.close();
         return;
       }
-      final raw = utf8.decode(base64Url.decode(encoded));
+      final target = Uri.parse(utf8.decode(base64Url.decode(encoded)));
 
-      // Companion only: a registered local file (downloaded episode / sub).
-      // content:// is never served (falls through to the 403 below).
-      if (restrictTargets && _targets.contains(raw)) {
-        final localPath = _localPath(raw);
-        if (localPath != null) {
-          await _serveLocalFile(req, res, localPath);
-          return;
-        }
-      }
-
-      final target = Uri.parse(raw);
-
-      // Match the raw string proxify() stored; Uri.toString() normalises it.
-      if (!['http', 'https'].contains(target.scheme) ||
-          (restrictTargets && !_targets.contains(raw))) {
-        res.statusCode = HttpStatus.forbidden;
-        await res.close();
-        return;
-      }
-
-      final headers = _targetHeaders[raw] ?? _headers;
       final upReq = await _client.getUrl(target);
-      headers.forEach(upReq.headers.set);
+      _headers.forEach(upReq.headers.set);
       // Playlists are text; ask for identity so we don't have to gunzip.
       // Segments keep whatever the CDN sends (usually uncompressed).
       final looksHls = target.path.toLowerCase().endsWith('.m3u8');
@@ -343,36 +297,22 @@ class CastProxyServer {
       }
       // Never forward Range onto a segment. Decoy-wrapped files must be read
       // whole so we can peel JPEG/ICO/… and then range the unwrapped media.
-      // Companion streams remain streaming; casting retains unwrap/range handling.
-      if (restrictTargets) {
-        upReq.headers.set(HttpHeaders.acceptEncodingHeader, 'identity');
-        final range = req.headers.value(HttpHeaders.rangeHeader);
-        if (range != null) upReq.headers.set(HttpHeaders.rangeHeader, range);
-      }
       final upRes = await upReq.close();
-      var effectiveTarget = target;
-      for (final redirect in upRes.redirects) {
-        effectiveTarget = effectiveTarget.resolveUri(redirect.location);
-      }
 
       final ctype = upRes.headers.contentType?.mimeType.toLowerCase() ?? '';
-      final isHls =
-          looksHls ||
-          effectiveTarget.path.toLowerCase().endsWith('.m3u8') ||
-          ctype.contains('mpegurl');
+      final isHls = looksHls || ctype.contains('mpegurl');
 
       final destName = segs.isNotEmpty ? segs.last.toLowerCase() : '';
       final isSub = looksSubtitleUri(target.path) || destName == 'subs.vtt';
 
-      if (isHls && upRes.statusCode >= 200 && upRes.statusCode < 300) {
+      if (isHls) {
         final body = await _readPlaylistText(upRes);
         final rewritten = rewriteHlsPlaylist(
           body,
-          effectiveTarget,
+          target,
           // Absolute URLs — CAF is unreliable at resolving path-absolute
           // `/p/…?u=` variants against a playlist that itself has a query.
-          // Children inherit this playlist's headers.
-          (abs) => proxify(abs.toString(), headers: headers) ?? abs.toString(),
+          (abs) => proxify(abs.toString()) ?? abs.toString(),
         );
         res.statusCode = HttpStatus.ok;
         res.headers.contentType = ContentType(
@@ -380,20 +320,6 @@ class CastProxyServer {
           'vnd.apple.mpegurl',
         );
         res.write(rewritten);
-        await res.close();
-      } else if (restrictTargets) {
-        // Preserve upstream status/ranges without buffering the whole episode.
-        res.statusCode = upRes.statusCode;
-        for (final header in [
-          HttpHeaders.contentTypeHeader,
-          HttpHeaders.contentLengthHeader,
-          HttpHeaders.contentRangeHeader,
-          HttpHeaders.acceptRangesHeader,
-        ]) {
-          final value = upRes.headers.value(header);
-          if (value != null) res.headers.set(header, value);
-        }
-        await res.addStream(upRes);
         await res.close();
       } else if (isSub) {
         // Never unwrap captions as TS/fMP4. DMR only accepts WebVTT.
@@ -431,86 +357,6 @@ class CastProxyServer {
         await res.close();
       } catch (_) {}
     }
-  }
-
-  /// Absolute path for a `file://` URI or an absolute path; null otherwise
-  /// (http(s), content://, relative …).
-  String? _localPath(String raw) {
-    if (raw.startsWith('file://')) {
-      try {
-        return Uri.parse(raw).toFilePath();
-      } catch (_) {
-        return null;
-      }
-    }
-    if (raw.startsWith('/') || RegExp(r'^[A-Za-z]:[\\/]').hasMatch(raw)) {
-      return raw;
-    }
-    return null;
-  }
-
-  /// Content type for a local file, guessed from its extension.
-  String _localMime(String path) {
-    final lower = path.toLowerCase();
-    if (lower.endsWith('.vtt')) return 'text/vtt';
-    if (lower.endsWith('.srt')) return 'application/x-subrip';
-    if (lower.endsWith('.ass') || lower.endsWith('.ssa')) return 'text/x-ssa';
-    if (lower.endsWith('.mp4') || lower.endsWith('.m4v')) return 'video/mp4';
-    if (lower.endsWith('.mkv')) return 'video/x-matroska';
-    if (lower.endsWith('.m3u8')) return 'application/vnd.apple.mpegurl';
-    if (lower.endsWith('.ts')) return 'video/mp2t';
-    return 'application/octet-stream';
-  }
-
-  /// Streams a local file with Range support. Local HLS playlists are
-  /// rewritten so their (relative) segments are proxied as local files too.
-  Future<void> _serveLocalFile(
-    HttpRequest req,
-    HttpResponse res,
-    String path,
-  ) async {
-    final file = File(path);
-    if (!await file.exists()) {
-      res.statusCode = HttpStatus.notFound;
-      await res.close();
-      return;
-    }
-    final mime = _localMime(path);
-    if (mime == 'application/vnd.apple.mpegurl') {
-      final body = await file.readAsString();
-      final rewritten = rewriteHlsPlaylist(
-        body,
-        Uri.file(path),
-        (abs) => proxify(abs.toString(), headers: const {}) ?? abs.toString(),
-      );
-      res.statusCode = HttpStatus.ok;
-      res.headers.contentType = ContentType.parse(mime);
-      res.write(rewritten);
-      await res.close();
-      return;
-    }
-    final length = await file.length();
-    res.headers.contentType = ContentType.parse(mime);
-    res.headers.set(HttpHeaders.acceptRangesHeader, 'bytes');
-    final range = _byteRange(
-      req.headers.value(HttpHeaders.rangeHeader),
-      length,
-    );
-    if (range != null) {
-      res.statusCode = HttpStatus.partialContent;
-      res.headers.set(
-        HttpHeaders.contentRangeHeader,
-        'bytes ${range.$1}-${range.$2}/$length',
-      );
-      res.contentLength = range.$2 - range.$1 + 1;
-      // openRead's end is exclusive.
-      await res.addStream(file.openRead(range.$1, range.$2 + 1));
-    } else {
-      res.statusCode = HttpStatus.ok;
-      res.contentLength = length;
-      await res.addStream(file.openRead());
-    }
-    await res.close();
   }
 
   void _log(String message, {String level = 'I'}) {
@@ -606,7 +452,7 @@ class CastProxyServer {
 
   Future<Uint8List?> _fetchBytes(String url) async {
     final req = await _client.getUrl(Uri.parse(url));
-    (_targetHeaders[url] ?? _headers).forEach(req.headers.set);
+    _headers.forEach(req.headers.set);
     req.headers.set(HttpHeaders.acceptEncodingHeader, 'identity');
     final res = await req.close();
     if (res.statusCode >= 400) {
@@ -618,7 +464,7 @@ class CastProxyServer {
 
   Future<String?> _fetchText(String url) async {
     final req = await _client.getUrl(Uri.parse(url));
-    (_targetHeaders[url] ?? _headers).forEach(req.headers.set);
+    _headers.forEach(req.headers.set);
     req.headers.set(HttpHeaders.acceptEncodingHeader, 'identity');
     final res = await req.close();
     if (res.statusCode >= 400) {

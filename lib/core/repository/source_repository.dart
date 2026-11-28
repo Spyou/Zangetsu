@@ -1268,7 +1268,6 @@ class SourceRepository implements CatalogueRepository {
   /// Fire-and-forget background resolution for [episodeUrl] (the episode the
   /// detail screen's Play will start) so the actual play is near-instant. Safe
   /// to call repeatedly — deduped within [_prefetchTtl], errors swallowed.
-  /// A no-op when [sourceId] is not installed on this device.
   void prefetch(String episodeUrl, {String? sourceId}) {
     final key = _prefetchKey(episodeUrl, sourceId);
     final existing = _prefetch[key];
@@ -1276,18 +1275,9 @@ class SourceRepository implements CatalogueRepository {
         DateTime.now().difference(existing.at) < _prefetchTtl) {
       return;
     }
-    // The source may not be installed here (a TV handoff plays a source only
-    // the TV has) — `_providerFor` then throws 'Provider not loaded'. A
-    // prefetch is a best-effort hint, so never throw out of the caller
-    // (often a stream listener).
-    final Future<List<VideoSource>> future;
-    try {
-      future = _providerFor(sourceId)
-          .getVideoSources(episodeUrl, fast: true)
-          .catchError((_) => <VideoSource>[]);
-    } catch (_) {
-      return;
-    }
+    final future = _providerFor(sourceId)
+        .getVideoSources(episodeUrl, fast: true)
+        .catchError((_) => <VideoSource>[]);
     _prefetch[key] = (at: DateTime.now(), future: future);
   }
 }

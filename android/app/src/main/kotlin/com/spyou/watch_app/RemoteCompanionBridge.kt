@@ -154,8 +154,6 @@ class RemoteCompanionBridge(activity: Activity) {
                     })
                 }
                 "receiverForget" -> { CompanionReceiver.forgetPhones(); result.success(receiverState()) }
-                "receiverStream" -> result.success(TvPlayerActivity.active?.companionStream())
-                "receiverSkipPrefs" -> { TvPlayerActivity.active?.companionSkipPrefs(JSONObject(call.arguments as Map<*, *>)); result.success(null) }
                 "receiverClosePlayer" -> { TvPlayerActivity.active?.finish(); result.success(null) }
                 // Dart pushes the selected TV text box (JSON) or null; state replies embed it.
                 "receiverKeyboard" -> {
@@ -483,7 +481,7 @@ class RemoteCompanionBridge(activity: Activity) {
     fun sendCompanion(command: JSONObject, result: MethodChannel.Result) = sendCompanion(command, result, generation, false)
 
     /** Actions that only read from the TV, so sending them twice can never do something twice. */
-    private val retryableActions = setOf("state", "catalogues", "search", "detail", "handoffSnapshot", "handoffSources", "handoffValidate")
+    private val retryableActions = setOf("state", "catalogues", "search", "detail")
 
     /**
      * Runs one exchange on the preferred link. [gen] is the connection generation the request

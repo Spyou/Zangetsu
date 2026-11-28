@@ -45,8 +45,6 @@ import '../../core/models/film.dart';
 import '../../core/models/episode_title.dart';
 import '../../core/models/video_source.dart';
 import '../../core/playback/resume_store.dart';
-import '../companion/companion_settings_screen.dart';
-import '../companion/remote_session.dart';
 import '../../core/playback/tv_track_helpers.dart' show tvEpisodeUrl;
 import '../../core/ui/episode_player_sheet.dart' show showMirrorSheet;
 import '../../core/stremio/stremio_manager.dart';
@@ -233,8 +231,6 @@ class PlayerScreen extends StatefulWidget {
     this.joinRoomCode,
     this.playerOverride,
     this.initialSource,
-    this.onContinueOnTv,
-    this.remoteResolve = false,
     this.engineFallback,
     this.onEngineChange,
     this.engineRecovery = false,
@@ -245,15 +241,6 @@ class PlayerScreen extends StatefulWidget {
   /// of the adaptive default. One-shot: the cubit clears it after the first
   /// episode so nothing later is affected.
   final VideoSource? initialSource;
-  /// Hands the current episode [index] and [position] to the paired TV.
-  /// Resolves true when the TV accepted it, so the phone player closes;
-  /// false resumes here. Null falls back to the Remote screen's handoff.
-  final Future<bool> Function(int index, Duration position)? onContinueOnTv;
-
-  /// Links come from another device (TV handoff). The phone may not have
-  /// [sourceId] installed. Every link, retry, server switch and next episode
-  /// goes through [resolveSources]. Provider-dependent features are skipped.
-  final bool remoteResolve;
   final PlayerEngineFallback? engineFallback;
   final void Function(PlaybackEngine, PhonePlaybackFailure, Future<void>)?
   onEngineChange;
@@ -474,8 +461,6 @@ class _PlayerEngineHostState extends State<PlayerScreen> {
         });
       },
       isMovie: widget.isMovie,
-      onContinueOnTv: widget.onContinueOnTv,
-      remoteResolve: widget.remoteResolve,
     );
   }
 }
@@ -500,12 +485,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   Completer<void>? _engineTeardown;
   PhonePlaybackFailure? _nativeEngineFailure;
 
-  /// TV handoff: links come from the TV, the source may not exist here.
-  bool get _remoteResolve =>
-      widget.remoteResolve || widget.onContinueOnTv != null;
-
   bool get _canTryOtherPlayer =>
-      !_remoteResolve &&
       widget.onEngineChange != null &&
       Platform.isAndroid &&
       !sl<AppMode>().isTv &&
@@ -654,14 +634,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
   bool _tvBarVisible = true;
 
   bool _ready = false; // the player session (cubit) is built
-  /// Remote mode is on: show the 'Play on TV' form instead of a player.
-  bool _remotePlayback = false;
-
-  /// An openFromPhone request to the TV is in flight.
-  bool _sendingToTv = false;
-
-  /// Why the last send to the TV failed, shown on the 'Play on TV' form.
-  String? _remoteError;
   PlayerRouteTeardownLease? _routeTeardownLease;
   // Set when a Watch Together join can't resolve the room's source on this
   // device — show a clear message instead of silently bouncing to a portrait
@@ -716,23 +688,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
     // Refresh the "enhancement shaders downloaded?" flag so the in-player picker
     // gates correctly (they're fetched on demand from Settings). Fire-and-forget.
     unawaited(ShaderPresets.refreshDownloaded());
-    if ((Platform.isAndroid || Platform.isIOS) &&
-        !sl<AppMode>().isTv &&
-        RemoteSession.instance.remoteMode &&
-        widget.onContinueOnTv == null &&
-        widget.joinRoomCode == null) {
-      _remotePlayback = true;
-      WidgetsBinding.instance.addPostFrameCallback(
-        (_) => _sendRemotePlayback(),
-      );
-      return;
-    }
-    _startLocalPlayback();
-  }
-
-  /// Picks the phone player route, closes any docked player and starts
-  /// playback here. Shared by initState and the remote 'Watch on this phone'.
-  void _startLocalPlayback() {
     // Routed through resolvePhonePlayerRoute (unit-tested): the external
     // branch matches any non-empty id, so the native choice must never fall
     // through into it — that pops straight back to Detail.
@@ -755,10 +710,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     } else {
       unawaited(_initAfterClosingDock());
     }
-    if (Platform.isAndroid &&
-        !sl<AppMode>().isTv &&
-        _followSensor &&
-        _orientationTurns == null) {
+    if (Platform.isAndroid && !sl<AppMode>().isTv && _followSensor) {
       _orientationTurns = const EventChannel('zangetsu/player_orientation')
           .receiveBroadcastStream()
           .listen(
@@ -933,11 +885,24 @@ class _PlayerScreenState extends State<PlayerScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // The remote 'Play on TV' form stays portrait with no player behind it.
-    if (_remotePlayback || !_watchPageEnabled || _docked) return;
+    if (!_watchPageEnabled || _docked) return;
     final current = MediaQuery.orientationOf(context);
     if (_lastOrientation == null) {
-      _applyInitialPresentation(current);
+      _lastOrientation = current;
+      final initial = initialPresentation(
+        isTv: false,
+        orientation: sl<PlaybackPrefs>().playerOrientation,
+        isLandscape: current == Orientation.landscape,
+      );
+      _presentation = initial;
+      _applyPlayerSystemUi();
+      if (initial == PlayerPresentation.watchPage) {
+        _startAmbientSampler();
+        _portraitMode = true;
+        SystemChrome.setPreferredOrientations(_orientationLock);
+      } else {
+        _applyOrientationWhenCovered();
+      }
       return;
     }
     final next = rotationPresentation(
@@ -953,36 +918,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
   }
 
-  /// Opening layout and orientation for the in-app player, set up once.
-  void _applyInitialPresentation(Orientation current) {
-    _lastOrientation = current;
-    final initial = initialPresentation(
-      isTv: false,
-      orientation: sl<PlaybackPrefs>().playerOrientation,
-      isLandscape: current == Orientation.landscape,
-    );
-    _presentation = initial;
-    _applyPlayerSystemUi();
-    if (initial == PlayerPresentation.watchPage) {
-      _startAmbientSampler();
-      _portraitMode = true;
-      SystemChrome.setPreferredOrientations(_orientationLock);
-    } else {
-      _applyOrientationWhenCovered();
-    }
-  }
-
-  /// Leaves the remote 'Play on TV' form and plays here instead.
-  void _watchRemoteOnPhone() {
-    RemoteSession.instance.setRemoteMode(false);
-    setState(() => _remotePlayback = false);
-    _startLocalPlayback();
-    // didChangeDependencies skipped this while the remote form was up.
-    if (_watchPageEnabled && !_docked && _lastOrientation == null) {
-      _applyInitialPresentation(MediaQuery.orientationOf(context));
-    }
-  }
-
   /// Fullscreen Back lands on the watch page instead of leaving the player;
   /// the page's own Back uses the normal close guard.
   void _handlePlayerBack() {
@@ -991,79 +926,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
       return;
     }
     Navigator.of(context).maybePop();
-  }
-
-  /// Sends the chosen episode to the TV ('openFromPhone' with title, source,
-  /// episode number/season, category and resume position), then polls the
-  /// remote playback state for up to ~60 s and swaps to the Remote screen
-  /// once the TV plays it. Errors land in [_remoteError].
-  Future<void> _sendRemotePlayback() async {
-    if (_sendingToTv || !mounted) return;
-    setState(() {
-      _sendingToTv = true;
-      _remoteError = null;
-    });
-    final remote = RemoteSession.instance;
-    try {
-      if (!remote.connected) await remote.reconnect();
-      if (!remote.connected)
-        throw StateError('Open the Remote tab and connect your TV first.');
-      var episodes = widget.episodes;
-      if (episodes.isEmpty && widget.episodesResolver != null)
-        episodes = await widget.episodesResolver!();
-      if (episodes.isEmpty) throw StateError('No episodes are available.');
-      var index = widget.startIndex.clamp(0, episodes.length - 1);
-      if (widget.resumeEpisodeId != null) {
-        final match = episodes.indexWhere(
-          (e) =>
-              e.id == widget.resumeEpisodeId ||
-              e.number == widget.resumeEpisodeNumber,
-        );
-        if (match >= 0) index = match;
-      }
-      final episode = episodes[index];
-      // The TV takes over, so stop any mini-player still playing here.
-      await PhoneNativePlayer.closeDockedPlayback();
-      dockedPlayer.value?.onClose();
-      final result = await remote.command('openFromPhone', {
-        'title': widget.showTitle ?? '',
-        'sourceId': widget.sourceId,
-        if (widget.showUrl?.startsWith('zm://') == true)
-          'canonical': widget.showUrl,
-        'number': episode.number,
-        'season': episode.season,
-        'category': widget.category,
-        'positionMs': widget.resumePosition.inMilliseconds,
-      });
-      for (var attempt = 0; attempt < 120 && mounted; attempt++) {
-        final state = remote.playback.value;
-        if (state['active'] == true &&
-            state['title'] == result['title'] &&
-            state['episodeIndex'] == result['index'] &&
-            state['buffering'] != true) {
-          if (mounted)
-            Navigator.of(context).pushReplacement(
-              MaterialPageRoute<void>(
-                builder: (_) => const CompanionSettingsScreen(),
-              ),
-            );
-          return;
-        }
-        if (state['playbackError'] != null)
-          throw StateError(state['playbackError'].toString());
-        await Future<void>.delayed(const Duration(milliseconds: 500));
-      }
-      throw StateError(
-        'The TV is still loading. Check the Remote tab for its status.',
-      );
-    } catch (e) {
-      if (mounted)
-        setState(
-          () => _remoteError = e.toString().replaceFirst('Bad state: ', ''),
-        );
-    } finally {
-      if (mounted) setState(() => _sendingToTv = false);
-    }
   }
 
   /// Follow the device sensor instead of locking, when the saved default is
@@ -1740,8 +1602,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   /// native engine can actually open — a torrent or DRM stays in mpv.
   bool get _canSwitchToNative {
     final active = _c.state.active;
-    return !_remoteResolve &&
-        widget.onEngineChange != null &&
+    return widget.onEngineChange != null &&
         Platform.isAndroid &&
         !sl<AppMode>().isTv &&
         active != null &&
@@ -2006,7 +1867,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
       onSourceFailure: _canTryOtherPlayer ? _onMpvSourceFailure : null,
       engineFallback: _canTryOtherPlayer ? _engineFallback : null,
       forceInitialResume: widget.engineRecovery,
-      remoteResolve: _remoteResolve,
     )..init(startIndex);
 
     // Bind the wake-lock to playback now that the player exists: on while
@@ -3240,8 +3100,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   /// show, a disposed screen, or a failed fetch just leaves the section
   /// hidden — the title and episodes were already on screen.
   void _maybeEnrichDescription() {
-    // TV handoff: the source may not be installed here, so no detail fetch.
-    if (widget.localOnly || _remoteResolve) return;
+    if (widget.localOnly) return;
     final url = widget.showUrl?.trim() ?? '';
     if (url.isEmpty) return;
     if ((widget.showDescription?.trim().isNotEmpty ?? false)) return;
@@ -3417,8 +3276,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
     List<VideoSource> sources;
     try {
-      // A TV handoff resolves through the TV: the source may not exist here.
-      sources = !_remoteResolve && sl.isRegistered<CatalogueRepository>()
+      sources = sl.isRegistered<CatalogueRepository>()
           ? await sl<CatalogueRepository>().sources(
               url,
               sourceId: widget.sourceId,
@@ -3465,8 +3323,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   bool _watchDownloadPending = false;
 
   Future<void> _downloadWatchEpisode(int index) async {
-    if (_remoteResolve ||
-        _watchDownloadPending ||
+    if (_watchDownloadPending ||
         index < 0 ||
         index >= _c.episodes.length ||
         widget.localOnly ||
@@ -3704,8 +3561,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       onSetWatched: _setWatchEpisodeWatched,
       onPlayMirror: widget.localOnly ? null : _playWatchEpisodeMirror,
       downloadButton:
-          _remoteResolve ||
-              widget.localOnly ||
+          widget.localOnly ||
               (widget.showUrl?.isEmpty ?? true) ||
               !sl.isRegistered<DownloadManager>()
           ? null
@@ -4005,9 +3861,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   void _openSourceSheet() {
-    if (widget.sourceId == stremioSourceId &&
-        !widget.localOnly &&
-        !_remoteResolve) {
+    if (widget.sourceId == stremioSourceId && !widget.localOnly) {
       unawaited(_openStremioSourceSheet());
       return;
     }
@@ -4236,43 +4090,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Remote mode: a small 'Play on TV' status form with retry / play here.
-    if (_remotePlayback)
-      return Scaffold(
-        backgroundColor: AppColors.bg,
-        appBar: AppBar(title: const Text('Play on TV')),
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (_sendingToTv)
-                  const CircularProgressIndicator()
-                else
-                  const Icon(Icons.connected_tv_rounded, size: 48),
-                const SizedBox(height: 20),
-                Text(
-                  _remoteError ??
-                      'Opening ${widget.showTitle ?? 'your episode'} on TV…',
-                  textAlign: TextAlign.center,
-                ),
-                if (!_sendingToTv) ...[
-                  const SizedBox(height: 16),
-                  FilledButton(
-                    onPressed: _sendRemotePlayback,
-                    child: const Text('Try again'),
-                  ),
-                  TextButton(
-                    onPressed: _watchRemoteOnPhone,
-                    child: const Text('Watch on this phone'),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ),
-      );
     if (_docked) return _buildVideoSurface();
     final route = ModalRoute.of(context);
     // Callers that hand us a resolver (Continue Watching, history, search…)
@@ -4846,50 +4663,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       child: IgnorePointer(
                         ignoring: !_controlsVisible,
                         child: _ControlsOverlay(
-                          // Pause, hand off to the TV, then close on success
-                          // or resume here if the handoff was cancelled.
-                          onContinueOnTv:
-                              !(Platform.isAndroid || Platform.isIOS)
-                              ? null
-                              : () async {
-                                  final wasPlaying = _c.player.state.playing;
-                                  await _c.player.pause();
-                                  if (!mounted || !context.mounted) return;
-                                  final moved = widget.onContinueOnTv != null
-                                      ? await widget.onContinueOnTv!(
-                                          _c.state.currentIndex,
-                                          _c.currentPosition,
-                                        )
-                                      : await Navigator.of(context).push<bool>(
-                                              MaterialPageRoute(
-                                                builder: (_) =>
-                                                    CompanionSettingsScreen(
-                                                      phonePlayback: {
-                                                        'sourceId':
-                                                            widget.sourceId,
-                                                        'title':
-                                                            widget.showTitle ??
-                                                            '',
-                                                        'episodeNumber': _c
-                                                            .episodes[_c
-                                                                .state
-                                                                .currentIndex]
-                                                            .number,
-                                                        'positionMs': _c
-                                                            .currentPosition
-                                                            .inMilliseconds,
-                                                      },
-                                                    ),
-                                              ),
-                                            ) ==
-                                            true;
-                                  if (!mounted || !context.mounted) return;
-                                  if (moved) {
-                                    Navigator.of(context).pop();
-                                  } else if (wasPlaying) {
-                                    await _c.player.play();
-                                  }
-                                },
                           controller: _c,
                           state: state,
                           visible: _controlsVisible,
